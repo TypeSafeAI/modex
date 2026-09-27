@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage, s
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
 import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
@@ -154,6 +154,8 @@ handle("terminal:close", ({ threadId, sessionId }) => terminals.close(threadId, 
 
 function createWindow(): BrowserWindow {
   nativeTheme.themeSource = "dark";
+  const devUrl = process.env.MODEX_DEV_URL;
+  const appPage = devUrl ? new URL(devUrl) : pathToFileURL(path.join(here, "..", "..", "renderer", "index.html"));
   // The demo captures fixed-size screenshots, so only real (and e2e) launches restore geometry.
   const min = { width: 900, height: 600 };
   const saved = demo ? null : readWindowState(home);
@@ -172,7 +174,6 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  const devUrl = process.env.MODEX_DEV_URL;
   if (devUrl) void w.loadURL(devUrl);
   else void w.loadFile(path.join(here, "..", "..", "renderer", "index.html"));
   w.once("ready-to-show", () => {
@@ -191,7 +192,11 @@ function createWindow(): BrowserWindow {
   w.on("closed", () => { if (win === w) win = null; });
   w.webContents.on("render-process-gone", () => { if (!w.isDestroyed()) w.destroy(); });
   // The window keeps its preload (and so terminal access) across navigations: never leave the app page.
-  w.webContents.on("will-navigate", (event) => event.preventDefault());
+  w.webContents.on("will-navigate", (event, url) => {
+    const next = new URL(url);
+    const sameAppPage = appPage.protocol === "file:" ? next.protocol === "file:" && next.pathname === appPage.pathname : next.origin === appPage.origin;
+    if (!sameAppPage) event.preventDefault();
+  });
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: "deny" };
