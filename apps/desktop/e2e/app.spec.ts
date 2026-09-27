@@ -513,7 +513,10 @@ test("drafts: a new chat is nothing until its first send; leaving it creates no 
   await expect(tid(page, "context-branch")).toHaveCount(0);
   await kind.click();
   await expect(kind).toHaveAttribute("data-kind", "local");
+  // A Local draft shows the project checkout's current branch, read before any thread exists.
+  await expect(tid(page, "context-branch")).toHaveText("main");
   await kind.click();
+  await expect(tid(page, "context-branch")).toHaveCount(0);
   await expect(kind).toHaveAttribute("data-kind", "worktree");
   expect(stored()).toBe(existing);
   // A fresh draft starts from the defaults, not from the abandoned one.

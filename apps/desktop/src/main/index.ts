@@ -97,6 +97,10 @@ handle("thread:delete", async ({ threadId, removeWorktree }) => {
   await runner.deleteThread(threadId, removeWorktree);
   return store.snapshot();
 });
+handle("project:branch", async ({ projectId }) => {
+  const p = store.project(projectId);
+  return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
+});
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
 handle("changes:diff", ({ threadId, path: rel }) => gitx.diff(cwdFor(threadId), rel));
 handle("changes:revert", async ({ threadId, path: rel }) => {

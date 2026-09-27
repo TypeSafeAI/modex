@@ -220,6 +220,8 @@ export interface BridgeCommands {
   "models:list": { req: { backend: BackendId }; res: { models: ModelInfo[]; error?: string } };
   "backends:health": { req: undefined; res: Record<BackendId, { ok: boolean; detail: string }> };
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };
+  /** A project checkout's current branch, for a draft's context strip; null outside a git repository. */
+  "project:branch": { req: { projectId: string }; res: string | null };
   "changes:status": { req: { threadId: string }; res: ChangesSnapshot };
   "changes:diff": { req: { threadId: string; path: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };

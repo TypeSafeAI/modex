@@ -28,6 +28,8 @@ interface Props {
   creating: boolean;
   models: ModelInfo[];
   modelsError?: string;
+  /** The project checkout's current branch; shown for a Local draft (a worktree's branch does not exist yet). */
+  branch?: string;
   onChange: (draft: Draft) => void;
   onSend: (text: string) => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -37,7 +39,7 @@ interface Props {
  * The "What should we build in <project>?" screen: a live composer before any thread exists.
  * The project name is a picker; the context strip's Local/Worktree item is a toggle.
  */
-export function DraftView({ draft, projects, creating, models, modelsError, onChange, onSend, inputRef }: Props) {
+export function DraftView({ draft, projects, creating, models, modelsError, branch, onChange, onSend, inputRef }: Props) {
   const project = projects.find((p) => p.id === draft.projectId);
   const set = (patch: Partial<DraftSettings>) => onChange({ ...draft, settings: { ...draft.settings, ...patch } });
   if (!project) return null;
@@ -52,7 +54,7 @@ export function DraftView({ draft, projects, creating, models, modelsError, onCh
       </div>
       <Composer
         busy={creating}
-        context={{ project: project.name, cwd: project.path, worktree: draft.worktree ? { branch: "" } : undefined, onToggleWorktree: () => onChange({ ...draft, worktree: !draft.worktree }) }}
+        context={{ project: project.name, cwd: project.path, worktree: draft.worktree ? { branch: "" } : undefined, branch, onToggleWorktree: () => onChange({ ...draft, worktree: !draft.worktree }) }}
         backend={draft.settings.backend}
         mode={draft.settings.mode}
         plan={draft.settings.plan}

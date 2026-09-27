@@ -76,6 +76,19 @@ export function App() {
     void loadChanges(selected);
   }, [selected, loadChanges]);
 
+  // A draft has no thread to take a Changes snapshot from, so it asks for its project's branch directly.
+  const [draftBranch, setDraftBranch] = useState<{ projectId: string; branch: string | null } | null>(null);
+  const draftProjectId = draft?.projectId;
+  useEffect(() => {
+    if (!draftProjectId) return;
+    let live = true;
+    bridge.invoke("project:branch", { projectId: draftProjectId }).then(
+      (branch) => live && setDraftBranch({ projectId: draftProjectId, branch }),
+      () => live && setDraftBranch({ projectId: draftProjectId, branch: null }),
+    );
+    return () => { live = false; };
+  }, [draftProjectId]);
+
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
   /** Choosing a thread (sidebar, history) discards any draft: an unsent draft never becomes a thread. */
   const selectThread = useCallback((id: string) => {
@@ -301,6 +314,7 @@ export function App() {
               creating={creating}
               models={models[draft.settings.backend]?.models ?? []}
               modelsError={models[draft.settings.backend]?.error}
+              branch={draftBranch?.projectId === draft.projectId ? draftBranch.branch ?? undefined : undefined}
               onChange={setDraft}
               onSend={sendDraft}
               inputRef={inputRef}
