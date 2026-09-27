@@ -107,6 +107,7 @@ else { snapshot.exitCode = event.exitCode; setExitCode(event.exitCode); }
         aria-label="Resize terminal"
         aria-orientation="horizontal"
         aria-valuemin={MIN_H}
+        aria-valuemax={window.innerHeight / 2}
         aria-valuenow={height}
         tabIndex={0}
         onPointerDown={(e) => { drag.current = { y: e.clientY, height }; e.currentTarget.setPointerCapture(e.pointerId); }}
