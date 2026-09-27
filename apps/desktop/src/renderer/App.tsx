@@ -258,6 +258,10 @@ export function App() {
         showChanges={showChanges}
         onToggleChanges={() => setShowChanges((v) => !v)}
         changedCount={changes?.files.length ?? 0}
+        onOpenPath={openPath}
+        onOpenTerminal={openTerminal}
+        onDelete={deleteThread}
+        platform={bridge.platform}
       />
       <Rail onOpenSettings={() => setShowSettings(true)} />
       <div className="sheet" data-testid="sheet">
@@ -287,9 +291,6 @@ export function App() {
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
               inputRef={inputRef}
-              onOpenPath={openPath}
-              onOpenTerminal={openTerminal}
-              platform={bridge.platform}
               branch={changes?.branch ?? undefined}
             />
           ) : draft ? (

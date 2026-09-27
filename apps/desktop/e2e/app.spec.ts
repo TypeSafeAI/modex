@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, createThread, items, launch, seedHome, tid } from "./support";
+import { appDir, createThread, items, launch, seedHome, tid, currentRow } from "./support";
 
 /**
  * Drives the real Electron window end to end with the keyboard, against the offline mock
@@ -57,12 +57,17 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "thread-view")).toBeVisible();
   await expect(tid(page, "thread-row")).toHaveCount(1);
   await expect(items(page, "user").locator('[data-testid="item-text"]')).toHaveText(prompt);
-  // The header shows where the thread runs, with open/copy actions; a plain thread runs in the checkout itself.
-  await expect(tid(page, "location-path")).toHaveAttribute("title", repo);
-  await expect(tid(page, "location-branch")).toHaveCount(0);
+  // Where the thread runs: the composer's strip (a plain thread runs in the checkout itself), and the
+  // title bar's ⋯ menu carries the path and the open/copy actions.
+  await expect(tid(page, "composer-context")).toHaveAttribute("title", repo);
+  await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "local");
+  await tid(page, "thread-menu-toggle").click();
+  await expect(tid(page, "thread-menu-path")).toHaveAttribute("title", repo);
   await expect(tid(page, "action-open-folder")).toBeVisible();
   await expect(tid(page, "action-open-terminal")).toBeVisible();
   await expect(tid(page, "action-copy-path")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tid(page, "thread-actions")).toHaveCount(0);
   await expect(tid(page, "thread-title")).toHaveValue(prompt);
   await expect(tid(page, "composer-input")).toHaveValue("");
 
@@ -80,7 +85,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   const card = items(page, "approval").first();
   await expect(card).toBeVisible();
   await expect(tid(card, "approval-question")).toContainText("Allow add CONTRIBUTING.md?");
-  await expect(tid(page, "thread-status")).toHaveText("Needs approval");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "waiting");
   // One turn header under the message: live while the turn is open, and it says what it is waiting for.
   await expect(tid(page, "turn-header")).toHaveCount(1);
   await expect(tid(page, "turn-header")).toHaveAttribute("data-live", "true");
@@ -98,7 +103,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "turn-label")).toHaveText(/^Worked for \d+s$/);
   await expect(tid(page, "turn-header")).toHaveAttribute("data-live", "false");
   await expect(items(page, "assistant").last()).toContainText("added CONTRIBUTING.md");
-  await expect(tid(page, "thread-status")).toHaveText("Idle");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   expect(fs.readFileSync(path.join(repo, "CONTRIBUTING.md"), "utf8")).toContain("# Contributing to Modex");
 
   // The Changes panel picked up the new file with its diff.
@@ -142,22 +147,28 @@ test("the transcript scrolls vertically inside its pane; the page itself never o
 test("⇧⌘N creates a worktree thread and the header shows its branch and path", async () => {
   await createThread(page, "Check the worktree", { worktree: true });
   await expect(tid(page, "thread-row")).toHaveCount(2);
-  const branch = tid(page, "location-branch");
+  const branch = tid(page, "context-branch");
   await expect(branch).toHaveText(/^modex\/\w+$/);
-  const pathTitle = await tid(page, "location-path").getAttribute("title");
+  const pathTitle = await tid(page, "composer-context").getAttribute("title");
   expect(pathTitle).toContain(path.join(home, "worktrees"));
   expect(fs.existsSync(path.join(pathTitle!, "README.md"))).toBe(true);
   // Long paths are shortened from the left, keeping whole trailing segments and no stray separators.
-  const shown = await tid(page, "location-path").innerText();
+  // The ⋯ menu shows the worktree's branch and a shortened path; the full path is its tooltip and the copy.
+  await tid(page, "thread-menu-toggle").click();
+  await expect(tid(page, "thread-menu-path")).toHaveAttribute("title", pathTitle!);
+  const label = await tid(page, "thread-menu-path").innerText();
+  expect(label.startsWith(`⑂ ${await branch.innerText()} · `)).toBe(true);
+  const shown = label.slice(label.indexOf(" · ") + 3);
   expect(shown.startsWith("…") || shown === pathTitle).toBe(true);
   expect(pathTitle!.endsWith(shown.replace(/^…/, ""))).toBe(true);
   expect(shown.endsWith("/")).toBe(false);
-  await expect(tid(page, "location-kind")).toHaveText("⑂");
+  await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "worktree");
   await tid(page, "action-copy-path").click();
+  await expect(tid(page, "thread-actions")).toHaveCount(0);
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(pathTitle);
   // Back to the first thread for the relaunch test.
   await tid(page, "thread-row").nth(1).click();
-  await expect(tid(page, "location-branch")).toHaveCount(0);
+  await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "local");
 });
 
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
@@ -167,7 +178,7 @@ test("state survives a relaunch: the thread and its transcript are restored", as
   await tid(page, "thread-row").nth(1).click();
   await expect(items(page, "approval").locator('[data-testid="approval-answer"]')).toHaveText("Approved");
   await expect(items(page, "assistant").last()).toContainText("added CONTRIBUTING.md");
-  await expect(tid(page, "plan-indicator")).toHaveText(/Plan/);
+  await expect(tid(page, "plan-chip")).toHaveText(/Plan/);
 });
 
 test("⚡ Auto: the judge picks a model before the turn and leaves an expandable receipt", async () => {
@@ -176,7 +187,7 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await expect(tid(page, "draft-view")).toBeVisible();
   await tid(page, "composer-plus").click();
   await expect(tid(page, "auto-toggle")).toHaveAttribute("aria-checked", "false");
-  await expect(tid(page, "auto-indicator")).toHaveCount(0);
+  await expect(tid(page, "auto-chip")).toHaveCount(0);
   await expect(tid(page, "auto-chip")).toHaveCount(0);
   await tid(page, "auto-toggle").click();
   await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
@@ -186,7 +197,7 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await page.keyboard.press("Meta+Enter");
   // The draft's Auto choice is carried into the thread its send creates.
   await expect(tid(page, "thread-row")).toHaveCount(3);
-  await expect(tid(page, "auto-indicator")).toHaveText(/Auto/);
+  await expect(tid(page, "auto-chip")).toHaveText(/Auto/);
   const route = items(page, "route").first();
   await expect(route).toBeVisible();
   await expect(tid(route, "route-label")).toContainText("Auto picked");
@@ -202,9 +213,9 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await expect(items(page).nth(1)).toHaveAttribute("data-item-kind", "route");
   // Stop the scripted run; the Auto pill and the receipt survive.
   await page.keyboard.press("Meta+.");
-  await expect(tid(page, "thread-status")).toHaveText("Idle");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   await expect(items(page, "route")).toHaveCount(1);
-  await expect(tid(page, "auto-indicator")).toHaveText(/Auto/);
+  await expect(tid(page, "auto-chip")).toHaveText(/Auto/);
   // Settings explains why the heuristic judged, counts the auto turn, and exposes the policy knobs.
   await tid(page, "open-settings").click();
   const status = tid(page, "routing-status");
@@ -311,10 +322,12 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   await expect(page.getByRole("tooltip")).toHaveText(/New chat in a git worktree\s*⇧⌘N/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("tooltip")).toHaveCount(0);
-  // Hover opens it after the delay.
-  await page.mouse.move(900, 500);
-  await newThread.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(/New chat\s*⌘N/);
+  // Hover opens it after the delay. (Retried: any pointer movement during the delay rightly closes it.)
+  await expect(async () => {
+    await page.mouse.move(900, 500);
+    await newThread.hover();
+    await expect(page.getByRole("tooltip")).toHaveText(/New chat\s*⌘N/, { timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   await page.mouse.move(900, 500);
   await expect(page.getByRole("tooltip")).toHaveCount(0);
 });
@@ -451,7 +464,7 @@ test("composer: context strip, access menu, plan via + and its chip, send enable
   await page.keyboard.press("Enter");
   await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
   await expect(tid(page, "plan-chip")).toBeVisible();
-  await expect(tid(page, "plan-indicator")).toBeVisible();
+  await expect(tid(page, "plan-chip")).toBeVisible();
   await expect(tid(page, "composer-input")).toHaveAttribute("placeholder", /nothing will be edited/);
   await tid(page, "composer-plus").click();
   await expect(tid(page, "plan-toggle")).toHaveAttribute("aria-checked", "true");
@@ -459,7 +472,7 @@ test("composer: context strip, access menu, plan via + and its chip, send enable
   // The chip turns it off again.
   await tid(page, "plan-chip").click();
   await expect(tid(page, "plan-chip")).toHaveCount(0);
-  await expect(tid(page, "plan-indicator")).toHaveCount(0);
+  await expect(tid(page, "plan-chip")).toHaveCount(0);
 });
 
 test("drafts: a new chat is nothing until its first send; leaving it creates no thread; ⇧⌘N drafts a worktree", async () => {
@@ -525,11 +538,11 @@ test("drafts: a new chat is nothing until its first send; leaving it creates no 
   const current = page.locator('[data-testid="thread-row"][aria-current="true"]');
   await expect(tid(current, "thread-row-title")).toHaveText("Draft becomes a thread");
   await expect(tid(current, "thread-row-worktree")).toHaveCount(1);
-  await expect(tid(page, "location-kind")).toHaveAttribute("data-kind", "worktree");
+  await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "worktree");
   await expect(tid(page, "access-picker")).toHaveAttribute("data-mode", "agent");
   await expect(items(page, "user").first()).toHaveText("Draft becomes a thread");
   await page.keyboard.press("Meta+.");
-  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
 });
 
 test("transcript: follows new output while the reader is at the bottom, and stays put once they scroll up", async () => {
@@ -551,7 +564,7 @@ test("transcript: follows new output while the reader is at the bottom, and stay
   await card.getByRole("button", { name: "Deny" }).evaluate((b) => (b as HTMLButtonElement).click());
   await expect(tid(card, "approval-answer")).toHaveText("Denied");
   await expect(items(page, "assistant").last()).toContainText("Done", { timeout: 15_000 });
-  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   // New output arrived below, and the reader was left where they were.
   expect(await transcript.evaluate((el) => el.scrollTop)).toBeLessThan(5);
   expect(await gap()).toBeGreaterThan(80);
@@ -561,6 +574,59 @@ test("transcript: follows new output while the reader is at the bottom, and stay
   await expect(items(page, "user").last()).toHaveText("Thanks");
   await expect.poll(gap).toBeLessThanOrEqual(80);
   await page.keyboard.press("Meta+.");
-  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1380, 880));
+});
+
+test("title bar: ⋯ menu (rename, open, copy, delete), Changes icon with a count, and no leftover header chrome", async () => {
+  await expect(tid(page, "sidebar")).toBeVisible();
+  const id = await createThread(page, "Title bar check");
+  // The old in-thread header and the pill row are gone; their jobs live in the strip, the chips and this menu.
+  await expect(tid(page, "thread-location")).toHaveCount(0);
+  await expect(page.locator('[data-testid="thread-status"], [data-testid="thread-backend"]')).toHaveCount(0);
+
+  // ⋯ lists the thread's actions; Rename puts the title into editing, and Enter saves it.
+  await tid(page, "thread-menu-toggle").click();
+  const menu = tid(page, "thread-actions");
+  await expect(menu.getByRole("menuitem")).toHaveText(["Rename", /Open (in Finder|folder)/, "Open terminal here", "Copy path", "Delete thread"]);
+  await tid(page, "action-rename").click();
+  const title = tid(page, "thread-title");
+  await expect(title).toBeFocused();
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await page.keyboard.type("Renamed from the menu");
+  await page.keyboard.press("Enter");
+  await expect(tid(currentRow(page), "thread-row-title")).toHaveText("Renamed from the menu");
+
+  // The Changes icon toggles the panel (⌘J does the same) and badges the number of changed files.
+  const toggle = tid(page, "changes-toggle");
+  await expect(toggle).toHaveAccessibleName("Changes");
+  const shown = (await toggle.getAttribute("aria-pressed")) === "true";
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", String(!shown));
+  await expect(tid(page, "changes-panel")).toHaveCount(shown ? 0 : 1);
+  if (shown) await toggle.click();
+  await expect(tid(page, "changes-panel")).toHaveCount(1);
+  const files = await tid(page, "changes-file").count();
+  if (files > 0) await expect(tid(page, "changes-count")).toHaveText(String(files));
+  else await expect(tid(page, "changes-count")).toHaveCount(0);
+
+  // Delete from the title bar removes the thread (not a worktree: no confirmation).
+  await tid(page, "thread-menu-toggle").click();
+  await tid(page, "action-delete").click();
+  await expect(page.locator(`[data-testid="thread-row"][data-thread-id="${id}"]`)).toHaveCount(0);
+});
+
+test("a 1380×880 window with Changes open keeps the whole composer, send button included, on screen", async () => {
+  await expect(tid(page, "sidebar")).toBeVisible();
+  await createThread(page, "Narrow window check");
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1380);
+  if (!(await tid(page, "changes-panel").count())) await tid(page, "changes-toggle").click();
+  await expect(tid(page, "changes-panel")).toHaveCount(1);
+  const box = (await tid(page, "composer-box").boundingBox())!;
+  const send = (await tid(page, "send").boundingBox())!;
+  const main = (await tid(page, "main").boundingBox())!;
+  expect(send.x + send.width).toBeLessThanOrEqual(box.x + box.width);
+  expect(box.x + box.width).toBeLessThanOrEqual(main.x + main.width);
+  expect(box.x).toBeGreaterThanOrEqual(main.x);
 });

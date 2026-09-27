@@ -5,6 +5,9 @@
  * in styles.css (--bg-1, --fg-2, --line …) are aliases kept only until the phases that restyle their users.
  */
 :root {
+  /* Native controls and scrollbars render dark (the white strip behind the diff's scrollbar). */
+  color-scheme: dark;
+
   /* Surfaces */
   --bg-window: #1b1b1c;          /* measured: titlebar, rail */
   --bg-sidebar: #131315;         /* measured */

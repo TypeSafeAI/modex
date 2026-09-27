@@ -15,9 +15,6 @@ interface Props {
   models: ModelInfo[];
   modelsError?: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
-  onOpenPath: (path: string) => void;
-  onOpenTerminal: (path: string) => void;
-  platform: string;
   /** The checkout's current branch (from the Changes snapshot), for the composer's context strip. */
   branch?: string;
 }
@@ -40,7 +37,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform, branch }: Props) {
+export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
@@ -93,19 +90,6 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
-      <div className="location" role="group" aria-label="Working directory" data-testid="thread-location">
-        <span className="location-kind" data-testid="location-kind" data-kind={thread.worktree ? "worktree" : "local"} title={thread.worktree ? `Worktree managed by ${thread.worktree.manager === "project-script" ? "the project's scripts/worktree.sh" : "Modex"}` : "Runs directly in the project checkout"}>
-          {thread.worktree ? "⑂" : "▸"}
-        </span>
-        {thread.worktree && <code className="location-branch" data-testid="location-branch" title="Branch">{thread.worktree.branch}</code>}
-        <code className="location-path" data-testid="location-path" title={thread.cwd}>{tailPath(shortenHome(thread.cwd))}</code>
-        <span className="spacer" />
-        <button className="btn small ghost" data-testid="action-open-folder" onClick={() => onOpenPath(thread.cwd)} title={`Open ${thread.cwd} in ${platform === "darwin" ? "Finder" : "the file manager"}`}>
-          {platform === "darwin" ? "Finder" : "Files"}
-        </button>
-        <button className="btn small ghost" data-testid="action-open-terminal" onClick={() => onOpenTerminal(thread.cwd)} title={`Open a terminal at ${thread.cwd}`}>Terminal</button>
-        <button className="btn small ghost" data-testid="action-copy-path" onClick={() => void navigator.clipboard.writeText(thread.cwd)} title="Copy the full path">Copy path</button>
-      </div>
 
       <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
         {items.length === 0 && (

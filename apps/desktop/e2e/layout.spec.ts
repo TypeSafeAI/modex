@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, items, launch, seedHome, tid } from "./support";
+import { appDir, items, launch, seedHome, tid, currentRow } from "./support";
 
 /**
  * Visual harness for the Codex-parity chat redesign.
@@ -78,7 +78,7 @@ test("captures every named chat state at the reference size", async () => {
   await capture("04-approval");
 
   await items(page, "approval").first().getByRole("button", { name: "Approve" }).click();
-  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   await expect(tid(page, "changes-file")).toHaveCount(1);
   await capture("05-turn-complete");
 
@@ -249,6 +249,29 @@ test.describe("Phase 6 · transcript", () => {
     await page.mouse.move(5, 600);
     await expect(thinking).toHaveAttribute("aria-expanded", "false");
     await expect(thinking).toHaveCSS("color", "rgb(97, 97, 99)"); // --text-muted #616163
+  });
+});
+
+test.describe("Phase 7 · title bar actions", () => {
+  // Reference #8/#9: ⋯ and the panel toggle on a 34 px pitch, ending 6 px inside the main pane's right edge.
+  test("⋯ and the Changes icon sit at the main pane's right edge, with or without the panel", async () => {
+    await changesHidden();
+    const check = async (edge: number) => {
+      const more = await box(tid(page, "thread-menu-toggle"));
+      const toggle = await box(tid(page, "changes-toggle"));
+      expect(Math.abs(toggle.x + toggle.width - (edge - 6))).toBeLessThanOrEqual(1);
+      expect(Math.abs(toggle.x + toggle.width / 2 - (more.x + more.width / 2) - 34)).toBeLessThanOrEqual(1);
+      expect(Math.abs(toggle.y + toggle.height / 2 - 20)).toBeLessThanOrEqual(1);
+    };
+    const main = await box(tid(page, "main"));
+    await check(main.x + main.width);
+    await page.keyboard.press("Meta+j");
+    await expect(tid(page, "changes-panel")).toHaveCount(1);
+    const panel = await box(tid(page, "changes-panel"));
+    await check(panel.x);
+    expect((await box(page.locator('[data-testid="changes-panel"] > header'))).height).toBe(42);
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+    await changesHidden();
   });
 });
 
