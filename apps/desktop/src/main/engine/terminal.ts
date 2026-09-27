@@ -28,7 +28,10 @@ export class TerminalManager {
     this.checkSize(cols, rows);
     const cwd = this.cwdFor(threadId);
     const previous = this.sessions.get(threadId);
-    if (previous) return this.snapshot(previous);
+if (previous) {
+      if (previous.exitCode === null) previous.pty.resize(cols, rows);
+      return this.snapshot(previous);
+    }
     if (!fs.statSync(cwd).isDirectory()) throw new Error("Terminal working directory is not a folder.");
     const env: NodeJS.ProcessEnv = { ...this.env, TERM: "xterm-256color", COLORTERM: "truecolor" };
     delete env.ELECTRON_RUN_AS_NODE;
