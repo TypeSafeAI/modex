@@ -28,8 +28,7 @@ export class TerminalManager {
     this.checkSize(cols, rows);
     const cwd = this.cwdFor(threadId);
     const previous = this.sessions.get(threadId);
-if (previous) {
-      if (previous.exitCode === null) previous.pty.resize(cols, rows);
+    if (previous) {
       return this.snapshot(previous);
     }
     if (!fs.statSync(cwd).isDirectory()) throw new Error("Terminal working directory is not a folder.");
@@ -66,7 +65,7 @@ if (previous) {
 
   close(threadId: string, sessionId?: string): void {
     const session = this.sessions.get(threadId);
-if (!session || (sessionId !== undefined && session.sessionId !== sessionId)) return;
+    if (!session || (sessionId !== undefined && session.sessionId !== sessionId)) return;
     this.sessions.delete(threadId);
     for (const subscription of session.subscriptions) subscription.dispose();
     if (session.exitCode === null) session.pty.kill();
