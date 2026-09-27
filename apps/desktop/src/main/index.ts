@@ -189,8 +189,7 @@ function createWindow(): BrowserWindow {
     }
   });
   w.on("closed", () => { if (win === w) win = null; });
-  w.on("closed", () => terminals.dispose());
-  w.webContents.on("render-process-gone", () => terminals.dispose());
+  w.webContents.on("render-process-gone", () => { if (!w.isDestroyed()) w.destroy(); });
   // The window keeps its preload (and so terminal access) across navigations: never leave the app page.
   w.webContents.on("will-navigate", (event) => event.preventDefault());
   w.webContents.setWindowOpenHandler(({ url }) => {
