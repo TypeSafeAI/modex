@@ -10,17 +10,20 @@ import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { useSelectionHistory } from "./history";
-
-const SIDEBAR_KEY = "modex.sidebar";
+import { useLayout } from "./layout";
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
   const [changes, setChanges] = useState<ChangesSnapshot | null>(null);
-  const [showChanges, setShowChanges] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem(SIDEBAR_KEY) !== "closed");
+  // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
+  const [layout, setLayout] = useLayout();
+  const showChanges = layout.changes;
+  const sidebarOpen = layout.sidebar;
+  const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
+  const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -115,7 +118,6 @@ export function App() {
     if (draft && !state.projects.some((p) => p.id === draft.projectId)) setDraft(null);
     else if (!draft && state.projects[0]) setDraft({ projectId: state.projects[0].id, worktree: false, settings: draftDefaults(state) });
   }, [state, selected, draft, creating]);
-  useEffect(() => localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "open" : "closed"), [sidebarOpen]);
 
   // Model catalogue per backend, fetched lazily from the CLIs (Codex: live `model/list`).
   useEffect(() => {

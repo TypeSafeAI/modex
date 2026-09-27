@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +10,7 @@ import { runDemo } from "./engine/demo.js";
 import { openTerminal } from "./engine/open-terminal.js";
 import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
+import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -25,7 +26,7 @@ const screenshotDir = flag("screenshot");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? path.join(os.homedir(), ".modex");
 fs.mkdirSync(home, { recursive: true });
 // An isolated home (e2e, demo) also gets its own Chromium profile, so renderer preferences in
-// localStorage (sidebar open/closed) never leak between runs or into the user's real app.
+// localStorage (panel layout) and window-state.json never leak between runs or into the user's real app.
 if (demo || process.env.MODEX_HOME) app.setPath("userData", path.join(home, "electron"));
 
 // A Finder/Dock launch inherits launchd's minimal PATH, which hides claude, codex, and jev.
@@ -134,11 +135,14 @@ handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
 
 function createWindow(): BrowserWindow {
   nativeTheme.themeSource = "dark";
+  // The demo captures fixed-size screenshots, so only real (and e2e) launches restore geometry.
+  const min = { width: 900, height: 600 };
+  const saved = demo ? null : readWindowState(home);
+  const bounds = initialBounds(saved, screen.getAllDisplays().map((d) => d.workArea), min);
   const w = new BrowserWindow({
-    width: 1380,
-    height: 880,
-    minWidth: 900,
-    minHeight: 600,
+    ...bounds,
+    minWidth: min.width,
+    minHeight: min.height,
     title: "Modex",
     backgroundColor: "#0f0f11", // --bg-main: no colour flash before the renderer paints
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
@@ -152,7 +156,19 @@ function createWindow(): BrowserWindow {
   const devUrl = process.env.MODEX_DEV_URL;
   if (devUrl) void w.loadURL(devUrl);
   else void w.loadFile(path.join(here, "..", "..", "renderer", "index.html"));
-  w.once("ready-to-show", () => w.show());
+  w.once("ready-to-show", () => {
+    if (saved?.maximized) w.maximize();
+    if (saved?.fullscreen) w.setFullScreen(true);
+    w.show();
+  });
+  // getNormalBounds: a maximized or full-screen window remembers the size it returns to.
+  if (!demo) w.on("close", () => {
+    try {
+      writeWindowState(home, { ...w.getNormalBounds(), maximized: w.isMaximized(), fullscreen: w.isFullScreen() });
+    } catch (err) {
+      console.error("[modex] could not save window state:", (err as Error).message);
+    }
+  });
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: "deny" };

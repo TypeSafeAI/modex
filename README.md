@@ -55,6 +55,9 @@ modex/
   the thread). *Stop* cancels a running turn and any pending approvals.
 - **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
   a one-click revert (confirmed first).
+- **Layout that sticks.** The sidebar and Changes panel stay open or closed across relaunches,
+  and the window reopens at its last size, position and maximized state (back to the default
+  size if its display is gone).
 - **Modes**, mirroring Codex, mapped onto each CLI's native policy:
 
   | Mode | Codex (`approvalPolicy` / sandbox) | Claude (`--permission-mode`) |
