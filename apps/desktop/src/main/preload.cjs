@@ -9,4 +9,9 @@ contextBridge.exposeInMainWorld("modex", {
     ipcRenderer.on("thread:event", listener);
     return () => ipcRenderer.removeListener("thread:event", listener);
   },
+  onTerminalEvent: (cb) => {
+    const listener = (_e, event) => cb(event);
+    ipcRenderer.on("terminal:event", listener);
+    return () => ipcRenderer.removeListener("terminal:event", listener);
+  },
 });

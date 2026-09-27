@@ -17,6 +17,9 @@ const inert: ModexBridge = {
   onEvent(_cb: (e: ThreadEvent) => void) {
     return () => {};
   },
+  onTerminalEvent() {
+    return () => {};
+  },
 };
 
 export const bridge: ModexBridge = window.modex ?? inert;
