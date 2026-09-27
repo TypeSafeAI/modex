@@ -193,7 +193,6 @@ export const MODES: { id: Mode; label: string; hint: string }[] = [
 ];
 
 
-/** The API the preload exposes to the renderer as `window.modex`. */
 /** What a (re)opened terminal panel needs to catch up: the session, its replayable output, and where the stream is. */
 export interface TerminalSnapshot {
   sessionId: string;
@@ -208,6 +207,7 @@ export type TerminalEvent = { threadId: string; sessionId: string; sequence: num
   | { type: "exit"; exitCode: number }
 );
 
+/** The API the preload exposes to the renderer as `window.modex`. */
 export interface ModexBridge {
   invoke<K extends keyof BridgeCommands>(channel: K, payload: BridgeCommands[K]["req"]): Promise<BridgeCommands[K]["res"]>;
   onEvent(cb: (event: ThreadEvent) => void): () => void;
