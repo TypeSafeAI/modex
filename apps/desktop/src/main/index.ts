@@ -194,7 +194,9 @@ function createWindow(): BrowserWindow {
   // The window keeps its preload (and so terminal access) across navigations: never leave the app page.
   w.webContents.on("will-navigate", (event, url) => {
     const next = new URL(url);
-    const sameAppPage = appPage.protocol === "file:" ? next.protocol === "file:" && next.pathname === appPage.pathname : next.origin === appPage.origin;
+    const sameAppPage = next.protocol === appPage.protocol
+      && next.pathname === appPage.pathname
+      && (appPage.protocol === "file:" || next.origin === appPage.origin);
     if (!sameAppPage) event.preventDefault();
   });
   w.webContents.setWindowOpenHandler(({ url }) => {
