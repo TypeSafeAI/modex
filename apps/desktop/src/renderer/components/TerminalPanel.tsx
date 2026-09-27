@@ -53,7 +53,7 @@ export function TerminalPanel({ thread, onClose }: { thread: Thread; onClose: ()
       if (event.sessionId !== snapshot.sessionId || event.sequence <= snapshot.sequence) return;
       snapshot.sequence = event.sequence;
       if (event.type === "data") terminal.write(event.data);
-      else setExitCode(event.exitCode);
+else { snapshot.exitCode = event.exitCode; setExitCode(event.exitCode); }
     };
     const unsubscribe = bridge.onTerminalEvent(receive);
     const input = terminal.onData((data) => {
