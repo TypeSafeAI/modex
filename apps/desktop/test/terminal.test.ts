@@ -6,7 +6,7 @@ import { TerminalManager, isTrustedTerminalSender } from "../src/main/engine/ter
 import type { TerminalEvent } from "../src/shared/types.js";
 import { tmpdir } from "./helpers.js";
 
-function harness() {
+function harness(shellOverride?: { file: string; args: string[] }) {
   const cwd = tmpdir("terminal");
   const events: TerminalEvent[] = [];
   const processes: (EventEmitter & { writes: string[]; sizes: number[][]; kills: number })[] = [];
@@ -25,7 +25,7 @@ function harness() {
       onData: (fn) => { emitter.on("data", fn); return { dispose: () => { emitter.off("data", fn); } }; },
       onExit: (fn) => { emitter.on("exit", fn); return { dispose: () => { emitter.off("exit", fn); } }; },
     };
-  }, { SHELL: "/bin/bash", PATH: "/bin", ELECTRON_RUN_AS_NODE: "1" });
+  }, { SHELL: "/bin/bash", PATH: "/bin", ELECTRON_RUN_AS_NODE: "1" }, shellOverride);
   return { manager, events, processes, calls, cwd };
 }
 
@@ -89,4 +89,15 @@ test("terminal requests are trusted only from the live app window's top frame", 
   assert.equal(isTrustedTerminalSender({ sender: { mainFrame }, senderFrame: mainFrame }, win), false, "another window");
   assert.equal(isTrustedTerminalSender({ sender: webContents, senderFrame: mainFrame }, { ...win, isDestroyed: () => true }), false, "destroyed window");
   assert.equal(isTrustedTerminalSender({ sender: webContents, senderFrame: mainFrame }, null), false, "no window");
+});
+
+test("terminal runs the user's login shell unless a fixed shell is configured", () => {
+  const login = harness();
+  login.manager.open("one", 80, 24);
+  assert.deepEqual([login.calls[0]!.shell, login.calls[0]!.args], ["/bin/bash", ["-l"]]);
+  login.manager.dispose();
+  const fixed = harness({ file: "/bin/sh", args: ["--noprofile"] });
+  fixed.manager.open("one", 80, 24);
+  assert.deepEqual([fixed.calls[0]!.shell, fixed.calls[0]!.args], ["/bin/sh", ["--noprofile"]]);
+  fixed.manager.dispose();
 });

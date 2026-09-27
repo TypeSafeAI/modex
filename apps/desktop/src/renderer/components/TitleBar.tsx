@@ -18,6 +18,8 @@ interface Props {
   showChanges: boolean;
   onToggleChanges: () => void;
   changedCount: number;
+  showTerminal: boolean;
+  onToggleTerminal: () => void;
   onOpenPath: (path: string) => void;
   onOpenTerminal: (path: string) => void;
   onDelete: (thread: Thread) => void;
@@ -32,7 +34,7 @@ const CHANGES_W = 420;
  * lights, back/forward through selected threads, and the sidebar toggle. Right, over the thread: its
  * title (double-click to rename) and the thread's status and Changes controls.
  */
-export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, onOpenPath, onOpenTerminal, onDelete, platform }: Props) {
+export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, platform }: Props) {
   const [renameSignal, setRenameSignal] = useState(0);
   const inset = thread && showChanges ? CHANGES_W : 0;
   return (
@@ -47,6 +49,7 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
           <ThreadTitle key={thread.id} title={thread.title} onRename={onRename} renameSignal={renameSignal} />
           <span className="spacer" />
           <div className="titlebar-actions">
+            <IconButton icon="terminal" label={showTerminal ? "Hide terminal" : "Show terminal"} shortcut="⌃`" size="md" className={showTerminal ? "on" : undefined} data-testid="terminal-toggle" aria-pressed={showTerminal} onClick={onToggleTerminal} />
             <ThreadMenu thread={thread} platform={platform} onRename={() => setRenameSignal((n) => n + 1)} onOpenPath={onOpenPath} onOpenTerminal={onOpenTerminal} onDelete={onDelete} />
             <Tooltip label={showChanges ? "Hide changes" : "Show changes"} shortcut="⌘J">
               <button className={`icon-btn md changes-toggle${showChanges ? " on" : ""}`} data-testid="changes-toggle" aria-label="Changes" aria-pressed={showChanges} onClick={onToggleChanges}>

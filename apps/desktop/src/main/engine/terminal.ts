@@ -22,6 +22,8 @@ export class TerminalManager {
     private readonly emit: (event: TerminalEvent) => void,
     private readonly spawn: Spawn = (shell, args, options) => (require("node-pty") as typeof import("node-pty")).spawn(shell, args, options),
     private readonly env: NodeJS.ProcessEnv = process.env,
+    /** A fixed shell instead of the user's login shell (e2e: a user's rc files must not change the result). */
+    private readonly shellOverride?: { file: string; args: string[] },
   ) {}
 
   open(threadId: string, cols: number, rows: number): TerminalSnapshot {
@@ -35,8 +37,9 @@ export class TerminalManager {
     const env: NodeJS.ProcessEnv = { ...this.env, TERM: "xterm-256color", COLORTERM: "truecolor" };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_NO_ASAR;
-    const shell = process.platform === "win32" ? env.COMSPEC || "powershell.exe" : env.SHELL || "/bin/bash";
-    const pty = this.spawn(shell, process.platform === "win32" ? [] : ["-l"], { cwd, cols, rows, env, name: "xterm-256color" });
+    const shell = this.shellOverride?.file ?? (process.platform === "win32" ? env.COMSPEC || "powershell.exe" : env.SHELL || "/bin/bash");
+    const args = this.shellOverride?.args ?? (process.platform === "win32" ? [] : ["-l"]);
+    const pty = this.spawn(shell, args, { cwd, cols, rows, env, name: "xterm-256color" });
     const session: Session = { pty, subscriptions: [], sessionId: randomUUID(), output: "", sequence: 0, exitCode: null };
     this.sessions.set(threadId, session);
     session.subscriptions.push(pty.onData((data) => {
