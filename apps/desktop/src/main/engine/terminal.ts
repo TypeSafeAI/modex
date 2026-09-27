@@ -66,7 +66,7 @@ if (previous) {
 
   close(threadId: string, sessionId?: string): void {
     const session = this.sessions.get(threadId);
-    if (!session || (sessionId && session.sessionId !== sessionId)) return;
+if (!session || (sessionId !== undefined && session.sessionId !== sessionId)) return;
     this.sessions.delete(threadId);
     for (const subscription of session.subscriptions) subscription.dispose();
     if (session.exitCode === null) session.pty.kill();
