@@ -557,8 +557,12 @@ test("transcript: follows new output while the reader is at the bottom, and stay
   // The scripted turn pauses on its approval; the view has followed the output down to the card.
   const card = items(page, "approval").first();
   await expect(card).toBeVisible({ timeout: 15_000 });
-  await expect.poll(() => transcript.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(100);
-  expect(await gap()).toBeLessThanOrEqual(80);
+  // Open the tool rows so the transcript overflows whatever the pane width (the Changes panel may or may not
+  // be open) and keeps overflowing after the shorter answered card. Content growing while the reader is at
+  // the bottom is itself followed.
+  for (const toggle of await items(page, "tool").locator('[data-testid="item-toggle"]').all()) await toggle.evaluate((b) => (b as HTMLButtonElement).click());
+  await expect.poll(() => transcript.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(150);
+  await expect.poll(gap).toBeLessThanOrEqual(80);
   // Scroll up to read, then answer with a DOM click (a Playwright click would scroll the card into view).
   await transcript.evaluate((el) => el.scrollTo({ top: 0 }));
   await card.getByRole("button", { name: "Deny" }).evaluate((b) => (b as HTMLButtonElement).click());
@@ -629,4 +633,65 @@ test("a 1380×880 window with Changes open keeps the whole composer, send button
   expect(send.x + send.width).toBeLessThanOrEqual(box.x + box.width);
   expect(box.x + box.width).toBeLessThanOrEqual(main.x + main.width);
   expect(box.x).toBeGreaterThanOrEqual(main.x);
+});
+
+test("accessibility: information text meets AA contrast, keyboard focus is visible, hit areas ≥ 28 px, motion respects the OS", async () => {
+  await expect(tid(page, "sidebar")).toBeVisible();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
+  // A complete scripted turn, so tool rows carry their finished "done · Ns" status.
+  await page.keyboard.press("Meta+n");
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await tid(page, "composer-input").fill("Accessibility check");
+  await page.keyboard.press("Meta+Enter");
+  const card = items(page, "approval").first();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await card.getByRole("button", { name: "Deny" }).click();
+  await expect(items(page, "assistant").last()).toContainText("Done", { timeout: 15_000 });
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+
+  // Contrast of text that carries information, against the first opaque background behind it (WCAG 2 formula).
+  const contrast = (l: ReturnType<typeof tid>) => l.first().evaluate((el) => {
+    const rgb = (s: string) => (s.match(/[\d.]+/g) ?? []).map(Number);
+    const lum = ([r, g, b]: number[]) => [r!, g!, b!].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((a, c, i) => a + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+    let bg: number[] = [0, 0, 0];
+    for (let n: Element | null = el; n; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c.length === 3 || (c.length === 4 && c[3]! > 0.9)) { bg = c; break; } }
+    const [a, b] = [lum(rgb(getComputedStyle(el).color)), lum(bg)].sort((x, y) => y - x);
+    return (a! + 0.05) / (b! + 0.05);
+  });
+  for (const [name, l] of [
+    ["thread title (sidebar)", tid(page, "thread-row-title")],
+    ["user message", items(page, "user").locator('[data-testid="item-text"]')],
+    ["tool status (done · Ns)", items(page, "tool").locator(".tool-meta")],
+  ] as const) {
+    await expect(l.first(), name).toBeVisible();
+    expect(await contrast(l), name).toBeGreaterThanOrEqual(4.5);
+  }
+
+  // A plain button reached by keyboard shows a ring.
+  await tid(page, "composer-input").focus();
+  await tid(page, "new-chat").focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(tid(page, "new-chat")).toBeFocused();
+  await expect(tid(page, "new-chat")).toHaveCSS("outline-style", "solid");
+
+  // A 22 px row action is still hit 2 px outside its drawn edge.
+  const btn = tid(page, "project").first().locator('[data-testid="project-new-thread"]');
+  await tid(page, "project").first().hover();
+  const b = (await btn.boundingBox())!;
+  expect(b.width).toBeLessThan(28);
+  const hit = await page.evaluate(([x, y]) => (document.elementFromPoint(x!, y!)?.closest("button") as HTMLElement | null)?.dataset.testid ?? null, [b.x - 2, b.y + b.height / 2]);
+  expect(hit).toBe("project-new-thread");
+
+  // Truncated titles and shortcut-bearing rows explain themselves on hover.
+  const rowTitle = await tid(currentRow(page), "thread-row-title").innerText();
+  await expect(currentRow(page).getByRole("button").first()).toHaveAttribute("title", rowTitle);
+  await expect(tid(page, "new-chat")).toHaveAttribute("title", /⌘N/);
+
+  // Spinners and the thinking shimmer stop when the OS asks for reduced motion.
+  const spin = () => page.evaluate(() => { const d = document.createElement("span"); d.className = "spinner"; document.body.append(d); const a = getComputedStyle(d).animationName; d.remove(); return a; });
+  expect(await spin()).toBe("spin");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await spin()).toBe("none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
 });

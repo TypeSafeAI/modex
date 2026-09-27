@@ -32,6 +32,11 @@ async function capture(state: string): Promise<void> {
 const box = async (l: Locator) => (await l.boundingBox())!;
 /** Geometry checks set the pane layout they measure instead of inheriting it from the capture sequence. */
 async function changesHidden(): Promise<void> {
+  // The window itself is a precondition too: re-assert the reference size before measuring.
+  if ((await page.evaluate(() => window.innerWidth)) !== REFERENCE.width) {
+    await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]!.setContentSize(s.width, s.height), REFERENCE);
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(REFERENCE.width);
+  }
   if (await tid(page, "changes-panel").count()) await page.keyboard.press("Meta+j");
   await expect(tid(page, "changes-panel")).toHaveCount(0);
   // Let the grid settle: the composer is centred in the full-width main pane.

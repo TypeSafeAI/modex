@@ -61,7 +61,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
           />
         </div>
       )}
-      <button className="side-row new-chat" data-testid="new-chat" onClick={onNewChat} disabled={state.projects.length === 0}>
+      <button className="side-row new-chat" data-testid="new-chat" title="New chat (⌘N)" onClick={onNewChat} disabled={state.projects.length === 0}>
         <Icon name="compose" className="side-row-icon" />
         <span className="side-row-label">New chat</span>
       </button>
@@ -102,7 +102,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
                   {all.length === 0 && <li className="side-hint small">No threads</li>}
                   {visible.map((t) => (
                     <li key={t.id} className={`side-row thread-row${t.id === selected ? " selected" : ""}`} data-testid="thread-row" data-thread-id={t.id} data-status={t.status} aria-current={t.id === selected ? "true" : undefined}>
-                      <button className="thread-main" onClick={() => onSelect(t.id)}>
+                      <button className="thread-main" title={t.title} onClick={() => onSelect(t.id)}>
                         <span className="side-row-label" data-testid="thread-row-title">{t.title}</span>
                       </button>
                       <span className="row-meta">

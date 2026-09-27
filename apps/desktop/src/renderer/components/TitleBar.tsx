@@ -103,7 +103,7 @@ function ThreadTitle({ title, onRename, renameSignal }: { title: string; onRenam
       className={`title-text${editing ? " editing" : ""}`}
       data-testid="thread-title"
       aria-label="Thread title"
-      title={editing ? undefined : "Double-click to rename"}
+      title={editing ? undefined : `${title} — double-click to rename`}
       readOnly={!editing}
       value={draft}
       spellCheck={false}
