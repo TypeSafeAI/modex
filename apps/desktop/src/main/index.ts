@@ -68,9 +68,14 @@ function cwdFor(threadId: string): string {
 }
 
 /** Embedded shells, one per thread, started in the thread's working directory. */
-const terminals = new TerminalManager(cwdFor, (event) => {
-  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", event);
-});
+const terminals = new TerminalManager(
+  cwdFor,
+  (event) => { if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", event); },
+  undefined,
+  process.env.MODEX_E2E ? { ...process.env, BASH_SILENCE_DEPRECATION_WARNING: "1" } : process.env,
+  // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
+  process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
+);
 
 handle("state:get", () => {
   const state = store.snapshot();

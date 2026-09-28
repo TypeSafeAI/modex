@@ -280,6 +280,49 @@ test.describe("Phase 7 · title bar actions", () => {
   });
 });
 
+test.describe("Terminal · title bar and panel", () => {
+  // No reference shows a terminal; the gate keeps it from disturbing what the references do fix.
+  test("the toggle sits one 34 px step left of ⋯; the open panel spans the main pane under the composer", async () => {
+    await changesHidden();
+    const more0 = await box(tid(page, "thread-menu-toggle"));
+    const changes0 = await box(tid(page, "changes-toggle"));
+    const toggle = tid(page, "terminal-toggle");
+    const t = await box(toggle);
+    expect(Math.abs(more0.x + more0.width / 2 - (t.x + t.width / 2) - 34)).toBeLessThanOrEqual(1);
+    expect(Math.abs(t.y + t.height / 2 - 20)).toBeLessThanOrEqual(1);
+
+    await page.keyboard.press("Control+Backquote");
+    const panel = tid(page, "terminal-panel");
+    await expect(panel).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    const main = await box(tid(page, "main"));
+    const p = await box(panel);
+    expect(Math.abs(p.x - main.x) + Math.abs(p.x + p.width - (main.x + main.width))).toBeLessThanOrEqual(2);
+    expect(Math.abs(p.y + p.height - (main.y + main.height))).toBeLessThanOrEqual(1);
+    const c = await box(tid(page, "composer-box"));
+    expect(Math.round(c.width)).toBe(736);
+    expect(c.y + c.height).toBeLessThanOrEqual(p.y);
+    // The title bar's right-hand controls do not move.
+    for (const [id, before] of [["thread-menu-toggle", more0], ["changes-toggle", changes0]] as const) {
+      const after = await box(tid(page, id));
+      expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+    }
+    await capture("terminal-open");
+
+    // With Changes open too, the panel stays in the main pane, left of the Changes panel.
+    await page.keyboard.press("Meta+j");
+    await expect(tid(page, "changes-panel")).toHaveCount(1);
+    const changesPanel = await box(tid(page, "changes-panel"));
+    const p2 = await box(panel);
+    expect(p2.x + p2.width).toBeLessThanOrEqual(changesPanel.x + 1);
+    await capture("terminal-open-changes");
+
+    await page.keyboard.press("Control+Backquote");
+    await expect(panel).toHaveCount(0);
+    await changesHidden();
+  });
+});
+
 test.describe("Phase 5 · draft", () => {
   // Reference #1: "What should we build in coven-threads?" at 28/400, ink y 481–505, centred in the main pane.
   test("draft heading is 28 px regular text-1, centred in the main pane at the reference height", async () => {

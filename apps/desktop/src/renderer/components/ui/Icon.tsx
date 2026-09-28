@@ -25,6 +25,8 @@ const PATHS = {
   info: "M8 13.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11zM8 7.5v3M8 5.25h.01",
   laptop: "M3.5 4.5h9v6h-9zM2 12h12",
   changes: "M3 3.5h10v9H3zM9.5 3.5v9",
+  terminal: "M3.5 4.5L6.5 8l-3 3.5M8 11.5h4.5",
+  restart: "M12.5 8a4.5 4.5 0 1 1-1.3-3.2M12.5 2.75v2.5H10",
 } as const;
 
 export type IconName = keyof typeof PATHS;
