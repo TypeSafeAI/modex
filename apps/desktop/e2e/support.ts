@@ -49,6 +49,11 @@ export async function launch(home: string): Promise<{ app: ElectronApplication; 
   });
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
+  // Native show can restore the initial bounds after DOMContentLoaded. Resize/capture only once it finishes.
+  await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]!;
+    if (!window.isVisible()) await new Promise<void>((resolve) => window.once("show", () => resolve()));
+  });
   return { app, page };
 }
 

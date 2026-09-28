@@ -56,6 +56,8 @@ unzip -tq apps/desktop/release/Modex-0.0.2-arm64.zip
 
 Playwright writes captures and failure traces under `apps/desktop/test-results/`; each run replaces that directory. Release downloads include `SHA256SUMS.txt` for artifact verification. The release tag and GitHub PR checks provide the source and hosted-CI receipts.
 
+The launch helper waits for the native window to show before tests resize it. One hosted run exposed a startup race where showing the window restored its initial bounds after the reference-size precondition had passed; the exact screenshot geometry assertions remain in place.
+
 ## Deferred work and proof limits
 
 Before shipping the terminal panel, fix and regress terminal descendant cleanup: a foreground command that ignores SIGHUP can survive closing its PTY shell. Cover terminal close, thread/project removal, and app quit with that command. Main's renderer does not call the terminal engine, so this is a prerequisite for PR #32 rather than a blocker for the selected main-only release. The existing external-terminal action remains available.
