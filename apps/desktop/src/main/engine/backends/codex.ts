@@ -86,6 +86,9 @@ export class CodexBackend implements Backend {
   }
 
   private request<T = unknown>(method: string, params: unknown): Promise<T> {
+    if (!this.child || this.child.exitCode !== null || !this.child.stdin?.writable) {
+      return Promise.reject(new Error("codex app-server is not running"));
+    }
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });

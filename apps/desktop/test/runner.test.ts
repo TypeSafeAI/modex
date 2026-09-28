@@ -5,6 +5,8 @@ import path from "node:path";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
+import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import type { Thread, ThreadEvent, ThreadItem } from "../src/shared/types.js";
@@ -62,6 +64,37 @@ test("an in-flight Auto route cannot reopen a backend during shutdown", async ()
   await runner.dispose();
   await run;
   assert.equal(reopened, false, "Auto routing restarted a disposed backend");
+});
+
+test("shutdown settles an Auto route already discovering models on a warm Codex server", async () => {
+  const h = harness();
+  const proc = new FakeProcess();
+  proc.stdin.on("data", (data: Buffer) => {
+    for (const line of data.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const message = JSON.parse(line);
+      if (message.method === "initialize") proc.emitLine({ id: message.id, result: {} });
+      if (message.method === "model/list") proc.emitLine({ id: message.id, result: { data: [] } });
+    }
+  });
+  const backend = new CodexBackend("fixture", fakeSpawn(proc).spawn);
+  await backend.listModels();
+  let runner: ThreadRunner;
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, transport: null, listModels: (id) => runner.listModels(id) });
+  runner = new ThreadRunner({ ...h, router, backends: { codex: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { backend: "codex", auto: true });
+  let runSettled = false;
+  let shutdownSettled = false;
+  const run = runner.send(thread.id, "review the project").then(() => { runSettled = true; });
+  const shutdown = Promise.resolve().then(() => runner.dispose()).then(() => { shutdownSettled = true; });
+  try {
+    await waitFor(() => runSettled && shutdownSettled);
+    assert.equal(runner.status(thread.id), "idle");
+    assert.equal(proc.killed, true);
+  } finally {
+    await backend.dispose();
+    await Promise.all([run, shutdown]);
+  }
 });
 
 test("agent mode: a prompt runs tools, edits the project, emits items, persists, and sets the title", async () => {

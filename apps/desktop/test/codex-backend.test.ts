@@ -52,6 +52,23 @@ test("CodexBackend: lists visible models with efforts", async () => {
   await backend.dispose();
 });
 
+test("model discovery racing disposal rejects instead of waiting on a disconnected server", async () => {
+  const proc = new FakeProcess();
+  fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  await backend.listModels();
+  let outcome = "pending";
+  const listing = backend.listModels().then(() => { outcome = "resolved"; }, () => { outcome = "rejected"; });
+  try {
+    await backend.dispose();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(outcome, "rejected", "model discovery outlived the disconnected server");
+    await listing;
+  } finally {
+    await backend.dispose();
+  }
+});
+
 test("CodexBackend: a turn streams deltas, command + file-change items, approvals, and completes", async () => {
   const proc = new FakeProcess();
   const { seen, threadId, turnId } = fakeServer(proc);

@@ -15,6 +15,7 @@ This review extends the [desktop architecture and interaction review](2026-09-28
 | Disposing Codex left commands owned by its app-server running. | Terminate the owned process group and await close. A real child-process fixture verifies the worker exits. |
 | Quitting exited before the CLI stopped and the final transcript was flushed. | Hold application quit until runner disposal and turn finalization finish. A scripted CLI delays termination; Electron verifies acknowledgement and saved output. |
 | Auto routing could reopen a disposed backend while shutdown was in progress. | Reject new runner work and model discovery after disposal starts; reject IPC during shutdown, including requests waiting for login-path initialization. A real Router regression verifies no backend resurrection. |
+| Model discovery already awaiting a warm Codex server could enqueue a request after disposal and hang quit. | Reject requests before enqueueing when the server or writable stdin is gone. Both direct backend and Router/runner overlap regressions verify rejection and completed shutdown. |
 | Diffing a filename containing `*` included unrelated matching files. | Pass literal pathspecs to Git. A temporary repository verifies that only the selected file appears. |
 
 Each behavioral failure was reproduced before its fix. An independent review found no remaining blockers for this scope and separately reran the process-disposal, literal-diff, delayed-finalization, and Auto-shutdown regressions.
@@ -24,7 +25,7 @@ Each behavioral failure was reproduced before its fix. An independent review fou
 The release candidate was checked on macOS 26.6.2, Apple Silicon, Node 24.18.1:
 
 - Build and TypeScript checks passed.
-- 106 unit tests passed: 15 core and 91 desktop.
+- 108 unit tests passed: 15 core and 93 desktop.
 - 44 Electron end-to-end tests passed from source and against the packaged application, using isolated homes and temporary repositories.
 - An upgrade smoke test created a completed thread with the published v0.0.1 ZIP, then opened the same isolated home in v0.0.2. Projects, threads, settings, and the exact saved transcript were preserved, and the prior conversation rendered.
 - The packaged PTY test started a real terminal, verified its working directory and TTY, and observed a successful exit. This checks the ASAR/native-module packaging without exposing a panel in the UI.
