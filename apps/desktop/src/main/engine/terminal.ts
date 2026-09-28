@@ -1,42 +1,49 @@
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
 import type { IPty, IPtyForkOptions } from "node-pty";
 import type { TerminalEvent, TerminalSnapshot } from "../../shared/types.js";
+import { spawnTerminal, stopTerminalProcess } from "./terminal-process.js";
 
-type Pty = Pick<IPty, "write" | "resize" | "kill" | "onData" | "onExit">;
+type Pty = Pick<IPty, "pid" | "write" | "resize" | "kill" | "onData" | "onExit">;
 type Spawn = (shell: string, args: string[], options: IPtyForkOptions) => Pty;
-const require = createRequire(import.meta.url);
 const HISTORY_LIMIT = 128 * 1024;
 
 interface Session extends TerminalSnapshot {
   pty: Pty;
   subscriptions: { dispose(): void }[];
+  closing?: Promise<void>;
 }
 
 export class TerminalManager {
   private readonly sessions = new Map<string, Session>();
+  private disposing = false;
 
   constructor(
     private readonly cwdFor: (threadId: string) => string,
     private readonly emit: (event: TerminalEvent) => void,
-    private readonly spawn: Spawn = (shell, args, options) => (require("node-pty") as typeof import("node-pty")).spawn(shell, args, options),
+    private readonly spawn: Spawn = spawnTerminal,
     private readonly env: NodeJS.ProcessEnv = process.env,
+    /** A fixed shell instead of the user's login shell (e2e: a user's rc files must not change the result). */
+    private readonly shellOverride?: { file: string; args: string[] },
+    private readonly stop: (pty: Pty) => Promise<void> = stopTerminalProcess,
   ) {}
 
   open(threadId: string, cols: number, rows: number): TerminalSnapshot {
+    if (this.disposing) throw new Error("Terminals are shutting down.");
     this.checkSize(cols, rows);
     const cwd = this.cwdFor(threadId);
     const previous = this.sessions.get(threadId);
     if (previous) {
+      if (previous.closing) throw new Error("The terminal session is closing.");
       return this.snapshot(previous);
     }
     if (!fs.statSync(cwd).isDirectory()) throw new Error("Terminal working directory is not a folder.");
     const env: NodeJS.ProcessEnv = { ...this.env, TERM: "xterm-256color", COLORTERM: "truecolor" };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_NO_ASAR;
-    const shell = process.platform === "win32" ? env.COMSPEC || "powershell.exe" : env.SHELL || "/bin/bash";
-    const pty = this.spawn(shell, process.platform === "win32" ? [] : ["-l"], { cwd, cols, rows, env, name: "xterm-256color" });
+    const shell = this.shellOverride?.file ?? (process.platform === "win32" ? env.COMSPEC || "powershell.exe" : env.SHELL || "/bin/bash");
+    const args = this.shellOverride?.args ?? (process.platform === "win32" ? [] : ["-l"]);
+    const pty = this.spawn(shell, args, { cwd, cols, rows, env, name: "xterm-256color" });
     const session: Session = { pty, subscriptions: [], sessionId: randomUUID(), output: "", sequence: 0, exitCode: null };
     this.sessions.set(threadId, session);
     session.subscriptions.push(pty.onData((data) => {
@@ -63,21 +70,32 @@ export class TerminalManager {
     if (session.exitCode === null) session.pty.resize(cols, rows);
   }
 
-  close(threadId: string, sessionId?: string): void {
+  close(threadId: string, sessionId?: string): Promise<void> {
     const session = this.sessions.get(threadId);
-    if (!session || (sessionId !== undefined && session.sessionId !== sessionId)) return;
-    this.sessions.delete(threadId);
-    for (const subscription of session.subscriptions) subscription.dispose();
-    if (session.exitCode === null) session.pty.kill();
+    if (!session || (sessionId !== undefined && session.sessionId !== sessionId)) return Promise.resolve();
+    if (session.closing) return session.closing;
+    session.closing = (async () => {
+      await this.stop(session.pty);
+      this.sessions.delete(threadId);
+      for (const subscription of session.subscriptions) subscription.dispose();
+    })().catch((err) => {
+      session.closing = undefined;
+      throw err;
+    });
+    return session.closing;
   }
 
-  dispose(): void {
-    for (const threadId of this.sessions.keys()) this.close(threadId);
+  async dispose(): Promise<void> {
+    this.disposing = true;
+    const results = await Promise.allSettled([...this.sessions.keys()].map((id) => this.close(id)));
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
   }
 
   private session(threadId: string, sessionId: string): Session {
     const session = this.sessions.get(threadId);
     if (!session || session.sessionId !== sessionId) throw new Error("This terminal session is no longer active.");
+    if (session.closing) throw new Error("The terminal session is closing.");
     return session;
   }
 

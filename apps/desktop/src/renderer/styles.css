@@ -409,3 +409,18 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
   .spinner, .row-status.running { animation: none; }
   .row-status.running { border-color: var(--text-2); border-top-color: var(--text-2); border-style: dotted; }
 }
+
+/* ── Embedded terminal: a bottom panel in the main pane (no reference screenshot; built from the tokens) ── */
+.titlebar-actions .icon-btn.on { color: var(--text-1); }
+.terminal-panel { position: relative; flex: none; display: flex; flex-direction: column; min-height: 140px; max-height: 50%; border-top: 1px solid var(--border-pane); background: var(--bg-main); }
+.terminal-panel.loading { height: 140px; align-items: center; justify-content: center; color: var(--text-info); font-size: var(--text-xs); }
+.terminal-resize { position: absolute; z-index: 1; top: -3px; left: 0; right: 0; height: 6px; cursor: row-resize; touch-action: none; }
+.terminal-resize:hover, .terminal-resize:focus-visible { background: var(--accent); outline: 0; }
+.terminal-head { height: 36px; flex: none; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-5); font-size: var(--text-xs); }
+.terminal-title { color: var(--text-2); font-weight: var(--weight-medium); }
+.terminal-cwd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-info); font-family: var(--font-mono); }
+.terminal-exit { color: var(--warn); white-space: nowrap; }
+.terminal-error { padding: 4px var(--space-5); color: var(--danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.terminal-screen { flex: 1; min-height: 0; overflow: hidden; margin: 0 var(--space-3) var(--space-2) var(--space-5); }
+.terminal-screen .xterm { height: 100%; }
+.terminal-screen .xterm .xterm-viewport { background: transparent; overflow-y: hidden; } /* xterm 6 scrolls with its own scrollbar; the native one only left a grey square */

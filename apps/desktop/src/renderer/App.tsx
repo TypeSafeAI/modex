@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch } from "../shared/types";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
@@ -13,6 +13,12 @@ import { useSelectionHistory } from "./history";
 import { useLayout } from "./layout";
 import { applyItemEvent, type ItemEvent } from "./transcript";
 
+/** ⌃` shows or hides the thread's terminal. xterm maps no byte to it, so it reaches this handler even from inside the shell. */
+const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Backquote";
+
+// xterm is only loaded once a terminal is first opened.
+const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
+
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -24,6 +30,8 @@ export function App() {
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const changesRequest = useRef(0);
+  // Which threads have their terminal panel showing. Hiding a panel leaves its shell running.
+  const [terminals, setTerminals] = useState<Record<string, boolean>>({});
   const [showSettings, setShowSettings] = useState(false);
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout();
@@ -222,6 +230,14 @@ export function App() {
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
+  const closeTerminal = (threadId: string) => {
+    setTerminals((m) => ({ ...m, [threadId]: false }));
+    inputRef.current?.focus();
+  };
+  const toggleTerminal = (threadId: string) => {
+    if (terminals[threadId]) closeTerminal(threadId);
+    else setTerminals((m) => ({ ...m, [threadId]: true }));
+  };
   const deleteThread = (t: Thread) => act(async () => {
     const removeWorktree = t.worktree ? window.confirm(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`) : true;
     if (t.worktree && !removeWorktree) return;
@@ -249,10 +265,16 @@ export function App() {
     await refresh();
   });
 
-  // Keyboard shortcuts: ⌘N new thread, ⇧⌘N worktree thread, ⌘⏎ send (handled in Composer), ⇧⌘P plan, ⌘. stop, ⌘J changes.
+  // Keyboard shortcuts: ⌘N new thread, ⇧⌘N worktree thread, ⌘⏎ send (handled in Composer), ⇧⌘P plan, ⌘. stop, ⌘J changes,
+  // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (showSettings) return;
+      if (isTerminalToggle(e)) {
+        e.preventDefault();
+        if (thread) toggleTerminal(thread.id);
+        return;
+      }
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
       const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;
@@ -276,7 +298,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [thread, state, draft, showSettings]);
+  }, [thread, state, draft, showSettings, terminals]);
 
   // Focus the composer whenever the selected thread changes.
   useEffect(() => {
@@ -303,6 +325,8 @@ export function App() {
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         showChanges={showChanges}
         onToggleChanges={() => setShowChanges((v) => !v)}
+        showTerminal={Boolean(thread && terminals[thread.id])}
+        onToggleTerminal={() => thread && toggleTerminal(thread.id)}
         changedCount={changes?.files.length ?? 0}
         onOpenPath={openPath}
         onOpenTerminal={openTerminal}
@@ -356,6 +380,11 @@ export function App() {
           ) : state.projects.length === 0 ? (
             <EmptyState onAddProject={addProject} />
           ) : null}
+          {thread && terminals[thread.id] && (
+            <Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
+              <TerminalPanel key={thread.id} thread={thread} onClose={() => closeTerminal(thread.id)} />
+            </Suspense>
+          )}
           {error && (
             <div className="toast" role="alert">
               <span>{error}</span>
