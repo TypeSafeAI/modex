@@ -13,6 +13,8 @@ import type { SecretStore } from "./secrets.js";
 interface Live {
   abort: AbortController | null;
   run: Promise<void> | null;
+  /** Backend executing the current turn, so a force-stop reaches the right one. */
+  backend: BackendId | null;
   flushTimer?: ReturnType<typeof setTimeout>;
   pending: Map<string, (a: ApprovalAnswer) => void>;
   items: ThreadItem[];
@@ -77,7 +79,7 @@ export class ThreadRunner {
   private slot(threadId: string): Live {
     let l = this.live.get(threadId);
     if (!l) {
-      l = { abort: null, run: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
+      l = { abort: null, run: null, backend: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
       this.live.set(threadId, l);
     }
     return l;
@@ -149,7 +151,7 @@ export class ThreadRunner {
   }
 
   async deleteThread(threadId: string, removeWorktree = false): Promise<void> {
-    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted. If its CLI has not confirmed the stop, press Stop again to force it.");
     this.deleting.add(threadId);
     try {
       const thread = this.o.store.thread(threadId);
@@ -226,6 +228,7 @@ export class ThreadRunner {
       return;
     }
     const backend = this.backends[thread.backend];
+    l.backend = thread.backend;
     try {
       const result = await backend.runTurn(
         text,
@@ -259,6 +262,7 @@ export class ThreadRunner {
       l.pending.clear();
       this.persistItems(threadId, l);
       l.abort = null;
+      l.backend = null;
       l.streaming = null;
     }
   }
@@ -271,7 +275,24 @@ export class ThreadRunner {
       resolve("no");
     }
     l.pending.clear();
-    l.abort?.abort();
+    const abort = l.abort;
+    if (!abort) return;
+    if (!abort.signal.aborted) abort.abort();
+    // A second Stop means the CLI has not confirmed the first one.
+    else if (l.run) this.forceStop(threadId, l);
+  }
+
+  private forceStop(threadId: string, l: Live): void {
+    const id = l.backend;
+    const backend = id ? this.backends[id] : undefined;
+    if (!id || !backend?.forceStop) return;
+    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && o.run).length;
+    const name = id === "codex" ? "Codex" : id;
+    const text = others ? `Force-stopping ${name}. ${others} other ${name} ${others === 1 ? "thread" : "threads"} will stop too.` : `Force-stopping ${name}.`;
+    this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text, at: new Date().toISOString() });
+    backend.forceStop().catch((err: Error) => {
+      if (this.live.get(threadId) === l) this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Force-stop failed: ${err.message}`, at: new Date().toISOString() });
+    });
   }
 
   answer(threadId: string, itemId: string, answer: ApprovalAnswer): void {
