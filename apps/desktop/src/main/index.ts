@@ -41,6 +41,8 @@ const pathReady = hydratePath(process.env).then(
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 let win: BrowserWindow | null = null;
+let shuttingDown = false;
+let shutdownComplete = false;
 const emit = (event: ThreadEvent): void => {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
 };
@@ -54,7 +56,9 @@ const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "t
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
+    if (shuttingDown) throw new Error("Modex is shutting down.");
     if (SPAWNS.has(channel)) await pathReady;
+    if (shuttingDown) throw new Error("Modex is shutting down.");
     // A shell is full user authority: only the app's own window, top frame, may drive one.
     if (channel.startsWith("terminal:") && !isTrustedTerminalSender(event, win)) throw new Error("Untrusted terminal request.");
     return fn(req as BridgeCommands[K]["req"]);
@@ -222,9 +226,18 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || screenshotDir) app.quit();
 });
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shuttingDown) return;
+  shuttingDown = true;
   terminals.dispose();
-  void runner.dispose();
+  void runner.dispose().catch((err: Error) => {
+    console.error("[modex] shutdown failed:", err.message);
+  }).finally(() => {
+    shutdownComplete = true;
+    app.quit();
+  });
 });
 
 async function capture(name: string): Promise<string> {

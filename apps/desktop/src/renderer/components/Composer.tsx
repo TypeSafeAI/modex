@@ -33,7 +33,7 @@ interface Props {
   onBackend: (b: BackendId) => void;
   onMode: (m: Mode) => void;
   onPlan: (plan: boolean) => void;
-  onModel: (m: string) => void;
+  onModel: (m: string, effort?: string) => void;
   onEffort: (e: string | undefined) => void;
   onAuto: (auto: boolean) => void;
   onSend: (text: string) => void;
@@ -123,7 +123,7 @@ function ContextStrip({ context }: { context: ComposerContext }) {
   const branch = context.worktree?.branch ?? context.branch;
   return (
     <div className="composer-context" data-testid="composer-context" title={context.cwd}>
-      <span className="context-item" data-testid="context-project"><Icon name="folder" size={14} />{context.project}</span>
+      <span className="context-item" data-testid="context-project"><Icon name="folder" size={14} /><span className="context-label">{context.project}</span></span>
       {context.onToggleWorktree ? (
         <button className="context-item context-toggle" data-testid="context-kind" data-kind={context.worktree ? "worktree" : "local"} aria-pressed={Boolean(context.worktree)} title={context.worktree ? "Runs in a new git worktree. Click to run in the checkout" : "Runs in the project checkout. Click to use a new git worktree"} onClick={context.onToggleWorktree}>
           <Icon name={context.worktree ? "branch" : "laptop"} size={14} />{context.worktree ? "Worktree" : "Local"}
@@ -133,7 +133,7 @@ function ContextStrip({ context }: { context: ComposerContext }) {
           <Icon name={context.worktree ? "branch" : "laptop"} size={14} />{context.worktree ? "Worktree" : "Local"}
         </span>
       )}
-      {branch && <span className="context-item" data-testid="context-branch"><Icon name="branch" size={14} />{branch}</span>}
+      {branch && <span className="context-item" data-testid="context-branch" title={branch}><Icon name="branch" size={14} /><span className="context-label">{branch}</span></span>}
     </div>
   );
 }

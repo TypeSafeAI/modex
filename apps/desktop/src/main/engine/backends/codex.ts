@@ -86,6 +86,9 @@ export class CodexBackend implements Backend {
   }
 
   private request<T = unknown>(method: string, params: unknown): Promise<T> {
+    if (!this.child || this.child.exitCode !== null || !this.child.stdin?.writable) {
+      return Promise.reject(new Error("codex app-server is not running"));
+    }
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
@@ -127,7 +130,10 @@ export class CodexBackend implements Backend {
   async dispose(): Promise<void> {
     const child = this.child;
     this.disconnect(new Error("codex app-server disposed"));
-    child?.kill();
+    if (child) await new Promise<void>((resolve) => {
+      child.once("close", () => resolve());
+      killGroup(child);
+    });
   }
 
   /** Mode → Codex approval policy + sandbox policy. Exported for tests. */
