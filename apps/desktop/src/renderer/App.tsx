@@ -22,6 +22,7 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) =
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
   const loadingItems = useRef(new Map<string, ItemEvent[]>());
   const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
@@ -142,6 +143,7 @@ export function App() {
   const openDraft = (projectId: string, worktree = false) => {
     if (!state) return;
     setSelected(null);
+    setDraftRevision((revision) => revision + 1);
     setDraft({ projectId, worktree, settings: draftDefaults(state) });
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -349,6 +351,7 @@ export function App() {
         <main className="main" data-testid="main">
           {thread && project ? (
             <ThreadView
+              key={thread.id}
               thread={thread}
               project={project}
               items={items[thread.id] ?? []}
@@ -363,7 +366,7 @@ export function App() {
             />
           ) : draft ? (
             <DraftView
-              key={`${draft.projectId}`}
+              key={`${draft.projectId}:${draftRevision}`}
               draft={draft}
               projects={state.projects}
               creating={creating}

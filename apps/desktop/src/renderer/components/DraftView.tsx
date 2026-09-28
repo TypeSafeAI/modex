@@ -66,7 +66,7 @@ export function DraftView({ draft, projects, creating, models, modelsError, bran
         onBackend={(backend) => set({ backend, model: "", effort: undefined })}
         onMode={(mode) => set({ mode })}
         onPlan={(plan) => set({ plan })}
-        onModel={(model) => set({ model })}
+        onModel={(model, effort) => set({ model, effort })}
         onEffort={(effort) => set({ effort })}
         onAuto={(auto) => set({ auto })}
         onSend={onSend}
