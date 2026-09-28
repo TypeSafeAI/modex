@@ -24,6 +24,15 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
+  // Unsent composer text by thread id (or `draft:<revision>` for a new chat). Switching threads keeps it;
+  // sending, deleting the thread or starting another new chat clears it. Renderer-only: it is not saved.
+  const [unsent, setUnsent] = useState<Record<string, string>>({});
+  const setUnsentFor = useCallback((key: string, text: string) => setUnsent((m) => {
+    if (text) return { ...m, [key]: text };
+    if (!(key in m)) return m;
+    const { [key]: _gone, ...rest } = m;
+    return rest;
+  }), []);
   const loadingItems = useRef(new Map<string, ItemEvent[]>());
   const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
   const changes = changeResult?.threadId === selected ? changeResult.snapshot : null;
@@ -245,6 +254,7 @@ export function App() {
     setState(s);
     loadingItems.current.delete(t.id);
     setItems((m) => { const next = { ...m }; delete next[t.id]; return next; });
+    setUnsentFor(t.id, "");
     if (selected === t.id) setSelected(s.threads.find((x) => x.projectId === t.projectId)?.id ?? s.threads[0]?.id ?? null);
   });
   const removeProject = (projectId: string) => act(async () => {
@@ -346,6 +356,7 @@ export function App() {
             onNewThread={openDraft}
             onDeleteThread={deleteThread}
             onRemoveProject={removeProject}
+            unsent={unsent}
           />
         )}
         <main className="main" data-testid="main">
@@ -355,6 +366,8 @@ export function App() {
               thread={thread}
               project={project}
               items={items[thread.id] ?? []}
+              text={unsent[thread.id] ?? ""}
+              onText={(text) => setUnsentFor(thread.id, text)}
               onSend={send}
               onStop={stop}
               onAnswer={answer}
@@ -376,6 +389,8 @@ export function App() {
               onChange={setDraft}
               onSend={sendDraft}
               inputRef={inputRef}
+              text={unsent[`draft:${draftRevision}`] ?? ""}
+              onText={(text) => setUnsentFor(`draft:${draftRevision}`, text)}
             />
           ) : state.projects.length === 0 ? (
             <EmptyState onAddProject={addProject} />

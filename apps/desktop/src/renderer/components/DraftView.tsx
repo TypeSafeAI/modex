@@ -33,13 +33,15 @@ interface Props {
   onChange: (draft: Draft) => void;
   onSend: (text: string) => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  text: string;
+  onText: (text: string) => void;
 }
 
 /**
  * The "What should we build in <project>?" screen: a live composer before any thread exists.
  * The project name is a picker; the context strip's Local/Worktree item is a toggle.
  */
-export function DraftView({ draft, projects, creating, models, modelsError, branch, onChange, onSend, inputRef }: Props) {
+export function DraftView({ draft, projects, creating, models, modelsError, branch, onChange, onSend, inputRef, text, onText }: Props) {
   const project = projects.find((p) => p.id === draft.projectId);
   const set = (patch: Partial<DraftSettings>) => onChange({ ...draft, settings: { ...draft.settings, ...patch } });
   if (!project) return null;
@@ -53,6 +55,8 @@ export function DraftView({ draft, projects, creating, models, modelsError, bran
         </div>
       </div>
       <Composer
+        text={text}
+        onText={onText}
         busy={creating}
         context={{ project: project.name, cwd: project.path, worktree: draft.worktree ? { branch: "" } : undefined, branch, onToggleWorktree: () => onChange({ ...draft, worktree: !draft.worktree }) }}
         backend={draft.settings.backend}

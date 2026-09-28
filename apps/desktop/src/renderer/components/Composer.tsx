@@ -20,6 +20,9 @@ export interface ComposerContext {
 }
 
 interface Props {
+  /** The unsent text. Owned by App so it survives switching threads (see App's `unsent`). */
+  text: string;
+  onText: (text: string) => void;
   busy: boolean;
   context: ComposerContext;
   backend: BackendId;
@@ -51,8 +54,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
-  const [text, setText] = useState("");
+export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
 

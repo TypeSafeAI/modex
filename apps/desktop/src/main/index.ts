@@ -183,7 +183,11 @@ function createWindow(): BrowserWindow {
   w.once("ready-to-show", () => {
     if (saved?.maximized) w.maximize();
     if (saved?.fullscreen) w.setFullScreen(true);
-    w.show();
+    // Under test the window must not take the keyboard: Playwright drives it over CDP, and a test
+    // window that becomes active swallows whatever the developer is typing elsewhere (it reached a
+    // real shell in the terminal panel). showInactive still emits "show", which the launch helper awaits.
+    if (process.env.MODEX_E2E) w.showInactive();
+    else w.show();
   });
   // getNormalBounds: a maximized or full-screen window remembers the size it returns to.
   if (!demo) w.on("close", () => {

@@ -96,6 +96,52 @@ test("New chat resets an existing draft while settings changes preserve its text
   await expect(tid(page, "composer-input")).toHaveValue("", { timeout: 1500 });
 });
 
+test("unsent text waits on its own thread: switching threads keeps it, the sidebar marks it, sending clears it", async () => {
+  await app.close();
+  const file = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(file, "utf8"));
+  state.threads = ["one", "two"].map((id) => ({ id, projectId: "p1", title: id, cwd: repo, backend: "mock", model: "mock", mode: "chat", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+  fs.writeFileSync(file, JSON.stringify(state));
+  ({ app, page } = await launch(home));
+  const row = (title: string) => tid(page, "thread-row").filter({ hasText: title });
+  const open = (title: string) => row(title).getByRole("button", { name: title, exact: true }).click();
+  const input = tid(page, "composer-input");
+  await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "one");
+  await input.fill("Keep this for one");
+  await expect(tid(row("one"), "thread-row-unsent")).toHaveCount(0); // the selected thread needs no reminder
+
+  // Another thread starts empty and the first thread's row shows a pen.
+  await open("two");
+  await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "two");
+  await expect(input).toHaveValue("");
+  await expect(tid(row("one"), "thread-row-unsent")).toBeVisible();
+  await input.fill("Second thread text");
+
+  // Coming back restores the text exactly; a new chat is still empty; the draft's text stays with the draft.
+  await open("one");
+  await expect(input).toHaveValue("Keep this for one");
+  await expect(tid(row("one"), "thread-row-unsent")).toHaveCount(0);
+  await expect(tid(row("two"), "thread-row-unsent")).toBeVisible();
+  await page.keyboard.press("Meta+n");
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await expect(input).toHaveValue("");
+  await input.fill("Draft text");
+  await open("two");
+  await expect(input).toHaveValue("Second thread text");
+  await page.keyboard.press("Meta+n");
+  await expect(input).toHaveValue(""); // ⌘N is always a fresh draft
+  await open("one");
+
+  // Sending clears the thread's text and its marker.
+  await expect(input).toHaveValue("Keep this for one");
+  await page.keyboard.press("Meta+Enter");
+  await expect(input).toHaveValue("");
+  await expect(tid(page, "thread-row").filter({ hasText: "one" }).locator('[data-testid="thread-row-unsent"]')).toHaveCount(0);
+  await open("two");
+  await expect(input).toHaveValue("Second thread text");
+  await expect(tid(row("one"), "thread-row-unsent")).toHaveCount(0);
+});
+
 test("quitting waits for the CLI to stop and flushes the final transcript", async () => {
   await app.close();
   const stopped = path.join(home, "fixture-stopped");

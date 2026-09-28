@@ -8,6 +8,9 @@ interface Props {
   thread: Thread;
   project: Project;
   items: ThreadItem[];
+  /** Unsent composer text for this thread, kept by App across thread switches. */
+  text: string;
+  onText: (text: string) => void;
   onSend: (text: string) => void;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
@@ -37,7 +40,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
@@ -116,6 +119,8 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
       </div>
 
       <Composer
+        text={text}
+        onText={onText}
         busy={busy}
         context={{ project: project.name, cwd: thread.cwd, worktree: thread.worktree, branch }}
         backend={thread.backend}

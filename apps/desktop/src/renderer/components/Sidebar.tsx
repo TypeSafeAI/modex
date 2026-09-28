@@ -16,12 +16,14 @@ interface Props {
   onNewThread: (projectId: string, worktree?: boolean) => void;
   onDeleteThread: (thread: Thread) => void;
   onRemoveProject: (projectId: string) => void;
+  /** Threads holding unsent composer text; their rows carry a small pen glyph. */
+  unsent?: Record<string, string>;
 }
 
 /** Threads shown per project before "Show more". */
 export const THREADS_PER_PROJECT = 5;
 
-export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject }: Props) {
+export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject, unsent }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
@@ -106,6 +108,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
                         <span className="side-row-label" data-testid="thread-row-title">{t.title}</span>
                       </button>
                       <span className="row-meta">
+                        {unsent?.[t.id] && t.id !== selected && <span className="row-glyph unsent" data-testid="thread-row-unsent" title="Unsent message"><Icon name="compose" size={14} /></span>}
                         <RowStatus status={t.status} />
                         {t.worktree && <span className="row-glyph" data-testid="thread-row-worktree" title={`Worktree · ${t.worktree.branch}`}><Icon name="branch" size={14} /></span>}
                       </span>

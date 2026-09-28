@@ -58,6 +58,9 @@ modex/
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.
+- **Unsent text waits for you.** Type into a thread, look at another, come back: the text is
+  still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
+  starts empty.
 - **Layout that sticks.** The sidebar and Changes panel stay open or closed across relaunches,
   and the window reopens at its last size, position and maximized state (back to the default
   size if its display is gone).
