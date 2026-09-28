@@ -462,3 +462,23 @@ test("reading idle statuses does not load every transcript at startup", async ()
   assert.deepEqual(threads.map((thread) => runner.status(thread.id)), Array(20).fill("idle"));
   assert.equal(reads, 0, "status-only reads must leave transcript loading to selection/send");
 });
+
+test("thread snapshots include live output before the next disk flush", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let finish!: (result: TurnResult) => void;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn(_text, _opts, sink) {
+    sink.delta("not flushed yet");
+    return new Promise((resolve) => { finish = resolve; });
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  const run = runner.send(thread.id, "go");
+  // The renderer's thread:items handler calls runner.items, not Store.items.
+  // Read both synchronously so the 250 ms persistence timer cannot run between them.
+  assert.equal(h.store.items(thread.id).find((item) => item.kind === "assistant")?.text, "");
+  assert.equal(runner.items(thread.id).find((item) => item.kind === "assistant")?.text, "not flushed yet");
+  finish({ status: "completed" });
+  await run;
+  assert.equal(h.store.items(thread.id).find((item) => item.kind === "assistant")?.text, "not flushed yet");
+});

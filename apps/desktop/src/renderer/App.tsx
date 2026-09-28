@@ -86,6 +86,8 @@ export function App() {
       justCreated.current = null;
       setItems((m) => ({ ...m, [selected]: m[selected] ?? [] }));
     } else {
+      // thread:items snapshots the runner's live memory, including unflushed output.
+      // Only events arriving during the IPC request need replaying over that snapshot.
       const pending: ItemEvent[] = [];
       loadingItems.current.set(selected, pending);
       void bridge.invoke("thread:items", { threadId: selected }).then((list) => {

@@ -40,7 +40,7 @@ npm run test:e2e
 | Numstat paths do not match Unicode, tab, newline, or rename paths. | Parse NUL-delimited numstat and match paths through a map. | Real Git repositories with all four filename cases. |
 | Background completions or stale requests overwrite selected Changes. | Tag snapshots with thread identity and accept only the newest selected-thread request. | Background completion and deliberately reversed refresh responses. |
 | Selecting a file temporarily labels the old diff as the new file. | Tag diff results with thread, path, and snapshot; show loading or failure explicitly. | Delayed diff response after file selection. |
-| Transcript loading overwrites newer live events. | Journal events during loading and replay them over the snapshot without duplicate IDs. | Item and item-update events arriving before a delayed snapshot. |
+| Transcript loading overwrites newer live events. | Journal events during loading and replay them over the snapshot without duplicate IDs. | Item and item-update events arriving before a delayed snapshot; runner snapshots include unflushed live output. |
 | Changes file selection requires a mouse. | Use a named native button with pressed state; reveal discard on keyboard focus. | Keyboard selection changes the displayed diff. |
 | IME confirmation sends a message. | Ignore composing Enter and key code 229. | Composing Enter preserves Japanese text and creates no user item. |
 | Settings lets focus and app shortcuts escape behind the dialog. | Focus the first control, wrap Tab, close on Escape, restore trigger focus, and suppress app shortcuts. | Electron keyboard/focus assertions. |
@@ -60,7 +60,7 @@ The persistence cadence bounds intermediate writes while preserving the final tr
 
 ## Verification results
 
-On macOS, `npm run build`, `npm test` (15 core and 78 desktop tests), `npm run typecheck`, and `npm run test:e2e` (38 tests) passed. Rendered approval and completed-thread captures were inspected at 1786 × 1049. The existing layout assertions also check composer visibility in a 1380 × 880 window.
+On macOS, `npm run build`, `npm test` (15 core and 79 desktop tests), `npm run typecheck`, and `npm run test:e2e` (38 tests) passed. Rendered approval and completed-thread captures were inspected at 1786 × 1049. The existing layout assertions also check composer visibility in a 1380 × 880 window.
 
 ## Verification boundaries
 
