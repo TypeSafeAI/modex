@@ -15,6 +15,7 @@ export class CodexBackend implements Backend {
   private nextId = 1;
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private readonly subscribers = new Set<(msg: RpcMessage) => void>();
+  private readonly disconnects = new Set<(error: Error) => void>();
   private readonly loaded = new Set<string>();
 
   constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn) {}
@@ -33,13 +34,14 @@ export class CodexBackend implements Backend {
       const lines = new LineBuffer();
       let stderr = "";
       child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
-      child.stdout?.on("data", (d: Buffer) => lines.push(d, (line) => this.dispatch(line)));
-      child.on("error", (err) => reject(new Error(`${this.bin}: ${err.message}. Is the Codex CLI installed and on PATH?`)));
+      child.stdout?.on("data", (d: Buffer) => { if (this.child === child) lines.push(d, (line) => this.dispatch(line)); });
+      child.on("error", (err) => {
+        const error = new Error(`${this.bin}: ${err.message}. Is the Codex CLI installed and on PATH?`);
+        if (this.child === child) this.disconnect(error);
+        reject(error);
+      });
       child.on("close", (code) => {
-        for (const p of this.pending.values()) p.reject(new Error(`codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`));
-        this.pending.clear();
-        this.child = null;
-        this.ready = null;
+        if (this.child === child) this.disconnect(new Error(`codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`));
       });
       this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} })
         .then(() => {
@@ -49,6 +51,15 @@ export class CodexBackend implements Backend {
         .catch(reject);
     });
     return this.ready;
+  }
+
+  private disconnect(error: Error): void {
+    this.child = null;
+    this.ready = null;
+    this.loaded.clear();
+    for (const p of this.pending.values()) p.reject(error);
+    this.pending.clear();
+    for (const finish of this.disconnects) finish(error);
   }
 
   private dispatch(line: string): void {
@@ -103,9 +114,9 @@ export class CodexBackend implements Backend {
   }
 
   async dispose(): Promise<void> {
-    this.child?.kill();
-    this.child = null;
-    this.ready = null;
+    const child = this.child;
+    this.disconnect(new Error("codex app-server disposed"));
+    child?.kill();
   }
 
   /** Mode → Codex approval policy + sandbox policy. Exported for tests. */
@@ -117,24 +128,26 @@ export class CodexBackend implements Backend {
   }
 
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    if (signal.aborted) return { status: "interrupted" };
     try {
-      await this.ensure();
+      await duringSetup(this.ensure(), signal);
     } catch (err) {
-      return { status: "failed", error: (err as Error).message };
+      return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message };
     }
     const pol = CodexBackend.policy(opts);
     let threadId = opts.resume;
     try {
       if (threadId && !this.loaded.has(threadId)) {
-        const r = await this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG });
+        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG }), signal);
         threadId = r.thread.id;
       } else if (!threadId) {
-        const r = await this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG });
+        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG }), signal);
         threadId = r.thread.id;
       }
     } catch (err) {
-      return { status: "failed", error: (err as Error).message };
+      return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message };
     }
+    if (signal.aborted) return { status: "interrupted" };
     this.loaded.add(threadId);
     sink.session(threadId);
 
@@ -149,21 +162,48 @@ export class CodexBackend implements Backend {
 
     return new Promise<TurnResult>((resolve) => {
       let done = false;
+      let starting = true;
+      const queued: RpcMessage[] = [];
+      let abortTimer: ReturnType<typeof setTimeout> | undefined;
+      let interrupted = false;
+      const child = this.child;
+      const interrupt = () => {
+        if (interrupted || !turnId || this.child !== child) return;
+        interrupted = true;
+        void this.request("turn/interrupt", { threadId: tid, turnId }).catch(() => {});
+      };
+      const onDisconnect = (error: Error) => finish(signal.aborted ? { status: "interrupted" } : { status: "failed", error: error.message });
       const finish = (r: TurnResult) => {
         if (done) return;
         done = true;
         this.subscribers.delete(onMsg);
+        this.disconnects.delete(onDisconnect);
+        clearTimeout(abortTimer);
         signal.removeEventListener("abort", onAbort);
         resolve(r);
       };
       const onAbort = () => {
-        if (turnId) this.notify("turn/interrupt", { threadId: tid, turnId });
-        this.request("turn/interrupt", { threadId: tid, turnId }).catch(() => {});
-        setTimeout(() => finish({ status: "interrupted" }), 1500);
+        // A requested interrupt is not a terminal acknowledgement. Keep the turn active so
+        // deletion cannot remove its worktree while Codex may still be executing there.
+        abortTimer = setTimeout(() => {
+          if (!done) sink.notice("warn", "Codex has not confirmed the stop yet. Waiting for the turn to finish.");
+        }, 1500);
+        interrupt();
       };
       const onMsg = (msg: RpcMessage) => {
+        if (done) return;
         const p = (msg.params ?? {}) as Record<string, unknown>;
         if (p.threadId && p.threadId !== tid) return;
+        if (starting) {
+          if (msg.method === "turn/started") {
+            turnId = (p.turn as { id: string }).id;
+            if (signal.aborted) interrupt();
+          }
+          queued.push(msg);
+          return;
+        }
+        const messageTurn = p.turnId ?? (p.turn as { id?: string } | undefined)?.id;
+        if (messageTurn && messageTurn !== turnId) return;
         // Server → client requests (approvals).
         if (msg.id !== undefined && msg.method) {
           void this.handleServerRequest(msg, sink);
@@ -253,6 +293,7 @@ export class CodexBackend implements Backend {
         }
       };
       this.subscribers.add(onMsg);
+      this.disconnects.add(onDisconnect);
       signal.addEventListener("abort", onAbort, { once: true });
       this.request<{ turn: { id: string } }>("turn/start", {
         threadId: tid,
@@ -267,6 +308,10 @@ export class CodexBackend implements Backend {
       })
         .then((r) => {
           turnId = r.turn.id;
+          starting = false;
+          if (signal.aborted) interrupt();
+          if (!done) for (const msg of queued) onMsg(msg);
+          queued.length = 0;
         })
         .catch((err: Error) => finish({ status: "failed", error: err.message }));
     });
@@ -339,4 +384,14 @@ interface CodexItem {
   result?: unknown;
   error?: unknown;
   query?: string;
+}
+
+/** Cancel setup locally without killing the shared server used by other threads. */
+function duringSetup<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new Error("Stopped during Codex setup"));
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }

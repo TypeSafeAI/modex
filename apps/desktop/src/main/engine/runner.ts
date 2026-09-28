@@ -12,6 +12,8 @@ import type { SecretStore } from "./secrets.js";
 
 interface Live {
   abort: AbortController | null;
+  run: Promise<void> | null;
+  flushTimer?: ReturnType<typeof setTimeout>;
   pending: Map<string, (a: ApprovalAnswer) => void>;
   items: ThreadItem[];
   status: ThreadStatus;
@@ -38,6 +40,9 @@ export interface RunnerOptions {
  */
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
+  private readonly deleting = new Set<string>();
+  private readonly removingProjects = new Set<string>();
+  private readonly creating = new Map<string, Set<Promise<Thread>>>();
   private readonly backends: Record<BackendId, Backend>;
   /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
   readonly router: Router;
@@ -72,7 +77,7 @@ export class ThreadRunner {
   private slot(threadId: string): Live {
     let l = this.live.get(threadId);
     if (!l) {
-      l = { abort: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
+      l = { abort: null, run: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
       this.live.set(threadId, l);
     }
     return l;
@@ -83,10 +88,23 @@ export class ThreadRunner {
   }
 
   status(threadId: string): ThreadStatus {
-    return this.slot(threadId).status;
+    return this.live.get(threadId)?.status ?? "idle";
   }
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
+    if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
+    const pending = this.creating.get(projectId) ?? new Set<Promise<Thread>>();
+    this.creating.set(projectId, pending);
+    const creation = this.createThreadInProject(projectId, opts);
+    pending.add(creation);
+    try { return await creation; }
+    finally {
+      pending.delete(creation);
+      if (!pending.size) this.creating.delete(projectId);
+    }
+  }
+
+  private async createThreadInProject(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }): Promise<Thread> {
     const project = this.o.store.project(projectId);
     if (!project) throw new Error(`unknown project ${projectId}`);
     const settings = this.o.store.settings;
@@ -117,23 +135,58 @@ export class ThreadRunner {
     return thread;
   }
 
-  async deleteThread(threadId: string, removeWorktree = false): Promise<void> {
-    const thread = this.o.store.thread(threadId);
-    this.stop(threadId);
-    this.live.delete(threadId);
-    if (thread?.worktree && removeWorktree) {
-      const project = this.o.store.project(thread.projectId);
-      if (project) {
-        const script = thread.worktree.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
-        if (script) await gitx.projectWorktreeRemove(project.path, script, thread.worktree.branch);
-        else await gitx.worktreeRemove(project.path, thread.worktree.path);
-      }
+  async removeProject(projectId: string): Promise<void> {
+    if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
+    this.removingProjects.add(projectId);
+    try {
+      await Promise.allSettled(this.creating.get(projectId) ?? []);
+      const threads = this.o.store.snapshot().threads.filter((thread) => thread.projectId === projectId);
+      await Promise.all(threads.map((thread) => this.deleteThread(thread.id)));
+      this.o.store.removeProject(projectId);
+    } finally {
+      this.removingProjects.delete(projectId);
     }
-    this.o.store.deleteThread(threadId);
+  }
+
+  async deleteThread(threadId: string, removeWorktree = false): Promise<void> {
+    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+    this.deleting.add(threadId);
+    try {
+      const thread = this.o.store.thread(threadId);
+      const l = this.live.get(threadId);
+      this.stop(threadId);
+      await l?.run;
+      if (thread?.worktree && removeWorktree) {
+        const project = this.o.store.project(thread.projectId);
+        if (project) {
+          const script = thread.worktree.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
+          if (script) await gitx.projectWorktreeRemove(project.path, script, thread.worktree.branch);
+          else await gitx.worktreeRemove(project.path, thread.worktree.path);
+        }
+      }
+      clearTimeout(l?.flushTimer);
+      this.o.store.deleteThread(threadId);
+      this.live.delete(threadId);
+    } finally {
+      this.deleting.delete(threadId);
+    }
   }
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
   async send(threadId: string, text: string): Promise<void> {
+    const projectId = this.o.store.thread(threadId)?.projectId;
+    if (projectId && this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
+    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+    if (!this.o.store.thread(threadId)) throw new Error(`unknown thread ${threadId}`);
+    const l = this.slot(threadId);
+    if (l.run) throw new Error("This thread is still working. Stop it or wait for it to finish.");
+    const run = this.runTurn(threadId, text);
+    l.run = run;
+    try { await run; }
+    finally { if (l.run === run) l.run = null; }
+  }
+
+  private async runTurn(threadId: string, text: string): Promise<void> {
     let thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     const l = this.slot(threadId);
@@ -193,10 +246,20 @@ export class ThreadRunner {
       this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: (err as Error).message, at: new Date().toISOString() });
       this.setStatus(threadId, "error");
     } finally {
+      // A CLI can exit without closing its last streamed items. Save their tail and stop spinners.
+      for (const item of l.items) {
+        if ((item.kind === "thinking" || item.kind === "tool") && item.status === "running") {
+          this.patchItem(threadId, item.id, { status: "done", durationMs: Date.now() - Date.parse(item.at), ...(item.kind === "tool" ? { ok: false } : {}) }, { persist: false });
+        }
+      }
+      for (const [id, resolve] of l.pending) {
+        this.patchItem(threadId, id, { answer: "no" }, { persist: false });
+        resolve("no");
+      }
+      l.pending.clear();
+      this.persistItems(threadId, l);
       l.abort = null;
       l.streaming = null;
-      for (const resolve of l.pending.values()) resolve("no");
-      l.pending.clear();
     }
   }
 
@@ -241,8 +304,14 @@ export class ThreadRunner {
 
   private sinkFor(threadId: string, l: Live): TurnSink {
     const at = () => new Date().toISOString();
+    const abort = l.abort;
+    const active = () => this.live.get(threadId) === l && l.abort === abort && abort !== null;
+    // Backend ids are only guaranteed unique inside a turn (Claude and mock restart at think-1).
+    const prefix = newId();
+    const scoped = (id: string) => `${prefix}:${id}`;
     return {
       delta: (text) => {
+        if (!active()) return;
         if (!l.streaming) {
           l.streaming = { id: newId(), text: "" };
           this.addItem(threadId, { id: l.streaming.id, kind: "assistant", text: "", at: at() });
@@ -251,25 +320,31 @@ export class ThreadRunner {
         this.patchItem(threadId, l.streaming.id, { text: l.streaming.text }, { persist: false });
       },
       assistant: (text) => {
+        if (!active()) return;
         if (l.streaming) this.patchItem(threadId, l.streaming.id, { text });
         else if (text.trim()) this.addItem(threadId, { id: newId(), kind: "assistant", text, at: at() });
         l.streaming = null;
       },
       toolStart: (t) => {
+        if (!active()) return;
         l.streaming = null;
-        this.addItem(threadId, { id: t.id, kind: "tool", name: t.name, title: t.title, args: redact(t.args), status: "running", at: at() });
+        this.addItem(threadId, { id: scoped(t.id), kind: "tool", name: t.name, title: t.title, args: redact(t.args), status: "running", at: at() });
       },
-      toolUpdate: (id, patch) => this.patchItem(threadId, id, patch),
+      toolUpdate: (id, patch) => {
+        if (active()) this.patchItem(threadId, scoped(id), patch, { persist: patch.status === "done" || patch.ok !== undefined });
+      },
       approval: (req) =>
         new Promise<ApprovalAnswer>((resolve) => {
-          if (l.abort?.signal.aborted) return resolve("no");
+          if (!active() || l.abort?.signal.aborted) return resolve("no");
           const id = newId();
           l.pending.set(id, resolve);
           this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, at: at() });
           this.setStatus(threadId, "waiting");
         }),
-      notice: (level, text) => this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }),
+      notice: (level, text) => { if (active()) this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }); },
       thinkingDelta: (id, delta) => {
+        if (!active()) return;
+        id = scoped(id);
         const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
         // Backends announce a reasoning block before any text exists. The row appears immediately
         // ("Thinking…") so the user sees the model reasoning; if the CLI never shares the text the
@@ -280,6 +355,8 @@ export class ThreadRunner {
         } else this.patchItem(threadId, id, { text: existing.text + delta }, { persist: false });
       },
       thinkingDone: (id, text) => {
+        if (!active()) return;
+        id = scoped(id);
         const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
         if (!existing) {
           // A reasoning block that only produced text at completion (no deltas) still gets an item.
@@ -289,6 +366,7 @@ export class ThreadRunner {
         this.patchItem(threadId, id, { text: text ?? existing.text, status: "done", durationMs: Date.now() - new Date(existing.at).getTime() });
       },
       session: (handle) => {
+        if (!active()) return;
         const t = this.o.store.thread(threadId);
         if (t && t.sessionHandle !== handle) this.o.store.updateThread(threadId, { sessionHandle: handle });
       },
@@ -298,7 +376,7 @@ export class ThreadRunner {
   private addItem(threadId: string, item: ThreadItem): void {
     const l = this.slot(threadId);
     l.items.push(item);
-    this.o.store.saveItems(threadId, l.items);
+    this.persistItems(threadId, l);
     this.o.emit({ threadId, type: "item", item });
   }
 
@@ -306,9 +384,16 @@ export class ThreadRunner {
     const l = this.slot(threadId);
     const idx = l.items.findIndex((i) => i.id === id);
     if (idx >= 0) l.items[idx] = { ...l.items[idx], ...patch } as ThreadItem;
-    // Streaming deltas skip the disk write; the final message persists the full text.
-    if (opts.persist !== false) this.o.store.saveItems(threadId, l.items);
+    // Bound synchronous transcript writes during streaming, and always flush at turn completion.
+    if (opts.persist !== false) this.persistItems(threadId, l);
+    else if (!l.flushTimer) l.flushTimer = setTimeout(() => this.persistItems(threadId, l), 250);
     this.o.emit({ threadId, type: "item_update", id, patch });
+  }
+
+  private persistItems(threadId: string, l: Live): void {
+    clearTimeout(l.flushTimer);
+    l.flushTimer = undefined;
+    if (this.o.store.thread(threadId)) this.o.store.saveItems(threadId, l.items);
   }
 
   private setStatus(threadId: string, status: ThreadStatus): void {

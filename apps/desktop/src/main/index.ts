@@ -41,7 +41,7 @@ process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 let win: BrowserWindow | null = null;
 const emit = (event: ThreadEvent): void => {
-  win?.webContents.send("thread:event", event);
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
@@ -64,7 +64,10 @@ function cwdFor(threadId: string): string {
   return t.cwd;
 }
 
-handle("state:get", () => ({ ...store.snapshot(), threads: store.snapshot().threads.map((t) => ({ ...t, status: runner.status(t.id) })) }));
+handle("state:get", () => {
+  const state = store.snapshot();
+  return { ...state, threads: state.threads.map((t) => ({ ...t, status: runner.status(t.id) })) };
+});
 handle("project:add", async (req) => {
   let dir = req?.path;
   if (!dir) {
@@ -74,9 +77,8 @@ handle("project:add", async (req) => {
   }
   return store.addProject(dir);
 });
-handle("project:remove", ({ projectId }) => {
-  for (const t of store.snapshot().threads.filter((t) => t.projectId === projectId)) runner.stop(t.id);
-  store.removeProject(projectId);
+handle("project:remove", async ({ projectId }) => {
+  await runner.removeProject(projectId);
   return store.snapshot();
 });
 handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
@@ -169,6 +171,7 @@ function createWindow(): BrowserWindow {
       console.error("[modex] could not save window state:", (err as Error).message);
     }
   });
+  w.on("closed", () => { if (win === w) win = null; });
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: "deny" };

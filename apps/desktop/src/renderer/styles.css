@@ -47,7 +47,7 @@ a { color: var(--accent); }
 .icon { background: transparent; border: 0; color: var(--fg-1); cursor: pointer; border-radius: 6px; width: 22px; height: 22px; line-height: 20px; padding: 0; text-align: center; }
 .icon:hover { background: var(--bg-3); color: var(--fg); }
 .icon.dim { color: var(--fg-2); opacity: 0; }
-.file:hover .icon.dim { opacity: 1; }
+.file:hover .icon.dim, .file:focus-within .icon.dim { opacity: 1; }
 .plus { font-weight: 600; margin-right: 4px; }
 
 .brand-mark { color: var(--accent); }
@@ -373,6 +373,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .stat.del { color: var(--del); }
 .files { max-height: 40%; flex: none; margin: 0; padding: 6px; overflow: auto; list-style: none; border-bottom: 1px solid var(--border-pane); }
 .file { display: flex; align-items: center; gap: var(--space-2); height: 28px; padding: 0 6px; border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; }
+.file-select { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; align-self: stretch; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .file:hover { background: var(--bg-row-hover); }
 .file.selected { background: var(--bg-row-selected); color: var(--text-1); }
 .file-path { flex: 1; min-width: 0; overflow: hidden; font: 12px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }

@@ -83,6 +83,7 @@ export function Composer({ busy, context, backend, mode, plan, model, effort, au
             placeholder={busy ? "Working… ⌘. to stop" : plan ? "Describe what to plan — nothing will be edited" : "Do anything"}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
                 e.preventDefault();
                 submit();

@@ -47,6 +47,7 @@ export class ClaudeBackend implements Backend {
   }
 
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    if (signal.aborted) return Promise.resolve({ status: "interrupted" });
     return new Promise((resolve) => {
       let child: ChildProcess;
       try {
@@ -61,11 +62,14 @@ export class ClaudeBackend implements Backend {
       let thinkingSeq = 0;
       let streaming = "";
       let finished = false;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
       let stderr = "";
       const finish = (r: TurnResult) => {
         if (finished) return;
         finished = true;
-        resolve(r);
+        clearTimeout(killTimer);
+        signal.removeEventListener("abort", onAbort);
+        resolve(signal.aborted ? { status: "interrupted" } : r);
       };
       const write = (o: unknown) => {
         try {
@@ -75,8 +79,8 @@ export class ClaudeBackend implements Backend {
         }
       };
       const onAbort = () => {
+        killTimer = setTimeout(() => child.kill("SIGKILL"), 1500);
         child.kill("SIGTERM");
-        finish({ status: "interrupted" });
       };
       signal.addEventListener("abort", onAbort, { once: true });
 
@@ -84,6 +88,7 @@ export class ClaudeBackend implements Backend {
       child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
       child.stdout?.on("data", (d: Buffer) =>
         lines.push(d, (line) => {
+          if (finished || signal.aborted) return;
           let msg: ClaudeMessage;
           try {
             msg = JSON.parse(line) as ClaudeMessage;

@@ -11,18 +11,19 @@ interface Props {
 }
 
 export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
-  const [file, setFile] = useState<string | null>(null);
-  const [diff, setDiff] = useState<string>("");
-
-  useEffect(() => {
-    if (!changes?.files.length) { setFile(null); setDiff(""); return; }
-    if (!file || !changes.files.some((f) => f.path === file)) setFile(changes.files[0]!.path);
-  }, [changes]);
+  const [selection, setSelection] = useState<{ threadId: string; path: string } | null>(null);
+  const file = selection?.threadId === thread.id && changes?.files.some((entry) => entry.path === selection.path)
+    ? selection.path : changes?.files[0]?.path ?? null;
+  const [result, setResult] = useState<{ threadId: string; path: string; snapshot: ChangesSnapshot | null; text: string; error?: string } | null>(null);
+  const diff = result?.threadId === thread.id && result.path === file && result.snapshot === changes ? result : null;
 
   useEffect(() => {
     if (!file) return;
     let alive = true;
-    void bridge.invoke("changes:diff", { threadId: thread.id, path: file }).then((d) => alive && setDiff(d)).catch(() => alive && setDiff(""));
+    void bridge.invoke("changes:diff", { threadId: thread.id, path: file }).then(
+      (text) => { if (alive) setResult({ threadId: thread.id, path: file, snapshot: changes, text }); },
+      (error: Error) => { if (alive) setResult({ threadId: thread.id, path: file, snapshot: changes, text: "", error: error.message }); },
+    );
     return () => { alive = false; };
   }, [file, thread.id, changes]);
 
@@ -48,18 +49,20 @@ export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
         <>
           <ul className="files">
             {changes.files.map((f) => (
-              <li key={f.path} data-testid="changes-file" data-path={f.path} aria-current={f.path === file ? "true" : undefined} className={`file ${f.path === file ? "selected" : ""}`} onClick={() => setFile(f.path)}>
+              <li key={f.path} data-testid="changes-file" data-path={f.path} aria-current={f.path === file ? "true" : undefined} className={`file ${f.path === file ? "selected" : ""}`}>
+                <button className="file-select" aria-label={`View diff for ${f.path}`} aria-pressed={f.path === file} onClick={() => setSelection({ threadId: thread.id, path: f.path })}>
                 <span className={`code c-${f.code.trim()[0] ?? "M"}`}>{codeLabel(f.code)}</span>
                 <span className="file-path" data-testid="changes-file-path" title={f.path}>{f.path}</span>
                 <span className="stat add">+{f.additions}</span>
                 <span className="stat del">−{f.deletions}</span>
-                <button className="icon dim" data-testid="changes-revert" title="Discard changes to this file" onClick={(e) => { e.stopPropagation(); onRevert(f.path); }}>↶</button>
+                </button>
+                <button className="icon dim" data-testid="changes-revert" title="Discard changes to this file" aria-label={`Discard changes to ${f.path}`} onClick={(e) => { e.stopPropagation(); onRevert(f.path); }}>↶</button>
               </li>
             ))}
           </ul>
           <div className="diff" data-testid="changes-diff">
             {file && <div className="diff-file">{file}</div>}
-            <Diff text={diff} />
+            {!diff ? <p className="hint pad" role="status">Loading diff…</p> : diff.error ? <p className="hint pad" role="alert">Could not load diff: {diff.error}</p> : <Diff text={diff.text} />}
           </div>
         </>
       )}

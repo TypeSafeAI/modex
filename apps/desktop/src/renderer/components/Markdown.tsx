@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 /** Small, dependency-free Markdown subset: headings, fenced code, inline code, bold, lists, paragraphs. */
-export function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   let i = 0;
@@ -41,7 +41,7 @@ export function Markdown({ text }: { text: string }) {
     blocks.push(<p key={key++}>{inline(para.join(" "))}</p>);
   }
   return <div className="md">{blocks}</div>;
-}
+});
 
 function inline(s: string): ReactNode[] {
   const out: ReactNode[] = [];

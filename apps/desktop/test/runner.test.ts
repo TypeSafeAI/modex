@@ -326,3 +326,139 @@ test("Auto threads: a routing failure is a warning, not a lost turn", async () =
   assert.match((runner.items(thread.id)[1] as { text: string }).text, /Auto routing failed \(no models\)/);
   assert.equal(runner.status(thread.id), "idle");
 });
+
+test("reused backend item ids cannot overwrite an earlier turn", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(text, _o, sink) {
+    sink.thinkingDelta("think-1", text);
+    sink.thinkingDone("think-1");
+    sink.toolStart({ id: "tool-1", name: "shell", title: text, args: {} });
+    sink.toolUpdate("tool-1", { output: text, status: "done", ok: true });
+    return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "first");
+  await runner.send(thread.id, "second");
+  const thinking = runner.items(thread.id).filter((i) => i.kind === "thinking");
+  assert.deepEqual(thinking.map((i) => i.text), ["first", "second"]);
+  const tools = runner.items(thread.id).filter((i) => i.kind === "tool");
+  assert.deepEqual(tools.map((i) => i.output), ["first", "second"]);
+  assert.equal(new Set(runner.items(thread.id).map((i) => i.id)).size, runner.items(thread.id).length);
+});
+
+test("tool streaming coalesces disk writes and flushes final output", async (t) => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const save = h.store.saveItems.bind(h.store);
+  let writes = 0;
+  h.store.saveItems = (...args) => { writes++; save(...args); };
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _o, sink) {
+    sink.toolStart({ id: "tool", name: "shell", title: "$ build", args: {} });
+    for (let i = 1; i <= 1000; i++) sink.toolUpdate("tool", { output: "x".repeat(i) });
+    // A crash may omit item/completed; the turn boundary must still save the tail.
+    return { status: "failed", error: "process crashed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "build");
+  t.diagnostic(`${writes} full transcript writes for 1000 deltas`);
+  assert.ok(writes < 10, `${writes} full transcript writes for 1000 deltas`);
+  const tool = new Store(h.home).items(thread.id).find((i) => i.kind === "tool");
+  assert.equal(tool?.output, "x".repeat(1000));
+  assert.equal(tool?.status, "done");
+});
+
+test("deletion waits for the active turn and rejects late output after removal", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let sink!: TurnSink;
+  let finish!: (result: TurnResult) => void;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn(_text, _o, s) {
+    sink = s;
+    return new Promise((resolve) => { finish = resolve; });
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id, { worktree: true });
+  const run = runner.send(thread.id, "go");
+  let deleted = false;
+  const deletion = runner.deleteThread(thread.id, true).then(() => { deleted = true; });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(deleted, false, "must not remove a worktree while its backend is still running");
+  assert.equal(fs.existsSync(thread.cwd), true);
+  finish({ status: "interrupted" });
+  await Promise.all([run, deletion]);
+  const count = h.events.length;
+  sink.delta("late reply");
+  sink.toolUpdate("old", { output: "late" });
+  assert.equal(h.events.length, count);
+  assert.equal(h.store.thread(thread.id), undefined);
+  assert.equal(fs.existsSync(path.join(h.home, "app/threads", `${thread.id}.json`)), false);
+  assert.equal(fs.existsSync(thread.cwd), false);
+});
+
+test("backend failure closes pending approval cards before persisting", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let answer: Promise<"yes" | "no" | "always"> | undefined;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _o, sink) {
+    answer = sink.approval({ question: "Run command?", canAlways: false });
+    return { status: "failed", error: "server crashed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "go");
+  assert.equal(await answer, "no");
+  const card = new Store(h.home).items(thread.id).find((i) => i.kind === "approval");
+  assert.equal(card?.answer, "no");
+});
+
+test("project removal fences new work while waiting for active turns", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let finish!: (result: TurnResult) => void;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn() {
+    return new Promise((resolve) => { finish = resolve; });
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  const idle = await runner.createThread(project.id);
+  const run = runner.send(thread.id, "go");
+  const removal = runner.removeProject(project.id);
+  await assert.rejects(runner.createThread(project.id), /being removed/);
+  await assert.rejects(runner.send(thread.id, "too late"), /being removed/);
+  finish({ status: "interrupted" });
+  await Promise.all([run, removal]);
+  assert.equal(h.store.project(project.id), undefined);
+  assert.equal(h.store.snapshot().threads.length, 0);
+});
+
+test("project removal waits for an already-started worktree creation", async () => {
+  const h = harness();
+  const repo = gitRepo();
+  fs.mkdirSync(path.join(repo, "scripts"));
+  fs.writeFileSync(path.join(repo, "scripts/worktree.sh"), '#!/bin/sh\nmkdir -p ".worktrees/$2"\nsleep 0.1\nprintf "%s/.worktrees/%s\\n" "$PWD" "$2"\n');
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
+  const creation = runner.createThread(project.id, { worktree: true });
+  const removal = runner.removeProject(project.id);
+  const thread = await creation;
+  await removal;
+  assert.equal(h.store.project(project.id), undefined);
+  assert.equal(h.store.thread(thread.id), undefined);
+  // Removing a project detaches it from Modex; the user's files/worktrees stay on disk.
+  assert.equal(fs.existsSync(thread.cwd), true);
+});
+
+test("reading idle statuses does not load every transcript at startup", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const runner = new ThreadRunner(h);
+  const threads = await Promise.all(Array.from({ length: 20 }, () => runner.createThread(project.id)));
+  let reads = 0;
+  const load = h.store.items.bind(h.store);
+  h.store.items = (id) => { reads++; return load(id); };
+  assert.deepEqual(threads.map((thread) => runner.status(thread.id)), Array(20).fill("idle"));
+  assert.equal(reads, 0, "status-only reads must leave transcript loading to selection/send");
+});

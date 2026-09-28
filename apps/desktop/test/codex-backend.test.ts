@@ -168,3 +168,86 @@ test("CodexBackend: service tiers come through model/list; a fast turn sets serv
   assert.equal(seen.filter((s) => s.method === "turn/start")[1]!.params.serviceTierForTurn, null, "a normal turn inherits the thread's tier");
   await backend.dispose();
 });
+
+test("a server crash settles an active turn and a new server can recover", async () => {
+  const proc = new FakeProcess();
+  fakeServer(proc);
+  const replacement = new FakeProcess();
+  const recovered = fakeServer(replacement);
+  let spawns = 0;
+  const spawn = (() => spawns++ === 0 ? proc : replacement) as unknown as typeof import("node:child_process").spawn;
+  const backend = new CodexBackend("codex", spawn);
+  const { sink } = collectSink();
+  const opts = { cwd: "/repo", mode: "chat" as const, plan: false, model: "" };
+  const run = backend.runTurn("go", opts, sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"turn/start"'));
+  proc.close(7);
+  const result = await Promise.race([run, new Promise<null>((resolve) => setTimeout(() => resolve(null), 100))]);
+  assert.equal(result?.status, "failed");
+  assert.match(result?.error ?? "", /exited \(7\)/);
+  const next = backend.runTurn("try again", { ...opts, resume: recovered.threadId }, sink, new AbortController().signal);
+  await replacement.waitFor((line) => line.includes('"turn/start"'));
+  assert.equal(spawns, 2);
+  assert.ok(recovered.seen.some((request) => request.method === "thread/resume"));
+  replacement.emitLine({ method: "turn/completed", params: { threadId: recovered.threadId, turn: { id: recovered.turnId, status: "completed" } } });
+  assert.deepEqual(await next, { status: "completed" });
+  await backend.dispose();
+});
+
+test("cancellation during setup never starts a coding turn", async () => {
+  const proc = new FakeProcess();
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const abort = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, abort.signal);
+  const init = JSON.parse(await proc.waitFor((l) => l.includes('"initialize"')));
+  abort.abort();
+  fakeServer(proc);
+  proc.emitLine({ id: init.id, result: {} });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(proc.written.some((l) => l.includes('"turn/start"')), false);
+  assert.deepEqual(await run, { status: "interrupted" });
+});
+
+test("a previous turn's completion cannot finish the next turn", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc, { turnId: "current" });
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, events } = collectSink();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"turn/start"'));
+  proc.emitLine({ method: "item/agentMessage/delta", params: { threadId, turnId: "previous", itemId: "old", delta: "stale" } });
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: "previous", status: "interrupted" } } });
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+  assert.deepEqual(await run, { status: "completed" });
+  assert.equal(events.some((e) => e.includes("stale")), false);
+});
+
+test("Stop interrupts a known started turn before turn/start replies and waits for acknowledgement", async () => {
+  const proc = new FakeProcess();
+  let startId: number | undefined;
+  proc.stdin.on("data", (chunk: Buffer) => {
+    const message = JSON.parse(chunk.toString());
+    if (message.method === "initialize") proc.emitLine({ id: message.id, result: {} });
+    if (message.method === "thread/start") proc.emitLine({ id: message.id, result: { thread: { id: "thread" } } });
+    if (message.method === "turn/start") {
+      startId = message.id;
+      proc.emitLine({ method: "turn/started", params: { threadId: "thread", turn: { id: "turn" } } });
+    }
+    if (message.method === "turn/interrupt") proc.emitLine({ id: message.id, result: {} });
+  });
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const abort = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, abort.signal);
+  let settled = false;
+  void run.then(() => { settled = true; });
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  abort.abort();
+  const interrupt = JSON.parse(await proc.waitFor((line) => line.includes('"turn/interrupt"'), 200));
+  assert.equal(interrupt.params.turnId, "turn");
+  await new Promise((resolve) => setTimeout(resolve, 1550));
+  assert.equal(settled, false, "an interrupt request is not proof that execution stopped");
+  proc.emitLine({ id: startId, result: { turn: { id: "turn" } } });
+  proc.emitLine({ method: "turn/completed", params: { threadId: "thread", turn: { id: "turn", status: "interrupted" } } });
+  assert.deepEqual(await run, { status: "interrupted" });
+  assert.equal(proc.written.filter((line) => line.includes('"turn/interrupt"')).length, 1);
+});

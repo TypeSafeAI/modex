@@ -42,6 +42,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
   const busy = thread.status === "running" || thread.status === "waiting";
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
+  const newestUser = useRef<string | undefined>(undefined);
   // Where auto-scroll last put the view. Content can change (a ticking header, streamed text) before the
   // browser delivers the reader's scroll event, so "has the reader moved it?" is read from the position
   // itself: anything above this mark means they scrolled, and following waits until they are back down.
@@ -77,10 +78,18 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
   }, []);
   useEffect(() => {
     const el = scroller.current;
-    // The reader's own new message always brings the view down.
-    if (items.at(-1)?.kind === "user") {
-      stick.current = true;
-      autoTop.current = 0;
+    // React may batch the user message with the first reasoning/tool event. Find the newest
+    // user id instead of requiring the user item to be last in a particular render.
+    let userId: string | undefined;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i]!.kind === "user") { userId = items[i]!.id; break; }
+    }
+    if (userId !== newestUser.current) {
+      newestUser.current = userId;
+      if (userId) {
+        stick.current = true;
+        autoTop.current = 0;
+      }
     }
     if (el) follow(el);
   }, [thread.id, items.length, items.at(-1)]);

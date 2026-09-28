@@ -105,3 +105,19 @@ test("ClaudeBackend.args passes reasoning effort and fast mode; models advertise
   assert.equal(tuned[tuned.indexOf("--settings") + 1], '{"fastMode":true}');
   assert.deepEqual(ClaudeBackend.MODELS[0]!.efforts, ["low", "medium", "high", "xhigh", "max"]);
 });
+
+test("Stop waits for the Claude process to close before settling", async () => {
+  const proc = new FakeProcess();
+  proc.kill = () => { proc.killed = true; return true; };
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const abort = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, abort.signal);
+  let settled = false;
+  void run.then(() => { settled = true; });
+  abort.abort();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(proc.killed, true);
+  assert.equal(settled, false, "SIGTERM delivery is not process termination");
+  proc.close(null);
+  assert.deepEqual(await run, { status: "interrupted" });
+});

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { bridge } from "../bridge";
@@ -10,6 +10,35 @@ interface Props {
 }
 
 export function SettingsDialog({ settings, onSave, onClose }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current!;
+    const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'));
+    (controls()[0] ?? dialog).focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeRef.current();
+      } else if (event.key === "Tab") {
+        const list = controls();
+        const first = list[0] ?? dialog;
+        const last = list.at(-1) ?? dialog;
+        if (!dialog.contains(document.activeElement) || (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
   const [s, setS] = useState<Settings>(settings);
   const [health, setHealth] = useState<Record<BackendId, { ok: boolean; detail: string }> | null>(null);
   const [lists, setLists] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
@@ -65,7 +94,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Settings" data-testid="settings">
+      <div ref={dialogRef} tabIndex={-1} className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Settings" data-testid="settings">
         <h2>Settings</h2>
         <p className="hint" style={{ margin: "0 0 12px" }}>Modex drives the Claude Code and Codex CLIs on this machine and never calls a model API for a coding turn — log in with <code>claude</code> and <code>codex login</code>. The only credential it can hold is an optional TypeSafe key for Auto routing, kept in the OS keychain.</p>
         <label className="field">

@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import type { ApprovalAnswer, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
 
 export type { ModelInfo };
@@ -74,8 +75,9 @@ export interface Backend {
 /** Splits a byte stream into complete lines; keeps the trailing partial line. */
 export class LineBuffer {
   private buf = "";
+  private readonly decoder = new StringDecoder("utf8");
   push(chunk: Buffer | string, onLine: (line: string) => void): void {
-    this.buf += chunk.toString();
+    this.buf += typeof chunk === "string" ? chunk : this.decoder.write(chunk);
     let nl: number;
     while ((nl = this.buf.indexOf("\n")) >= 0) {
       const line = this.buf.slice(0, nl).replace(/\r$/, "");
@@ -84,6 +86,7 @@ export class LineBuffer {
     }
   }
   flush(onLine: (line: string) => void): void {
+    this.buf += this.decoder.end();
     if (this.buf.trim()) onLine(this.buf);
     this.buf = "";
   }

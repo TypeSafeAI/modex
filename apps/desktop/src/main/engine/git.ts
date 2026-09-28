@@ -30,31 +30,20 @@ async function hasCommits(cwd: string): Promise<boolean> {
 /** Working-tree status relative to HEAD (staged + unstaged + untracked), with line counts. */
 export async function status(cwd: string): Promise<ChangesSnapshot> {
   if (!(await isRepo(cwd))) return { cwd, isRepo: false, branch: null, files: [] };
-  const branch = await currentBranch(cwd);
-  const porcelain = await git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
-  const files: ChangedFile[] = [];
-  const entries = porcelain.stdout.split("\0");
-  for (let i = 0; i < entries.length; i++) {
-    const e = entries[i]!;
-    if (e.length < 4) continue;
-    const code = e.slice(0, 2);
-    let p = e.slice(3);
-    if (code[0] === "R" || code[0] === "C") {
-      // renamed: "R  new\0old"
-      i++;
-    }
-    files.push({ path: p, code, additions: 0, deletions: 0 });
-  }
-  if (await hasCommits(cwd)) {
-    const numstat = await git(cwd, ["diff", "--numstat", "HEAD", "--"]);
-    for (const line of numstat.stdout.split("\n")) {
-      const [a, d, ...rest] = line.split("\t");
-      const p = rest.join("\t");
-      const f = files.find((f) => f.path === p);
-      if (f) {
-        f.additions = a === "-" ? 0 : Number(a);
-        f.deletions = d === "-" ? 0 : Number(d);
-      }
+  const [branch, entries, committed] = await Promise.all([currentBranch(cwd), statusEntries(cwd), hasCommits(cwd)]);
+  const files: ChangedFile[] = entries.map(({ path, code }) => ({ path, code, additions: 0, deletions: 0 }));
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  const numstat = await git(cwd, ["diff", "--numstat", "-z", ...(committed ? ["HEAD"] : ["--cached"]), "--"]);
+  const counts = numstat.stdout.split("\0");
+  for (let i = 0; i < counts.length; i++) {
+    const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(counts[i]!);
+    if (!match) continue;
+    // Renames are counts + empty path, followed by old and new NUL-delimited paths.
+    const name = match[3] || counts[i += 2];
+    const file = name === undefined ? undefined : byPath.get(name);
+    if (file) {
+      file.additions = match[1] === "-" ? 0 : Number(match[1]);
+      file.deletions = match[2] === "-" ? 0 : Number(match[2]);
     }
   }
   for (const f of files) {
@@ -69,6 +58,22 @@ export async function status(cwd: string): Promise<ChangesSnapshot> {
   }
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { cwd, isRepo: true, branch, files };
+}
+
+/** Keep the rename source: a path-filtered status turns a rename into an apparent addition. */
+async function statusEntries(cwd: string): Promise<{ path: string; code: string; original?: string }[]> {
+  const result = await git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+  if (result.code !== 0) throw new Error(result.stderr.trim() || "git status failed");
+  const fields = result.stdout.split("\0");
+  const entries: { path: string; code: string; original?: string }[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]!;
+    if (field.length < 4) continue;
+    const code = field.slice(0, 2);
+    const original = /[RC]/.test(code) ? fields[++i] : undefined;
+    entries.push({ path: field.slice(3), code, original });
+  }
+  return entries;
 }
 
 function countLines(s: string): number {
@@ -92,18 +97,36 @@ export async function diff(cwd: string, rel: string): Promise<string> {
 export async function revert(cwd: string, rel: string): Promise<void> {
   const abs = path.resolve(cwd, rel);
   if (!abs.startsWith(path.resolve(cwd) + path.sep)) throw new Error(`refusing to revert outside the workspace: ${rel}`);
-  const st = await git(cwd, ["status", "--porcelain=v1", "--", rel]);
-  const code = st.stdout.slice(0, 2);
+  const relative = path.relative(cwd, abs).split(path.sep).join("/");
+  const entry = (await statusEntries(cwd)).find((file) => file.path === relative);
+  if (!entry) return;
+  const code = entry.code;
+  if (code.includes("R") && entry.original) {
+    // A new file at the source is independent work, not part of the selected rename.
+    const original = fs.lstatSync(path.join(cwd, entry.original), { throwIfNoEntry: false });
+    const destination = fs.lstatSync(abs, { throwIfNoEntry: false });
+    const sameEntry = entry.original.toLowerCase() === relative.toLowerCase() && original && destination && original.dev === destination.dev && original.ino === destination.ino;
+    if (original && !sameEntry) throw new Error(`Cannot discard rename: original path ${entry.original} already exists.`);
+    // On case-insensitive volumes, remove the destination before restoring the source;
+    // restoring both in one invocation can unlink the just-restored file.
+    const groups = sameEntry ? [[relative], [entry.original]] : [[entry.original, relative]];
+    for (const paths of groups) {
+      const restored = await git(cwd, ["--literal-pathspecs", "restore", "--source=HEAD", "--staged", "--worktree", "--", ...paths]);
+      if (restored.code !== 0) throw new Error(restored.stderr.trim() || "git restore failed");
+    }
+    return;
+  }
   if (code === "??") {
     fs.rmSync(abs, { force: true, recursive: false });
     return;
   }
   if (code[0] === "A") {
-    await git(cwd, ["rm", "--cached", "-q", "--", rel]);
+    const removed = await git(cwd, ["--literal-pathspecs", "rm", "--cached", "-q", "--", relative]);
+    if (removed.code !== 0) throw new Error(removed.stderr.trim() || "git rm failed");
     fs.rmSync(abs, { force: true });
     return;
   }
-  const r = await git(cwd, ["checkout", "HEAD", "--", rel]);
+  const r = await git(cwd, ["--literal-pathspecs", "checkout", "HEAD", "--", relative]);
   if (r.code !== 0) throw new Error(r.stderr.trim() || `git checkout failed for ${rel}`);
 }
 

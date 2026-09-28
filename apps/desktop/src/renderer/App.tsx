@@ -11,12 +11,18 @@ import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { useSelectionHistory } from "./history";
 import { useLayout } from "./layout";
+import { applyItemEvent, type ItemEvent } from "./transcript";
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
-  const [changes, setChanges] = useState<ChangesSnapshot | null>(null);
+  const loadingItems = useRef(new Map<string, ItemEvent[]>());
+  const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
+  const changes = changeResult?.threadId === selected ? changeResult.snapshot : null;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const changesRequest = useRef(0);
   const [showSettings, setShowSettings] = useState(false);
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout();
@@ -49,20 +55,26 @@ export function App() {
   // Live events from every thread; the selected thread re-renders, others just update status.
   useEffect(() => {
     return bridge.onEvent((e: ThreadEvent) => {
-      if (e.type === "item") setItems((m) => ({ ...m, [e.threadId]: [...(m[e.threadId] ?? []), e.item] }));
-      else if (e.type === "item_update") setItems((m) => ({ ...m, [e.threadId]: (m[e.threadId] ?? []).map((i) => (i.id === e.id ? ({ ...i, ...e.patch } as ThreadItem) : i)) }));
+      if (e.type === "item" || e.type === "item_update") {
+        loadingItems.current.get(e.threadId)?.push(e);
+        setItems((m) => ({ ...m, [e.threadId]: applyItemEvent(m[e.threadId] ?? [], e) }));
+      }
       else if (e.type === "status") {
         setState((s) => (s ? { ...s, threads: s.threads.map((t) => (t.id === e.threadId ? { ...t, status: e.status } : t)) } : s));
-        if (e.status === "idle" || e.status === "error") void loadChanges(e.threadId);
+        if ((e.status === "idle" || e.status === "error") && selectedRef.current === e.threadId) void loadChanges(e.threadId);
       } else if (e.type === "thread") setState((s) => (s ? { ...s, threads: s.threads.map((t) => (t.id === e.thread.id ? { ...t, ...e.thread, status: t.status } : t)) } : s));
     });
   }, []);
 
   const loadChanges = useCallback(async (threadId: string) => {
+    if (selectedRef.current !== threadId) return;
+    const request = ++changesRequest.current;
     try {
-      setChanges(await bridge.invoke("changes:status", { threadId }));
+      const snapshot = await bridge.invoke("changes:status", { threadId });
+      if (selectedRef.current === threadId && request === changesRequest.current) setChangeResult({ threadId, snapshot });
     } catch (err) {
-      setChanges(null);
+      if (selectedRef.current !== threadId || request !== changesRequest.current) return;
+      setChangeResult(null);
       setError((err as Error).message);
     }
   }, []);
@@ -74,7 +86,18 @@ export function App() {
       justCreated.current = null;
       setItems((m) => ({ ...m, [selected]: m[selected] ?? [] }));
     } else {
-      void bridge.invoke("thread:items", { threadId: selected }).then((list) => setItems((m) => ({ ...m, [selected]: list })));
+      const pending: ItemEvent[] = [];
+      loadingItems.current.set(selected, pending);
+      void bridge.invoke("thread:items", { threadId: selected }).then((list) => {
+        if (loadingItems.current.get(selected) !== pending) return;
+        const snapshot = pending.reduce(applyItemEvent, list);
+        loadingItems.current.delete(selected);
+        setItems((m) => ({ ...m, [selected]: snapshot }));
+      }).catch((err: Error) => {
+        if (loadingItems.current.get(selected) !== pending) return;
+        loadingItems.current.delete(selected);
+        if (selectedRef.current === selected) setError(err.message);
+      });
     }
     void loadChanges(selected);
   }, [selected, loadChanges]);
@@ -200,6 +223,8 @@ export function App() {
     if (t.worktree && !removeWorktree) return;
     const s = await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree });
     setState(s);
+    loadingItems.current.delete(t.id);
+    setItems((m) => { const next = { ...m }; delete next[t.id]; return next; });
     if (selected === t.id) setSelected(s.threads.find((x) => x.projectId === t.projectId)?.id ?? s.threads[0]?.id ?? null);
   });
   const removeProject = (projectId: string) => act(async () => {
@@ -210,7 +235,8 @@ export function App() {
   });
   const revert = (path: string) => thread && act(async () => {
     if (!window.confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
-    setChanges(await bridge.invoke("changes:revert", { threadId: thread.id, path }));
+    await bridge.invoke("changes:revert", { threadId: thread.id, path });
+    await loadChanges(thread.id);
   });
   const openPath = (p: string) => act(() => bridge.invoke("shell:openPath", { path: p }));
   const openTerminal = (p: string) => act(() => bridge.invoke("shell:openTerminal", { path: p }));
@@ -222,6 +248,7 @@ export function App() {
   // Keyboard shortcuts: ⌘N new thread, ⇧⌘N worktree thread, ⌘⏎ send (handled in Composer), ⇧⌘P plan, ⌘. stop, ⌘J changes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (showSettings) return;
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
       const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;
@@ -245,7 +272,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [thread, state, draft]);
+  }, [thread, state, draft, showSettings]);
 
   // Focus the composer whenever the selected thread changes.
   useEffect(() => {
