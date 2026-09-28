@@ -8,7 +8,7 @@
   "main": "./dist/src/main/index.js",
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.main.json && cp src/main/preload.cjs dist/src/main/preload.cjs",
+    "build:main": "node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && cp src/main/preload.cjs dist/src/main/preload.cjs",
     "build:renderer": "vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "npm run build:main && node --test \"dist/test/**/*.test.js\"",
@@ -21,7 +21,8 @@
     "dist": "npm run build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
-    "@modex/core": "0.3.0"
+    "@modex/core": "0.3.0",
+    "node-pty": "1.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -51,6 +52,9 @@
       "package.json"
     ],
     "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [

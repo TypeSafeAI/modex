@@ -2,12 +2,13 @@ import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage, s
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
 import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
 import { openTerminal } from "./engine/open-terminal.js";
+import { TerminalManager, isTrustedTerminalSender } from "./engine/terminal.js";
 import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
@@ -49,11 +50,13 @@ const runner = new ThreadRunner({ home, store, emit, secrets });
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
-  ipcMain.handle(channel, async (_e, req) => {
+  ipcMain.handle(channel, async (event, req) => {
     if (SPAWNS.has(channel)) await pathReady;
+    // A shell is full user authority: only the app's own window, top frame, may drive one.
+    if (channel.startsWith("terminal:") && !isTrustedTerminalSender(event, win)) throw new Error("Untrusted terminal request.");
     return fn(req as BridgeCommands[K]["req"]);
   });
 }
@@ -63,6 +66,11 @@ function cwdFor(threadId: string): string {
   if (!t) throw new Error(`unknown thread ${threadId}`);
   return t.cwd;
 }
+
+/** Embedded shells, one per thread, started in the thread's working directory. */
+const terminals = new TerminalManager(cwdFor, (event) => {
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", event);
+});
 
 handle("state:get", () => {
   const state = store.snapshot();
@@ -78,6 +86,9 @@ handle("project:add", async (req) => {
   return store.addProject(dir);
 });
 handle("project:remove", async ({ projectId }) => {
+  for (const t of store.snapshot().threads.filter((t) => t.projectId === projectId)) {
+    terminals.close(t.id);
+  }
   await runner.removeProject(projectId);
   return store.snapshot();
 });
@@ -97,6 +108,8 @@ handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
+  // Before the worktree goes: a shell sitting in the folder must not outlive it.
+  terminals.close(threadId);
   await runner.deleteThread(threadId, removeWorktree);
   return store.snapshot();
 });
@@ -134,9 +147,15 @@ handle("shell:openPath", async ({ path: p }) => {
   if (err) throw new Error(err);
 });
 handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
+handle("terminal:open", ({ threadId, cols, rows }) => terminals.open(threadId, cols, rows));
+handle("terminal:write", ({ threadId, sessionId, data }) => terminals.write(threadId, sessionId, data));
+handle("terminal:resize", ({ threadId, sessionId, cols, rows }) => terminals.resize(threadId, sessionId, cols, rows));
+handle("terminal:close", ({ threadId, sessionId }) => terminals.close(threadId, sessionId));
 
 function createWindow(): BrowserWindow {
   nativeTheme.themeSource = "dark";
+  const devUrl = process.env.MODEX_DEV_URL;
+  const appPage = devUrl ? new URL(devUrl) : pathToFileURL(path.join(here, "..", "..", "renderer", "index.html"));
   // The demo captures fixed-size screenshots, so only real (and e2e) launches restore geometry.
   const min = { width: 900, height: 600 };
   const saved = demo ? null : readWindowState(home);
@@ -155,7 +174,6 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  const devUrl = process.env.MODEX_DEV_URL;
   if (devUrl) void w.loadURL(devUrl);
   else void w.loadFile(path.join(here, "..", "..", "renderer", "index.html"));
   w.once("ready-to-show", () => {
@@ -172,6 +190,15 @@ function createWindow(): BrowserWindow {
     }
   });
   w.on("closed", () => { if (win === w) win = null; });
+  w.webContents.on("render-process-gone", () => { if (!w.isDestroyed()) w.destroy(); });
+  // The window keeps its preload (and so terminal access) across navigations: never leave the app page.
+  w.webContents.on("will-navigate", (event, url) => {
+    const next = new URL(url);
+    const sameAppPage = next.protocol === appPage.protocol
+      && next.pathname === appPage.pathname
+      && (appPage.protocol === "file:" || next.origin === appPage.origin);
+    if (!sameAppPage) event.preventDefault();
+  });
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: "deny" };
@@ -196,6 +223,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || screenshotDir) app.quit();
 });
 app.on("before-quit", () => {
+  terminals.dispose();
   void runner.dispose();
 });
 
