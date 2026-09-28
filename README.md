@@ -55,6 +55,9 @@ modex/
   the thread). *Stop* cancels a running turn and any pending approvals.
 - **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
   a one-click revert (confirmed first).
+- **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
+  button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
+  thread deletion, project removal, and app quit stop its jobs before completing.
 - **Layout that sticks.** The sidebar and Changes panel stay open or closed across relaunches,
   and the window reopens at its last size, position and maximized state (back to the default
   size if its display is gone).
@@ -83,7 +86,9 @@ For macOS on Apple Silicon, download the DMG or ZIP from the
 app to upgrade; projects, threads, and preferences remain in `~/.modex`. The current build
 is ad-hoc signed and is not notarized. You still need `claude` or `codex` installed and logged in.
 
-To run from source:
+To run from source, install Node.js 22 or later and the Xcode Command Line Tools on macOS
+(`xcode-select --install`). The build compiles a terminal supervisor; the packaged app
+doesn't need a compiler.
 
 ```sh
 npm install
@@ -140,8 +145,8 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks, scheduled automations, image attachments, the embedded terminal panel,
-notarized macOS builds, and Windows/Linux installers. Modex has no HTTP-API execution mode;
+Codex Cloud tasks, scheduled automations, image attachments, notarized macOS builds,
+and Windows/Linux installers. Modex has no HTTP-API execution mode;
 if a CLI is not installed or logged in, the thread says so.
 
 ## License

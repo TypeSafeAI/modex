@@ -55,7 +55,8 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "node_modules/node-pty/**"
+      "node_modules/node-pty/**",
+      "dist/src/main/engine/terminal-supervisor"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

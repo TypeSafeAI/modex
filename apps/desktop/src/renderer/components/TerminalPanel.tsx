@@ -16,14 +16,30 @@ const token = (name: string) => getComputedStyle(document.documentElement).getPr
  * shell running; reopening replays its recent output. Close ends the shell; Restart replaces it.
  */
 export function TerminalPanel({ thread, onClose }: { thread: Thread; onClose: () => void }) {
+  const panel = useRef<HTMLElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   const session = useRef<TerminalSnapshot | null>(null);
   const opening = useRef<Promise<TerminalSnapshot> | null>(null);
   const drag = useRef<{ y: number; height: number } | null>(null);
   const [height, setHeight] = useState(DEFAULT_H);
+  const [maxHeight, setMaxHeight] = useState(window.innerHeight / 2);
   const [generation, setGeneration] = useState(0);
   const [error, setError] = useState("");
   const [exitCode, setExitCode] = useState<number | null>(null);
+
+  useEffect(() => {
+    const parent = panel.current?.parentElement;
+    if (!parent) return;
+    const measure = () => {
+      const limit = Math.max(MIN_H, Math.floor(parent.clientHeight / 2));
+      setMaxHeight(limit);
+      setHeight((value) => Math.min(value, limit));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(parent);
+    measure();
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const host = screen.current;
@@ -53,7 +69,7 @@ export function TerminalPanel({ thread, onClose }: { thread: Thread; onClose: ()
       if (event.sessionId !== snapshot.sessionId || event.sequence <= snapshot.sequence) return;
       snapshot.sequence = event.sequence;
       if (event.type === "data") terminal.write(event.data);
-else { snapshot.exitCode = event.exitCode; setExitCode(event.exitCode); }
+      else { snapshot.exitCode = event.exitCode; setExitCode(event.exitCode); }
     };
     const unsubscribe = bridge.onTerminalEvent(receive);
     const input = terminal.onData((data) => {
@@ -95,11 +111,11 @@ else { snapshot.exitCode = event.exitCode; setExitCode(event.exitCode); }
       else onClose();
     } catch (err) { setError((err as Error).message); }
   };
-  const clamp = (value: number) => Math.round(Math.max(MIN_H, Math.min(window.innerHeight / 2, value)));
+  const clamp = (value: number) => Math.round(Math.max(MIN_H, Math.min(maxHeight, value)));
   const where = thread.worktree?.branch ?? thread.cwd.split(/[\\/]/).filter(Boolean).pop() ?? thread.cwd;
 
   return (
-    <section className="terminal-panel" data-testid="terminal-panel" aria-label="Terminal" style={{ height }}>
+    <section ref={panel} className="terminal-panel" data-testid="terminal-panel" aria-label="Terminal" style={{ height }}>
       <div
         className="terminal-resize"
         data-testid="terminal-resize"
@@ -107,7 +123,7 @@ else { snapshot.exitCode = event.exitCode; setExitCode(event.exitCode); }
         aria-label="Resize terminal"
         aria-orientation="horizontal"
         aria-valuemin={MIN_H}
-        aria-valuemax={window.innerHeight / 2}
+        aria-valuemax={maxHeight}
         aria-valuenow={height}
         tabIndex={0}
         onPointerDown={(e) => { drag.current = { y: e.clientY, height }; e.currentTarget.setPointerCapture(e.pointerId); }}

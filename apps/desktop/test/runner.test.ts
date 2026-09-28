@@ -24,6 +24,51 @@ function harness(steps: MockStep[] = []) {
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
 
+test("thread deletion fences access and waits for terminal cleanup before removing a worktree", async () => {
+  const h = harness();
+  let finish!: () => void;
+  let cleaning = false;
+  const options = { ...h, beforeDeleteThread: async () => {
+    cleaning = true;
+    await new Promise<void>((resolve) => { finish = resolve; });
+  } };
+  const runner = new ThreadRunner(options);
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { worktree: true });
+  const deleting = runner.deleteThread(thread.id, true);
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(cleaning, true, "deletion skipped terminal cleanup");
+    assert.ok(fs.existsSync(thread.cwd), "worktree was removed while its terminal was closing");
+    assert.ok(h.store.thread(thread.id));
+    assert.throws(() => runner.assertThreadAvailable(thread.id), /being deleted/);
+    await assert.rejects(runner.send(thread.id, "late work"), /being deleted/);
+  } finally {
+    finish?.();
+    await deleting;
+    await runner.dispose();
+  }
+  assert.equal(fs.existsSync(thread.cwd), false);
+});
+
+test("failed terminal cleanup preserves the thread and worktree for a deletion retry", async () => {
+  const h = harness();
+  let fail = true;
+  const options = { ...h, beforeDeleteThread: async () => {
+    if (fail) throw new Error("terminal still running");
+  } };
+  const runner = new ThreadRunner(options);
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { worktree: true });
+  try {
+    await assert.rejects(runner.deleteThread(thread.id, true), /terminal still running/);
+    assert.ok(h.store.thread(thread.id));
+    assert.ok(fs.existsSync(thread.cwd));
+  } finally {
+    fail = false;
+    await runner.deleteThread(thread.id, true);
+    await runner.dispose();
+  }
+});
+
 test("dispose waits for interrupted turns to finalize and persist", async () => {
   const h = harness();
   let finish!: (value: TurnResult) => void;

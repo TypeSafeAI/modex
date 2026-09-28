@@ -48,7 +48,7 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
-const runner = new ThreadRunner({ home, store, emit, secrets });
+const runner = new ThreadRunner({ home, store, emit, secrets, beforeDeleteThread: (id) => terminals.close(id) });
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
@@ -73,7 +73,7 @@ function cwdFor(threadId: string): string {
 
 /** Embedded shells, one per thread, started in the thread's working directory. */
 const terminals = new TerminalManager(
-  cwdFor,
+  (id) => { runner.assertThreadAvailable(id); return cwdFor(id); },
   (event) => { if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", event); },
   undefined,
   process.env.MODEX_E2E ? { ...process.env, BASH_SILENCE_DEPRECATION_WARNING: "1" } : process.env,
@@ -95,9 +95,6 @@ handle("project:add", async (req) => {
   return store.addProject(dir);
 });
 handle("project:remove", async ({ projectId }) => {
-  for (const t of store.snapshot().threads.filter((t) => t.projectId === projectId)) {
-    terminals.close(t.id);
-  }
   await runner.removeProject(projectId);
   return store.snapshot();
 });
@@ -117,8 +114,6 @@ handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
-  // Before the worktree goes: a shell sitting in the folder must not outlive it.
-  terminals.close(threadId);
   await runner.deleteThread(threadId, removeWorktree);
   return store.snapshot();
 });
@@ -236,10 +231,14 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;
-  terminals.dispose();
-  void runner.dispose().catch((err: Error) => {
-    console.error("[modex] shutdown failed:", err.message);
-  }).finally(() => {
+  void Promise.allSettled([terminals.dispose(), runner.dispose()]).then((results) => {
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") {
+      shuttingDown = false;
+      console.error("[modex] shutdown failed:", failure.reason);
+      dialog.showErrorBox("Modex could not finish quitting", "A running command could not be stopped. Your working directories have been preserved. Quit again to retry.");
+      return;
+    }
     shutdownComplete = true;
     app.quit();
   });

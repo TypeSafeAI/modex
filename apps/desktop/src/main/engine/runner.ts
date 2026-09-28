@@ -33,6 +33,8 @@ export interface RunnerOptions {
   router?: Router;
   /** Where a hand-entered TypeSafe key lives (OS keychain via Electron safeStorage). */
   secrets?: SecretStore;
+  /** Stop thread-owned resources before deleting its state or working directory. */
+  beforeDeleteThread?: (threadId: string) => Promise<void>;
 }
 
 /**
@@ -96,6 +98,15 @@ export class ThreadRunner {
 
   status(threadId: string): ThreadStatus {
     return this.live.get(threadId)?.status ?? "idle";
+  }
+
+  /** Shared by coding turns and embedded terminals; removal fences cover both. */
+  assertThreadAvailable(threadId: string): void {
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    const thread = this.o.store.thread(threadId);
+    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    if (this.removingProjects.has(thread.projectId)) throw new Error("This project is being removed.");
+    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
   }
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
@@ -163,6 +174,7 @@ export class ThreadRunner {
       const thread = this.o.store.thread(threadId);
       const l = this.live.get(threadId);
       this.stop(threadId);
+      await this.o.beforeDeleteThread?.(threadId);
       await l?.run;
       if (thread?.worktree && removeWorktree) {
         const project = this.o.store.project(thread.projectId);
@@ -182,11 +194,7 @@ export class ThreadRunner {
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
   async send(threadId: string, text: string): Promise<void> {
-    if (this.disposing) throw new Error("Modex is shutting down.");
-    const projectId = this.o.store.thread(threadId)?.projectId;
-    if (projectId && this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
-    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
-    if (!this.o.store.thread(threadId)) throw new Error(`unknown thread ${threadId}`);
+    this.assertThreadAvailable(threadId);
     const l = this.slot(threadId);
     if (l.run) throw new Error("This thread is still working. Stop it or wait for it to finish.");
     const run = this.runTurn(threadId, text);
