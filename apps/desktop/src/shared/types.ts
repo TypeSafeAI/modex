@@ -193,10 +193,25 @@ export const MODES: { id: Mode; label: string; hint: string }[] = [
 ];
 
 
+/** What a (re)opened terminal panel needs to catch up: the session, its replayable output, and where the stream is. */
+export interface TerminalSnapshot {
+  sessionId: string;
+  sequence: number;
+  output: string;
+  exitCode: number | null;
+}
+
+/** Pushed from main on `terminal:event`. `sequence` lets a panel drop events its snapshot already contains. */
+export type TerminalEvent = { threadId: string; sessionId: string; sequence: number } & (
+  | { type: "data"; data: string }
+  | { type: "exit"; exitCode: number }
+);
+
 /** The API the preload exposes to the renderer as `window.modex`. */
 export interface ModexBridge {
   invoke<K extends keyof BridgeCommands>(channel: K, payload: BridgeCommands[K]["req"]): Promise<BridgeCommands[K]["res"]>;
   onEvent(cb: (event: ThreadEvent) => void): () => void;
+  onTerminalEvent(cb: (event: TerminalEvent) => void): () => void;
   platform: string;
 }
 
@@ -222,6 +237,11 @@ export interface BridgeCommands {
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };
   /** A project checkout's current branch, for a draft's context strip; null outside a git repository. */
   "project:branch": { req: { projectId: string }; res: string | null };
+  /** Opens (or reattaches to) the thread's shell; cols/rows are the panel's current size. */
+  "terminal:open": { req: { threadId: string; cols: number; rows: number }; res: TerminalSnapshot };
+  "terminal:write": { req: { threadId: string; sessionId: string; data: string }; res: void };
+  "terminal:resize": { req: { threadId: string; sessionId: string; cols: number; rows: number }; res: void };
+  "terminal:close": { req: { threadId: string; sessionId: string }; res: void };
   "changes:status": { req: { threadId: string }; res: ChangesSnapshot };
   "changes:diff": { req: { threadId: string; path: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };

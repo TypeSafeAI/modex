@@ -482,3 +482,47 @@ test("thread snapshots include live output before the next disk flush", async ()
   await run;
   assert.equal(h.store.items(thread.id).find((item) => item.kind === "assistant")?.text, "not flushed yet");
 });
+
+test("a second Stop force-stops the backend when the first was not confirmed", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let forced = 0;
+  let finish!: (result: TurnResult) => void;
+  const backend: Backend = {
+    id: "mock", listModels: async () => [], dispose: async () => {},
+    forceStop: async () => { forced++; finish({ status: "interrupted" }); },
+    runTurn: () => new Promise((resolve) => { finish = resolve; }),
+  };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  const run = runner.send(thread.id, "go");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  runner.stop(thread.id);
+  assert.equal(forced, 0, "the first Stop only asks the CLI to stop");
+  const deletion = runner.deleteThread(thread.id);
+  await assert.rejects(runner.deleteThread(thread.id), /press Stop again/);
+  runner.stop(thread.id);
+  assert.equal(forced, 1);
+  await Promise.all([run, deletion]);
+  assert.equal(h.store.thread(thread.id), undefined);
+  runner.stop(thread.id);
+  assert.equal(forced, 1, "Stop on an idle thread never forces");
+});
+
+test("a second Stop without a force-capable backend keeps waiting", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let finish!: (result: TurnResult) => void;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: () => new Promise((resolve) => { finish = resolve; }) };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(project.id);
+  const run = runner.send(thread.id, "go");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  runner.stop(thread.id);
+  runner.stop(thread.id);
+  assert.equal(runner.status(thread.id), "running");
+  assert.equal(h.store.items(thread.id).some((item) => item.kind === "notice" && item.text.startsWith("Force-stopping")), false);
+  finish({ status: "interrupted" });
+  await run;
+  assert.equal(runner.status(thread.id), "idle");
+});

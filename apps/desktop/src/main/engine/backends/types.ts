@@ -67,6 +67,11 @@ export interface Backend {
   readonly id: BackendId;
   /** Runs one user turn to completion. `signal` aborts/interrupts the turn. */
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult>;
+  /**
+   * Last resort when a stopped turn never confirms: forcibly end the backend's work. Optional;
+   * backends whose turns always end on their own (Claude escalates to SIGKILL) omit it.
+   */
+  forceStop?(): Promise<void>;
   /** Current model catalogue for this backend. */
   listModels(): Promise<ModelInfo[]>;
   dispose(): Promise<void>;

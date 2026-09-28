@@ -25,7 +25,7 @@ export class CodexBackend implements Backend {
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
       try {
-        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"'], { stdio: ["pipe", "pipe", "pipe"], env: process.env });
+        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"'], { stdio: ["pipe", "pipe", "pipe"], env: process.env, detached: true });
       } catch (err) {
         return reject(new Error(`could not start ${this.bin} app-server: ${(err as Error).message}`));
       }
@@ -113,6 +113,17 @@ export class CodexBackend implements Backend {
       }));
   }
 
+  /**
+   * Kills the shared app-server and every command it started. Every running Codex turn ends:
+   * the stopped ones as interrupted, any others as failed. The next turn starts a fresh server.
+   */
+  async forceStop(): Promise<void> {
+    const child = this.child;
+    if (!child) return;
+    this.disconnect(new Error("Codex was force-stopped from another thread. Send again to continue."));
+    killGroup(child);
+  }
+
   async dispose(): Promise<void> {
     const child = this.child;
     this.disconnect(new Error("codex app-server disposed"));
@@ -186,7 +197,7 @@ export class CodexBackend implements Backend {
         // A requested interrupt is not a terminal acknowledgement. Keep the turn active so
         // deletion cannot remove its worktree while Codex may still be executing there.
         abortTimer = setTimeout(() => {
-          if (!done) sink.notice("warn", "Codex has not confirmed the stop yet. Waiting for the turn to finish.");
+          if (!done) sink.notice("warn", "Codex has not confirmed the stop yet. Press Stop again to force it; that restarts Codex and ends any other Codex turn in progress.");
         }, 1500);
         interrupt();
       };
@@ -394,4 +405,20 @@ function duringSetup<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
     if (signal.aborted) abort();
     work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
   });
+}
+
+/**
+ * The app-server leads its own process group (spawned detached), so a group kill also takes
+ * the shell commands it is running. Fall back to the server alone if the group is gone.
+ */
+function killGroup(child: ChildProcess): void {
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+      return;
+    } catch {
+      // Already exited, or not a group leader.
+    }
+  }
+  child.kill("SIGKILL");
 }

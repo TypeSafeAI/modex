@@ -251,3 +251,56 @@ test("Stop interrupts a known started turn before turn/start replies and waits f
   assert.deepEqual(await run, { status: "interrupted" });
   assert.equal(proc.written.filter((line) => line.includes('"turn/interrupt"')).length, 1);
 });
+
+test("force-stop ends an unacknowledged turn, fails other turns, and a fresh server takes the next one", async () => {
+  const proc = new FakeProcess();
+  const turns = new Map<string, number>();
+  let thread = 0;
+  proc.stdin.on("data", (chunk: Buffer) => {
+    for (const line of chunk.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const message = JSON.parse(line);
+      if (message.method === "initialize") proc.emitLine({ id: message.id, result: {} });
+      if (message.method === "thread/start") proc.emitLine({ id: message.id, result: { thread: { id: `thread-${++thread}` } } });
+      if (message.method === "turn/start") {
+        const id = `turn-${message.params.threadId}`;
+        turns.set(id, message.id);
+        proc.emitLine({ id: message.id, result: { turn: { id } } });
+      }
+      // Acknowledges the interrupt request but never completes the turn.
+      if (message.method === "turn/interrupt") proc.emitLine({ id: message.id, result: {} });
+    }
+  });
+  const replacement = new FakeProcess();
+  const recovered = fakeServer(replacement);
+  let spawns = 0;
+  const spawn = (() => spawns++ === 0 ? proc : replacement) as unknown as typeof import("node:child_process").spawn;
+  const backend = new CodexBackend("codex", spawn);
+  const opts = { cwd: "/repo", mode: "chat" as const, plan: false, model: "" };
+  const stopped = new AbortController();
+  const stuck = backend.runTurn("stuck", opts, collectSink().sink, stopped.signal);
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  const other = backend.runTurn("bystander", opts, collectSink().sink, new AbortController().signal);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(turns.size, 2);
+  stopped.abort();
+  await proc.waitFor((line) => line.includes('"turn/interrupt"'));
+  await backend.forceStop();
+  assert.equal(proc.killed, true);
+  assert.deepEqual(await stuck, { status: "interrupted" });
+  const bystander = await other;
+  assert.equal(bystander.status, "failed");
+  assert.match(bystander.error ?? "", /force-stopped/);
+  const next = backend.runTurn("again", opts, collectSink().sink, new AbortController().signal);
+  await replacement.waitFor((line) => line.includes('"turn/start"'));
+  assert.equal(spawns, 2);
+  replacement.emitLine({ method: "turn/completed", params: { threadId: recovered.threadId, turn: { id: recovered.turnId, status: "completed" } } });
+  assert.deepEqual(await next, { status: "completed" });
+  await backend.forceStop();
+  await backend.dispose();
+});
+
+test("force-stop with no server running is a no-op", async () => {
+  const backend = new CodexBackend("codex", fakeSpawn(new FakeProcess()).spawn);
+  await backend.forceStop();
+});
