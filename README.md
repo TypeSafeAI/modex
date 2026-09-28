@@ -78,6 +78,13 @@ skills exactly as it would in a terminal.
 
 ### Run it
 
+For macOS on Apple Silicon, download the DMG or ZIP from the
+[latest release](https://github.com/TypeSafeAI/modex/releases/latest). Replace the existing
+app to upgrade; projects, threads, and preferences remain in `~/.modex`. The current build
+is ad-hoc signed and is not notarized. You still need `claude` or `codex` installed and logged in.
+
+To run from source:
+
 ```sh
 npm install
 npm run build
@@ -133,7 +140,9 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks, scheduled automations, image attachments, installers/code signing. Also: Modex deliberately has no HTTP-API mode — if a CLI is not installed or logged in, the thread says so.
+Codex Cloud tasks, scheduled automations, image attachments, the embedded terminal panel,
+notarized macOS builds, and Windows/Linux installers. Modex has no HTTP-API execution mode;
+if a CLI is not installed or logged in, the thread says so.
 
 ## License
 

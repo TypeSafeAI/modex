@@ -99,7 +99,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .modal code { background: var(--bg-2); padding: 0 5px; border-radius: 4px; }
 
 /* Model menu (Codex-style popover) */
-.model-menu { position: relative; }
+.model-menu { position: relative; min-width: 0; }
 .model-trigger-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu { position: absolute; min-width: 200px; max-width: 460px; max-height: 60vh; overflow: auto; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.5); padding: 6px; z-index: 20; }
 .menu-error { color: var(--warn); font-size: 12px; padding: 8px 10px; }
@@ -112,9 +112,9 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .menu-title { font-weight: 600; display: flex; gap: 8px; align-items: center; }
 .menu-default { font-size: 10.5px; font-weight: 500; color: var(--fg-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 6px; }
 .menu-desc { color: var(--fg-2); font-size: 12px; }
-.effort-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.effort-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 0 10px 6px 34px; }
 .effort-label { color: var(--fg-2); font-size: 11.5px; margin-right: 4px; }
-.effort-pill { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--fg-1); cursor: pointer; }
+.effort-pill { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-1); cursor: pointer; }
 .effort-pill:hover { border-color: var(--accent); }
 .effort-pill.on { background: rgba(124, 156, 255, .15); border-color: var(--accent); color: var(--accent); }
 
@@ -251,6 +251,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .composer-context { display: flex; align-items: center; gap: 28px; height: 38px; margin: 0 13px; padding: 0 14px; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--bg-composer-context); color: var(--text-1); font-size: var(--text-sm); white-space: nowrap; }
 .context-item { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .context-item .icon-svg { color: var(--text-2); }
+.context-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.context-item[data-testid="context-kind"] { flex-shrink: 0; }
 /* 98 px at rest = 1 border + 56 input + 39 control row + 1 inset + 1 border. */
 .composer-box { display: flex; flex-direction: column; background: var(--bg-composer); border: 1px solid var(--border-composer); border-radius: var(--radius-composer); transition: border-color var(--duration-fast) var(--ease-out); }
 .composer-box.plan { border-color: rgba(124, 156, 255, .55); }
@@ -266,7 +268,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .composer-chip.tone-accent { color: var(--accent); border-color: rgba(124, 156, 255, .45); }
 .composer-chip.tone-auto { color: #ffd479; border-color: rgba(255, 212, 121, .45); }
 .composer-chip:disabled { opacity: .5; cursor: default; }
-.model-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 320px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-1); font-size: var(--text-sm); cursor: pointer; }
+.model-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: min(320px, 100%); height: 28px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-1); font-size: var(--text-sm); cursor: pointer; }
 .model-trigger:hover:not(:disabled), .model-trigger[aria-expanded="true"] { background: var(--bg-row-selected); }
 .model-trigger:disabled { opacity: .5; cursor: default; }
 .model-trigger.warn { color: var(--warn); }
@@ -365,7 +367,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .menu.thread-actions .menu-label span { display: block; max-width: 320px; overflow: hidden; color: var(--text-3); font: 11.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Changes panel: tokens only, header on the title bar's 42 px rhythm. ── */
-.changes { width: 420px; display: flex; flex-direction: column; min-height: 0; background: var(--bg-sidebar); border-left: 1px solid var(--border-pane); }
+.changes { width: var(--changes-panel-w, 420px); display: flex; flex-direction: column; min-height: 0; background: var(--bg-sidebar); border-left: 1px solid var(--border-pane); }
 .changes-head { height: 42px; flex: none; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--border-pane); }
 .changes-title { color: var(--text-1); font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .stat { font: 12px var(--font-mono); }
@@ -388,6 +390,11 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* ── Accessibility baseline (Phase 8) ─────────────────────────────────────────────────────────────
    Contrast: the reference's muted greys (--text-3/-muted/-4, placeholder) fall short of WCAG AA 4.5:1 and
    are kept for labels and decoration only; secondary text that carries information uses --text-info. */
+
+/* Leave room for the composer at the supported 900px minimum without changing saved pane preferences. */
+@media (max-width: 1100px) {
+  .app { --sidebar-w: 180px; --changes-panel-w: 300px; }
+}
 
 /* Every control shows a keyboard focus ring unless it styles its own (zero specificity: specific rules win). */
 :where(button, a[href], select, summary, [tabindex]:not([tabindex="-1"]), [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

@@ -129,7 +129,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}
         onPlan={(plan: boolean) => onUpdate({ plan })}
-        onModel={(model: string) => onUpdate({ model })}
+        onModel={(model, effort) => onUpdate({ model, effort })}
         onEffort={(effort) => onUpdate({ effort })}
         onAuto={(auto) => onUpdate({ auto })}
         onSend={onSend}

@@ -36,7 +36,7 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
   const [renameSignal, setRenameSignal] = useState(0);
   const inset = thread && showChanges ? CHANGES_W : 0;
   return (
-    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar" style={{ ["--changes-w" as string]: `${inset}px` }}>
+    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar" style={{ ["--changes-w" as string]: inset ? "var(--changes-panel-w, 420px)" : "0px" }}>
       <div className="titlebar-nav">
         <IconButton icon="arrow-left" label="Back" size="md" data-testid="nav-back" disabled={!canBack} onClick={onBack} />
         <IconButton icon="arrow-right" label="Forward" size="md" data-testid="nav-forward" disabled={!canForward} onClick={onForward} />

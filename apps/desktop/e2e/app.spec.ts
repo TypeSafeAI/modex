@@ -44,7 +44,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "model-picker")).toHaveText(/Scripted mock/);
   await tid(page, "model-picker").click();
   await expect(tid(page, "model-option")).toHaveCount(1);
-  await expect(tid(page, "model-menu").locator('[data-testid="model-option"][aria-selected="true"] [data-testid="model-option-title"]')).toContainText("Scripted mock");
+  await expect(tid(page, "model-menu").locator('[data-testid="model-option"][aria-checked="true"] [data-testid="model-option-title"]')).toContainText("Scripted mock");
   await page.keyboard.press("Escape");
   await expect(tid(page, "model-menu")).toHaveCount(0);
   await tid(page, "composer-input").focus();

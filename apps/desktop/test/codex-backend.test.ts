@@ -1,5 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { tmpdir } from "./helpers.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 
@@ -46,6 +50,23 @@ test("CodexBackend: lists visible models with efforts", async () => {
   assert.deepEqual(models[0]!.efforts, ["low", "high"]);
   assert.equal(models[0]!.defaultEffort, "medium");
   await backend.dispose();
+});
+
+test("model discovery racing disposal rejects instead of waiting on a disconnected server", async () => {
+  const proc = new FakeProcess();
+  fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  await backend.listModels();
+  let outcome = "pending";
+  const listing = backend.listModels().then(() => { outcome = "resolved"; }, () => { outcome = "rejected"; });
+  try {
+    await backend.dispose();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(outcome, "rejected", "model discovery outlived the disconnected server");
+    await listing;
+  } finally {
+    await backend.dispose();
+  }
 });
 
 test("CodexBackend: a turn streams deltas, command + file-change items, approvals, and completes", async () => {
@@ -303,4 +324,28 @@ test("force-stop ends an unacknowledged turn, fails other turns, and a fresh ser
 test("force-stop with no server running is a no-op", async () => {
   const backend = new CodexBackend("codex", fakeSpawn(new FakeProcess()).spawn);
   await backend.forceStop();
+});
+
+test("disposing Codex terminates commands owned by its app-server", { skip: process.platform === "win32" }, async () => {
+  const dir = tmpdir("codex-dispose-");
+  const pidFile = path.join(dir, "worker.pid");
+  const worker = `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  const script = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(worker)}], {stdio:'ignore'}); require('node:readline').createInterface({input:process.stdin}).on('line', line => { const m=JSON.parse(line); if(m.id) process.stdout.write(JSON.stringify({id:m.id,result:m.method==='model/list'?{data:[]}:{}})+'\\n'); });`;
+  let server: ChildProcess | undefined;
+  let workerPid: number | undefined;
+  const backend = new CodexBackend("fixture", ((_bin: string, _args: string[], options: SpawnOptions) => server = spawn(process.execPath, ["-e", script], options)) as unknown as typeof spawn);
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  try {
+    await backend.listModels();
+    for (let i = 0; i < 100 && !fs.existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 20));
+    workerPid = Number(fs.readFileSync(pidFile, "utf8"));
+    await backend.dispose();
+    for (let i = 0; i < 100 && alive(workerPid); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(alive(workerPid), false, "owned command survived backend disposal");
+  } finally {
+    if (workerPid && alive(workerPid)) process.kill(workerPid, "SIGKILL");
+    server?.kill("SIGKILL");
+    await backend.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -3,7 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import * as gitx from "../src/main/engine/git.js";
+import { execFileSync } from "node:child_process";
 import { gitRepo, tmpdir } from "./helpers.js";
+
+test("diff treats wildcard filenames literally", async () => {
+  const repo = gitRepo();
+  for (const name of ["file*.txt", "file-one.txt"]) fs.writeFileSync(path.join(repo, name), "before\n");
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "user.name=test", "-c", "user.email=test@example.test", "commit", "-qm", "files"], { cwd: repo });
+  fs.appendFileSync(path.join(repo, "file*.txt"), "wanted change\n");
+  fs.appendFileSync(path.join(repo, "file-one.txt"), "unrelated change\n");
+  const diff = await gitx.diff(repo, "file*.txt");
+  assert.match(diff, /wanted change/);
+  assert.doesNotMatch(diff, /unrelated change/);
+});
 
 test("status/diff/revert over tracked, untracked and deleted files", async () => {
   const repo = gitRepo();

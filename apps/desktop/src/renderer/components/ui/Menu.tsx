@@ -12,6 +12,8 @@ interface MenuProps {
   label: string;
   /** `listbox` for single-choice pickers (model), `menu` for command lists. */
   role?: MenuRole;
+  /** Choice menus can focus the checked item; mixed command menus start at the first command. */
+  focusSelected?: boolean;
   placement?: "top-start" | "bottom-start" | "top-end" | "bottom-end";
   className?: string;
   testId?: string;
@@ -29,7 +31,7 @@ const MenuContext = createContext<MenuRole>("menu");
  * - a pointer press outside the menu and trigger closes it.
  * Position it by placing it inside a `position: relative` wrapper next to the trigger.
  */
-export function Menu({ open, onClose, anchorRef, label, role = "menu", placement = "top-start", className, testId, children }: MenuProps) {
+export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", placement = "top-start", className, testId, children }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -37,7 +39,7 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", placement
   useEffect(() => {
     if (!open) return;
     const items = () => Array.from(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? []).filter((el) => !el.hasAttribute("disabled"));
-    const initial = (role === "listbox" ? items().find((el) => el.getAttribute("aria-selected") === "true") : undefined) ?? items()[0];
+    const initial = (focusSelected ? items().find((el) => el.getAttribute(role === "listbox" ? "aria-selected" : "aria-checked") === "true") : undefined) ?? items()[0];
     initial?.focus({ preventScroll: false });
 
     const onDown = (e: PointerEvent) => {
@@ -78,7 +80,7 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", placement
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [open, anchorRef, role]);
+  }, [open, anchorRef, role, focusSelected]);
 
   if (!open) return null;
   return (
