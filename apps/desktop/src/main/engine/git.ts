@@ -83,13 +83,13 @@ function countLines(s: string): number {
 
 /** Unified diff for one path; untracked files are rendered as pure additions. */
 export async function diff(cwd: string, rel: string): Promise<string> {
-  const st = await git(cwd, ["status", "--porcelain=v1", "--", rel]);
+  const st = await git(cwd, ["--literal-pathspecs", "status", "--porcelain=v1", "--", rel]);
   const code = st.stdout.slice(0, 2);
   if (code === "??") {
-    const r = await git(cwd, ["diff", "--no-index", "--", "/dev/null", rel]);
+    const r = await git(cwd, ["--literal-pathspecs", "diff", "--no-index", "--", "/dev/null", rel]);
     return r.stdout;
   }
-  const r = (await hasCommits(cwd)) ? await git(cwd, ["diff", "HEAD", "--", rel]) : await git(cwd, ["diff", "--cached", "--", rel]);
+  const r = (await hasCommits(cwd)) ? await git(cwd, ["--literal-pathspecs", "diff", "HEAD", "--", rel]) : await git(cwd, ["--literal-pathspecs", "diff", "--cached", "--", rel]);
   return r.stdout;
 }
 

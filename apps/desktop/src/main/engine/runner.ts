@@ -42,6 +42,7 @@ export interface RunnerOptions {
  */
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
+  private disposing = false;
   private readonly deleting = new Set<string>();
   private readonly removingProjects = new Set<string>();
   private readonly creating = new Map<string, Set<Promise<Thread>>>();
@@ -64,6 +65,7 @@ export class ThreadRunner {
   }
 
   async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
+    if (this.disposing) return { models: [], error: "Modex is shutting down." };
     try {
       return { models: await this.backends[id].listModels() };
     } catch (err) {
@@ -72,8 +74,11 @@ export class ThreadRunner {
   }
 
   async dispose(): Promise<void> {
+    this.disposing = true;
+    const runs = [...this.live.values()].flatMap((l) => l.run ? [l.run] : []);
     for (const t of this.live.keys()) this.stop(t);
     await Promise.all(Object.values(this.backends).map((b) => b.dispose()));
+    await Promise.allSettled(runs);
   }
 
   private slot(threadId: string): Live {
@@ -94,6 +99,7 @@ export class ThreadRunner {
   }
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
+    if (this.disposing) throw new Error("Modex is shutting down.");
     if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
     const pending = this.creating.get(projectId) ?? new Set<Promise<Thread>>();
     this.creating.set(projectId, pending);
@@ -176,6 +182,7 @@ export class ThreadRunner {
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
   async send(threadId: string, text: string): Promise<void> {
+    if (this.disposing) throw new Error("Modex is shutting down.");
     const projectId = this.o.store.thread(threadId)?.projectId;
     if (projectId && this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");

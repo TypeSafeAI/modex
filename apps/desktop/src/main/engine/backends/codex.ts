@@ -127,7 +127,10 @@ export class CodexBackend implements Backend {
   async dispose(): Promise<void> {
     const child = this.child;
     this.disconnect(new Error("codex app-server disposed"));
-    child?.kill();
+    if (child) await new Promise<void>((resolve) => {
+      child.once("close", () => resolve());
+      killGroup(child);
+    });
   }
 
   /** Mode → Codex approval policy + sandbox policy. Exported for tests. */

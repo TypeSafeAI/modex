@@ -39,8 +39,11 @@ export function seedHome(): { home: string; repo: string } {
 
 /** Launches the built app against `home`. MODEX_E2E keeps the secret store on the test cipher: CI runners have no unlocked keychain. */
 export async function launch(home: string): Promise<{ app: ElectronApplication; page: Page }> {
+  // Release verification runs the same flows against the installed bundle, including its ASAR and native modules.
+  const executablePath = process.env.MODEX_PACKAGED_APP;
   const app = await electron.launch({
-    args: [appDir],
+    executablePath,
+    args: executablePath ? [] : [appDir],
     cwd: appDir,
     env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(os.tmpdir(), "modex-e2e-no-jev-config.json") },
   });

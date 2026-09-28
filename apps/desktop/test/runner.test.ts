@@ -5,6 +5,7 @@ import path from "node:path";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
+import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import type { Thread, ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { MockProvider, type MockStep } from "@modex/core";
@@ -20,6 +21,48 @@ function harness(steps: MockStep[] = []) {
 }
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
+
+test("dispose waits for interrupted turns to finalize and persist", async () => {
+  const h = harness();
+  let finish!: (value: TurnResult) => void;
+  let started = false;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn(_text, _opts, sink) {
+    sink.delta("last live text");
+    started = true;
+    return new Promise((resolve) => { finish = resolve; });
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const project = h.store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id);
+  const run = runner.send(thread.id, "work");
+  await waitFor(() => started);
+  let disposed = false;
+  const disposal = runner.dispose().then(() => { disposed = true; });
+  try {
+    await new Promise((r) => setImmediate(r));
+    assert.equal(disposed, false, "shutdown returned before the backend stopped");
+  } finally {
+    finish({ status: "interrupted" });
+    await Promise.all([run, disposal]);
+  }
+  assert.equal(runner.status(thread.id), "idle");
+  assert.ok(new Store(h.home).items(thread.id).some((item) => item.kind === "assistant" && item.text === "last live text"));
+});
+
+test("an in-flight Auto route cannot reopen a backend during shutdown", async () => {
+  const h = harness();
+  let disposed = false;
+  let reopened = false;
+  const backend: Backend = { id: "codex", listModels: async () => { reopened ||= disposed; return []; }, dispose: async () => { disposed = true; }, runTurn: async () => ({ status: "completed" }) };
+  let runner: ThreadRunner;
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, transport: null, listModels: (id) => runner.listModels(id) });
+  runner = new ThreadRunner({ ...h, router, backends: { codex: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { backend: "codex", auto: true });
+  const run = runner.send(thread.id, "review the project");
+  await runner.dispose();
+  await run;
+  assert.equal(reopened, false, "Auto routing restarted a disposed backend");
+});
 
 test("agent mode: a prompt runs tools, edits the project, emits items, persists, and sets the title", async () => {
   const h = harness([

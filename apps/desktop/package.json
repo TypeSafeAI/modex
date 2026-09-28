@@ -1,6 +1,6 @@
 {
   "name": "@modex/desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Modex desktop \u2014 a Codex-App-style GUI: projects, parallel agent threads, worktrees, inline approvals, and a live Changes panel.",
   "license": "MIT",
   "private": true,
