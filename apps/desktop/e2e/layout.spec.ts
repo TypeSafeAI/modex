@@ -296,9 +296,11 @@ test.describe("Terminal · title bar and panel", () => {
     await expect(panel).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     const main = await box(tid(page, "main"));
+    // The panel enters with a 180 ms rise (v0.0.3), so its bottom edge sits a few px low until the
+    // animation ends; CI measured 2–3 px on a slow runner. Wait for it to settle against the pane.
+    await expect.poll(async () => { const p = await box(panel); return Math.abs(p.y + p.height - (main.y + main.height)); }).toBeLessThanOrEqual(1);
     const p = await box(panel);
     expect(Math.abs(p.x - main.x) + Math.abs(p.x + p.width - (main.x + main.width))).toBeLessThanOrEqual(2);
-    expect(Math.abs(p.y + p.height - (main.y + main.height))).toBeLessThanOrEqual(1);
     const c = await box(tid(page, "composer-box"));
     expect(Math.round(c.width)).toBe(736);
     expect(c.y + c.height).toBeLessThanOrEqual(p.y);
