@@ -647,3 +647,64 @@ test("a second Stop without a force-capable backend keeps waiting", async () => 
   await run;
   assert.equal(runner.status(thread.id), "idle");
 });
+
+test("autonaming persists a generated title without adding a conversation turn", async () => {
+  const h = harness();
+  let titles = 0;
+  const backend = Object.assign(h.backends.mock, { generateTitle: async () => { titles++; return "Fix login redirects"; } });
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try {
+    await runner.send(thread.id, "please fix the login redirect issue");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(h.store.thread(thread.id)?.title, "Fix login redirects");
+    assert.equal(new Store(h.home).thread(thread.id)?.title, "Fix login redirects");
+    await runner.send(thread.id, "also cover logout");
+    assert.equal(titles, 1);
+    assert.equal(runner.items(thread.id).filter((i) => i.kind === "user").length, 2);
+  } finally { await runner.dispose(); }
+});
+
+test("manual rename and deletion cancel pending autonaming", async () => {
+  for (const action of ["rename", "delete"] as const) {
+    const h = harness();
+    let finish!: (title: string) => void;
+    let signal: AbortSignal | undefined;
+    const backend = Object.assign(h.backends.mock, { generateTitle: (_text: string, _opts: unknown, s: AbortSignal) => {
+      signal = s;
+      return new Promise<string>((resolve) => { finish = resolve; });
+    } });
+    const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+    const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+    try {
+      await runner.send(thread.id, "fix login");
+      assert.ok(signal, "title generation did not start");
+      if (action === "rename") runner.updateThread(thread.id, { title: "My title" });
+      else await runner.deleteThread(thread.id);
+      assert.equal(signal.aborted, true);
+      finish("Generated title");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(h.store.thread(thread.id)?.title, action === "rename" ? "My title" : undefined);
+    } finally { finish?.("late title"); await runner.dispose(); }
+  }
+});
+
+test("shutdown waits for cancelled title generation to finish", async () => {
+  const h = harness();
+  let finish!: (title: null) => void;
+  let signal: AbortSignal | undefined;
+  const backend = Object.assign(h.backends.mock, { generateTitle: (_text: string, _opts: unknown, s: AbortSignal) => {
+    signal = s;
+    return new Promise<null>((resolve) => { finish = resolve; });
+  } });
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  await runner.send(thread.id, "fix login");
+  let disposed = false;
+  const closing = runner.dispose().then(() => { disposed = true; });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(signal?.aborted, true);
+    assert.equal(disposed, false);
+  } finally { finish(null); await closing; }
+});

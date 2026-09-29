@@ -1,3 +1,4 @@
+import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer } from "./types.js";
@@ -142,6 +143,10 @@ export class CodexBackend implements Backend {
     if (opts.plan || opts.mode === "chat") return { approvalPolicy: "untrusted", sandbox: "read-only", sandboxPolicy: { type: "readOnly", networkAccess: false } };
     if (opts.mode === "agent") return { approvalPolicy: "on-request", sandbox: "workspace-write", sandboxPolicy: { type: "workspaceWrite", writableRoots: roots, networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } };
     return { approvalPolicy: "never", sandbox: "danger-full-access", sandboxPolicy: { type: "dangerFullAccess" } };
+  }
+
+  generateTitle(text: string, opts: { model: string }, signal: AbortSignal): Promise<string | null> {
+    return generateTitle(this, opts, text, signal);
   }
 
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {

@@ -61,6 +61,11 @@ modex/
 - **Unsent text waits for you.** Type into a thread, look at another, come back: the text is
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
   starts empty.
+- **Threads name themselves.** A new thread takes its first message as its title right away.
+  After that first turn completes, the same CLI is asked, in a separate throwaway chat
+  conversation that never touches the transcript, for a short title, and the sidebar updates
+  when it answers. Renaming by hand or deleting the thread cancels the request, and a failed
+  or slow answer keeps the first-message title.
 - **Layout that sticks.** The sidebar and Changes panel stay open or closed across relaunches,
   and the window reopens at its last size, position and maximized state (back to the default
   size if its display is gone).

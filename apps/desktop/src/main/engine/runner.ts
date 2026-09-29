@@ -45,6 +45,8 @@ export interface RunnerOptions {
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
   private disposing = false;
+  private readonly naming = new Map<string, AbortController>();
+  private readonly titleRuns = new Set<Promise<void>>();
   private readonly deleting = new Set<string>();
   private readonly removingProjects = new Set<string>();
   private readonly creating = new Map<string, Set<Promise<Thread>>>();
@@ -77,10 +79,12 @@ export class ThreadRunner {
 
   async dispose(): Promise<void> {
     this.disposing = true;
+    for (const abort of this.naming.values()) abort.abort();
+    this.naming.clear();
     const runs = [...this.live.values()].flatMap((l) => l.run ? [l.run] : []);
     for (const t of this.live.keys()) this.stop(t);
     await Promise.all(Object.values(this.backends).map((b) => b.dispose()));
-    await Promise.allSettled(runs);
+    await Promise.allSettled([...runs, ...this.titleRuns]);
   }
 
   private slot(threadId: string): Live {
@@ -170,6 +174,8 @@ export class ThreadRunner {
   async deleteThread(threadId: string, removeWorktree = false): Promise<void> {
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted. If its CLI has not confirmed the stop, press Stop again to force it.");
     this.deleting.add(threadId);
+    this.naming.get(threadId)?.abort();
+    this.naming.delete(threadId);
     try {
       const thread = this.o.store.thread(threadId);
       const l = this.live.get(threadId);
@@ -210,9 +216,11 @@ export class ThreadRunner {
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
 
+    const shouldName = thread.title === "New thread" && !l.items.some((item) => item.kind === "user");
     this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
     if (thread.title === "New thread") this.updateThread(threadId, { title: text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread" });
 
+    const fallbackTitle = thread.title;
     const abort = new AbortController();
     l.abort = abort;
     l.streaming = null;
@@ -251,6 +259,7 @@ export class ThreadRunner {
         sink,
         abort.signal,
       );
+      if (result.status === "completed" && shouldName && !abort.signal.aborted) this.nameThread(threadId, text, fallbackTitle, backend, thread.model);
       if (auto) this.router.noteOutcome(threadId, result.status);
       if (result.status === "failed") {
         this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: result.error ?? "The turn failed.", at: new Date().toISOString() });
@@ -280,6 +289,23 @@ export class ThreadRunner {
       l.backend = null;
       l.streaming = null;
     }
+  }
+
+  private nameThread(threadId: string, text: string, fallback: string, backend: Backend, model: string): void {
+    if (!backend.generateTitle || this.disposing || this.deleting.has(threadId) || this.o.store.thread(threadId)?.title !== fallback) return;
+    const abort = new AbortController();
+    this.naming.set(threadId, abort);
+    const timer = setTimeout(() => abort.abort(), 30_000);
+    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model }, abort.signal)).then((title) => {
+      if (title && !abort.signal.aborted && !this.disposing && this.o.store.thread(threadId)?.title === fallback) {
+        this.updateThread(threadId, { title });
+      }
+    }).catch(() => { /* Naming is best-effort; keep the opening-message title. */ }).finally(() => {
+      clearTimeout(timer);
+      this.titleRuns.delete(run);
+      if (this.naming.get(threadId) === abort) this.naming.delete(threadId);
+    });
+    this.titleRuns.add(run);
   }
 
   stop(threadId: string): void {
@@ -321,6 +347,10 @@ export class ThreadRunner {
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean } = {}): Thread {
+    if (patch.title !== undefined) {
+      this.naming.get(threadId)?.abort();
+      this.naming.delete(threadId);
+    }
     // The store hands back its live object, so snapshot it before the write below mutates it.
     const live = this.o.store.thread(threadId);
     const current = live ? { ...live } : undefined;

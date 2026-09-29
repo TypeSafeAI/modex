@@ -1,3 +1,4 @@
+import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson } from "./types.js";
@@ -44,6 +45,10 @@ export class ClaudeBackend implements Backend {
     if (opts.resume) args.push("--resume", opts.resume);
     for (const d of opts.addDirs ?? []) args.push("--add-dir", d);
     return args;
+  }
+
+  generateTitle(text: string, opts: { model: string }, signal: AbortSignal): Promise<string | null> {
+    return generateTitle(this, opts, text, signal);
   }
 
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
