@@ -708,3 +708,23 @@ test("shutdown waits for cancelled title generation to finish", async () => {
     assert.equal(disposed, false);
   } finally { finish(null); await closing; }
 });
+
+test("follow-up: none while a turn runs, one cached suggestion once it completes, cleared by the next send", async () => {
+  const h = harness([{ tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] }, { content: "Added NOTE.md." }]);
+  const runner = new ThreadRunner({ ...h, router: new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null }) });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { mode: "agent" });
+  try {
+    assert.equal(await runner.followUp(thread.id), null, "an empty thread has nothing to follow up");
+    const turn = runner.send(thread.id, "add a note file");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await runner.followUp(thread.id), null, "a running turn has no suggestion yet");
+    await turn;
+    const first = await runner.followUp(thread.id);
+    assert.equal(first?.source, "heuristic");
+    assert.match(first!.text, /test|verif|review/i);
+    assert.equal(await runner.followUp(thread.id), first, "the same transcript state reuses the same answer");
+    await runner.send(thread.id, "thanks");
+    const second = await runner.followUp(thread.id);
+    assert.notEqual(second, first, "a new turn gets a new suggestion");
+  } finally { await runner.dispose(); }
+});

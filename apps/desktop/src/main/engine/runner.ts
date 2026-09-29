@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ApprovalAnswer, BackendId, Mode, ModelInfo, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
+import type { ApprovalAnswer, BackendId, FollowUp, Mode, ModelInfo, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
 import type { Backend, TurnSink } from "./backends/types.js";
@@ -21,6 +21,8 @@ interface Live {
   status: ThreadStatus;
   /** Assistant item currently receiving streamed text, if any. */
   streaming: { id: string; text: string } | null;
+  /** The follow-up suggestion for the transcript as it stands; `key` says which transcript and settings it answers. */
+  followUp?: { key: string; abort: AbortController; result: Promise<FollowUp | null> };
 }
 
 export interface RunnerOptions {
@@ -111,6 +113,27 @@ export class ThreadRunner {
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     if (this.removingProjects.has(thread.projectId)) throw new Error("This project is being removed.");
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+  }
+
+  /**
+   * A suggested next message for an idle thread, or null. Cached per transcript state: the renderer asks
+   * again on every render of an idle thread, and Jev must not be asked twice for the same turn.
+   */
+  async followUp(threadId: string): Promise<FollowUp | null> {
+    const thread = this.o.store.thread(threadId);
+    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    const l = this.slot(threadId);
+    if (l.status !== "idle") return null;
+    const user = [...l.items].reverse().find((item) => item.kind === "user");
+    if (!user || user.kind !== "user") return null;
+    const key = JSON.stringify([l.items.at(-1)?.id, thread.plan, thread.mode, thread.auto]);
+    if (l.followUp?.key === key) return l.followUp.result;
+    l.followUp?.abort.abort();
+    const abort = new AbortController();
+    const project = this.o.store.project(thread.projectId);
+    const result = this.router.followUp({ thread, text: user.text, items: [...l.items], project: { name: project?.name ?? "" } }, abort.signal);
+    l.followUp = { key, abort, result };
+    return result;
   }
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
@@ -217,6 +240,8 @@ export class ThreadRunner {
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
 
     const shouldName = thread.title === "New thread" && !l.items.some((item) => item.kind === "user");
+    l.followUp?.abort.abort();
+    l.followUp = undefined;
     this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
     if (thread.title === "New thread") this.updateThread(threadId, { title: text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread" });
 
@@ -311,6 +336,8 @@ export class ThreadRunner {
   stop(threadId: string): void {
     const l = this.live.get(threadId);
     if (!l) return;
+    l.followUp?.abort.abort();
+    l.followUp = undefined;
     for (const [itemId, resolve] of l.pending) {
       this.patchItem(threadId, itemId, { answer: "no" });
       resolve("no");

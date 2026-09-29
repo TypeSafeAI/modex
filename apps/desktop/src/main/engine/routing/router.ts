@@ -1,11 +1,12 @@
 import path from "node:path";
-import type { BackendId, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Thread, ThreadItem } from "../../../shared/types.js";
+import type { BackendId, FollowUp, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Thread, ThreadItem } from "../../../shared/types.js";
 import { SecretStore, noCipher } from "../secrets.js";
 import { ladder, tierOf, type Candidate } from "./catalog.js";
 import { Fit } from "./fit.js";
 import { cliTransport, DEFAULT_JEV_MODEL, detectJevCli, httpTransport, JevError, resolveTypesafeKey, type CliInfo, type JevTransport, type KeyResolverOptions, type ResolvedKey, type SpawnLike } from "./jev.js";
 import { judgeHeuristically, judgeWithJev, stateFor, QUESTION_SET_VERSION, type JudgeSource, type Judgments } from "./judge.js";
 import { decide, type Decision } from "./policy.js";
+import { fallbackFollowUp, FOLLOW_UP_QUESTION, FOLLOW_UPS, followUpState } from "./followup.js";
 
 export interface RouterOptions {
   home: string;
@@ -219,6 +220,35 @@ export class Router {
 
   noteOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted"): void {
     this.fit.recordOutcome(threadId, outcome);
+  }
+
+  /**
+   * After a completed turn: which of the fixed follow-up prompts fits next, or null when none does.
+   * Jev sees only typed completion facts (never assistant text, tool arguments or output) and only on
+   * Auto threads; everything else, and every failure, falls back to the heuristic pick.
+   */
+  async followUp(input: RouteInput, signal?: AbortSignal): Promise<FollowUp | null> {
+    if (signal?.aborted) return null;
+    const state = followUpState(input);
+    if (!state) return null;
+    const fallback: FollowUp = { text: FOLLOW_UPS[fallbackFollowUp(state)], source: "heuristic" };
+    if (!input.thread.auto) return fallback;
+    try {
+      const { transport } = await this.setup();
+      if (signal?.aborted) return null;
+      if (transport && !this.jevDisabled) {
+        const response = await transport({ state, model: this.o.policy().jev_model || DEFAULT_JEV_MODEL, questions: { follow_up: FOLLOW_UP_QUESTION } }, signal);
+        if (signal?.aborted) return null;
+        const answer = response.answers.follow_up;
+        if (answer?.type === "choice" && Number.isFinite(answer.confidence) && answer.confidence >= this.o.policy().min_confidence) {
+          if (answer.choice === "none") return null;
+          if (Object.hasOwn(FOLLOW_UPS, answer.choice)) return { text: FOLLOW_UPS[answer.choice as keyof typeof FOLLOW_UPS], source: "jev" };
+        }
+      }
+    } catch (err) {
+      if (err instanceof JevError && (err.code === "auth" || err.code === "billing")) this.jevDisabled = `Jev is off for this session — ${err.message} Fix the key or credits and restart Modex.`;
+    }
+    return signal?.aborted ? null : fallback;
   }
 
   /** The user picked a model by hand on an Auto thread. Returns what the fit learned, for a notice. */

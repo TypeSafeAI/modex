@@ -147,6 +147,12 @@ export interface RoutingStatus {
 
 export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto">>;
 
+/** A suggested next message for an idle thread, chosen by Jev or the built-in heuristic from typed facts about the last turn. */
+export interface FollowUp {
+  text: string;
+  source: "jev" | "heuristic";
+}
+
 export interface ModelInfo {
   id: string;
   label: string;
@@ -221,6 +227,7 @@ export interface BridgeCommands {
   "project:remove": { req: { projectId: string }; res: AppState };
   "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
+  "thread:followup": { req: { threadId: string }; res: FollowUp | null };
   "thread:send": { req: { threadId: string; text: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
   "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };

@@ -66,6 +66,13 @@ modex/
   conversation that never touches the transcript, for a short title, and the sidebar updates
   when it answers. Renaming by hand or deleting the thread cancels the request, and a failed
   or slow answer keeps the first-message title.
+- **One suggested next step.** When a turn finishes, the composer offers a single follow-up
+  (run the checks, review the changes, chase the remaining failure, finish what was asked…).
+  Tab, → or a click fills it into the empty box; sending is still your keystroke, and anything
+  you type hides it. On Auto threads Jev picks from the fixed list using typed facts about the
+  turn (edited files, ran checks, a failed tool, "next steps" in the answer) and never sees
+  the transcript; otherwise, or offline, a built-in rule picks. See
+  [docs/auto-routing.md](docs/auto-routing.md#the-follow-up-question).
 - **Layout that sticks.** The sidebar and Changes panel stay open or closed across relaunches,
   and the window reopens at its last size, position and maximized state (back to the default
   size if its display is gone).

@@ -114,6 +114,36 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await items(page, "tool").filter({ hasText: "edit CONTRIBUTING.md" }).locator('[data-testid="item-toggle"]').click();
   await expect(tid(page, "tool-output")).toContainText("A CONTRIBUTING.md");
 
+  // An idle thread offers one follow-up. It fills the box on click, Tab or → only while the box is empty,
+  // never sends by itself, and never replaces text the user typed. Offline, so the heuristic picked it.
+  const followUp = tid(page, "followup");
+  await expect(followUp).toBeVisible();
+  await expect(followUp).toHaveAttribute("data-source", "heuristic");
+  const suggested = (await tid(followUp, "followup-text").innerText()).trim();
+  expect(suggested).toMatch(/test|verif|review/i);
+  const input = tid(page, "composer-input");
+  await input.focus();
+  await input.press("Tab");
+  await expect(input).toHaveValue(suggested);
+  await expect(input).toBeFocused();
+  await expect(followUp).toHaveCount(0);
+  await expect(items(page, "user")).toHaveCount(1);
+  await input.fill("");
+  await expect(followUp).toBeVisible();
+  await input.press("ArrowRight");
+  await expect(input).toHaveValue(suggested);
+  await input.fill("My own draft");
+  await input.press("ArrowRight");
+  await expect(input).toHaveValue("My own draft");
+  await input.press("Tab");
+  await expect(input).not.toBeFocused();
+  await expect(input).toHaveValue("My own draft");
+  await input.fill("");
+  await followUp.click();
+  await expect(input).toHaveValue(suggested);
+  await expect(items(page, "user")).toHaveCount(1);
+  await input.fill("");
+
   // ⇧⌘P toggles plan mode; ⌘J hides the changes panel.
   await page.keyboard.press("Meta+Shift+p");
   await expect(tid(page, "plan-chip")).toBeVisible();

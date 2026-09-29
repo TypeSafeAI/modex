@@ -37,6 +37,8 @@ itself driving one of them.
 
 - `apps/desktop` — the Electron app (`src/main` process + backends, `src/renderer` React UI,
   `e2e/` Playwright). `packages/core` — the offline scripted engine used by demos and tests.
+- `docs/status.md` — what has shipped, what is on `main` but unreleased, what is in flight, what is
+  next. Update it in the PR that changes any of those. `docs/reviews/` holds release evidence.
 - Real models run only through the `claude` and `codex` CLIs. There is no API mode for
   coding turns; do not add one. The one network call outside the CLIs is the optional Auto
   routing judge (Jev, `apps/desktop/src/main/engine/routing/`), which answers typed questions

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
+import type { BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
+import { bridge } from "../bridge";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
@@ -43,6 +44,17 @@ export function tailPath(p: string, max = 40): string {
 export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
+  // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
+  const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
+  const suggestionKey = JSON.stringify([thread.id, thread.status, thread.plan, thread.mode, thread.auto, items.at(-1)?.id]);
+  useEffect(() => {
+    if (thread.status !== "idle" || !items.length) return;
+    let alive = true;
+    void bridge.invoke("thread:followup", { threadId: thread.id }).then((value) => {
+      if (alive) setFollowUp({ key: suggestionKey, value });
+    }).catch(() => { if (alive) setFollowUp(null); });
+    return () => { alive = false; };
+  }, [suggestionKey]);
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
   const newestUser = useRef<string | undefined>(undefined);
@@ -131,6 +143,7 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
         auto={Boolean(thread.auto)}
         models={models}
         modelsError={modelsError}
+        suggestion={followUp?.key === suggestionKey ? followUp.value : null}
         onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}
         onPlan={(plan: boolean) => onUpdate({ plan })}

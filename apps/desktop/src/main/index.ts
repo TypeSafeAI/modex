@@ -52,7 +52,7 @@ const runner = new ThreadRunner({ home, store, emit, secrets, beforeDeleteThread
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
@@ -100,6 +100,7 @@ handle("project:remove", async ({ projectId }) => {
 });
 handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
+handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
 handle("thread:send", async ({ threadId, text }) => {
   try {
     void runner.send(threadId, text).catch((err: Error) => emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: err.message, at: new Date().toISOString() } }));

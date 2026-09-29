@@ -96,6 +96,26 @@ deterministically, and every step that changes the outcome adds a reason to the 
 
 Changing the policy never requires re-asking Jev; the raw judgments are reusable.
 
+## The follow-up question
+
+After a turn completes, the composer offers one next message. The candidates are fixed
+strings in `routing/followup.ts` (verify, review, investigate, plan, explain, continue), so
+nothing the judge says can become prompt text: it only picks a key, or `none`.
+
+What leaves the process is `followUpState`: the request, the task kind from the heuristic,
+plan and mode, and four booleans about the completed turn — whether tools edited files, ran
+checks, whether any tool failed, and whether the answer mentions remaining work. Assistant
+text, tool arguments and tool output stay local; the unit test asserts the request never
+carries them. Jev is asked only on Auto threads, with the same confidence floor as routing;
+a non-Auto thread, an offline judge, a low-confidence or unknown choice, and every error fall
+back to `fallbackFollowUp`, which prefers a failed tool → investigate, plan mode → plan,
+"next steps" → continue, edits → review (checks ran) or verify (they did not), quick answer
+→ explain, else continue.
+
+The runner caches one answer per transcript state, so the renderer can ask on every render
+without asking Jev twice for the same turn. A new send or Stop cancels and clears it, and a
+turn that ended in an error or a Stop offers nothing.
+
 ## How it learns you
 
 `~/.modex/app/routing-fit.json` (`routing/fit.ts`) keeps a per-task-kind tier offset:

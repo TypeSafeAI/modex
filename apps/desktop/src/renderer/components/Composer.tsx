@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackendId, Mode, ModelInfo } from "../../shared/types";
+import type { BackendId, FollowUp, Mode, ModelInfo } from "../../shared/types";
 import { BACKENDS, MODES } from "../../shared/types";
 import { ModelMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
@@ -33,6 +33,8 @@ interface Props {
   auto: boolean;
   models: ModelInfo[];
   modelsError?: string;
+  /** A suggested next message for an idle thread; shown only while the box is empty. */
+  suggestion?: FollowUp | null;
   onBackend: (b: BackendId) => void;
   onMode: (m: Mode) => void;
   onPlan: (plan: boolean) => void;
@@ -54,7 +56,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
 
@@ -72,11 +74,26 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
     setText("");
   };
 
+  // The suggestion is an offer, never a default: it fills the box only on an explicit click, Tab or → while
+  // the box is empty, and sending still takes a separate ⏎. Any typed text hides it.
+  const canSuggest = !busy && text === "" && Boolean(suggestion);
+  const fillSuggestion = () => {
+    if (!canSuggest || !suggestion) return;
+    setText(suggestion.text);
+    ta.current?.focus();
+  };
+
   return (
     <div className="composer" data-testid="composer">
       <div className="composer-inner">
         <ContextStrip context={context} />
         <div className={`composer-box${plan ? " plan" : ""}`} data-testid="composer-box">
+          {canSuggest && (
+            <button type="button" className="followup" data-testid="followup" data-source={suggestion?.source} aria-label="Use suggested follow-up" title={suggestion?.source === "jev" ? "Suggested by Jev · Tab to use" : "Suggested follow-up · Tab to use"} onClick={fillSuggestion}>
+              <span className="followup-text" data-testid="followup-text">{suggestion?.text}</span>
+              <Kbd>⇥</Kbd>
+            </button>
+          )}
           <textarea
             ref={ta}
             data-testid="composer-input"
@@ -86,6 +103,11 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+              if (canSuggest && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "Tab" || e.key === "ArrowRight")) {
+                e.preventDefault();
+                fillSuggestion();
+                return;
+              }
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
                 e.preventDefault();
                 submit();
