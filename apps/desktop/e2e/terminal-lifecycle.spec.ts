@@ -9,6 +9,13 @@ function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+// Cleanup only: the process can exit between the liveness check and the kill (e.g. a shell whose pty
+// was just SIGKILLed), so a vanished PID is fine. Anything else still fails the test.
+function killIfAlive(pid: number): void {
+  if (!alive(pid)) return;
+  try { process.kill(pid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+}
+
 test("terminal sizing reports its actual container limit after a window resize", async () => {
   const { home, repo } = seedHome();
   const { app, page } = await launch(home);
@@ -71,7 +78,7 @@ for (const action of ["close", "thread deletion", "project removal", "quit"] as 
         expect(state.threads).toHaveLength(0);
       }
     } finally {
-      if (pid && alive(pid)) process.kill(pid, "SIGKILL");
+      if (pid) killIfAlive(pid);
       await app?.close();
       fs.rmSync(home, { recursive: true, force: true });
       fs.rmSync(repo, { recursive: true, force: true });

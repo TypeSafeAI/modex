@@ -343,7 +343,8 @@ test("disposing Codex terminates commands owned by its app-server", { skip: proc
     for (let i = 0; i < 100 && alive(workerPid); i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(alive(workerPid), false, "owned command survived backend disposal");
   } finally {
-    if (workerPid && alive(workerPid)) process.kill(workerPid, "SIGKILL");
+    // The worker can exit between the check and the kill; only a vanished PID is tolerated.
+    if (workerPid && alive(workerPid)) try { process.kill(workerPid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
     server?.kill("SIGKILL");
     await backend.dispose();
     fs.rmSync(dir, { recursive: true, force: true });

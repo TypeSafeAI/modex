@@ -16,6 +16,13 @@ function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+// Cleanup only: the process can exit between the liveness check and the kill (e.g. a shell whose pty
+// was just SIGKILLed), so a vanished PID is fine. Anything else still fails the test.
+function killIfAlive(pid: number): void {
+  if (!alive(pid)) return;
+  try { process.kill(pid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+}
+
 async function waitForPid(file: string): Promise<number> {
   for (let i = 0; i < 300; i++) {
     const pid = fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8")) : 0;
@@ -55,7 +62,7 @@ for (const shell of ["/bin/bash", "/bin/zsh"]) {
       assert.ok(output.includes("__SHELL_READY__"), "shell did not regain foreground input");
     } finally {
       try { await stopTerminalProcess(pty); }
-      finally { if (child && alive(child)) process.kill(child, "SIGKILL"); fs.rmSync(cwd, { recursive: true, force: true }); }
+      finally { if (child) killIfAlive(child); fs.rmSync(cwd, { recursive: true, force: true }); }
     }
   });
 }
@@ -96,7 +103,7 @@ test("supervisor death without a cleanup receipt never authorizes deletion", { s
     await assert.rejects(manager.close("one"), /without confirming cleanup/);
     await assert.rejects(manager.dispose(), /without confirming cleanup/);
   } finally {
-    if (alive(shell)) process.kill(shell, "SIGKILL");
+    killIfAlive(shell);
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 });
@@ -144,7 +151,7 @@ for (const action of ["close", "dispose", "shell exit"] as const) {
       // A failing regression must never leave its intentionally stubborn workers behind.
       try { await manager.dispose(); }
       finally {
-        for (const pid of children) if (alive(pid)) process.kill(pid, "SIGKILL");
+        for (const pid of children) killIfAlive(pid);
         for (const pty of ptys) if (alive(pty.pid)) pty.kill("SIGKILL");
         fs.rmSync(cwd, { recursive: true, force: true });
       }
