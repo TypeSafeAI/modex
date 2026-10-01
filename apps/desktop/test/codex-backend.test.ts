@@ -350,3 +350,36 @@ test("disposing Codex terminates commands owned by its app-server", { skip: proc
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("CodexBackend: approvals carry a structured action; a rule's 'yes' is accept, never acceptForSession", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  // "yes" is what the approval gate answers for an allow rule.
+  const { sink, requests } = collectSink(["yes", "yes", "yes", "yes"]);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"turn/start"'));
+  const n = (method: string, params: Record<string, unknown>) => proc.emitLine({ method, params: { threadId, turnId, ...params } });
+  const decision = async (id: number) => (JSON.parse(await proc.waitFor((l) => l.startsWith(`{"id":${id},"result"`))) as { result: { decision: string } }).result.decision;
+
+  proc.emitLine({ id: 0, method: "item/commandExecution/requestApproval", params: { threadId, turnId, itemId: "c1", command: "/bin/zsh -lc 'npm test'", cwd: "/repo" } });
+  assert.equal(await decision(0), "accept");
+  n("item/started", { item: { type: "fileChange", id: "f1", changes: [{ path: "src/a.ts", kind: { type: "update" }, diff: "-old\n+SECRET BODY" }], status: "inProgress" } });
+  proc.emitLine({ id: 1, method: "item/fileChange/requestApproval", params: { threadId, turnId, itemId: "f1", reason: "edit" } });
+  assert.equal(await decision(1), "accept");
+  proc.emitLine({ id: 2, method: "item/fileChange/requestApproval", params: { threadId, turnId, itemId: "f2", grantRoot: "/etc" } });
+  assert.equal(await decision(2), "accept");
+  proc.emitLine({ id: 3, method: "item/permissions/requestApproval", params: { threadId, turnId, itemId: "p1", permissions: { network: true } } });
+  assert.equal(await decision(3), "accept");
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
+  await run;
+
+  assert.deepEqual(requests.map((r) => r.action), [
+    { backend: "codex", tool: "command", title: "npm test", cwd: "/repo", input: { command: "npm test" } },
+    { backend: "codex", tool: "fileChange", title: "apply file changes", input: { paths: ["src/a.ts"] } },
+    { backend: "codex", tool: "fileChange", title: "apply file changes", input: { grantRoot: "/etc" }, escalation: true },
+    { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true },
+  ]);
+  assert.ok(!JSON.stringify(requests.map((r) => r.action)).includes("SECRET BODY"), "the patch body never enters the action");
+  await backend.dispose();
+});

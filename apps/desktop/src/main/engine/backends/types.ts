@@ -19,11 +19,29 @@ export interface ToolUpdate {
   durationMs?: number;
 }
 
+/**
+ * What a pending approval is about, in structured form, so the approval gate never has to parse
+ * the question string. `input` is the raw tool input: the gate digests it and never sends it as-is.
+ */
+export interface ApprovalAction {
+  backend: BackendId;
+  /** Backend tool name: "Bash", "Edit", "command", "fileChange", "permissions", … */
+  tool: string;
+  /** Short human title, e.g. "$ npm test" or "edit src/app.ts". */
+  title: string;
+  cwd?: string;
+  /** Raw tool input. The gate digests this; it is never sent as-is. */
+  input?: Record<string, unknown>;
+  /** Sandbox/permission escalation (Codex permissions request, grantRoot). Only a human may approve it. */
+  escalation?: boolean;
+}
+
 export interface ApprovalRequest {
   question: string;
   detail?: string;
   /** Whether the backend can honour an "always" answer for this request. */
   canAlways: boolean;
+  action?: ApprovalAction;
 }
 
 /** Callbacks a backend uses to report one turn to the ThreadRunner. */

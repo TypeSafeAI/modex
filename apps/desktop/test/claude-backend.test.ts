@@ -121,3 +121,26 @@ test("Stop waits for the Claude process to close before settling", async () => {
   proc.close(null);
   assert.deepEqual(await run, { status: "interrupted" });
 });
+
+test("ClaudeBackend: can_use_tool carries a structured action; a rule's 'yes' allows without updatedPermissions", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  // "yes" is what the approval gate answers for an allow rule; the CLI offered a permission suggestion anyway.
+  const { sink, requests } = collectSink(["yes", "yes"]);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  const suggestion = [{ type: "addRules", rules: [{ toolName: "Bash" }], behavior: "allow", destination: "session" }];
+  proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "npm test" }, permission_suggestions: suggestion } });
+  const r1 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r1"'))) as { response: { response: { behavior: string; updatedPermissions?: unknown } } };
+  assert.equal(r1.response.response.behavior, "allow");
+  assert.equal(r1.response.response.updatedPermissions, undefined, "a one-off yes never widens permissions");
+  proc.emitLine({ type: "control_request", request_id: "r2", request: { subtype: "can_use_tool", tool_name: "Edit", input: { file_path: "src/a.ts", old_string: "a", new_string: "b" } } });
+  await proc.waitFor((l) => l.includes('"request_id":"r2"'));
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "ok" });
+  proc.close(0);
+  await run;
+  assert.deepEqual(requests.map((r) => r.action), [
+    { backend: "claude", tool: "Bash", title: "$ npm test", cwd: "/repo", input: { command: "npm test" } },
+    { backend: "claude", tool: "Edit", title: "edit src/a.ts", cwd: "/repo", input: { file_path: "src/a.ts", old_string: "a", new_string: "b" } },
+  ]);
+});

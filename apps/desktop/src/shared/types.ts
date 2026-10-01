@@ -44,7 +44,7 @@ export type ThreadItem =
   | { id: string; kind: "user"; text: string; at: string }
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string }
-  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; at: string }
+  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
@@ -70,6 +70,47 @@ export interface Settings {
   mock_script?: string;
   /** Auto routing (Jev) policy and bounds. */
   routing: RoutingPolicy;
+  /** Plain-language rules for which approvals the agent may get without asking. */
+  approval_rules: ApprovalRule[];
+  /** Whether and how the rules answer approvals before they reach a human. */
+  approval_gate: ApprovalGateConfig;
+}
+
+export type RuleDecision = "allow" | "ask" | "never";
+
+export interface ApprovalRule {
+  id: string;
+  /** Plain language: completes "When the agent wants to …" e.g. "run the test suite". */
+  when: string;
+  decision: RuleDecision;
+  /** Optional deterministic matcher, works without Jev: "Bash: npm test*", "command: git status". */
+  match?: string;
+  /** Absent = every project; else absolute project root. */
+  project?: string;
+  enabled: boolean;
+}
+
+export interface ApprovalGateConfig {
+  enabled: boolean;
+  /** A rule judged by Jev applies when its probability is at least this. */
+  threshold: number;
+  /** How long the gate waits for Jev before falling back to exact-match rules only. */
+  timeout_ms: number;
+}
+
+/** Off until the Settings UI ships; turning it on is a separate change. */
+export const DEFAULT_APPROVAL_GATE: ApprovalGateConfig = { enabled: false, threshold: 0.8, timeout_ms: 3000 };
+
+/** Why an approval was answered (or asked) by a rule rather than left to the user alone. */
+export interface ApprovalReceipt {
+  source: "rule";
+  ruleId: string;
+  when: string;
+  decision: RuleDecision;
+  via: "match" | "jev";
+  p?: number;
+  ms: number;
+  downgraded?: "destructive" | "escalation" | "jev-unavailable";
 }
 
 /**

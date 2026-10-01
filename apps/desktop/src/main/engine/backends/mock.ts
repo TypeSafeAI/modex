@@ -1,5 +1,5 @@
 import { Agent, MockProvider, defaultConfig, systemPrompt, type ModexConfig, type UI } from "@modex/core";
-import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { ApprovalAction, Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 
 /**
  * Offline backend: the bundled @modex/core engine driven by a scripted MockProvider.
@@ -33,7 +33,7 @@ export class MockBackend implements Backend {
       tool: () => {},
       warn: (m) => sink.notice("warn", m),
       error: (m) => sink.notice("error", m),
-      confirm: (question, detail) => sink.approval({ question, detail, canAlways: true }),
+      confirm: (question, detail) => sink.approval({ question, detail, canAlways: true, action: mockAction(question, opts.cwd) }),
       prompt: async () => null,
       close: () => {},
     };
@@ -63,4 +63,22 @@ export class MockBackend implements Backend {
       return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message };
     }
   }
+}
+
+/**
+ * The scripted engine only hands its UI a question string, so the action is recovered from the
+ * shapes @modex/core asks in: "Allow shell: <cmd>?", "Allow <op> <path>?", and the sandbox retry.
+ */
+export function mockAction(question: string, cwd?: string): ApprovalAction {
+  const base = { backend: "mock" as const, ...(cwd ? { cwd } : {}) };
+  const retry = /^The sandbox blocked "(.*)"\. Retry without the sandbox\?$/s.exec(question);
+  if (retry) return { ...base, tool: "shell", title: `$ ${retry[1]}`, input: { command: retry[1] }, escalation: true };
+  const shell = /^Allow shell: (.*)\?$/s.exec(question);
+  if (shell) return { ...base, tool: "shell", title: `$ ${shell[1]}`, input: { command: shell[1] } };
+  const file = /^Allow (write|add|update|delete|move) (.*)\?$/s.exec(question);
+  if (file) {
+    const target = file[2]!.split(" → ")[0]!;
+    return { ...base, tool: file[1]!, title: `${file[1]} ${file[2]}`, input: { path: target } };
+  }
+  return { ...base, tool: "unknown", title: question.replace(/^Allow /, "").replace(/\?$/, "") };
 }

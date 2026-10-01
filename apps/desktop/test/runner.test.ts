@@ -728,3 +728,128 @@ test("follow-up: none while a turn runs, one cached suggestion once it completes
     assert.notEqual(second, first, "a new turn gets a new suggestion");
   } finally { await runner.dispose(); }
 });
+
+/** A backend that asks for one approval with a structured action and records the answer it gets. */
+function asking(action: NonNullable<Parameters<TurnSink["approval"]>[0]["action"]>, answers: string[]): Backend {
+  return { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink) {
+    answers.push(await sink.approval({ question: `Allow ${action.title}?`, detail: "detail", canAlways: true, action }));
+    sink.assistant("done");
+    return { status: "completed" };
+  } };
+}
+
+const statusesOf = (events: ThreadEvent[]) => events.filter((e) => e.type === "status").map((e) => (e as { status: string }).status);
+
+test("approval gate: an exact-match allow answers 'yes' (never 'always'), lands answered with a receipt, and never waits", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "t", when: "run the test suite", decision: "allow", match: "Bash: npm test*", enabled: true }] });
+  const answers: string[] = [];
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: asking({ backend: "claude", tool: "Bash", title: "$ npm test", input: { command: "npm test" } }, answers) } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "test it");
+  assert.deepEqual(answers, ["yes"]);
+  const card = runner.items(thread.id).find((i) => i.kind === "approval") as Extract<ThreadItem, { kind: "approval" }>;
+  assert.equal(card.answer, "yes");
+  assert.deepEqual({ ...card.decidedBy, ms: 0 }, { source: "rule", ruleId: "t", when: "run the test suite", decision: "allow", via: "match", p: 1, ms: 0 });
+  assert.deepEqual(statusesOf(h.events), ["running", "idle"], "the thread never waited on a human");
+  assert.equal(new Store(h.home).items(thread.id).find((i) => i.kind === "approval")?.answer, "yes", "the answered card persists");
+});
+
+test("approval gate: a never rule refuses with a receipt; the mock engine's write is not applied", async () => {
+  const h = harness([
+    { tool_calls: [{ name: "write_file", arguments: { path: "x.txt", content: "x" } }] },
+    { content: "understood" },
+  ]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "n", when: "write text files", decision: "never", match: "write: write *.txt", enabled: true }] });
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
+  const runner = new ThreadRunner({ ...h, router });
+  const thread = await runner.createThread(project.id, { mode: "chat" });
+  await runner.send(thread.id, "write x.txt");
+  assert.equal(fs.existsSync(path.join(repo, "x.txt")), false);
+  const card = runner.items(thread.id).find((i) => i.kind === "approval") as Extract<ThreadItem, { kind: "approval" }>;
+  assert.equal(card.answer, "no");
+  assert.equal(card.decidedBy?.decision, "never");
+  assert.ok(!statusesOf(h.events).includes("waiting"));
+  assert.match((runner.items(thread.id).find((i) => i.kind === "tool") as { output?: string }).output ?? "", /not approved/);
+});
+
+test("approval gate: an ask rule keeps today's card, with the rule attached", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "a", when: "touch CI config", decision: "ask", match: "Edit: edit .github/*", enabled: true }] });
+  const answers: string[] = [];
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: asking({ backend: "claude", tool: "Edit", title: "edit .github/workflows/ci.yml", input: { file_path: ".github/workflows/ci.yml" } }, answers) } });
+  const thread = await runner.createThread(project.id);
+  const done = runner.send(thread.id, "edit ci");
+  const card = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval")) as Extract<ThreadItem, { kind: "approval" }>;
+  assert.equal(runner.status(thread.id), "waiting");
+  assert.equal(card.answer, undefined);
+  assert.equal(card.decidedBy?.decision, "ask");
+  assert.equal(card.decidedBy?.ruleId, "a");
+  runner.answer(thread.id, card.id, "always");
+  await done;
+  assert.deepEqual(answers, ["always"], "a human may still answer always");
+});
+
+test("approval gate: nothing applies, or the gate is off → today's card with no receipt", async () => {
+  for (const enabled of [true, false]) {
+    const h = harness();
+    const project = h.store.addProject(gitRepo());
+    h.store.updateSettings({ approval_gate: { enabled, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "x", when: "push", decision: enabled ? "never" : "allow", match: "Bash: git push*", enabled: true }, { id: "y", when: "tests", decision: "allow", match: enabled ? "Bash: pytest*" : "Bash: npm test*", enabled: true }] });
+    const answers: string[] = [];
+    const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
+    const runner = new ThreadRunner({ ...h, router, backends: { mock: asking({ backend: "claude", tool: "Bash", title: "$ npm test", input: { command: "npm test" } }, answers) } });
+    const thread = await runner.createThread(project.id);
+    const done = runner.send(thread.id, "go");
+    const card = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval")) as Extract<ThreadItem, { kind: "approval" }>;
+    assert.equal(runner.status(thread.id), "waiting", `enabled=${enabled}`);
+    assert.equal("decidedBy" in card, false, `enabled=${enabled}`);
+    runner.answer(thread.id, card.id, "yes");
+    await done;
+    assert.deepEqual(answers, ["yes"]);
+  }
+});
+
+test("approval gate: rules without a match go to Jev through the Router's own transport", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "j", when: "run the test suite", decision: "allow", enabled: true }] });
+  const states: unknown[] = [];
+  const transport = async (req: { state: unknown; questions: Record<string, unknown> }) => {
+    states.push(req.state);
+    return { answers: { destructive: { type: "noul" as const, noul: 0.05 }, rule_0: { type: "noul" as const, noul: 0.93 } } };
+  };
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport });
+  const answers: string[] = [];
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: asking({ backend: "claude", tool: "Bash", title: "$ npm test", input: { command: "npm test" } }, answers) } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "test it");
+  assert.deepEqual(answers, ["yes"]);
+  const card = runner.items(thread.id).find((i) => i.kind === "approval") as Extract<ThreadItem, { kind: "approval" }>;
+  assert.deepEqual([card.decidedBy?.via, card.decidedBy?.p], ["jev", 0.93]);
+  assert.equal((states[0] as { command: string }).command, "npm test");
+  assert.ok(!statusesOf(h.events).includes("waiting"));
+});
+
+test("approval gate: stopping while Jev is deciding answers 'no' and adds no card", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 10_000 }, approval_rules: [{ id: "j", when: "anything", decision: "allow", enabled: true }] });
+  let asked = false;
+  const transport = (_req: unknown, signal?: AbortSignal) => { asked = true; return new Promise<never>((_, reject) => signal?.addEventListener("abort", () => reject(new Error("aborted")))); };
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport });
+  const answers: string[] = [];
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: asking({ backend: "claude", tool: "Bash", title: "$ ls", input: { command: "ls" } }, answers) } });
+  const thread = await runner.createThread(project.id);
+  const done = runner.send(thread.id, "go");
+  await waitFor(() => asked || undefined);
+  runner.stop(thread.id);
+  await done;
+  assert.deepEqual(answers, ["no"]);
+  assert.equal(runner.items(thread.id).some((i) => i.kind === "approval"), false);
+});
