@@ -4,6 +4,13 @@ From v0.0.5 every release artifact is signed with a Developer ID Application cer
 hardened-runtime enabled, notarized by Apple and stapled, so Gatekeeper opens it without a
 warning on a fresh Mac. v0.0.1–v0.0.4 were ad-hoc signed and needed a right-click → Open.
 
+**Signing team.** Releases are signed and notarized as **Soul Protocol LLC (team
+`9LR8Z8UQ9X`)**, which is the name Gatekeeper and `codesign -dvv` show. This was a deliberate
+choice (2026-10-01), so a separate TypeSafeAI identity is not planned. If that changes, issue a
+new Developer ID certificate and a Developer-role API key for the new team, update
+`.env.release` and the `release-signing` secrets, and note the switch in the release notes,
+since users will see a different signer.
+
 Two paths produce the same artifacts: `scripts/release-mac.sh` on a maintainer's Mac, and the
 `Release` workflow on a `v*` tag push. Both end in the same verification, and both fail closed:
 a missing credential stops the run rather than falling back to an unsigned build.
