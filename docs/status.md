@@ -69,10 +69,17 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
   not name threads and e2e runs without a key; only the heuristic path is exercised.
-- **A terminal-cleanup unit test can fail with `write EPIPE`.** *supervisor death without a
-  cleanup receipt never authorizes deletion* failed with EPIPE on `main` CI for `c9dcc7d` (#55),
-  even with #55's ESRCH fix in. CI on the next commit passed. The cause has not been
-  investigated.
+- **Terminal-cleanup unit tests fail intermittently on CI.** Two tests in
+  `test/terminal-cleanup.test.ts` have each failed once on a commit that did not touch them,
+  and the same code passed in its other CI runs:
+  - *supervisor death without a cleanup receipt never authorizes deletion* failed with
+    `write EPIPE` on `main` for `c9dcc7d` (#55), even with #55's ESRCH fix in.
+  - *cleanup timeout retains ownership and a later close can retry* failed with `kill ESRCH`
+    on #63, a docs-only change. The supervisor it had stopped with `SIGSTOP` was already
+    gone by the time its `finally` sent `SIGCONT`. That throw also hides whatever the test
+    body saw.
+
+  Neither has been investigated.
 
 ## Next
 
