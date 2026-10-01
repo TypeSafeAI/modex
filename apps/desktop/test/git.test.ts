@@ -64,6 +64,49 @@ test("discarding a staged rename restores its source including destination edits
   assert.deepEqual((await gitx.status(repo)).files, []);
 });
 
+test("diff for a renamed file renders rename and modified lines, not full addition", async () => {
+  const repo = gitRepo();
+  await gitx.git(repo, ["mv", "README.md", "renamed.md"]);
+  fs.appendFileSync(path.join(repo, "renamed.md"), "new changes\n");
+  const diff = await gitx.diff(repo, "renamed.md");
+  assert.match(diff, /rename from README\.md/);
+  assert.match(diff, /rename to renamed\.md/);
+  assert.match(diff, /\+new changes/);
+  assert.doesNotMatch(diff, /--- \/dev\/null/);
+});
+
+test("diff for a heavily rewritten renamed file renders exactly one diff header", async () => {
+  const repo = gitRepo();
+  await gitx.git(repo, ["mv", "README.md", "renamed.md"]);
+  fs.writeFileSync(path.join(repo, "renamed.md"), "completely different content\nrewritten entirely\n");
+  const diff = await gitx.diff(repo, "renamed.md");
+  const headers = diff.match(/^diff --git /gm) || [];
+  assert.equal(headers.length, 1);
+  assert.match(diff, /\+completely different content/);
+  assert.doesNotMatch(diff, /deleted file mode/);
+});
+
+test("diff for a pure rename shows similarity and rename metadata", async () => {
+  const repo = gitRepo();
+  await gitx.git(repo, ["mv", "README.md", "renamed.md"]);
+  const diff = await gitx.diff(repo, "renamed.md");
+  assert.match(diff, /similarity index 100%/);
+  assert.match(diff, /rename from README\.md/);
+  assert.match(diff, /rename to renamed\.md/);
+});
+
+test("diff from a project subdirectory resolves relative paths", async () => {
+  const repo = gitRepo();
+  const sub = path.join(repo, "packages", "app");
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, "test.txt"), "hello\n");
+  await gitx.git(repo, ["add", "."]);
+  await gitx.git(repo, ["-c", "commit.gpgsign=false", "commit", "-m", "sub"]);
+  fs.appendFileSync(path.join(sub, "test.txt"), "world\n");
+  const diff = await gitx.diff(sub, "packages/app/test.txt");
+  assert.match(diff, /\+world/);
+});
+
 test("discarding a rename protects a newly recreated source", async () => {
   const repo = gitRepo();
   await gitx.git(repo, ["mv", "README.md", "renamed.md"]);

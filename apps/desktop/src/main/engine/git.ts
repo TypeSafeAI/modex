@@ -31,7 +31,13 @@ async function hasCommits(cwd: string): Promise<boolean> {
 export async function status(cwd: string): Promise<ChangesSnapshot> {
   if (!(await isRepo(cwd))) return { cwd, isRepo: false, branch: null, files: [] };
   const [branch, entries, committed] = await Promise.all([currentBranch(cwd), statusEntries(cwd), hasCommits(cwd)]);
-  const files: ChangedFile[] = entries.map(({ path, code }) => ({ path, code, additions: 0, deletions: 0 }));
+  const files: ChangedFile[] = entries.map(({ path, code, original }) => ({
+    path,
+    code,
+    ...(code.includes("R") && original ? { original } : {}),
+    additions: 0,
+    deletions: 0,
+  }));
   const byPath = new Map(files.map((file) => [file.path, file]));
   const numstat = await git(cwd, ["diff", "--numstat", "-z", ...(committed ? ["HEAD"] : ["--cached"]), "--"]);
   const counts = numstat.stdout.split("\0");
@@ -81,23 +87,80 @@ function countLines(s: string): number {
   return s.split("\n").length - (s.endsWith("\n") ? 1 : 0);
 }
 
-/** Unified diff for one path; untracked files are rendered as pure additions. */
-export async function diff(cwd: string, rel: string): Promise<string> {
-  const st = await git(cwd, ["--literal-pathspecs", "status", "--porcelain=v1", "--", rel]);
-  const code = st.stdout.slice(0, 2);
-  if (code === "??") {
-    const r = await git(cwd, ["--literal-pathspecs", "diff", "--no-index", "--", "/dev/null", rel]);
-    return r.stdout;
+export function workspaceRel(cwd: string, targetPath: string): { abs: string; relative: string } {
+  const abs = path.resolve(cwd, targetPath);
+  if (!abs.startsWith(path.resolve(cwd) + path.sep) && abs !== path.resolve(cwd)) {
+    throw new Error(`refusing to access outside the workspace: ${targetPath}`);
   }
-  const r = (await hasCommits(cwd)) ? await git(cwd, ["--literal-pathspecs", "diff", "HEAD", "--", rel]) : await git(cwd, ["--literal-pathspecs", "diff", "--cached", "--", rel]);
-  return r.stdout;
+  const relative = path.relative(cwd, abs).split(path.sep).join("/");
+  return { abs, relative };
+}
+
+export async function repoContext(cwd: string): Promise<{ root: string; prefix: string }> {
+  const [rootRes, prefixRes] = await Promise.all([
+    git(cwd, ["rev-parse", "--show-toplevel"]),
+    git(cwd, ["rev-parse", "--show-prefix"]),
+  ]);
+  const root = rootRes.code === 0 && rootRes.stdout.trim() ? rootRes.stdout.trim() : cwd;
+  const prefix = prefixRes.code === 0 ? prefixRes.stdout.trim() : "";
+  return { root, prefix };
+}
+
+function toRepoRel(prefix: string, p: string): string {
+  if (prefix && p.startsWith(prefix)) return p;
+  return prefix ? path.posix.join(prefix, p) : p;
+}
+
+/** Unified diff for one path; untracked files are rendered as pure additions. */
+export async function diff(cwd: string, rel: string, original?: string): Promise<string> {
+  try {
+    const { root, prefix } = await repoContext(cwd);
+    const repoRel = toRepoRel(prefix, rel);
+    let orig = original ? toRepoRel(prefix, original) : undefined;
+    let code: string | undefined;
+
+    if (orig === undefined) {
+      try {
+        const entry = (await statusEntries(root)).find((file) => file.path === repoRel);
+        if (entry?.code.includes("R")) orig = entry.original;
+        code = entry?.code;
+      } catch {
+        /* ignore status failure on missing folders */
+      }
+    }
+
+    if (code === "??") {
+      const r = await git(root, ["--literal-pathspecs", "diff", "--no-index", "--", "/dev/null", repoRel]);
+      return r.stdout;
+    }
+
+    const committed = await hasCommits(root);
+    const target = committed ? "HEAD" : "--cached";
+
+    if (orig) {
+      const r = await git(root, ["--literal-pathspecs", "diff", "-M", target, "--", orig, repoRel]);
+      const headers = r.stdout.match(/^diff --git /gm) || [];
+      if (headers.length === 1) {
+        return r.stdout;
+      }
+      // If rewrite similarity dropped below git's rename threshold, fall back to comparing
+      // the original HEAD blob directly against the destination file so there is exactly one diff header.
+      if (committed) {
+        const fallback = await git(root, ["--literal-pathspecs", "diff", `HEAD:${orig}`, repoRel]);
+        if (fallback.stdout) return fallback.stdout;
+      }
+    }
+
+    const r = await git(root, ["--literal-pathspecs", "diff", target, "--", repoRel]);
+    return r.stdout;
+  } catch {
+    return "";
+  }
 }
 
 /** Discards changes to one path (tracked → checkout from HEAD; untracked → delete). Destructive. */
 export async function revert(cwd: string, rel: string): Promise<void> {
-  const abs = path.resolve(cwd, rel);
-  if (!abs.startsWith(path.resolve(cwd) + path.sep)) throw new Error(`refusing to revert outside the workspace: ${rel}`);
-  const relative = path.relative(cwd, abs).split(path.sep).join("/");
+  const { abs, relative } = workspaceRel(cwd, rel);
   const entry = (await statusEntries(cwd)).find((file) => file.path === relative);
   if (!entry) return;
   const code = entry.code;

@@ -123,7 +123,7 @@ handle("project:branch", async ({ projectId }) => {
   return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
 });
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
-handle("changes:diff", ({ threadId, path: rel }) => gitx.diff(cwdFor(threadId), rel));
+handle("changes:diff", ({ threadId, path: rel, original }) => gitx.diff(cwdFor(threadId), rel, original));
 handle("changes:revert", async ({ threadId, path: rel }) => {
   const cwd = cwdFor(threadId);
   await gitx.revert(cwd, rel);
