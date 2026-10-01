@@ -70,12 +70,16 @@ Rules that keep this safe:
 ## Running a release locally
 
 ```sh
-cp .env.release.example .env.release   # once; fill in the four values
+cp .env.release.example .env.release   # once, in the primary checkout; fill in the values
+scripts/worktree.sh new release-<ver>  # builds run in a worktree with a fresh install
+cd .worktrees/release-<ver>
 scripts/release-mac.sh                 # build → sign → notarize → staple → verify → SHA256SUMS.txt
 scripts/release-mac.sh --verify        # re-run only the checks on apps/desktop/release/
 ```
 
-Notarization usually takes one to three minutes. The verify step prints the team identifier,
+The script refuses to build in the primary checkout, checks `node_modules` is complete before
+it touches a credential, and reads `.env.release` from the worktree or, failing that, from the
+primary checkout. Notarization usually takes one to three minutes. The verify step prints the team identifier,
 the Gatekeeper verdict (`source=Notarized Developer ID`), the stapler result for the app, the
 DMG and the app inside the ZIP, and the checksums.
 

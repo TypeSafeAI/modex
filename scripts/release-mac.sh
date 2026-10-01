@@ -22,11 +22,21 @@ mode="${1:-build}"
 say() { printf '\033[1m== %s\033[0m\n' "$*"; }
 die() { printf 'release-mac: %s\n' "$*" >&2; exit 1; }
 
+# Releases build in a worktree (AGENTS.md); the primary checkout only receives `git pull` and its
+# node_modules is not kept complete. Keep one .env.release in the primary checkout: a worktree
+# without its own falls back to that one.
+primary="$(cd "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+if [ "$mode" != "--verify" ] && [ -z "${MODEX_RELEASE_CI:-}" ] && [ "$root" = "$primary" ]; then
+  die "run this from a release worktree, not the primary checkout: scripts/worktree.sh new release-<version>, cd into it, re-run"
+fi
+env_file="$root/.env.release"
+[ -f "$env_file" ] || env_file="$primary/.env.release"
+
 # Re-exec under `op run` so secret references in .env.release are resolved in memory.
-if [ -z "${MODEX_RELEASE_ENV_LOADED:-}" ] && [ -f "$root/.env.release" ]; then
-  command -v op >/dev/null || die ".env.release present but the 1Password CLI (op) is not installed"
+if [ -z "${MODEX_RELEASE_ENV_LOADED:-}" ] && [ -f "$env_file" ]; then
+  command -v op >/dev/null || die "$env_file present but the 1Password CLI (op) is not installed"
   export MODEX_RELEASE_ENV_LOADED=1
-  exec op run --env-file="$root/.env.release" -- "$0" "$@"
+  exec op run --env-file="$env_file" -- "$0" "$@"
 fi
 
 [ "$(uname)" = Darwin ] || die "macOS only"
@@ -90,6 +100,12 @@ case "$mode" in
   *) die "unknown argument: $mode";;
 esac
 
+say "dependencies"
+for dep in node-pty electron electron-builder @electron/osx-sign; do
+  [ -f "$root/node_modules/$dep/package.json" ] || die "node_modules/$dep is missing; run \`npm ci\` in $root first"
+done
+echo "node_modules complete"
+
 say "credentials"
 : "${MODEX_SIGN_IDENTITY:?set MODEX_SIGN_IDENTITY to the Developer ID Application identity}"
 if [ "$notarize" = true ]; then
@@ -132,7 +148,8 @@ say "build, sign${notarize:+, notarize, staple}"
 # into a temporary keychain and signs with the identity found there, so CSC_NAME would not resolve.
 # electron-builder takes the name without the "Developer ID Application:" prefix and adds it back.
 if [ -z "${MODEX_RELEASE_CI:-}" ]; then export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"; fi
-(cd "$desktop" && npm run dist:release -- -c.mac.notarize=$notarize)
+if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release)
+else (cd "$desktop" && npm run dist:release -- -c.mac.notarize=false); fi
 
 verify "$notarize"
 say "done: apps/desktop/release/"
