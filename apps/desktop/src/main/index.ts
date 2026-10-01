@@ -102,14 +102,27 @@ handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) =>
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
 handle("thread:send", async ({ threadId, text }) => {
+  let earlyError: string | null = null;
+  let running = true;
   try {
-    void runner.send(threadId, text).catch((err: Error) => emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: err.message, at: new Date().toISOString() } }));
-    // Give the runner a tick to reject synchronously-detectable problems (busy thread, missing cwd).
-    await new Promise((r) => setTimeout(r, 0));
-    return { ok: true };
+    const promise = runner.send(threadId, text);
+    void promise.catch((err: Error) => {
+      if (running) {
+        earlyError = err.message;
+      } else {
+        emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: err.message, at: new Date().toISOString() } });
+      }
+    });
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
+  // Give the runner a tick to reject synchronously-detectable problems (busy thread, missing cwd).
+  await new Promise((r) => setTimeout(r, 0));
+  running = false;
+  if (earlyError) {
+    return { ok: false, error: earlyError };
+  }
+  return { ok: true };
 });
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
