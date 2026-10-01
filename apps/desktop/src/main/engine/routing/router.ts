@@ -91,6 +91,28 @@ export class Router {
     return { transport: null, kind: "none", key, cli };
   }
 
+  /**
+   * The same resolved Jev transport Auto routing uses, for other typed judgments (the approval gate),
+   * or null when there is none or Jev was switched off for this session. An auth or billing rejection
+   * seen through it switches Jev off here too, so the key path and its failure state stay single.
+   */
+  async jev(): Promise<{ transport: JevTransport | null; model: string }> {
+    const model = this.o.policy().jev_model || DEFAULT_JEV_MODEL;
+    const { transport } = await this.setup();
+    if (!transport || this.jevDisabled) return { transport: null, model };
+    return {
+      model,
+      transport: async (req, signal) => {
+        try {
+          return await transport(req, signal);
+        } catch (err) {
+          if (err instanceof JevError && (err.code === "auth" || err.code === "billing")) this.jevDisabled = `Jev is off for this session — ${err.message} Fix the key or credits and restart Modex.`;
+          throw err;
+        }
+      },
+    };
+  }
+
   /** Stores a hand-entered key (or op:// reference) in the OS keychain and re-resolves. */
   async setKey(value: string): Promise<RoutingStatus> {
     this.secrets.set("typesafe_api_key", value);

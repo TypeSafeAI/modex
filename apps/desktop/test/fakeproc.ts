@@ -1,3 +1,4 @@
+import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
@@ -51,17 +52,19 @@ export function fakeSpawn(proc: FakeProcess): { spawn: typeof import("node:child
 
 export function collectSink(answers: ("yes" | "no" | "always")[] = ["yes"]) {
   const events: string[] = [];
+  /** Every approval request as the backend sent it, including its structured `action`. */
+  const requests: ApprovalRequest[] = [];
   const queue = [...answers];
   const sink = {
     delta: (t: string) => events.push(`delta:${t}`),
     assistant: (t: string) => events.push(`assistant:${t}`),
     toolStart: (t: { id: string; name: string; title: string }) => events.push(`tool_start:${t.id}:${t.title}`),
     toolUpdate: (id: string, p: { output?: string; ok?: boolean; status?: string }) => events.push(`tool_update:${id}:${p.status ?? ""}:${p.ok ?? ""}:${(p.output ?? "").slice(0, 40)}`),
-    approval: async (req: { question: string }) => { events.push(`approval:${req.question}`); return queue.shift() ?? "no"; },
+    approval: async (req: ApprovalRequest) => { events.push(`approval:${req.question}`); requests.push(req); return queue.shift() ?? "no"; },
     notice: (level: string, text: string) => events.push(`notice:${level}:${text}`),
     thinkingDelta: (id: string, delta: string) => events.push(`think:${id}:${delta}`),
     thinkingDone: (id: string, text?: string) => events.push(`think_done:${id}:${text ?? ""}`),
     session: (h: string) => events.push(`session:${h}`),
   };
-  return { sink, events };
+  return { sink, events, requests };
 }

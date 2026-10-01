@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ApprovalAnswer, BackendId, FollowUp, Mode, ModelInfo, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
+import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
-import type { Backend, TurnSink } from "./backends/types.js";
+import type { ApprovalRequest, Backend, TurnSink } from "./backends/types.js";
 import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
 import { MockBackend } from "./backends/mock.js";
 import { Router } from "./routing/router.js";
+import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import type { SecretStore } from "./secrets.js";
 
 interface Live {
@@ -426,14 +427,28 @@ export class ThreadRunner {
       toolUpdate: (id, patch) => {
         if (active()) this.patchItem(threadId, scoped(id), patch, { persist: patch.status === "done" || patch.ok !== undefined });
       },
-      approval: (req) =>
-        new Promise<ApprovalAnswer>((resolve) => {
-          if (!active() || l.abort?.signal.aborted) return resolve("no");
-          const id = newId();
-          l.pending.set(id, resolve);
-          this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, at: at() });
-          this.setStatus(threadId, "waiting");
-        }),
+      approval: (req) => {
+        // Today's flow: a card the user answers. Rules can only add a receipt to it.
+        const askUser = (decidedBy?: ApprovalReceipt) =>
+          new Promise<ApprovalAnswer>((resolve) => {
+            if (!active() || l.abort?.signal.aborted) return resolve("no");
+            const id = newId();
+            l.pending.set(id, resolve);
+            this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(decidedBy ? { decidedBy } : {}), at: at() });
+            this.setStatus(threadId, "waiting");
+          });
+        const thread = this.o.store.thread(threadId);
+        const project = thread ? this.o.store.project(thread.projectId) : undefined;
+        const settings = this.o.store.settings;
+        if (!thread || !project || !gateApplies(req.action, settings.approval_rules, settings.approval_gate, project.path)) return askUser();
+        return this.gateApproval(req, { thread, project, settings, active, signal: abort?.signal }).then((r) => {
+          if (r.ask) return askUser(r.decidedBy);
+          if (!active() || l.abort?.signal.aborted) return "no";
+          // Answered by a rule: the card lands already answered, and the thread never waits on it.
+          if (r.decidedBy) this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, answer: r.answer, decidedBy: r.decidedBy, at: at() });
+          return r.answer;
+        });
+      },
       notice: (level, text) => { if (active()) this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }); },
       thinkingDelta: (id, delta) => {
         if (!active()) return;
@@ -464,6 +479,34 @@ export class ThreadRunner {
         if (t && t.sessionHandle !== handle) this.o.store.updateThread(threadId, { sessionHandle: handle });
       },
     };
+  }
+
+  /**
+   * Runs the approval gate for one request. Resolves to a rule's answer ("yes" or "no", never
+   * "always"), or `ask` when a human must decide. Any failure is an ask; a stopped turn is a "no".
+   */
+  private async gateApproval(
+    req: ApprovalRequest,
+    c: { thread: Thread; project: { path: string; name: string }; settings: Settings; active: () => boolean; signal?: AbortSignal },
+  ): Promise<{ ask: true; decidedBy?: ApprovalReceipt } | { ask: false; answer: "yes" | "no"; decidedBy?: ApprovalReceipt }> {
+    if (!c.active() || c.signal?.aborted) return { ask: false, answer: "no" };
+    try {
+      const jev = await this.router.jev().catch(() => ({ transport: null, model: "" }));
+      const d = await decideApproval(req.action, {
+        rules: c.settings.approval_rules,
+        config: c.settings.approval_gate,
+        project: { root: c.project.path, name: c.project.name, branch: c.thread.worktree?.branch ?? null },
+        mode: c.thread.mode,
+        transport: jev.transport,
+        model: jev.model,
+      }, c.signal);
+      const answer = answerFor(d);
+      const decidedBy = receiptFor(d);
+      if (answer === "yes" || answer === "no") return { ask: false, answer, decidedBy };
+      return { ask: true, decidedBy };
+    } catch {
+      return c.signal?.aborted ? { ask: false, answer: "no" } : { ask: true };
+    }
   }
 
   private addItem(threadId: string, item: ThreadItem): void {

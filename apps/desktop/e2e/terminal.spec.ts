@@ -10,6 +10,10 @@ import { createThread, launch, seedHome, tid } from "./support";
  * xterm wiring and the key routing together. Selectors are test ids and ARIA state only.
  */
 
+// The tests build on each other (one app, its threads and shells). Serial: after a failure the rest
+// are skipped, rather than re-run against a fresh app by a restarted worker and failed for that.
+test.describe.configure({ mode: "serial" });
+
 let app: ElectronApplication;
 let page: Page;
 let home: string;
@@ -72,10 +76,18 @@ test("the title-bar button and ⌃` open a real shell in the thread's folder; hi
 
 test("inside the shell, ⌃C and ⌃J are the shell's, not the app's shortcuts", async () => {
   await expect(panel()).toBeVisible();
-  await run("sleep 30");
+  // ⌃C must reach a foreground job. Pressed straight after Enter it can land while bash still owns
+  // the terminal (sleep not yet its foreground process group): bash takes the SIGINT, sleep runs on
+  // for 30 s and nothing typed after it executes. The job prints its pid only once it is running
+  // in the foreground (bash hands it the terminal before exec), so wait for that line first.
+  await run(`bash -c 'printf "SLEEPER=%s\\n" "$$"; exec sleep 30'`);
+  await expect(tid(page, "terminal-screen")).toContainText(/SLEEPER=\d+/);
+  const sleeper = Number((await screenText()).match(/SLEEPER=(\d+)/)![1]);
+  expect(alive(sleeper)).toBe(true);
   await page.keyboard.press("Control+c");
-  await run(`printf 'INTERRUPTED_%s\\n' OK`);
-  await expect(tid(page, "terminal-screen")).toContainText("INTERRUPTED_OK");
+  await expect.poll(() => alive(sleeper)).toBe(false); // ⌃C ended the job; the shell is back at its prompt
+  await run(`printf 'INTERRUPTED_%s\\n' "$?"`);
+  await expect(tid(page, "terminal-screen")).toContainText("INTERRUPTED_130"); // 128 + SIGINT
 
   const changes = tid(page, "changes-toggle");
   const before = await changes.getAttribute("aria-pressed");

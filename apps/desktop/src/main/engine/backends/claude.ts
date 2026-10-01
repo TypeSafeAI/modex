@@ -100,7 +100,7 @@ export class ClaudeBackend implements Backend {
           } catch {
             return;
           }
-          this.handle(msg, sink, { started, write, thinking, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
+          this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
             if (done) {
               child.stdin?.end();
               finish(done);
@@ -119,7 +119,7 @@ export class ClaudeBackend implements Backend {
     });
   }
 
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; nextThinkingId: () => string }): Promise<TurnResult | null> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; nextThinkingId: () => string }): Promise<TurnResult | null> {
     switch (msg.type) {
       case "system":
         if (msg.subtype === "init" && msg.session_id) sink.session(msg.session_id);
@@ -176,10 +176,13 @@ export class ClaudeBackend implements Backend {
           ctx.write({ type: "control_response", response: { subtype: "error", request_id: msg.request_id, error: `unsupported control request ${req?.subtype ?? "?"}` } });
           return null;
         }
+        const tool = req.tool_name ?? "tool";
+        const title = toolTitle(tool, req.input ?? {});
         const answer = await sink.approval({
-          question: `Allow ${req.tool_name}: ${toolTitle(req.tool_name ?? "tool", req.input ?? {})}?`,
+          question: `Allow ${req.tool_name}: ${title}?`,
           detail: shortJson(req.input ?? {}),
           canAlways: Boolean(req.permission_suggestions?.length),
+          action: { backend: "claude", tool, title, cwd: ctx.cwd, input: req.input ?? {} },
         });
         const allow = answer !== "no";
         ctx.write({

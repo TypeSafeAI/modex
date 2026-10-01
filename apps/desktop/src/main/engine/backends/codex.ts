@@ -18,6 +18,8 @@ export class CodexBackend implements Backend {
   private readonly subscribers = new Set<(msg: RpcMessage) => void>();
   private readonly disconnects = new Set<(error: Error) => void>();
   private readonly loaded = new Set<string>();
+  /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
+  private readonly changePaths = new Map<string, string[]>();
 
   constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn) {}
 
@@ -245,6 +247,7 @@ export class CodexBackend implements Backend {
             } else if (item.type === "fileChange") {
               tools.set(item.id, { started: Date.now(), output: "" });
               const files = (item.changes ?? []).map((c) => c.path);
+              this.changePaths.set(`${tid}:${item.id}`, files);
               sink.toolStart({ id: item.id, name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "" });
@@ -279,6 +282,7 @@ export class CodexBackend implements Backend {
           }
           case "item/completed": {
             const item = p.item as CodexItem;
+            if (item.type === "fileChange") this.changePaths.delete(`${tid}:${item.id}`);
             if (item.type === "agentMessage") {
               if (item.phase === "commentary" && !streaming.has(item.id)) break;
               sink.assistant(item.text ?? streaming.get(item.id) ?? "");
@@ -339,17 +343,39 @@ export class CodexBackend implements Backend {
     });
   }
 
+  /** Paths of a file change the approval refers to (from its item/started), consumed once. */
+  private takeChangePaths(p: Record<string, unknown>): string[] {
+    const key = `${String(p.threadId ?? "")}:${String(p.itemId ?? "")}`;
+    const paths = this.changePaths.get(key) ?? [];
+    this.changePaths.delete(key);
+    return paths;
+  }
+
   private async handleServerRequest(msg: RpcMessage, sink: TurnSink): Promise<void> {
     const p = (msg.params ?? {}) as Record<string, unknown>;
     if (msg.method === "item/commandExecution/requestApproval") {
       const cmd = stripShell(String(p.command ?? ""));
-      const answer = await sink.approval({ question: `Allow command: ${cmd}?`, detail: [p.reason ? `Reason: ${String(p.reason)}` : "", `cwd: ${String(p.cwd ?? "")}`].filter(Boolean).join("\n"), canAlways: true });
+      const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : undefined;
+      const answer = await sink.approval({
+        question: `Allow command: ${cmd}?`,
+        detail: [p.reason ? `Reason: ${String(p.reason)}` : "", `cwd: ${String(p.cwd ?? "")}`].filter(Boolean).join("\n"),
+        canAlways: true,
+        action: { backend: "codex", tool: "command", title: cmd, ...(cwd ? { cwd } : {}), input: { command: cmd } },
+      });
       this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/fileChange/requestApproval") {
-      const answer = await sink.approval({ question: "Allow Codex to apply these file changes?", detail: [p.reason ? `Reason: ${String(p.reason)}` : "", p.grantRoot ? `grants write access to ${String(p.grantRoot)}` : ""].filter(Boolean).join("\n") || undefined, canAlways: true });
+      const grantRoot = typeof p.grantRoot === "string" && p.grantRoot ? p.grantRoot : undefined;
+      const paths = this.takeChangePaths(p);
+      const answer = await sink.approval({
+        question: "Allow Codex to apply these file changes?",
+        detail: [p.reason ? `Reason: ${String(p.reason)}` : "", p.grantRoot ? `grants write access to ${String(p.grantRoot)}` : ""].filter(Boolean).join("\n") || undefined,
+        canAlways: true,
+        // Paths only: the patch body stays out of the action, so no gate can forward it.
+        action: { backend: "codex", tool: "fileChange", title: "apply file changes", input: { ...(paths.length ? { paths } : {}), ...(grantRoot ? { grantRoot } : {}) }, ...(grantRoot ? { escalation: true } : {}) },
+      });
       this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/permissions/requestApproval") {
-      const answer = await sink.approval({ question: "Codex is asking for additional permissions.", detail: JSON.stringify(p, null, 2).slice(0, 1500), canAlways: false });
+      const answer = await sink.approval({ question: "Codex is asking for additional permissions.", detail: JSON.stringify(p, null, 2).slice(0, 1500), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true } });
       this.respond(msg.id, { decision: answer === "no" ? "decline" : "accept" });
     } else {
       sink.notice("warn", `Codex asked for ${msg.method}, which Modex does not support yet; declined.`);

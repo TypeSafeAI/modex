@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import type { AppState, BackendId, EffortLevel, Project, RoutingPolicy, Settings, Thread, ThreadItem } from "../../shared/types.js";
-import { DEFAULT_ROUTING, EFFORT_LEVELS } from "../../shared/types.js";
+import type { ApprovalGateConfig, ApprovalRule, AppState, BackendId, EffortLevel, Project, RoutingPolicy, Settings, Thread, ThreadItem } from "../../shared/types.js";
+import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, EFFORT_LEVELS } from "../../shared/types.js";
 
 export const DEFAULT_SETTINGS: Settings = {
   default_backend: "codex",
@@ -11,7 +11,44 @@ export const DEFAULT_SETTINGS: Settings = {
   claude_bin: "claude",
   codex_bin: "codex",
   routing: { ...DEFAULT_ROUTING },
+  approval_rules: [],
+  approval_gate: { ...DEFAULT_APPROVAL_GATE },
 };
+
+/** Keeps only well-formed rules; a malformed rule is dropped rather than guessed at. */
+export function migrateApprovalRules(raw: unknown): ApprovalRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ApprovalRule[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o.id !== "string" || !o.id.trim() || seen.has(o.id)) continue;
+    if (typeof o.when !== "string" || !o.when.trim()) continue;
+    if (o.decision !== "allow" && o.decision !== "ask" && o.decision !== "never") continue;
+    seen.add(o.id);
+    out.push({
+      id: o.id,
+      when: o.when.trim(),
+      decision: o.decision,
+      ...(typeof o.match === "string" && o.match.trim() ? { match: o.match.trim() } : {}),
+      ...(typeof o.project === "string" && o.project.trim() ? { project: o.project.trim() } : {}),
+      enabled: typeof o.enabled === "boolean" ? o.enabled : true,
+    });
+  }
+  return out;
+}
+
+/** Fills in and range-checks the gate settings; anything odd falls back to the default. */
+export function migrateApprovalGate(raw: unknown): ApprovalGateConfig {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const d = DEFAULT_APPROVAL_GATE;
+  return {
+    enabled: typeof r.enabled === "boolean" ? r.enabled : d.enabled,
+    threshold: typeof r.threshold === "number" && Number.isFinite(r.threshold) && r.threshold > 0 && r.threshold <= 1 ? r.threshold : d.threshold,
+    timeout_ms: typeof r.timeout_ms === "number" && Number.isFinite(r.timeout_ms) && r.timeout_ms >= 100 && r.timeout_ms <= 60_000 ? Math.floor(r.timeout_ms) : d.timeout_ms,
+  };
+}
 
 /** Fills in and type-checks the routing policy; anything odd falls back to the default. */
 export function migrateRouting(raw: unknown): RoutingPolicy {
@@ -47,6 +84,8 @@ export function migrateSettings(raw: unknown): Settings {
     codex_bin: typeof r.codex_bin === "string" && r.codex_bin ? r.codex_bin : DEFAULT_SETTINGS.codex_bin,
     ...(typeof r.mock_script === "string" ? { mock_script: r.mock_script } : {}),
     routing: migrateRouting(r.routing),
+    approval_rules: migrateApprovalRules(r.approval_rules),
+    approval_gate: migrateApprovalGate(r.approval_gate),
   };
 }
 
@@ -96,7 +135,13 @@ export class Store {
   }
 
   updateSettings(patch: Partial<Settings>): Settings {
-    this.state.settings = { ...this.state.settings, ...patch, ...(patch.routing ? { routing: migrateRouting({ ...this.state.settings.routing, ...patch.routing }) } : {}) };
+    this.state.settings = {
+      ...this.state.settings,
+      ...patch,
+      ...(patch.routing ? { routing: migrateRouting({ ...this.state.settings.routing, ...patch.routing }) } : {}),
+      ...(patch.approval_rules ? { approval_rules: migrateApprovalRules(patch.approval_rules) } : {}),
+      ...(patch.approval_gate ? { approval_gate: migrateApprovalGate({ ...this.state.settings.approval_gate, ...patch.approval_gate }) } : {}),
+    };
     this.write();
     return this.settings;
   }
