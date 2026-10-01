@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-09-29 (v0.0.4)._
+_Last updated 2026-10-01._
 
 ## Shipped
 
@@ -15,13 +15,18 @@ _Last updated 2026-09-29 (v0.0.4)._
 | v0.0.3 | 2026-09-28 | #34 | Embedded terminal panel ships; unsent text stays with its thread; inactive test window. [Review](reviews/2026-09-28-v0.0.3-release-review.md). |
 | v0.0.4 | 2026-09-29 | #37 | Threads name themselves; one suggested next step after each turn. [Review](reviews/2026-09-29-v0.0.4-release-review.md). |
 
-Every release so far is macOS Apple Silicon, ad-hoc signed, not notarized. The release
+Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 are ad-hoc signed; from v0.0.5
+they are Developer ID signed and notarized. The release
 sequence (worktree → review doc → dist + packaged e2e → guarded merge → signed tag → GitHub
 release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
 
 ## On `main`, not yet released
 
-Nothing. v0.0.4 released everything that had landed since v0.0.3.
+- **Signed and notarized macOS builds** (`notarize`, 2026-10-01). Developer ID signature,
+  hardened runtime with library validation kept on, notarized and stapled, verified by
+  `scripts/release-mac.sh`, which also runs in the new `Release` workflow on a `v*` tag and
+  fails closed without secrets. First release to carry it will be v0.0.5. See
+  [release-signing.md](release-signing.md).
 
 ## In flight
 
@@ -48,9 +53,10 @@ terminal panel and would have removed it, and the failure they targeted no longe
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Notarized macOS build and a custom app icon.** Every release note has carried "ad-hoc
-   signed, not notarized"; Gatekeeper friction is the first thing a new user meets.
-2. **Auto-update**, once builds are notarized.
+1. **v0.0.5** with the notarized build, plus a custom app icon (the one visible gap left in
+   the first-run experience). Populate the `release-signing` CI environment first so the tag
+   push produces the artifacts.
+2. **Auto-update.** Unblocked now that builds are notarized.
 3. **Image attachments** in the composer (both CLIs accept them).
 4. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
    the platform-specific pieces to audit first.

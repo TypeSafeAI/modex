@@ -98,8 +98,11 @@ skills exactly as it would in a terminal.
 
 For macOS on Apple Silicon, download the DMG or ZIP from the
 [latest release](https://github.com/TypeSafeAI/modex/releases/latest). Replace the existing
-app to upgrade; projects, threads, and preferences remain in `~/.modex`. The current build
-is ad-hoc signed and is not notarized. You still need `claude` or `codex` installed and logged in.
+app to upgrade; projects, threads, and preferences remain in `~/.modex`. Builds from v0.0.5
+are signed with a Developer ID and notarized by Apple, so they open without a Gatekeeper
+warning; v0.0.1–v0.0.4 were ad-hoc signed and need a right-click → Open the first time. You
+still need `claude` or `codex` installed and logged in. To check a download yourself, see
+[docs/release-signing.md](docs/release-signing.md).
 
 To run from source, install Node.js 22 or later and the Xcode Command Line Tools on macOS
 (`xcode-select --install`). The build compiles a terminal supervisor; the packaged app
@@ -160,8 +163,8 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks, scheduled automations, image attachments, notarized macOS builds,
-and Windows/Linux installers. Modex has no HTTP-API execution mode;
+Codex Cloud tasks, scheduled automations, image attachments, auto-update, and Windows/Linux
+installers. Modex has no HTTP-API execution mode;
 if a CLI is not installed or logged in, the thread says so.
 
 ## License

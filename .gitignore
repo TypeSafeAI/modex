@@ -7,3 +7,7 @@ playwright-report/
 .probes/
 .worktrees/
 release/
+# Release signing: credentials never live in the tree (see docs/release-signing.md).
+.env.release
+*.p8
+*.p12

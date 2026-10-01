@@ -1,0 +1,98 @@
+name: Release
+
+# Builds, signs, notarizes and verifies the macOS artifacts for a pushed version tag and attaches
+# them to that tag's GitHub release (created as a draft if it does not exist). Fails closed: no
+# secret, no artifact. Nothing unsigned is ever uploaded. See docs/release-signing.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: sign + notarize (macOS arm64)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    environment: release-signing
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Require every signing secret
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          TAG_ALLOWED_SIGNERS: ${{ secrets.TAG_ALLOWED_SIGNERS }}
+        run: |
+          missing=""
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER TAG_ALLOWED_SIGNERS; do
+            [ -n "${!v:-}" ] || missing="$missing $v"
+          done
+          [ -z "$missing" ] || { echo "::error::missing secrets:$missing — refusing to build an unsigned release"; exit 1; }
+
+      - name: Verify the tag is signed by an allowed key
+        env:
+          TAG_ALLOWED_SIGNERS: ${{ secrets.TAG_ALLOWED_SIGNERS }}
+        run: |
+          umask 077
+          printf '%s\n' "$TAG_ALLOWED_SIGNERS" > "$RUNNER_TEMP/allowed_signers"
+          git config gpg.ssh.allowedSignersFile "$RUNNER_TEMP/allowed_signers"
+          git tag -v "${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Stage the API key (mode 600, outside the checkout)
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          umask 077
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize, staple, verify
+        env:
+          # electron-builder imports the certificate into a temporary keychain from these two.
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          MODEX_SIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # The identity check in the script uses the login keychain; CI's temporary keychain is
+          # named by electron-builder, so the script skips that one check when this is set.
+          MODEX_RELEASE_CI: "1"
+        run: scripts/release-mac.sh
+
+      - name: E2E against the packaged app
+        run: npm run test:e2e
+        env:
+          CI: "1"
+          MODEX_PACKAGED_APP: ${{ github.workspace }}/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex
+
+      - name: Attach artifacts to the release (draft if new)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd apps/desktop/release
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Modex $GITHUB_REF_NAME" --notes "Draft: notes pending."
+          gh release upload "$GITHUB_REF_NAME" Modex-*-arm64.dmg Modex-*-arm64.zip SHA256SUMS.txt --clobber
+
+      - name: Scrub the staged key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/allowed_signers"

@@ -37,6 +37,8 @@ itself driving one of them.
 
 - `apps/desktop` — the Electron app (`src/main` process + backends, `src/renderer` React UI,
   `e2e/` Playwright). `packages/core` — the offline scripted engine used by demos and tests.
+- `docs/release-signing.md` — how release builds are signed and notarized, and where the
+  credentials live (never in the tree). `npm run dist` stays ad-hoc for everyday builds.
 - `docs/status.md` — what has shipped, what is on `main` but unreleased, what is in flight, what is
   next. Update it in the PR that changes any of those. `docs/reviews/` holds release evidence.
 - Real models run only through the `claude` and `codex` CLIs. There is no API mode for

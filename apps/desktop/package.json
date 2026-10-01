@@ -18,7 +18,8 @@
     "test:e2e": "npm run build && playwright test",
     "ui:capture": "npm run build && playwright test e2e/layout.spec.ts",
     "ui:compare": "node scripts/ui-compare.mjs",
-    "dist": "npm run build && electron-builder --mac --arm64 --publish never"
+    "dist": "npm run build && electron-builder --mac --arm64 --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false",
+    "dist:release": "npm run build && electron-builder --mac --arm64 --publish never -c.mac.notarize=true -c.mac.sign=./build/sign.cjs"
   },
   "dependencies": {
     "@modex/core": "0.3.0",
@@ -74,8 +75,10 @@
           ]
         }
       ],
-      "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist"
     },
     "dmg": {
       "title": "Modex ${version}"
