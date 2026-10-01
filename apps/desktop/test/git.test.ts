@@ -64,6 +64,17 @@ test("discarding a staged rename restores its source including destination edits
   assert.deepEqual((await gitx.status(repo)).files, []);
 });
 
+test("diff for a renamed file renders rename and modified lines, not full addition", async () => {
+  const repo = gitRepo();
+  await gitx.git(repo, ["mv", "README.md", "renamed.md"]);
+  fs.appendFileSync(path.join(repo, "renamed.md"), "new changes\n");
+  const diff = await gitx.diff(repo, "renamed.md");
+  assert.match(diff, /rename from README\.md/);
+  assert.match(diff, /rename to renamed\.md/);
+  assert.match(diff, /\+new changes/);
+  assert.doesNotMatch(diff, /--- \/dev\/null/);
+});
+
 test("discarding a rename protects a newly recreated source", async () => {
   const repo = gitRepo();
   await gitx.git(repo, ["mv", "README.md", "renamed.md"]);
