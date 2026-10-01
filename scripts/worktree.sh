@@ -24,7 +24,7 @@ case "${1:-}" in
     case "$name" in */*|*..*|.*|"") echo "name must be a simple slug (letters, digits, - _)" >&2; exit 2;; esac
     dest="$primary/.worktrees/$name"
     [ ! -e "$dest" ] || { echo "$dest already exists" >&2; exit 1; }
-    git -C "$primary" fetch -q origin main
+    git -C "$primary" fetch -q origin main || echo "note: could not fetch origin/main; using local ref" >&2
     mkdir -p "$primary/.worktrees"
     if git -C "$primary" show-ref -q --verify "refs/heads/$name"; then
       git -C "$primary" worktree add -q "$dest" "$name"
@@ -48,7 +48,7 @@ case "${1:-}" in
       echo "refusing: $dest has uncommitted changes (commit, stash, or discard them first)" >&2; exit 1
     fi
     git -C "$primary" worktree remove "$dest"
-    git -C "$primary" fetch -q origin main
+    git -C "$primary" fetch -q origin main 2>/dev/null || true
     # main is squash-merged, so a landed branch is never an ancestor of origin/main. Treat the
     # branch as merged when it is an ancestor OR its tree is identical to origin/main's (squash
     # landed and nothing else has since) OR GitHub reports a merged PR for it.
