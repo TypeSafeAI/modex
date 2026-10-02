@@ -18,9 +18,15 @@ function alive(pid: number): boolean {
 
 // Cleanup only: the process can exit between the liveness check and the kill (e.g. a shell whose pty
 // was just SIGKILLed), so a vanished PID is fine. Anything else still fails the test.
-function killIfAlive(pid: number): void {
+function killIfAlive(pid: number, signal: NodeJS.Signals = "SIGKILL"): void {
   if (!alive(pid)) return;
-  try { process.kill(pid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  try { process.kill(pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+}
+
+// Exited means a zombie or already reaped (ps exits 1 for an unknown PID).
+function exited(pid: number): boolean {
+  try { return execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim().startsWith("Z"); }
+  catch (error) { if ((error as { status?: number }).status === 1) return true; throw error; }
 }
 
 async function waitForPid(file: string): Promise<number> {
@@ -77,10 +83,15 @@ test("cleanup timeout retains ownership and a later close can retry", { skip: pr
   manager.open("one", 80, 24);
   // Freeze only this fixture's supervisor, then exercise its real control-channel timeout.
   process.kill(pty.pid, "SIGSTOP");
+  // CI once saw this supervisor gone within 56 ms (#63). Say how it ended rather than failing on
+  // the SIGCONT below: exit 143 means it served CLOSE (never stopped), signal 9 that it was killed.
+  let exit: { exitCode: number; signal?: number } | undefined;
+  pty.onExit((event) => { exit = event; });
   try {
-    await assert.rejects(manager.close("one"), /did not stop/);
+    const outcome = await manager.close("one").then(() => "resolved", (error: Error) => `rejected: ${error.message}`);
+    assert.match(outcome, /did not stop/, `a frozen supervisor must time out; close() ${outcome}, exit ${JSON.stringify(exit)}`);
     assert.equal(alive(pty.pid), true);
-  } finally { process.kill(pty.pid, "SIGCONT"); }
+  } finally { killIfAlive(pty.pid, "SIGCONT"); }
   await manager.close("one");
   assert.equal(alive(pty.pid), false);
   await manager.dispose();
@@ -102,6 +113,31 @@ test("supervisor death without a cleanup receipt never authorizes deletion", { s
     process.kill(pty.pid, "SIGKILL");
     await assert.rejects(manager.close("one"), /without confirming cleanup/);
     await assert.rejects(manager.dispose(), /without confirming cleanup/);
+  } finally {
+    killIfAlive(shell);
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("supervisor death seen as a failed CLOSE write still reports a missing cleanup receipt", { skip: process.platform === "win32" }, async () => {
+  const cwd = tmpdir("terminal-epipe-");
+  let pty!: IPty;
+  const manager = new TerminalManager(() => cwd, () => {}, (_shell, _args, options) => {
+    pty = spawnTerminal("/bin/bash", ["--noprofile", "--norc"], options);
+    return pty;
+  });
+  const session = manager.open("one", 80, 24);
+  const file = path.join(cwd, "shell.pid");
+  manager.write("one", session.sessionId, `printf '%s' "$$" > ${quote(file)}\r`);
+  const shell = await waitForPid(file);
+  try {
+    process.kill(pty.pid, "SIGKILL");
+    // Block without yielding until the supervisor is gone: its EOF stays unread, so close() writes
+    // CLOSE into a dead peer and sees EPIPE rather than an already-closed socket.
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    for (let i = 0; i < 300 && !exited(pty.pid); i++) Atomics.wait(pause, 0, 0, 10);
+    assert.ok(exited(pty.pid), "the supervisor survived SIGKILL");
+    await assert.rejects(manager.close("one"), /without confirming cleanup/);
   } finally {
     killIfAlive(shell);
     fs.rmSync(cwd, { recursive: true, force: true });

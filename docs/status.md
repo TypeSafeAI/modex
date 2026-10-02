@@ -69,17 +69,19 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
   not name threads and e2e runs without a key; only the heuristic path is exercised.
-- **Terminal-cleanup unit tests fail intermittently on CI.** Two tests in
-  `test/terminal-cleanup.test.ts` have each failed once on a commit that did not touch them,
-  and the same code passed in its other CI runs:
-  - *supervisor death without a cleanup receipt never authorizes deletion* failed with
-    `write EPIPE` on `main` for `c9dcc7d` (#55), even with #55's ESRCH fix in.
-  - *cleanup timeout retains ownership and a later close can retry* failed with `kill ESRCH`
-    on #63, a docs-only change. The supervisor it had stopped with `SIGSTOP` was already
-    gone by the time its `finally` sent `SIGCONT`. That throw also hides whatever the test
-    body saw.
-
-  Neither has been investigated.
+- **The cleanup-timeout test failed once on CI, cause unknown.** *cleanup timeout retains
+  ownership and a later close can retry* (`test/terminal-cleanup.test.ts`) failed on #63, a
+  docs-only change: the supervisor it froze with `SIGSTOP` was gone, exited and reaped, within
+  56 ms. It has not reproduced locally in over 1,300 attempts on macOS 26, including runs under
+  CPU load and alongside the full suite. The test now reports how `close()` settled and the
+  supervisor's exit instead of failing on its `SIGCONT` cleanup. If it fails again, exit code
+  143 means the `SIGSTOP` never held, signal 9 that something killed the supervisor, and 125
+  that it failed at startup.
+- **Each terminal session leaks a PTY until Modex quits.** When a shell exits, node-pty closes
+  its read side but releases the write side only in `destroy()`, which Modex never calls.
+  macOS allows 511 PTYs machine-wide (`kern.tty.ptmx_max`), so after a few hundred terminal
+  sessions in one run, new terminals fail to open anywhere on the Mac. `destroy()` also sends
+  `SIGHUP` to the old PID, which may belong to another process by then, so the fix needs care.
 
 ## Next
 
