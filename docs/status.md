@@ -28,11 +28,16 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   fails closed without secrets. First release to carry it will be v0.0.5. See
   [release-signing.md](release-signing.md). Since #53 the script builds only in a worktree and
   checks its dependencies before asking for credentials.
-- **Terminals no longer leak a PTY each** (`fix-pty-leak`, 2026-10-01). node-pty 1.1.0's macOS
-  spawn opened a placeholder `/dev/ptmx` and never closed it, so every terminal session held
-  one until Modex quit; macOS allows 511 machine-wide (`kern.tty.ptmx_max`). node-pty is now
+- **Terminals no longer leak a PTY each** (#65, 2026-10-01). node-pty 1.1.0's macOS spawn
+  opened a placeholder `/dev/ptmx` and never closed it, so every terminal session held one
+  until Modex quit; macOS allows 511 machine-wide (`kern.tty.ptmx_max`). node-pty is now
   pinned to `1.2.0-beta.15`, where upstream closes it (and a per-spawn `kqueue`). Move to 1.2.0
-  stable when it ships.
+  stable when it ships. #65 ran the unit and terminal e2e suites but no packaged build, so
+  v0.0.5's packaged e2e is the beta's first run inside the shipped app.
+- **A terminal whose supervisor dies always reports a missing cleanup receipt** (#64,
+  2026-10-01). A supervisor killed just before cleanup could surface as a raw `write EPIPE`;
+  deletion was refused either way, but the message now says *Terminal supervisor exited
+  without confirming cleanup* every time.
 
 ## In flight
 
