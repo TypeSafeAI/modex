@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@modex/core": "0.3.0",
-    "node-pty": "1.1.0"
+    "node-pty": "1.2.0-beta.15"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
