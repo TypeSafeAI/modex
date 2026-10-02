@@ -194,3 +194,21 @@ for (const action of ["close", "dispose", "shell exit"] as const) {
     }
   });
 }
+
+test("closing terminals releases every PTY they opened", { skip: process.platform !== "darwin" }, async () => {
+  // node-pty 1.1.0 left one unused /dev/ptmx open per spawn, and macOS allows 511 machine-wide.
+  const masters = () => execFileSync("/usr/sbin/lsof", ["-p", String(process.pid)], { encoding: "utf8" }).split("\n").filter((line) => line.includes("/dev/ptmx")).length;
+  const cwd = tmpdir("terminal-pty-");
+  const manager = new TerminalManager(() => cwd, () => {}, (_shell, _args, options) => spawnTerminal("/bin/bash", ["--noprofile", "--norc"], options));
+  const before = masters();
+  try {
+    for (let i = 0; i < 5; i++) {
+      manager.open("one", 80, 24);
+      await manager.close("one");
+    }
+    assert.equal(masters(), before, "closed terminals still hold PTY masters");
+  } finally {
+    await manager.dispose();
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});

@@ -28,6 +28,11 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   fails closed without secrets. First release to carry it will be v0.0.5. See
   [release-signing.md](release-signing.md). Since #53 the script builds only in a worktree and
   checks its dependencies before asking for credentials.
+- **Terminals no longer leak a PTY each** (`fix-pty-leak`, 2026-10-01). node-pty 1.1.0's macOS
+  spawn opened a placeholder `/dev/ptmx` and never closed it, so every terminal session held
+  one until Modex quit; macOS allows 511 machine-wide (`kern.tty.ptmx_max`). node-pty is now
+  pinned to `1.2.0-beta.15`, where upstream closes it (and a per-spawn `kqueue`). Move to 1.2.0
+  stable when it ships.
 
 ## In flight
 
@@ -77,11 +82,6 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   supervisor's exit instead of failing on its `SIGCONT` cleanup. If it fails again, exit code
   143 means the `SIGSTOP` never held, signal 9 that something killed the supervisor, and 125
   that it failed at startup.
-- **Each terminal session leaks a PTY until Modex quits.** When a shell exits, node-pty closes
-  its read side but releases the write side only in `destroy()`, which Modex never calls.
-  macOS allows 511 PTYs machine-wide (`kern.tty.ptmx_max`), so after a few hundred terminal
-  sessions in one run, new terminals fail to open anywhere on the Mac. `destroy()` also sends
-  `SIGHUP` to the old PID, which may belong to another process by then, so the fix needs care.
 
 ## Next
 
