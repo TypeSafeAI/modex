@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/branding/modex-header.webp alt="Modex — adaptive coding agents" width="900">
+  <img src="docs/branding/modex-header.webp" alt="Modex — adaptive coding agents" width="100%">
 </p>
 
 # Modex
