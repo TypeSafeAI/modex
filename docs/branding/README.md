@@ -4,7 +4,7 @@ Four AI-generated branding assets offered for maintainer review. These are the o
 
 | File                       | Intended use                 | Original dimensions |
 | -------------------------- | ---------------------------- | ------------------- |
-| `modex-header.png`         | README header                | 1764 × 550          |
+| `modex-header.webp`        | README header                | 1764 × 550          |
 | `modex-icon.png`           | Square app/repo icon concept | 1254 × 1254         |
 | `modex-social-preview.png` | Social preview concept       | 1774 × 887          |
 | `modex-routing.png`        | README routing illustration  | 1774 × 887          |
