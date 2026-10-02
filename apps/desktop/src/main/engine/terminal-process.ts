@@ -30,12 +30,15 @@ export function spawnTerminal(shell: string, args: string[], options: IPtyForkOp
     socket = connection;
     if (requested) connection.write("CLOSE\n");
     let buffer = "";
+    let broken: Error | undefined;
     connection.on("data", (data) => {
       buffer += data.toString();
       if (buffer.split("\n").includes("CLEAN")) { clean = true; acknowledge(); }
     });
-    connection.on("error", fail);
-    connection.on("close", () => { if (!clean) fail(new Error("Terminal supervisor exited without confirming cleanup.")); });
+    // A supervisor that dies can surface as EPIPE/ECONNRESET (CLOSE written before its EOF was read)
+    // or as a plain EOF. Both mean no cleanup receipt; "close" always follows "error" and says so.
+    connection.on("error", (error) => { broken = error; });
+    connection.on("close", () => { if (!clean) fail(new Error("Terminal supervisor exited without confirming cleanup.", { cause: broken })); });
   });
   server.on("error", fail);
   server.listen(socketPath);
