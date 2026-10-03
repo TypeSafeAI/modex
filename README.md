@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/branding/modex-header.png" alt="Modex — adaptive coding agents" width="900">
+</p>
+
 # Modex
 
 [![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
@@ -6,6 +10,8 @@ Modex is an open, Codex-App-style desktop app for running coding agents in your 
 repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
 stream-json and `codex app-server`), using the logins you already have. It never calls a model
 API directly and never stores credentials.
+
+![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
 
 ```
 modex/
@@ -93,6 +99,8 @@ modex/
 
 Each CLI applies its own instruction files (`AGENTS.md`, `CLAUDE.md`), hooks, MCP servers, and
 skills exactly as it would in a terminal.
+
+![One task. The right agent. Modex routing illustration with Jev, Codex, Claude, and your repository.](docs/branding/modex-routing.png)
 
 ### Run it
 
