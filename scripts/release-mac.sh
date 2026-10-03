@@ -161,6 +161,9 @@ echo "identity: $MODEX_SIGN_IDENTITY (certificate $MODEX_SIGN_HASH)"
 say "build, sign${notarize:+, notarize, staple}"
 # electron-builder takes the name without the "Developer ID Application:" prefix and adds it back.
 export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"
+# The desktop build compiles against, and the bundle ships, @modex/core's dist/, which a fresh
+# checkout or worktree does not have yet.
+(cd "$root" && npm run build -w @modex/core)
 if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release)
 else (cd "$desktop" && npm run dist:release -- -c.mac.notarize=false); fi
 
