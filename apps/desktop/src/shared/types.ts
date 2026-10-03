@@ -224,6 +224,7 @@ export interface ChangedFile {
   code: string;
   additions: number;
   deletions: number;
+  original?: string;
 }
 
 export interface ChangesSnapshot {
@@ -291,7 +292,7 @@ export interface BridgeCommands {
   "terminal:resize": { req: { threadId: string; sessionId: string; cols: number; rows: number }; res: void };
   "terminal:close": { req: { threadId: string; sessionId: string }; res: void };
   "changes:status": { req: { threadId: string }; res: ChangesSnapshot };
-  "changes:diff": { req: { threadId: string; path: string }; res: string };
+  "changes:diff": { req: { threadId: string; path: string; original?: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
   "settings:update": { req: Partial<Settings>; res: Settings };
   "shell:openPath": { req: { path: string }; res: void };

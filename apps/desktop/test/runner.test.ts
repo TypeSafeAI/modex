@@ -270,7 +270,24 @@ test("two threads in the same project run concurrently and independently", async
     await runner.send(a.id, "while busy");
     await p;
   }, /still working/);
+  assert.equal(runner.items(a.id).filter((i) => i.kind === "notice").length, 0, "concurrent send rejection leaves no notice item");
 });
+
+test("send while a turn is running rejects and does not record a notice item", async () => {
+  const h = harness([{ content: "first step" }, { content: "second step" }]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(project.id, { mode: "chat" });
+  const run = runner.send(thread.id, "task 1");
+  await assert.rejects(runner.send(thread.id, "task 2 while busy"), /still working/);
+  await run;
+  const notices = runner.items(thread.id).filter((i) => i.kind === "notice");
+  assert.equal(notices.length, 0, "concurrent send rejection must not leave a notice item");
+  const userItems = runner.items(thread.id).filter((i) => i.kind === "user");
+  assert.equal(userItems.length, 1, "rejected send must not record the user message");
+});
+
 
 test("worktree threads work on an isolated branch; deleting removes the worktree", async () => {
   const h = harness([
