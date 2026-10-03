@@ -48,6 +48,10 @@ jobs:
           umask 077
           printf '%s\n' "$TAG_ALLOWED_SIGNERS" > "$RUNNER_TEMP/allowed_signers"
           git config gpg.ssh.allowedSignersFile "$RUNNER_TEMP/allowed_signers"
+          # actions/checkout leaves the pushed tag as a lightweight ref to the commit, which
+          # `git tag -v` cannot verify. Fetch the annotated tag object itself first.
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          [ "$(git cat-file -t "${GITHUB_REF_NAME}")" = tag ] || { echo "::error::${GITHUB_REF_NAME} is not an annotated, signed tag"; exit 1; }
           git tag -v "${GITHUB_REF_NAME}"
 
       - uses: actions/setup-node@v5
