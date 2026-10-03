@@ -80,6 +80,10 @@ export interface TurnOptions {
 export interface TurnResult {
   status: "completed" | "interrupted" | "failed";
   error?: string;
+  /** Backend facts behind a failure (exit code, stderr tail, RPC method and code, CLI build, ids) for the debug report. */
+  detail?: Record<string, unknown>;
+  /** What the backend tried on its own before giving up, oldest first. */
+  recovery?: string[];
 }
 
 export interface Backend {
@@ -118,6 +122,12 @@ export class LineBuffer {
     if (this.buf.trim()) onLine(this.buf);
     this.buf = "";
   }
+}
+
+/** The last non-empty stderr lines, bounded, for failure reports. */
+export function stderrTail(stderr: string, lines = 30, max = 4000): string {
+  const tail = stderr.split("\n").filter((l) => l.trim()).slice(-lines).join("\n");
+  return tail.length > max ? "…" + tail.slice(-max) : tail;
 }
 
 export function shortJson(v: unknown, max = 2000): string {

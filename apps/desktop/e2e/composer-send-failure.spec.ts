@@ -24,7 +24,7 @@ test("a failed send restores its draft without replacing newer typing", async ()
     await expect(page.getByRole("alert")).toContainText("Synthetic send failure");
     await expect(input).toHaveValue("Keep this first draft");
 
-    await page.getByRole("alert").getByRole("button").click();
+    await page.getByRole("alert").getByRole("button", { name: "Dismiss" }).click();
     await input.fill("Message being sent");
     await input.press("Meta+Enter");
     await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { modexPendingSends: () => number }).modexPendingSends())).toBe(1);
@@ -33,7 +33,7 @@ test("a failed send restores its draft without replacing newer typing", async ()
     await expect(page.getByRole("alert")).toContainText("Synthetic send failure");
     await expect(input).toHaveValue("Newer thought");
 
-    await page.getByRole("alert").getByRole("button").click();
+    await page.getByRole("alert").getByRole("button", { name: "Dismiss" }).click();
     await page.keyboard.press("Meta+n");
     await expect(tid(page, "draft-view")).toBeVisible();
     await app.evaluate(({ ipcMain }) => {

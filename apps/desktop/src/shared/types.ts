@@ -47,11 +47,37 @@ export type ThreadItem =
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string }
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
-  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string }
+  /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
+  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
   /** An Auto routing decision made before a turn: what was picked and why. */
   | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; reasons: string[]; durationMs: number; at: string };
+
+/** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
+export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unknown";
+
+/** An in-app remedy: a sign-in command Modex types into the thread's terminal, or the Settings dialog. */
+export type TurnFix = { kind: "login"; label: string; command: string } | { kind: "settings"; label: string };
+
+/** A turn that did not complete. Rendered as a card with Retry, the fix, and Copy details. */
+export interface TurnFailure {
+  code: FailureCode;
+  backend: BackendId;
+  /** The CLI's own words, verbatim. */
+  message: string;
+  /** One line in Modex's words; the transcript shows this. */
+  summary: string;
+  /** What to do next, when Modex knows. */
+  hint?: string;
+  /** Sending the same message again is worth a try. */
+  retryable: boolean;
+  fix?: TurnFix;
+  /** What Modex already tried on its own before giving up, oldest first. */
+  recovery?: string[];
+  /** Research-level context for a bug report: versions, ids, exit codes, stderr, RPC details. */
+  debug: Record<string, unknown>;
+}
 
 export type ThreadEvent =
   | { threadId: string; type: "item"; item: ThreadItem }
@@ -300,6 +326,8 @@ export interface BridgeCommands {
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
   "thread:send": { req: { threadId: string; text: string }; res: { ok: boolean; error?: string } };
+  /** Runs the thread's last message again in place (no second user bubble); the Retry on a failure card. */
+  "thread:retry": { req: { threadId: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
   "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
@@ -333,4 +361,6 @@ export interface BridgeCommands {
   "settings:update": { req: Partial<Settings>; res: Settings };
   "shell:openPath": { req: { path: string }; res: void };
   "shell:openTerminal": { req: { path: string }; res: void };
+  /** System clipboard via main: works whether or not the window has focus (the Web API needs focus). */
+  "clipboard:write": { req: { text: string }; res: void };
 }

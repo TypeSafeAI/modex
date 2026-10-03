@@ -28,6 +28,7 @@ interface Props {
   creating: boolean;
   models: ModelInfo[];
   modelsError?: string;
+  onRetryModels?: () => void;
   /** The project checkout's current branch; shown for a Local draft (a worktree's branch does not exist yet). */
   branch?: string;
   onChange: (draft: Draft) => void;
@@ -41,7 +42,7 @@ interface Props {
  * The "What should we build in <project>?" screen: a live composer before any thread exists.
  * The project name is a picker; the context strip's Local/Worktree item is a toggle.
  */
-export function DraftView({ draft, projects, creating, models, modelsError, branch, onChange, onSend, inputRef, text, onText }: Props) {
+export function DraftView({ draft, projects, creating, models, modelsError, onRetryModels, branch, onChange, onSend, inputRef, text, onText }: Props) {
   const project = projects.find((p) => p.id === draft.projectId);
   const set = (patch: Partial<DraftSettings>) => onChange({ ...draft, settings: { ...draft.settings, ...patch } });
   if (!project) return null;
@@ -67,6 +68,7 @@ export function DraftView({ draft, projects, creating, models, modelsError, bran
         auto={draft.settings.auto}
         models={models}
         modelsError={modelsError}
+        onRetryModels={onRetryModels}
         onBackend={(backend) => set({ backend, model: "", effort: undefined })}
         onMode={(mode) => set({ mode })}
         onPlan={(plan) => set({ plan })}
