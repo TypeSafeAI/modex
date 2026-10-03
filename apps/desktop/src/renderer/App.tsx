@@ -9,6 +9,7 @@ import { EmptyState } from "./components/EmptyState";
 import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
+import { Icon } from "./components/ui/Icon";
 import { useSelectionHistory } from "./history";
 import { useLayout } from "./layout";
 import { applyItemEvent, type ItemEvent } from "./transcript";
@@ -54,6 +55,7 @@ export function App() {
   const [layout, setLayout] = useLayout();
   const showChanges = layout.changes;
   const sidebarOpen = layout.sidebar;
+  const streamerMode = layout.streamerMode;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
   const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
   const [error, setError] = useState<string | null>(null);
@@ -382,7 +384,7 @@ export function App() {
   };
 
   return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`}>
+    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`} data-streamer-mode={streamerMode ? "true" : "false"}>
       <TitleBar
         thread={thread}
         onRename={(title) => void updateThread({ title })}
@@ -402,7 +404,7 @@ export function App() {
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail onOpenSettings={() => setShowSettings(true)} />
+      <Rail onOpenSettings={() => setShowSettings(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
       <div className="sheet" data-testid="sheet">
         {sidebarOpen && (
           <Sidebar
@@ -469,6 +471,14 @@ export function App() {
         {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
       </div>
       {showSettings && <SettingsDialog settings={state.settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {streamerMode && (
+        <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
+          <Icon name="privacy" size={28} />
+          <h1>Streamer Mode</h1>
+          <p>Private workspace content is hidden.</p>
+          <button autoFocus className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Show workspace</button>
+        </section>
+      )}
     </div>
   );
 }

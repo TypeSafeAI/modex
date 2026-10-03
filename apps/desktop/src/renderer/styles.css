@@ -221,6 +221,21 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-rows: var(--titlebar-h) minmax(0, 1fr); height: 100%; overflow: hidden; background: var(--bg-window); }
 .app > * { min-height: 0; }
 .app.loading { display: grid; place-items: center; color: var(--text-3); }
+.app[data-streamer-mode="true"] > :not(.streamer-shield) { visibility: hidden; }
+.streamer-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  background: rgb(20, 20, 20);
+  color: var(--text-1);
+  text-align: center;
+}
+.streamer-shield h1 { margin: var(--space-2) 0 0; font-size: 20px; }
+.streamer-shield p { margin: 0 0 var(--space-3); color: var(--text-3); }
 
 .titlebar { grid-column: 1 / -1; display: flex; align-items: center; min-width: 0; background: var(--bg-window); background-image: linear-gradient(90deg, rgba(146, 174, 226, .035), transparent 45%); }
 /* Nav buttons centred at x 99 / 133 / 167 (34 px pitch), clear of the traffic lights. */

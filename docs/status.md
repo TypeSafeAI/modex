@@ -47,6 +47,9 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Account readiness (#75).** Settings checks CLI availability and structured account status
   separately from model catalogues. Authentication does not imply model entitlement; status
   checks do not run a coding turn. Older or unresponsive CLIs report unknown status.
+- **Livestream privacy.** Streamer Mode persistently covers the whole window, hiding chats,
+  names, paths, terminals, diffs, dialogs, and notices while work continues. An Electron e2e
+  checks full viewport coverage, persistence, and explicit reveal.
 
 ## In flight
 
@@ -70,8 +73,6 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
     details. When Codex's sign-in goes stale, Modex restarts `codex app-server` and retries.
   - `pr-review-browser` (uncommitted): runs the renderer in a browser, connected to the real
     engine over a localhost bridge.
-  - `livestream-redaction` (one unpushed commit, 2026-09-29): Streamer Mode, an opaque cover
-    over chats, paths, terminals and diffs while work continues underneath.
 
 ## Known rough edges
 

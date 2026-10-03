@@ -7,12 +7,14 @@ export type Layout = {
   sidebar: boolean;
   /** Changes panel on the right of a thread. */
   changes: boolean;
+  /** Opaque, fail-closed cover for screen sharing and livestreams. */
+  streamerMode: boolean;
 };
 
 export const LAYOUT_KEY = "modex.layout";
 /** Pre-layout key that stored only the sidebar as "open" | "closed"; read once and migrated. */
 export const LEGACY_SIDEBAR_KEY = "modex.sidebar";
-export const DEFAULT_LAYOUT: Layout = { sidebar: true, changes: true };
+export const DEFAULT_LAYOUT: Layout = { sidebar: true, changes: true, streamerMode: false };
 
 type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 
