@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
+import type { BackendHealth, BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { sameJudgeSettings, testMatchesJudge } from "../../shared/judge-settings";
 import { bridge } from "../bridge";
@@ -21,6 +21,9 @@ const testIdentity = (test: RoutingTest) => {
 
 const errorMessage = (err: unknown, fallback: string) =>
   (err instanceof Error ? err.message : "").replace(/^Error invoking remote method '[^']+':\s*(?:Error(?::\s*|\s*$))?/, "").trim() || fallback;
+
+const backendHealthText = (status: BackendHealth | undefined, failed: boolean) =>
+  status ? `${status.version ? `v${status.version} · ` : ""}${status.detail}` : failed ? "Account check unavailable · retry" : "checking…";
 
 export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const [section, setSection] = useState<"general" | "clis" | "routing" | "advanced">("routing");
@@ -58,7 +61,9 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
     };
   }, []);
   const [s, setS] = useState<Settings>(settings);
-  const [health, setHealth] = useState<Record<BackendId, { ok: boolean; detail: string }> | null>(null);
+  const [health, setHealth] = useState<Record<BackendId, BackendHealth> | null>(null);
+  const [healthFailed, setHealthFailed] = useState(false);
+  const [healthRevision, setHealthRevision] = useState(0);
   const [lists, setLists] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const [routing, setRouting] = useState<RoutingStatus | null>(null);
   const [routingError, setRoutingError] = useState<string | null>(null);
@@ -77,7 +82,16 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   dismissRef.current = () => { if (!dismissBlockedRef.current) closeRef.current(); };
 
   useEffect(() => {
-    void bridge.invoke("backends:health", undefined).then(setHealth).catch(() => setHealth(null));
+    let current = true;
+    setHealth(null);
+    setHealthFailed(false);
+    void bridge.invoke("backends:health", undefined)
+      .then((result) => { if (current) setHealth(result); })
+      .catch(() => { if (current) setHealthFailed(true); });
+    return () => { current = false; };
+  }, [healthRevision]);
+
+  useEffect(() => {
     const request = ++routingStatusRequestRef.current;
     void bridge.invoke("routing:status", undefined)
       .then((status) => { if (request === routingStatusRequestRef.current) { setRouting(status); setRoutingError(null); } })
@@ -257,16 +271,18 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <h3 id="settings-clis-title">Coding CLIs</h3>
+          <button type="button" onClick={() => setHealthRevision((revision) => revision + 1)}>Refresh account status</button>
+          <p className="hint">Checks the saved executable paths used by this app session. Model catalogues do not confirm account access. Path changes require a restart.</p>
         <div className="grid2">
           <label className="field">
             <span>Claude executable</span>
             <input value={s.claude_bin} onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
-            <small className={health?.claude.ok ? "ok" : "warn"}>{health ? (health.claude.ok ? `ready · ${health.claude.detail}` : health.claude.detail) : "checking…"}</small>
+            <small className={s.claude_bin === settings.claude_bin && health?.claude.authentication === "authenticated" ? "ok" : "warn"}>{s.claude_bin !== settings.claude_bin ? "Path changed · save and restart to check" : backendHealthText(health?.claude, healthFailed)}</small>
           </label>
           <label className="field">
             <span>Codex executable</span>
             <input value={s.codex_bin} onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
-            <small className={health?.codex.ok ? "ok" : "warn"}>{health ? (health.codex.ok ? `ready · ${health.codex.detail}` : health.codex.detail) : "checking…"}</small>
+            <small className={s.codex_bin === settings.codex_bin && health?.codex.authentication === "authenticated" ? "ok" : "warn"}>{s.codex_bin !== settings.codex_bin ? "Path changed · save and restart to check" : backendHealthText(health?.codex, healthFailed)}</small>
           </label>
         </div>
         <div className="grid2">

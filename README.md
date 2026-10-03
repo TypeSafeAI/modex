@@ -102,8 +102,9 @@ modex/
 - **Shortcuts.** `⌘N` new thread · `⇧⌘N` thread in a worktree · `⌘⏎` (or `⏎`) send ·
   `⇧⌘P` plan · `⌘.` stop · `⌘J` changes panel.
 
-- **Settings.** Default backend and mode, CLI executables (with a live health check), default
-  model per backend, or the offline mock engine for demos.
+- **Settings.** Default backend and mode, CLI executables with separate installation/version
+  and account checks, default model per backend, or the offline mock engine for demos. Model
+  catalogues and account status do not prove that a coding turn can access a model.
 
 Each CLI applies its own instruction files (`AGENTS.md`, `CLAUDE.md`), hooks, MCP servers, and
 skills exactly as it would in a terminal.

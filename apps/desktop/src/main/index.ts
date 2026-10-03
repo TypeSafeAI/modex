@@ -161,12 +161,12 @@ handle("routing:setKey", ({ key }) => runner.router.setKey(key));
 handle("routing:clearKey", () => runner.router.clearKey());
 handle("routing:test", () => runner.router.test());
 handle("backends:health", async () => {
-  const out = {} as Record<BackendId, { ok: boolean; detail: string }>;
-  for (const id of ["claude", "codex", "mock"] as BackendId[]) {
-    const r = await runner.listModels(id);
-    out[id] = r.error ? { ok: false, detail: r.error } : { ok: true, detail: `${r.models.length} model${r.models.length === 1 ? "" : "s"}` };
-  }
-  return out;
+  const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
+    const backend = runner.backend(id);
+    const status = backend.health ? await backend.health() : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
+    return [id, status] as const;
+  }));
+  return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];
 });
 handle("shell:openPath", async ({ path: p }) => {
   const err = await shell.openPath(p);

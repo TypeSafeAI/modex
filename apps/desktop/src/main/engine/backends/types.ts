@@ -1,5 +1,5 @@
 import { StringDecoder } from "node:string_decoder";
-import type { ApprovalAnswer, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
+import type { ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
 
 export type { ModelInfo };
 
@@ -94,6 +94,7 @@ export interface Backend {
   forceStop?(): Promise<void>;
   /** Current model catalogue for this backend. */
   listModels(): Promise<ModelInfo[]>;
+  health?(): Promise<BackendHealth>;
   dispose(): Promise<void>;
 }
 

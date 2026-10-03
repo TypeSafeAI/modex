@@ -2,6 +2,8 @@ import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson } from "./types.js";
+import { health, installation, probe } from "./health.js";
+import type { BackendHealth } from "../../../shared/types.js";
 
 /**
  * Drives the Claude Code CLI (`claude -p`) over its stream-json protocol:
@@ -27,6 +29,21 @@ export class ClaudeBackend implements Backend {
 
   async listModels(): Promise<ModelInfo[]> {
     return ClaudeBackend.MODELS;
+  }
+
+  async health() {
+    const installed = await installation(this.bin, this.spawnImpl);
+    if (installed.unavailable) return installed.unavailable;
+    const report = (authentication: BackendHealth["authentication"], detail: string) => health(authentication, detail, "available", installed.version);
+    const result = await probe(this.bin, ["auth", "status"], this.spawnImpl);
+    if (result.failure) return report("failed", result.failure === "timeout" ? "Account check timed out" : "Account check failed");
+    try {
+      const account = JSON.parse(result.output) as { loggedIn?: unknown };
+      // The CLI documents exit 0 for signed in and 1 for signed out; conflicting signals stay unknown.
+      if (account.loggedIn === true && result.code === 0) return report("authenticated", "Signed in · model access unverified");
+      if (account.loggedIn === false && result.code === 1) return report("signed-out", "Signed out · run claude auth login");
+    } catch { /* Older CLIs do not provide structured account status. */ }
+    return report("unknown", "Account status unavailable · check in Claude CLI");
   }
 
   async dispose(): Promise<void> {}

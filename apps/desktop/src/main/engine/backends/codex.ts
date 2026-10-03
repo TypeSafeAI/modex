@@ -2,6 +2,8 @@ import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer } from "./types.js";
+import { health, installation } from "./health.js";
+import type { BackendHealth } from "../../../shared/types.js";
 
 /**
  * Drives the Codex CLI through `codex app-server`, the JSON-RPC-over-stdio protocol the
@@ -46,7 +48,7 @@ export class CodexBackend implements Backend {
       child.on("close", (code) => {
         if (this.child === child) this.disconnect(new Error(`codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`));
       });
-      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} })
+      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} }, 5000)
         .then(() => {
           this.notify("initialized", {});
           resolve();
@@ -76,7 +78,7 @@ export class CodexBackend implements Backend {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
-        if (msg.error) p.reject(new Error(msg.error.message ?? "codex error"));
+        if (msg.error) p.reject(Object.assign(new Error(msg.error.message ?? "codex error"), { code: msg.error.code }));
         else p.resolve(msg.result);
       }
       return;
@@ -88,13 +90,20 @@ export class CodexBackend implements Backend {
     this.child?.stdin?.write(JSON.stringify(o) + "\n");
   }
 
-  private request<T = unknown>(method: string, params: unknown): Promise<T> {
+  private request<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
     if (!this.child || this.child.exitCode !== null || !this.child.stdin?.writable) {
       return Promise.reject(new Error("codex app-server is not running"));
     }
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("timeout"));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (value) => { clearTimeout(timer); resolve(value as T); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
       this.send({ id, method, params });
     });
   }
@@ -117,6 +126,27 @@ export class CodexBackend implements Backend {
         efforts: m.supportedReasoningEfforts?.map((e) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort,
         serviceTiers: m.serviceTiers?.map((t) => t.id), defaultServiceTier: m.defaultServiceTier ?? undefined,
       }));
+  }
+
+  async health() {
+    const installed = await installation(this.bin, this.spawnImpl);
+    if (installed.unavailable) return installed.unavailable;
+    const report = (authentication: BackendHealth["authentication"], detail: string) => health(authentication, detail, "available", installed.version);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        this.ensure().then(() => this.request<{ account: { type?: unknown } | null; requiresOpenaiAuth?: boolean }>("account/read", { refreshToken: false }, 5000)),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), 5000); }),
+      ]);
+      if (result.account?.type === "chatgpt") return report("authenticated", "ChatGPT signed in · model access unverified");
+      if (result.account?.type === "apiKey") return report("authenticated", "API key configured · model access unverified");
+      if (result.account !== null) return report("unknown", "Account status unavailable · check in Codex CLI");
+      if (result.requiresOpenaiAuth === false) return report("unknown", "Custom provider · account status unknown");
+      return report("signed-out", "Signed out · run codex login");
+    } catch (error) {
+      if ((error as { code?: number }).code === -32601) return report("unsupported", "CLI does not support account status · update Codex");
+      return report("unknown", (error as Error).message === "timeout" ? "Account check timed out" : "Account status unavailable · check in Codex CLI");
+    } finally { clearTimeout(timer); }
   }
 
   /**
