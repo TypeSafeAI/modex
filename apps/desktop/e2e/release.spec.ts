@@ -1,6 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
@@ -190,4 +191,20 @@ test("the bundled terminal engine starts a real PTY in the thread directory", as
   expect(result.code).toBe(0);
   expect(result.output).toContain(`__MODEX_CWD__${result.cwd}`);
   expect(result.output).toContain("__MODEX_TTY__yes");
+});
+
+test("closing terminals releases every PTY the app opened", async () => {
+  // node-pty 1.1.0 left one unused /dev/ptmx open per spawn, and macOS allows 511 machine-wide.
+  // The unit suite proves the fix in Node; this proves it in the bundle that ships (MODEX_PACKAGED_APP).
+  test.skip(process.platform !== "darwin", "counts /dev/ptmx handles with macOS lsof");
+  const pid = String(app.process().pid);
+  const masters = () => execFileSync("/usr/sbin/lsof", ["-p", pid], { encoding: "utf8" }).split("\n").filter((line) => line.includes("/dev/ptmx")).length;
+  const before = masters();
+  const threadId = await page.evaluate(async () => (await window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat" })).id);
+  for (let i = 0; i < 5; i++) {
+    const sessionId = await page.evaluate(async (threadId) => (await window.modex!.invoke("terminal:open", { threadId, cols: 80, rows: 24 })).sessionId, threadId);
+    if (i === 0) expect(masters(), "an open terminal holds a PTY master the count can see").toBeGreaterThan(before);
+    await page.evaluate(async ({ threadId, sessionId }) => { await window.modex!.invoke("terminal:close", { threadId, sessionId }); }, { threadId, sessionId });
+  }
+  await expect.poll(masters, { message: "closed terminals still hold PTY masters" }).toBe(before);
 });

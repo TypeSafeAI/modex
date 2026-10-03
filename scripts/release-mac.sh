@@ -88,6 +88,10 @@ verify() {
   say "version and architecture"
   /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist"
   lipo -archs "$app/Contents/MacOS/Modex"
+  say "app icon is the Modex icon, not Electron's default"
+  local icon; icon="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIconFile' "$app/Contents/Info.plist")"
+  cmp -s "$app/Contents/Resources/$icon" "$desktop/build/icon.icns" || die "bundle icon $icon differs from apps/desktop/build/icon.icns"
+  echo "$icon matches build/icon.icns"
   say "checksums"
   (cd "$desktop/release" && shasum -a 256 "$(basename "$dmg")" "$(basename "$zip")" | tee SHA256SUMS.txt)
 }

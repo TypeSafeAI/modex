@@ -11,6 +11,12 @@ Four AI-generated branding assets offered for maintainer review. These are the o
 
 The icon, social preview, and routing illustration have opaque backgrounds. The header is an RGBA PNG. These are raster concepts, not vector masters or packaged platform icons.
 
+From v0.0.5, `modex-icon.png` is the app icon. `apps/desktop/scripts/make-icon.swift` places it on the macOS icon grid and writes `apps/desktop/build/icon.icns`. Re-run it after changing the artwork:
+
+```sh
+cd apps/desktop && swift scripts/make-icon.swift ../../docs/branding/modex-icon.png build/icon.icns
+```
+
 ## Header
 
 ![Modex header](modex-header.png)

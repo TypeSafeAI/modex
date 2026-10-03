@@ -96,8 +96,27 @@ shasum -a 256 -c SHA256SUMS.txt
 
 ## Populating CI once
 
+Done on 2026-10-03 for v0.0.5. The `release-signing` environment exists with all seven
+secrets and these protection rules:
+
+- **Required reviewer:** BunsDev. Self-review is allowed because the org has one member; the
+  approval is still a deliberate second step after the tag push.
+- **Admins cannot bypass** the reviewer.
+- **Deployments only from `v*` tags.** A branch, or a tag outside that pattern, cannot use
+  the secrets.
+
+The `.p12` must hold **one** identity: the Developer ID Application certificate that expires
+last (SHA-1 `EE732DF3…DAF3E7F`, valid to 2031), its private key, and the *Developer ID
+Certification Authority G2* intermediate. `security export -t identities` exports every
+identity in the keychain, so do not use it. In Keychain Access, select that one certificate
+and export it, or use any tool that exports a single `SecIdentity`. Before uploading, check
+the export: `openssl pkcs12 -legacy -nokeys` should list exactly those two subjects, and the
+private key's public key should match the leaf's.
+
+To repeat it, for a renewed certificate or a rotated API key:
+
 ```sh
-# Certificate: export from Keychain Access as .p12 (Developer ID Application + private key), then
+# Certificate: export the one identity as .p12 (see above), then
 base64 -i DeveloperID.p12 | gh secret set APPLE_CERTIFICATE --env release-signing
 gh secret set APPLE_CERTIFICATE_PASSWORD --env release-signing      # paste
 gh secret set APPLE_SIGNING_IDENTITY --env release-signing --body "Developer ID Application: <Org> (<TEAMID>)"
@@ -108,5 +127,21 @@ gh secret set TAG_ALLOWED_SIGNERS --env release-signing < ~/.ssh/allowed_signers
 rm DeveloperID.p12
 ```
 
-Create the `release-signing` environment first (Settings → Environments) and add a required
-reviewer. Until these exist the workflow fails at its first step, which is the intended state.
+Without these secrets the workflow fails at its first step, which is the intended state.
+
+## Cutting a release
+
+From v0.0.5 the published artifacts come from the `Release` workflow. The local build is the
+rehearsal that gates the merge.
+
+1. In a `release-<ver>` worktree, bump the version, update `docs/status.md`, and write the
+   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then the packaged e2e:
+   `MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" npm run test:e2e`.
+2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
+3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
+   `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, runs the full
+   e2e suite against the packaged app, and attaches the DMG, ZIP and `SHA256SUMS.txt` to a
+   draft release.
+4. Download the draft's assets and check them on a Mac as in
+   [Verifying a download](#verifying-a-download): `shasum -c`, Gatekeeper, stapler and the
+   signing certificate. Attach the verification log, write the notes, then publish the draft.
