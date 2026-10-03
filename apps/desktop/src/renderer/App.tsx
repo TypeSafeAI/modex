@@ -279,13 +279,42 @@ export function App() {
     loadingItems.current.delete(t.id);
     setItems((m) => { const next = { ...m }; delete next[t.id]; return next; });
     setUnsentFor(t.id, "");
+    setTerminals((m) => {
+      if (!(t.id in m)) return m;
+      const { [t.id]: _gone, ...rest } = m;
+      return rest;
+    });
+    setChangeResult((c) => (c?.threadId === t.id ? null : c));
     if (selected === t.id) setSelected(s.threads.find((x) => x.projectId === t.projectId)?.id ?? s.threads[0]?.id ?? null);
   });
   const removeProject = (projectId: string) => act(async () => {
     if (!window.confirm("Remove this project from Modex? Files on disk are not touched.")) return;
+    const removedThreads = state?.threads.filter((t) => t.projectId === projectId) ?? [];
     const s = await bridge.invoke("project:remove", { projectId });
     setState(s);
-    if (thread?.projectId === projectId) setSelected(s.threads[0]?.id ?? null);
+    for (const t of removedThreads) {
+      loadingItems.current.delete(t.id);
+      setUnsentFor(t.id, "");
+    }
+    const removedIds = new Set(removedThreads.map((t) => t.id));
+    setItems((m) => {
+      const next = { ...m };
+      for (const id of removedIds) delete next[id];
+      return next;
+    });
+    setTerminals((m) => {
+      const next = { ...m };
+      for (const id of removedIds) delete next[id];
+      return next;
+    });
+    setChangeResult((c) => (c && removedIds.has(c.threadId) ? null : c));
+    if (draft?.projectId === projectId) {
+      setUnsentFor(`draft:${draftRevision}`, "");
+      setDraft(null);
+    }
+    if (thread?.projectId === projectId || (selected && removedIds.has(selected))) {
+      setSelected(s.threads[0]?.id ?? null);
+    }
   });
   const revert = (path: string) => thread && act(async () => {
     if (!window.confirm(`Discard changes to ${path}? This cannot be undone.`)) return;

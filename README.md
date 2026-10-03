@@ -51,6 +51,7 @@ modex/
   Set `MODEX_NO_LOGIN_PATH=1` to skip this.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
+  Removing a project clears its drafts and thread views while leaving its folder on disk.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` so agents never step on
   each other or on your checkout. If the project ships `scripts/worktree.sh` (as this repo
   does), Modex delegates to it — `new modex-<id>` / `remove` — and the thread lives wherever the

@@ -39,6 +39,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   route and writes to the requested directory.
 - A rejected send or failed thread creation restores the unsent message while preserving newer
   typing in that composer (#70).
+- Removing a project clears its active draft and the removed threads' in-memory view state;
+  the project folder remains on disk (#71).
 
 ## In flight
 
