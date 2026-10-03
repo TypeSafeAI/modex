@@ -13,7 +13,7 @@ import { TerminalManager, isTrustedTerminalSender } from "./engine/terminal.js";
 import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
-import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
+import type { AppState, BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -82,10 +82,12 @@ const terminals = new TerminalManager(
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
 );
 
-handle("state:get", () => {
+const liveState = (): AppState => {
   const state = store.snapshot();
   return { ...state, threads: state.threads.map((t) => ({ ...t, status: runner.status(t.id) })) };
-});
+};
+
+handle("state:get", () => liveState());
 handle("project:add", async (req) => {
   let dir = req?.path;
   if (!dir) {
@@ -97,7 +99,7 @@ handle("project:add", async (req) => {
 });
 handle("project:remove", async ({ projectId }) => {
   await runner.removeProject(projectId);
-  return store.snapshot();
+  return liveState();
 });
 handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
@@ -130,7 +132,7 @@ handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
   await runner.deleteThread(threadId, removeWorktree);
-  return store.snapshot();
+  return liveState();
 });
 handle("project:branch", async ({ projectId }) => {
   const p = store.project(projectId);
