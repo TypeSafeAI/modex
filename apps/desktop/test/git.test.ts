@@ -159,6 +159,44 @@ test("diff from a project subdirectory resolves relative paths", async () => {
   fs.appendFileSync(path.join(sub, "test.txt"), "world\n");
   const diff = await gitx.diff(sub, "packages/app/test.txt");
   assert.match(diff, /\+world/);
+  const diffWorkspace = await gitx.diff(sub, "test.txt");
+  assert.match(diffWorkspace, /\+world/);
+});
+
+test("status and revert from a project subdirectory scope to workspace paths", async () => {
+  const repo = gitRepo();
+  const sub = path.join(repo, "packages", "app");
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, "tracked.txt"), "hello\n");
+  fs.writeFileSync(path.join(repo, "outside.txt"), "outside\n");
+  await gitx.git(repo, ["add", "."]);
+  await gitx.git(repo, ["-c", "commit.gpgsign=false", "commit", "-m", "init"]);
+
+  fs.appendFileSync(path.join(sub, "tracked.txt"), "world\n");
+  fs.writeFileSync(path.join(sub, "untracked.txt"), "line 1\nline 2\n");
+  fs.appendFileSync(path.join(repo, "outside.txt"), "sibling edit\n");
+
+  const snap = await gitx.status(sub);
+  assert.equal(snap.isRepo, true);
+  assert.equal(snap.branch, "main");
+  assert.deepEqual(
+    snap.files.map((f) => [f.path, f.code, f.additions, f.deletions]),
+    [
+      ["tracked.txt", " M", 1, 0],
+      ["untracked.txt", "??", 2, 0],
+    ],
+  );
+
+  await gitx.revert(sub, "untracked.txt");
+  assert.equal(fs.existsSync(path.join(sub, "untracked.txt")), false);
+
+  await gitx.revert(sub, "tracked.txt");
+  assert.equal(fs.readFileSync(path.join(sub, "tracked.txt"), "utf8"), "hello\n");
+
+  await assert.rejects(gitx.revert(sub, "../outside.txt"), /outside the workspace/);
+
+  const cleanSnap = await gitx.status(sub);
+  assert.deepEqual(cleanSnap.files, []);
 });
 
 test("discarding a rename protects a newly recreated source", async () => {

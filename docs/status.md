@@ -44,6 +44,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Account readiness (#75).** Settings checks CLI availability and structured account status
   separately from model catalogues. Authentication does not imply model entitlement; status
   checks do not run a coding turn. Older or unresponsive CLIs report unknown status.
+- Changes status, untracked line counts, and discard scope to the project workspace when
+  opening a repository subdirectory (such as monorepo packages).
 
 ## In flight
 

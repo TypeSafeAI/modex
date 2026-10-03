@@ -30,7 +30,16 @@ async function hasCommits(cwd: string): Promise<boolean> {
 /** Working-tree status relative to HEAD (staged + unstaged + untracked), with line counts. */
 export async function status(cwd: string): Promise<ChangesSnapshot> {
   if (!(await isRepo(cwd))) return { cwd, isRepo: false, branch: null, files: [] };
-  const [branch, entries, committed] = await Promise.all([currentBranch(cwd), statusEntries(cwd), hasCommits(cwd)]);
+  const { root, prefix } = await repoContext(cwd);
+  const [branch, allEntries, committed] = await Promise.all([currentBranch(root), statusEntries(root), hasCommits(root)]);
+  const entries: { path: string; code: string; original?: string; repoPath: string }[] = [];
+  for (const e of allEntries) {
+    const relPath = fromRepoRel(prefix, e.path);
+    if (relPath !== null && relPath !== "") {
+      const origRel = e.original ? (fromRepoRel(prefix, e.original) ?? e.original) : undefined;
+      entries.push({ path: relPath, code: e.code, original: origRel, repoPath: e.path });
+    }
+  }
   const files: ChangedFile[] = entries.map(({ path, code, original }) => ({
     path,
     code,
@@ -38,15 +47,15 @@ export async function status(cwd: string): Promise<ChangesSnapshot> {
     additions: 0,
     deletions: 0,
   }));
-  const byPath = new Map(files.map((file) => [file.path, file]));
-  const numstat = await git(cwd, ["diff", "--numstat", "-z", ...(committed ? ["HEAD"] : ["--cached"]), "--"]);
+  const byRepoPath = new Map(files.map((file, i) => [entries[i]!.repoPath, file]));
+  const numstat = await git(root, ["diff", "--numstat", "-z", ...(committed ? ["HEAD"] : ["--cached"]), "--"]);
   const counts = numstat.stdout.split("\0");
   for (let i = 0; i < counts.length; i++) {
     const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(counts[i]!);
     if (!match) continue;
     // Renames are counts + empty path, followed by old and new NUL-delimited paths.
     const name = match[3] || counts[i += 2];
-    const file = name === undefined ? undefined : byPath.get(name);
+    const file = name === undefined ? undefined : byRepoPath.get(name);
     if (file) {
       file.additions = match[1] === "-" ? 0 : Number(match[1]);
       file.deletions = match[2] === "-" ? 0 : Number(match[2]);
@@ -111,6 +120,14 @@ function toRepoRel(prefix: string, p: string): string {
   return prefix ? path.posix.join(prefix, p) : p;
 }
 
+function fromRepoRel(prefix: string, p: string): string | null {
+  if (!prefix) return p;
+  const normalized = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  if (p === prefix || p === prefix.slice(0, -1)) return "";
+  if (p.startsWith(normalized)) return p.slice(normalized.length);
+  return null;
+}
+
 function diffOutput(result: { stdout: string; stderr: string; code: number }, noIndex = false): string {
   // --no-index uses exit 1 for an ordinary difference; other nonzero exits are errors.
   if (result.code !== 0 && !(noIndex && result.code === 1 && result.stdout.length > 0)) {
@@ -158,21 +175,24 @@ export async function diff(cwd: string, rel: string, original?: string): Promise
 
 /** Discards changes to one path (tracked → checkout from HEAD; untracked → delete). Destructive. */
 export async function revert(cwd: string, rel: string): Promise<void> {
+  const { root, prefix } = await repoContext(cwd);
   const { abs, relative } = workspaceRel(cwd, rel);
-  const entry = (await statusEntries(cwd)).find((file) => file.path === relative);
+  const repoRel = toRepoRel(prefix, relative);
+  const entry = (await statusEntries(root)).find((file) => file.path === repoRel);
   if (!entry) return;
   const code = entry.code;
   if (code.includes("R") && entry.original) {
     // A new file at the source is independent work, not part of the selected rename.
-    const original = fs.lstatSync(path.join(cwd, entry.original), { throwIfNoEntry: false });
+    const origAbs = path.resolve(root, entry.original);
+    const original = fs.lstatSync(origAbs, { throwIfNoEntry: false });
     const destination = fs.lstatSync(abs, { throwIfNoEntry: false });
-    const sameEntry = entry.original.toLowerCase() === relative.toLowerCase() && original && destination && original.dev === destination.dev && original.ino === destination.ino;
+    const sameEntry = entry.original.toLowerCase() === repoRel.toLowerCase() && original && destination && original.dev === destination.dev && original.ino === destination.ino;
     if (original && !sameEntry) throw new Error(`Cannot discard rename: original path ${entry.original} already exists.`);
     // On case-insensitive volumes, remove the destination before restoring the source;
     // restoring both in one invocation can unlink the just-restored file.
-    const groups = sameEntry ? [[relative], [entry.original]] : [[entry.original, relative]];
+    const groups = sameEntry ? [[repoRel], [entry.original]] : [[entry.original, repoRel]];
     for (const paths of groups) {
-      const restored = await git(cwd, ["--literal-pathspecs", "restore", "--source=HEAD", "--staged", "--worktree", "--", ...paths]);
+      const restored = await git(root, ["--literal-pathspecs", "restore", "--source=HEAD", "--staged", "--worktree", "--", ...paths]);
       if (restored.code !== 0) throw new Error(restored.stderr.trim() || "git restore failed");
     }
     return;
@@ -183,13 +203,13 @@ export async function revert(cwd: string, rel: string): Promise<void> {
   }
   // An intent-to-add entry is reported as " A" even though the path has no HEAD
   // version. Before the first commit every indexed path is likewise new.
-  if (code[0] === "A" || code === " A" || !(await hasCommits(cwd))) {
-    const removed = await git(cwd, ["--literal-pathspecs", "rm", "--cached", "-f", "-q", "--", relative]);
+  if (code[0] === "A" || code === " A" || !(await hasCommits(root))) {
+    const removed = await git(root, ["--literal-pathspecs", "rm", "--cached", "-f", "-q", "--", repoRel]);
     if (removed.code !== 0) throw new Error(removed.stderr.trim() || "git rm failed");
     fs.rmSync(abs, { force: true });
     return;
   }
-  const r = await git(cwd, ["--literal-pathspecs", "checkout", "HEAD", "--", relative]);
+  const r = await git(root, ["--literal-pathspecs", "checkout", "HEAD", "--", repoRel]);
   if (r.code !== 0) throw new Error(r.stderr.trim() || `git checkout failed for ${rel}`);
 }
 
