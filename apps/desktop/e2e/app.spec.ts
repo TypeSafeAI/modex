@@ -97,6 +97,15 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(page.locator('[data-testid="thread-row"][data-status="waiting"]')).toHaveCount(1);
   expect(fs.existsSync(path.join(repo, "CONTRIBUTING.md"))).toBe(false);
 
+  // Send while a turn is running returns { ok: false, error: /still working/ } and leaves no notice item.
+  const busyThreadId = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-thread-id"))!;
+  const sendRes = await page.evaluate(async (id) => {
+    return window.modex!.invoke("thread:send", { threadId: id, text: "concurrent send" });
+  }, busyThreadId);
+  expect(sendRes).toEqual({ ok: false, error: expect.stringMatching(/still working/i) });
+  await expect(items(page, "notice")).toHaveCount(0);
+
+
   // Approve → the patch lands, the turn completes, the sidebar dot goes idle.
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(tid(card, "approval-answer")).toHaveText("Approved");
