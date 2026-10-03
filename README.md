@@ -21,7 +21,7 @@ modex/
 
 ## The desktop app
 
-![Approval card](docs/screenshots/01-thread-approval.png)
+![Modex approval card in the graphite desktop interface](docs/screenshots/04-graphite-approval.png)
 
 - **Two backends, one UI.** Every thread picks **Codex** or **Claude** in the composer. Codex
   threads talk to `codex app-server` (the same JSON-RPC protocol the official Codex App uses);
