@@ -212,27 +212,59 @@ export function App() {
     if (p) await refresh();
   });
   /** First send from a draft: create the thread with the draft's settings, then send. */
-  const sendDraft = (text: string) => draft && act(async () => {
-    const d = draft;
-    setCreating(true);
-    try {
-      const s = d.settings;
-      const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
-      if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
-      await refresh();
-      justCreated.current = t.id;
-      setDraft(null);
-      setSelected(t.id);
-      const r = await bridge.invoke("thread:send", { threadId: t.id, text });
-      if (!r.ok) setError(r.error ?? "send failed");
-    } finally {
-      setCreating(false);
+  const sendDraft = async (text: string): Promise<boolean> => {
+    if (!draft) return false;
+    const draftKey = `draft:${draftRevision}`;
+    let createdId: string | null = null;
+    const res = await act(async () => {
+      const d = draft;
+      setCreating(true);
+      try {
+        const s = d.settings;
+        const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
+        createdId = t.id;
+        if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
+        await refresh();
+        justCreated.current = t.id;
+        setDraft(null);
+        setSelected(t.id);
+        const r = await bridge.invoke("thread:send", { threadId: t.id, text });
+        if (!r.ok) {
+          setError(r.error ?? "send failed");
+          return false;
+        }
+        return true;
+      } finally {
+        setCreating(false);
+      }
+    });
+    if (res !== true) {
+      if (createdId) {
+        setUnsentFor(createdId, text);
+      } else {
+        setUnsentFor(draftKey, text);
+      }
+      return false;
     }
-  });
-  const send = (text: string) => thread && act(async () => {
-    const r = await bridge.invoke("thread:send", { threadId: thread.id, text });
-    if (!r.ok) setError(r.error ?? "send failed");
-  });
+    return true;
+  };
+  const send = async (text: string): Promise<boolean> => {
+    if (!thread) return false;
+    const threadId = thread.id;
+    const res = await act(async () => {
+      const r = await bridge.invoke("thread:send", { threadId, text });
+      if (!r.ok) {
+        setError(r.error ?? "send failed");
+        return false;
+      }
+      return true;
+    });
+    if (res !== true) {
+      setUnsentFor(threadId, text);
+      return false;
+    }
+    return true;
+  };
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));
   const updateThread = (patch: ThreadPatch) => thread && act(async () => {

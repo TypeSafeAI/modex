@@ -205,6 +205,23 @@ test("⇧⌘N creates a worktree thread and the header shows its branch and path
   await tid(page, "action-copy-path").click();
   await expect(tid(page, "thread-actions")).toHaveCount(0);
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(pathTitle);
+
+  // If thread:send fails (e.g. missing worktree directory), the composer restores the typed text.
+  const hiddenPath = `${pathTitle}.tmp`;
+  fs.renameSync(pathTitle!, hiddenPath);
+  try {
+    const input = tid(page, "composer-input");
+    await input.focus();
+    await input.fill("Preserve this message on error");
+    await page.keyboard.press("Meta+Enter");
+    await expect(page.locator(".toast")).toContainText("working directory is missing");
+    await expect(input).toHaveValue("Preserve this message on error");
+    await page.locator(".toast button").click();
+    await input.fill("");
+  } finally {
+    fs.renameSync(hiddenPath, pathTitle!);
+  }
+
   // Back to the first thread for the relaunch test.
   await tid(page, "thread-row").nth(1).click();
   await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "local");
