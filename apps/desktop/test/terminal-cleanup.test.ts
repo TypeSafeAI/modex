@@ -29,6 +29,18 @@ function exited(pid: number): boolean {
   catch (error) { if ((error as { status?: number }).status === 1) return true; throw error; }
 }
 
+async function waitForStopped(pid: number): Promise<void> {
+  let stat = "unavailable";
+  for (let i = 0; i < 300; i++) {
+    try { stat = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim(); }
+    catch (error) { if ((error as { status?: number }).status !== 1) throw error; stat = "exited"; }
+    if (stat.startsWith("T")) return;
+    if (stat === "exited") break;
+    await delay(10);
+  }
+  assert.fail(`fixture supervisor never stopped (ps stat: ${stat})`);
+}
+
 async function waitForPid(file: string): Promise<number> {
   for (let i = 0; i < 300; i++) {
     const pid = fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8")) : 0;
@@ -81,13 +93,13 @@ test("cleanup timeout retains ownership and a later close can retry", { skip: pr
     return pty;
   });
   manager.open("one", 80, 24);
-  // Freeze only this fixture's supervisor, then exercise its real control-channel timeout.
-  process.kill(pty.pid, "SIGSTOP");
-  // CI once saw this supervisor gone within 56 ms (#63). Say how it ended rather than failing on
-  // the SIGCONT below: exit 143 means it served CLOSE (never stopped), signal 9 that it was killed.
+  // CI has seen CLOSE win a race with SIGSTOP and exit 143. Wait until the OS reports this
+  // fixture's supervisor stopped before exercising the real control-channel timeout.
   let exit: { exitCode: number; signal?: number } | undefined;
   pty.onExit((event) => { exit = event; });
   try {
+    process.kill(pty.pid, "SIGSTOP");
+    await waitForStopped(pty.pid);
     const outcome = await manager.close("one").then(() => "resolved", (error: Error) => `rejected: ${error.message}`);
     assert.match(outcome, /did not stop/, `a frozen supervisor must time out; close() ${outcome}, exit ${JSON.stringify(exit)}`);
     assert.equal(alive(pty.pid), true);

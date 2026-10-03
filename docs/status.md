@@ -31,6 +31,9 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   before a repository's first commit (#72).
 - The terminal cleanup EPIPE test now drains its fixture's PTY output before blocking the
   event loop and reports the supervisor's process state if `SIGKILL` still stalls (#64).
+- The cleanup-timeout fixture waits for its supervisor to enter the stopped state before
+  calling Close. This removes a signal-delivery race seen on macOS CI without changing the
+  product timeout.
 - Rename diffs handle a rewritten destination beginning with `-`; Git failures now appear
   as errors in Changes rather than as empty diffs (#60).
 - The desktop shell uses a cooler graphite palette with clearer secondary text and subtle
@@ -86,14 +89,6 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
   not name threads and e2e runs without a key; only the heuristic path is exercised.
-- **The cleanup-timeout test failed once on CI, cause unknown.** *cleanup timeout retains
-  ownership and a later close can retry* (`test/terminal-cleanup.test.ts`) failed on #63, a
-  docs-only change: the supervisor it froze with `SIGSTOP` was gone, exited and reaped, within
-  56 ms. It has not reproduced locally in over 1,300 attempts on macOS 26, including runs under
-  CPU load and alongside the full suite. The test now reports how `close()` settled and the
-  supervisor's exit instead of failing on its `SIGCONT` cleanup. If it fails again, exit code
-  143 means the `SIGSTOP` never held, signal 9 that something killed the supervisor, and 125
-  that it failed at startup.
 
 ## Next
 
