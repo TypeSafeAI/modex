@@ -122,21 +122,30 @@ test("supervisor death without a cleanup receipt never authorizes deletion", { s
 test("supervisor death seen as a failed CLOSE write still reports a missing cleanup receipt", { skip: process.platform === "win32" }, async () => {
   const cwd = tmpdir("terminal-epipe-");
   let pty!: IPty;
-  const manager = new TerminalManager(() => cwd, () => {}, (_shell, _args, options) => {
+  let output = "";
+  const manager = new TerminalManager(() => cwd, (event) => { if (event.type === "data") output += event.data; }, (_shell, _args, options) => {
     pty = spawnTerminal("/bin/bash", ["--noprofile", "--norc"], options);
     return pty;
   });
   const session = manager.open("one", 80, 24);
   const file = path.join(cwd, "shell.pid");
-  manager.write("one", session.sessionId, `printf '%s' "$$" > ${quote(file)}\r`);
+  // The blocked event loop below cannot drain the PTY master. Silence the prompt and wait
+  // for a marker emitted after the command echo, so pending tty output cannot hold exit up.
+  manager.write("one", session.sessionId, `stty -echo; PS1=; printf '%s' "$$" > ${quote(file)}; printf '\\137\\137EP_READY\\137\\137\\n'\r`);
   const shell = await waitForPid(file);
   try {
+    for (let i = 0; i < 300 && !output.includes("__EP_READY__"); i++) await delay(10);
+    assert.ok(output.includes("__EP_READY__"), "fixture terminal output was not drained");
     process.kill(pty.pid, "SIGKILL");
     // Block without yielding until the supervisor is gone: its EOF stays unread, so close() writes
     // CLOSE into a dead peer and sees EPIPE rather than an already-closed socket.
     const pause = new Int32Array(new SharedArrayBuffer(4));
     for (let i = 0; i < 300 && !exited(pty.pid); i++) Atomics.wait(pause, 0, 0, 10);
-    assert.ok(exited(pty.pid), "the supervisor survived SIGKILL");
+    if (!exited(pty.pid)) {
+      let stat = "unavailable";
+      try { stat = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pty.pid)], { encoding: "utf8" }).trim(); } catch { /* the PID may have exited */ }
+      assert.fail(`the supervisor survived SIGKILL (ps stat: ${stat})`);
+    }
     await assert.rejects(manager.close("one"), /without confirming cleanup/);
   } finally {
     killIfAlive(shell);
