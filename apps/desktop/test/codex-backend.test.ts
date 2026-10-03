@@ -215,6 +215,147 @@ test("a server crash settles an active turn and a new server can recover", async
   await backend.dispose();
 });
 
+const STALE = "Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.";
+
+/** An app-server that fails every turn the way codex reports a fatal error: an `error` notification, then `turn/completed` failed. */
+function failingServer(proc: FakeProcess, message: string, opts: { threadId?: string } = {}) {
+  const threadId = opts.threadId ?? "thr-stale";
+  const seen: { method: string; params: Record<string, unknown> }[] = [];
+  let turns = 0;
+  proc.stdin.on("data", (d: Buffer) => {
+    for (const line of d.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line) as { id?: number; method?: string; params?: Record<string, unknown> };
+      if (msg.method) seen.push({ method: msg.method, params: msg.params ?? {} });
+      if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: { userAgent: "codex-cli/0.157.1" } });
+      else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId } } });
+      else if (msg.method === "turn/start") {
+        const turnId = `turn-${++turns}`;
+        proc.emitLine({ id: msg.id, result: { turn: { id: turnId } } });
+        proc.emitLine({ method: "turn/started", params: { threadId, turn: { id: turnId } } });
+        proc.emitLine({ method: "error", params: { threadId, turnId, error: { message: "transient", code: "stream" }, willRetry: true } });
+        proc.emitLine({ method: "error", params: { threadId, turnId, error: { message, code: "unauthorized" }, willRetry: false } });
+        proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", error: null } } });
+      }
+    }
+  });
+  return { seen, threadId };
+}
+
+test("a stale Codex sign-in restarts the app-server and retries the turn once, without a red line", async () => {
+  const stale = new FakeProcess();
+  const first = failingServer(stale, STALE, { threadId: "thr-a" });
+  const fresh = new FakeProcess();
+  const second = fakeServer(fresh, { threadId: "thr-a", turnId: "turn-ok" });
+  let spawns = 0;
+  const spawn = (() => spawns++ === 0 ? stale : fresh) as unknown as typeof import("node:child_process").spawn;
+  const backend = new CodexBackend("codex", spawn);
+  const { sink, events } = collectSink();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  await fresh.waitFor((l) => l.includes('"turn/start"'));
+  assert.equal(spawns, 2, "a fresh server reads the current sign-in");
+  assert.equal(stale.killed, true);
+  assert.ok(first.seen.some((s) => s.method === "turn/start"));
+  assert.equal(second.seen.find((s) => s.method === "thread/resume")?.params.threadId, "thr-a", "the retry resumes the thread the first attempt opened");
+  fresh.emitLine({ method: "item/agentMessage/delta", params: { threadId: "thr-a", turnId: "turn-ok", itemId: "m", delta: "Hi" } });
+  fresh.emitLine({ method: "turn/completed", params: { threadId: "thr-a", turn: { id: "turn-ok", status: "completed" } } });
+  assert.deepEqual(await run, { status: "completed" });
+  assert.ok(events.some((e) => e.startsWith("notice:info:Codex's sign-in changed")), events.join(" | "));
+  assert.equal(events.some((e) => e.startsWith("notice:error")), false, "the first attempt's error is not shown");
+  assert.ok(events.includes("delta:Hi"));
+  await backend.dispose();
+});
+
+test("with another Codex turn in progress, a stale sign-in retries on the running server instead of restarting it", async () => {
+  const proc = new FakeProcess();
+  let threads = 0;
+  let turns = 0;
+  proc.stdin.on("data", (chunk: Buffer) => {
+    for (const line of chunk.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const message = JSON.parse(line);
+      if (message.method === "initialize") proc.emitLine({ id: message.id, result: {} });
+      if (message.method === "thread/start") proc.emitLine({ id: message.id, result: { thread: { id: `thr-${++threads}` } } });
+      if (message.method === "turn/start") proc.emitLine({ id: message.id, result: { turn: { id: `turn-${++turns}` } } });
+    }
+  });
+  const { spawn, calls } = fakeSpawn(proc);
+  const backend = new CodexBackend("codex", spawn);
+  const opts = { cwd: "/repo", mode: "chat" as const, plan: false, model: "" };
+  const { sink, events } = collectSink();
+  const a = backend.runTurn("first", opts, sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"turn/start"') && l.includes("first"));
+  const b = backend.runTurn("bystander", opts, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"turn/start"') && l.includes("bystander"));
+  proc.emitLine({ method: "error", params: { threadId: "thr-1", turnId: "turn-1", error: { message: STALE }, willRetry: false } });
+  proc.emitLine({ method: "turn/completed", params: { threadId: "thr-1", turn: { id: "turn-1", status: "failed", error: null } } });
+  const starts = () => proc.written.filter((w) => w.includes('"turn/start"') && w.includes("first")).length;
+  await proc.waitFor(() => starts() === 2);
+  assert.equal(calls.length, 1, "the shared server stays up for the bystander");
+  assert.equal(proc.killed, false);
+  assert.equal(proc.written.some((w) => w.includes('"thread/resume"')), false, "the thread is still loaded on this server");
+  proc.emitLine({ method: "turn/completed", params: { threadId: "thr-1", turn: { id: "turn-3", status: "completed" } } });
+  assert.deepEqual(await a, { status: "completed" });
+  proc.emitLine({ method: "turn/completed", params: { threadId: "thr-2", turn: { id: "turn-2", status: "completed" } } });
+  assert.deepEqual(await b, { status: "completed" });
+  assert.ok(events.some((e) => e.startsWith("notice:info:Codex's sign-in changed")));
+  await backend.dispose();
+});
+
+test("when a fresh server still reports a stale sign-in, the failure records both attempts", async () => {
+  const one = new FakeProcess();
+  failingServer(one, STALE, { threadId: "thr-x" });
+  const two = new FakeProcess();
+  failingServer(two, STALE, { threadId: "thr-x" });
+  let spawns = 0;
+  const spawn = (() => spawns++ === 0 ? one : two) as unknown as typeof import("node:child_process").spawn;
+  const backend = new CodexBackend("codex", spawn);
+  const r = await backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, STALE);
+  assert.equal(spawns, 2);
+  assert.match(r.recovery?.[0] ?? "", /restarted codex app-server .*failed again/);
+  assert.equal((r.detail?.firstAttempt as { error: string }).error, STALE);
+  await backend.dispose();
+});
+
+test("a failed turn carries the server's error notification and RPC facts, reported once", async () => {
+  const proc = new FakeProcess();
+  const { threadId } = failingServer(proc, "quota exhausted");
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, events } = collectSink();
+  const r = await backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, "quota exhausted");
+  assert.equal(events.filter((e) => e.startsWith("notice:")).length, 0, "the notification is folded into the result, not shown as a second line");
+  assert.equal(r.detail?.codexThreadId, threadId);
+  assert.equal(r.detail?.turnId, "turn-1");
+  assert.equal(r.detail?.userAgent, "codex-cli/0.157.1");
+  assert.deepEqual(r.detail?.retriedErrors, ["transient"]);
+  assert.equal((r.detail?.errorNotification as { code?: string }).code, "unauthorized");
+  await backend.dispose();
+});
+
+test("an RPC error names its method and code in the failure detail", async () => {
+  const proc = new FakeProcess();
+  proc.stdin.on("data", (d: Buffer) => {
+    for (const line of d.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line);
+      if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: {} });
+      else if (msg.method === "thread/start") proc.emitLine({ id: msg.id, error: { code: -32602, message: "invalid params: cwd" } });
+    }
+  });
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const r = await backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, "invalid params: cwd");
+  assert.equal(r.detail?.method, "thread/start");
+  assert.equal(r.detail?.rpcCode, -32602);
+  assert.equal(r.detail?.stage, "open thread");
+  await backend.dispose();
+});
+
 test("cancellation during setup never starts a coding turn", async () => {
   const proc = new FakeProcess();
   const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
@@ -381,5 +522,61 @@ test("CodexBackend: approvals carry a structured action; a rule's 'yes' is accep
     { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true },
   ]);
   assert.ok(!JSON.stringify(requests.map((r) => r.action)).includes("SECRET BODY"), "the patch body never enters the action");
+  await backend.dispose();
+});
+
+test("stale-auth recovery preserves another turn that is still opening its thread", async () => {
+  const proc = new FakeProcess();
+  let threads = 0;
+  let turns = 0;
+  let openingId: number | undefined;
+  proc.stdin.on("data", (chunk: Buffer) => {
+    for (const line of chunk.toString().split("\n").filter(Boolean)) {
+      const message = JSON.parse(line);
+      if (message.method === "initialize") proc.emitLine({ id: message.id, result: {} });
+      if (message.method === "thread/start") {
+        if (++threads === 1) proc.emitLine({ id: message.id, result: { thread: { id: "first" } } });
+        else openingId = message.id;
+      }
+      if (message.method === "turn/start") proc.emitLine({ id: message.id, result: { turn: { id: `t${++turns}` } } });
+    }
+  });
+  const { spawn, calls } = fakeSpawn(proc);
+  const backend = new CodexBackend("codex", spawn);
+  const opts = { cwd: "/repo", mode: "chat" as const, plan: false, model: "" };
+  const first = backend.runTurn("first", opts, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"turn/start"'));
+  const other = backend.runTurn("other", opts, collectSink().sink, new AbortController().signal);
+  await proc.waitFor(() => openingId !== undefined);
+  try {
+    proc.emitLine({ method: "turn/completed", params: { threadId: "first", turn: { id: "t1", status: "failed", error: { message: STALE } } } });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(proc.killed, false, "opening a thread also owns the shared server");
+    assert.equal(calls.length, 1);
+    proc.emitLine({ id: openingId, result: { thread: { id: "other" } } });
+    await proc.waitFor(() => turns === 3);
+    proc.emitLine({ method: "turn/completed", params: { threadId: "first", turn: { id: "t2", status: "completed" } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId: "other", turn: { id: "t3", status: "completed" } } });
+    assert.equal((await first).status, "completed");
+    assert.equal((await other).status, "completed");
+  } finally {
+    await backend.dispose();
+    await Promise.all([first, other]);
+  }
+});
+
+test("an aborted stale-auth failure does not restart or retry", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId, seen } = fakeServer(proc);
+  const { spawn, calls } = fakeSpawn(proc);
+  const backend = new CodexBackend("codex", spawn);
+  const abort = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, abort.signal);
+  await proc.waitFor((l) => l.includes('"turn/start"'));
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", error: { message: STALE } } } });
+  abort.abort();
+  await run;
+  assert.equal(calls.length, 1);
+  assert.equal(seen.filter((s) => s.method === "turn/start").length, 1);
   await backend.dispose();
 });

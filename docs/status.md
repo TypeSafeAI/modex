@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-01._
+_Last updated 2026-10-03._
 
 ## Shipped
 
@@ -41,6 +41,13 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
 
 ## In flight
 
+- **Auth recovery and retry** (`finish-auth-approvals`). Reconciles the preserved `auth-retry`
+  draft with current main and #61's early send-error behavior. Failed turns carry persisted
+  failure cards, remedies, Copy details and Retry without duplicating the user message.
+  Codex retries a stale login only once and preserves concurrent turns, including thread
+  setup. Model discovery can be retried from threads and drafts; reopening a terminal does
+  not repeat a sign-in action. The original `auth-retry` worktree is retained as recovery data.
+
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
@@ -48,7 +55,7 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs, then turns the gate on. It
   targets v0.0.6 and merges only after the v0.0.5 tag. Its Settings UI builds on #51, so it
   waits for #51 to land. Receipts, the deny reason and the docs can start now. The spec
-  (`2026-10-01-modex-jev-approval-rules-spec.md`, named in #54) records the part 2 decisions.
+  ([reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md), named in #54) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
 - **Open contributor PRs.**
@@ -60,8 +67,6 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   - #39: logo, banner and icon concepts under `docs/branding/`, placed in the README. It may
     supply the app icon for v0.0.5.
 - **Worktrees with no PR yet.** Each should become a PR or be deleted.
-  - `auth-retry` (uncommitted): a failed turn ends in a card with Retry, a fix and Copy
-    details. When Codex's sign-in goes stale, Modex restarts `codex app-server` and retries.
   - `pr-review-browser` (uncommitted): runs the renderer in a browser, connected to the real
     engine over a localhost bridge.
   - `livestream-redaction` (one unpushed commit, 2026-09-29): Streamer Mode, an opaque cover

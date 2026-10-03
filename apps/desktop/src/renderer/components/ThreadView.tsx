@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
+import type { BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
+import { failureReport } from "../../shared/failures";
 import { bridge } from "../bridge";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
@@ -16,8 +17,13 @@ interface Props {
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
   onUpdate: (patch: ThreadPatch) => void;
+  /** Runs the last message again after a failed turn (the failure card's Retry). */
+  onRetry: () => void;
+  /** Applies a failure card's remedy: types the sign-in command into the thread's terminal, or opens Settings. */
+  onFix: (fix: TurnFix) => void;
   models: ModelInfo[];
   modelsError?: string;
+  onRetryModels?: () => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   /** The checkout's current branch (from the Changes snapshot), for the composer's context strip. */
   branch?: string;
@@ -41,7 +47,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, models, modelsError, onRetryModels, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
@@ -111,6 +117,13 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
   const turns = groupTurns(items);
   let lastUser = -1;
   turns.forEach((t, i) => { if (t.user) lastUser = i; });
+  // Retry belongs on the newest failure, and only while nothing but notices has followed it.
+  let retryId: string | undefined;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.kind !== "notice") break;
+    if (item.failure) { retryId = item.id; break; }
+  }
 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
@@ -123,9 +136,9 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
         )}
         {turns.map((turn, i) => (
           <Fragment key={turn.user?.id ?? `pre-${i}`}>
-            {turn.user && <Item item={turn.user} onAnswer={onAnswer} />}
+            {turn.user && <Item item={turn.user} onAnswer={onAnswer} onFix={onFix} />}
             {turn.user && (i === lastUser && busy ? <TurnHeader start={turn.user.at} status={thread.status} /> : turn.rest.length > 0 && <TurnHeader start={turn.user.at} end={turnEnd(turn.rest)} />)}
-            {turn.rest.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} />)}
+            {turn.rest.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} onFix={onFix} onRetry={!busy && item.id === retryId ? onRetry : undefined} />)}
           </Fragment>
         ))}
       </div>
@@ -143,6 +156,7 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
         auto={Boolean(thread.auto)}
         models={models}
         modelsError={modelsError}
+        onRetryModels={onRetryModels}
         suggestion={followUp?.key === suggestionKey ? followUp.value : null}
         onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}
@@ -209,7 +223,7 @@ function TurnHeader({ start, end, status }: { start: string; end?: number; statu
   );
 }
 
-function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"] }) {
+function Item({ item, onAnswer, onFix, onRetry }: { item: ThreadItem; onAnswer: Props["onAnswer"]; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
       return <div className="msg user" data-testid="item" data-item-kind="user"><div className="bubble" data-testid="item-text">{item.text}</div></div>;
@@ -237,12 +251,47 @@ function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"
         </div>
       );
     case "notice":
+      if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
       return <div className={`notice ${item.level}`} data-testid="item" data-item-kind="notice" data-level={item.level}>{item.text}</div>;
     case "thinking":
       return <ThinkingItem item={item} />;
     case "route":
       return <RouteItem item={item} />;
   }
+}
+
+/**
+ * A turn that did not complete: what went wrong in plain words, the CLI's own message, and the
+ * ways out — Retry (newest failure only), the fix when Modex has one, and Copy details, which
+ * puts the full report (also shown by Details) on the clipboard for a bug report.
+ */
+function FailureItem({ failure, onFix, onRetry }: { failure: TurnFailure; onFix: Props["onFix"]; onRetry?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const report = failureReport(failure);
+  const copy = () => {
+    void bridge.invoke("clipboard:write", { text: report }).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+  return (
+    <div className="failure" data-testid="item" data-item-kind="notice" data-level="error" data-failure-code={failure.code} role="alert">
+      <div className="failure-head">
+        <span className="failure-icon" aria-hidden="true">!</span>
+        <span data-testid="failure-summary">{failure.summary}</span>
+      </div>
+      {failure.hint && <div className="failure-hint" data-testid="failure-hint">{failure.hint}</div>}
+      {failure.message !== failure.summary && <pre className="failure-message" data-testid="failure-message">{failure.message}</pre>}
+      <div className="row failure-actions">
+        {onRetry && failure.retryable && <button type="button" className="btn primary small" data-testid="failure-retry" onClick={onRetry}>Retry</button>}
+        {failure.fix && <button type="button" className="btn small" data-testid="failure-fix" data-fix-kind={failure.fix.kind} onClick={() => onFix(failure.fix!)}>{failure.fix.label}</button>}
+        <button type="button" className="btn small" data-testid="failure-copy" onClick={copy}>{copied ? "Copied" : "Copy details"}</button>
+        <button type="button" className="btn ghost small" data-testid="failure-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? "Hide details" : "Details"}</button>
+      </div>
+      {open && <pre className="failure-report" data-testid="failure-report">{report}</pre>}
+    </div>
+  );
 }
 
 /** One Auto decision: what runs this turn, and — expanded — the judge's reasons. */

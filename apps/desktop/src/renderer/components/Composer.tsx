@@ -33,6 +33,8 @@ interface Props {
   auto: boolean;
   models: ModelInfo[];
   modelsError?: string;
+  /** Asks the CLI for its models again after `modelsError`. */
+  onRetryModels?: () => void;
   /** A suggested next message for an idle thread; shown only while the box is empty. */
   suggestion?: FollowUp | null;
   onBackend: (b: BackendId) => void;
@@ -56,7 +58,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onRetryModels, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
 
@@ -137,7 +139,12 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
             )}
           </div>
         </div>
-        {modelsError && <div className="composer-warn">⚠ {modelsError}</div>}
+        {modelsError && (
+          <div className="composer-warn" role="alert" data-testid="models-error">
+            ⚠ {modelsError}
+            {onRetryModels && <button type="button" className="btn ghost small" data-testid="models-retry" onClick={onRetryModels}>Retry</button>}
+          </div>
+        )}
       </div>
     </div>
   );

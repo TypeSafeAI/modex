@@ -23,9 +23,13 @@ function killIfAlive(pid: number, signal: NodeJS.Signals = "SIGKILL"): void {
   try { process.kill(pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
 }
 
-// Exited means a zombie or already reaped (ps exits 1 for an unknown PID).
-function exited(pid: number): boolean {
-  try { return execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim().startsWith("Z"); }
+// macOS can keep a SIGKILLed PTY supervisor in ?E (exiting) until Node yields. Waiting
+// synchronously for Z/reaping then deadlocks this fixture; E also closes its control socket.
+function exiting(pid: number): boolean {
+  try {
+    const state = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    return state.startsWith("Z") || process.platform === "darwin" && state.includes("E");
+  }
   catch (error) { if ((error as { status?: number }).status === 1) return true; throw error; }
 }
 
@@ -135,9 +139,14 @@ test("supervisor death seen as a failed CLOSE write still reports a missing clea
     // Block without yielding until the supervisor is gone: its EOF stays unread, so close() writes
     // CLOSE into a dead peer and sees EPIPE rather than an already-closed socket.
     const pause = new Int32Array(new SharedArrayBuffer(4));
-    for (let i = 0; i < 300 && !exited(pty.pid); i++) Atomics.wait(pause, 0, 0, 10);
-    assert.ok(exited(pty.pid), "the supervisor survived SIGKILL");
-    await assert.rejects(manager.close("one"), /without confirming cleanup/);
+    for (let i = 0; i < 300 && !exiting(pty.pid); i++) Atomics.wait(pause, 0, 0, 10);
+    assert.ok(exiting(pty.pid), "the supervisor survived SIGKILL");
+    await assert.rejects(manager.close("one"), (error: Error) => {
+      assert.match(error.message, /without confirming cleanup/);
+      // Prove that this covers the failed-write path, rather than an already-observed EOF.
+      assert.match((error.cause as NodeJS.ErrnoException | undefined)?.code ?? "", /^(EPIPE|ECONNRESET)$/);
+      return true;
+    });
   } finally {
     killIfAlive(shell);
     fs.rmSync(cwd, { recursive: true, force: true });
