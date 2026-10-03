@@ -41,7 +41,7 @@ interface Props {
   onModel: (m: string, effort?: string) => void;
   onEffort: (e: string | undefined) => void;
   onAuto: (auto: boolean) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<void>;
   onStop: () => void;
   /** Set by the ⌘⏎ / focus shortcuts in App. */
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -59,6 +59,7 @@ const MAX_INPUT = 180;
 export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     const el = ta.current;
@@ -68,10 +69,9 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
   }, [text]);
 
   const submit = () => {
-    const t = text.trim();
-    if (!t || busy) return;
-    onSend(t);
-    setText("");
+    if (!text.trim() || busy || submittingRef.current) return;
+    submittingRef.current = true;
+    void onSend(text).finally(() => { submittingRef.current = false; });
   };
 
   // The suggestion is an offer, never a default: it fills the box only on an explicit click, Tab or → while

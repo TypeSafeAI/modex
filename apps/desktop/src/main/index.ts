@@ -27,6 +27,13 @@ const demo = flag("demo");
 const screenshotDir = flag("screenshot");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? path.join(os.homedir(), ".modex");
 fs.mkdirSync(home, { recursive: true });
+// The scripted demo and screenshots must never discover a real Jev key or call the network.
+if (demo) {
+  process.env.TYPESAFE_API_KEY = "";
+  process.env.JEV_API_KEY = "";
+  process.env.JEV_CONFIG = path.join(home, "no-jev-config.json");
+  process.env.MODEX_NO_LOGIN_PATH = "1";
+}
 // An isolated home (e2e, demo) also gets its own Chromium profile, so renderer preferences in
 // localStorage (panel layout) and window-state.json never leak between runs or into the user's real app.
 if (demo || process.env.MODEX_HOME) app.setPath("userData", path.join(home, "electron"));

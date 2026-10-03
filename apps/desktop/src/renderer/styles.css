@@ -222,7 +222,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .app > * { min-height: 0; }
 .app.loading { display: grid; place-items: center; color: var(--text-3); }
 
-.titlebar { grid-column: 1 / -1; display: flex; align-items: center; min-width: 0; background: var(--bg-window); }
+.titlebar { grid-column: 1 / -1; display: flex; align-items: center; min-width: 0; background: var(--bg-window); background-image: linear-gradient(90deg, rgba(146, 174, 226, .035), transparent 45%); }
 /* Nav buttons centred at x 99 / 133 / 167 (34 px pitch), clear of the traffic lights. */
 .titlebar-nav { flex: none; width: calc(var(--rail-w) + 1px + var(--sidebar-w)); display: flex; align-items: center; gap: 6px; padding-left: 85px; }
 .titlebar.sidebar-closed .titlebar-nav { width: auto; padding-right: 12px; }
@@ -233,21 +233,21 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .title-text { min-width: 0; max-width: 100%; field-sizing: content; padding: 3px 0; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-1); font: var(--weight-medium) var(--text-md)/18px var(--font-sans); cursor: default; text-overflow: ellipsis; outline: none; }
 .title-text.editing { margin-left: -7px; padding: 3px 6px; border-color: var(--accent); background: var(--bg-sidebar); cursor: text; }
 
-.rail { grid-row: 2; grid-column: 1; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: 9px 0 var(--space-2) 5px; background: var(--bg-window); }
+.rail { grid-row: 2; grid-column: 1; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: 9px 0 var(--space-2) 5px; background: var(--bg-window); background-image: linear-gradient(180deg, rgba(146, 174, 226, .035), transparent 30%); }
 .rail-btn.active { background: var(--bg-rail-active); color: var(--text-1); cursor: default; }
 
-.sheet { grid-row: 2; grid-column: 2; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; margin: 0 3px 3px 0; overflow: hidden; background: var(--bg-main); border: 1px solid var(--border-rail); border-radius: var(--radius-sheet); }
+.sheet { grid-row: 2; grid-column: 2; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; margin: 0 3px 3px 0; overflow: hidden; background: var(--bg-main); border: 1px solid var(--border-rail); border-radius: var(--radius-sheet); box-shadow: 0 14px 42px rgba(0, 0, 0, .3), inset 0 1px rgba(255, 255, 255, .035); }
 .sheet > * { min-height: 0; }
 /* Optional panes must not shift main out of the flexible track when unmounted. */
 .sheet > .sidebar { grid-area: 1 / 1; }
 .sheet > .main { grid-area: 1 / 2; }
 .sheet > .changes { grid-area: 1 / 3; }
-.main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); }
+.main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); background-image: radial-gradient(ellipse 75% 40% at 50% -10%, rgba(105, 136, 190, .065), transparent); }
 .sidebar + .main { border-left: 1px solid var(--border-pane); }
 
-.sidebar { width: var(--sidebar-w); display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-sidebar); }
+.sidebar { width: var(--sidebar-w); display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-sidebar); background-image: linear-gradient(160deg, rgba(111, 146, 201, .035), transparent 38%); }
 .sidebar-head { height: 52px; flex: none; display: flex; align-items: center; padding: 0 12px 0 16px; }
-.sidebar-title { margin: 0; font: var(--weight-semibold) var(--text-lg)/1 var(--font-sans); color: var(--text-2); }
+.sidebar-title { margin: 0; font: var(--weight-semibold) var(--text-lg)/1 var(--font-sans); color: var(--text-1); letter-spacing: -.025em; }
 .sidebar-search { display: flex; align-items: center; gap: var(--space-2); height: var(--row-h); flex: none; margin: 0 19px 6px 8px; padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-row); background: var(--bg-row-hover); color: var(--text-3); }
 .sidebar-search:focus-within { border-color: var(--accent); }
 .sidebar-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-1); font-size: var(--text-md); }
@@ -255,7 +255,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 
 .side-row { position: relative; display: flex; align-items: center; height: var(--row-h); flex: none; margin: 0 8px 1px; border-radius: var(--radius-row); color: var(--text-2); font-size: var(--text-md); }
 .side-row:hover { background: var(--bg-row-hover); }
-.side-row.selected { background: var(--bg-row-selected); color: var(--text-1); }
+.side-row.selected { background: var(--bg-row-selected); color: var(--text-1); box-shadow: inset 2px 0 rgba(138, 170, 255, .7), inset 0 1px rgba(255, 255, 255, .035); }
 .side-row-icon { color: var(--text-3); }
 .side-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .new-chat, .project-toggle, .thread-main, .show-more { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -289,13 +289,14 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* ── Composer: measured from reference #1 (box 736×98 at x 668–1403, strip 38 px inset 13 px). ── */
 .composer { flex: none; padding: 0 16px 16px; }
 .composer-inner { max-width: 736px; margin: 0 auto; }
-.composer-context { display: flex; align-items: center; gap: 28px; height: 38px; margin: 0 13px; padding: 0 14px; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--bg-composer-context); color: var(--text-1); font-size: var(--text-sm); white-space: nowrap; }
+.composer-context { display: flex; align-items: center; gap: 28px; height: 38px; margin: 0 13px; padding: 0 14px; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--bg-composer-context); color: var(--text-1); font-size: var(--text-sm); white-space: nowrap; box-shadow: inset 0 1px rgba(255, 255, 255, .025); }
 .context-item { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .context-item .icon-svg { color: var(--text-2); }
 .context-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .context-item[data-testid="context-kind"] { flex-shrink: 0; }
 /* 98 px at rest = 1 border + 56 input + 39 control row + 1 inset + 1 border. */
-.composer-box { position: relative; display: flex; flex-direction: column; background: var(--bg-composer); border: 1px solid var(--border-composer); border-radius: var(--radius-composer); transition: border-color var(--duration-fast) var(--ease-out); }
+.composer-box { position: relative; display: flex; flex-direction: column; background: var(--bg-composer); background-image: linear-gradient(180deg, rgba(255, 255, 255, .035), transparent 75%); border: 1px solid var(--border-composer); border-radius: var(--radius-composer); box-shadow: 0 16px 46px rgba(0, 0, 0, .28), inset 0 1px rgba(255, 255, 255, .04); transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-base) var(--ease-out); }
+.composer-box:focus-within { box-shadow: 0 18px 50px rgba(0, 0, 0, .32), 0 0 0 1px rgba(138, 170, 255, .16), inset 0 1px rgba(255, 255, 255, .05); }
 .composer-box.plan { border-color: rgba(124, 156, 255, .55); }
 /* Follow-up suggestion: ghost text on the input's first line, where the placeholder would be, so the box
    keeps its 98 px rest height. Click, Tab or → takes it; typing hides it. */
@@ -304,10 +305,10 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .followup:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .followup-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .followup .kbd { flex: none; }
-/* The ghost line stands in for the placeholder; the attribute stays so the empty state is unchanged. */
-.followup + textarea::placeholder { color: transparent; }
 .composer textarea { display: block; width: 100%; resize: none; border: 0; outline: none; background: transparent; padding: 13px 12px 0; color: var(--text-1); font-size: var(--text-md); line-height: 20px; }
 .composer textarea::placeholder { color: var(--text-placeholder); }
+/* The suggestion occupies the placeholder line; this rule follows the ordinary placeholder color. */
+.composer .followup + textarea::placeholder { color: transparent; }
 .composer-bar { display: flex; align-items: center; gap: 4px; height: 39px; margin-bottom: 1px; padding: 0 1px 0 7px; }
 .composer-menu { position: relative; display: inline-flex; }
 .access-pill { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; }
@@ -340,8 +341,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* ── Draft (new chat before its first send). Reference #1: heading 28/400 centred, glyph above. ── */
 .draft-view { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .draft-hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 0 24px 28px; text-align: center; }
-.draft-mark { color: var(--text-3); font-size: 40px; line-height: 48px; }
-.draft-title { margin: 0; color: var(--text-1); font: var(--weight-regular) var(--text-xl)/34px var(--font-sans); }
+.draft-mark { color: var(--accent); font-size: 40px; line-height: 48px; text-shadow: 0 0 32px rgba(138, 170, 255, .28); }
+.draft-title { margin: 0; color: var(--text-1); font: var(--weight-regular) var(--text-xl)/34px var(--font-sans); letter-spacing: -.025em; }
 .draft-project { position: relative; display: inline-block; }
 .draft-project-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-decoration-color: var(--text-3); text-decoration-thickness: 1px; text-underline-offset: 6px; }
 .draft-project-name:hover, .draft-project-name[aria-expanded="true"] { text-decoration-color: var(--text-1); }
@@ -359,7 +360,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .transcript-empty code { padding: 1px 5px; border-radius: 4px; background: var(--bg-row-selected); }
 .msg { margin-bottom: 20px; color: var(--text-1); font-size: var(--text-md); line-height: 1.6; }
 .msg.user { display: flex; justify-content: flex-end; }
-.msg.user .bubble { max-width: 70%; padding: 8px 16px; border-radius: 12px; background: var(--bg-user-bubble); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.user .bubble { max-width: 70%; padding: 8px 16px; border: 1px solid rgba(166, 186, 218, .08); border-radius: 12px; background: var(--bg-user-bubble); white-space: pre-wrap; overflow-wrap: anywhere; }
 .md p { margin: 0 0 12px; }
 .md h2, .md h3, .md h4 { margin: 18px 0 8px; font-weight: var(--weight-semibold); }
 .md ul, .md ol { margin: 0 0 12px; padding-left: 28px; }
@@ -402,7 +403,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .notice.error { color: var(--danger); }
 
 /* Approval: the one bordered card, because it blocks the turn. Sized to the column, not its padding box. */
-.transcript > .approval { width: calc(100% - 54px); max-width: 714px; margin-top: 4px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid rgba(232, 180, 88, .4); border-radius: var(--radius-md); background: var(--bg-elevated); }
+.transcript > .approval { width: calc(100% - 54px); max-width: 714px; margin-top: 4px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid rgba(232, 180, 88, .4); border-radius: var(--radius-md); background: var(--bg-elevated); box-shadow: 0 12px 32px rgba(0, 0, 0, .14), inset 0 1px rgba(255, 255, 255, .03); }
 .transcript > .approval.answered { border-color: var(--border-pane); background: transparent; }
 .approval-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--text-1); font-weight: var(--weight-semibold); }
 .shield { color: var(--warn); }
