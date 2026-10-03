@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-01._
+_Last updated 2026-10-03._
 
 ## Shipped
 
@@ -38,6 +38,25 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   2026-10-01). A supervisor killed just before cleanup could surface as a raw `write EPIPE`;
   deletion was refused either way, but the message now says *Terminal supervisor exited
   without confirming cleanup* every time.
+- **A send that cannot start says so** (#61, 2026-10-03). `thread:send` answered
+  `{ ok: true }` even when `runner.send` rejected straight away (thread still working, missing
+  working directory, thread or project being removed), so the error only appeared as a notice
+  in the transcript. Those rejections now return `{ ok: false, error }` and show in the app's
+  error toast. Failures after the turn has started are still notices.
+- **Renamed files diff as renames in Changes** (#60, 2026-10-03). A staged rename rendered as
+  a whole-file addition from `/dev/null`. It now shows `rename from`/`rename to` and only the
+  changed lines. When edits push it below git's rename threshold, the diff compares
+  `HEAD:<old path>` with the new file directly. In a project opened at a repo subdirectory,
+  diffs for the project's own files used to be empty and now show. Follow-ups are noted on the
+  PR: the fallback mishandles a destination name starting with `-`, and a catch-all shows an
+  internal error as an empty diff.
+- **`scripts/worktree.sh` works offline** (#62, 2026-10-03). A failed `git fetch` aborted
+  `new` and `remove` (`remove` after it had already removed the worktree). `new` now prints a
+  note and cuts from the local `origin/main`. `remove` checks merges against the local ref and
+  keeps any branch it cannot prove merged.
+- **Branding images** (#39, 2026-10-02). Header, icon, routing and social-preview images in
+  `docs/branding/`, shown in the README. The app icon itself is unchanged; `modex-icon.png`
+  may become it in v0.0.5.
 
 ## In flight
 
@@ -54,11 +73,6 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
 - **Open contributor PRs.**
   - #51 `jev-integration`: Jev settings, routing limits, and settings save transactions.
     It conflicts with `main` and needs a rebase before review.
-  - #60 (rename diffs in Changes), #61 (early `runner.send` rejections reach `thread:send`),
-    #62 (`worktree.sh` falls back to the local `origin/main` when offline). These are fork
-    PRs, so their CI runs wait for a maintainer's approval.
-  - #39: logo, banner and icon concepts under `docs/branding/`, placed in the README. It may
-    supply the app icon for v0.0.5.
 - **Worktrees with no PR yet.** Each should become a PR or be deleted.
   - `auth-retry` (uncommitted): a failed turn ends in a card with Retry, a fix and Copy
     details. When Codex's sign-in goes stale, Modex restarts `codex app-server` and retries.
