@@ -27,6 +27,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Panel layout (#74).** Hiding the sidebar keeps the draft and thread centered in the
   remaining main pane. Optional sidebar and Changes panes have fixed grid positions;
   geometry e2e checks cover toggles, narrower windows, relaunch, and the open terminal.
+- Changes can discard intent-to-add files and staged additions with further edits, including
+  before a repository's first commit (#72).
 
 ## In flight
 

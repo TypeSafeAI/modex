@@ -36,6 +36,44 @@ test("status/diff/revert over tracked, untracked and deleted files", async () =>
   await assert.rejects(gitx.revert(repo, "../outside"), /outside the workspace/);
 });
 
+test("discarding files before the first commit clears intent-to-add and staged edits", async () => {
+  const repo = tmpdir("modex-unborn-repo-");
+  await gitx.git(repo, ["init", "-q", "-b", "main"]);
+  fs.writeFileSync(path.join(repo, "intent.txt"), "draft\n");
+  fs.writeFileSync(path.join(repo, "staged.txt"), "staged\n");
+  fs.writeFileSync(path.join(repo, "keep.txt"), "keep\n");
+  await gitx.git(repo, ["add", "-N", "intent.txt"]);
+  await gitx.git(repo, ["add", "staged.txt"]);
+  fs.appendFileSync(path.join(repo, "staged.txt"), "unstaged edit\n");
+
+  assert.deepEqual((await gitx.status(repo)).files.map((f) => [f.path, f.code]), [
+    ["intent.txt", " A"], ["keep.txt", "??"], ["staged.txt", "AM"],
+  ]);
+  await gitx.revert(repo, "intent.txt");
+  await gitx.revert(repo, "staged.txt");
+
+  assert.equal(fs.existsSync(path.join(repo, "intent.txt")), false);
+  assert.equal(fs.existsSync(path.join(repo, "staged.txt")), false);
+  assert.equal(fs.readFileSync(path.join(repo, "keep.txt"), "utf8"), "keep\n");
+  assert.deepEqual((await gitx.status(repo)).files.map((f) => f.path), ["keep.txt"]);
+});
+
+test("discarding newly added files also works after the first commit", async () => {
+  const repo = gitRepo();
+  fs.writeFileSync(path.join(repo, "intent.txt"), "draft\n");
+  fs.writeFileSync(path.join(repo, "staged.txt"), "staged\n");
+  await gitx.git(repo, ["add", "-N", "intent.txt"]);
+  await gitx.git(repo, ["add", "staged.txt"]);
+  fs.appendFileSync(path.join(repo, "staged.txt"), "unstaged edit\n");
+
+  await gitx.revert(repo, "intent.txt");
+  await gitx.revert(repo, "staged.txt");
+
+  assert.equal(fs.existsSync(path.join(repo, "intent.txt")), false);
+  assert.equal(fs.existsSync(path.join(repo, "staged.txt")), false);
+  assert.deepEqual((await gitx.status(repo)).files, []);
+});
+
 test("non-repo folders report isRepo=false", async () => {
   const snap = await gitx.status(tmpdir());
   assert.equal(snap.isRepo, false);

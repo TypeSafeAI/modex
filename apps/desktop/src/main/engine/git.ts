@@ -183,8 +183,10 @@ export async function revert(cwd: string, rel: string): Promise<void> {
     fs.rmSync(abs, { force: true, recursive: false });
     return;
   }
-  if (code[0] === "A") {
-    const removed = await git(cwd, ["--literal-pathspecs", "rm", "--cached", "-q", "--", relative]);
+  // An intent-to-add entry is reported as " A" even though the path has no HEAD
+  // version. Before the first commit every indexed path is likewise new.
+  if (code[0] === "A" || code === " A" || !(await hasCommits(cwd))) {
+    const removed = await git(cwd, ["--literal-pathspecs", "rm", "--cached", "-f", "-q", "--", relative]);
     if (removed.code !== 0) throw new Error(removed.stderr.trim() || "git rm failed");
     fs.rmSync(abs, { force: true });
     return;
