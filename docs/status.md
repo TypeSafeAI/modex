@@ -44,6 +44,11 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## In flight
 
+- **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
+  [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
+  installed-version initialization probes. Neither is enabled. Read-only permission,
+  authentication and macOS acceptance evidence remain gates for future implementation.
+
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
