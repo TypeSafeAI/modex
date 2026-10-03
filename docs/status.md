@@ -52,6 +52,12 @@ Nothing yet.
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
   e2e, including a test that counts the shipped app's PTY handles, with library validation
   on. Move to 1.2.0 stable when it ships.
+- **The EPIPE cleanup test can outlast its SIGKILL poll on a slow runner.** *supervisor death
+  seen as a failed CLOSE write…* (`test/terminal-cleanup.test.ts`, #64) failed once on #69's
+  CI with *the supervisor survived SIGKILL*. The killed supervisor was neither a zombie nor
+  reaped after about 16 s. The test blocks the event loop on purpose, so nothing reads the PTY
+  master, and a dying process may wait in exit for its tty output to drain. To test that, read
+  the master before the kill, or log `ps -o stat` (`E` means exiting) when the poll gives up.
 - **Rename diffs have two known follow-ups** (#60). The below-threshold fallback mishandles a
   destination name starting with `-`, and a catch-all shows an internal error as an empty
   diff.
