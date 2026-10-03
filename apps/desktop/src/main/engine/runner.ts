@@ -253,6 +253,7 @@ export class ThreadRunner {
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
     let fast = false;
+    let routingBlocked: string | undefined;
     const auto = Boolean(thread.auto);
     if (auto) {
       // Auto: judge the request, then re-read the thread — the pick is applied as a thread update
@@ -262,17 +263,31 @@ export class ThreadRunner {
         const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
         this.addItem(threadId, receipt.item);
         const d = receipt.decision;
-        if (d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
-        else if (d.model !== thread.model || d.effort !== thread.effort) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
+        if (d.blocked) routingBlocked = d.reasons.at(-1) ?? "The reasoning-effort ceiling cannot be guaranteed.";
+        // A blocked route is diagnostic evidence only. Never let it mutate the thread or
+        // discard its current backend session, even if a router implementation returns a
+        // partially populated decision alongside `blocked`.
+        if (!d.blocked && d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
+        else if (!d.blocked && (d.model !== thread.model || d.effort !== thread.effort)) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
         fast = d.fast;
         thread = this.o.store.thread(threadId) ?? thread;
       } catch (err) {
-        this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Auto routing failed (${(err as Error).message}); using the thread's current model.`, at: new Date().toISOString() });
+        if (thread.backend === "mock") {
+          this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Auto routing failed (${(err as Error).message}); using the thread's current model.`, at: new Date().toISOString() });
+        } else {
+          routingBlocked = `Auto could not establish a safe route (${(err as Error).message}). Retry routing or explicitly turn Auto off to use the current model.`;
+        }
       }
     }
     if (abort.signal.aborted) {
       this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
       this.setStatus(threadId, "idle");
+      l.abort = null;
+      return;
+    }
+    if (routingBlocked) {
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Auto routing stopped: ${routingBlocked}`, at: new Date().toISOString() });
+      this.setStatus(threadId, "error");
       l.abort = null;
       return;
     }
@@ -388,7 +403,8 @@ export class ThreadRunner {
     this.o.emit({ threadId, type: "thread", thread: t });
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
-    if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && this.slot(threadId).items.some((i) => i.kind === "route")) {
+    const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");
+    if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && lastRoute && !lastRoute.blocked) {
       void this.router.noteOverride(current, patch.model).then((learned) => {
         if (learned) this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Noted — for ${learned.task.replace(/_/g, " ")} you chose tier ${learned.to} over Auto's tier ${learned.from}. Auto will lean that way next time.`, at: new Date().toISOString() });
       }).catch(() => {});

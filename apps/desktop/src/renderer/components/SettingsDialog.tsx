@@ -1,33 +1,51 @@
 import { useEffect, useRef, useState } from "react";
 import type { BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
+import { sameJudgeSettings, testMatchesJudge } from "../../shared/judge-settings";
 import { bridge } from "../bridge";
 
 interface Props {
   settings: Settings;
-  onSave: (patch: Partial<Settings>) => void;
+  onSave: (patch: Partial<Settings>) => Promise<void>;
   onClose: () => void;
 }
 
+const testIdentity = (test: RoutingTest) => {
+  const tested = test.tested!;
+  return test.transport === "cli"
+    ? `jev CLI ${tested.executable ?? "(unknown executable)"} · ${tested.model}`
+    : test.transport === "http"
+      ? `HTTPS${tested.executable ? ` (CLI ${tested.executable} not selected)` : ""} · ${tested.model}`
+      : `unavailable${tested.executable ? ` · CLI ${tested.executable}` : ""} · ${tested.model}`;
+};
+
+const errorMessage = (err: unknown, fallback: string) =>
+  (err instanceof Error ? err.message : "").replace(/^Error invoking remote method '[^']+':\s*(?:Error(?::\s*|\s*$))?/, "").trim() || fallback;
+
 export function SettingsDialog({ settings, onSave, onClose }: Props) {
+  const [section, setSection] = useState<"general" | "clis" | "routing" | "advanced">("routing");
   const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const dismissBlockedRef = useRef(false);
+  const dismissRef = useRef(() => {});
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current!;
-    const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'));
+    const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')).filter((el) => el.getClientRects().length > 0 && !el.closest("[inert]"));
     (controls()[0] ?? dialog).focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        closeRef.current();
+        dismissRef.current();
       } else if (event.key === "Tab") {
         const list = controls();
         const first = list[0] ?? dialog;
         const last = list.at(-1) ?? dialog;
-        if (!dialog.contains(document.activeElement) || (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        const active = document.activeElement as HTMLElement;
+        if (!list.includes(active) || (event.shiftKey ? active === first : active === last)) {
           event.preventDefault();
           (event.shiftKey ? last : first).focus();
         }
@@ -43,14 +61,27 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const [health, setHealth] = useState<Record<BackendId, { ok: boolean; detail: string }> | null>(null);
   const [lists, setLists] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const [routing, setRouting] = useState<RoutingStatus | null>(null);
+  const [routingError, setRoutingError] = useState<string | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [test, setTest] = useState<RoutingTest | "running" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const operationRef = useRef(false);
+  const routingStatusRequestRef = useRef(0);
+
+  dismissRef.current = () => { if (!dismissBlockedRef.current) closeRef.current(); };
 
   useEffect(() => {
     void bridge.invoke("backends:health", undefined).then(setHealth).catch(() => setHealth(null));
-    void bridge.invoke("routing:status", undefined).then(setRouting).catch(() => setRouting(null));
+    const request = ++routingStatusRequestRef.current;
+    void bridge.invoke("routing:status", undefined)
+      .then((status) => { if (request === routingStatusRequestRef.current) { setRouting(status); setRoutingError(null); } })
+      .catch((err) => { if (request === routingStatusRequestRef.current) { setRouting(null); setRoutingError(errorMessage(err, "Could not load judge status.")); } });
     for (const b of ["codex", "claude"] as BackendId[]) void bridge.invoke("models:list", { backend: b }).then((r) => setLists((l) => ({ ...l, [b]: r }))).catch((err) => setLists((l) => ({ ...l, [b]: { models: [], error: (err as Error).message } })));
   }, []);
 
@@ -68,9 +99,20 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((x) => ({ ...x, [k]: v }));
   const setR = <K extends keyof RoutingPolicy>(k: K, v: RoutingPolicy[K]) => setS((x) => ({ ...x, routing: { ...x.routing, [k]: v } }));
   const r = s.routing;
+  const jevModel = r.jev_model.trim();
+  const judgeDraftDirty = !sameJudgeSettings(r, settings.routing);
+  const lastTest = routing?.lastTest;
+  const savedTestMatches = !!lastTest && !judgeDraftDirty && !!routing && testMatchesJudge(lastTest, routing, settings.routing);
+  const testResultStale = !!test && test !== "running" && !!test.tested &&
+    (test.current === false || judgeDraftDirty || (!!routing && !testMatchesJudge(test, routing, settings.routing)));
+  const interactionLocked = saving || keyBusy || resetBusy || test === "running";
   const learned = routing ? Object.entries(routing.fit.tasks).filter(([, t]) => t.offset !== 0) : [];
   const sourceLabel: Record<RoutingStatus["keySource"], string> = { modex: "Modex keychain", env: "TYPESAFE_API_KEY in the environment", "jev-config": "the jev CLI config (~/.config/jev/config.json)", "login-shell": "your login shell", none: "nowhere" };
   const keyAction = async (fn: () => Promise<RoutingStatus>) => {
+    if (operationRef.current) return;
+    operationRef.current = true;
+    ++routingStatusRequestRef.current;
+    setRoutingError(null);
     setKeyBusy(true);
     setKeyError(null);
     setTest(null);
@@ -78,38 +120,143 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
       setRouting(await fn());
       setKeyDraft("");
     } catch (err) {
-      setKeyError((err as Error).message);
+      const message = errorMessage(err, "Could not update the key.");
+      setKeyError(message);
+      setRouting(null);
+      setRoutingError(message);
     } finally {
       setKeyBusy(false);
+      operationRef.current = false;
+    }
+  };
+  const resetLearning = async () => {
+    if (operationRef.current || !window.confirm("Reset Auto routing's learned preferences? This applies immediately and cannot be undone.")) return;
+    operationRef.current = true;
+    ++routingStatusRequestRef.current;
+    setRoutingError(null);
+    setResetBusy(true);
+    setResetError(null);
+    setTest(null);
+    try {
+      setRouting(await bridge.invoke("routing:reset", undefined));
+    } catch (err) {
+      setResetError(`Could not confirm the learning reset: ${(err as Error).message || "unknown error"}. Reopen Settings to check the current learning state before retrying.`);
+      setRouting(null);
+      setRoutingError(errorMessage(err, "Could not refresh judge status after the learning reset."));
+    } finally {
+      setResetBusy(false);
+      operationRef.current = false;
     }
   };
   const runTest = async () => {
+    if (operationRef.current) return;
+    operationRef.current = true;
+    const request = ++routingStatusRequestRef.current;
+    setRoutingError(null);
     setTest("running");
     try {
-      setTest(await bridge.invoke("routing:test", undefined));
+      const result = await bridge.invoke("routing:test", undefined);
+      try {
+        const status = await bridge.invoke("routing:status", undefined);
+        if (request === routingStatusRequestRef.current) { setRouting(status); setRoutingError(null); }
+      } catch (err) {
+        if (request === routingStatusRequestRef.current) {
+          setRouting(null);
+          setRoutingError(errorMessage(err, "Could not refresh judge status."));
+        }
+      }
+      setTest(result);
     } catch (err) {
-      setTest({ ok: false, message: (err as Error).message, transport: "none", ms: 0 });
+      const message = errorMessage(err, "Could not test the judge.");
+      setTest({ ok: false, message, transport: "none", ms: 0 });
+      setRouting(null);
+      setRoutingError(message);
+    } finally {
+      operationRef.current = false;
     }
   };
 
+  const save = async () => {
+    if (operationRef.current) return;
+    if (!jevModel) {
+      setModelError("Enter a Jev model id before saving.");
+      setSection("advanced");
+      contentRef.current?.scrollTo(0, 0);
+      return;
+    }
+    operationRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const draft: Settings = {
+        ...s,
+        default_model: { ...s.default_model },
+        routing: { ...s.routing, allow_backends: [...s.routing.allow_backends], jev_model: jevModel },
+      };
+      await onSave(draft);
+      onClose();
+    } catch (err) {
+      const detail = errorMessage(err, "");
+      setSaveError(detail ? `Could not save settings: ${detail}` : "Could not save settings.");
+    } finally {
+      setSaving(false);
+      operationRef.current = false;
+    }
+  };
+  dismissBlockedRef.current = interactionLocked;
+
+  const chooseSection = (next: typeof section) => {
+    setSection(next);
+    contentRef.current?.scrollTo(0, 0);
+  };
+  const toggleBackend = (backend: "codex" | "claude", enabled: boolean) => {
+    const selected = new Set(r.allow_backends);
+    if (enabled) selected.add(backend);
+    else selected.delete(backend);
+    const coding = (["codex", "claude"] as const).filter((id) => selected.has(id));
+    const legacyDemo = r.allow_backends.includes("mock") ? ["mock" as const] : [];
+    setR("allow_backends", [...coding, ...legacyDemo]);
+  };
+  const toggleLegacyMock = (enabled: boolean) => {
+    const allow = r.allow_backends.filter((backend) => backend !== "mock");
+    setR("allow_backends", enabled ? [...allow, "mock"] : allow);
+  };
+
+  const sections = [
+    ["general", "General"], ["clis", "Coding CLIs"], ["routing", "Auto routing"], ["advanced", "Advanced / demo"],
+  ] as const;
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div ref={dialogRef} tabIndex={-1} className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Settings" data-testid="settings">
-        <h2>Settings</h2>
-        <p className="hint" style={{ margin: "0 0 12px" }}>Modex drives the Claude Code and Codex CLIs on this machine and never calls a model API for a coding turn — log in with <code>claude</code> and <code>codex login</code>. The only credential it can hold is an optional TypeSafe key for Auto routing, kept in the OS keychain.</p>
-        <label className="field">
-          <span>Default backend for new threads</span>
-          <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>
-            {BACKENDS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-            <option value="mock">Mock (offline demo)</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Default mode for new threads</span>
-          <select value={s.default_mode} onChange={(e) => set("default_mode", e.target.value as Mode)}>
-            {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
-        </label>
+    <div className="modal-backdrop" onClick={() => { if (!interactionLocked) onClose(); }}>
+      <div ref={dialogRef} tabIndex={-1} className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-busy={interactionLocked} aria-label="Settings" data-testid="settings">
+        <header className="settings-header" data-testid="settings-header">
+          <div>
+            <h2>Settings</h2>
+            <p>Modex runs the Claude Code and Codex CLIs for coding. Jev classifies requests for Auto routing; it never sees project files or runs coding turns.</p>
+          </div>
+        </header>
+        <nav className="settings-nav" aria-label="Settings sections" data-testid="settings-nav">
+          {sections.map(([id, label]) => <button key={id} type="button" disabled={interactionLocked} className={`settings-nav-item${section === id ? " active" : ""}`} aria-current={section === id ? "page" : undefined} onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })} onClick={() => chooseSection(id)}>{label}</button>)}
+        </nav>
+        <div className="settings-scroll" ref={contentRef} data-testid="settings-content" inert={interactionLocked}>
+        {section === "general" && <section id="settings-general" aria-labelledby="settings-general-title" className="settings-section">
+          <h3 id="settings-general-title">General</h3>
+          <label className="field">
+            <span>Default backend for new threads</span>
+            <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>
+              {BACKENDS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+              <option value="mock">Mock (offline demo)</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Default mode for new threads</span>
+            <select value={s.default_mode} onChange={(e) => set("default_mode", e.target.value as Mode)}>
+              {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </label>
+        </section>}
+        {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
+          <h3 id="settings-clis-title">Coding CLIs</h3>
         <div className="grid2">
           <label className="field">
             <span>Claude executable</span>
@@ -132,11 +279,14 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
             {modelSelect("codex")}
           </label>
         </div>
-        <h3 className="section-title">Auto routing</h3>
+        </section>}
+        {section === "routing" && <section id="settings-routing" aria-labelledby="settings-routing-title" className="settings-section" data-testid="settings-routing-section">
+        <h3 id="settings-routing-title">Auto routing</h3>
+        <p className="hint">Settings below are drafts until Save. API key changes, Clear, and learning reset apply immediately and remain applied if you cancel.</p>
         <p className="routing-status" data-testid="routing-status">
-          {routing === null ? "Checking the judge…" : routing.live ? (
-            <span className="ok">
-              Jev configured — {routing.transport.kind === "cli" ? `via the jev CLI ${routing.transport.version ?? ""} (${routing.transport.bin})` : "via Modex's own HTTPS call"}
+          {routingError ? <span className="warn">Judge status unavailable: {routingError} Use Test judge to retry with saved settings.</span> : routing === null ? "Checking the judge…" : routing.live ? (
+            <span>
+              Jev transport configured — {routing.transport.kind === "cli" ? `via the jev CLI ${routing.transport.version ?? ""} (${routing.transport.bin})` : "via Modex's own HTTPS call"}
               {routing.keyLast4 ? `, key ****${routing.keyLast4} from ${sourceLabel[routing.keySource]}` : routing.keySource === "none" ? ", key left to the CLI" : ""}
               {routing.keyRef ? ` (1Password ${routing.keyRef})` : ""}.
             </span>
@@ -146,8 +296,9 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
           {routing ? ` ${routing.fit.routes} auto turn${routing.fit.routes === 1 ? "" : "s"} so far` : ""}
           {routing && r.premium_turns_per_day != null ? ` · ${routing.fit.premiumToday}/${r.premium_turns_per_day} premium today` : ""}
           {learned.length ? ` · learned: ${learned.map(([k, t]) => `${k.replace(/_/g, " ")} ${t.offset > 0 ? "+" : ""}${t.offset}`).join(", ")}` : ""}
-          {routing && routing.fit.routes > 0 ? <> · <button className="btn small ghost" onClick={() => void bridge.invoke("routing:reset", undefined).then(setRouting)}>Reset learning</button></> : null}
+          {routing && routing.fit.routes > 0 ? <> · <button className="btn small ghost" disabled={interactionLocked} onClick={() => void resetLearning()}>Reset learning…</button></> : null}
         </p>
+        {resetError && <p className="warn" role="alert" data-testid="routing-reset-error">{resetError}</p>}
         <div className="key-row" data-testid="jev-key">
           <label className="field grow">
             <span>TypeSafe API key {routing?.secrets.present ? <em className="ok">· saved in {routing.secrets.backend}{routing.keySource === "modex" && routing.keyLast4 ? ` (****${routing.keyLast4})` : ""}</em> : null}</span>
@@ -160,13 +311,18 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
             {keyError && <small className="warn">{keyError}</small>}
           </label>
           <div className="key-actions">
-            <button className="btn small primary" disabled={keyBusy || !keyDraft.trim()} onClick={() => void keyAction(() => bridge.invoke("routing:setKey", { key: keyDraft }))}>Save key</button>
-            <button className="btn small" disabled={keyBusy || !routing?.secrets.present} onClick={() => void keyAction(() => bridge.invoke("routing:clearKey", undefined))}>Clear</button>
-            <button className="btn small" disabled={keyBusy || test === "running"} onClick={() => void runTest()} title="Sends one tiny question through the active transport">Test judge</button>
+            <button className="btn small primary" disabled={interactionLocked || !keyDraft.trim()} onClick={() => void keyAction(() => bridge.invoke("routing:setKey", { key: keyDraft }))}>Save key now</button>
+            <button className="btn small" disabled={interactionLocked || !routing?.secrets.present} onClick={() => void keyAction(() => bridge.invoke("routing:clearKey", undefined))}>Clear now</button>
+            <button className="btn small" disabled={interactionLocked || judgeDraftDirty} onClick={() => void runTest()} title={judgeDraftDirty ? "Save or revert the transport and executable draft before testing" : "Sends one tiny question through the currently saved transport"}>Test judge</button>
           </div>
         </div>
-        {test && test !== "running" && <p className={`routing-test ${test.ok ? "ok" : "warn"}`} data-testid="routing-test">{test.ok ? "✓ " : "✗ "}{test.message}{test.status ? ` (HTTP ${test.status})` : ""} · {test.ms} ms</p>}
+        {judgeDraftDirty && <p className="hint" data-testid="routing-test-draft">Transport, executable, or model draft differs from saved settings. Save or revert it before testing; the test never saves settings.</p>}
+        {routing && <p className={`routing-test ${savedTestMatches ? (lastTest!.ok ? "ok" : "warn") : ""}`} data-testid="routing-verification">
+          {savedTestMatches ? `${lastTest!.ok ? "Verified" : "Last test failed"} · ${testIdentity(lastTest!)} · ${new Date(lastTest!.at).toLocaleString()} · ${lastTest!.message}${lastTest!.status ? ` (HTTP ${lastTest!.status})` : ""} · ${lastTest!.ms} ms` : routing.live ? "Configured · untested" : "Unavailable · untested"}
+        </p>}
+        {test && test !== "running" && <p className={`routing-test ${test.ok ? "ok" : "warn"}`} data-testid="routing-test">{test.ok ? "✓ " : "✗ "}{test.message}{test.tested ? ` · tested ${testIdentity(test)}` : ""}{test.status ? ` (HTTP ${test.status})` : ""} · {test.ms} ms</p>}
         {test === "running" && <p className="routing-test">Asking Jev…</p>}
+        {testResultStale && <p className="warn" data-testid="routing-test-stale">Settings changed while this test ran; its result does not verify the current configuration.</p>}
         <div className="grid2">
           <label className="field">
             <span>Judge transport</span>
@@ -179,7 +335,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
           <label className="field">
             <span>jev executable</span>
             <input value={r.jev_bin} onChange={(e) => setR("jev_bin", e.target.value)} spellCheck={false} />
-            <small>{routing?.transport.kind === "cli" ? `found: ${routing.transport.bin} ${routing.transport.version ?? ""}` : "not found on PATH — npm link in TypeSafeAI/cli to install"}</small>
+            <small>{judgeDraftDirty ? "Draft transport or executable has not been checked. Save or revert before testing." : routingError ? "Saved transport status is unavailable; use Test judge to retry." : settings.routing.jev_transport === "http" ? "The jev CLI is not used or checked in HTTP-only mode." : routing?.transport.kind === "cli" ? `found: ${routing.transport.bin} ${routing.transport.version ?? ""}` : settings.routing.jev_transport === "auto" && routing?.transport.kind === "http" ? "Auto selected HTTPS; the jev CLI was not selected." : routing?.detail ? `CLI unavailable: ${routing.detail}` : "Checking the saved transport…"}</small>
           </label>
         </div>
         <label className="check">
@@ -220,14 +376,52 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
           <input type="checkbox" checked={r.allow_backend_switch} onChange={(e) => setR("allow_backend_switch", e.target.checked)} />
           <span>Allow Auto to switch between Codex and Claude when a thread has no session to lose</span>
         </label>
-        <label className="field">
-          <span>Mock script (offline demo only)</span>
-          <input value={s.mock_script ?? ""} onChange={(e) => set("mock_script", e.target.value)} placeholder="/path/to/mock-script.json" spellCheck={false} />
-        </label>
-        <div className="row end">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={() => { onSave(s); onClose(); }}>Save</button>
+        </section>}
+        {section === "advanced" && <section id="settings-advanced" aria-labelledby="settings-advanced-title" className="settings-section" data-testid="settings-advanced-section">
+          <h3 id="settings-advanced-title">Advanced routing and demo</h3>
+          <label className="field">
+            <span>Jev judge model</span>
+            <input data-testid="jev-model" type="text" value={r.jev_model} onChange={(e) => { setR("jev_model", e.target.value); setModelError(e.target.value.trim() ? null : "Enter a Jev model id before saving."); }} onBlur={() => setR("jev_model", r.jev_model.trim())} aria-invalid={!jevModel || !!modelError} aria-describedby="jev-model-help" spellCheck={false} />
+            <small id="jev-model-help">Model id used for future Auto routing decisions. Default: <code>jev-latest</code>. Existing threads keep their current backend, model, and CLI session.</small>
+            {modelError && <small className="warn" role="alert">{modelError}</small>}
+          </label>
+          <fieldset className="settings-backends">
+            <legend>Allowed coding backends when Auto can switch</legend>
+            {(["codex", "claude"] as const).map((backend) => <label className="check" key={backend}>
+              <input type="checkbox" checked={r.allow_backends.includes(backend)} onChange={(e) => toggleBackend(backend, e.target.checked)} />
+              <span>{backend === "codex" ? "Codex" : "Claude"}</span>
+            </label>)}
+            <small>{r.allow_backends.some((backend) => backend === "codex" || backend === "claude")
+              ? "Auto may switch among the selected coding backends when the thread has no CLI session to preserve. This list does not enable switching by itself; the Auto routing switch must also be on."
+              : r.allow_backends.includes("mock")
+                ? "No coding CLI is selected. Mock remains an allowed destination for offline routing when the current backend has no suitable model. Switching must also be enabled above."
+                : "With an empty allowed-backend list, Auto stays on the thread’s current backend. Switching must also be enabled above."}</small>
+          </fieldset>
+          <p className="hint settings-effect">Saved routing settings apply to the next Auto decision, including in existing threads. They do not change a thread’s current backend, model, or CLI session.</p>
+          <div className="settings-divider" />
+          <h3 className="section-title">Offline demo</h3>
+          <fieldset className="settings-backends settings-demo-backend">
+            <legend>Routing compatibility</legend>
+            <label className="check">
+              <input data-testid="allow-mock-routing" type="checkbox" checked={r.allow_backends.includes("mock")} onChange={(e) => toggleLegacyMock(e.target.checked)} />
+              <span>Allow Mock for offline demo routing</span>
+            </label>
+            <small>Mock is the offline scripted backend, not a coding CLI. Existing Mock allowlist entries stay enabled until you turn this off.</small>
+          </fieldset>
+          <label className="field">
+            <span>Mock script</span>
+            <input value={s.mock_script ?? ""} onChange={(e) => set("mock_script", e.target.value)} placeholder="/path/to/mock-script.json" spellCheck={false} />
+            <small>Used only by the Mock backend for scripted offline demos and tests.</small>
+          </label>
+        </section>}
         </div>
+        <footer className="settings-footer" data-testid="settings-actions">
+          {saveError && <p className="warn" role="alert" data-testid="settings-save-error">{saveError} Your draft is still here; retry or cancel.</p>}
+          <div className="row end">
+            <button className="btn" disabled={interactionLocked} onClick={onClose}>Cancel</button>
+            <button className="btn primary" disabled={interactionLocked} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </footer>
       </div>
     </div>
   );

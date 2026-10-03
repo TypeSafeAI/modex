@@ -244,7 +244,8 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await expect(tid(route, "route-meta")).toContainText("quick answer · heuristic");
   await expect(tid(route, "item-body")).toHaveCount(0);
   await tid(route, "item-toggle").click();
-  await expect(tid(route, "item-body")).toContainText("No TypeSafe API key found; used the built-in heuristic.");
+  await expect(tid(route, "item-body")).toContainText("No TypeSafe API key found");
+  await expect(tid(route, "item-body")).toContainText("are all empty; used the built-in heuristic.");
   await expect(tid(route, "item-body")).toContainText("quick answer · complexity");
   await page.screenshot({ path: path.join(appDir, "test-results", "e2e-auto-route.png") });
   // The receipt sits between the user message and the agent's first reply.
@@ -269,11 +270,11 @@ test("a key typed into Settings is kept encrypted outside state.json, reported m
   await tid(page, "open-settings").click();
   const keyBox = tid(page, "jev-key");
   await expect(keyBox.locator("input[type=password]")).toHaveAttribute("placeholder", /sk-…/);
-  await expect(keyBox.getByRole("button", { name: "Clear" })).toBeDisabled();
+  await expect(keyBox.getByRole("button", { name: "Clear now" })).toBeDisabled();
   await keyBox.locator("input[type=password]").fill("sk-e2e-typed-key-4321");
-  await keyBox.getByRole("button", { name: "Save key" }).click();
+  await keyBox.getByRole("button", { name: "Save key now" }).click();
   const status = tid(page, "routing-status");
-  await expect(status).toContainText("Jev configured");
+  await expect(status).toContainText("Jev transport configured");
   await expect(status).toContainText("key ****4321 from Modex keychain");
   await expect(keyBox.locator("label > span").first()).toContainText("saved in test cipher (not secure)");
   await expect(keyBox.locator("input[type=password]")).toHaveValue("");
@@ -281,10 +282,21 @@ test("a key typed into Settings is kept encrypted outside state.json, reported m
   expect(fs.readFileSync(path.join(home, "app", "state.json"), "utf8")).not.toContain("4321");
   const secretsFile = path.join(home, "app", "secrets.json");
   expect(fs.readFileSync(secretsFile, "utf8")).not.toContain("sk-e2e-typed-key-4321");
-  expect(fs.statSync(secretsFile).mode & 0o777).toBe(0o600);
-  await keyBox.getByRole("button", { name: "Clear" }).click();
+  if (process.platform !== "win32") expect(fs.statSync(secretsFile).mode & 0o777).toBe(0o600);
+  await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
+  await expect(tid(page, "settings")).toHaveCount(0);
+  await tid(page, "open-settings").click();
+  const reopenedKeyBox = tid(page, "jev-key");
+  await expect(tid(page, "routing-status")).toContainText("key ****4321 from Modex keychain");
+  await expect(reopenedKeyBox.locator("input[type=password]")).toHaveAttribute("placeholder", /Saved/);
+  await reopenedKeyBox.getByRole("button", { name: "Clear now" }).click();
   await expect(status).toContainText("No TypeSafe API key found");
-  await expect(keyBox.getByRole("button", { name: "Clear" })).toBeDisabled();
+  await expect(reopenedKeyBox.getByRole("button", { name: "Clear now" })).toBeDisabled();
+  expect(fs.readFileSync(secretsFile, "utf8")).not.toContain("sk-e2e-typed-key-4321");
+  await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
+  await tid(page, "open-settings").click();
+  await expect(tid(page, "routing-status")).toContainText("No TypeSafe API key found");
+  await expect(tid(page, "jev-key").getByRole("button", { name: "Clear now" })).toBeDisabled();
   await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
 });
 

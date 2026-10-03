@@ -231,6 +231,52 @@ const jevAnswers = (task: string, complexity: number, over: Partial<JevResponse[
   },
 });
 
+test("model discovery failures and empty results retry on the next turn, with the real error in blocked receipts", async () => {
+  for (const failure of ["reported", "thrown", "empty"] as const) {
+    let calls = 0;
+    const router = new Router({
+      home: tmpdir("modex-discovery-retry-"), policy: () => DEFAULT_ROUTING, transport: null,
+      listModels: async () => {
+        if (++calls === 1) {
+          if (failure === "thrown") throw new Error("app-server is restarting");
+          return { models: [], error: failure === "reported" ? "app-server is restarting" : undefined };
+        }
+        return { models: [m("gpt-6-luna", { efforts: CODEX_EFFORTS, isDefault: true })] };
+      },
+    });
+    const request = { thread: thread({ model: "" }), text: "review the repository", items: [], project: { name: "demo" } };
+    const first = await router.route(request);
+    assert.equal(first.item.blocked, true);
+    if (failure !== "empty") assert.match(first.decision.reasons.at(-1)!, /app-server is restarting/);
+    const second = await router.route(request);
+    assert.equal(second.decision.blocked, undefined);
+    assert.equal(calls, 2, "discovery must retry without waiting a minute");
+    await router.route(request);
+    assert.equal(calls, 2, "successful non-empty lists remain cached");
+  }
+});
+
+test("a manual model repair after a blocked turn never teaches an older successful route", async () => {
+  const home = tmpdir("modex-blocked-override-");
+  let policy: RoutingPolicy = { ...DEFAULT_ROUTING, max_effort: "high" };
+  const router = new Router({ home, policy: () => policy, transport: null,
+    listModels: async () => ({ models: [m("gpt-6-astra", { efforts: ["high"], isDefault: true }), m("gpt-5.5", { efforts: ["high"] })] }),
+  });
+  const request = { thread: thread(), text: "design a complex architecture", items: [], project: { name: "demo" } };
+  const previous = await router.route(request);
+  assert.equal(previous.decision.tier, 3);
+  router.noteOutcome("th1", "completed");
+  const before = router.fit.snapshot();
+  policy = { ...policy, max_effort: "low" };
+  const stopped = await router.route(request);
+  assert.equal(stopped.decision.blocked, true);
+  assert.equal(await router.noteOverride(thread(), "gpt-5.5"), undefined);
+  assert.deepEqual(router.fit.snapshot(), before);
+  policy = { ...policy, max_effort: "high" };
+  await router.route(request);
+  assert.deepEqual(await router.noteOverride(thread(), "gpt-5.5"), { task: previous.judgments.task, from: 3, to: 0 }, "a later safe route resumes normal learning");
+});
+
 test("router: Jev judgments become a receipt item, the fit records the route, and status reports live", async () => {
   const home = tmpdir("modex-home-");
   const sent: unknown[] = [];
@@ -254,6 +300,27 @@ test("router: Jev judgments become a receipt item, the fit records the route, an
   const learned = await budget.noteOverride(thread(), "gpt-6-astra");
   assert.deepEqual(learned, { task: "feature", from: 1, to: 3 });
   assert.equal((await budget.status()).fit.tasks.feature!.overridesUp, 1);
+});
+
+test("pinned premium Auto routes count toward the daily limit and block a second top-tier turn", async () => {
+  const home = tmpdir("modex-pinned-premium-");
+  const router = new Router({
+    home,
+    policy: () => ({ ...DEFAULT_ROUTING, premium_turns_per_day: 1 }),
+    listModels: async () => ({ models: [m("gpt-6-astra", { efforts: CODEX_EFFORTS })] }),
+    transport: async () => jevAnswers("feature", 2.8, {
+      task: { type: "choice", choice: "feature", probabilities: { feature: 0.1 }, confidence: 0.1 },
+    }),
+  });
+  const request = { thread: thread(), text: "large feature", items: [], project: { name: "demo" } };
+  const first = await router.route(request);
+  assert.equal(first.decision.pinned, true);
+  assert.equal(first.decision.blocked, undefined);
+  assert.equal((await router.status()).fit.premiumToday, 1);
+
+  const second = await router.route(request);
+  assert.equal(second.decision.blocked, true);
+  assert.equal((await router.status()).fit.premiumToday, 1, "a blocked route does not consume another turn");
 });
 
 test("router: Jev failing or absent falls back to the heuristic and says so in the receipt", async () => {
@@ -428,5 +495,177 @@ test("router: prefers the jev CLI when found, stores a hand-entered key in the k
   assert.equal((await rejecting.status()).live, false);
   rejecting.reset();
   assert.equal((await rejecting.status()).live, true);
+});
+
+test("routing status retains only explicit test health and records its effective model and transport", async () => {
+  const home = tmpdir("modex-test-health-");
+  const { SecretStore, testCipher } = await import("../src/main/engine/secrets.js");
+  let calls = 0;
+  const router = new Router({
+    home,
+    policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http", jev_model: "jev-test-model" }),
+    listModels,
+    secrets: new SecretStore(home, testCipher),
+    transport: async () => { calls++; return { answers: { reachable: { type: "noul", noul: 0.9 } } }; },
+  });
+  const before = await router.status();
+  assert.equal(before.lastTest, undefined);
+  assert.equal(calls, 0, "opening/refreshing status never pings the provider");
+  const result = await router.test();
+  assert.deepEqual([result.ok, result.tested, result.current], [true, { executable: null, model: "jev-test-model" }, true]);
+  const after = await router.status();
+  assert.deepEqual([after.lastTest?.ok, after.lastTest?.tested], [true, result.tested]);
+  assert.equal(typeof after.lastTest?.at, "number");
+  assert.equal(calls, 1, "only the explicit test sends a provider request");
+  router.reset();
+  assert.equal((await router.status()).lastTest, undefined, "a configuration reset invalidates prior health");
+});
+
+test("routing status retains explicit test failures and reset prevents an in-flight old result from becoming current", async () => {
+  const home = tmpdir("modex-test-health-reset-");
+  const { SecretStore, testCipher } = await import("../src/main/engine/secrets.js");
+  let release!: (response: JevResponse) => void;
+  const router = new Router({
+    home,
+    policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }),
+    listModels,
+    secrets: new SecretStore(home, testCipher),
+    transport: async () => new Promise<JevResponse>((resolve) => { release = resolve; }),
+  });
+  const pending = router.test();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  router.reset();
+  release({ answers: { reachable: { type: "noul", noul: 0.1 } } });
+  const stale = await pending;
+  assert.equal(stale.current, false);
+  assert.equal((await router.status()).lastTest, undefined);
+
+  for (const [code, expectedLive] of [["network", true], ["auth", false], ["billing", false]] as const) {
+    const failureHome = `${home}-${code}`;
+    const failing = new Router({
+      home: failureHome,
+      policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }),
+      listModels,
+      secrets: new SecretStore(failureHome, testCipher),
+      transport: async () => { throw new JevError(`fake ${code} failure`, code, code === "billing" ? 402 : code === "auth" ? 401 : undefined); },
+    });
+    const failed = await failing.test();
+    assert.deepEqual([failed.ok, failed.code], [false, code]);
+    const status = await failing.status();
+    assert.deepEqual([status.lastTest?.message, status.live], [`fake ${code} failure`, expectedLive]);
+  }
+  const malformedHome = `${home}-malformed`;
+  const malformed = new Router({
+    home: malformedHome,
+    policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }),
+    listModels,
+    secrets: new SecretStore(malformedHome, testCipher),
+    transport: async () => ({ answers: {} } as JevResponse),
+  });
+  const invalidResponse = await malformed.test();
+  assert.deepEqual([invalidResponse.ok, invalidResponse.code, (await malformed.status()).lastTest?.ok], [false, "bad_response", false]);
+});
+
+test("replacing the key while a judge test is in flight invalidates that old result", async () => {
+  const home = tmpdir("modex-test-health-key-change-");
+  const { SecretStore, testCipher } = await import("../src/main/engine/secrets.js");
+  let release!: (response: JevResponse) => void;
+  const router = new Router({
+    home,
+    policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }),
+    listModels,
+    secrets: new SecretStore(home, testCipher),
+    transport: async () => new Promise<JevResponse>((resolve) => { release = resolve; }),
+  });
+
+  const pending = router.test();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await router.setKey("fake-test-key-do-not-use");
+  release({ answers: { reachable: { type: "noul", noul: 0.95 } } });
+
+  const stale = await pending;
+  assert.deepEqual([stale.ok, stale.current], [true, false]);
+  const status = await router.status();
+  assert.equal(status.lastTest, undefined, "the old key's result cannot verify the replacement key");
+  assert.equal(status.live, true, "the newly resolved fake setup stays available");
+});
+
+test("router: enforces CLI-only, prefers CLI in Auto, and skips CLI for HTTPS", async () => {
+  const home = tmpdir("modex-transport-policy-");
+  const base = { home, listModels, env: { MODEX_NO_LOGIN_PATH: "1" }, keyResolver: { jevConfigPath: path.join(home, "no-config.json"), loginShell: async () => null } };
+  const keyEnv = { TYPESAFE_API_KEY: "sk-fake-offline-key", MODEX_NO_LOGIN_PATH: "1" };
+  let cliChecks: string[] = [];
+  const detectCli = async (bin: string) => { cliChecks.push(bin); return null; };
+
+  // An explicit CLI choice never switches to HTTPS, even when a key exists.
+  let policy: RoutingPolicy = { ...DEFAULT_ROUTING, jev_transport: "cli", jev_bin: "/custom/jev" };
+  let router = new Router({ ...base, policy: () => policy, env: keyEnv, detectCli });
+  let status = await router.status();
+  assert.deepEqual(status.transport, { kind: "none" });
+  assert.match(status.detail!, /CLI-only transport is selected/);
+  assert.match(status.detail!, /\/custom\/jev/);
+  assert.equal((await router.test()).transport, "none");
+  const noCliRoute = await router.route({ thread: thread(), text: "rename a to b", items: [], project: { name: "demo" } });
+  assert.equal(noCliRoute.source, "heuristic");
+  assert.match(noCliRoute.item.reasons[0]!, /built-in heuristic/);
+  assert.deepEqual(cliChecks, ["/custom/jev"]);
+  const noKeyNoCli = new Router({ ...base, policy: () => policy, detectCli: async () => null });
+  assert.match((await noKeyNoCli.status()).detail!, /CLI-only transport is selected/);
+
+  // Auto keeps preferring the CLI, but falls back to HTTPS only when the key is available.
+  policy = { ...DEFAULT_ROUTING, jev_transport: "auto" };
+  cliChecks = [];
+  router = new Router({ ...base, policy: () => policy, env: keyEnv, detectCli: async (bin) => { cliChecks.push(bin); return { bin: "/usr/bin/jev", version: "1.0" }; } });
+  status = await router.status();
+  assert.deepEqual(status.transport, { kind: "cli", bin: "/usr/bin/jev", version: "1.0" });
+  assert.deepEqual(cliChecks, ["jev"]);
+
+  cliChecks = [];
+  router = new Router({ ...base, policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "auto" }), env: keyEnv, detectCli });
+  status = await router.status();
+  assert.deepEqual(status.transport, { kind: "http" });
+  assert.deepEqual(cliChecks, ["jev"]);
+
+  // HTTPS skips CLI detection and is unavailable without a resolved key.
+  cliChecks = [];
+  router = new Router({ ...base, policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }), env: keyEnv, detectCli });
+  status = await router.status();
+  assert.deepEqual(status.transport, { kind: "http" });
+  assert.deepEqual(cliChecks, []);
+  router = new Router({ ...base, policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }), detectCli });
+  status = await router.status();
+  assert.deepEqual(status.transport, { kind: "none" });
+  assert.match(status.detail!, /No TypeSafe API key found/);
+  assert.deepEqual(cliChecks, []);
+});
+
+test("router: reset switches transport and executable without letting an old setup replace the new one", async () => {
+  const home = tmpdir("modex-transport-reset-");
+  let policy: RoutingPolicy = { ...DEFAULT_ROUTING, jev_transport: "cli", jev_bin: "jev-old" };
+  let resolveOld!: (value: { bin: string; version: string } | null) => void;
+  const router = new Router({
+    home,
+    policy: () => policy,
+    listModels,
+    env: { TYPESAFE_API_KEY: "sk-fake-offline-key", MODEX_NO_LOGIN_PATH: "1" },
+    keyResolver: { jevConfigPath: path.join(home, "no-config.json"), loginShell: async () => null },
+    detectCli: (bin) => bin === "jev-old" ? new Promise((resolve) => { resolveOld = resolve; }) : Promise.resolve({ bin: bin === "jev-new" ? "/custom/jev-new" : bin, version: bin === "jev-new" ? "2.0" : "3.0" }),
+  });
+  const oldStatus = router.status();
+  policy = { ...DEFAULT_ROUTING, jev_transport: "cli", jev_bin: "jev-new" };
+  router.reset();
+  const fresh = await router.status();
+  assert.deepEqual(fresh.transport, { kind: "cli", bin: "/custom/jev-new", version: "2.0" });
+  resolveOld({ bin: "/custom/jev-old", version: "1.0" });
+  assert.deepEqual((await oldStatus).transport, { kind: "cli", bin: "/custom/jev-old", version: "1.0" });
+  assert.deepEqual((await router.status()).transport, { kind: "cli", bin: "/custom/jev-new", version: "2.0" });
+
+  // A settings save can switch CLI → HTTP and replace the executable without restarting Modex.
+  policy = { ...DEFAULT_ROUTING, jev_transport: "http" };
+  router.reset();
+  assert.deepEqual((await router.status()).transport, { kind: "http" });
+  policy = { ...DEFAULT_ROUTING, jev_transport: "cli", jev_bin: "/another/jev" };
+  router.reset();
+  assert.deepEqual((await router.status()).transport, { kind: "cli", bin: "/another/jev", version: "3.0" });
 });
 type SpawnLikeT = import("../src/main/engine/routing/jev.js").SpawnLike;

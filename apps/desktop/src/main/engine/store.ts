@@ -120,9 +120,9 @@ export class Store {
     };
   }
 
-  private write(): void {
+  private write(state: AppState = this.state): void {
     const tmp = `${this.file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(this.state, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
     fs.renameSync(tmp, this.file);
   }
 
@@ -135,14 +135,15 @@ export class Store {
   }
 
   updateSettings(patch: Partial<Settings>): Settings {
-    this.state.settings = {
+    const settings = {
       ...this.state.settings,
       ...patch,
       ...(patch.routing ? { routing: migrateRouting({ ...this.state.settings.routing, ...patch.routing }) } : {}),
       ...(patch.approval_rules ? { approval_rules: migrateApprovalRules(patch.approval_rules) } : {}),
       ...(patch.approval_gate ? { approval_gate: migrateApprovalGate({ ...this.state.settings.approval_gate, ...patch.approval_gate }) } : {}),
     };
-    this.write();
+    this.write({ ...this.state, settings });
+    this.state.settings = settings;
     return this.settings;
   }
 

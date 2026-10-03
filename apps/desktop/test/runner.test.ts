@@ -451,7 +451,7 @@ test("Auto threads: a route item lands before the turn, the pick is applied, and
   assert.equal(seen[1]!.model, "big");
 });
 
-test("Auto threads: a routing failure is a warning, not a lost turn", async () => {
+test("Auto mock threads keep model discovery errors in a receipt without losing the turn", async () => {
   const h = harness([{ content: "fine" }]);
   const project = h.store.addProject(gitRepo());
   const { Router } = await import("../src/main/engine/routing/router.js");
@@ -460,8 +460,11 @@ test("Auto threads: a routing failure is a warning, not a lost turn", async () =
   const thread = await runner.createThread(project.id, { auto: true });
   await runner.send(thread.id, "hello");
   const kinds = runner.items(thread.id).map((i) => i.kind);
-  assert.deepEqual(kinds, ["user", "notice", "assistant"]);
-  assert.match((runner.items(thread.id)[1] as { text: string }).text, /Auto routing failed \(no models\)/);
+  assert.deepEqual(kinds, ["user", "route", "assistant"]);
+  const receipt = runner.items(thread.id)[1]!;
+  assert.ok(receipt.kind === "route");
+  assert.ok(receipt.reasons.some((reason) => /no models/.test(reason)));
+  assert.equal(receipt.blocked, undefined, "the offline mock has no hidden reasoning effort to constrain");
   assert.equal(runner.status(thread.id), "idle");
 });
 

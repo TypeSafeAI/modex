@@ -49,7 +49,7 @@ export type ThreadItem =
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
   /** An Auto routing decision made before a turn: what was picked and why. */
-  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; reasons: string[]; durationMs: number; at: string };
+  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; reasons: string[]; durationMs: number; at: string };
 
 export type ThreadEvent =
   | { threadId: string; type: "item"; item: ThreadItem }
@@ -165,6 +165,10 @@ export interface RoutingTest {
   code?: string;
   status?: number;
   transport: "cli" | "http" | "none";
+  /** Effective identity of the explicitly tested setup. Never includes credentials. */
+  tested?: { executable: string | null; model: string };
+  /** False when settings changed while this test was running. */
+  current?: boolean;
   ms: number;
 }
 
@@ -182,6 +186,8 @@ export interface RoutingStatus {
   /** Modex's own encrypted store for a hand-entered key. */
   secrets: { backend: string; available: boolean; present: boolean; savedAt: string | null };
   model: string;
+  /** Most recent explicit Settings test; status inspection never makes a provider call. */
+  lastTest?: Omit<RoutingTest, "current"> & { at: number };
   questionSetVersion: number;
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
 }

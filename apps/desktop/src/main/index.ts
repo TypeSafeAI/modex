@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
+import { updateSettings } from "./engine/settings-update.js";
 import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
@@ -142,7 +143,7 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   await gitx.revert(cwd, rel);
   return gitx.status(cwd);
 });
-handle("settings:update", (patch) => store.updateSettings(patch));
+handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
 handle("models:list", ({ backend }) => runner.listModels(backend));
 handle("routing:status", () => runner.router.status());
 handle("routing:reset", () => {

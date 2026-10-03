@@ -255,7 +255,7 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
       <button className="route-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="route-icon">⚡</span>
         <span className="route-label" data-testid="route-label">
-          {item.pinned ? "Auto kept" : "Auto picked"} <b>{backend} · {item.model}</b>{extras ? ` · ${extras}` : ""}
+          {item.blocked ? "Auto blocked" : item.pinned ? "Auto kept" : "Auto picked"} <b>{backend} · {item.model || "CLI default"}</b>{extras ? ` · ${extras}` : ""}
         </span>
         <span className="route-meta" data-testid="route-meta">{item.task.replace(/_/g, " ")} · {item.source === "jev" ? `Jev ${item.confidence.toFixed(2)}` : "heuristic"}</span>
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />

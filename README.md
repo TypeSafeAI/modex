@@ -39,6 +39,12 @@ modex/
   shared with the [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
   directly when it is installed. The coding turn itself still runs only through the
   CLIs. See [docs/auto-routing.md](docs/auto-routing.md).
+- **Settings you can verify.** Separate sections keep general defaults, coding CLIs,
+  Auto routing, and advanced configuration easy to find, with persistent Save and Cancel
+  actions. Jev transport, model, and allowed backend controls make routing preferences
+  explicit; connection tests identify the saved configuration, and failed saves retain
+  your draft. CLI-only routing never falls back to HTTPS, existing sessions stay on their
+  backend, and Auto stops if it cannot honor your reasoning-effort ceiling.
 - **Launch from anywhere.** Opened from Finder or the Dock, Modex reads your login shell's
   PATH once at startup (interactive `zsh -ilc`, falling back to `-lc`), so `claude`, `codex`,
   and `jev` installed under nvm, Homebrew, or `~/.local/bin` are found exactly as in a terminal.

@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-01._
+_Last updated 2026-10-03._
 
 ## Shipped
 
@@ -22,6 +22,15 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
 
 ## On `main`, not yet released
 
+- **Jev settings and routing limits** (#51). CLI-only transport is enforced, relevant saves
+  refresh judge setup, existing sessions keep their backend, and effort and premium limits
+  stop unsafe Auto routes before execution. Settings separates drafts from immediate actions,
+  identifies explicit test results, and preserves failed saves for retry. Review revisions
+  also repair CLI-default routing, discovery retries, learning-write failures, and blocked
+  receipts. Evidence: [issue review](reviews/2026-10-01-jev-settings-review.md) and
+  [maintainer review](reviews/2026-10-02-pr51-review-revisions.md).
+- **Early send errors reach the caller** (#61). Busy-thread and other immediate launch
+  rejections return an IPC error; failures after launch remain transcript notices.
 - **Signed and notarized macOS builds** (`notarize`, 2026-10-01). Developer ID signature,
   hardened runtime with library validation kept on, notarized and stapled, verified by
   `scripts/release-mac.sh`, which also runs in the new `Release` workflow on a `v*` tag and
@@ -46,16 +55,14 @@ release with `SHA256SUMS.txt`) is spelled out in the v0.0.3 review.
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
   adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
   `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs, then turns the gate on. It
-  targets v0.0.6 and merges only after the v0.0.5 tag. Its Settings UI builds on #51, so it
-  waits for #51 to land. Receipts, the deny reason and the docs can start now. The spec
+  targets v0.0.6 and merges only after the v0.0.5 tag. Its Settings UI builds on #51.
+  Receipts, the deny reason and the docs can start now. The spec
   (`2026-10-01-modex-jev-approval-rules-spec.md`, named in #54) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
 - **Open contributor PRs.**
-  - #51 `jev-integration`: Jev settings, routing limits, and settings save transactions.
-    It conflicts with `main` and needs a rebase before review.
-  - #60 (rename diffs in Changes), #61 (early `runner.send` rejections reach `thread:send`),
-    #62 (`worktree.sh` falls back to the local `origin/main` when offline). These are fork
+  - #60 (rename diffs in Changes), #62 (`worktree.sh` falls back to the local `origin/main`
+    when offline). These are fork
     PRs, so their CI runs wait for a maintainer's approval.
   - #39: logo, banner and icon concepts under `docs/branding/`, placed in the README. It may
     supply the app icon for v0.0.5.
