@@ -15,6 +15,7 @@ _Last updated 2026-10-03._
 | v0.0.3 | 2026-09-28 | #34 | Embedded terminal panel ships; unsent text stays with its thread; inactive test window. [Review](reviews/2026-09-28-v0.0.3-release-review.md). |
 | v0.0.4 | 2026-09-29 | #37 | Threads name themselves; one suggested next step after each turn. [Review](reviews/2026-09-29-v0.0.4-release-review.md). |
 | v0.0.5 | 2026-10-03 | #69 | First Developer ID signed and notarized build, from the protected `Release` workflow; the Modex app icon; Jev settings and routing limits (#51); terminals no longer leak a PTY each. [Review](reviews/2026-10-03-v0.0.5-release-review.md). |
+| v0.0.6 | 2026-10-03 | pending | Graphite desktop and Streamer Mode; safer composer and project removal; scoped Changes; honest CLI account status. [Review](reviews/2026-10-03-v0.0.6-release-review.md). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -24,35 +25,7 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- **Panel layout (#74).** Hiding the sidebar keeps the draft and thread centered in the
-  remaining main pane. Optional sidebar and Changes panes have fixed grid positions;
-  geometry e2e checks cover toggles, narrower windows, relaunch, and the open terminal.
-- Changes can discard intent-to-add files and staged additions with further edits, including
-  before a repository's first commit (#72).
-- The terminal cleanup EPIPE test now drains its fixture's PTY output before blocking the
-  event loop and reports the supervisor's process state if `SIGKILL` still stalls (#64).
-- The cleanup-timeout fixture waits for its supervisor to enter the stopped state before
-  calling Close. This removes a signal-delivery race seen on macOS CI without changing the
-  product timeout.
-- Rename diffs handle a rewritten destination beginning with `-`; Git failures now appear
-  as errors in Changes rather than as empty diffs (#60).
-- Changes in a project opened at a Git repository subdirectory stay within that project:
-  displayed paths are project-relative, untracked lines count correctly, and discard uses
-  repository-relative Git paths without touching sibling workspaces (#99).
-- The desktop shell uses a cooler graphite palette with clearer secondary text and subtle
-  depth across navigation, transcript, and composer. The follow-up suggestion no longer
-  overlaps the composer placeholder. Offline screenshot capture uses an isolated heuristic
-  route and writes to the requested directory.
-- A rejected send or failed thread creation restores the unsent message while preserving newer
-  typing in that composer (#70).
-- Removing a project clears its active draft and the removed threads' in-memory view state;
-  the project folder remains on disk (#71).
-- **Account readiness (#75).** Settings checks CLI availability and structured account status
-  separately from model catalogues. Authentication does not imply model entitlement; status
-  checks do not run a coding turn. Older or unresponsive CLIs report unknown status.
-- **Livestream privacy.** Streamer Mode persistently covers the whole window, hiding chats,
-  names, paths, terminals, diffs, dialogs, and notices while work continues. An Electron e2e
-  checks full viewport coverage, persistence, and explicit reveal.
+- No changes beyond the v0.0.6 release cut.
 
 ## In flight
 
@@ -60,26 +33,36 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
   installed-version initialization probes. Neither is enabled. Read-only permission,
   authentication and macOS acceptance evidence remain gates for future implementation.
+- **Account sign-in.** Claude CLI sign-in (#77, draft PR #91) and app-owned ChatGPT sign-in
+  (#76, draft PR #92) require real account acceptance on macOS. The latter also requires a
+  maintainer decision on narrowly scoped authentication networking in `AGENTS.md`.
 
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
   adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
   `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs, then turns the gate on. It
-  targets v0.0.6; v0.0.5 shipped without it. Its Settings UI builds on #51, which has
-  landed. Receipts, the deny reason and the docs can start now. The spec
+  remains in progress for a later release; v0.0.6 ships with the gate off. Its Settings UI
+  builds on #51, which has landed. Receipts, the deny reason and the docs can start now. The spec
   (`2026-10-01-modex-jev-approval-rules-spec.md`, named in #54) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
-- **Worktrees with no PR yet.** Each should become a PR or be deleted.
+- **Unmerged worktrees.** Each needs a reviewed PR or an explicit disposition.
   - `auth-retry` (uncommitted): a failed turn ends in a card with Retry, a fix and Copy
     details. When Codex's sign-in goes stale, Modex restarts `codex app-server` and retries.
+  - `finish-auth-approvals` (draft PR #68 plus uncommitted approval UI and receipts): reconcile
+    with the final account-status and retry work before landing.
+  - `approval-receipts` (uncommitted, overlapping `finish-auth-approvals`): preserve until the
+    approval work is reconciled.
   - `pr-review-browser` (uncommitted): runs the renderer in a browser, connected to the real
     engine over a localhost bridge.
+  - `status-reviews` (uncommitted docs snapshot): compare with current status before retiring.
+  - `livestream-redaction` (clean local-only commit): superseded by merged #100; preserve the
+    original branch until its lifecycle is explicitly resolved.
 
 ## Known rough edges
 
-- **node-pty is a pre-release.** v0.0.5 ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
+- **node-pty is a pre-release.** v0.0.6 still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
   e2e, including a test that counts the shipped app's PTY handles, with library validation
   on. Move to 1.2.0 stable when it ships.
