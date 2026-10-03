@@ -111,51 +111,49 @@ function toRepoRel(prefix: string, p: string): string {
   return prefix ? path.posix.join(prefix, p) : p;
 }
 
+function diffOutput(result: { stdout: string; stderr: string; code: number }, noIndex = false): string {
+  // --no-index uses exit 1 for an ordinary difference; other nonzero exits are errors.
+  if (result.code !== 0 && !(noIndex && result.code === 1 && result.stdout.length > 0)) {
+    throw new Error(result.stderr.trim() || "git diff failed");
+  }
+  return result.stdout;
+}
+
 /** Unified diff for one path; untracked files are rendered as pure additions. */
 export async function diff(cwd: string, rel: string, original?: string): Promise<string> {
-  try {
-    const { root, prefix } = await repoContext(cwd);
-    const repoRel = toRepoRel(prefix, rel);
-    let orig = original ? toRepoRel(prefix, original) : undefined;
-    let code: string | undefined;
+  const { root, prefix } = await repoContext(cwd);
+  const repoRel = toRepoRel(prefix, rel);
+  let orig = original ? toRepoRel(prefix, original) : undefined;
+  let code: string | undefined;
 
-    if (orig === undefined) {
-      try {
-        const entry = (await statusEntries(root)).find((file) => file.path === repoRel);
-        if (entry?.code.includes("R")) orig = entry.original;
-        code = entry?.code;
-      } catch {
-        /* ignore status failure on missing folders */
-      }
-    }
-
-    if (code === "??") {
-      const r = await git(root, ["--literal-pathspecs", "diff", "--no-index", "--", "/dev/null", repoRel]);
-      return r.stdout;
-    }
-
-    const committed = await hasCommits(root);
-    const target = committed ? "HEAD" : "--cached";
-
-    if (orig) {
-      const r = await git(root, ["--literal-pathspecs", "diff", "-M", target, "--", orig, repoRel]);
-      const headers = r.stdout.match(/^diff --git /gm) || [];
-      if (headers.length === 1) {
-        return r.stdout;
-      }
-      // If rewrite similarity dropped below git's rename threshold, fall back to comparing
-      // the original HEAD blob directly against the destination file so there is exactly one diff header.
-      if (committed) {
-        const fallback = await git(root, ["--literal-pathspecs", "diff", `HEAD:${orig}`, repoRel]);
-        if (fallback.stdout) return fallback.stdout;
-      }
-    }
-
-    const r = await git(root, ["--literal-pathspecs", "diff", target, "--", repoRel]);
-    return r.stdout;
-  } catch {
-    return "";
+  if (orig === undefined) {
+    const entry = (await statusEntries(root)).find((file) => file.path === repoRel);
+    if (entry?.code.includes("R")) orig = entry.original;
+    code = entry?.code;
   }
+
+  if (code === "??") {
+    return diffOutput(await git(root, ["--literal-pathspecs", "diff", "--no-index", "--", "/dev/null", repoRel]), true);
+  }
+
+  const committed = await hasCommits(root);
+  const target = committed ? "HEAD" : "--cached";
+
+  if (orig) {
+    const renamed = diffOutput(await git(root, ["--literal-pathspecs", "diff", "-M", target, "--", orig, repoRel]));
+    const headers = renamed.match(/^diff --git /gm) || [];
+    if (headers.length === 1) {
+      return renamed;
+    }
+    // If rewrite similarity dropped below git's rename threshold, compare the original
+    // HEAD blob directly against the destination file. -- also protects a leading-dash name.
+    if (committed) {
+      const fallback = diffOutput(await git(root, ["--literal-pathspecs", "diff", `HEAD:${orig}`, "--", repoRel]));
+      if (fallback) return fallback;
+    }
+  }
+
+  return diffOutput(await git(root, ["--literal-pathspecs", "diff", target, "--", repoRel]));
 }
 
 /** Discards changes to one path (tracked → checkout from HEAD; untracked → delete). Destructive. */

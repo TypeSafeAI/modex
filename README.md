@@ -66,7 +66,7 @@ modex/
   exact command or patch. *Approve*, *Deny*, or *Always* (trusts that command prefix for
   the thread). *Stop* cancels a running turn and any pending approvals.
 - **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
-  a one-click revert (confirmed first).
+  a one-click revert (confirmed first). Diff failures appear in the panel.
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.

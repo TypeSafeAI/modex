@@ -31,6 +31,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   before a repository's first commit (#72).
 - The terminal cleanup EPIPE test now drains its fixture's PTY output before blocking the
   event loop and reports the supervisor's process state if `SIGKILL` still stalls (#64).
+- Rename diffs handle a rewritten destination beginning with `-`; Git failures now appear
+  as errors in Changes rather than as empty diffs (#60).
 
 ## In flight
 
@@ -58,9 +60,6 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
   e2e, including a test that counts the shipped app's PTY handles, with library validation
   on. Move to 1.2.0 stable when it ships.
-- **Rename diffs have two known follow-ups** (#60). The below-threshold fallback mishandles a
-  destination name starting with `-`, and a catch-all shows an internal error as an empty
-  diff.
 - **Layout e2e can measure the terminal panel mid-animation.** The panel rises 6 px over
   180 ms on entry; CI saw 2–3 px of offset on one of two runs of the same commit (PR #35). The
   assertion now polls for the settled bottom edge; other sub-pixel checks in
