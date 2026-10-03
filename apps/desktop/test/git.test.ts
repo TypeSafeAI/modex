@@ -161,6 +161,86 @@ test("diff from a project subdirectory resolves relative paths", async () => {
   assert.match(diff, /\+world/);
 });
 
+test("Changes in a project subdirectory stay scoped to that workspace", async () => {
+  const repo = gitRepo();
+  const app = path.join(repo, "packages", "app");
+  const sibling = path.join(repo, "packages", "sibling");
+  fs.mkdirSync(app, { recursive: true });
+  fs.mkdirSync(sibling, { recursive: true });
+  fs.writeFileSync(path.join(app, "tracked.txt"), "app before\n");
+  fs.writeFileSync(path.join(sibling, "tracked.txt"), "sibling before\n");
+  await gitx.git(repo, ["add", "."]);
+  await gitx.git(repo, ["-c", "commit.gpgsign=false", "commit", "-m", "subdirectories"]);
+  fs.appendFileSync(path.join(app, "tracked.txt"), "app after\n");
+  fs.writeFileSync(path.join(app, "new.txt"), "one\ntwo\n");
+  fs.appendFileSync(path.join(sibling, "tracked.txt"), "sibling after\n");
+  fs.writeFileSync(path.join(sibling, "new.txt"), "leave alone\n");
+
+  const snapshot = await gitx.status(app);
+  assert.deepEqual(snapshot.files.map((file) => [file.path, file.code, file.additions, file.deletions]), [
+    ["new.txt", "??", 2, 0],
+    ["tracked.txt", " M", 1, 0],
+  ]);
+  assert.match(await gitx.diff(app, "tracked.txt"), /\+app after/);
+  assert.match(await gitx.diff(app, "new.txt"), /\+one\n\+two/);
+  await assert.rejects(gitx.diff(app, "../sibling/tracked.txt"), /outside repository workspace/);
+  await assert.rejects(gitx.revert(app, "../sibling/tracked.txt"), /outside the workspace/);
+  await gitx.revert(app, "tracked.txt");
+  await gitx.revert(app, "new.txt");
+  assert.deepEqual((await gitx.status(app)).files, []);
+  assert.equal(fs.readFileSync(path.join(sibling, "tracked.txt"), "utf8"), "sibling before\nsibling after\n");
+  assert.equal(fs.readFileSync(path.join(sibling, "new.txt"), "utf8"), "leave alone\n");
+});
+
+test("discarding a rename within a project subdirectory restores its workspace-relative source", async () => {
+  const repo = gitRepo();
+  const app = path.join(repo, "packages", "app");
+  fs.mkdirSync(app, { recursive: true });
+  fs.writeFileSync(path.join(app, "before.txt"), "original\n");
+  await gitx.git(repo, ["add", "."]);
+  await gitx.git(repo, ["-c", "commit.gpgsign=false", "commit", "-m", "subdirectory"]);
+  await gitx.git(repo, ["mv", "packages/app/before.txt", "packages/app/after.txt"]);
+  fs.appendFileSync(path.join(app, "after.txt"), "edited\n");
+
+  const snapshot = await gitx.status(app);
+  assert.deepEqual(snapshot.files.map((file) => [file.path, file.original]), [["after.txt", "before.txt"]]);
+  await gitx.revert(app, "after.txt");
+  assert.equal(fs.readFileSync(path.join(app, "before.txt"), "utf8"), "original\n");
+  assert.equal(fs.existsSync(path.join(app, "after.txt")), false);
+  assert.deepEqual((await gitx.status(app)).files, []);
+});
+
+test("discarding a cross-workspace rename never changes the sibling workspace", async () => {
+  const repo = gitRepo();
+  const app = path.join(repo, "packages", "app");
+  const sibling = path.join(repo, "packages", "sibling");
+  fs.mkdirSync(app, { recursive: true });
+  fs.mkdirSync(sibling, { recursive: true });
+  fs.writeFileSync(path.join(app, "out.txt"), "from app\n");
+  fs.writeFileSync(path.join(sibling, "in.txt"), "from sibling\n");
+  await gitx.git(repo, ["add", "."]);
+  await gitx.git(repo, ["-c", "commit.gpgsign=false", "commit", "-m", "cross workspace"]);
+  await gitx.git(repo, ["mv", "packages/sibling/in.txt", "packages/app/in.txt"]);
+  await gitx.git(repo, ["mv", "packages/app/out.txt", "packages/sibling/out.txt"]);
+
+  assert.deepEqual((await gitx.status(app)).files.map((file) => [file.path, file.code]), [
+    ["in.txt", "A "], ["out.txt", "D "],
+  ]);
+  const incomingDiff = await gitx.diff(app, "in.txt");
+  assert.match(incomingDiff, /\+from sibling/);
+  assert.doesNotMatch(incomingDiff, /packages\/sibling/);
+  const outgoingDiff = await gitx.diff(app, "out.txt");
+  assert.match(outgoingDiff, /-from app/);
+  assert.doesNotMatch(outgoingDiff, /packages\/sibling/);
+  await gitx.revert(app, "in.txt");
+  await gitx.revert(app, "out.txt");
+  assert.equal(fs.existsSync(path.join(app, "in.txt")), false);
+  assert.equal(fs.readFileSync(path.join(app, "out.txt"), "utf8"), "from app\n");
+  assert.equal(fs.existsSync(path.join(sibling, "in.txt")), false);
+  assert.equal(fs.readFileSync(path.join(sibling, "out.txt"), "utf8"), "from app\n");
+  assert.deepEqual((await gitx.status(app)).files, []);
+});
+
 test("discarding a rename protects a newly recreated source", async () => {
   const repo = gitRepo();
   await gitx.git(repo, ["mv", "README.md", "renamed.md"]);

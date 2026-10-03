@@ -36,6 +36,9 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   product timeout.
 - Rename diffs handle a rewritten destination beginning with `-`; Git failures now appear
   as errors in Changes rather than as empty diffs (#60).
+- Changes in a project opened at a Git repository subdirectory stay within that project:
+  displayed paths are project-relative, untracked lines count correctly, and discard uses
+  repository-relative Git paths without touching sibling workspaces (#99).
 - The desktop shell uses a cooler graphite palette with clearer secondary text and subtle
   depth across navigation, transcript, and composer. The follow-up suggestion no longer
   overlaps the composer placeholder. Offline screenshot capture uses an isolated heuristic
