@@ -12,7 +12,7 @@ interface Props {
   /** Unsent composer text for this thread, kept by App across thread switches. */
   text: string;
   onText: (text: string) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<void>;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
   onUpdate: (patch: ThreadPatch) => void;

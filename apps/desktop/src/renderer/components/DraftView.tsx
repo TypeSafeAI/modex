@@ -31,7 +31,7 @@ interface Props {
   /** The project checkout's current branch; shown for a Local draft (a worktree's branch does not exist yet). */
   branch?: string;
   onChange: (draft: Draft) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<void>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   text: string;
   onText: (text: string) => void;

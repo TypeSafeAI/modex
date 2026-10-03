@@ -37,6 +37,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   depth across navigation, transcript, and composer. The follow-up suggestion no longer
   overlaps the composer placeholder. Offline screenshot capture uses an isolated heuristic
   route and writes to the requested directory.
+- A rejected send or failed thread creation restores the unsent message while preserving newer
+  typing in that composer (#70).
 
 ## In flight
 

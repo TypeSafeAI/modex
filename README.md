@@ -72,7 +72,8 @@ modex/
   thread deletion, project removal, and app quit stop its jobs before completing.
 - **Unsent text waits for you.** Type into a thread, look at another, come back: the text is
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
-  starts empty.
+  starts empty. If a send fails, the message returns to its composer without replacing text
+  you typed while the send was pending.
 - **Threads name themselves.** A new thread takes its first message as its title right away.
   After that first turn completes, the same CLI is asked, in a separate throwaway chat
   conversation that never touches the transcript, for a short title, and the sidebar updates
