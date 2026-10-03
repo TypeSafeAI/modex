@@ -27,12 +27,20 @@ export function App() {
   // Unsent composer text by thread id (or `draft:<revision>` for a new chat). Switching threads keeps it;
   // sending, deleting the thread or starting another new chat clears it. Renderer-only: it is not saved.
   const [unsent, setUnsent] = useState<Record<string, string>>({});
-  const setUnsentFor = useCallback((key: string, text: string) => setUnsent((m) => {
-    if (text) return { ...m, [key]: text };
-    if (!(key in m)) return m;
-    const { [key]: _gone, ...rest } = m;
-    return rest;
-  }), []);
+  const unsentRevision = useRef(new Map<string, number>());
+  const setUnsentFor = useCallback((key: string, text: string) => {
+    unsentRevision.current.set(key, (unsentRevision.current.get(key) ?? 0) + 1);
+    setUnsent((m) => {
+      if (text) return { ...m, [key]: text };
+      if (!(key in m)) return m;
+      const { [key]: _gone, ...rest } = m;
+      return rest;
+    });
+  }, []);
+  const restoreUnsentIfCurrent = useCallback((key: string, revision: number, text: string) => {
+    // A newer edit (including clearing a newer draft) owns this composer now.
+    if ((unsentRevision.current.get(key) ?? 0) === revision) setUnsentFor(key, text);
+  }, [setUnsentFor]);
   const loadingItems = useRef(new Map<string, ItemEvent[]>());
   const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
   const changes = changeResult?.threadId === selected ? changeResult.snapshot : null;
@@ -264,6 +272,42 @@ export function App() {
       return false;
     }
     return true;
+  const sendDraft = async (text: string): Promise<void> => {
+    if (!draft) return;
+    const d = draft;
+    const draftKey = `draft:${draftRevision}`;
+    setUnsentFor(draftKey, "");
+    let restoreKey = draftKey;
+    let restoreRevision = unsentRevision.current.get(draftKey)!;
+    setCreating(true);
+    const sent = await act(async () => {
+      const s = d.settings;
+      const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
+      if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
+      await refresh();
+      justCreated.current = t.id;
+      setDraft(null);
+      setSelected(t.id);
+      restoreKey = t.id;
+      restoreRevision = unsentRevision.current.get(t.id) ?? 0;
+      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim() });
+      if (!r.ok) setError(r.error ?? "send failed");
+      return r.ok;
+    });
+    setCreating(false);
+    if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
+  };
+  const send = async (text: string): Promise<void> => {
+    if (!thread) return;
+    const threadId = thread.id;
+    setUnsentFor(threadId, "");
+    const revision = unsentRevision.current.get(threadId)!;
+    const sent = await act(async () => {
+      const r = await bridge.invoke("thread:send", { threadId, text: text.trim() });
+      if (!r.ok) setError(r.error ?? "send failed");
+      return r.ok;
+    });
+    if (sent !== true) restoreUnsentIfCurrent(threadId, revision, text);
   };
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));

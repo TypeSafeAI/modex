@@ -29,6 +29,16 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   geometry e2e checks cover toggles, narrower windows, relaunch, and the open terminal.
 - Changes can discard intent-to-add files and staged additions with further edits, including
   before a repository's first commit (#72).
+- The terminal cleanup EPIPE test now drains its fixture's PTY output before blocking the
+  event loop and reports the supervisor's process state if `SIGKILL` still stalls (#64).
+- Rename diffs handle a rewritten destination beginning with `-`; Git failures now appear
+  as errors in Changes rather than as empty diffs (#60).
+- The desktop shell uses a cooler graphite palette with clearer secondary text and subtle
+  depth across navigation, transcript, and composer. The follow-up suggestion no longer
+  overlaps the composer placeholder. Offline screenshot capture uses an isolated heuristic
+  route and writes to the requested directory.
+- A rejected send or failed thread creation restores the unsent message while preserving newer
+  typing in that composer (#70).
 
 ## In flight
 
@@ -56,15 +66,6 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
   e2e, including a test that counts the shipped app's PTY handles, with library validation
   on. Move to 1.2.0 stable when it ships.
-- **The EPIPE cleanup test can outlast its SIGKILL poll on a slow runner.** *supervisor death
-  seen as a failed CLOSE write…* (`test/terminal-cleanup.test.ts`, #64) failed once on #69's
-  CI with *the supervisor survived SIGKILL*. The killed supervisor was neither a zombie nor
-  reaped after about 16 s. The test blocks the event loop on purpose, so nothing reads the PTY
-  master, and a dying process may wait in exit for its tty output to drain. To test that, read
-  the master before the kill, or log `ps -o stat` (`E` means exiting) when the poll gives up.
-- **Rename diffs have two known follow-ups** (#60). The below-threshold fallback mishandles a
-  destination name starting with `-`, and a catch-all shows an internal error as an empty
-  diff.
 - **Layout e2e can measure the terminal panel mid-animation.** The panel rises 6 px over
   180 ms on entry; CI saw 2–3 px of offset on one of two runs of the same commit (PR #35). The
   assertion now polls for the settled bottom edge; other sub-pixel checks in

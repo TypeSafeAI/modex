@@ -13,6 +13,7 @@ interface Props {
   text: string;
   onText: (text: string) => void;
   onSend: (text: string) => Promise<boolean | void> | boolean | void;
+  onSend: (text: string) => Promise<void>;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
   onUpdate: (patch: ThreadPatch) => void;

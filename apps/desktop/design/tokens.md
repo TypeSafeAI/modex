@@ -1,9 +1,18 @@
 # Design tokens: where the numbers come from
 
-`src/renderer/tokens.css` holds the tokens for the Codex-parity chat UI. This file records how each
-measured value was taken, so a later phase can re-measure instead of guessing. `e2e/layout.spec.ts`
-("Phase 2 · tokens") asserts every measured value, so a change to one of them is a deliberate design
-decision and shows up in review.
+`src/renderer/tokens.css` holds the current Modex tokens. This file records the original Codex
+desktop measurements behind the shell geometry and type scale. The 2026-10-03 visual refinement
+keeps those dimensions while giving Modex a cooler graphite palette. `e2e/layout.spec.ts` asserts
+the current values, so future changes remain deliberate and reviewable.
+
+## Current visual direction
+
+The main canvas stays near-black (`#0e1218`). A slightly lighter graphite sidebar and a softer
+composer separate navigation, work, and input without heavy outlines. Cool blue appears at focus
+and active states. Text values have more contrast than the original samples, especially for labels,
+placeholders, and tool metadata. Very low-opacity light on the titlebar, upper canvas, and composer
+adds depth; the layout keeps its measured 42 px titlebar, 48 px rail, 240 px sidebar, and 736 px
+composer. Motion remains short and follows the existing reduced-motion setting.
 
 ## Reference
 
@@ -12,7 +21,7 @@ macOS's native size, so screenshot pixels map 1:1 to CSS px. The images show pri
 stay out of the repo. Coordinates below are for screenshot #1: the empty "What should we build in
 coven-threads?" screen, with the sidebar expanded and the composer at the bottom.
 
-## Colours
+## Original colour samples
 
 Surfaces are single flat pixels. Text is the **brightest glyph-core pixel** in the text's box, because
 anti-aliased edges are darker than the real colour.

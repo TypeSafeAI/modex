@@ -124,6 +124,22 @@ test("diff for a heavily rewritten renamed file renders exactly one diff header"
   assert.doesNotMatch(diff, /deleted file mode/);
 });
 
+test("diff for a rewritten rename handles a destination beginning with a dash", async () => {
+  const repo = gitRepo();
+  await gitx.git(repo, ["mv", "--", "README.md", "-renamed.md"]);
+  fs.writeFileSync(path.join(repo, "-renamed.md"), "completely different content\nrewritten entirely\n");
+  const diff = await gitx.diff(repo, "-renamed.md");
+  assert.equal((diff.match(/^diff --git /gm) || []).length, 1);
+  assert.match(diff, /^-# demo/m);
+  assert.match(diff, /^\+completely different content/m);
+  assert.doesNotMatch(diff, /--- \/dev\/null/);
+});
+
+test("diff surfaces Git errors instead of showing an empty textual diff", async () => {
+  const repo = gitRepo();
+  await assert.rejects(gitx.diff(repo, "../outside"), /outside repository/);
+});
+
 test("diff for a pure rename shows similarity and rename metadata", async () => {
   const repo = gitRepo();
   await gitx.git(repo, ["mv", "README.md", "renamed.md"]);

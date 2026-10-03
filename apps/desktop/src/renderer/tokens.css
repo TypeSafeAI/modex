@@ -1,47 +1,45 @@
 /*
- * Design tokens for the Codex-parity chat UI. Values marked "measured" were sampled from the 1× reference
- * screenshots (see design/tokens.md for coordinates); "derived" values have no reference pixel and were
- * chosen to sit between measured neighbours. Components should use these names; the short legacy names
- * in styles.css (--bg-1, --fg-2, --line …) are aliases kept only until the phases that restyle their users.
+ * Modex's cool graphite palette. The shell geometry and type scale began as measurements of the
+ * Codex desktop UI (see design/tokens.md); the surfaces and text are tuned for Modex's own look.
+ * Components use these names; styles.css keeps short aliases for older components.
  */
 :root {
   /* Native controls and scrollbars render dark (the white strip behind the diff's scrollbar). */
   color-scheme: dark;
 
   /* Surfaces */
-  --bg-window: #1b1b1c;          /* measured: titlebar, rail */
-  --bg-sidebar: #131315;         /* measured */
-  --bg-main: #0f0f11;            /* measured */
-  --bg-row-hover: #1a1a1c;       /* derived: between sidebar and selected row */
-  --bg-row-selected: #222224;    /* measured: selected project row */
-  --bg-composer: #262729;        /* measured */
-  --bg-composer-context: #151517;/* measured: project · Local · branch strip */
-  --bg-user-bubble: #1a1a1c;     /* measured */
-  --bg-elevated: #1f1f21;        /* derived: menus, dialogs, tool rows */
-  --bg-sunken: #0b0b0d;          /* derived: command output, diff wells */
+  --bg-window: #181c23;
+  --bg-sidebar: #141920;
+  --bg-main: #0e1218;
+  --bg-row-hover: #1b222c;
+  --bg-row-selected: #262e3a;
+  --bg-composer: #252d38;
+  --bg-composer-context: #171e28;
+  --bg-user-bubble: #1c2531;
+  --bg-elevated: #202833;
+  --bg-sunken: #0b1017;
 
-  --bg-rail-active: #29292a;     /* measured: rail Home button (5–40 × 51–86) */
+  --bg-rail-active: #273345;
 
   /* Lines */
-  --border-pane: #2a2a2b;        /* measured: sidebar/main divider */
-  --border-rail: #1f1f21;        /* measured: rail/sidebar edge */
-  --border-composer: #2b2c2e;    /* measured */
-  --border-strong: #37373a;      /* derived: control outlines */
-  --rule: #1f1f21;               /* measured: rule under "Working for 7s" */
+  --border-pane: #2c3542;
+  --border-rail: #303b4a;
+  --border-composer: #3a4657;
+  --border-strong: #465366;
+  --rule: #293442;
 
   /* Text — brightest glyph-core pixel on each surface */
-  --text-1: #e3e4e6;             /* measured: headings, composer controls, send fill */
-  --text-2: #c4c5c6;             /* measured: sidebar thread and project rows */
-  --text-3: #757577;             /* measured: "Show more"; model effort ≈ #7f8082 */
-  --text-4: #5c5c5f;             /* measured: section labels ("Projects") */
-  --text-placeholder: #535455;   /* measured: "Do anything" */
-  --text-info: #7f8082;          /* measured: model effort ("High"); the lightest reference grey that clears
-                                    WCAG AA 4.5:1 on the main pane and sidebar — for secondary text that carries information */
-  --text-muted: #616163;         /* measured: "Thinking" line, reference #8 (320–374 × 396–409) */
+  --text-1: #eef2f7;
+  --text-2: #c6d0dc;
+  --text-3: #929eae;
+  --text-4: #7f8b9b;
+  --text-placeholder: #8996a6;
+  --text-info: #a4afbd;
+  --text-muted: #8b97a7;
 
-  /* Accents. Modex keeps its own blue for focus and progress; Codex's UI is otherwise monochrome. */
-  --accent: #7c9cff;
-  --accent-strong: #5b7cf6;
+  /* Blue is reserved for focus, active states, and progress. */
+  --accent: #8aaaff;
+  --accent-strong: #6689ee;
   --accent-warn: #dc9258;        /* measured: "Full access" */
   --ok: #4fc38a;
   --warn: #e8b458;

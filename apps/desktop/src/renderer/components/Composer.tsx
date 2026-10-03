@@ -42,6 +42,7 @@ interface Props {
   onEffort: (e: string | undefined) => void;
   onAuto: (auto: boolean) => void;
   onSend: (text: string) => Promise<boolean | void> | boolean | void;
+  onSend: (text: string) => Promise<void>;
   onStop: () => void;
   /** Set by the ⌘⏎ / focus shortcuts in App. */
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -86,6 +87,10 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
     } finally {
       submittingRef.current = false;
     }
+  const submit = () => {
+    if (!text.trim() || busy || submittingRef.current) return;
+    submittingRef.current = true;
+    void onSend(text).finally(() => { submittingRef.current = false; });
   };
 
   // The suggestion is an offer, never a default: it fills the box only on an explicit click, Tab or → while

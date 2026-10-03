@@ -26,7 +26,7 @@ export async function runDemo(o: DemoOptions): Promise<void> {
   const demoRepo = path.join(o.home, "demo-repo");
   copyRepoForDemo(o.repoPath, demoRepo);
   const script = path.resolve(o.repoPath, "apps", "desktop", "demo", "mock-script.json");
-  o.store.updateSettings({ default_backend: "mock", mock_script: script, default_mode: "chat" });
+  o.store.updateSettings({ default_backend: "mock", mock_script: script, default_mode: "chat", routing: { ...o.store.settings.routing, jev_transport: "http" } });
   const project = o.store.addProject(demoRepo);
   // A second, finished thread so the sidebar shows history.
   const earlier = await o.runner.createThread(project.id, { mode: "agent", backend: "mock" });

@@ -32,6 +32,7 @@ interface Props {
   branch?: string;
   onChange: (draft: Draft) => void;
   onSend: (text: string) => Promise<boolean | void> | boolean | void;
+  onSend: (text: string) => Promise<void>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   text: string;
   onText: (text: string) => void;
