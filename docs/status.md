@@ -33,6 +33,10 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   event loop and reports the supervisor's process state if `SIGKILL` still stalls (#64).
 - Rename diffs handle a rewritten destination beginning with `-`; Git failures now appear
   as errors in Changes rather than as empty diffs (#60).
+- The desktop shell uses a cooler graphite palette with clearer secondary text and subtle
+  depth across navigation, transcript, and composer. The follow-up suggestion no longer
+  overlaps the composer placeholder. Offline screenshot capture uses an isolated heuristic
+  route and writes to the requested directory.
 
 ## In flight
 
