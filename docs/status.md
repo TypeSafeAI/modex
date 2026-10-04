@@ -34,7 +34,9 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
   remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
-  Claude Code 2.1.273 and the documented Terminal fallback; model access remains unverified.
+  Claude Code 2.1.273 and the documented Terminal fallback. A later live Haiku turn through
+  Modex's backend and Claude Code 2.1.288 completed with tools disabled and no tool requests.
+  This verifies that account/model pair; other models and live tool execution remain unverified.
 - **ChatGPT sign-in (#76, PR #92).** [Design and recovery](chatgpt-signin.md) cover
   OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
   Real Apple Silicon acceptance passed for authorization, completed Codex turns, rotating
