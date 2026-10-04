@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
 import { ChangesPanel } from "./components/ChangesPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { CompanionDialog } from "./components/CompanionDialog";
 import { EmptyState } from "./components/EmptyState";
 import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
@@ -54,6 +55,7 @@ export function App() {
   const [terminalCommands, setTerminalCommands] = useState<Record<string, { text: string; nonce: number }>>({});
   const commandNonce = useRef(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCompanion, setShowCompanion] = useState(false);
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout();
   const showChanges = layout.changes;
@@ -429,7 +431,7 @@ export function App() {
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail onOpenSettings={() => setShowSettings(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
+      <Rail onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
       <div className="sheet" data-testid="sheet">
         {sidebarOpen && (
           <Sidebar
@@ -507,6 +509,7 @@ export function App() {
         {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
       </div>
       {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
       {streamerMode && (
         <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
           <Icon name="privacy" size={28} />

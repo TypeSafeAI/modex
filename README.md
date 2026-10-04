@@ -85,6 +85,11 @@ modex/
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.
+- **iPhone companion (preview).** Pair Modex Companion with the Mac from the rail to view
+  threads, send follow-ups, and approve or deny requests on the same network. The phone pins
+  the Mac's certificate; coding turns still run through its CLIs. Access stays off until
+  enabled and can be revoked from the Mac. See the [companion guide](docs/ios-companion.md)
+  for builds, TestFlight status, and verification limits.
 - **Unsent text waits for you.** Type into a thread, look at another, come back: the text is
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
   starts empty. If a send fails, the message returns to its composer without replacing text

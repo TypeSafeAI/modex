@@ -1,0 +1,185 @@
+import Foundation
+import XCTest
+@testable import ModexCompanion
+
+@MainActor final class CompanionModelTests: XCTestCase {
+    func testThreadSelectionClearsOldItemsAndRejectsAnOlderRefresh() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        let old = Pending<CompanionSnapshot>(requested: expectation(description: "old refresh"))
+        await client.enqueueSnapshot(old)
+        let refresh = Task { await model.refresh() }
+        await fulfillment(of: [old.requested], timeout: 2)
+
+        let next = Pending<CompanionSnapshot>(requested: expectation(description: "new selection"))
+        await client.enqueueSnapshot(next)
+        let selection = Task { await model.select("b") }
+        await fulfillment(of: [next.requested], timeout: 2)
+        XCTAssertTrue(model.snapshot.items.isEmpty, "The old transcript must disappear while the new thread loads.")
+        await next.resolve(.success(makeSnapshot("b")))
+        await selection.value
+        await old.resolve(.success(makeSnapshot("a")))
+        await refresh.value
+        XCTAssertEqual(model.selectedThreadId, "b")
+        XCTAssertEqual(model.snapshot.items.first?.text, "Thread b")
+    }
+
+    func testDisconnectRejectsARefreshAlreadyInFlight() async {
+        let (model, client) = fixture()
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "refresh"))
+        await client.enqueueSnapshot(pending)
+        let refresh = Task { await model.refresh() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        model.disconnect()
+        await pending.resolve(.success(makeSnapshot("a")))
+        await refresh.value
+        XCTAssertNil(model.pairing)
+        XCTAssertFalse(model.connected)
+        XCTAssertTrue(model.snapshot.threads.isEmpty)
+    }
+
+    func testOlderRefreshFailureCannotReplaceANewerSuccess() async {
+        let (model, client) = fixture()
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "old refresh"))
+        await client.enqueueSnapshot(pending)
+        let refresh = Task { await model.refresh() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        await model.refresh()
+        await pending.resolve(.failure(CompanionError.message("Old connection failure")))
+        await refresh.value
+        XCTAssertTrue(model.connected)
+        XCTAssertNil(model.connectionError)
+    }
+
+    func testSendCompletionClearsOnlyTheSubmittedThreadsDraft() async {
+        for otherDraft in ["Same message", "A different message"] {
+            let (model, client) = fixture()
+            await model.select("a")
+            model.draft = "Same message"
+            let pending = Pending<Void>(requested: expectation(description: "send"))
+            await client.enqueueSend(pending)
+            let send = Task { await model.send() }
+            await fulfillment(of: [pending.requested], timeout: 2)
+            await model.select("b")
+            model.draft = otherDraft
+            await pending.resolve(.success(()))
+            await send.value
+            XCTAssertEqual(model.draft, otherDraft, "Sending in a different thread must preserve this draft.")
+            await model.select("a")
+            XCTAssertEqual(model.draft, "", "The successfully sent draft must be cleared in its own thread.")
+        }
+    }
+
+    func testEditsMadeDuringSendArePreserved() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        model.draft = "Send this"
+        let pending = Pending<Void>(requested: expectation(description: "send"))
+        await client.enqueueSend(pending)
+        let send = Task { await model.send() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        model.draft = "Keep this newer draft"
+        await pending.resolve(.success(()))
+        await send.value
+        XCTAssertEqual(model.draft, "Keep this newer draft")
+    }
+
+    func testDisconnectResetsPendingActionsAndIgnoresTheirErrors() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        model.draft = "Send this"
+        let pending = Pending<Void>(requested: expectation(description: "send"))
+        await client.enqueueSend(pending)
+        let send = Task { await model.send() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        model.disconnect()
+        XCTAssertFalse(model.sending)
+        await pending.resolve(.failure(CompanionError.message("Old send failure")))
+        await send.value
+        XCTAssertNil(model.error)
+    }
+
+    func testDisconnectRejectsAnUnfinishedPairingAttempt() async throws {
+        let store = MemoryPairingStore()
+        let candidate = try JSONEncoder().encode(store.pairing!).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let client = ControlledClient()
+        let model = CompanionModel(store: store, makeClient: { _ in client })
+        defer { model.stopPolling() }
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "pair"))
+        await client.enqueueSnapshot(pending)
+        let pairing = Task { await model.pair(link: "modex://pair?data=\(candidate)") }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        model.disconnect()
+        await pending.resolve(.success(makeSnapshot(nil)))
+        await pairing.value
+        XCTAssertNil(model.pairing)
+        XCTAssertNil(store.pairing)
+        XCTAssertFalse(model.connected)
+    }
+
+    func testDisconnectResetsApprovalAndIgnoresItsLateError() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        let pending = Pending<Void>(requested: expectation(description: "answer"))
+        await client.enqueueAnswer(pending)
+        let answer = Task { await model.answer(itemId: "approval-a", approve: true) }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        model.disconnect()
+        XCTAssertNil(model.answeringId)
+        await pending.resolve(.failure(CompanionError.message("Old approval failure")))
+        await answer.value
+        XCTAssertNil(model.error)
+    }
+
+    private func fixture() -> (CompanionModel, ControlledClient) {
+        let client = ControlledClient()
+        return (CompanionModel(store: MemoryPairingStore(), makeClient: { _ in client }), client)
+    }
+}
+
+private final class MemoryPairingStore: PairingStorage {
+    var pairing: Pairing? = Pairing(url: URL(string: "https://127.0.0.1:43120")!, token: String(repeating: "a", count: 64), fingerprint: String(repeating: "b", count: 64))
+    func load() -> Pairing? { pairing }
+    func save(_ pairing: Pairing) throws { self.pairing = pairing }
+    func clear() { pairing = nil }
+}
+
+private actor Pending<Value> {
+    nonisolated let requested: XCTestExpectation
+    private var continuation: CheckedContinuation<Value, Error>?
+    init(requested: XCTestExpectation) { self.requested = requested }
+    func value() async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            requested.fulfill()
+        }
+    }
+    func resolve(_ result: Result<Value, Error>) { continuation?.resume(with: result); continuation = nil }
+}
+
+private actor ControlledClient: CompanionClient {
+    private var snapshots: [Pending<CompanionSnapshot>] = []
+    private var sends: [Pending<Void>] = []
+    private var answers: [Pending<Void>] = []
+    func enqueueSnapshot(_ pending: Pending<CompanionSnapshot>) { snapshots.append(pending) }
+    func enqueueSend(_ pending: Pending<Void>) { sends.append(pending) }
+    func enqueueAnswer(_ pending: Pending<Void>) { answers.append(pending) }
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot {
+        if !snapshots.isEmpty { return try await snapshots.removeFirst().value() }
+        return makeSnapshot(threadId)
+    }
+    func send(threadId: String, text: String) async throws {
+        if !sends.isEmpty { try await sends.removeFirst().value() }
+    }
+    func answer(threadId: String, itemId: String, approve: Bool) async throws {
+        if !answers.isEmpty { try await answers.removeFirst().value() }
+    }
+}
+
+private func makeSnapshot(_ threadId: String?) -> CompanionSnapshot {
+    let threads = ["a", "b"].map { CompanionThread(id: $0, projectId: "p", title: "Thread \($0)", backend: "mock", status: "idle", updatedAt: "2026-10-04T00:00:00Z") }
+    let items = threadId.map { [CompanionItem(id: "item-\($0)", kind: "assistant", text: "Thread \($0)", title: nil, question: nil, detail: nil, answer: nil, status: nil, level: nil, at: "2026-10-04T00:00:00Z")] } ?? []
+    return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: threads, items: items)
+}

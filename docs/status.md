@@ -24,13 +24,19 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- **v0.0.6 is tagged, not published.** PR #97 merged and the signed tag points to its
-  verified tree. The release workflow awaits `release-signing` approval before publishing
-  signed and notarized artifacts. [Review](reviews/2026-10-03-v0.0.6-release-review.md).
+- **v0.0.6 is being recut before publication.** The first signed tag points to PR #97's
+  verified tree, but its release run was cancelled before approval. PR #106 adds the
+  Jev-inspired near-black blue and pink palette plus the merged iPhone companion service.
+  The combined Developer ID sign-only rehearsal and all 91 packaged e2e tests passed.
+  Local notarization, a new signed candidate, and the
+  protected release run are required before publication.
+  [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
   remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
-  Claude Code 2.1.273 and the documented Terminal fallback; model access remains unverified.
+  Claude Code 2.1.273 and the documented Terminal fallback. A later live Haiku turn through
+  Modex's backend and Claude Code 2.1.288 completed with tools disabled and no tool requests.
+  This verifies that account/model pair; other models and live tool execution remain unverified.
 - **ChatGPT sign-in (#76, PR #92).** [Design and recovery](chatgpt-signin.md) cover
   OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
   Real Apple Silicon acceptance passed for authorization, completed Codex turns, rotating
@@ -39,17 +45,27 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   remedies, Copy details and Retry without duplicating the user message. Codex retries a
   stale login once while preserving concurrent turns. The signed head passed both required
   macOS CI runs; draft PR #68 was closed after #104 landed.
-- **Browser review (PR #105).** A token-protected localhost bridge runs the renderer with
-  separate state and a CLI-backed runner in Chromium. Local build, unit, and 90/90 e2e plus
-  both exact-head macOS CI runs passed before merge.
+- **Browser review (PR #105).** The renderer can connect to a separate localhost development
+  bridge for reviewing real project and thread flows in Chromium. The bridge is excluded from
+  packaged releases. Its browser flow and macOS CI passed before merge.
+- **iPhone companion service (#103).** An opt-in paired HTTPS service and native SwiftUI app
+  support same-network threads, follow-ups, and single approvals while coding stays on the
+  Mac's CLIs. Both desktop and iPhone CI jobs passed on both runs before merge. The service
+  is included in the replacement v0.0.6 candidate; iPhone distribution is tracked below.
 
 ## In flight
 
-- **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
-  view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
-  Simulator and paired API verification plus an unsigned device build passed; TestFlight
-  publication and physical iPhone acceptance await signing access.
-  The first connection target is the same local network.
+- **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
+  threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
+  Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
+  passed Apple validation, uploaded, and reached `VALID` processing in App Store Connect.
+  Build 2 fixes first-run Mac TLS compatibility, pending-request revocation, stale responses,
+  thread draft isolation, and disconnect confirmation. All 91 desktop e2e tests, 10 native
+  tests, and the paired simulator flow passed; iPhone tests now also run in CI.
+  The signed build 2 distribution IPA also passed strict signature and ZIP verification.
+  Build 2 upload, internal tester access, and physical iPhone acceptance remain open.
+  The first connection target is the same local network; [the companion guide](ios-companion.md)
+  records the pairing and release path.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
   [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
@@ -58,21 +74,22 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
-  adds a Settings draft editor, project-scoped Try it previews, compact persisted receipts,
-  the `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and [usage docs](approval-rules.md).
-  The gate remains off, so saved rules are available for preview but do not decide live
-  approvals. This integration follows the v0.0.6 tag; validation and PR review are in progress.
-  The [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the
-  part 2 decisions.
+  (PR #107) adds a Settings draft editor, project-scoped Try it previews, compact persisted
+  receipts, the `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and [usage docs](approval-rules.md).
+  The gate remains off: saved rules can be previewed but do not decide live approvals.
+  Reconciliation with the merged companion passed build, typecheck, 15 core and 248 desktop
+  tests plus the browser bridge test, and all 94 desktop e2e checks. This integration follows
+  v0.0.6; live Jev and human approval acceptance remain open. The
+  [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
 - **Unmerged worktrees.** Each needs a reviewed PR or an explicit disposition.
-  - `auth-retry` (uncommitted): retained as recovery data after #104 merged.
-  - `finish-auth-approvals` (uncommitted approval UI and receipts): retained as recovery data
-    while the approval integration is verified.
+  - `auth-retry` (uncommitted): retained as recovery data after the reconciled fix merged in #104.
+  - `finish-auth-approvals` (uncommitted approval UI and receipts): reconciled in #107; preserve the original until its lifecycle is resolved.
   - `approval-receipts` (uncommitted, overlapping `finish-auth-approvals`): preserve until the
     approval work is reconciled.
-  - `pr-review-browser` (uncommitted): retained as recovery data while #105 is reviewed.
+  - `pr-review-browser` (uncommitted): the reconciled browser bridge merged in #105; preserve
+    this original until its lifecycle is resolved.
   - `status-reviews` (uncommitted docs snapshot): compare with current status before retiring.
   - `livestream-redaction` (clean local-only commit): superseded by merged #100; preserve the
     original branch until its lifecycle is explicitly resolved.
