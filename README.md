@@ -69,6 +69,13 @@ modex/
 - **Inline approvals.** When the mode requires it, the thread pauses on a card showing the
   exact command or patch. *Approve*, *Deny*, or *Always* (trusts that command prefix for
   the thread). *Stop* cancels a running turn and any pending approvals.
+- **Errors you can act on.** Failed turns show the CLI's message, a next step, **Retry**
+  (the same message, without a second user bubble), and **Copy details** for a bug report.
+  Sign-in failures offer the CLI's login command in the thread's terminal; missing CLIs
+  link to Settings. Codex stale-login failures retry once: Modex restarts the app-server
+  when it is unused, or retries in place while another turn is running or opening.
+  A second failure shows the card with both attempts recorded. Early send/retry rejections
+  (for example, a busy thread) return to the caller without adding transcript items.
 - **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
   a one-click revert (confirmed first). Diff failures appear in the panel.
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal

@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-03._
+_Last updated 2026-10-04._
 
 ## Shipped
 
@@ -15,7 +15,6 @@ _Last updated 2026-10-03._
 | v0.0.3 | 2026-09-28 | #34 | Embedded terminal panel ships; unsent text stays with its thread; inactive test window. [Review](reviews/2026-09-28-v0.0.3-release-review.md). |
 | v0.0.4 | 2026-09-29 | #37 | Threads name themselves; one suggested next step after each turn. [Review](reviews/2026-09-29-v0.0.4-release-review.md). |
 | v0.0.5 | 2026-10-03 | #69 | First Developer ID signed and notarized build, from the protected `Release` workflow; the Modex app icon; Jev settings and routing limits (#51); terminals no longer leak a PTY each. [Review](reviews/2026-10-03-v0.0.5-release-review.md). |
-| v0.0.6 | 2026-10-03 | #97 | Graphite desktop and Streamer Mode; safer composer and project removal; scoped Changes; honest CLI account status. [Review](reviews/2026-10-03-v0.0.6-release-review.md). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -25,43 +24,47 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
+- **v0.0.6 is tagged, not published.** PR #97 merged and the signed tag points to its
+  verified tree. The release workflow awaits `release-signing` approval before publishing
+  signed and notarized artifacts. [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
   remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
   Claude Code 2.1.273 and the documented Terminal fallback; model access remains unverified.
+- **ChatGPT sign-in (#76, PR #92).** [Design and recovery](chatgpt-signin.md) cover
+  OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
+  Real Apple Silicon acceptance passed for authorization, completed Codex turns, rotating
+  renewal, bound resumes, two-registration process isolation, and scoped revocation.
 
 ## In flight
 
-- **App-owned ChatGPT sign-in (#76).** [Design and recovery](chatgpt-signin.md) cover
-  OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
-  Renewal preserves rotated credentials when plan scopes shrink and blocks execution;
-  account labels require both plan execution scopes.
-  Real Apple Silicon acceptance passed on 2026-10-04: registration, returning authorization,
-  completed Codex turns, rotating renewal, bound resumes, two-registration process isolation,
-  and scoped revocation. Evidence is recorded in PR #92; the change awaits merge.
+- **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
+  view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
+  Simulator and paired API verification passed; TestFlight publication awaits signing access.
+  The first connection target is the same local network.
+- **Auth recovery and retry.** Failed turns carry persisted failure cards, remedies, Copy
+  details and Retry without duplicating the user message. Codex retries a stale login once
+  while preserving concurrent turns. Model discovery can be retried from threads and drafts;
+  reopening a terminal does not repeat a sign-in action. This branch reconciles the draft
+  PR #68 with current main.
+
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
   [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
   installed-version initialization probes. Neither is enabled. Read-only permission,
   authentication and macOS acceptance evidence remain gates for future implementation.
-- **Account sign-in landing.** PR #91 is merged; PR #92 preserves both sign-in flows and
-  records completed real macOS acceptance. Maintainer review includes the
-  narrowly scoped authentication networking change in `AGENTS.md`.
-
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
   adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
   `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs, then turns the gate on. It
   remains in progress for a later release; v0.0.6 ships with the gate off. Its Settings UI
-  builds on #51, which has landed. Receipts, the deny reason and the docs can start now. The spec
-  (`2026-10-01-modex-jev-approval-rules-spec.md`, named in #54) records the part 2 decisions.
+  builds on #51, which has landed. Receipts, the deny reason and the docs can start now. The
+  [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
 - **Unmerged worktrees.** Each needs a reviewed PR or an explicit disposition.
-  - `auth-retry` (uncommitted): a failed turn ends in a card with Retry, a fix and Copy
-    details. When Codex's sign-in goes stale, Modex restarts `codex app-server` and retries.
-  - `finish-auth-approvals` (draft PR #68 plus uncommitted approval UI and receipts): reconcile
-    with the final account-status and retry work before landing.
+  - `auth-retry` (uncommitted): retained as recovery data while the retry fix is reconciled.
+  - `finish-auth-approvals` (uncommitted approval UI and receipts): reconcile with current main.
   - `approval-receipts` (uncommitted, overlapping `finish-auth-approvals`): preserve until the
     approval work is reconciled.
   - `pr-review-browser` (uncommitted): runs the renderer in a browser, connected to the real

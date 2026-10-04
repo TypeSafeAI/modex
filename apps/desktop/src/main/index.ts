@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +17,7 @@ import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
+import { describeFailure } from "../shared/failures.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -68,7 +69,7 @@ const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex:
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
@@ -117,29 +118,27 @@ handle("project:remove", async ({ projectId }) => {
 handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
-handle("thread:send", async ({ threadId, text }) => {
-  let earlyError: string | null = null;
-  let running = true;
-  try {
-    const promise = runner.send(threadId, text);
-    void promise.catch((err: Error) => {
-      if (running) {
-        earlyError = err.message;
-      } else {
-        emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: err.message, at: new Date().toISOString() } });
-      }
-    });
-  } catch (err) {
-    return { ok: false, error: (err as Error).message };
-  }
+/**
+ * Starts a turn without waiting for it. A rejection the runner can detect up front (busy thread,
+ * missing cwd, nothing to retry) is returned to the caller, as in PR #61. Accepted turns
+ * report their failures through the runner's persisted failure card.
+ */
+async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: boolean; error?: string }> {
+  let accepting = true;
+  let earlyError: string | undefined;
+  run.catch((err: Error) => {
+    if (accepting) { earlyError = err.message; return; }
+    const thread = store.thread(threadId);
+    const failure = describeFailure({ backend: thread?.backend ?? "mock", message: err.message, context: { at: new Date().toISOString(), modex: process.env.MODEX_VERSION, platform: `${process.platform} ${process.arch}`, threadId, cwd: thread?.cwd } });
+    emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: failure.summary, failure: { ...failure, retryable: false }, at: new Date().toISOString() } });
+  });
   // Give the runner a tick to reject synchronously-detectable problems (busy thread, missing cwd).
   await new Promise((r) => setTimeout(r, 0));
-  running = false;
-  if (earlyError) {
-    return { ok: false, error: earlyError };
-  }
-  return { ok: true };
-});
+  accepting = false;
+  return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
+}
+handle("thread:send", ({ threadId, text }) => startTurn(threadId, runner.send(threadId, text)));
+handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
@@ -199,6 +198,7 @@ handle("shell:openPath", async ({ path: p }) => {
   if (err) throw new Error(err);
 });
 handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
+handle("clipboard:write", ({ text }) => { clipboard.writeText(String(text).slice(0, 200_000)); });
 handle("terminal:open", ({ threadId, cols, rows }) => terminals.open(threadId, cols, rows));
 handle("terminal:write", ({ threadId, sessionId, data }) => terminals.write(threadId, sessionId, data));
 handle("terminal:resize", ({ threadId, sessionId, cols, rows }) => terminals.resize(threadId, sessionId, cols, rows));
