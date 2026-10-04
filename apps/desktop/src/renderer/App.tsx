@@ -81,7 +81,7 @@ export function App() {
   useEffect(() => {
     void refresh().then((s) => {
       if (!selected && s.threads[0]) setSelected(s.threads[0].id);
-    });
+    }).catch((err: Error) => setError({ message: err.message }));
   }, [refresh]);
 
   // Live events from every thread; the selected thread re-renders, others just update status.
@@ -228,7 +228,9 @@ export function App() {
   });
 
   const addProject = () => act(async () => {
-    const p = await bridge.invoke("project:add", undefined);
+    const folder = bridge.platform === "web" ? window.prompt("Local project folder (absolute path)")?.trim() : undefined;
+    if (bridge.platform === "web" && !folder) return;
+    const p = await bridge.invoke("project:add", folder ? { path: folder } : undefined);
     if (p) await refresh();
   });
   /** First send from a draft: create the thread with the draft's settings, then send. */
@@ -399,7 +401,7 @@ export function App() {
     inputRef.current?.focus();
   }, [selected]);
 
-  if (!state) return <div className="app loading">Loading…</div>;
+  if (!state) return <div className="app loading">{error?.message ?? "Loading…"}</div>;
 
   const newChat = () => {
     const pid = thread?.projectId ?? draft?.projectId ?? state.projects[0]?.id;

@@ -35,18 +35,21 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
   Real Apple Silicon acceptance passed for authorization, completed Codex turns, rotating
   renewal, bound resumes, two-registration process isolation, and scoped revocation.
+- **Auth recovery and retry (PR #104).** Failed turns carry persisted failure cards,
+  remedies, Copy details and Retry without duplicating the user message. Codex retries a
+  stale login once while preserving concurrent turns. The signed head passed both required
+  macOS CI runs; draft PR #68 was closed after #104 landed.
 
 ## In flight
 
+- **Functional browser review.** A local development bridge connects the renderer to a
+  separate Modex state and CLI-backed engine for reviewing projects, threads, approvals,
+  Changes, settings, and terminals in Chromium. The bridge is bound to localhost and kept
+  out of packaged releases. Its browser flow and desktop regression tests are the landing gate.
 - **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
   view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
   Simulator and paired API verification passed; TestFlight publication awaits signing access.
   The first connection target is the same local network.
-- **Auth recovery and retry.** Failed turns carry persisted failure cards, remedies, Copy
-  details and Retry without duplicating the user message. Codex retries a stale login once
-  while preserving concurrent turns. Model discovery can be retried from threads and drafts;
-  reopening a terminal does not repeat a sign-in action. This branch reconciles the draft
-  PR #68 with current main.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
   [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
