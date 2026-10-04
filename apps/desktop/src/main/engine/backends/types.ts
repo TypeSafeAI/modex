@@ -72,6 +72,7 @@ export interface TurnOptions {
   fast?: boolean;
   /** Resumable handle from a previous turn on this thread. */
   resume?: string;
+  account?: string;
   /** Extra directories the agent may write to (worktree threads pass the project root). */
   addDirs?: string[];
 }
@@ -86,15 +87,16 @@ export interface Backend {
   /** Runs one user turn to completion. `signal` aborts/interrupts the turn. */
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult>;
   /** Optional background naming through a separate CLI conversation. */
-  generateTitle?(text: string, opts: { model: string }, signal: AbortSignal): Promise<string | null>;
+  generateTitle?(text: string, opts: { model: string; account?: string }, signal: AbortSignal): Promise<string | null>;
   /**
    * Last resort when a stopped turn never confirms: forcibly end the backend's work. Optional;
    * backends whose turns always end on their own (Claude escalates to SIGKILL) omit it.
    */
-  forceStop?(): Promise<void>;
+  forceStop?(account?: string): Promise<void>;
   /** Current model catalogue for this backend. */
   listModels(): Promise<ModelInfo[]>;
   health?(): Promise<BackendHealth>;
+  identity?(): string;
   dispose(): Promise<void>;
 }
 

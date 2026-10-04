@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackendHealth, BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
+import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { sameJudgeSettings, testMatchesJudge } from "../../shared/judge-settings";
 import { bridge } from "../bridge";
@@ -64,6 +64,10 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const [health, setHealth] = useState<Record<BackendId, BackendHealth> | null>(null);
   const [healthFailed, setHealthFailed] = useState(false);
   const [healthRevision, setHealthRevision] = useState(0);
+  const [chatgpt, setChatgpt] = useState<ChatGPTStatus | null>(null);
+  const [chatgptBusy, setChatgptBusy] = useState(false);
+  const [chatgptDetail, setChatgptDetail] = useState("");
+  const chatgptBusyRef = useRef(false);
   const [claudeLoginBusy, setClaudeLoginBusy] = useState(false);
   const [claudeLoginDetail, setClaudeLoginDetail] = useState("");
   const claudeLoginRef = useRef(false);
@@ -91,15 +95,25 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
     void bridge.invoke("backends:health", undefined)
       .then((result) => { if (current) setHealth(result); })
       .catch(() => { if (current) setHealthFailed(true); });
+    void bridge.invoke("chatgpt:status", undefined).then((result) => { if (current) setChatgpt(result); }).catch(() => { if (current) setChatgpt(null); });
+    void bridge.invoke("models:list", { backend: "codex" }).then((result) => { if (current) setLists((lists) => ({ ...lists, codex: result })); }).catch(() => { if (current) setLists((lists) => ({ ...lists, codex: { models: [], error: "Could not load Codex models." } })); });
     return () => { current = false; };
   }, [healthRevision]);
+
+  const accountAction = async (action: () => Promise<void>) => {
+    if (chatgptBusyRef.current) return;
+    chatgptBusyRef.current = true; setChatgptBusy(true); setChatgptDetail("Waiting for account operation…");
+    try { await action(); }
+    catch { setChatgptDetail("Account operation did not complete. Check protected storage, finish active turns, or retry sign-in. Existing credentials were preserved unless you signed out locally."); }
+    finally { chatgptBusyRef.current = false; setChatgptBusy(false); setHealthRevision((revision) => revision + 1); }
+  };
 
   useEffect(() => {
     const request = ++routingStatusRequestRef.current;
     void bridge.invoke("routing:status", undefined)
       .then((status) => { if (request === routingStatusRequestRef.current) { setRouting(status); setRoutingError(null); } })
       .catch((err) => { if (request === routingStatusRequestRef.current) { setRouting(null); setRoutingError(errorMessage(err, "Could not load judge status.")); } });
-    for (const b of ["codex", "claude"] as BackendId[]) void bridge.invoke("models:list", { backend: b }).then((r) => setLists((l) => ({ ...l, [b]: r }))).catch((err) => setLists((l) => ({ ...l, [b]: { models: [], error: (err as Error).message } })));
+    for (const b of ["claude"] as BackendId[]) void bridge.invoke("models:list", { backend: b }).then((r) => setLists((l) => ({ ...l, [b]: r }))).catch((err) => setLists((l) => ({ ...l, [b]: { models: [], error: (err as Error).message } })));
   }, []);
 
   const modelSelect = (b: "claude" | "codex") => {
@@ -274,6 +288,23 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <h3 id="settings-clis-title">Coding CLIs</h3>
+          <div data-testid="chatgpt-accounts">
+            <h4>ChatGPT account for Codex</h4>
+            <p className="hint">Account actions apply immediately and remain applied if you cancel Settings. Existing conversations keep their original account. Codex runs coding turns; Modex stores only this sign-in's credentials in protected OS storage.</p>
+            <label className="field"><span>Active account for new Codex conversations</span>
+              <select disabled={chatgptBusy || !chatgpt?.available} value={chatgpt?.active ?? ""} onChange={(event) => { const id = event.target.value || null; void accountAction(async () => { setChatgpt(await bridge.invoke("chatgpt:select", { accountId: id })); setChatgptDetail("Account selected for new conversations."); }); }}>
+                <option value="">Existing Codex CLI authentication</option>
+                {chatgpt?.accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.registration} · {account.signedIn ? account.planEnabled ? "plan authorized" : "identity only" : "signed out"}</option>)}
+              </select>
+            </label>
+            <button type="button" disabled={chatgptBusy || !chatgpt?.available} onClick={() => { void accountAction(async () => { setChatgptDetail("Complete sign-in in your system browser. Model access remains unverified."); setChatgpt(await bridge.invoke("chatgpt:signIn", {})); setChatgptDetail("ChatGPT identity verified. Check plan authorization and complete a Codex turn to verify model access."); }); }}>Continue with ChatGPT</button>
+            {chatgpt?.active && <>
+              <button type="button" disabled={chatgptBusy} onClick={() => { const accountId = chatgpt.active!; void accountAction(async () => { setChatgpt(await bridge.invoke("chatgpt:signIn", { accountId })); setChatgptDetail("Selected registration reauthorized."); }); }}>Reauthorize selected account</button>
+              <button type="button" disabled={chatgptBusy} onClick={() => { const accountId = chatgpt.active!; void accountAction(async () => { const result = await bridge.invoke("chatgpt:signOut", { accountId }); setChatgpt(result.status); setChatgptDetail(result.detail); }); }}>Sign out selected account</button>
+            </>}
+            {chatgptBusy && <button type="button" onClick={() => { void bridge.invoke("chatgpt:cancel", undefined); }}>Cancel ChatGPT sign-in</button>}
+            <p role="status">{chatgptDetail || chatgpt?.detail || "Checking protected credential storage…"}</p>
+          </div>
           <button type="button" disabled={claudeLoginBusy || s.claude_bin !== settings.claude_bin} onClick={async () => {
             if (claudeLoginRef.current) return;
             claudeLoginRef.current = true;

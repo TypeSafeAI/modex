@@ -294,9 +294,12 @@ export class ThreadRunner {
     const backend = this.backends[thread.backend];
     l.backend = thread.backend;
     try {
+      const account = thread.backend === "codex" && backend.identity
+        ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
+      if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
       const result = await backend.runTurn(
         text,
-        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, addDirs: thread.worktree ? [] : [] },
+        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [] },
         sink,
         abort.signal,
       );
@@ -337,7 +340,8 @@ export class ThreadRunner {
     const abort = new AbortController();
     this.naming.set(threadId, abort);
     const timer = setTimeout(() => abort.abort(), 30_000);
-    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model }, abort.signal)).then((title) => {
+    const account = this.o.store.thread(threadId)?.codexAccount;
+    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model, account }, abort.signal)).then((title) => {
       if (title && !abort.signal.aborted && !this.disposing && this.o.store.thread(threadId)?.title === fallback) {
         this.updateThread(threadId, { title });
       }
@@ -370,11 +374,13 @@ export class ThreadRunner {
     const id = l.backend;
     const backend = id ? this.backends[id] : undefined;
     if (!id || !backend?.forceStop) return;
-    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && o.run).length;
+    const account = id === "codex" ? this.o.store.thread(threadId)?.codexAccount ?? "cli" : undefined;
+    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && o.run &&
+      (account === undefined || (this.o.store.thread(other)?.codexAccount ?? "cli") === account)).length;
     const name = id === "codex" ? "Codex" : id;
     const text = others ? `Force-stopping ${name}. ${others} other ${name} ${others === 1 ? "thread" : "threads"} will stop too.` : `Force-stopping ${name}.`;
     this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text, at: new Date().toISOString() });
-    backend.forceStop().catch((err: Error) => {
+    backend.forceStop(account).catch((err: Error) => {
       if (this.live.get(threadId) === l) this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Force-stop failed: ${err.message}`, at: new Date().toISOString() });
     });
   }
@@ -390,6 +396,9 @@ export class ThreadRunner {
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean } = {}): Thread {
+    // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
+    patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
+      ["mode", "model", "title", "backend", "plan", "effort", "auto"].includes(key))) as ThreadPatch;
     if (patch.title !== undefined) {
       this.naming.get(threadId)?.abort();
       this.naming.delete(threadId);
@@ -398,7 +407,7 @@ export class ThreadRunner {
     const live = this.o.store.thread(threadId);
     const current = live ? { ...live } : undefined;
     // Switching backend starts a fresh backend conversation; the transcript stays.
-    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
+    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch });
     this.o.emit({ threadId, type: "thread", thread: t });
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user

@@ -25,25 +25,27 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- No changes beyond the v0.0.6 release cut.
+- **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
+  cancels its own attempt, and verifies structured account status afterward. Credentials
+  remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
+  Claude Code 2.1.273 and the documented Terminal fallback; model access remains unverified.
 
 ## In flight
 
-- **Claude sign-in (#77).** Settings launches the saved Claude CLI's browser login,
-  cancels its own attempt, and verifies structured account status afterward.
-  Malformed or null account status returns an unsupported result without launching login.
-  Credentials remain CLI-owned. Apple Silicon acceptance passed on 2026-10-04 using
-  Claude Code 2.1.273: the documented terminal fallback completed browser authorization,
-  then the login handler and backend health confirmed authentication in the Mac GUI session.
-  Model access remains unverified. Evidence is recorded in PR #91; the change awaits merge.
-
+- **App-owned ChatGPT sign-in (#76).** [Design and recovery](chatgpt-signin.md) cover
+  OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
+  Renewal preserves rotated credentials when plan scopes shrink and blocks execution;
+  account labels require both plan execution scopes.
+  Real Apple Silicon acceptance passed on 2026-10-04: registration, returning authorization,
+  completed Codex turns, rotating renewal, bound resumes, two-registration process isolation,
+  and scoped revocation. Evidence is recorded in PR #92; the change awaits merge.
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
   [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
   installed-version initialization probes. Neither is enabled. Read-only permission,
   authentication and macOS acceptance evidence remain gates for future implementation.
-- **Account sign-in.** Claude CLI sign-in (#77, draft PR #91) and app-owned ChatGPT sign-in
-  (#76, draft PR #92) require real account acceptance on macOS. The latter also requires a
-  maintainer decision on narrowly scoped authentication networking in `AGENTS.md`.
+- **Account sign-in landing.** PR #91 is merged; PR #92 preserves both sign-in flows and
+  records completed real macOS acceptance. Maintainer review includes the
+  narrowly scoped authentication networking change in `AGENTS.md`.
 
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the

@@ -8,8 +8,11 @@
 
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
 repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
-stream-json and `codex app-server`), using the logins you already have. It never calls a model
-API directly and never stores credentials.
+stream-json and `codex app-server`), using existing CLI logins or app-owned ChatGPT sign-in.
+App-owned sign-in is under review; see [its acceptance gates](docs/chatgpt-signin.md).
+It never calls a model
+API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
+Claude and Codex CLI credentials remain with their CLIs.
 
 ![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
 

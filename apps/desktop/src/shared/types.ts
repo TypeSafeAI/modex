@@ -37,6 +37,8 @@ export interface Thread {
   auto?: boolean;
   /** Backend resume handle: Claude session id or Codex thread id. */
   sessionHandle?: string;
+  /** Opaque identity binding; never credentials. Older Codex handles belong to CLI auth. */
+  codexAccount?: string;
   status: ThreadStatus;
 }
 
@@ -279,6 +281,12 @@ export interface BackendHealth {
   detail: string;
 }
 
+export interface ChatGPTStatus {
+  available: boolean; active: string | null; signingIn: boolean;
+  accounts: { id: string; label: string; registration: string; signedIn: boolean; planEnabled: boolean }[];
+  detail: string;
+}
+
 export interface ClaudeLoginResult {
   status: "authenticated" | "busy" | "unsupported" | "failed" | "timeout" | "cancelled";
   detail: string;
@@ -304,6 +312,11 @@ export interface BridgeCommands {
   "routing:test": { req: undefined; res: RoutingTest };
   "models:list": { req: { backend: BackendId }; res: { models: ModelInfo[]; error?: string } };
   "backends:health": { req: undefined; res: Record<BackendId, BackendHealth> };
+  "chatgpt:status": { req: undefined; res: ChatGPTStatus };
+  "chatgpt:signIn": { req: { accountId?: string }; res: ChatGPTStatus };
+  "chatgpt:cancel": { req: undefined; res: void };
+  "chatgpt:select": { req: { accountId: string | null }; res: ChatGPTStatus };
+  "chatgpt:signOut": { req: { accountId: string }; res: { status: ChatGPTStatus; detail: string } };
   "claude:login": { req: undefined; res: ClaudeLoginResult };
   "claude:cancelLogin": { req: undefined; res: void };
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };

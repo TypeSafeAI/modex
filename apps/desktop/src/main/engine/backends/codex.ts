@@ -23,14 +23,15 @@ export class CodexBackend implements Backend {
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
   private readonly changePaths = new Map<string, string[]>();
 
-  constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn) {}
+  constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn,
+    private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
       try {
-        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"'], { stdio: ["pipe", "pipe", "pipe"], env: process.env, detached: true });
+        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"', ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: this.configuration?.env ?? process.env, detached: true });
       } catch (err) {
         return reject(new Error(`could not start ${this.bin} app-server: ${(err as Error).message}`));
       }
@@ -46,7 +47,7 @@ export class CodexBackend implements Backend {
         reject(error);
       });
       child.on("close", (code) => {
-        if (this.child === child) this.disconnect(new Error(`codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`));
+        if (this.child === child) this.disconnect(new Error(this.configuration?.redact(`codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`) ?? `codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`));
       });
       this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} }, 5000)
         .then(() => {
@@ -70,7 +71,7 @@ export class CodexBackend implements Backend {
   private dispatch(line: string): void {
     let msg: RpcMessage;
     try {
-      msg = JSON.parse(line) as RpcMessage;
+      msg = JSON.parse(line, (_key, value: unknown) => typeof value === "string" ? this.configuration?.redact(value) ?? value : value) as RpcMessage;
     } catch {
       return;
     }

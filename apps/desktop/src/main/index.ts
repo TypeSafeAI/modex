@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
 import { updateSettings } from "./engine/settings-update.js";
 import { ThreadRunner } from "./engine/runner.js";
+import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
+import { AccountCodexBackend } from "./engine/backends/account-codex.js";
 import { ClaudeLogin } from "./engine/claude-login.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
@@ -57,7 +59,12 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
-const runner = new ThreadRunner({ home, store, emit, secrets, beforeDeleteThread: (id) => terminals.close(id) });
+const osCipher = electronCipher(safeStorage);
+const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
+const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
+const accountCodex = new AccountCodexBackend(chatgpt, store.settings.codex_bin);
+process.env.MODEX_VERSION = app.getVersion();
+const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
@@ -153,6 +160,19 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
 });
 handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
 handle("models:list", ({ backend }) => runner.listModels(backend));
+handle("chatgpt:status", () => chatgpt.status());
+handle("chatgpt:signIn", async ({ accountId }) => {
+  try {
+    if (accountId) await accountCodex.accountChange(accountId, () => chatgpt.signIn(accountId));
+    else await chatgpt.signIn();
+    return chatgpt.status();
+  } catch { throw new Error("ChatGPT sign-in did not complete. Finish active turns, check protected storage, or retry authorization."); }
+});
+handle("chatgpt:cancel", () => chatgpt.cancel());
+handle("chatgpt:select", ({ accountId }) => { chatgpt.select(accountId); return chatgpt.status(); });
+handle("chatgpt:signOut", async ({ accountId }) => {
+  const detail = await accountCodex.accountChange(accountId, () => chatgpt.signOut(accountId)); return { status: chatgpt.status(), detail };
+});
 const claudeLogin = new ClaudeLogin();
 const sessionClaudeBin = store.settings.claude_bin;
 SPAWNS.add("claude:login");
@@ -259,12 +279,14 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || screenshotDir) app.quit();
 });
 app.on("before-quit", (event) => {
+  chatgpt.cancel();
   claudeLogin.cancel();
   if (shutdownComplete) return;
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;
   void Promise.allSettled([terminals.dispose(), runner.dispose()]).then((results) => {
+    chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {
       shuttingDown = false;
