@@ -47,6 +47,18 @@ test("browser without preload: add folder, approve a turn, inspect changes, term
     await expect(items(page, "user").first()).toContainText("Add a contributing guide");
     await expect(items(page, "assistant").last()).toContainText("added CONTRIBUTING.md");
     await expect(tid(page, "changes-file-path")).toHaveText("CONTRIBUTING.md");
+    await tid(page, "open-settings").click();
+    await tid(page, "settings-nav").getByRole("button", { name: "Approval rules" }).click();
+    await page.getByRole("button", { name: "Add rule", exact: true }).click();
+    const rule = tid(page, "approval-rule").last();
+    await rule.getByLabel("When the agent wants to").fill("run tests");
+    await rule.getByLabel("Exact match (optional)").fill("Bash: npm test*");
+    await rule.getByRole("combobox", { name: "Decision", exact: true }).selectOption("allow");
+    await page.getByLabel("Sample action").fill("npm test");
+    await page.getByRole("button", { name: "Try it", exact: true }).click();
+    await expect(tid(page, "approval-preview")).toHaveAttribute("data-decision", "allow");
+    await tid(page, "settings").getByRole("button", { name: "Save", exact: true }).click();
+    await expect(tid(page, "settings")).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     await browser?.close();

@@ -506,7 +506,7 @@ export function App() {
         </main>
         {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
       {streamerMode && (
         <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
           <Icon name="privacy" size={28} />

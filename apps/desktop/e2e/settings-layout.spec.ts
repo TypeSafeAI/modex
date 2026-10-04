@@ -61,7 +61,7 @@ test("Settings sections and persistent actions stay reachable in a narrow, short
   // horizontally when needed, then Enter selects the section.
   const general = nav.getByRole("button", { name: "General" });
   await general.focus();
-  for (const label of ["Coding CLIs", "Auto routing", "Advanced / demo"]) {
+  for (const label of ["Coding CLIs", "Auto routing", "Approval rules", "Advanced / demo"]) {
     await page.keyboard.press("Tab");
     const next = nav.getByRole("button", { name: label });
     await expect(next).toBeFocused();

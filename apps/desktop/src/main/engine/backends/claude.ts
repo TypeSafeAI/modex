@@ -1,6 +1,6 @@
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
-import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { ApprovalRequest, Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
@@ -202,12 +202,13 @@ export class ClaudeBackend implements Backend {
         }
         const tool = req.tool_name ?? "tool";
         const title = toolTitle(tool, req.input ?? {});
-        const answer = await sink.approval({
+        const request: ApprovalRequest = {
           question: `Allow ${req.tool_name}: ${title}?`,
           detail: shortJson(req.input ?? {}),
           canAlways: Boolean(req.permission_suggestions?.length),
           action: { backend: "claude", tool, title, cwd: ctx.cwd, input: req.input ?? {} },
-        });
+        };
+        const answer = await sink.approval(request);
         const allow = answer !== "no";
         ctx.write({
           type: "control_response",
@@ -216,7 +217,7 @@ export class ClaudeBackend implements Backend {
             request_id: msg.request_id,
             response: allow
               ? { behavior: "allow", updatedInput: req.input ?? {}, ...(answer === "always" && req.permission_suggestions?.length ? { updatedPermissions: req.permission_suggestions } : {}) }
-              : { behavior: "deny", message: "The user denied this action in Modex." },
+              : { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) },
           },
         });
         return null;
@@ -261,6 +262,12 @@ interface ClaudeMessage {
   model?: string;
   permissionMode?: string;
   apiKeySource?: string;
+}
+
+/** What Claude is told when an approval is denied; a refusal by one of the user's approval rules names the rule. */
+export function denyMessage(rule?: string): string {
+  const when = rule?.replace(/\s+/g, " ").trim();
+  return when ? `The user denied this action in Modex (rule: ${when.length > 200 ? `${when.slice(0, 199)}…` : when}).` : "The user denied this action in Modex.";
 }
 
 /** Human title for a Claude Code tool call. */

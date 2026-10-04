@@ -1,0 +1,62 @@
+# Approval rules
+
+Approval rules answer requests from a coding CLI before Modex asks you. They do not execute
+tools themselves, create approval requests the CLI did not make, or widen a sandbox.
+
+The gate remains **off** while this integration is reviewed. Settings can save rules and
+**Try it** can preview their decisions during this period. Live approvals still ask you.
+The v0.0.6 release was tagged before this work and does not contain this editor.
+See the [specification](specs/2026-10-01-modex-jev-approval-rules-spec.md).
+
+## Add a rule
+
+Open Settings → Approval rules, then Add rule. Complete “When the agent wants to …”, choose
+Allow once, Ask me, or Never allow, and save. Cancel discards edits. A failed save leaves the
+draft available to correct or retry. Existing rules can be edited, disabled, or deleted.
+
+New rules belong to the current project, including its worktree threads. Select All projects
+explicitly to share a rule. Rules belonging to other projects remain visible and keep their
+scope when you edit this project's rules.
+
+Language rules use the same saved Jev transport and credentials as Auto routing. Without
+Jev, they stay visible with **Inactive without Jev**. An optional exact match works without
+Jev: `Bash: npm test*` for Claude, or `command: npm test*` for Codex. Tool names and patterns
+are case-sensitive; `*` matches any text. A leading `$ ` in the command title may be omitted.
+Exact matches are mechanical patterns, so keep allow patterns narrow.
+
+## Try a draft
+
+Choose a project, backend, tool and sample action under Try it. The preview evaluates the
+unsaved rules above using the same gate as real approval requests. It never starts a coding
+turn, executes the sample, saves settings, or adds transcript items. It may send scrubbed
+sample metadata to the saved Jev judge. Save changes to the Jev configuration before trying
+them here.
+
+The result shows the decision, deciding rule, exact match or Jev probability, elapsed time,
+and safety downgrade or judge failure. Changing the sample or rules clears the result. A
+preview is an example for that action and configuration, not a guarantee about future requests.
+
+## Decisions and receipts
+
+Matching rules combine as **Never > Ask > Allow**. Jev considers at most 12 language rules,
+prioritizing project rules and then newer rules. The default match threshold is 0.8.
+
+An allow becomes ask when the action requests additional sandbox permissions, or Jev rates
+the chance it is destructive at 0.5 or higher. An allow is always one approval, never a
+session-wide “Always”. If Jev is missing, times out, or returns invalid answers, only exact
+matches can decide; otherwise Modex asks you. Stopping a pending judgment refuses it.
+
+Automatic allows and refusals leave compact, expandable transcript receipts. Expand one to
+see the request, rule, source, timing and safety context. An ask keeps the normal approval
+card and explains the rule or downgrade that sent it to you. Old cards still render normally.
+
+Claude receives the rule description in a rule-driven refusal, bounded to one line. Human
+denials keep their existing message. Codex receives its normal structured decline; Modex's
+receipt holds the explanation.
+
+## Data sent to Jev
+
+The gate sends tool/title, scrubbed command text, paths, project name, branch when available,
+and mode. It does not send file contents, patches, edit strings, or coding-session messages.
+The preview accepts only sample metadata. Credential lookup is shared with
+[Auto routing](auto-routing.md); there is no second key store or coding API mode.

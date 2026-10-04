@@ -435,6 +435,22 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .shield { color: var(--warn); }
 .approval .detail { max-height: 200px; margin: 0 0 12px; padding: 8px 10px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-2); white-space: pre-wrap; }
 .approval-answer { color: var(--text-3); font-size: var(--text-sm); }
+.approval-reason { margin: -4px 0 10px; color: var(--text-3); font-size: var(--text-sm); }
+
+/* Approval answered by a rule: no card, because nothing waited on it. One quiet line, expandable like a tool. */
+.approval-receipt { margin-bottom: 6px; }
+.receipt-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 26px; padding: 2px 0; border: 0; background: transparent; color: var(--text-muted); font: var(--weight-medium) var(--text-md)/22px var(--font-sans); text-align: left; cursor: pointer; }
+.receipt-head:hover, .approval-receipt.open .receipt-head { color: var(--text-2); }
+.receipt-icon { width: 16px; flex: none; text-align: center; }
+.approval-receipt.allowed .receipt-icon { color: var(--ok); }
+.approval-receipt.refused .receipt-icon { color: var(--danger); }
+.receipt-label, .receipt-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipt-label code, .receipt-meta code { color: var(--text-2); font: 12.5px var(--font-mono); }
+.receipt-meta { margin-left: auto; flex: 0 1 auto; color: var(--text-info); font-size: var(--text-xs); font-weight: var(--weight-regular); }
+.receipt-body { margin: 2px 0 10px 8px; padding-left: 16px; border-left: 2px solid var(--border-pane); color: var(--text-3); font-size: var(--text-sm); }
+.receipt-question { margin-bottom: 6px; color: var(--text-2); }
+.receipt-body .detail { max-height: 200px; margin: 0 0 8px; padding: 8px 10px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-2); white-space: pre-wrap; }
+.receipt-body .dim { opacity: .8; }
 
 /* ── Title bar actions (Phase 7) ── */
 .changes-toggle { position: relative; }
@@ -505,3 +521,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .terminal-screen { flex: 1; min-height: 0; overflow: hidden; margin: 0 var(--space-3) var(--space-2) var(--space-5); }
 .terminal-screen .xterm { height: 100%; }
 .terminal-screen .xterm .xterm-viewport { background: transparent; overflow-y: hidden; } /* xterm 6 scrolls with its own scrollbar; the native one only left a grey square */
+.approval-rule { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 12px; min-width: 0; }
+.approval-rule legend { color: var(--text-2); padding: 0 6px; }
+.approval-rule .check { margin: 0; }
+.approval-preview { border-left: 2px solid var(--text-3); margin: 12px 0; padding: 8px 12px; }
+.approval-preview p { margin: 6px 0 0; }

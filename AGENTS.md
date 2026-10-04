@@ -45,9 +45,10 @@ itself driving one of them.
   coding turns; do not add one. App-owned Sign in with ChatGPT may make authentication-only
   requests to OpenAI's authorization, OpenID metadata/JWKS, token and revocation endpoints;
   tokens stay in main-process OS-encrypted storage and the account's Codex child environment.
-  These calls never carry prompts or files or execute inference. The other network call outside the CLIs is the optional Auto
-  routing judge (Jev, `apps/desktop/src/main/engine/routing/`), which answers typed questions
-  about a request and never runs a turn or sees file contents; without `TYPESAFE_API_KEY`
-  it is replaced by a built-in heuristic. See `docs/auto-routing.md`.
+  These calls never carry prompts or files or execute inference. The optional Auto routing
+  judge (Jev, `apps/desktop/src/main/engine/routing/`) answers typed questions for Auto
+  routing and approval rules; it never runs a turn or sees file contents. Without Jev,
+  Auto uses its heuristic and approval rules use only exact matches or ask a human. See
+  `docs/auto-routing.md` and `docs/approval-rules.md`.
 - Scratch scripts go in `apps/desktop/.probes/` (git-ignored). Playwright wipes
   `apps/desktop/test-results/` on every run.

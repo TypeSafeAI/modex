@@ -39,16 +39,16 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   remedies, Copy details and Retry without duplicating the user message. Codex retries a
   stale login once while preserving concurrent turns. The signed head passed both required
   macOS CI runs; draft PR #68 was closed after #104 landed.
+- **Browser review (PR #105).** A token-protected localhost bridge runs the renderer with
+  separate state and a CLI-backed runner in Chromium. Local build, unit, and 90/90 e2e plus
+  both exact-head macOS CI runs passed before merge.
 
 ## In flight
 
-- **Functional browser review.** A local development bridge connects the renderer to a
-  separate Modex state and CLI-backed engine for reviewing projects, threads, approvals,
-  Changes, settings, and terminals in Chromium. The bridge is bound to localhost and kept
-  out of packaged releases. Its browser flow and desktop regression tests are the landing gate.
 - **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
   view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
-  Simulator and paired API verification passed; TestFlight publication awaits signing access.
+  Simulator and paired API verification plus an unsigned device build passed; TestFlight
+  publication and physical iPhone acceptance await signing access.
   The first connection target is the same local network.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
@@ -58,20 +58,21 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
-  adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
-  `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs, then turns the gate on. It
-  remains in progress for a later release; v0.0.6 ships with the gate off. Its Settings UI
-  builds on #51, which has landed. Receipts, the deny reason and the docs can start now. The
-  [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
+  adds a Settings draft editor, project-scoped Try it previews, compact persisted receipts,
+  the `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and [usage docs](approval-rules.md).
+  The gate remains off, so saved rules are available for preview but do not decide live
+  approvals. This integration follows the v0.0.6 tag; validation and PR review are in progress.
+  The [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the
+  part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
 - **Unmerged worktrees.** Each needs a reviewed PR or an explicit disposition.
-  - `auth-retry` (uncommitted): retained as recovery data while the retry fix is reconciled.
-  - `finish-auth-approvals` (uncommitted approval UI and receipts): reconcile with current main.
+  - `auth-retry` (uncommitted): retained as recovery data after #104 merged.
+  - `finish-auth-approvals` (uncommitted approval UI and receipts): retained as recovery data
+    while the approval integration is verified.
   - `approval-receipts` (uncommitted, overlapping `finish-auth-approvals`): preserve until the
     approval work is reconciled.
-  - `pr-review-browser` (uncommitted): runs the renderer in a browser, connected to the real
-    engine over a localhost bridge.
+  - `pr-review-browser` (uncommitted): retained as recovery data while #105 is reviewed.
   - `status-reviews` (uncommitted docs snapshot): compare with current status before retiring.
   - `livestream-redaction` (clean local-only commit): superseded by merged #100; preserve the
     original branch until its lifecycle is explicitly resolved.
