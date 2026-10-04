@@ -2,12 +2,12 @@ import AVFoundation
 import SwiftUI
 
 private enum Palette {
-    static let background = Color(red: 0.035, green: 0.043, blue: 0.064)
-    static let surface = Color(red: 0.078, green: 0.091, blue: 0.124)
-    static let raised = Color(red: 0.105, green: 0.120, blue: 0.157)
+    static let background = Color(red: 0.043, green: 0.059, blue: 0.106)
+    static let surface = Color(red: 0.082, green: 0.106, blue: 0.169)
+    static let raised = Color(red: 0.133, green: 0.157, blue: 0.227)
     static let line = Color.white.opacity(0.085)
-    static let accent = Color(red: 0.53, green: 0.66, blue: 1.0)
-    static let muted = Color(red: 0.56, green: 0.60, blue: 0.70)
+    static let accent = Color(red: 0.953, green: 0.525, blue: 0.631)
+    static let muted = Color(red: 0.667, green: 0.647, blue: 0.722)
 }
 
 struct CompanionRootView: View {

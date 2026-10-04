@@ -9,8 +9,8 @@
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
   <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
-  <key>CFBundleDisplayName</key><string>Modex</string>
-  <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>ai.typesafe.modex.companion</string><key>CFBundleURLSchemes</key><array><string>modex</string></array></dict></array>
+  <key>CFBundleDisplayName</key><string>Modex Companion</string>
+  <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>works.jev.modex</string><key>CFBundleURLSchemes</key><array><string>modex</string></array></dict></array>
   <key>NSCameraUsageDescription</key><string>Scan the pairing code shown in Modex on your Mac.</string>
   <key>NSLocalNetworkUsageDescription</key><string>Connect to your paired Modex app on a Mac on the same network.</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>

@@ -139,7 +139,7 @@ final class CompanionAPI: NSObject, URLSessionDelegate {
 }
 
 enum PairingStore {
-    private static let service = "ai.typesafe.modex.companion.pairing"
+    private static let service = "works.jev.modex.pairing"
 
     static func load() -> Pairing? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,

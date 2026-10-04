@@ -1,6 +1,6 @@
 name: ModexCompanion
 options:
-  bundleIdPrefix: ai.typesafe.modex
+  bundleIdPrefix: works.jev.modex
   deploymentTarget:
     iOS: "18.0"
 settings:
@@ -18,7 +18,7 @@ targets:
       - path: Resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.typesafe.modex.companion
+        PRODUCT_BUNDLE_IDENTIFIER: works.jev.modex
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -35,7 +35,7 @@ targets:
       - target: ModexCompanion
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.typesafe.modex.companion.tests
+        PRODUCT_BUNDLE_IDENTIFIER: works.jev.modex.tests
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
   ModexCompanionUITests:
@@ -47,6 +47,6 @@ targets:
       - target: ModexCompanion
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.typesafe.modex.companion.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: works.jev.modex.uitests
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES

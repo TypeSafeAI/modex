@@ -26,7 +26,7 @@ The server needs the Mac app to be running. There is no relay or internet endpoi
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`ai.typesafe.modex.companion`, version 0.1.0 (build 1), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 1), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -48,18 +48,23 @@ builds always use Keychain.
 On 2026-10-04, the workspace build and typecheck passed, all 15 core and 232 desktop unit
 tests passed, all 90 Electron end-to-end tests passed, and the iPhone simulator completed
 pairing, approval confirmation, and a follow-up against the local Mac fixture. A signed
-device build and physical iPhone install remain part of TestFlight release verification.
-The Release configuration also built for the generic iPhone device target with signing
-disabled; this checks device compilation but cannot produce an installable TestFlight build.
+device archive and IPA export also succeeded. The first bundle ID was not registered in
+App Store Connect, so the target was aligned to Val's `works.jev.modex` app record. The new
+target passed its simulator unit tests and paired approval/follow-up e2e. Its signed IPA
+passed ZIP integrity and Apple validation, uploaded successfully, and reached Apple's
+`VALID` import and processing state: App Store Connect app `6818982013`, version 0.1.0,
+build 1, delivery `bce3dd75-1a7e-46de-831c-42278f1150f9`. Internal tester access and
+physical iPhone acceptance remain to be verified. The Release configuration also built
+for the generic iPhone device target with signing disabled.
 
 ## TestFlight
 
 The iPhone build has a separate release path from the signed and notarized macOS release.
-Create the App Store Connect app record for `ai.typesafe.modex.companion` under Soul Protocol
-LLC, then run the signed archive, export, validation, and upload path:
+The App Store Connect record for **Modex Companion** uses `works.jev.modex` under Soul
+Protocol LLC. Run the signed archive, export, validation, and upload path:
 
 ```sh
-op run --env-file=.env.release -- apps/ios/ModexCompanion/Scripts/release-testflight.sh
+op signin && op run --env-file=.env.release -- apps/ios/ModexCompanion/Scripts/release-testflight.sh
 ```
 
 Verify processing and install from TestFlight on a physical iPhone on the Mac's network.
