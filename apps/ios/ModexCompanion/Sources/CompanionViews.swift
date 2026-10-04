@@ -13,9 +13,11 @@ private enum Palette {
 struct CompanionRootView: View {
     @EnvironmentObject private var model: CompanionModel
     @State private var showPairing = false
+    @State private var showForgetConfirmation = false
+    @State private var path: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if model.pairing == nil { onboarding }
                 else { dashboard }
@@ -30,6 +32,13 @@ struct CompanionRootView: View {
         }
         .tint(Palette.accent)
         .sheet(isPresented: $showPairing) { PairingSheet() }
+        .onChange(of: model.snapshot.threads.map(\.id)) { _, ids in
+            path.removeAll { !ids.contains($0) }
+        }
+        .alert("Forget this Mac?", isPresented: $showForgetConfirmation) {
+            Button("Forget Mac", role: .destructive) { model.disconnect() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("You can reconnect by scanning the pairing code on your Mac.") }
         .alert("Connection issue", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK", role: .cancel) { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -81,7 +90,18 @@ struct CompanionRootView: View {
     private var dashboard: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                HStack { brand; Spacer(); Button { model.disconnect() } label: { Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold)).frame(width: 42, height: 42).background(Palette.surface, in: RoundedRectangle(cornerRadius: 13)) }.accessibilityLabel("Forget paired Mac") }
+                HStack {
+                    brand
+                    Spacer()
+                    Menu {
+                        Button("Forget paired Mac…", role: .destructive) { showForgetConfirmation = true }
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold))
+                            .frame(width: 44, height: 44).background(Palette.surface, in: RoundedRectangle(cornerRadius: 13))
+                    }
+                    .accessibilityLabel("Workspace options")
+                    .accessibilityIdentifier("workspace-options")
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Workspace")
                         .font(.system(size: 34, weight: .semibold, design: .rounded))

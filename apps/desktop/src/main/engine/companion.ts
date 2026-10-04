@@ -22,6 +22,8 @@ export interface CompanionStatus { enabled: boolean; addresses: string[]; port?:
 /** A deliberately small, paired LAN API. Coding turns still run in the Mac's CLI-backed runner. */
 export class CompanionServer {
   private server: https.Server | null = null;
+  private starting: Promise<CompanionStatus> | null = null;
+  private generation = 0;
   private port = 0;
   private host = "";
   private config: Config;
@@ -59,7 +61,8 @@ export class CompanionServer {
     const certFile = path.join(this.dir, "cert.pem");
     if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
       // macOS ships openssl. Keep this key outside the app bundle and never copy it to the phone.
-      execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-noenc", "-days", "3650", "-subj", "/CN=Modex Companion", "-addext", "basicConstraints=CA:FALSE", "-keyout", keyFile, "-out", certFile], { stdio: "ignore" });
+      // LibreSSL defaults to explicit EC parameters, which Electron and iOS TLS reject.
+      execFileSync(process.platform === "darwin" ? "/usr/bin/openssl" : "openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-pkeyopt", "ec_param_enc:named_curve", "-nodes", "-sha256", "-days", "3650", "-subj", "/CN=Modex Companion", "-addext", "basicConstraints=CA:FALSE", "-keyout", keyFile, "-out", certFile], { stdio: "ignore" });
       fs.chmodSync(keyFile, 0o600);
       fs.chmodSync(certFile, 0o600);
     }
@@ -69,13 +72,22 @@ export class CompanionServer {
     return { key, cert };
   }
 
-  async start(): Promise<CompanionStatus> {
-    if (this.server) return this.status();
+  start(): Promise<CompanionStatus> {
+    if (this.server) return Promise.resolve(this.status());
+    if (this.starting) return this.starting;
+    const starting = this.listen(++this.generation).finally(() => {
+      if (this.starting === starting) this.starting = null;
+    });
+    this.starting = starting;
+    return starting;
+  }
+
+  private async listen(generation: number): Promise<CompanionStatus> {
     const host = this.addresses()[0];
     if (!host) throw new Error("Connect your Mac to a local network before turning on the iPhone companion.");
     const { key, cert } = this.certificate();
     const server = https.createServer({ key, cert, minVersion: "TLSv1.2" }, (req, res) => {
-      void this.handle(req, res).catch(() => this.reply(res, 500, { error: "Your Mac could not complete the request." }));
+      void this.handle(server, req, res).catch(() => this.reply(res, 500, { error: "Your Mac could not complete the request." }));
     });
     const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
         server.once("error", reject);
@@ -87,6 +99,10 @@ export class CompanionServer {
       if (!this.config.port || (err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
       // A different process can claim the old port while Modex is closed.
       await listen(0);
+    }
+    if (generation !== this.generation) {
+      await this.close(server);
+      return this.status();
     }
     this.server = server;
     this.host = host;
@@ -100,20 +116,28 @@ export class CompanionServer {
   async stop(): Promise<CompanionStatus> {
     this.config.enabled = false;
     this.save();
-    const server = this.server;
-    this.server = null;
-    this.port = 0;
-    this.host = "";
-    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+    await this.dispose();
     return this.status();
   }
 
   async dispose(): Promise<void> {
+    this.generation += 1;
+    const starting = this.starting;
+    this.starting = null;
     const server = this.server;
     this.server = null;
     this.port = 0;
     this.host = "";
-    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (server) await this.close(server);
+    await starting?.catch(() => {});
+  }
+
+  private close(server: https.Server): Promise<void> {
+    return new Promise((resolve) => {
+      server.close(() => resolve());
+      // A partial upload must not keep access open or prevent the Mac app from quitting.
+      server.closeAllConnections();
+    });
   }
 
   resetAccess(): CompanionStatus {
@@ -146,9 +170,10 @@ export class CompanionServer {
     return parsed as Record<string, unknown>;
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handle(server: https.Server, req: IncomingMessage, res: ServerResponse): Promise<void> {
     const supplied = /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization ?? "")?.[1];
-    if (!supplied || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token))) {
+    const authorized = () => server === this.server && !!supplied && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token));
+    if (!authorized()) {
       this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." });
       return;
     }
@@ -157,7 +182,8 @@ export class CompanionServer {
       const state = this.source.state();
       const threadId = url.searchParams.get("threadId");
       const thread = threadId ? state.threads.find((t) => t.id === threadId) : undefined;
-      if (threadId && !thread) { this.reply(res, 404, { error: "Thread not found." }); return; }
+      // Return the current list even if the selected thread was deleted on the Mac.
+      // The phone can then leave that transcript without treating this as a lost connection.
       this.reply(res, 200, {
         projects: state.projects.map((p) => ({ id: p.id, name: p.name })),
         threads: state.threads.map((t) => ({ id: t.id, projectId: t.projectId, title: t.title, backend: t.backend, status: this.source.status(t.id), updatedAt: t.updatedAt })),
@@ -173,6 +199,8 @@ export class CompanionServer {
     let input: Record<string, unknown>;
     try { input = await this.body(req); }
     catch { this.reply(res, 400, { error: "Invalid request body." }); return; }
+    if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
+    if (!this.source.state().threads.some((t) => t.id === threadId)) { this.reply(res, 404, { error: "Thread not found." }); return; }
     if (action === "send") {
       const value = input.text;
       if (typeof value !== "string" || !value.trim() || value.length > 20_000) { this.reply(res, 400, { error: "Enter a message under 20,000 characters." }); return; }

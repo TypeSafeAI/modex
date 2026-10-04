@@ -26,7 +26,7 @@ The server needs the Mac app to be running. There is no relay or internet endpoi
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 1), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 2), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -38,12 +38,13 @@ cd ../../..
 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 ```
 
-The first command runs the pairing validation unit tests. The second starts a local Mac
+The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
 fixture with the real thread runner and paired HTTPS API, then drives the simulator through
-pairing, an approval, and a follow-up. The fixture is offline and uses a fake backend; it
+pairing, an approval, a follow-up, and cancelling or confirming Forget Mac. The fixture is offline and uses a fake backend; it
 does not claim live Claude or Codex account access. Unsigned simulator builds use a
 simulator-only pairing store if Keychain reports a missing signing entitlement; iPhone
-builds always use Keychain.
+builds always use Keychain. The `iPhone companion` CI job runs both suites on an available
+iPhone simulator and retains the Xcode test results.
 
 On 2026-10-04, the workspace build and typecheck passed, all 15 core and 232 desktop unit
 tests passed, all 90 Electron end-to-end tests passed, and the iPhone simulator completed
@@ -56,6 +57,23 @@ passed ZIP integrity and Apple validation, uploaded successfully, and reached Ap
 build 1, delivery `bce3dd75-1a7e-46de-831c-42278f1150f9`. Internal tester access and
 physical iPhone acceptance remain to be verified. The Release configuration also built
 for the generic iPhone device target with signing disabled.
+
+Build 2 hardens first-run pairing and request lifetimes. Certificate generation uses the
+OpenSSL shipped by macOS with named P-256 parameters, which both Electron and iOS accept.
+Turning off the listener cancels pending startup and connections; rotating access also
+rejects authenticated requests whose bodies have not finished arriving. The phone rejects
+public DNS names disguised with private-IP prefixes, ignores responses from old selections
+or forgotten Macs, preserves drafts during sends, and returns to the workspace when a
+thread is deleted on the Mac. Forget Mac now requires an explicit confirmation.
+
+Build 2 verification on 2026-10-04: workspace build and typecheck, 15 core tests, 239 desktop
+tests plus the browser bridge test, all 91 desktop e2e tests, all 10 native tests, and the
+paired iPhone flow passed. The initial simulator failure exposed LibreSSL's explicit-curve
+default; the named-curve fix passed both Electron pairing and the real iOS HTTPS flow.
+A signed device archive, distribution IPA export, strict code-signature verification and
+ZIP integrity check also passed. Build 2 still needs Apple validation, upload and processing
+verification. Build 1's `VALID` status does not cover these changes. Internal tester access
+and physical iPhone acceptance remain open.
 
 ## TestFlight
 

@@ -26,7 +26,9 @@ struct Pairing: Codable, Equatable {
 }
 
 private func privateIPv4(_ address: String) -> Bool {
-    let parts = address.split(separator: ".").compactMap { UInt8($0) }
+    let octets = address.split(separator: ".", omittingEmptySubsequences: false)
+    guard octets.count == 4, octets.allSatisfy({ !$0.isEmpty && $0.utf8.allSatisfy { (48...57).contains($0) } }) else { return false }
+    let parts = octets.compactMap { UInt8($0) }
     guard parts.count == 4 else { return false }
     return parts[0] == 10 || (parts[0] == 192 && parts[1] == 168)
         || (parts[0] == 172 && (16...31).contains(parts[1])) || address == "127.0.0.1"
@@ -70,7 +72,13 @@ struct CompanionSnapshot: Decodable {
     let items: [CompanionItem]
 }
 
-final class CompanionAPI: NSObject, URLSessionDelegate {
+protocol CompanionClient {
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot
+    func send(threadId: String, text: String) async throws
+    func answer(threadId: String, itemId: String, approve: Bool) async throws
+}
+
+final class CompanionAPI: NSObject, URLSessionDelegate, CompanionClient {
     let pairing: Pairing
     private var session: URLSession!
 
@@ -138,10 +146,16 @@ final class CompanionAPI: NSObject, URLSessionDelegate {
     }
 }
 
-enum PairingStore {
-    private static let service = "works.jev.modex.pairing"
+protocol PairingStorage {
+    func load() -> Pairing?
+    func save(_ pairing: Pairing) throws
+    func clear()
+}
 
-    static func load() -> Pairing? {
+struct PairingStore: PairingStorage {
+    private let service = "works.jev.modex.pairing"
+
+    func load() -> Pairing? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                      kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var result: CFTypeRef?
@@ -155,7 +169,7 @@ enum PairingStore {
         return try? JSONDecoder().decode(Pairing.self, from: data)
     }
 
-    static func save(_ pairing: Pairing) throws {
+    func save(_ pairing: Pairing) throws {
         clear()
         let data = try JSONEncoder().encode(pairing)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
@@ -173,7 +187,7 @@ enum PairingStore {
         }
     }
 
-    static func clear() {
+    func clear() {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
         SecItemDelete(query as CFDictionary)
         #if targetEnvironment(simulator)

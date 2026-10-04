@@ -12,9 +12,7 @@ final class CompanionFlowTests: XCTestCase {
         app.launch()
         let pair = app.buttons["pair-button"]
         if !pair.waitForExistence(timeout: 5) {
-            let forget = app.buttons["Forget paired Mac"]
-            XCTAssertTrue(forget.waitForExistence(timeout: 10))
-            forget.tap()
+            forgetMac(app)
         }
         XCTAssertTrue(pair.waitForExistence(timeout: 15))
         pair.tap()
@@ -30,9 +28,11 @@ final class CompanionFlowTests: XCTestCase {
         }
         let thread = app.buttons["thread-abcdef12"]
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "The paired Mac's thread should appear.")
+        capture(app, name: "Paired workspace")
         thread.tap()
         let approval = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "approve-")).firstMatch
         XCTAssertTrue(approval.waitForExistence(timeout: 20), "The pending Mac approval should appear.")
+        capture(app, name: "Approval on iPhone")
         approval.tap()
         let confirmation = app.sheets["Approve this action?"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
@@ -45,6 +45,31 @@ final class CompanionFlowTests: XCTestCase {
         input.typeText("Please summarize the result")
         app.buttons["send-followup"].tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.waitForExistence(timeout: 20))
+        capture(app, name: "Completed follow-up")
+        app.buttons["Back to threads"].tap()
+        app.buttons["workspace-options"].tap()
+        app.buttons["Forget paired Mac…"].tap()
+        let forgetConfirmation = app.alerts["Forget this Mac?"]
+        forgetConfirmation.buttons["Cancel"].tap()
+        XCTAssertTrue(forgetConfirmation.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(thread.exists, "Cancelling must preserve the paired workspace.")
+        forgetMac(app)
+        XCTAssertTrue(pair.waitForExistence(timeout: 10), "Forgetting the Mac returns to pairing.")
+    }
+
+    private func forgetMac(_ app: XCUIApplication) {
+        let options = app.buttons["workspace-options"]
+        XCTAssertTrue(options.waitForExistence(timeout: 10))
+        options.tap()
+        app.buttons["Forget paired Mac…"].tap()
+        app.alerts["Forget this Mac?"].buttons["Forget Mac"].tap()
+    }
+
+    private func capture(_ app: XCUIApplication, name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private struct Fixture: Decodable { let link: String }

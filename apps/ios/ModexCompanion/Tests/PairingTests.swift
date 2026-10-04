@@ -12,7 +12,12 @@ final class PairingTests: XCTestCase {
     }
 
     func testPublicHostAndShortSecretAreRejected() throws {
-        for (url, token) in [("https://example.com", String(repeating: "a", count: 64)), ("https://192.168.1.12", "short")] {
+        for (url, token) in [
+            ("https://example.com", String(repeating: "a", count: 64)),
+            ("https://10.1.2.3.example.com", String(repeating: "a", count: 64)),
+            ("https://192.168.1.2.example.com", String(repeating: "a", count: 64)),
+            ("https://192.168.1.12", "short"),
+        ] {
             let candidate = Pairing(url: URL(string: url)!, token: token, fingerprint: String(repeating: "b", count: 64))
             let encoded = try JSONEncoder().encode(candidate).base64EncodedString()
                 .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")

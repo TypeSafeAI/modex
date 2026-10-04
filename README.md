@@ -81,6 +81,11 @@ modex/
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.
+- **iPhone companion (preview).** Pair Modex Companion with the Mac from the rail to view
+  threads, send follow-ups, and approve or deny requests on the same network. The phone pins
+  the Mac's certificate; coding turns still run through its CLIs. Access stays off until
+  enabled and can be revoked from the Mac. See the [companion guide](docs/ios-companion.md)
+  for builds, TestFlight status, and verification limits.
 - **Unsent text waits for you.** Type into a thread, look at another, come back: the text is
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
   starts empty. If a send fails, the message returns to its composer without replacing text
@@ -152,8 +157,20 @@ captures screenshots:
 npm run screenshot -w @modex/desktop -- --screenshot=/tmp/modex-shots --demo-answer=yes
 ```
 
-Development loop: `npm run dev -w @modex/desktop` (Vite on :5178) and
-`MODEX_DEV_URL=http://localhost:5178 npm run desktop` in another shell.
+Browser development: `npm run desktop:dev`, then open <http://127.0.0.1:5178>.
+Open a project by entering its absolute local folder path. Threads, approvals, Changes,
+settings, and the embedded terminal use the desktop runner with separate browser dev state;
+coding turns still run through the logged-in Claude/Codex CLIs. The dev server binds only to
+`127.0.0.1` and checks a per-run token and the request origin for bridge access.
+
+Browser dev state lives in `~/.modex-browser-dev` (override with `MODEX_BROWSER_HOME`),
+separate from the desktop app's `~/.modex`. Manage app-owned ChatGPT and Claude sign-in in
+the desktop app; browser mode does not store their credentials. The optional Auto judge can
+use `TYPESAFE_API_KEY` or the existing Jev configuration.
+Renderer edits hot-reload; restart the dev command after changing the main-process code.
+
+For Electron development, also run
+`MODEX_DEV_URL=http://127.0.0.1:5178 npm run desktop` in another shell.
 
 ## Offline engine (`@modex/core`)
 
@@ -166,6 +183,7 @@ sandbox-mode matrix, a macOS Seatbelt profile, and JSONL sessions.
 
 ```sh
 npm test         # core (patch engine, policy, agent loop) + desktop (backends, runner, git, store)
+npx playwright install chromium # once, for the browser dev regression
 npm run test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
 ```
 

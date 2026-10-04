@@ -1,0 +1,113 @@
+import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
+import type { Store } from "./engine/store.js";
+import type { ThreadRunner } from "./engine/runner.js";
+import type { TerminalManager } from "./engine/terminal.js";
+import * as gitx from "./engine/git.js";
+import { updateSettings } from "./engine/settings-update.js";
+import { describeFailure } from "../shared/failures.js";
+
+export type CommandHandler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
+export type RegisterCommand = <K extends keyof BridgeCommands>(channel: K, handler: CommandHandler<K>) => void;
+
+/** Desktop IPC and browser dev use the same runner, persistence, and command semantics. */
+export function registerCommands(handle: RegisterCommand, {
+  store, runner, terminals, emit, pickDirectory, openPath, openTerminal,
+}: {
+  store: Store;
+  runner: ThreadRunner;
+  terminals: TerminalManager;
+  emit: (event: ThreadEvent) => void;
+  pickDirectory: () => Promise<string | null>;
+  openPath: (path: string) => Promise<void>;
+  openTerminal: (path: string) => Promise<void>;
+}): void {
+  function cwdFor(threadId: string): string {
+    const thread = store.thread(threadId);
+    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    return thread.cwd;
+  }
+  async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: boolean; error?: string }> {
+    let accepting = true;
+    let earlyError: string | undefined;
+    run.catch((error: Error) => {
+      if (accepting) { earlyError = error.message; return; }
+      const thread = store.thread(threadId);
+      const failure = describeFailure({ backend: thread?.backend ?? "mock", message: error.message, context: { at: new Date().toISOString(), modex: process.env.MODEX_VERSION, platform: `${process.platform} ${process.arch}`, threadId, cwd: thread?.cwd } });
+      emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: failure.summary, failure: { ...failure, retryable: false }, at: new Date().toISOString() } });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    accepting = false;
+    return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
+  }
+  handle("state:get", () => {
+    const state = store.snapshot();
+    return { ...state, threads: state.threads.map((t) => ({ ...t, status: runner.status(t.id) })) };
+  });
+  handle("project:add", async (req) => {
+    let dir = req?.path;
+    if (!dir) {
+      dir = await pickDirectory() ?? undefined;
+      if (!dir) return null;
+    }
+    return store.addProject(dir);
+  });
+  handle("project:remove", async ({ projectId }) => {
+    await runner.removeProject(projectId);
+    return store.snapshot();
+  });
+  handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
+  handle("thread:items", ({ threadId }) => runner.items(threadId));
+  handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
+  handle("thread:send", ({ threadId, text }) => startTurn(threadId, runner.send(threadId, text)));
+  handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
+  handle("thread:stop", ({ threadId }) => runner.stop(threadId));
+  handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
+  handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
+  handle("thread:delete", async ({ threadId, removeWorktree }) => {
+    await runner.deleteThread(threadId, removeWorktree);
+    return store.snapshot();
+  });
+  handle("project:branch", async ({ projectId }) => {
+    const p = store.project(projectId);
+    return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
+  });
+  handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
+  handle("changes:diff", ({ threadId, path: rel, original }) => gitx.diff(cwdFor(threadId), rel, original));
+  handle("changes:revert", async ({ threadId, path: rel }) => {
+    const cwd = cwdFor(threadId);
+    await gitx.revert(cwd, rel);
+    return gitx.status(cwd);
+  });
+  handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
+  handle("models:list", ({ backend }) => runner.listModels(backend));
+  handle("routing:status", () => runner.router.status());
+  handle("routing:reset", () => {
+    runner.router.fit.reset();
+    return runner.router.status();
+  });
+  handle("routing:setKey", ({ key }) => runner.router.setKey(key));
+  handle("routing:clearKey", () => runner.router.clearKey());
+  handle("routing:test", () => runner.router.test());
+  handle("backends:health", async () => {
+    const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
+      const backend = runner.backend(id);
+      const status = backend.health ? await backend.health() : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
+      return [id, status] as const;
+    }));
+    return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];
+  });
+  const unavailable = () => ({ available: false, active: null, signingIn: false, accounts: [], detail: "Manage ChatGPT accounts in the Modex desktop app." });
+  handle("chatgpt:status", unavailable);
+  handle("chatgpt:signIn", unavailable);
+  handle("chatgpt:cancel", () => {});
+  handle("chatgpt:select", unavailable);
+  handle("chatgpt:signOut", () => ({ status: unavailable(), detail: "Manage ChatGPT accounts in the Modex desktop app." }));
+  handle("claude:login", () => ({ status: "unsupported", detail: "Sign in to Claude from a terminal on this Mac." }));
+  handle("claude:cancelLogin", () => {});
+  handle("shell:openPath", ({ path: p }) => openPath(p));
+  handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
+  handle("terminal:open", ({ threadId, cols, rows }) => terminals.open(threadId, cols, rows));
+  handle("terminal:write", ({ threadId, sessionId, data }) => terminals.write(threadId, sessionId, data));
+  handle("terminal:resize", ({ threadId, sessionId, cols, rows }) => terminals.resize(threadId, sessionId, cols, rows));
+  handle("terminal:close", ({ threadId, sessionId }) => terminals.close(threadId, sessionId));
+}
