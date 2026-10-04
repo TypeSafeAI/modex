@@ -1,0 +1,237 @@
+import crypto, { X509Certificate } from "node:crypto";
+import fs from "node:fs";
+import https from "node:https";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import type { AddressInfo } from "node:net";
+import type { AppState, ApprovalAnswer, ThreadItem } from "../../shared/types.js";
+
+interface CompanionSource {
+  state(): AppState;
+  items(threadId: string): ThreadItem[];
+  status(threadId: string): string;
+  send(threadId: string, text: string): Promise<{ ok: boolean; error?: string }>;
+  answer(threadId: string, itemId: string, answer: ApprovalAnswer): void;
+}
+
+interface Config { enabled: boolean; token: string; port?: number }
+export interface CompanionStatus { enabled: boolean; addresses: string[]; port?: number; pairingUri?: string }
+
+/** A deliberately small, paired LAN API. Coding turns still run in the Mac's CLI-backed runner. */
+export class CompanionServer {
+  private server: https.Server | null = null;
+  private starting: Promise<CompanionStatus> | null = null;
+  private generation = 0;
+  private port = 0;
+  private host = "";
+  private config: Config;
+  private fingerprint = "";
+  private readonly dir: string;
+
+  constructor(home: string, private readonly source: CompanionSource, private readonly addresses = localAddresses) {
+    this.dir = path.join(home, "companion");
+    fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    const file = path.join(this.dir, "config.json");
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<Config>;
+      this.config = {
+        enabled: raw.enabled === true,
+        token: typeof raw.token === "string" && /^[a-f0-9]{64}$/.test(raw.token) ? raw.token : crypto.randomBytes(32).toString("hex"),
+        ...(typeof raw.port === "number" && Number.isInteger(raw.port) && raw.port >= 1024 && raw.port <= 65535 ? { port: raw.port } : {}),
+      };
+    } catch {
+      this.config = { enabled: false, token: crypto.randomBytes(32).toString("hex") };
+    }
+    this.save();
+  }
+
+  get shouldStart(): boolean { return this.config.enabled; }
+
+  private save(): void {
+    const file = path.join(this.dir, "config.json");
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(this.config), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  }
+
+  private certificate(): { key: Buffer; cert: Buffer } {
+    const keyFile = path.join(this.dir, "key.pem");
+    const certFile = path.join(this.dir, "cert.pem");
+    if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
+      // macOS ships openssl. Keep this key outside the app bundle and never copy it to the phone.
+      // LibreSSL defaults to explicit EC parameters, which Electron and iOS TLS reject.
+      execFileSync(process.platform === "darwin" ? "/usr/bin/openssl" : "openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-pkeyopt", "ec_param_enc:named_curve", "-nodes", "-sha256", "-days", "3650", "-subj", "/CN=Modex Companion", "-addext", "basicConstraints=CA:FALSE", "-keyout", keyFile, "-out", certFile], { stdio: "ignore" });
+      fs.chmodSync(keyFile, 0o600);
+      fs.chmodSync(certFile, 0o600);
+    }
+    const key = fs.readFileSync(keyFile);
+    const cert = fs.readFileSync(certFile);
+    this.fingerprint = crypto.createHash("sha256").update(new X509Certificate(cert).raw).digest("hex");
+    return { key, cert };
+  }
+
+  start(): Promise<CompanionStatus> {
+    if (this.server) return Promise.resolve(this.status());
+    if (this.starting) return this.starting;
+    const starting = this.listen(++this.generation).finally(() => {
+      if (this.starting === starting) this.starting = null;
+    });
+    this.starting = starting;
+    return starting;
+  }
+
+  private async listen(generation: number): Promise<CompanionStatus> {
+    const host = this.addresses()[0];
+    if (!host) throw new Error("Connect your Mac to a local network before turning on the iPhone companion.");
+    const { key, cert } = this.certificate();
+    const server = https.createServer({ key, cert, minVersion: "TLSv1.2" }, (req, res) => {
+      void this.handle(server, req, res).catch(() => this.reply(res, 500, { error: "Your Mac could not complete the request." }));
+    });
+    const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, host, () => { server.off("error", reject); resolve(); });
+      });
+    try {
+      await listen(this.config.port ?? 0);
+    } catch (err) {
+      if (!this.config.port || (err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
+      // A different process can claim the old port while Modex is closed.
+      await listen(0);
+    }
+    if (generation !== this.generation) {
+      await this.close(server);
+      return this.status();
+    }
+    this.server = server;
+    this.host = host;
+    this.port = (server.address() as AddressInfo).port;
+    this.config.enabled = true;
+    this.config.port = this.port;
+    this.save();
+    return this.status();
+  }
+
+  async stop(): Promise<CompanionStatus> {
+    this.config.enabled = false;
+    this.save();
+    await this.dispose();
+    return this.status();
+  }
+
+  async dispose(): Promise<void> {
+    this.generation += 1;
+    const starting = this.starting;
+    this.starting = null;
+    const server = this.server;
+    this.server = null;
+    this.port = 0;
+    this.host = "";
+    if (server) await this.close(server);
+    await starting?.catch(() => {});
+  }
+
+  private close(server: https.Server): Promise<void> {
+    return new Promise((resolve) => {
+      server.close(() => resolve());
+      // A partial upload must not keep access open or prevent the Mac app from quitting.
+      server.closeAllConnections();
+    });
+  }
+
+  resetAccess(): CompanionStatus {
+    this.config.token = crypto.randomBytes(32).toString("hex");
+    this.save();
+    return this.status();
+  }
+
+  status(): CompanionStatus {
+    const addresses = this.addresses();
+    if (!this.server) return { enabled: false, addresses };
+    const data = Buffer.from(JSON.stringify({ url: `https://${this.host}:${this.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
+    return { enabled: true, addresses, port: this.port, pairingUri: `modex://pair?data=${data}` };
+  }
+
+  private reply(res: ServerResponse, code: number, body: unknown): void {
+    if (res.headersSent || res.destroyed) return;
+    res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+    res.end(JSON.stringify(body));
+  }
+
+  private async body(req: IncomingMessage): Promise<Record<string, unknown>> {
+    let text = "";
+    for await (const chunk of req) {
+      text += chunk.toString();
+      if (text.length > 32_768) throw new Error("Request is too large.");
+    }
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Expected a JSON object.");
+    return parsed as Record<string, unknown>;
+  }
+
+  private async handle(server: https.Server, req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const supplied = /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization ?? "")?.[1];
+    const authorized = () => server === this.server && !!supplied && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token));
+    if (!authorized()) {
+      this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." });
+      return;
+    }
+    const url = new URL(req.url ?? "/", "https://localhost");
+    if (req.method === "GET" && url.pathname === "/v1/snapshot") {
+      const state = this.source.state();
+      const threadId = url.searchParams.get("threadId");
+      const thread = threadId ? state.threads.find((t) => t.id === threadId) : undefined;
+      // Return the current list even if the selected thread was deleted on the Mac.
+      // The phone can then leave that transcript without treating this as a lost connection.
+      this.reply(res, 200, {
+        projects: state.projects.map((p) => ({ id: p.id, name: p.name })),
+        threads: state.threads.map((t) => ({ id: t.id, projectId: t.projectId, title: t.title, backend: t.backend, status: this.source.status(t.id), updatedAt: t.updatedAt })),
+        items: thread ? this.source.items(thread.id).map(mobileItem) : [],
+      });
+      return;
+    }
+    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer)$/.exec(url.pathname);
+    if (req.method !== "POST" || !match) { this.reply(res, 404, { error: "Not found." }); return; }
+    const threadId = match[1]!;
+    const action = match[2]!;
+    if (!this.source.state().threads.some((t) => t.id === threadId)) { this.reply(res, 404, { error: "Thread not found." }); return; }
+    let input: Record<string, unknown>;
+    try { input = await this.body(req); }
+    catch { this.reply(res, 400, { error: "Invalid request body." }); return; }
+    if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
+    if (!this.source.state().threads.some((t) => t.id === threadId)) { this.reply(res, 404, { error: "Thread not found." }); return; }
+    if (action === "send") {
+      const value = input.text;
+      if (typeof value !== "string" || !value.trim() || value.length > 20_000) { this.reply(res, 400, { error: "Enter a message under 20,000 characters." }); return; }
+      if (this.source.status(threadId) !== "idle") { this.reply(res, 409, { error: "This thread is busy." }); return; }
+      const result = await this.source.send(threadId, value.trim());
+      this.reply(res, result.ok ? 202 : 409, result);
+      return;
+    }
+    const itemId = input.itemId;
+    const answer = input.answer;
+    if (typeof itemId !== "string" || (answer !== "yes" && answer !== "no")) { this.reply(res, 400, { error: "Choose Approve or Deny." }); return; }
+    const pending = this.source.items(threadId).some((item) => item.kind === "approval" && item.id === itemId && !item.answer);
+    if (!pending || this.source.status(threadId) !== "waiting") { this.reply(res, 409, { error: "This approval is no longer pending." }); return; }
+    this.source.answer(threadId, itemId, answer);
+    this.reply(res, 200, { ok: true });
+  }
+}
+
+function mobileItem(item: ThreadItem): Record<string, unknown> {
+  switch (item.kind) {
+    case "user": case "assistant": case "thinking": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
+    case "approval": return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, at: item.at };
+    case "tool": return { id: item.id, kind: item.kind, title: item.title, status: item.status, ok: item.ok, at: item.at };
+    case "route": return { id: item.id, kind: item.kind, text: `${item.backend} · ${item.model || "default"}`, at: item.at };
+  }
+}
+
+function localAddresses(): string[] {
+  const rank = (name: string) => name === "en0" ? 0 : name.startsWith("en") ? 1 : 2;
+  return Object.entries(os.networkInterfaces()).flatMap(([name, list]) => (list ?? []).map((entry) => ({ ...entry, name })))
+    .filter((entry) => entry.family === "IPv4" && !entry.internal && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(entry.address))
+    .sort((a, b) => rank(a.name) - rank(b.name))
+    .map((entry) => entry.address);
+}

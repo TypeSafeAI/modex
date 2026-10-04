@@ -318,6 +318,14 @@ export interface ClaudeLoginResult {
   detail: string;
 }
 
+export interface CompanionStatus {
+  enabled: boolean;
+  addresses: string[];
+  port?: number;
+  pairingUri?: string;
+  qrDataUrl?: string;
+}
+
 export interface BridgeCommands {
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };
@@ -347,6 +355,10 @@ export interface BridgeCommands {
   "chatgpt:signOut": { req: { accountId: string }; res: { status: ChatGPTStatus; detail: string } };
   "claude:login": { req: undefined; res: ClaudeLoginResult };
   "claude:cancelLogin": { req: undefined; res: void };
+  "companion:status": { req: undefined; res: CompanionStatus };
+  "companion:start": { req: undefined; res: CompanionStatus };
+  "companion:stop": { req: undefined; res: CompanionStatus };
+  "companion:reset": { req: undefined; res: CompanionStatus };
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };
   /** A project checkout's current branch, for a draft's context strip; null outside a git repository. */
   "project:branch": { req: { projectId: string }; res: string | null };
