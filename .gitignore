@@ -7,6 +7,9 @@ playwright-report/
 .probes/
 .worktrees/
 release/
+apps/ios/ModexCompanion/ModexCompanion.xcodeproj/
+apps/ios/ModexCompanion/UITests/LocalPairing.json
+apps/ios/ModexCompanion/build/
 # Release signing: credentials never live in the tree (see docs/release-signing.md).
 .env.release
 *.p8

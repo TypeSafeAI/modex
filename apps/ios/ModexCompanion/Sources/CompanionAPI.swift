@@ -1,0 +1,197 @@
+import CryptoKit
+import Foundation
+import Security
+
+struct Pairing: Codable, Equatable {
+    let url: URL
+    let token: String
+    let fingerprint: String
+
+    static func from(link: String) throws -> Pairing {
+        guard let components = URLComponents(string: link.trimmingCharacters(in: .whitespacesAndNewlines)),
+              components.scheme == "modex", components.host == "pair",
+              let encoded = components.queryItems?.first(where: { $0.name == "data" })?.value else {
+            throw CompanionError.message("Scan the pairing code shown on your Mac.")
+        }
+        let padded = encoded.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+            .padding(toLength: ((encoded.count + 3) / 4) * 4, withPad: "=", startingAt: 0)
+        guard let data = Data(base64Encoded: padded), let pairing = try? JSONDecoder().decode(Pairing.self, from: data),
+              pairing.url.scheme == "https", let host = pairing.url.host, privateIPv4(host),
+              pairing.token.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
+              pairing.fingerprint.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            throw CompanionError.message("This pairing code is invalid or does not point to a local Mac.")
+        }
+        return pairing
+    }
+}
+
+private func privateIPv4(_ address: String) -> Bool {
+    let octets = address.split(separator: ".", omittingEmptySubsequences: false)
+    guard octets.count == 4, octets.allSatisfy({ !$0.isEmpty && $0.utf8.allSatisfy { (48...57).contains($0) } }) else { return false }
+    let parts = octets.compactMap { UInt8($0) }
+    guard parts.count == 4 else { return false }
+    return parts[0] == 10 || (parts[0] == 192 && parts[1] == 168)
+        || (parts[0] == 172 && (16...31).contains(parts[1])) || address == "127.0.0.1"
+}
+
+enum CompanionError: LocalizedError {
+    case message(String)
+    var errorDescription: String? { if case .message(let text) = self { text } else { nil } }
+}
+
+struct CompanionProject: Decodable, Identifiable {
+    let id: String
+    let name: String
+}
+
+struct CompanionThread: Decodable, Identifiable {
+    let id: String
+    let projectId: String
+    let title: String
+    let backend: String
+    let status: String
+    let updatedAt: String
+}
+
+struct CompanionItem: Decodable, Identifiable {
+    let id: String
+    let kind: String
+    let text: String?
+    let title: String?
+    let question: String?
+    let detail: String?
+    let answer: String?
+    let status: String?
+    let level: String?
+    let at: String
+}
+
+struct CompanionSnapshot: Decodable {
+    let projects: [CompanionProject]
+    let threads: [CompanionThread]
+    let items: [CompanionItem]
+}
+
+protocol CompanionClient {
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot
+    func send(threadId: String, text: String) async throws
+    func answer(threadId: String, itemId: String, approve: Bool) async throws
+}
+
+final class CompanionAPI: NSObject, URLSessionDelegate, CompanionClient {
+    let pairing: Pairing
+    private var session: URLSession!
+
+    init(pairing: Pairing) {
+        self.pairing = pairing
+        super.init()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 12
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust,
+              let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data)
+            .map { String(format: "%02x", $0) }.joined()
+        if fingerprint == pairing.fingerprint {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
+    }
+
+    func snapshot(threadId: String? = nil) async throws -> CompanionSnapshot {
+        var components = URLComponents(url: pairing.url.appending(path: "v1/snapshot"), resolvingAgainstBaseURL: false)!
+        if let threadId { components.queryItems = [URLQueryItem(name: "threadId", value: threadId)] }
+        return try await request(components.url!, method: "GET", body: nil)
+    }
+
+    func send(threadId: String, text: String) async throws {
+        let url = pairing.url.appending(path: "v1/threads/\(threadId)/send")
+        let _: OK = try await request(url, method: "POST", body: ["text": text])
+    }
+
+    func answer(threadId: String, itemId: String, approve: Bool) async throws {
+        let url = pairing.url.appending(path: "v1/threads/\(threadId)/answer")
+        let _: OK = try await request(url, method: "POST", body: ["itemId": itemId, "answer": approve ? "yes" : "no"])
+    }
+
+    private struct OK: Decodable { let ok: Bool }
+    private struct Failure: Decodable { let error: String }
+
+    private func request<T: Decodable>(_ url: URL, method: String, body: [String: String]?) async throws -> T {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(pairing.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw CompanionError.message("No response from your Mac.") }
+        guard (200..<300).contains(response.statusCode) else {
+            let detail = try? JSONDecoder().decode(Failure.self, from: data)
+            throw CompanionError.message(detail?.error ?? "Your Mac returned an error (\(response.statusCode)).")
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+protocol PairingStorage {
+    func load() -> Pairing?
+    func save(_ pairing: Pairing) throws
+    func clear()
+}
+
+struct PairingStore: PairingStorage {
+    private let service = "works.jev.modex.pairing"
+
+    func load() -> Pairing? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                     kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        #if targetEnvironment(simulator)
+        if status == errSecMissingEntitlement, let data = UserDefaults.standard.data(forKey: service) {
+            return try? JSONDecoder().decode(Pairing.self, from: data)
+        }
+        #endif
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return try? JSONDecoder().decode(Pairing.self, from: data)
+    }
+
+    func save(_ pairing: Pairing) throws {
+        clear()
+        let data = try JSONEncoder().encode(pairing)
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                     kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+                                     kSecValueData as String: data]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        #if targetEnvironment(simulator)
+        if status == errSecMissingEntitlement {
+            UserDefaults.standard.set(data, forKey: service)
+            return
+        }
+        #endif
+        guard status == errSecSuccess else {
+            throw CompanionError.message("Could not save this Mac in the iPhone keychain (\(status)).")
+        }
+    }
+
+    func clear() {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
+        SecItemDelete(query as CFDictionary)
+        #if targetEnvironment(simulator)
+        UserDefaults.standard.removeObject(forKey: service)
+        #endif
+    }
+}

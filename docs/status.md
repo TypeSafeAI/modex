@@ -25,9 +25,10 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 ## On `main`, not yet released
 
 - **v0.0.6 is being recut before publication.** The first signed tag points to PR #97's
-  verified tree, but its release run was cancelled before approval. This PR adds the
-  Jev-inspired near-black blue and pink palette. The Developer ID sign-only rehearsal and
-  all 90 packaged e2e tests passed. Local notarization, a new signed candidate, and the
+  verified tree, but its release run was cancelled before approval. PR #106 adds the
+  Jev-inspired near-black blue and pink palette plus the merged iPhone companion service.
+  The combined Developer ID sign-only rehearsal and all 91 packaged e2e tests passed.
+  Local notarization, a new signed candidate, and the
   protected release run are required before publication.
   [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
@@ -45,15 +46,24 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Browser review (PR #105).** The renderer can connect to a separate localhost development
   bridge for reviewing real project and thread flows in Chromium. The bridge is excluded from
   packaged releases. Its browser flow and macOS CI passed before merge.
+- **iPhone companion service (#103).** An opt-in paired HTTPS service and native SwiftUI app
+  support same-network threads, follow-ups, and single approvals while coding stays on the
+  Mac's CLIs. Both desktop and iPhone CI jobs passed on both runs before merge. The service
+  is included in the replacement v0.0.6 candidate; iPhone distribution is tracked below.
 
 ## In flight
 
-- **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
-  view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
+- **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
+  threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
   Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
   passed Apple validation, uploaded, and reached `VALID` processing in App Store Connect.
-  Internal tester access and physical iPhone acceptance remain open.
-  The first connection target is the same local network.
+  Build 2 fixes first-run Mac TLS compatibility, pending-request revocation, stale responses,
+  thread draft isolation, and disconnect confirmation. All 91 desktop e2e tests, 10 native
+  tests, and the paired simulator flow passed; iPhone tests now also run in CI.
+  The signed build 2 distribution IPA also passed strict signature and ZIP verification.
+  Build 2 upload, internal tester access, and physical iPhone acceptance remain open.
+  The first connection target is the same local network; [the companion guide](ios-companion.md)
+  records the pairing and release path.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
   [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
@@ -62,19 +72,19 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
-  adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
+  (PR #107) adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
   `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs. It remains in progress
   for a later release; v0.0.6 ships with the gate off. The
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
 - **Unmerged worktrees.** Each needs a reviewed PR or an explicit disposition.
-  - `auth-retry` (uncommitted): retained as recovery data while the retry fix is reconciled.
-  - `finish-auth-approvals` (uncommitted approval UI and receipts): reconcile with current main.
+  - `auth-retry` (uncommitted): retained as recovery data after the reconciled fix merged in #104.
+  - `finish-auth-approvals` (uncommitted approval UI and receipts): reconciled in #107; preserve the original until its lifecycle is resolved.
   - `approval-receipts` (uncommitted, overlapping `finish-auth-approvals`): preserve until the
     approval work is reconciled.
-  - `pr-review-browser` (uncommitted): runs the renderer in a browser, connected to the real
-    engine over a localhost bridge.
+  - `pr-review-browser` (uncommitted): the reconciled browser bridge merged in #105; preserve
+    this original until its lifecycle is resolved.
   - `status-reviews` (uncommitted docs snapshot): compare with current status before retiring.
   - `livestream-redaction` (clean local-only commit): superseded by merged #100; preserve the
     original branch until its lifecycle is explicitly resolved.
