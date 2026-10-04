@@ -35,15 +35,15 @@ a { color: var(--accent); }
 .btn { background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 12px; cursor: pointer; color: var(--fg); transition: background .12s, border-color .12s; white-space: nowrap; }
 .btn:hover { background: var(--bg-elevated); }
 .btn:disabled { opacity: .45; cursor: default; }
-.btn.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
-.btn.primary:hover:not(:disabled) { background: var(--accent); }
+.btn.primary { background: var(--accent-2); border-color: var(--accent-2); color: var(--accent-ink); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong-hover); }
 .btn.danger { background: rgba(240, 107, 107, .12); border-color: rgba(240, 107, 107, .4); color: #ffb3b3; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--fg-1); }
 .btn.ghost:hover { background: var(--bg-2); color: var(--fg); }
 .btn.small { padding: 3px 9px; font-size: 12.5px; }
 .btn.full { width: 100%; text-align: left; }
 .btn.active { border-color: var(--accent); color: var(--accent); }
-.btn .count { margin-left: 6px; background: var(--accent); color: #fff; border-radius: 10px; padding: 0 6px; font-size: 11px; }
+.btn .count { margin-left: 6px; background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 0 6px; font-size: 11px; }
 .icon { background: transparent; border: 0; color: var(--fg-1); cursor: pointer; border-radius: 6px; width: 22px; height: 22px; line-height: 20px; padding: 0; text-align: center; }
 .icon:hover { background: var(--bg-3); color: var(--fg); }
 .icon.dim { color: var(--fg-2); opacity: 0; }
@@ -118,7 +118,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .effort-label { color: var(--fg-2); font-size: 11.5px; margin-right: 4px; }
 .effort-pill { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-1); cursor: pointer; }
 .effort-pill:hover { border-color: var(--accent); }
-.effort-pill.on { background: rgba(124, 156, 255, .15); border-color: var(--accent); color: var(--accent); }
+.effort-pill.on { background: rgba(239, 123, 205, .14); border-color: var(--accent); color: var(--accent); }
 
 /* Thinking (reasoning) items */
 @keyframes shimmer { to { background-position: -200% 0; } }
@@ -185,7 +185,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .icon-svg { display: block; flex: none; }
 .chev.icon-svg { display: inline-block; width: 12px; color: var(--text-3); }
 
-.pill.tone-accent { color: var(--accent); border-color: rgba(124, 156, 255, .4); }
+.pill.tone-accent { color: var(--accent); border-color: rgba(239, 123, 205, .4); }
 .pill.tone-warn { color: var(--warn); border-color: rgba(232, 180, 88, .5); }
 .pill.tone-danger { color: var(--danger); border-color: rgba(240, 107, 107, .4); }
 .pill.tone-claude { color: #e8b48a; border-color: rgba(232, 180, 138, .4); }
@@ -272,7 +272,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 
 .side-row { position: relative; display: flex; align-items: center; height: var(--row-h); flex: none; margin: 0 8px 1px; border-radius: var(--radius-row); color: var(--text-2); font-size: var(--text-md); }
 .side-row:hover { background: var(--bg-row-hover); }
-.side-row.selected { background: var(--bg-row-selected); color: var(--text-1); box-shadow: inset 2px 0 rgba(138, 170, 255, .7), inset 0 1px rgba(255, 255, 255, .035); }
+.side-row.selected { background: var(--bg-row-selected); color: var(--text-1); box-shadow: inset 2px 0 rgba(239, 123, 205, .8), inset 0 1px rgba(255, 255, 255, .035); }
 .side-row-icon { color: var(--text-3); }
 .side-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .new-chat, .project-toggle, .thread-main, .show-more { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -313,8 +313,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .context-item[data-testid="context-kind"] { flex-shrink: 0; }
 /* 98 px at rest = 1 border + 56 input + 39 control row + 1 inset + 1 border. */
 .composer-box { position: relative; display: flex; flex-direction: column; background: var(--bg-composer); background-image: linear-gradient(180deg, rgba(255, 255, 255, .035), transparent 75%); border: 1px solid var(--border-composer); border-radius: var(--radius-composer); box-shadow: 0 16px 46px rgba(0, 0, 0, .28), inset 0 1px rgba(255, 255, 255, .04); transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-base) var(--ease-out); }
-.composer-box:focus-within { box-shadow: 0 18px 50px rgba(0, 0, 0, .32), 0 0 0 1px rgba(138, 170, 255, .16), inset 0 1px rgba(255, 255, 255, .05); }
-.composer-box.plan { border-color: rgba(124, 156, 255, .55); }
+.composer-box:focus-within { box-shadow: 0 18px 50px rgba(0, 0, 0, .32), 0 0 0 1px rgba(239, 123, 205, .22), inset 0 1px rgba(255, 255, 255, .05); }
+.composer-box.plan { border-color: rgba(239, 123, 205, .55); }
 /* Follow-up suggestion: ghost text on the input's first line, where the placeholder would be, so the box
    keeps its 98 px rest height. Click, Tab or → takes it; typing hides it. */
 .followup { position: absolute; top: 13px; left: 12px; right: 12px; display: flex; align-items: center; gap: 8px; height: 20px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text-placeholder); font: inherit; font-size: var(--text-md); line-height: 20px; text-align: left; cursor: pointer; }
@@ -333,7 +333,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .access-pill:hover:not(:disabled), .access-pill[aria-expanded="true"] { background: var(--bg-row-selected); }
 .access-pill:disabled { opacity: .5; cursor: default; }
 .composer-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px 0 9px; border: 1px solid; border-radius: var(--radius-pill); background: transparent; font-size: var(--text-xs); cursor: pointer; }
-.composer-chip.tone-accent { color: var(--accent); border-color: rgba(124, 156, 255, .45); }
+.composer-chip.tone-accent { color: var(--accent); border-color: rgba(239, 123, 205, .45); }
 .composer-chip.tone-auto { color: #ffd479; border-color: rgba(255, 212, 121, .45); }
 .composer-chip:disabled { opacity: .5; cursor: default; }
 .model-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: min(320px, 100%); height: 28px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-1); font-size: var(--text-sm); cursor: pointer; }
@@ -358,7 +358,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* ── Draft (new chat before its first send). Reference #1: heading 28/400 centred, glyph above. ── */
 .draft-view { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .draft-hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 0 24px 28px; text-align: center; }
-.draft-mark { color: var(--accent); font-size: 40px; line-height: 48px; text-shadow: 0 0 32px rgba(138, 170, 255, .28); }
+.draft-mark { color: var(--accent); font-size: 40px; line-height: 48px; text-shadow: 0 0 32px rgba(239, 123, 205, .22); }
 .draft-title { margin: 0; color: var(--text-1); font: var(--weight-regular) var(--text-xl)/34px var(--font-sans); letter-spacing: -.025em; }
 .draft-project { position: relative; display: inline-block; }
 .draft-project-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-decoration-color: var(--text-3); text-decoration-thickness: 1px; text-underline-offset: 6px; }
@@ -439,7 +439,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* ── Title bar actions (Phase 7) ── */
 .changes-toggle { position: relative; }
 .changes-toggle.on { color: var(--text-1); }
-.count-badge { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--accent); color: #fff; font: var(--weight-semibold) 10px/14px var(--font-sans); text-align: center; }
+.count-badge { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--accent); color: var(--accent-ink); font: var(--weight-semibold) 10px/14px var(--font-sans); text-align: center; }
 .menu.thread-actions { min-width: 240px; }
 .menu.thread-actions .menu-label span { display: block; max-width: 320px; overflow: hidden; color: var(--text-3); font: 11.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 

@@ -24,9 +24,11 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- **v0.0.6 is tagged, not published.** PR #97 merged and the signed tag points to its
-  verified tree. The release workflow awaits `release-signing` approval before publishing
-  signed and notarized artifacts. [Review](reviews/2026-10-03-v0.0.6-release-review.md).
+- **v0.0.6 is being recut before publication.** The first signed tag points to PR #97's
+  verified tree, but its release run was cancelled before approval. This PR adds the
+  Jev-inspired near-black blue and pink palette. A new signed candidate, local notarized
+  rehearsal, and protected release run are required before publication.
+  [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
   remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
@@ -39,16 +41,17 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   remedies, Copy details and Retry without duplicating the user message. Codex retries a
   stale login once while preserving concurrent turns. The signed head passed both required
   macOS CI runs; draft PR #68 was closed after #104 landed.
+- **Browser review (PR #105).** The renderer can connect to a separate localhost development
+  bridge for reviewing real project and thread flows in Chromium. The bridge is excluded from
+  packaged releases. Its browser flow and macOS CI passed before merge.
 
 ## In flight
 
-- **Functional browser review.** A local development bridge connects the renderer to a
-  separate Modex state and CLI-backed engine for reviewing projects, threads, approvals,
-  Changes, settings, and terminals in Chromium. The bridge is bound to localhost and kept
-  out of packaged releases. Its browser flow and desktop regression tests are the landing gate.
 - **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
   view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
-  Simulator and paired API verification passed; TestFlight publication awaits signing access.
+  Simulator and paired API verification passed; a signed IPA was archived and exported.
+  Its App Store Connect record uses `works.jev.modex`; the target is being aligned for
+  TestFlight validation and upload.
   The first connection target is the same local network.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
@@ -59,9 +62,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
   adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
-  `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs, then turns the gate on. It
-  remains in progress for a later release; v0.0.6 ships with the gate off. Its Settings UI
-  builds on #51, which has landed. Receipts, the deny reason and the docs can start now. The
+  `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs. It remains in progress
+  for a later release; v0.0.6 ships with the gate off. The
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.

@@ -217,7 +217,7 @@ function createWindow(): BrowserWindow {
     minWidth: min.width,
     minHeight: min.height,
     title: "Modex",
-    backgroundColor: "#0f0f11", // --bg-main: no colour flash before the renderer paints
+    backgroundColor: "#0b0f1b", // --bg-main: no colour flash before the renderer paints
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     // e2e captures run at the 1786×1049 reference size; CI runners have smaller displays, and macOS
     // otherwise clamps the window to the screen (1024×677 on the GitHub macOS runner).
