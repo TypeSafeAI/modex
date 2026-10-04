@@ -16,7 +16,9 @@ import { TerminalManager, isTrustedTerminalSender } from "./engine/terminal.js";
 import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
-import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
+import { CompanionServer } from "./engine/companion.js";
+import QRCode from "qrcode";
+import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +68,17 @@ const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url
 const accountCodex = new AccountCodexBackend(chatgpt, store.settings.codex_bin);
 process.env.MODEX_VERSION = app.getVersion();
 const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
+const companion = new CompanionServer(home, {
+  state: () => store.snapshot(),
+  items: (id) => runner.items(id),
+  status: (id) => runner.status(id),
+  send: async (id, text) => { await pathReady; return startTurn(id, runner.send(id, text)); },
+  answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
+});
+const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => ({
+  ...status,
+  ...(status.pairingUri ? { qrDataUrl: await QRCode.toDataURL(status.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }) } : {}),
+});
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
@@ -193,6 +206,10 @@ handle("backends:health", async () => {
   }));
   return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];
 });
+handle("companion:status", () => companionView(companion.status()));
+handle("companion:start", async () => companionView(await companion.start()));
+handle("companion:stop", async () => companionView(await companion.stop()));
+handle("companion:reset", () => companionView(companion.resetAccess()));
 handle("shell:openPath", async ({ path: p }) => {
   const err = await shell.openPath(p);
   if (err) throw new Error(err);
@@ -264,6 +281,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   win = createWindow();
+  if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
     await new Promise<void>((r) => win!.webContents.once("did-finish-load", () => r()));
@@ -285,7 +303,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;
-  void Promise.allSettled([terminals.dispose(), runner.dispose()]).then((results) => {
+  void Promise.allSettled([companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
     chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {
