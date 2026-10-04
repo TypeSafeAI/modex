@@ -26,8 +26,9 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 - **v0.0.6 is being recut before publication.** The first signed tag points to PR #97's
   verified tree, but its release run was cancelled before approval. This PR adds the
-  Jev-inspired near-black blue and pink palette. A new signed candidate, local notarized
-  rehearsal, and protected release run are required before publication.
+  Jev-inspired near-black blue and pink palette. The Developer ID sign-only rehearsal and
+  all 90 packaged e2e tests passed. Local notarization, a new signed candidate, and the
+  protected release run are required before publication.
   [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
@@ -49,9 +50,9 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 - **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
   view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
-  Simulator and paired API verification passed; a signed IPA was archived and exported.
-  Its App Store Connect record uses `works.jev.modex`; the target is being aligned for
-  TestFlight validation and upload.
+  Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
+  passed Apple validation, uploaded, and reached `VALID` processing in App Store Connect.
+  Internal tester access and physical iPhone acceptance remain open.
   The first connection target is the same local network.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and

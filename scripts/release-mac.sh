@@ -147,30 +147,32 @@ security find-identity -v -p codesigning | grep -Fq "\"$MODEX_SIGN_IDENTITY\"" |
 if [ -z "${MODEX_SIGN_HASH:-}" ]; then
   MODEX_SIGN_HASH="$(security find-certificate -a -c "$MODEX_SIGN_IDENTITY" -Z -p | python3 -c '
 import sys, subprocess, re
+from datetime import datetime
 text = sys.stdin.read()
 best = None
 for m in re.finditer(r"SHA-1 hash: ([0-9A-F]{40})\n(-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----)", text, re.S):
     end = subprocess.run(["openssl", "x509", "-noout", "-enddate"], input=m.group(2).encode(), capture_output=True).stdout.decode().strip()
-    if best is None or end > best[1]: best = (m.group(1), end)
+    expiry = datetime.strptime(end, "notAfter=%b %d %H:%M:%S %Y GMT")
+    if best is None or expiry > best[1]: best = (m.group(1), expiry)
 print(best[0] if best else "")')"
   [ -n "$MODEX_SIGN_HASH" ] || die "could not resolve a certificate hash for: $MODEX_SIGN_IDENTITY"
 fi
 export MODEX_SIGN_HASH
 echo "identity: $MODEX_SIGN_IDENTITY (certificate $MODEX_SIGN_HASH)"
 
-say "build, sign${notarize:+, notarize, staple}"
+if [ "$notarize" = true ]; then say "build, sign, notarize, staple"; else say "build and sign (notarization skipped)"; fi
 # electron-builder takes the name without the "Developer ID Application:" prefix and adds it back.
 export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"
 # The desktop build compiles against, and the bundle ships, @modex/core's dist/, which a fresh
 # checkout or worktree does not have yet.
 (cd "$root" && npm run build -w @modex/core)
-if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release)
+if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release -- -c.mac.notarize=true)
 else (cd "$desktop" && npm run dist:release -- -c.mac.notarize=false); fi
 
 # electron-builder notarizes and staples only the app. The DMG is a separate download that
 # Gatekeeper assesses on its own, so it gets its own signature, notarization and ticket.
 dmg="$(ls "$desktop"/release/Modex-*-arm64.dmg)"
-say "DMG: sign${notarize:+, notarize, staple}"
+if [ "$notarize" = true ]; then say "DMG: sign, notarize, staple"; else say "DMG: sign (notarization skipped)"; fi
 codesign --force --sign "$MODEX_SIGN_HASH" --timestamp ${CSC_KEYCHAIN:+--keychain "$CSC_KEYCHAIN"} "$dmg"
 if [ "$notarize" = true ]; then
   if [ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]; then notary=(--keychain-profile "$APPLE_KEYCHAIN_PROFILE")
