@@ -1,5 +1,6 @@
 import "@fontsource-variable/manrope";
 import "./style.css";
+import "./viewport.css";
 import "./release";
 
 document.documentElement.classList.add("js");
@@ -92,7 +93,7 @@ play.addEventListener("click", () => {
   if (!presentation.open) {
     // Move the existing interactive stage so screenshots, controls and IDs stay unique.
     placeholder = document.createElement("div");
-    placeholder.style.height = `${showcase.getBoundingClientRect().height}px`;
+    placeholder.className = "showcase-placeholder";
     showcase.replaceWith(placeholder);
     presentationContent.append(showcase);
     document.documentElement.classList.add("walkthrough-open");
@@ -177,4 +178,20 @@ for (const src of [
 ]) {
   const image = new Image();
   image.src = `/assets/${src}`;
+}
+
+// Keep supporting information available without extending the landing viewport.
+const details = document.querySelector<HTMLDialogElement>("#details-dialog")!;
+document.querySelector<HTMLButtonElement>("#close-details")!
+  .addEventListener("click", () => details.close());
+for (const link of document.querySelectorAll<HTMLAnchorElement>('a[data-details]')) {
+  const target = document.getElementById(link.dataset.details!);
+  if (!target || !details.contains(target)) continue;
+  link.setAttribute("aria-haspopup", "dialog");
+  link.setAttribute("aria-controls", details.id);
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    details.showModal();
+    target.scrollIntoView({ block: "start", behavior: "instant" });
+  });
 }

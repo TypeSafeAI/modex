@@ -31,6 +31,19 @@ Download for your Mac        iPhone coming soon
 FAQ                          Source / Release notes
 ```
 
+## Viewport layout update — 2026-10-05
+
+The landing view now occupies the full browser width and dynamic viewport height. A compact
+header and footer frame the hero and interactive devices; desktop uses two columns and
+portrait screens stack the copy above the devices. Short screens simplify supporting copy
+and expose the complete workflow through Play walkthrough. Devices scale to their available
+space, rather than increasing page height.
+
+The navigation opens iPhone and download details in a native dialog; About Modex also exposes
+the benefits and FAQ. Only this supporting-details dialog scrolls. Escape and Close return to
+the landing view. With JavaScript disabled, navigation falls back to the direct installer,
+TestFlight and repository links.
+
 ## Delivery and evidence
 
 - Isolated `apps/site` Vite static build with root-relative asset paths.

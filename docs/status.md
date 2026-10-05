@@ -74,6 +74,11 @@ asset provenance are in [the site README](../apps/site/README.md).
 The repository now pins Vercel to the site-only build and output directory, so Git
 deployments do not attempt to compile the native desktop helper on Linux.
 
+The landing view and walkthrough fill the browser width and dynamic height without page
+scrolling. Download actions remain visible; iPhone, installation and FAQ details open in a
+dismissible dialog with its own scrolling. Compact portrait and landscape layouts retain
+the primary actions. [Viewport verification](reviews/2026-10-05-landing-viewport.md).
+
 ## v0.0.7 release
 
 Published on 2026-10-05 from signed tag `954bad3` at verified merge commit `7c6c76b`
