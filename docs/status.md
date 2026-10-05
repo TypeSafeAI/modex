@@ -15,6 +15,7 @@ _Last updated 2026-10-05._
 | v0.0.3 | 2026-09-28 | #34 | Embedded terminal panel ships; unsent text stays with its thread; inactive test window. [Review](reviews/2026-09-28-v0.0.3-release-review.md). |
 | v0.0.4 | 2026-09-29 | #37 | Threads name themselves; one suggested next step after each turn. [Review](reviews/2026-09-29-v0.0.4-release-review.md). |
 | v0.0.5 | 2026-10-03 | #69 | First Developer ID signed and notarized build, from the protected `Release` workflow; the Modex app icon; Jev settings and routing limits (#51); terminals no longer leak a PTY each. [Review](reviews/2026-10-03-v0.0.5-release-review.md). |
+| v0.0.6 | 2026-10-05 | #106, #110 | Jev-inspired near-black blue/pink workspace, Claude/ChatGPT sign-in, Retry, Streamer Mode and the paired iPhone service. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.6). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -22,19 +23,15 @@ sequence (worktree → review doc → signed build + packaged e2e → guarded me
 the `Release` workflow, behind the `release-signing` reviewer → GitHub release with
 `SHA256SUMS.txt`) is in [release-signing.md](release-signing.md#cutting-a-release).
 
-## On `main`, not yet released
+## v0.0.6 release
 
-- **v0.0.6 is awaiting the corrected protected release run.** PR #106 merged as
-  `ed5486f`; the full local signed/notarized rehearsal and all 91 packaged e2e checks passed.
-  Approved Release run `37296872994` signed, notarized, stapled and verified its artifacts,
-  then passed all 90 packaged Electron checks. Its browser-development check could not
-  launch because the workflow had not installed Playwright Chromium. No release assets
-  were uploaded or published. PR #110 adds the missing install step and passed desktop
-  and iPhone jobs on both CI runs, then merged as `3498616`. The signed replacement tag
-  points to that commit; Release run `37300304273` still needs protected approval,
-  successful CI, downloaded-artifact verification and publication. The app payload is
-  unchanged from the full rehearsal.
-  [Review](reviews/2026-10-03-v0.0.6-release-review.md).
+Published on 2026-10-05 from signed tag `53d4760` at commit `3498616`. Protected
+Release run `37300304273` passed signing, notarization, stapling and all 91 e2e checks.
+Downloaded DMG and ZIP passed checksum, strict signature, native Mach-O, Gatekeeper,
+notarization-ticket, version, icon and container checks. Their app payloads match.
+The release includes [the verification log](https://github.com/TypeSafeAI/modex/releases/download/v0.0.6/verification-v0.0.6.txt).
+[Review](reviews/2026-10-03-v0.0.6-release-review.md).
+
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
   remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
@@ -55,7 +52,13 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **iPhone companion service (#103).** An opt-in paired HTTPS service and native SwiftUI app
   support same-network threads, follow-ups, and single approvals while coding stays on the
   Mac's CLIs. Both desktop and iPhone CI jobs passed on both runs before merge. The service
-  is included in the replacement v0.0.6 candidate; iPhone distribution is tracked below.
+  is included in v0.0.6; iPhone distribution is tracked below.
+
+## On `main`, not yet released
+
+- **Approval rules editor (#107).** Settings drafts, project-scoped previews and decision
+  receipts merged after v0.0.6. Both desktop and iPhone jobs passed on both final CI runs.
+  The production gate remains off; human acceptance before enabling it is tracked below.
 
 ## In flight
 
@@ -81,7 +84,7 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
-  (PR #107) adds a Settings draft editor, project-scoped Try it previews, compact persisted
+  (PR #107, merged) adds a Settings draft editor, project-scoped Try it previews, compact persisted
   receipts, the `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and [usage docs](approval-rules.md).
   The gate remains off: saved rules can be previewed but do not decide live approvals.
   Reconciliation with the merged companion passed build, typecheck, 15 core and 248 desktop

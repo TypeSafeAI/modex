@@ -29,7 +29,9 @@ a missing credential stops the run rather than falling back to an unsigned build
   **Library validation stays on.** node-pty's `pty.node`, its `spawn-helper` and the compiled
   terminal supervisor are all inside the bundle and electron-builder signs each of them with
   the same identity, so nothing foreign is loaded and `disable-library-validation` is not
-  needed. The verify step fails if that entitlement ever appears.
+  needed. The verify step fails if that entitlement ever appears. It checks every unpacked Mach-O file
+  for a strict signature and the expected team; node-pty's Windows/Linux prebuilds are sealed
+  resources, whose generic codesign extended attributes are not portable through ZIPs.
 - `build/sign.cjs` is the `mac.sign` hook the release path uses. electron-builder always
   hands codesign the certificate *name*; a keychain holding a renewed Developer ID next to the
   one it replaced makes that name ambiguous and codesign refuses. The release script resolves
