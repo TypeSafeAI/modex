@@ -301,7 +301,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <div><h3 id="settings-clis-title">Connect your coding tools</h3><p>Sign in once. Coding stays on your Mac.</p></div>
             <button type="button" className="btn small" disabled={claudeLoginBusy || chatgptBusy} onClick={() => { setClaudeLoginDetail(""); setChatgptDetail(""); setHealthRevision((revision) => revision + 1); }}><Icon name="restart" />Refresh account status</button>
           </div>
-          <p className="connections-note">Sign-in and account changes apply immediately, even if you cancel Settings. Paths and model defaults apply when you save.</p>
+          <p className="connections-note">Sign-in and account changes apply immediately, even if you cancel Settings. Save other preferences below.</p>
           <div className="connections-grid">
           <div className="connection-card" data-testid="chatgpt-accounts" role="group" aria-labelledby="codex-connection-title">
             <header className="connection-heading">
