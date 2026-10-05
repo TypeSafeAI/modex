@@ -30,11 +30,16 @@ vercel deploy --prebuilt --prod --scope 0xbuns --cwd apps/site
 ```
 
 The `.vercel` directory is local and ignored. `prepare-vercel.mjs` replaces only its generated
-`output` directory; it preserves the project link. There is no automatic Git deployment.
+`output` directory; it preserves the project link. These commands deploy prebuilt files
+independently of Git deployments.
 After deploying, verify the public HTTPS host, workflow buttons, mobile layout, and download
 links. Val manages the `modex.build` custom-domain and DNS setup in Vercel manually. The
 public deployment remains available at <https://modex-0xbuns.vercel.app> during setup;
 canonical and social metadata point to `https://modex.build/`.
+
+For Git deployments, use the repository root, build command `npm run site:build`, and output
+directory `apps/site/dist`. The default root `npm run build` also compiles the macOS desktop
+app and is not the site's Vercel build command.
 
 ## Asset sources
 
