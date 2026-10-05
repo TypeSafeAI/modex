@@ -16,8 +16,6 @@ Claude and Codex CLI credentials remain with their CLIs.
 
 ![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
 
-![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
-
 ```
 modex/
 ├── apps/desktop     @modex/desktop  Electron + React app (the Codex-App clone)
