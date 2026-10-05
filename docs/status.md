@@ -16,6 +16,7 @@ _Last updated 2026-10-05._
 | v0.0.4 | 2026-09-29 | #37 | Threads name themselves; one suggested next step after each turn. [Review](reviews/2026-09-29-v0.0.4-release-review.md). |
 | v0.0.5 | 2026-10-03 | #69 | First Developer ID signed and notarized build, from the protected `Release` workflow; the Modex app icon; Jev settings and routing limits (#51); terminals no longer leak a PTY each. [Review](reviews/2026-10-03-v0.0.5-release-review.md). |
 | v0.0.6 | 2026-10-05 | #106, #110 | Jev-inspired near-black blue/pink workspace, Claude/ChatGPT sign-in, Retry, Streamer Mode and the paired iPhone service. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.6). |
+| v0.0.7 | 2026-10-05 | #117 | Official pink identity, persistent Companion pairing, update banner, OpenCoven theme, verified CLI discovery, polished connections and full-width website walkthrough. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.7). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -59,7 +60,7 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 The static download site lives in `apps/site`, deployed to Vercel project `modex` for
 `modex.build`. It uses the Jev near-black blue/pink palette and a three-stage CSS 3D
 walkthrough with real demo captures. Mac links point to the published signed/notarized
-v0.0.6 Apple Silicon release; iPhone is explicitly **Coming soon**, with no public beta link.
+v0.0.7 Apple Silicon release; iPhone is explicitly **Coming soon**, with no public beta link.
 The homepage link, canonical URL and social metadata target `https://modex.build/`.
 Val handles custom-domain and DNS setup in Vercel manually; the public preview is
 [modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app). Build and deployment commands and
@@ -67,11 +68,18 @@ asset provenance are in [the site README](../apps/site/README.md).
 The repository now pins Vercel to the site-only build and output directory, so Git
 deployments do not attempt to compile the native desktop helper on Linux.
 
-## On `main`, not yet released
+## v0.0.7 release
 
-**v0.0.7 candidate.** A patch release is being prepared with the changes below and a
-polished update banner: clearer release/download copy, larger controls, keyboard focus,
-reduced-motion support and a fresh check when the app regains focus. Requests remain
+Published on 2026-10-05 from signed tag `954bad3` at verified merge commit `7c6c76b`
+(PR #117). Protected Release run `37361438192` passed signing, notarization, stapling and
+all 100 packaged e2e tests. Downloaded artifacts passed independent checksum, certificate,
+strict signature, native module, Gatekeeper, ticket, icon, version and container checks;
+all 310 files/symlinks in the DMG and ZIP app payloads match. The unauthenticated public
+DMG download matches the verified CI artifact. The release includes
+[the verification log](https://github.com/TypeSafeAI/modex/releases/download/v0.0.7/verification-v0.0.7.txt).
+
+The patch includes the changes below and a polished update banner: clearer release/download
+copy, larger controls, keyboard focus, reduced-motion support and a fresh check when the app regains focus. Requests remain
 cached and coalesced in the main process. v0.0.6 predates the banner and needs one manual
 update; v0.0.7 enables notifications for subsequent releases.
 The companion gains persistent reconnection with pinned Bonjour discovery, recovery from
@@ -103,15 +111,19 @@ and exposes GitHub in the main navigation on desktop and mobile.
   Dismissal survives relaunch; later versions appear again. Offline checks stay quiet,
   and downloads/installation remain manual. Build, typecheck, 15 core/253 desktop/1 bridge
   tests and all 97 e2e checks passed locally, including both themes. The live release feed
-  correctly offers v0.0.6 to v0.0.5 and nothing to v0.0.6. This follows v0.0.6.
+  correctly offers v0.0.6 to v0.0.5 and nothing to v0.0.6. This ships in v0.0.7.
 - **OpenCoven desktop theme.** Settings → General → Theme adds Cave's charcoal/black
   surfaces and lavender purple accent alongside the default Jev palette. Save/Cancel,
   keyboard selection, relaunch persistence, the native window and an already-open terminal
   share the choice. Local build, typecheck, unit tests and all 95 e2e checks passed,
-  including terminal-session continuity and contrast checks. This follows v0.0.6.
+  including terminal-session continuity and contrast checks. This ships in v0.0.7.
 - **Approval rules editor (#107).** Settings drafts, project-scoped previews and decision
   receipts merged after v0.0.6. Both desktop and iPhone jobs passed on both final CI runs.
   The production gate remains off; human acceptance before enabling it is tracked below.
+
+## On `main`, not yet released
+
+No additional desktop changes since v0.0.7.
 
 ## In flight
 
