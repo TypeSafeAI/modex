@@ -4,7 +4,7 @@
 
 # Modex
 
-[Download Modex for Mac](https://modex.jev.works) · iPhone companion coming soon.
+[Download Modex for Mac](https://modex.build) · iPhone companion coming soon.
 
 [![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
 

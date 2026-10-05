@@ -37,7 +37,7 @@ FAQ                          Source / Release notes
 - macOS: verified public v0.0.6 Apple Silicon release and direct DMG link.
 - iPhone: user selected an explicit Coming soon state; build 2 is internal TestFlight.
   No App Store or TestFlight download link is shown.
-- Publish at `modex.jev.works`, as requested. Vercel CLI is authenticated; the parent
-  domain uses external registrar DNS. Verify the final host and HTTPS before completion.
+- Use `modex.build` as the homepage and canonical URL. Val handles custom-domain and DNS
+  setup in Vercel manually; use the public Vercel alias to verify content during setup.
 - Verify desktop/mobile rendering, keyboard access, reduced motion, walkthrough controls,
   links, and built asset loading. Run repository build, unit and e2e gates before pushing.
