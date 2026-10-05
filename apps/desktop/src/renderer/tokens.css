@@ -1,6 +1,6 @@
 /*
- * Modex's cool graphite palette. The shell geometry and type scale began as measurements of the
- * Codex desktop UI (see design/tokens.md); the surfaces and text are tuned for Modex's own look.
+ * Modex's near-black blue palette with Jev's pink brand accent. The shell geometry and type
+ * scale began as measurements of the Codex desktop UI (see design/tokens.md).
  * Components use these names; styles.css keeps short aliases for older components.
  */
 :root {
@@ -8,38 +8,40 @@
   color-scheme: dark;
 
   /* Surfaces */
-  --bg-window: #181c23;
-  --bg-sidebar: #141920;
-  --bg-main: #0e1218;
-  --bg-row-hover: #1b222c;
-  --bg-row-selected: #262e3a;
-  --bg-composer: #252d38;
-  --bg-composer-context: #171e28;
-  --bg-user-bubble: #1c2531;
-  --bg-elevated: #202833;
-  --bg-sunken: #0b1017;
+  --bg-window: #131725;
+  --bg-sidebar: #101523;
+  --bg-main: #0b0f1b;
+  --bg-row-hover: #1a2030;
+  --bg-row-selected: #282139;
+  --bg-composer: #1d2435;
+  --bg-composer-context: #151b2b;
+  --bg-user-bubble: #1b2232;
+  --bg-elevated: #22283a;
+  --bg-sunken: #080c16;
 
-  --bg-rail-active: #273345;
+  --bg-rail-active: #2a2138;
 
   /* Lines */
-  --border-pane: #2c3542;
-  --border-rail: #303b4a;
-  --border-composer: #3a4657;
-  --border-strong: #465366;
-  --rule: #293442;
+  --border-pane: #2b3144;
+  --border-rail: #32384d;
+  --border-composer: #42465e;
+  --border-strong: #54586f;
+  --rule: #2b3347;
 
   /* Text — brightest glyph-core pixel on each surface */
-  --text-1: #eef2f7;
-  --text-2: #c6d0dc;
-  --text-3: #929eae;
-  --text-4: #7f8b9b;
-  --text-placeholder: #8996a6;
-  --text-info: #a4afbd;
-  --text-muted: #8b97a7;
+  --text-1: #f8f3fa;
+  --text-2: #d0cad9;
+  --text-3: #aaa5b8;
+  --text-4: #918da2;
+  --text-placeholder: #a49eb2;
+  --text-info: #b8b2c2;
+  --text-muted: #a09aad;
 
-  /* Blue is reserved for focus, active states, and progress. */
-  --accent: #8aaaff;
-  --accent-strong: #6689ee;
+  /* Jev's dark pink marks focus; TypeSafe UI's warmer pink fills primary actions. */
+  --accent: #ef7bcd;
+  --accent-strong: #f386a1;
+  --accent-strong-hover: #f6a0b5;
+  --accent-ink: #1b1020;
   --accent-warn: #dc9258;        /* measured: "Full access" */
   --ok: #4fc38a;
   --warn: #e8b458;

@@ -5,7 +5,7 @@ tools themselves, create approval requests the CLI did not make, or widen a sand
 
 The gate remains **off** while this integration is reviewed. Settings can save rules and
 **Try it** can preview their decisions during this period. Live approvals still ask you.
-The v0.0.6 release was tagged before this work and does not contain this editor.
+This editor follows v0.0.6 and is not included in its replacement release tag.
 See the [specification](specs/2026-10-01-modex-jev-approval-rules-spec.md).
 
 ## Add a rule
@@ -60,3 +60,12 @@ The gate sends tool/title, scrubbed command text, paths, project name, branch wh
 and mode. It does not send file contents, patches, edit strings, or coding-session messages.
 The preview accepts only sample metadata. Credential lookup is shared with
 [Auto routing](auto-routing.md); there is no second key store or coding API mode.
+
+## Live preview evidence
+
+On 2026-10-05, the built preview and shared router completed three judgments using the
+saved Modex credential and Jev CLI 0.2.1: allow a test command, refuse a deletion, and
+downgrade a requested escalation to ask. The production gate stayed off and no action
+was executed. These examples verify the configured transport and preview integration;
+they do not establish general judge correctness or human approval acceptance. See the
+[acceptance record](reviews/2026-10-05-approval-preview-acceptance.md).

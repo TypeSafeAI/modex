@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-04._
+_Last updated 2026-10-05._
 
 ## Shipped
 
@@ -24,12 +24,13 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- **v0.0.6 is being recut before publication.** The first signed tag points to PR #97's
-  verified tree, but its release run was cancelled before approval. PR #106 adds the
-  Jev-inspired near-black blue and pink palette plus the merged iPhone companion service.
-  The combined Developer ID sign-only rehearsal and all 91 packaged e2e tests passed.
-  Local notarization, a new signed candidate, and the
-  protected release run are required before publication.
+- **v0.0.6 is running in protected release CI.** PR #106 merged as `ed5486f`
+  after both desktop and iPhone jobs passed in both final CI runs. The replacement signed
+  tag now points to that commit, including the Jev-inspired near-black blue/pink palette
+  and companion service. The full local rehearsal passed notarization, stapling,
+  Gatekeeper, signature/container verification and all 91 packaged e2e checks. Release
+  run `37296872994` has received `release-signing` approval; CI signing/notarization,
+  downloaded-artifact verification and publication remain in progress. The earlier release run is cancelled.
   [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
@@ -63,7 +64,10 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   thread draft isolation, and disconnect confirmation. All 91 desktop e2e tests, 10 native
   tests, and the paired simulator flow passed; iPhone tests now also run in CI.
   The signed build 2 distribution IPA also passed strict signature and ZIP verification.
-  Build 2 upload, internal tester access, and physical iPhone acceptance remain open.
+  On 2026-10-05, build 2 passed Apple validation and upload, reached `VALID`, and entered
+  `IN_BETA_TESTING` in the existing Internal group with one tester. Physical iPhone
+  installation and acceptance remain open. The source plist now records the system-encryption
+  exemption so future uploads retain it.
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 
@@ -79,7 +83,8 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
   The gate remains off: saved rules can be previewed but do not decide live approvals.
   Reconciliation with the merged companion passed build, typecheck, 15 core and 248 desktop
   tests plus the browser bridge test, and all 94 desktop e2e checks. This integration follows
-  v0.0.6; live Jev and human approval acceptance remain open. The
+  v0.0.6. Three live Jev preview examples passed on 2026-10-05; human acceptance and
+  broader judge evaluation remain open before enabling the gate. The
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.

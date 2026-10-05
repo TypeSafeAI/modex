@@ -105,13 +105,13 @@ test("captures every named chat state at the reference size", async () => {
 // ── Shell geometry follows the measured reference; the palette is Modex's own. ──────────────
 
 test.describe("Design tokens", () => {
-  // Geometry and type began with the 1× reference; cool graphite colors are the Modex palette.
+  // Geometry and type began with the 1× reference; Jev-inspired near-black blue and pink are the Modex palette.
   const MEASURED: Record<string, string> = {
-    "--bg-window": "#181c23", "--bg-sidebar": "#141920", "--bg-main": "#0e1218", "--bg-row-selected": "#262e3a",
-    "--bg-composer": "#252d38", "--bg-composer-context": "#171e28", "--bg-user-bubble": "#1c2531",
-    "--border-pane": "#2c3542", "--border-rail": "#303b4a", "--border-composer": "#3a4657", "--rule": "#293442",
-    "--text-1": "#eef2f7", "--text-2": "#c6d0dc", "--text-3": "#929eae", "--text-4": "#7f8b9b", "--text-placeholder": "#8996a6",
-    "--accent-warn": "#dc9258", "--text-sm": "13px", "--text-md": "14px", "--text-lg": "18px", "--text-xl": "28px",
+    "--bg-window": "#131725", "--bg-sidebar": "#101523", "--bg-main": "#0b0f1b", "--bg-row-selected": "#282139",
+    "--bg-composer": "#1d2435", "--bg-composer-context": "#151b2b", "--bg-user-bubble": "#1b2232",
+    "--border-pane": "#2b3144", "--border-rail": "#32384d", "--border-composer": "#42465e", "--rule": "#2b3347",
+    "--text-1": "#f8f3fa", "--text-2": "#d0cad9", "--text-3": "#aaa5b8", "--text-4": "#918da2", "--text-placeholder": "#a49eb2",
+    "--accent": "#ef7bcd", "--accent-strong": "#f386a1", "--accent-ink": "#1b1020", "--accent-warn": "#dc9258", "--text-sm": "13px", "--text-md": "14px", "--text-lg": "18px", "--text-xl": "28px",
     "--radius-row": "10px", "--radius-composer": "20px",
   };
 
@@ -124,9 +124,9 @@ test.describe("Design tokens", () => {
   });
 
   test("surface and text colors use the Modex palette", async () => {
-    expect(await css(page.locator("body"), "background-color")).toBe("rgb(14, 18, 24)");
-    expect(await css(page.locator("body"), "color")).toBe("rgb(238, 242, 247)");
-    expect(await css(tid(page, "sidebar"), "background-color")).toBe("rgb(20, 25, 32)");
+    expect(await css(page.locator("body"), "background-color")).toBe("rgb(11, 15, 27)");
+    expect(await css(page.locator("body"), "color")).toBe("rgb(248, 243, 250)");
+    expect(await css(tid(page, "sidebar"), "background-color")).toBe("rgb(16, 21, 35)");
   });
 });
 
@@ -137,19 +137,19 @@ test.describe("Phase 3 · shell", () => {
   test("titlebar 42px, rail 48px, sheet with a 1px edge and 12px corners", async () => {
     const bar = await box(tid(page, "titlebar"));
     expect([bar.x, bar.y, bar.height]).toEqual([0, 0, 42]);
-    expect(await css(tid(page, "titlebar"), "background-color")).toBe("rgb(24, 28, 35)");
+    expect(await css(tid(page, "titlebar"), "background-color")).toBe("rgb(19, 23, 37)");
     const rail = await box(tid(page, "rail"));
     expect([rail.x, rail.y, rail.width]).toEqual([0, 42, 48]);
     const sheet = await box(tid(page, "sheet"));
     expect([sheet.x, sheet.y]).toEqual([48, 42]);
     expect(await css(tid(page, "sheet"), "border-top-left-radius")).toBe("12px");
-    expect(await css(tid(page, "sheet"), "border-left-color")).toBe("rgb(48, 59, 74)");
+    expect(await css(tid(page, "sheet"), "border-left-color")).toBe("rgb(50, 56, 77)");
   });
 
   test("sidebar x 49–288, divider at 289, main from 290", async () => {
     const side = await box(tid(page, "sidebar"));
     expect([side.x, side.y, side.width]).toEqual([49, 43, 240]);
-    expect(await css(tid(page, "main"), "border-left-color")).toBe("rgb(44, 53, 66)");
+    expect(await css(tid(page, "main"), "border-left-color")).toBe("rgb(43, 49, 68)");
     expect((await box(tid(page, "main"))).x).toBe(289);
   });
 
@@ -161,7 +161,7 @@ test.describe("Phase 3 · shell", () => {
     }
     const rail = await box(tid(page, "rail-chat"));
     expect([rail.x, rail.y, rail.width, rail.height]).toEqual([5, 51, 36, 36]);
-    expect(await css(tid(page, "rail-chat"), "background-color")).toBe("rgb(39, 51, 69)");
+    expect(await css(tid(page, "rail-chat"), "background-color")).toBe("rgb(42, 33, 56)");
   });
 
   test("sidebar header, New chat, Projects label and rows sit on the reference rhythm", async () => {
@@ -194,8 +194,8 @@ test.describe("Phase 4 · composer", () => {
     near(c.x, 668); near(c.y, 931); near(c.width, 736); near(c.height, 98);
     const m = await box(tid(page, "main"));
     near(c.x + c.width / 2, m.x + 1 + (m.width - 1) / 2);
-    expect(await css(tid(page, "composer-box"), "background-color")).toBe("rgb(37, 45, 56)");
-    expect(await css(tid(page, "composer-box"), "border-top-color")).toBe("rgb(58, 70, 87)");
+    expect(await css(tid(page, "composer-box"), "background-color")).toBe("rgb(29, 36, 53)");
+    expect(await css(tid(page, "composer-box"), "border-top-color")).toBe("rgb(66, 70, 94)");
     expect(await css(tid(page, "composer-box"), "border-top-left-radius")).toBe("20px");
   });
 
@@ -203,7 +203,7 @@ test.describe("Phase 4 · composer", () => {
     const c = await box(tid(page, "composer-box"));
     const s = await box(tid(page, "composer-context"));
     near(s.x, c.x + 13); near(s.width, c.width - 26); expect(s.height).toBe(38); near(s.y + s.height, c.y);
-    expect(await css(tid(page, "composer-context"), "background-color")).toBe("rgb(23, 30, 40)");
+    expect(await css(tid(page, "composer-context"), "background-color")).toBe("rgb(21, 27, 43)");
     expect(await css(tid(page, "composer-context"), "font-size")).toBe("13px");
   });
 
@@ -235,23 +235,23 @@ test.describe("Phase 6 · transcript", () => {
     const label = tid(page, "turn-label").first();
     expect(await css(label, "font-size")).toBe("14px");
     expect(await css(label, "font-weight")).toBe("500");
-    expect(await css(label, "color")).toBe("rgb(146, 158, 174)");
-    expect(await css(label, "border-bottom-color")).toBe("rgb(41, 52, 66)");
+    expect(await css(label, "color")).toBe("rgb(170, 165, 184)");
+    expect(await css(label, "border-bottom-color")).toBe("rgb(43, 51, 71)");
     const bubble = items(page, "user").first().locator('[data-testid="item-text"]');
-    expect(await css(bubble, "background-color")).toBe("rgb(28, 37, 49)");
+    expect(await css(bubble, "background-color")).toBe("rgb(27, 34, 50)");
     expect(await css(bubble, "border-top-left-radius")).toBe("12px");
     const b = await box(bubble);
     expect(Math.abs(b.x + b.width - (header.x + header.width))).toBeLessThanOrEqual(1);
     const prose = items(page, "assistant").first();
     expect(await css(prose, "font-size")).toBe("14px");
     expect(await css(prose, "line-height")).toBe("22.4px");
-    expect(await css(prose, "color")).toBe("rgb(238, 242, 247)");
+    expect(await css(prose, "color")).toBe("rgb(248, 243, 250)");
     // Resting state: an expanded or hovered line is brighter (--text-2) on purpose.
     const thinking = items(page, "thinking").first().locator('[data-testid="item-toggle"]');
     if ((await thinking.getAttribute("aria-expanded")) === "true") await thinking.click();
     await page.mouse.move(5, 600);
     await expect(thinking).toHaveAttribute("aria-expanded", "false");
-    await expect(thinking).toHaveCSS("color", "rgb(139, 151, 167)");
+    await expect(thinking).toHaveCSS("color", "rgb(160, 154, 173)");
   });
 });
 
@@ -331,7 +331,7 @@ test.describe("Phase 5 · draft", () => {
     const h = tid(page, "draft-title");
     expect(await css(h, "font-size")).toBe("28px");
     expect(await css(h, "font-weight")).toBe("400");
-    expect(await css(h, "color")).toBe("rgb(238, 242, 247)");
+    expect(await css(h, "color")).toBe("rgb(248, 243, 250)");
     expect(await css(tid(page, "draft-project"), "text-decoration-style")).toBe("dotted");
     const b = await box(h);
     const m = await box(tid(page, "main"));

@@ -1,18 +1,21 @@
 # Design tokens: where the numbers come from
 
 `src/renderer/tokens.css` holds the current Modex tokens. This file records the original Codex
-desktop measurements behind the shell geometry and type scale. The 2026-10-03 visual refinement
-keeps those dimensions while giving Modex a cooler graphite palette. `e2e/layout.spec.ts` asserts
-the current values, so future changes remain deliberate and reviewable.
+desktop measurements behind the shell geometry and type scale. The 2026-10-04 refinement
+keeps those dimensions and uses Jev-inspired dark blue surfaces with pink brand accents.
+`e2e/layout.spec.ts` asserts the geometry, so future changes remain deliberate and reviewable.
 
 ## Current visual direction
 
-The main canvas stays near-black (`#0e1218`). A slightly lighter graphite sidebar and a softer
-composer separate navigation, work, and input without heavy outlines. Cool blue appears at focus
-and active states. Text values have more contrast than the original samples, especially for labels,
-placeholders, and tool metadata. Very low-opacity light on the titlebar, upper canvas, and composer
-adds depth; the layout keeps its measured 42 px titlebar, 48 px rail, 240 px sidebar, and 736 px
-composer. Motion remains short and follows the existing reduced-motion setting.
+The main canvas is near-black blue (`#0b0f1b`). The sidebar (`#101523`) and composer
+(`#1d2435`) distinguish navigation and input without heavy outlines. Jev's dark pink
+(`#ef7bcd`) marks focus and selection; TypeSafe UI's warmer pink (`#f386a1`) fills primary
+actions. Both use dark text on filled pink for contrast. Text values remain legible on every
+surface, including placeholders and metadata. Very low-opacity light on the titlebar, upper
+canvas, and composer adds depth. The layout keeps its measured 42 px titlebar, 48 px rail,
+240 px sidebar, and 736 px composer. Motion remains short and respects reduced motion.
+The accent references are [Jev](https://jev.works/) and
+[TypeSafe UI](https://ui.jev.works/); the blue-black surfaces are Modex's adaptation.
 
 ## Reference
 
@@ -47,8 +50,8 @@ anti-aliased edges are darker than the real colour.
 | `--accent-warn` | `#dc9258` | "Full access", most saturated pixel in 735–802 × 999–1015 |
 
 **Derived** (no reference pixel): `--bg-row-hover`, `--bg-elevated`, `--bg-sunken` and
-`--border-strong`, each chosen between measured neighbours. `--accent` stays Modex's blue. Codex is
-monochrome apart from "Full access".
+`--border-strong`, each chosen between measured neighbours. Codex is monochrome apart from
+"Full access"; the current Modex accent is specified above.
 
 ## Type sizes
 

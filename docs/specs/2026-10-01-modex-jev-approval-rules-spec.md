@@ -75,7 +75,8 @@ never receipts, ask/downgrade cards, and isolation across projects. Fake Jev tra
 cover destructive/escalation downgrade, timeout, invalid answers and abort; this is offline
 coverage, not proof of live judge quality.
 
-Part 2 targets v0.0.6. Keep `DEFAULT_APPROVAL_GATE.enabled` false until validation is complete
+Part 2 now follows v0.0.6 and is excluded from its replacement tag. Keep
+`DEFAULT_APPROVAL_GATE.enabled` false until validation is complete
 and the remote v0.0.5 tag exists. Reconcile the Settings integration with PR #51/current main
 before landing. Do not create a release tag or merge unrelated work to satisfy this prerequisite.
 Document exact validation and the tag check in the PR/review evidence before enabling the gate.
