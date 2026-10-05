@@ -1,3 +1,4 @@
+import type { CliExecutable } from "../cli-path.js";
 import { spawn } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { CodexBackend } from "./codex.js";
@@ -25,8 +26,10 @@ export class AccountCodexBackend implements Backend {
   private readonly changing = new Set<string>();
   private disposed = false;
   private readonly cli: CodexBackend;
-  constructor(private readonly auth: Pick<ChatGPTAuth, "identity" | "grant" | "status">, private readonly bin = "codex", private readonly spawnImpl = spawn) {
-    this.cli = new CodexBackend(bin, spawnImpl);
+  private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
+
+  constructor(private readonly auth: Pick<ChatGPTAuth, "identity" | "grant" | "status">, private readonly executable: CliExecutable = "codex", private readonly spawnImpl = spawn) {
+    this.cli = new CodexBackend(executable, spawnImpl);
   }
   identity(): string { return this.auth.identity(); }
   busy(id: string): boolean { const runtime = this.runtimes.get(id); return Boolean(runtime && (runtime.leases || runtime.preparing)); }
@@ -58,7 +61,7 @@ export class AccountCodexBackend implements Backend {
           if (owned.backend && owned.token !== grant.token) await owned.backend.dispose();
           if (!owned.backend || owned.token !== grant.token) {
             const env = { ...process.env, ACCESS_TOKEN: grant.token };
-            owned.backend = new CodexBackend(this.bin, this.spawnImpl, { args: planArgs, env, redact: (text) => text.split(grant.token).join("[redacted]") });
+            owned.backend = new CodexBackend(this.executable, this.spawnImpl, { args: planArgs, env, redact: (text) => text.split(grant.token).join("[redacted]") });
           }
           owned.token = grant.token; owned.expiresAt = grant.expiresAt;
           return owned.backend;

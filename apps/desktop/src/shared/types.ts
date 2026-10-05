@@ -328,6 +328,8 @@ export interface ModexBridge {
 }
 
 export interface BackendHealth {
+  /** Absolute executable selected for this app session. */
+  resolvedPath?: string;
   executable: "available" | "missing" | "unknown";
   /** Parsed CLI version; raw --version output never crosses IPC. */
   version?: string;

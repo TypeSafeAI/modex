@@ -36,3 +36,6 @@ analytics collection, remote font service, or credential requirement.
 `npm run test:e2e` (97 passed) completed locally. The site build is part of the root build,
 so the existing macOS workflow also compiles the public page. Published HTML and font-license
 responses match the local build byte for byte.
+
+After merging CLI-discovery PR #114 into this branch, the combined tree passed the same
+build/typecheck gates, all 15 core/259 desktop/1 bridge tests, and all 98 desktop e2e checks.

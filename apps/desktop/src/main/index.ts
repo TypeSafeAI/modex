@@ -1,3 +1,4 @@
+import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
@@ -6,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
-import { updateSettings } from "./engine/settings-update.js";
+import { saveSettings } from "./engine/settings-update.js";
 import { ThreadRunner } from "./engine/runner.js";
 import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
 import { AccountCodexBackend } from "./engine/backends/account-codex.js";
@@ -73,7 +74,8 @@ const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : elect
 const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
 const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
-const accountCodex = new AccountCodexBackend(chatgpt, store.settings.codex_bin);
+const sessionCliSettings = store.settings;
+const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
 const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
 const companion = new CompanionServer(home, {
@@ -90,7 +92,7 @@ const companionView = async (status: CompanionStatus): Promise<CompanionStatus> 
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
@@ -180,8 +182,8 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   await gitx.revert(cwd, rel);
   return gitx.status(cwd);
 });
-handle("settings:update", (patch) => {
-  const settings = updateSettings(store, runner.router, {
+handle("settings:update", async (patch) => {
+  const settings = await saveSettings(store, runner.router, {
     ...patch,
     ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
   });
@@ -209,9 +211,8 @@ handle("chatgpt:signOut", async ({ accountId }) => {
   const detail = await accountCodex.accountChange(accountId, () => chatgpt.signOut(accountId)); return { status: chatgpt.status(), detail };
 });
 const claudeLogin = new ClaudeLogin();
-const sessionClaudeBin = store.settings.claude_bin;
 SPAWNS.add("claude:login");
-handle("claude:login", () => claudeLogin.run(sessionClaudeBin));
+handle("claude:login", () => claudeLogin.run(resolveCli("claude", sessionCliSettings.claude_bin)));
 handle("claude:cancelLogin", () => claudeLogin.cancel());
 handle("routing:status", () => runner.router.status());
 handle("routing:reset", () => {
@@ -224,7 +225,7 @@ handle("routing:test", () => runner.router.test());
 handle("backends:health", async () => {
   const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
     const backend = runner.backend(id);
-    const status = backend.health ? await backend.health() : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
+    const status = backend.health ? await (id === "mock" ? backend.health() : cliHealth(id, sessionCliSettings[`${id}_bin`], () => backend.health!())) : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
     return [id, status] as const;
   }));
   return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];

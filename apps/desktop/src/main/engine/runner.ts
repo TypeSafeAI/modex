@@ -1,3 +1,4 @@
+import { resolveCli } from "./cli-path.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
@@ -60,9 +61,10 @@ export class ThreadRunner {
 
   constructor(private readonly o: RunnerOptions) {
     const s = () => o.store.settings;
+    const cliSettings = s(); // Explicit override changes take effect after restart; auto paths resolve per launch.
     this.backends = {
-      claude: o.backends?.claude ?? new ClaudeBackend(s().claude_bin),
-      codex: o.backends?.codex ?? new CodexBackend(s().codex_bin),
+      claude: o.backends?.claude ?? new ClaudeBackend(() => resolveCli("claude", cliSettings.claude_bin)),
+      codex: o.backends?.codex ?? new CodexBackend(() => resolveCli("codex", cliSettings.codex_bin)),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
     this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
