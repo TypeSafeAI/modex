@@ -1,5 +1,6 @@
 import "@fontsource-variable/manrope";
 import "./style.css";
+import "./release";
 
 document.documentElement.classList.add("js");
 const showcase = document.querySelector<HTMLElement>(".showcase")!;

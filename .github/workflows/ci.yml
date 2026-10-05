@@ -73,7 +73,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Unit tests (core + desktop)
+      - name: Unit tests (core + desktop + site)
         run: npm test
 
       - name: Install browser for browser-dev e2e
@@ -87,11 +87,16 @@ jobs:
         env:
           CI: "1"
 
+      - name: Landing page release and responsive tests
+        run: npm run test:e2e -w @modex/site
+
       - name: Upload e2e artifacts
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: e2e-results
-          path: apps/desktop/test-results
+          path: |
+            apps/desktop/test-results
+            apps/site/test-results
           if-no-files-found: ignore
           retention-days: 7

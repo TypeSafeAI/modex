@@ -57,10 +57,16 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 ## Landing page
 
-The static download site lives in `apps/site`, deployed to Vercel project `modex` for
+The download site lives in `apps/site`, deployed to Vercel project `modex` for
 `modex.build`. It uses the Jev near-black blue/pink palette and a three-stage CSS 3D
 walkthrough with real demo captures. Mac links point to the published signed/notarized
-v0.0.7 Apple Silicon release; iPhone is explicitly **Coming soon**, with no public beta link.
+latest stable Apple Silicon release automatically through a cached public GitHub feed,
+with independently verified v0.0.7 links as the static fallback. The page shows GitHub
+stars, forks and total stable Mac installer downloads; missing counts remain hidden and
+cached counts are labeled after a failed refresh. The iPhone buttons now use Val's
+[public TestFlight invitation](https://testflight.apple.com/join/Qr14JKCh).
+Apple reported that the beta was not accepting new testers during the 2026-10-05 browser
+check; the CTA links to TestFlight to check availability.
 The homepage link, canonical URL and social metadata target `https://modex.build/`.
 Val handles custom-domain and DNS setup in Vercel manually; the public preview is
 [modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app). Build and deployment commands and
