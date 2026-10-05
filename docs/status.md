@@ -54,6 +54,15 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
   Mac's CLIs. Both desktop and iPhone CI jobs passed on both runs before merge. The service
   is included in v0.0.6; iPhone distribution is tracked below.
 
+## Landing page
+
+The static download site lives in `apps/site`, deployed to Vercel project `modex` for
+`modex.jev.works`. It uses the Jev near-black blue/pink palette and a three-stage CSS 3D
+walkthrough with real demo captures. Mac links point to the published signed/notarized
+v0.0.6 Apple Silicon release; iPhone is explicitly **Coming soon**, with no public beta link.
+The public preview is [modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app); custom-domain
+DNS is pending. Build and deployment commands and asset provenance are in [the site README](../apps/site/README.md).
+
 ## On `main`, not yet released
 
 - **Automatic CLI discovery and verified overrides.** Claude and Codex resolve an executable

@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080c17" />
+    <meta
+      name="description"
+      content="A calm Mac workspace for Claude Code and Codex. Keep projects, threads, changes, and approvals together. Free and open source, with an iPhone companion coming soon."
+    />
+    <link rel="canonical" href="https://modex.jev.works/" />
+    <link rel="icon" href="/assets/modex-icon.png" type="image/png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Modex — A home for your coding agents" />
+    <meta
+      property="og:description"
+      content="Claude Code and Codex, in one calm workspace. Made for your Mac. An iPhone companion is on the way."
+    />
+    <meta property="og:url" content="https://modex.jev.works/" />
+    <meta
+      property="og:image"
+      content="https://modex.jev.works/assets/social-preview.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Modex — A home for your coding agents</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="#" aria-label="Modex home"
+        ><img
+          src="/assets/modex-icon.png"
+          alt=""
+          width="36"
+          height="36"
+        />Modex<span class="brand-by">by TypeSafe</span></a
+      >
+      <nav aria-label="Main navigation">
+        <a class="nav-detail" href="#workflow">The workflow</a>
+        <a class="nav-detail" href="#iphone">For iPhone</a>
+        <a class="nav-download" href="#download"
+          >Get Modex <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <a
+            class="release-label"
+            href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
+            ><span class="status-dot"></span> v__MODEX_VERSION__ is here
+            <span aria-hidden="true">↗</span></a
+          >
+          <h1 id="hero-title">
+            A home for your<br /><span>coding agents.</span>
+          </h1>
+          <p class="hero-description">
+            Claude Code and Codex, in one calm workspace.<br
+              class="desktop-break"
+            />
+            Make room for the work you want to do.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="__MODEX_DOWNLOAD__"
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4" /></svg
+              >Download for Mac</a
+            >
+            <a class="text-link" href="#iphone"
+              >iPhone companion <span class="coming-tag">Soon</span></a
+            >
+          </div>
+          <p class="platform-note">Apple silicon · Free & open source</p>
+        </div>
+
+        <div class="showcase" id="workflow" data-step="0">
+          <div class="scene-glow" aria-hidden="true"></div>
+          <div class="device-stage" aria-label="Interactive product showcase">
+            <div class="device-rig">
+              <div class="mac-device">
+                <div class="mac-edge" aria-hidden="true"></div>
+                <div class="mac-screen">
+                  <img
+                    id="desktop-screen"
+                    src="/assets/desktop-approval.png"
+                    alt="Modex on Mac showing a coding thread and a request to approve a file change"
+                    width="2760"
+                    height="1760"
+                    fetchpriority="high"
+                  />
+                </div>
+                <div class="device-caption" aria-hidden="true">
+                  <span class="status-dot"></span>Your Mac. Your workspace.
+                </div>
+              </div>
+              <div class="phone-device">
+                <div class="phone-edge" aria-hidden="true"></div>
+                <img
+                  id="phone-screen"
+                  src="/assets/iphone-workspace.png"
+                  alt="Modex Companion on iPhone showing threads from a paired Mac"
+                  width="1206"
+                  height="2622"
+                />
+                <div class="phone-island" aria-hidden="true"></div>
+              </div>
+              <div class="connection-label" aria-hidden="true">
+                <span class="connection-icon">⌁</span> In sync. On your network.
+              </div>
+            </div>
+          </div>
+          <div class="showcase-controls">
+            <div
+              class="step-buttons"
+              role="group"
+              aria-label="Explore the workflow"
+            >
+              <button type="button" data-scene-step="0" aria-pressed="true">
+                <span>01</span> Start on Mac
+              </button>
+              <button type="button" data-scene-step="1" aria-pressed="false">
+                <span>02</span> Review on iPhone
+              </button>
+              <button type="button" data-scene-step="2" aria-pressed="false">
+                <span>03</span> Keep it moving
+              </button>
+            </div>
+            <button
+              class="play-control"
+              type="button"
+              id="play-story"
+              aria-pressed="false"
+            >
+              <span class="play-symbol" aria-hidden="true">▶</span
+              ><span class="play-label">Play walkthrough</span>
+            </button>
+          </div>
+          <p class="scene-description" aria-live="polite">
+            Bring a project, choose an agent, and see each change as it happens.
+          </p>
+          <p class="capture-note">
+            Real app screens from demo projects. iPhone companion coming soon.
+          </p>
+        </div>
+      </section>
+
+      <section class="principles wrap" aria-label="Made for the way you work">
+        <article>
+          <span class="feature-symbol" aria-hidden="true">⌘</span>
+          <h2>Your projects, together.</h2>
+          <p>
+            Move between repositories and parallel threads. Pick up exactly
+            where you left off.
+          </p>
+        </article>
+        <article>
+          <span class="feature-symbol agent-symbol" aria-hidden="true">↔</span>
+          <h2>Your choice of agent.</h2>
+          <p>
+            Use Claude Code or Codex with your existing access. Keep the tools
+            and instructions you already trust.
+          </p>
+        </article>
+        <article>
+          <span class="feature-symbol" aria-hidden="true">✓</span>
+          <h2>You have the final say.</h2>
+          <p>
+            Review changes, inspect the diff, and handle approvals without
+            losing the thread.
+          </p>
+        </article>
+      </section>
+
+      <section
+        class="companion-section wrap"
+        id="iphone"
+        aria-labelledby="companion-title"
+      >
+        <div class="companion-visual">
+          <div class="companion-orbit" aria-hidden="true"></div>
+          <div class="companion-phone">
+            <img
+              src="/assets/iphone-approval.png"
+              alt="An iPhone approval card with Deny and Approve once controls"
+              width="1206"
+              height="2622"
+              loading="lazy"
+            />
+            <div class="phone-island" aria-hidden="true"></div>
+          </div>
+          <div class="approval-caption">
+            <span aria-hidden="true">✓</span>
+            <div>
+              One small decision.<br /><strong>Back to building.</strong>
+            </div>
+          </div>
+        </div>
+        <div class="companion-copy">
+          <p class="eyebrow">
+            MODEX COMPANION <span class="coming-tag">Coming soon</span>
+          </p>
+          <h2 id="companion-title">
+            A little distance.<br /><span>The same flow.</span>
+          </h2>
+          <p>
+            Step away from your desk without losing your place. Read a thread,
+            send a follow-up, or handle an approval from your iPhone.
+          </p>
+          <ul class="companion-details">
+            <li>
+              <span aria-hidden="true">↳</span> Pair with your Mac in a scan.
+            </li>
+            <li>
+              <span aria-hidden="true">⌁</span> Connect on the same local
+              network.
+            </li>
+            <li>
+              <span aria-hidden="true">⌘</span> Your Mac keeps the agents
+              running.
+            </li>
+          </ul>
+          <p class="availability-note">
+            The iPhone app is in private testing. A public download is coming
+            soon.
+          </p>
+        </div>
+      </section>
+
+      <section
+        class="download-section wrap"
+        id="download"
+        aria-labelledby="download-title"
+      >
+        <div class="download-heading">
+          <p class="eyebrow">MAKE YOURSELF AT HOME</p>
+          <h2 id="download-title">Your next idea<br />starts here.</h2>
+        </div>
+        <div class="download-options">
+          <article class="download-card mac-download">
+            <div class="download-card-top">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 4h18v13H3zM8 21h8m-4-4v4" /></svg
+              ><span class="platform-label">macOS</span
+              ><span class="version-pill">v__MODEX_VERSION__</span>
+            </div>
+            <h3>Meet your new workspace.</h3>
+            <p>
+              For Macs with Apple silicon.<br />Developer ID signed. Apple
+              notarized.
+            </p>
+            <a class="button button-primary" href="__MODEX_DOWNLOAD__"
+              >Download for Mac <span aria-hidden="true">↓</span></a
+            >
+            <a
+              class="release-notes"
+              href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
+              >Release notes & ZIP download <span aria-hidden="true">↗</span></a
+            >
+          </article>
+          <article class="download-card iphone-download">
+            <div class="download-card-top">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M7 2h10a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Zm3 17h4"
+                /></svg
+              ><span class="platform-label">iPhone</span>
+            </div>
+            <h3>Keep a hand in.</h3>
+            <p>
+              Your Mac workspace, within reach.<br />For iPhone with iOS 18 or
+              later.
+            </p>
+            <div class="coming-soon-state">
+              <span class="status-dot"></span>Coming soon
+            </div>
+            <p class="quiet-caption">The companion is in private testing.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="faq wrap" aria-labelledby="faq-title">
+        <h2 id="faq-title">A few things<br />to know.</h2>
+        <div class="faq-list">
+          <details>
+            <summary>
+              What do I need to get started?<span aria-hidden="true">+</span>
+            </summary>
+            <p>
+              A Mac with Apple silicon and access to Claude Code or Codex.
+              Install your chosen CLI, sign in, and open a project in Modex.
+              Your existing provider plan and usage still apply.
+            </p>
+          </details>
+          <details>
+            <summary>Is Modex free?<span aria-hidden="true">+</span></summary>
+            <p>
+              Yes. Modex is free and open source under the MIT license. Model
+              access comes from your own Claude Code or Codex account.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Where does the work run?<span aria-hidden="true">+</span>
+            </summary>
+            <p>
+              Modex runs the coding tools on your Mac, in your local projects.
+              Claude Code and Codex connect to their respective services using
+              your account. The iPhone companion connects directly to the Mac on
+              the same network.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Can I use the iPhone app away from home?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              The first companion release is for the same local network. Your
+              Mac must be awake, running Modex, and reachable by your iPhone.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Can I see the source?<span aria-hidden="true">+</span>
+            </summary>
+            <p>
+              Absolutely.
+              <a href="https://github.com/TypeSafeAI/modex"
+                >Explore the repository on GitHub</a
+              >, report an issue, or help shape what comes next.
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer wrap">
+      <a class="brand" href="#"
+        ><img
+          src="/assets/modex-icon.png"
+          alt=""
+          width="28"
+          height="28"
+        />Modex</a
+      >
+      <p>A little more room to build.</p>
+      <nav aria-label="Footer">
+        <a href="https://github.com/TypeSafeAI/modex">GitHub ↗</a
+        ><a href="https://github.com/TypeSafeAI/modex/blob/main/LICENSE"
+          >MIT license ↗</a
+        ><a href="https://jev.works">TypeSafe / Jev ↗</a>
+      </nav>
+    </footer>
+  </body>
+</html>
