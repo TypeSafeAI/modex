@@ -22,7 +22,7 @@ test('finds a new release while the page stays open, with accurate counts and pu
   await expect(page.getByRole('link', { name: '5,678 Mac downloads', exact: true })).toContainText('5.7K');
   await expect(page.locator('[data-stat="downloads"]')).toHaveAttribute('title', /not unique users/);
   await expect(page.getByRole('link', { name: '42 GitHub forks', exact: true })).toBeVisible();
-  await expect(page.locator(`a[href="${invite}"]`)).toHaveCount(4);
+  await expect(page.locator(`a[href="${invite}"]`)).toHaveCount(3);
   await expect(page.locator('body')).not.toContainText('Coming soon');
   latest = feed('0.0.9');
   await page.clock.fastForward(5 * 60_000);
@@ -56,10 +56,11 @@ test('cached counts are labeled and zero remains a real count', async ({ page })
   await expect(page.locator('[data-stats-note]')).toHaveText('Last available GitHub counts');
 });
 
-test('landing and walkthrough fill the viewport, with details available on demand', async ({ page }) => {
+test('headerless landing and all carousel steps fit the viewport, with details available on demand', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.route('**/api/release', (route) => route.fulfill({ json: feed() }));
   await page.goto('/');
+  await expect(page.locator('body > header, #play-story, #walkthrough-dialog')).toHaveCount(0);
   for (const [width, height] of [[320, 568], [375, 667], [390, 844], [768, 1024], [1024, 768], [1440, 900], [1920, 1080], [844, 390], [667, 375]]) {
     await page.setViewportSize({ width, height });
     await expect(page.locator('.community-stats')).toBeVisible();
@@ -68,41 +69,89 @@ test('landing and walkthrough fill the viewport, with details available on deman
       height: document.documentElement.scrollHeight,
     }))).toEqual({ width, height });
     const main = (await page.locator('main').boundingBox())!;
+    expect(main.y).toBe(0);
     const copy = (await page.locator('.hero-copy').boundingBox())!;
     expect(copy.y).toBeGreaterThanOrEqual(main.y);
     expect(copy.y + copy.height).toBeLessThanOrEqual(main.y + main.height);
-    for (const selector of ['.hero-actions .button', '.hero-actions .text-link', '#play-story', '.site-footer']) {
+    for (const selector of ['.hero-actions .button', '.hero-actions .text-link', '[data-scene-step="0"]', '[data-scene-step="1"]', '[data-scene-step="2"]', '.site-footer']) {
       const box = (await page.locator(selector).boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.y).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
       expect(box.y + box.height).toBeLessThanOrEqual(height + 1);
     }
-    await expect(page.locator('.nav-github')).toBeVisible();
-    await page.getByRole('button', { name: 'Play walkthrough', exact: true }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    const bounds = await dialog.boundingBox();
-    expect(bounds!.width).toBeGreaterThanOrEqual(width - 2);
-    expect(bounds!.x).toBeGreaterThanOrEqual(-1);
-    expect(bounds!.height).toBe(height);
-    expect(await dialog.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Play walkthrough', exact: true })).toBeFocused();
-    await page.getByRole('link', { name: 'Get Modex' }).click();
+    for (let step = 0; step < 3; step++) {
+      await page.locator(`[data-scene-step="${step}"]`).click();
+      await expect(page.locator('.showcase')).toHaveAttribute('data-step', String(step));
+      for (const selector of ['#desktop-screen', '#phone-screen']) {
+        const image = (await page.locator(selector).boundingBox())!;
+        expect(image.width).toBeGreaterThan(0);
+        expect(image.height).toBeGreaterThan(0);
+        expect(image.x).toBeGreaterThanOrEqual(0);
+        expect(image.y).toBeGreaterThanOrEqual(0);
+        expect(image.x + image.width).toBeLessThanOrEqual(width + 1);
+        expect(image.y + image.height).toBeLessThanOrEqual(height + 1);
+      }
+    }
+    await expect(page.locator('.site-footer').getByRole('link', { name: 'GitHub' })).toBeVisible();
+    await page.getByRole('link', { name: 'About Modex', exact: true }).click();
     const details = page.getByRole('dialog', { name: 'More about Modex' });
     await expect(details).toBeVisible();
     await details.getByRole('link', { name: 'View TestFlight beta' }).scrollIntoViewIfNeeded();
     await expect(details.getByRole('link', { name: 'View TestFlight beta' })).toBeInViewport();
     await page.getByRole('button', { name: 'Close details' }).click();
     await expect(details).toBeHidden();
-    await expect(page.getByRole('link', { name: 'Get Modex' })).toBeFocused();
+    await expect(page.getByRole('link', { name: 'About Modex', exact: true })).toBeFocused();
     await page.getByRole('link', { name: 'About Modex', exact: true }).click();
-    await expect(details).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(details).toBeHidden();
   }
+});
+
+test('carousel loops automatically until a step is clicked or activated by keyboard', async ({ page }) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.route('**/api/release', (route) => route.fulfill({ json: feed() }));
+  for (const activation of ['click', 'keyboard']) {
+    await page.goto('/');
+    await expect(page.locator('.scene-description')).toHaveAttribute('aria-live', 'off');
+    for (const step of [1, 2, 0, 1]) {
+      await page.clock.runFor(4_000);
+      await expect(page.locator('.showcase')).toHaveAttribute('data-step', String(step));
+    }
+    const choice = page.getByRole('button', { name: 'Keep it moving' });
+    if (activation === 'click') await choice.click();
+    else { await choice.focus(); await page.keyboard.press('Enter'); }
+    await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.scene-description')).toHaveAttribute('aria-live', 'polite');
+    await page.clock.runFor(16_000);
+    await expect(page.locator('.showcase')).toHaveAttribute('data-step', '2');
+    // Temporary interruptions must not undo the visitor's manual selection.
+    await page.getByRole('link', { name: 'About Modex', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.clock.runFor(8_000);
+    await expect(page.locator('.showcase')).toHaveAttribute('data-step', '2');
+  }
+});
+
+test('carousel respects reduced motion and pauses while details are open', async ({ page }) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.route('**/api/release', (route) => route.fulfill({ json: feed() }));
+  await page.goto('/');
+  await page.clock.runFor(12_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '0');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.clock.runFor(4_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '1');
+  await page.getByRole('link', { name: 'About Modex', exact: true }).click();
+  await page.clock.runFor(12_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '1');
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(4_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '2');
 });
 
 test('verified download and TestFlight links work without JavaScript', async ({ browser }) => {

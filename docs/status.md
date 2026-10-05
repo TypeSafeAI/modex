@@ -59,7 +59,7 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 The download site lives in `apps/site`, deployed to Vercel project `modex` for
 `modex.build`. It uses the Jev near-black blue/pink palette and a three-stage CSS 3D
-walkthrough with real demo captures. Mac links point to the published signed/notarized
+carousel with real demo captures. Mac links point to the published signed/notarized
 latest stable Apple Silicon release automatically through a cached public GitHub feed,
 with independently verified v0.0.7 links as the static fallback. The page shows GitHub
 stars, forks and total stable Mac installer downloads; missing counts remain hidden and
@@ -74,10 +74,11 @@ asset provenance are in [the site README](../apps/site/README.md).
 The repository now pins Vercel to the site-only build and output directory, so Git
 deployments do not attempt to compile the native desktop helper on Linux.
 
-The landing view and walkthrough fill the browser width and dynamic height without page
-scrolling. Download actions remain visible; iPhone, installation and FAQ details open in a
-dismissible dialog with its own scrolling. Compact portrait and landscape layouts retain
-the primary actions. [Viewport verification](reviews/2026-10-05-landing-viewport.md).
+The headerless landing view fills the browser width and dynamic height without page
+scrolling. The carousel loops through three steps every four seconds until a visitor selects
+a step; reduced motion keeps it still. All step controls and download actions remain visible
+on portrait and landscape screens. About Modex opens iPhone, installation and FAQ details in
+a dismissible dialog. [Viewport verification](reviews/2026-10-05-landing-viewport.md).
 
 ## v0.0.7 release
 
