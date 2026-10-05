@@ -45,7 +45,7 @@ app and is not the site's Vercel build command.
 
 - `desktop-*.png`: real Modex demo captures at 2760×1760; generated with
   `electron . --demo --screenshot=<directory> --demo-answer=yes` on 2026-10-05.
-- `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 3, using
+- `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 4, using
   the isolated demo pairing fixture. These illustrate the workflow, not public availability.
 - `modex-mark.png`: the unmodified official logo supplied by Val.
 - `modex-icon.png` and `social-preview.png`: generated from the official mark with

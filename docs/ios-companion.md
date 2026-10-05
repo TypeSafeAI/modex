@@ -22,11 +22,35 @@ Deny, with an extra confirmation before approval. The Mac certificate and token 
 `~/.modex/companion/` with owner-only permissions, outside the repository and app bundle.
 The server needs the Mac app to be running. There is no relay or internet endpoint.
 
+## Persistent connection
+
+Scan once, or use **Copy pairing link** beside the Mac QR code and paste the link into
+Connect on iPhone. The private link grants companion access; keep it with the intended
+phone. The iPhone keeps the pairing in its Keychain across relaunches and updates.
+
+With Mac v0.0.7 and Companion build 4, the Mac advertises a credential-free Bonjour service.
+The iPhone finds its saved Mac after an address/port change and verifies the original pinned
+certificate before adopting a new address. The Mac also recovers after an offline launch
+or network change. Temporary outages preserve the saved pairing and retry automatically;
+returning to the foreground resumes discovery and refreshes the connection.
+
+**Turn off** pauses the Mac listener; turning it back on permits the same pairing.
+**Forget paired phones** revokes all existing pairing links/tokens, including requests still
+in flight. A revoked phone clears its saved access, stops discovery and requires a fresh
+code explicitly provided from the Mac. It cannot restore access by relaunching or discovering
+the Mac again. The phone's explicit **Forget paired Mac** action also clears its local copy.
+Individual per-phone grants are not part of the current shared pairing-token model.
+
+Discovery supplies untrusted candidate addresses, never authentication. The client accepts
+only private IPv4 HTTPS endpoints, refuses redirects, retains its saved endpoint after a
+failed candidate, and alternates back to that endpoint so a bad advertisement cannot block
+recovery permanently. Bonjour publishes only the address and public certificate fingerprint.
+
 ## Build and verify
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 3 candidate), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 4 candidate), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -38,6 +62,8 @@ cd ../../..
 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 # Also exercise the Mac's private network address instead of loopback:
 MODEX_IOS_LAN=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
+# Also restart the Mac fixture on another port and then revoke the saved pairing:
+MODEX_IOS_LAN=1 MODEX_IOS_RECONNECT=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 ```
 
 The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
@@ -90,6 +116,13 @@ After the companion merged in #103, the paired simulator flow also passed agains
 combined v0.0.6 palette candidate using `MODEX_IOS_LAN=1` and the Mac's private network
 address. The Mac candidate passed all 91 source and signed packaged e2e checks. The
 private-network simulator result still does not establish physical iPhone acceptance.
+
+Build 3 adopts the official Modex mark in the App Store icon, onboarding and workspace.
+On 2026-10-05, all 10 native tests and the paired simulator flow passed. Its signed IPA
+passed Apple validation and upload, then reached `VALID` and `IN_BETA_TESTING` in the
+existing Internal group with one tester (build ID `ee29b4ab-89d6-401d-a4ae-c4a860c71ae0`).
+Physical iPhone installation and acceptance remain open; the public website continues to
+show **Coming soon**. See the [v0.0.7 ledger](reviews/2026-10-05-v0.0.7-release-review.md).
 
 ## TestFlight
 

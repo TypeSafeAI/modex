@@ -13,9 +13,15 @@ test("the Mac pairs an iPhone with a QR code and can revoke access", async () =>
     const first = await page.evaluate(() => window.modex.invoke("companion:status", undefined));
     expect(first.enabled).toBe(true);
     expect(first.pairingUri).toMatch(/^modex:\/\/pair\?data=/);
+    await tid(page, "companion-copy-link").click();
+    await expect(tid(page, "companion-copy-link")).toHaveText("Copied pairing link");
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(first.pairingUri);
     await page.getByRole("button", { name: "Forget paired phones" }).click();
     const rotated = await page.evaluate(() => window.modex.invoke("companion:status", undefined));
     expect(rotated.pairingUri).not.toBe(first.pairingUri);
+    await expect(tid(page, "companion-copy-link")).toHaveText("Copy pairing link");
+    await tid(page, "companion-copy-link").click();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(rotated.pairingUri);
     await page.getByRole("button", { name: "Turn off" }).click();
     await expect(tid(page, "companion-qr")).toHaveCount(0);
     expect((await page.evaluate(() => window.modex.invoke("companion:status", undefined))).enabled).toBe(false);

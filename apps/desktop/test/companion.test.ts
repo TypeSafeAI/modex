@@ -10,7 +10,61 @@ import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import { CompanionServer } from "../src/main/engine/companion.js";
 import { DEFAULT_SETTINGS } from "../src/main/engine/store.js";
+import type { CompanionAdvertisement } from "../src/main/engine/companion-discovery.js";
 import type { AppState, ApprovalAnswer, ThreadItem } from "../src/shared/types.js";
+
+test("companion preserves pairing across offline startup, network recovery and port changes", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-reconnect-"));
+  let addresses = ["127.0.0.1"];
+  const advertised: CompanionAdvertisement[] = [];
+  let withdrawn = 0;
+  const source = { state: () => ({ version: 1 as const, projects: [], threads: [], settings: DEFAULT_SETTINGS }),
+    items: () => [], status: () => "idle", send: async () => ({ ok: true }), answer: () => {} };
+  const publisher = (service: CompanionAdvertisement) => { advertised.push(service); return () => { withdrawn++; }; };
+  let server = new CompanionServer(home, source, () => addresses, publisher);
+  const decode = (uri: string) => JSON.parse(Buffer.from(new URL(uri).searchParams.get("data")!, "base64url").toString());
+  const blocker = net.createServer();
+  try {
+    const first = await server.start();
+    const original = decode(first.pairingUri!);
+    await server.dispose();
+    assert.equal(withdrawn, 1);
+    addresses = [];
+    server = new CompanionServer(home, source, () => addresses, publisher);
+    assert.equal(server.shouldStart, true);
+    await assert.rejects(server.start(), /local network/);
+    assert.equal(server.shouldStart, true, "an offline launch must not forget the enabled service");
+    await new Promise<void>((resolve) => blocker.listen(first.port, "127.0.0.1", resolve));
+    addresses = ["127.0.0.1"];
+    await server.refreshNetwork();
+    const restored = decode(server.status().pairingUri!);
+    assert.notEqual(restored.url, original.url);
+    assert.equal(restored.token, original.token);
+    assert.equal(restored.fingerprint, original.fingerprint);
+    assert.equal(advertised.at(-1)?.port, server.status().port);
+    assert.ok(!JSON.stringify(advertised).includes(original.token), "Bonjour must never advertise credentials");
+    addresses = [];
+    await server.refreshNetwork();
+    assert.equal(server.status().pairingUri, undefined);
+    assert.equal(server.shouldStart, true);
+    addresses = ["127.0.0.1"];
+    await server.refreshNetwork();
+    assert.equal(decode(server.status().pairingUri!).token, original.token);
+    server.resetAccess();
+    const revoked = decode(server.status().pairingUri!);
+    assert.notEqual(revoked.token, original.token);
+    await server.dispose();
+    server = new CompanionServer(home, source, () => addresses, publisher);
+    assert.equal(decode((await server.start()).pairingUri!).token, revoked.token, "revocation survives a Mac restart");
+    await server.stop();
+    await server.refreshNetwork();
+    assert.equal(server.shouldStart, false, "reconnection cannot undo the Mac's Turn off action");
+  } finally {
+    await server.stop();
+    if (blocker.listening) await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
 
 for (const shutdown of ["stop", "dispose"] as const) {
   test(`${shutdown} cancels companion startup before it finishes listening`, async () => {

@@ -65,6 +65,10 @@
       "dist/src/main/engine/terminal-supervisor"
     ],
     "mac": {
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Let your paired iPhone find and reconnect to Modex on this Mac.",
+        "NSBonjourServices": ["_modex._tcp"]
+      },
       "category": "public.app-category.developer-tools",
       "target": [
         {

@@ -29,6 +29,9 @@ final class CompanionFlowTests: XCTestCase {
         let thread = app.buttons["thread-abcdef12"]
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "The paired Mac's thread should appear.")
         capture(app, name: "Paired workspace")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(thread.waitForExistence(timeout: 20), "Pairing must survive relaunch without scanning again.")
         thread.tap()
         let approval = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "approve-")).firstMatch
         XCTAssertTrue(approval.waitForExistence(timeout: 20), "The pending Mac approval should appear.")
@@ -47,14 +50,38 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.waitForExistence(timeout: 20))
         capture(app, name: "Completed follow-up")
         app.buttons["Back to threads"].tap()
+        if fixture.reconnect == true {
+            XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].waitForExistence(timeout: 60), "Bonjour must recover the saved pairing when the Mac restarts on a different port.")
+            XCTAssertFalse(pair.exists)
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].waitForExistence(timeout: 20), "The verified new address must survive another relaunch.")
+        }
         app.buttons["workspace-options"].tap()
         app.buttons["Forget paired Mac…"].tap()
         let forgetConfirmation = app.alerts["Forget this Mac?"]
         forgetConfirmation.buttons["Cancel"].tap()
         XCTAssertTrue(forgetConfirmation.waitForNonExistence(timeout: 5))
         XCTAssertTrue(thread.exists, "Cancelling must preserve the paired workspace.")
-        forgetMac(app)
-        XCTAssertTrue(pair.waitForExistence(timeout: 10), "Forgetting the Mac returns to pairing.")
+        if fixture.reconnect == true {
+            thread.tap()
+            let followup = app.descendants(matching: .any)["followup-input"].firstMatch
+            XCTAssertTrue(followup.waitForExistence(timeout: 10))
+            followup.tap()
+            followup.typeText("Revoke this phone")
+            app.buttons["send-followup"].tap()
+            let revoked = app.alerts["Connection issue"]
+            XCTAssertTrue(revoked.waitForExistence(timeout: 20), "Mac revocation must end the saved pairing.")
+            XCTAssertTrue(revoked.staticTexts["Access was removed on your Mac. Pair again with a new code from Modex."].exists)
+            revoked.buttons["OK"].tap()
+            XCTAssertTrue(pair.waitForExistence(timeout: 10))
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(pair.waitForExistence(timeout: 10), "A revoked pairing must stay revoked after relaunch.")
+        } else {
+            forgetMac(app)
+            XCTAssertTrue(pair.waitForExistence(timeout: 10), "Forgetting the Mac returns to pairing.")
+        }
     }
 
     private func forgetMac(_ app: XCUIApplication) {
@@ -72,5 +99,5 @@ final class CompanionFlowTests: XCTestCase {
         add(attachment)
     }
 
-    private struct Fixture: Decodable { let link: String }
+    private struct Fixture: Decodable { let link: String; let reconnect: Bool? }
 }

@@ -7,6 +7,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { AddressInfo } from "node:net";
 import type { AppState, ApprovalAnswer, ThreadItem } from "../../shared/types.js";
+import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
 
 interface CompanionSource {
   state(): AppState;
@@ -28,9 +29,12 @@ export class CompanionServer {
   private host = "";
   private config: Config;
   private fingerprint = "";
+  private monitor?: ReturnType<typeof setInterval>;
+  private unpublish?: () => void;
+  private reconnecting: Promise<void> | null = null;
   private readonly dir: string;
 
-  constructor(home: string, private readonly source: CompanionSource, private readonly addresses = localAddresses) {
+  constructor(home: string, private readonly source: CompanionSource, private readonly addresses = localAddresses, private readonly publish: CompanionPublisher = publishCompanion) {
     this.dir = path.join(home, "companion");
     fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     const file = path.join(this.dir, "config.json");
@@ -73,6 +77,7 @@ export class CompanionServer {
   }
 
   start(): Promise<CompanionStatus> {
+    this.monitor ??= setInterval(() => { void this.refreshNetwork().catch(() => {}); }, 2500).unref();
     if (this.server) return Promise.resolve(this.status());
     if (this.starting) return this.starting;
     const starting = this.listen(++this.generation).finally(() => {
@@ -110,7 +115,30 @@ export class CompanionServer {
     this.config.enabled = true;
     this.config.port = this.port;
     this.save();
+    this.unpublish = this.publish({ host, port: this.port, fingerprint: this.fingerprint });
     return this.status();
+  }
+
+  /** Rebind after Wi-Fi changes or a launch without a network; keep the same trust and token. */
+  refreshNetwork(): Promise<void> {
+    if (this.reconnecting) return this.reconnecting;
+    const reconnecting = (async () => {
+      if (!this.config.enabled || !this.monitor || this.starting) return;
+      const host = this.addresses()[0] ?? "";
+      if (this.server && this.host !== host) {
+        const server = this.server;
+        this.server = null;
+        this.generation += 1;
+        this.host = "";
+        this.port = 0;
+        this.unpublish?.();
+        this.unpublish = undefined;
+        await this.close(server);
+      }
+      if (this.config.enabled && this.monitor && !this.server && host) await this.start();
+    })().finally(() => { if (this.reconnecting === reconnecting) this.reconnecting = null; });
+    this.reconnecting = reconnecting;
+    return reconnecting;
   }
 
   async stop(): Promise<CompanionStatus> {
@@ -121,6 +149,10 @@ export class CompanionServer {
   }
 
   async dispose(): Promise<void> {
+    clearInterval(this.monitor);
+    this.monitor = undefined;
+    this.unpublish?.();
+    this.unpublish = undefined;
     this.generation += 1;
     const starting = this.starting;
     this.starting = null;
@@ -148,7 +180,7 @@ export class CompanionServer {
 
   status(): CompanionStatus {
     const addresses = this.addresses();
-    if (!this.server) return { enabled: false, addresses };
+    if (!this.server) return { enabled: this.config.enabled, addresses };
     const data = Buffer.from(JSON.stringify({ url: `https://${this.host}:${this.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
     return { enabled: true, addresses, port: this.port, pairingUri: `modex://pair?data=${data}` };
   }

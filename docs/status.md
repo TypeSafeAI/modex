@@ -72,7 +72,9 @@ polished update banner: clearer release/download copy, larger controls, keyboard
 reduced-motion support and a fresh check when the app regains focus. Requests remain
 cached and coalesced in the main process. v0.0.6 predates the banner and needs one manual
 update; v0.0.7 enables notifications for subsequent releases.
-The official pink mark now spans desktop and companion icons, in-app branding, website
+The companion gains persistent reconnection with pinned Bonjour discovery, recovery from
+Mac address/port changes, explicit revocation handling and Copy pairing link. The official
+pink mark now spans desktop and companion icons, in-app branding, website
 navigation, social artwork and documentation. Play walkthrough opens a full-width
 presentation with pause/resume, replay and keyboard dismissal.
 [Release ledger](reviews/2026-10-05-v0.0.7-release-review.md).
@@ -106,6 +108,12 @@ presentation with pause/resume, replay and keyboard dismissal.
 
 ## In flight
 
+- **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
+  with a separately installed signed host to retain full desktop functionality. Apple's
+  sandbox and standalone-app rules require an architecture and review gate. The
+  [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
+  end-to-end acceptance gates. No macOS Store/TestFlight build has been uploaded.
+
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
   Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
@@ -116,8 +124,10 @@ presentation with pause/resume, replay and keyboard dismissal.
   The signed build 2 distribution IPA also passed strict signature and ZIP verification.
   On 2026-10-05, build 2 passed Apple validation and upload, reached `VALID`, and entered
   `IN_BETA_TESTING` in the existing Internal group with one tester. Physical iPhone
-  installation and acceptance remain open. The source plist now records the system-encryption
-  exemption so future uploads retain it.
+  installation and acceptance remain open. The source plist records the system-encryption
+  exemption. Build 3 adds the official Modex icon and in-app branding; all 10 native tests
+  and paired simulator flow passed. On 2026-10-05 its signed IPA passed validation and
+  upload, reached `VALID`, and entered `IN_BETA_TESTING` in the same Internal group.
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 

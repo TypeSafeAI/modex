@@ -7,6 +7,9 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<CompanionStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const requestRevision = useRef(0);
+  const actionPending = useRef(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -14,7 +17,19 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
-    void bridge.invoke("companion:status", undefined).then(setStatus).catch((err: Error) => setError(err.message));
+    let active = true;
+    const refresh = async () => {
+      if (actionPending.current) return;
+      const request = ++requestRevision.current;
+      try {
+        const value = await bridge.invoke("companion:status", undefined);
+        if (active && request === requestRevision.current) setStatus(value);
+      } catch (err) {
+        if (active && request === requestRevision.current) setError((err as Error).message);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 2500);
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); }
       if (event.key !== "Tab") return;
@@ -25,14 +40,24 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", onKey, true);
-    return () => { document.removeEventListener("keydown", onKey, true); previous?.focus(); };
+    return () => { active = false; clearInterval(timer); document.removeEventListener("keydown", onKey, true); previous?.focus(); };
   }, []);
   const act = async (channel: "companion:start" | "companion:stop" | "companion:reset") => {
     setBusy(true);
+    actionPending.current = true;
+    requestRevision.current += 1;
     setError(null);
     try { setStatus(await bridge.invoke(channel, undefined)); }
     catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
+    finally { actionPending.current = false; setBusy(false); }
+  };
+  const copyLink = async () => {
+    const link = status?.pairingUri;
+    if (!link) return;
+    try {
+      await bridge.invoke("clipboard:write", { text: link });
+      setCopiedLink(link);
+    } catch { setError("Could not copy the pairing link. Please try again."); }
   };
   return (
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -48,6 +73,8 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
           <div className="companion-pairing">
             <div className="companion-qr"><img src={status.qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" /></div>
             <p>Open Modex on your iPhone and scan this code.</p>
+            <button className="btn" data-testid="companion-copy-link" disabled={busy || !status.pairingUri} onClick={() => void copyLink()}>{copiedLink === status.pairingUri ? "Copied pairing link" : "Copy pairing link"}</button>
+            <span role="status" className="sr-only">{copiedLink === status.pairingUri ? "Pairing link copied to clipboard" : ""}</span>
             <span className="companion-address">Mac on {status.addresses[0]} · local network</span>
           </div>
         ) : (
@@ -66,7 +93,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
             </>
           ) : <button className="btn primary" data-testid="companion-start" disabled={busy || !status} onClick={() => void act("companion:start")}>Turn on companion</button>}
         </div>
-        <p className="companion-note">Your Mac and iPhone must share a network. Only phones paired with this code can access your threads. Turn off or reset access here at any time.</p>
+        <p className="companion-note">Pair once on the same network. Your iPhone remembers this Mac and reconnects automatically. Keep this code and link private. Turn off pauses access; Forget paired phones permanently revokes the old code and link.</p>
       </section>
     </div>
   );
