@@ -24,8 +24,10 @@ published v0.0.6; iPhone is **Coming soon** as requested. No signup or public be
 
 Vercel project `0xbuns/modex`, static Build Output API deployment. Public production alias:
 <https://modex-0xbuns.vercel.app>. The project is public so downloads do not require a Vercel
-account. The requested custom domain is attached, but external Namecheap DNS is pending:
-A record `modex` → `76.76.21.21`. Final DNS/HTTPS verification must follow that change.
+account. After the initial deployment, Val selected `modex.build` as the homepage and took
+ownership of custom-domain and DNS setup in Vercel. The site metadata and repository links
+target that hostname; custom-domain HTTPS verification follows Val's setup. The public
+Vercel alias remains available for content verification.
 
 Deployment uploads contain built site files only. There is no app runtime, model request,
 analytics collection, remote font service, or credential requirement.
@@ -39,3 +41,8 @@ responses match the local build byte for byte.
 
 After merging CLI-discovery PR #114 into this branch, the combined tree passed the same
 build/typecheck gates, all 15 core/259 desktop/1 bridge tests, and all 98 desktop e2e checks.
+
+The `modex.build` homepage update passed the same build/typecheck gates, 275 unit/bridge
+tests and all 98 desktop e2e checks. Built HTML uses the new canonical, Open Graph URL and
+social-image URL, with no previous hostname or unreplaced version placeholders. The Mac
+download still targets v0.0.6, and iPhone availability remains **Coming soon**.
