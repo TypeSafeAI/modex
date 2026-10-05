@@ -356,7 +356,10 @@ export interface CompanionStatus {
   qrDataUrl?: string;
 }
 
+export interface ReleaseUpdate { version: string; url: string; }
+
 export interface BridgeCommands {
+  "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };
   "project:remove": { req: { projectId: string }; res: AppState };

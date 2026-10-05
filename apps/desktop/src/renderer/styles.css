@@ -566,3 +566,12 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .theme-preview-composer i { position: absolute; width: 7px; height: 7px; right: 4px; top: 4px; border-radius: 50%; background: var(--preview-accent); }
 .theme-name { padding-right: 25px; font-size: 13px; font-weight: 600; }
 .theme-description { color: var(--text-3); font-size: 12px; }
+
+/* Release notices stay in the workspace flow and use either theme's accent. */
+.update-banner { display: flex; align-items: center; flex: none; flex-wrap: wrap; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--border-pane); background: color-mix(in srgb, var(--accent) 8%, var(--bg-main)); color: var(--text-2); font-size: var(--text-sm); }
+.update-banner > .icon-svg { color: var(--accent); }
+.update-banner > span { flex: 1; min-width: 140px; }
+.update-banner a { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; color: var(--accent); font-weight: 500; text-decoration: none; }
+.update-banner a:hover { text-decoration: underline; }
+.update-banner a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.update-banner .icon-btn { flex: none; }

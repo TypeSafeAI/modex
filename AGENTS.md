@@ -50,5 +50,8 @@ itself driving one of them.
   routing and approval rules; it never runs a turn or sees file contents. Without Jev,
   Auto uses its heuristic and approval rules use only exact matches or ask a human. See
   `docs/auto-routing.md` and `docs/approval-rules.md`.
+- Installed desktop builds may fetch public GitHub release metadata for update banners.
+  The fixed release endpoint receives only application/version headers; no prompts, files
+  or account credentials. Development, demos and tests keep this network check disabled.
 - Scratch scripts go in `apps/desktop/.probes/` (git-ignored). Playwright wipes
   `apps/desktop/test-results/` on every run.

@@ -56,6 +56,13 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 ## On `main`, not yet released
 
+- **Release notification banner.** Installed Mac builds check public GitHub release
+  metadata at launch and hourly, and show a dismissible banner for a newer stable release
+  with an installer for the current architecture. View update opens its release page.
+  Dismissal survives relaunch; later versions appear again. Offline checks stay quiet,
+  and downloads/installation remain manual. Build, typecheck, 15 core/253 desktop/1 bridge
+  tests and all 97 e2e checks passed locally, including both themes. The live release feed
+  correctly offers v0.0.6 to v0.0.5 and nothing to v0.0.6. This follows v0.0.6.
 - **OpenCoven desktop theme.** Settings → General → Theme adds Cave's charcoal/black
   surfaces and lavender purple accent alongside the default Jev palette. Save/Cancel,
   keyboard selection, relaunch persistence, the native window and an already-open terminal
@@ -131,7 +138,7 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Auto-update.** Unblocked now that builds are notarized.
+1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
 2. **Image attachments** in the composer (both CLIs accept them).
 3. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
    the platform-specific pieces to audit first.
