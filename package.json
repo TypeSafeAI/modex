@@ -13,7 +13,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run build -w @modex/core && npm run build -w @modex/desktop && npm run build -w @modex/site",
+    "build": "npm run build -w @modex/core && npm run build -w @modex/desktop && npm run build -w @modex/site && npm run build -w @modex/store-desktop",
     "test": "npm run test -w @modex/core && npm run test -w @modex/desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop": "npm run start -w @modex/desktop",

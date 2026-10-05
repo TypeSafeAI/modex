@@ -26,6 +26,7 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) =
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   useLayoutEffect(() => { if (state) applyTheme(state.settings.theme); }, [state?.settings.theme]);
+  const [connectionRevision, setConnectionRevision] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
@@ -89,6 +90,14 @@ export function App() {
     }).catch((err: Error) => setError({ message: err.message }));
   }, [refresh]);
 
+  useEffect(() => bridge.onReconnect?.(() => {
+    setConnectionRevision((revision) => revision + 1);
+    void refresh().then((snapshot) => {
+      const current = selectedRef.current;
+      if (current && !snapshot.threads.some((thread) => thread.id === current)) setSelected(null);
+    }).catch((err: Error) => setError({ message: err.message }));
+  }), [refresh]);
+
   // Live events from every thread; the selected thread re-renders, others just update status.
   useEffect(() => {
     return bridge.onEvent((e: ThreadEvent) => {
@@ -139,7 +148,7 @@ export function App() {
       });
     }
     void loadChanges(selected);
-  }, [selected, loadChanges]);
+  }, [selected, loadChanges, connectionRevision]);
 
   // A draft has no thread to take a Changes snapshot from, so it asks for its project's branch directly.
   const [draftBranch, setDraftBranch] = useState<{ projectId: string; branch: string | null } | null>(null);

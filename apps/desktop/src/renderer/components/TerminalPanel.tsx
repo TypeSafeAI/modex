@@ -30,6 +30,7 @@ export function TerminalPanel({ theme, thread, onClose, command, onCommandConsum
   const [generation, setGeneration] = useState(0);
   const [error, setError] = useState("");
   const [exitCode, setExitCode] = useState<number | null>(null);
+  useEffect(() => bridge.onReconnect?.(() => setGeneration((value) => value + 1)), []);
 
   useEffect(() => {
     const parent = panel.current?.parentElement;

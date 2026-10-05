@@ -205,3 +205,14 @@ Roughly in the order they earn their place; none is scheduled.
 - PRs merge through `~/.claude/scripts/gh-merge-when-green.sh <pr> --squash` after CI, with
   signed commits only.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
+
+
+## Local Mac Store preview in flight
+
+The isolated `store-preview` branch adds a dedicated opt-in loopback host and a sandboxed
+Electron MAS client that reuses the desktop renderer. Pairing/pinning/revocation unit tests
+and one real host/client workflow passed. The locally signed MAS app opens its connection
+screen with App Sandbox verified. Full signed-client/host acceptance, the remaining parity
+matrix, provisioning, App Review eligibility and macOS TestFlight are still pending; this
+is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+[run instructions](../apps/store-desktop/README.md).

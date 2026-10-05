@@ -4,7 +4,9 @@ Requested on 2026-10-05: the full desktop experience through the Mac App Store a
 TestFlight, with the same official identity. Val selected investigation of a sandboxed
 Store front end with a separately installed, signed Mac host.
 
-**Status: architecture assessed; no Mac App Store/TestFlight build has been uploaded.**
+**Status: a local signed, sandboxed MAS preview builds and opens; no Mac App Store/TestFlight build has been uploaded.**
+The preview implementation and evidence are in [the preview ledger](mac-store-preview-plan.md);
+[source launch and signing instructions](../apps/store-desktop/README.md) are available.
 The existing Developer ID release remains the supported full desktop app. Companion
 TestFlight builds are iPhone builds and do not prove macOS Store compatibility.
 

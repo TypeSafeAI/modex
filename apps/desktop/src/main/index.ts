@@ -1,7 +1,7 @@
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +20,7 @@ import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
 import { CompanionServer } from "./engine/companion.js";
+import { DesktopHost } from "./engine/desktop-host.js";
 import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
@@ -65,8 +66,10 @@ const updates = new ReleaseChecker({
 let win: BrowserWindow | null = null;
 let shuttingDown = false;
 let shutdownComplete = false;
+let desktopHost: DesktopHost | undefined;
 const emit = (event: ThreadEvent): void => {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
+  desktopHost?.broadcast("thread", event);
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
@@ -93,8 +96,10 @@ const companionView = async (status: CompanionStatus): Promise<CompanionStatus> 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
 const SPAWNS = new Set<keyof BridgeCommands>(["settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
+const desktopCommands = new Map<string, (payload: unknown) => unknown>();
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
+  desktopCommands.set(channel, (payload) => fn(payload as BridgeCommands[K]["req"]));
   ipcMain.handle(channel, async (event, req) => {
     if (shuttingDown) throw new Error("Modex is shutting down.");
     if (SPAWNS.has(channel)) await pathReady;
@@ -114,7 +119,10 @@ function cwdFor(threadId: string): string {
 /** Embedded shells, one per thread, started in the thread's working directory. */
 const terminals = new TerminalManager(
   (id) => { runner.assertThreadAvailable(id); return cwdFor(id); },
-  (event) => { if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", event); },
+  (event) => {
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", event);
+    desktopHost?.broadcast("terminal", event);
+  },
   undefined,
   process.env.MODEX_E2E ? { ...process.env, BASH_SILENCE_DEPRECATION_WARNING: "1" } : process.env,
   // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
@@ -305,6 +313,39 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   win = createWindow();
+  if (flag("desktop-host") && !demo) {
+    desktopHost = new DesktopHost(home, {
+      version: app.getVersion(),
+      channels: () => [...desktopCommands.keys()],
+      invoke: async (channel, payload, authorized) => {
+        if (SPAWNS.has(channel as keyof BridgeCommands)) await pathReady;
+        if (shuttingDown || !authorized()) throw new Error("Desktop host access is unavailable.");
+        const command = desktopCommands.get(channel);
+        if (!command) throw new Error("Unknown desktop command.");
+        return command(payload);
+      },
+    });
+    try {
+      await desktopHost.start();
+      const menu = Menu.getApplicationMenu() ?? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]);
+      menu.append(new MenuItem({ label: "Desktop access", submenu: [
+        { label: "Pair a desktop…", click: () => { void (async () => {
+          const result = await dialog.showMessageBox(win!, { type: "info", title: "Connect a trusted desktop", message: "Allow a desktop to use this Mac host", detail: "A connected desktop can manage projects, run coding agents and terminals, change settings, and review approvals. Copy this link only into a desktop app you trust. The link works once and expires in five minutes. You can revoke access from this menu.", buttons: ["Cancel", "Copy connection link"], defaultId: 0, cancelId: 0 });
+          if (result.response === 1) clipboard.writeText(desktopHost!.invite());
+        })().catch((error: Error) => dialog.showErrorBox("Desktop pairing failed", error.message)); } },
+        { label: "Manage connected desktops…", click: () => { void (async () => {
+          const clients = desktopHost!.clients();
+          const result = await dialog.showMessageBox(win!, { type: "info", title: "Connected desktops", message: clients.length ? "Remove a desktop's host access" : "No desktops are connected", detail: clients.length ? "Revoking access disconnects that desktop and prevents further commands. Coding turns already accepted by this host remain owned by the host." : "Use Pair a desktop to create a one-time connection link.", buttons: ["Done", ...clients.map((client, i) => `Revoke ${client.name} (${i + 1})`)], defaultId: 0, cancelId: 0 });
+          const selected = clients[result.response - 1];
+          if (selected) desktopHost!.revoke(selected.id);
+        })().catch((error: Error) => dialog.showErrorBox("Desktop access could not be changed", error.message)); } },
+      ] }));
+      Menu.setApplicationMenu(menu);
+    } catch (error) {
+      console.error("[modex] desktop host could not start:", (error as Error).message);
+      dialog.showErrorBox("Desktop host could not start", "Its local port may already be in use. Quit the other Modex host and try again.");
+    }
+  }
   if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
@@ -327,7 +368,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;
-  void Promise.allSettled([companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
+  void Promise.allSettled([desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
     chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {

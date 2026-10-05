@@ -325,6 +325,8 @@ export interface ModexBridge {
   onEvent(cb: (event: ThreadEvent) => void): () => void;
   onTerminalEvent(cb: (event: TerminalEvent) => void): () => void;
   platform: string;
+  /** Optional host transport: refresh snapshots after reconnect without discarding drafts. */
+  onReconnect?(cb: () => void): () => void;
 }
 
 export interface BackendHealth {
