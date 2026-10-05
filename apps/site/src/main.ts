@@ -12,6 +12,10 @@ const buttons = [
   ...document.querySelectorAll<HTMLButtonElement>("[data-scene-step]"),
 ];
 const play = document.querySelector<HTMLButtonElement>("#play-story")!;
+const presentation = document.querySelector<HTMLDialogElement>("#walkthrough-dialog")!;
+const presentationContent = document.querySelector<HTMLElement>("#walkthrough-content")!;
+const closePresentation = document.querySelector<HTMLButtonElement>("#close-walkthrough")!;
+let placeholder: HTMLDivElement | undefined;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
 const scenes = [
@@ -39,12 +43,22 @@ const scenes = [
 ];
 let current = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
+function updatePlaybackControl() {
+  const playing = timer !== undefined;
+  play.setAttribute("aria-pressed", String(playing));
+  play.querySelector(".play-symbol")!.textContent = playing ? "Ⅱ" : "▶";
+  play.querySelector(".play-label")!.textContent = playing
+    ? "Pause walkthrough"
+    : presentation.open && current === scenes.length - 1
+      ? "Replay walkthrough"
+      : presentation.open && current > 0
+        ? "Resume walkthrough"
+        : "Play walkthrough";
+}
 function stop() {
   clearTimeout(timer);
   timer = undefined;
-  play.setAttribute("aria-pressed", "false");
-  play.querySelector(".play-symbol")!.textContent = "▶";
-  play.querySelector(".play-label")!.textContent = "Play walkthrough";
+  updatePlaybackControl();
 }
 function show(index: number) {
   current = index;
@@ -61,6 +75,7 @@ function show(index: number) {
   buttons.forEach((button, i) =>
     button.setAttribute("aria-pressed", String(i === index)),
   );
+  updatePlaybackControl();
 }
 buttons.forEach((button, index) =>
   button.addEventListener("click", () => {
@@ -73,10 +88,20 @@ play.addEventListener("click", () => {
     stop();
     return;
   }
-  show(0);
-  play.setAttribute("aria-pressed", "true");
-  play.querySelector(".play-symbol")!.textContent = "Ⅱ";
-  play.querySelector(".play-label")!.textContent = "Pause walkthrough";
+  if (!presentation.open) {
+    // Move the existing interactive stage so screenshots, controls and IDs stay unique.
+    placeholder = document.createElement("div");
+    placeholder.style.height = `${showcase.getBoundingClientRect().height}px`;
+    showcase.replaceWith(placeholder);
+    presentationContent.append(showcase);
+    document.documentElement.classList.add("walkthrough-open");
+    play.removeAttribute("aria-haspopup");
+    resetTilt();
+    presentation.showModal();
+    show(0);
+  } else if (current === scenes.length - 1) {
+    show(0);
+  }
   const advance = () => {
     if (current === scenes.length - 1) {
       stop();
@@ -86,6 +111,31 @@ play.addEventListener("click", () => {
     timer = setTimeout(advance, 4_000);
   };
   timer = setTimeout(advance, 4_000);
+  updatePlaybackControl();
+});
+closePresentation.addEventListener("click", () => presentation.close());
+presentation.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const controls = [...presentation.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")]
+    .filter((button) => button.getClientRects().length > 0);
+  const first = controls[0], last = controls.at(-1);
+  if (!first || !last) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+presentation.addEventListener("close", () => {
+  stop();
+  placeholder?.replaceWith(showcase);
+  placeholder = undefined;
+  document.documentElement.classList.remove("walkthrough-open");
+  play.setAttribute("aria-haspopup", "dialog");
+  resetTilt();
+  play.focus({ preventScroll: true });
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) stop();

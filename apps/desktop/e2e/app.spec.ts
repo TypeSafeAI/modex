@@ -244,7 +244,7 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await expect(tid(route, "route-meta")).toContainText("quick answer · heuristic");
   await expect(tid(route, "item-body")).toHaveCount(0);
   await tid(route, "item-toggle").click();
-  await expect(tid(route, "item-body")).toContainText("No TypeSafe API key found");
+  await expect(tid(route, "item-body")).toContainText("No Jev API key found");
   await expect(tid(route, "item-body")).toContainText("are all empty; used the built-in heuristic.");
   await expect(tid(route, "item-body")).toContainText("quick answer · complexity");
   await page.screenshot({ path: path.join(appDir, "test-results", "e2e-auto-route.png") });
@@ -259,7 +259,7 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   // Settings explains why the heuristic judged, counts the auto turn, and exposes the policy knobs.
   await tid(page, "open-settings").click();
   const status = tid(page, "routing-status");
-  await expect(status).toContainText("No TypeSafe API key found");
+  await expect(status).toContainText("No Jev API key found");
   await expect(status).toContainText("1 auto turn so far");
   await expect(tid(page, "routing-posture")).toHaveValue("balanced");
   await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
@@ -290,12 +290,12 @@ test("a key typed into Settings is kept encrypted outside state.json, reported m
   await expect(tid(page, "routing-status")).toContainText("key ****4321 from Modex keychain");
   await expect(reopenedKeyBox.locator("input[type=password]")).toHaveAttribute("placeholder", /Saved/);
   await reopenedKeyBox.getByRole("button", { name: "Clear now" }).click();
-  await expect(status).toContainText("No TypeSafe API key found");
+  await expect(status).toContainText("No Jev API key found");
   await expect(reopenedKeyBox.getByRole("button", { name: "Clear now" })).toBeDisabled();
   expect(fs.readFileSync(secretsFile, "utf8")).not.toContain("sk-e2e-typed-key-4321");
   await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
   await tid(page, "open-settings").click();
-  await expect(tid(page, "routing-status")).toContainText("No TypeSafe API key found");
+  await expect(tid(page, "routing-status")).toContainText("No Jev API key found");
   await expect(tid(page, "jev-key").getByRole("button", { name: "Clear now" })).toBeDisabled();
   await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
 });

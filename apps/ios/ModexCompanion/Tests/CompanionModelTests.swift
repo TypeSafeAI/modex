@@ -3,6 +3,81 @@ import XCTest
 @testable import ModexCompanion
 
 @MainActor final class CompanionModelTests: XCTestCase {
+    func testOfflinePairingSurvivesRelaunchAndReconnectsAtANewAddress() async {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let oldClient = ControlledClient()
+        let discovery = FakeDiscovery()
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { _ in oldClient })
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "offline"))
+        await oldClient.enqueueSnapshot(pending)
+        let refresh = Task { await model.refresh() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        await pending.resolve(.failure(URLError(.notConnectedToInternet)))
+        await refresh.value
+        XCTAssertEqual(store.pairing, original)
+        XCTAssertEqual(model.pairing, original)
+        XCTAssertFalse(model.connected)
+
+        let moved = URL(string: "https://192.168.1.23:45123")!
+        let restoredDiscovery = FakeDiscovery()
+        restoredDiscovery.endpoint = moved
+        let restored = CompanionModel(store: store, discovery: restoredDiscovery, makeClient: { _ in ControlledClient() })
+        XCTAssertEqual(restored.pairing, original, "Launching must restore the saved Mac without scanning.")
+        restored.startPolling()
+        restored.stopPolling()
+        await restored.refresh()
+        XCTAssertTrue(restored.connected)
+        XCTAssertEqual(store.pairing?.url, moved)
+        XCTAssertEqual(store.pairing?.token, original.token)
+        XCTAssertEqual(store.pairing?.fingerprint, original.fingerprint)
+    }
+
+    func testMacRevocationClearsTrustAndCannotReconnectFromDiscovery() async {
+        let store = MemoryPairingStore()
+        let client = ControlledClient()
+        let discovery = FakeDiscovery()
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { _ in client })
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "revoked"))
+        await client.enqueueSnapshot(pending)
+        let refresh = Task { await model.refresh() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        await pending.resolve(.failure(CompanionError.accessRevoked))
+        await refresh.value
+        XCTAssertNil(store.pairing)
+        XCTAssertNil(model.pairing)
+        XCTAssertTrue(model.snapshot.threads.isEmpty)
+        XCTAssertTrue(discovery.stopped)
+        model.startPolling()
+        await model.refresh()
+        XCTAssertFalse(model.connected)
+        XCTAssertNotNil(model.error)
+    }
+
+    func testUnverifiedDiscoveredAddressCannotReplaceSavedPairing() async {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let client = ControlledClient()
+        let discovery = FakeDiscovery()
+        discovery.endpoint = URL(string: "https://192.168.1.77:45123")!
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { _ in client })
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "certificate rejected"))
+        await client.enqueueSnapshot(pending)
+        // Emit synchronously, then cancel polling so this test owns the one request below.
+        model.startPolling()
+        model.stopPolling()
+        let refresh = Task { await model.refresh() }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        await pending.resolve(.failure(URLError(.serverCertificateUntrusted)))
+        await refresh.value
+        XCTAssertEqual(store.pairing, original)
+        XCTAssertEqual(model.pairing, original)
+        XCTAssertFalse(model.connected)
+        await model.refresh()
+        XCTAssertTrue(model.connected)
+        XCTAssertEqual(store.pairing, original, "A failed discovery candidate must not prevent recovery at the saved address.")
+    }
+
     func testThreadSelectionClearsOldItemsAndRejectsAnOlderRefresh() async {
         let (model, client) = fixture()
         await model.select("a")
@@ -135,8 +210,18 @@ import XCTest
 
     private func fixture() -> (CompanionModel, ControlledClient) {
         let client = ControlledClient()
-        return (CompanionModel(store: MemoryPairingStore(), makeClient: { _ in client }), client)
+        return (CompanionModel(store: MemoryPairingStore(), discovery: FakeDiscovery(), makeClient: { _ in client }), client)
     }
+}
+
+@MainActor private final class FakeDiscovery: CompanionDiscovery {
+    var endpoint: URL?
+    var stopped = false
+    func start(fingerprint: String, found: @escaping (URL) -> Void) {
+        stopped = false
+        if let endpoint { found(endpoint) }
+    }
+    func stop() { stopped = true }
 }
 
 private final class MemoryPairingStore: PairingStorage {

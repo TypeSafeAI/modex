@@ -64,8 +64,27 @@ The homepage link, canonical URL and social metadata target `https://modex.build
 Val handles custom-domain and DNS setup in Vercel manually; the public preview is
 [modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app). Build and deployment commands and
 asset provenance are in [the site README](../apps/site/README.md).
+The repository now pins Vercel to the site-only build and output directory, so Git
+deployments do not attempt to compile the native desktop helper on Linux.
 
 ## On `main`, not yet released
+
+**v0.0.7 candidate.** A patch release is being prepared with the changes below and a
+polished update banner: clearer release/download copy, larger controls, keyboard focus,
+reduced-motion support and a fresh check when the app regains focus. Requests remain
+cached and coalesced in the main process. v0.0.6 predates the banner and needs one manual
+update; v0.0.7 enables notifications for subsequent releases.
+The companion gains persistent reconnection with pinned Bonjour discovery, recovery from
+Mac address/port changes, explicit revocation handling and Copy pairing link. The official
+pink mark now spans desktop and companion icons, in-app branding, website
+navigation, social artwork and documentation. Play walkthrough opens a full-width
+presentation with pause/resume, replay and keyboard dismissal.
+Coding CLI connections use separate provider cards, account-state badges, cancellable
+browser sign-in, and copyable terminal recovery commands for the resolved executable.
+Missing CLIs have an install/path remedy, and overrides remain verified before saving.
+Product attribution identifies Modex as independent; the site credits **Powered by Jev**
+and exposes GitHub in the main navigation on desktop and mobile.
+[Release ledger](reviews/2026-10-05-v0.0.7-release-review.md).
 
 - **Automatic CLI discovery and verified overrides.** Claude and Codex resolve an executable
   from the hydrated login PATH, native installs, Homebrew and common version managers before
@@ -96,6 +115,12 @@ asset provenance are in [the site README](../apps/site/README.md).
 
 ## In flight
 
+- **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
+  with a separately installed signed host to retain full desktop functionality. Apple's
+  sandbox and standalone-app rules require an architecture and review gate. The
+  [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
+  end-to-end acceptance gates. No macOS Store/TestFlight build has been uploaded.
+
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
   Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
@@ -106,8 +131,14 @@ asset provenance are in [the site README](../apps/site/README.md).
   The signed build 2 distribution IPA also passed strict signature and ZIP verification.
   On 2026-10-05, build 2 passed Apple validation and upload, reached `VALID`, and entered
   `IN_BETA_TESTING` in the existing Internal group with one tester. Physical iPhone
-  installation and acceptance remain open. The source plist now records the system-encryption
-  exemption so future uploads retain it.
+  installation and acceptance remain open. The source plist records the system-encryption
+  exemption. Build 3 adds the official Modex icon and in-app branding; all 10 native tests
+  and paired simulator flow passed. On 2026-10-05 its signed IPA passed validation and
+  upload, reached `VALID`, and entered `IN_BETA_TESTING` in the same Internal group.
+  Build 4 adds persistent pairing and automatic recovery after Mac address/port changes.
+  All 14 native tests and the extended LAN simulator flow passed, including revocation
+  across relaunches. On 2026-10-05 its signed IPA passed Apple validation and upload,
+  reached `VALID`, and entered `IN_BETA_TESTING` in the existing Internal group.
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 

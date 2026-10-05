@@ -37,18 +37,21 @@ links. Val manages the `modex.build` custom-domain and DNS setup in Vercel manua
 public deployment remains available at <https://modex-0xbuns.vercel.app> during setup;
 canonical and social metadata point to `https://modex.build/`.
 
-For Git deployments, use the repository root, build command `npm run site:build`, and output
-directory `apps/site/dist`. The default root `npm run build` also compiles the macOS desktop
-app and is not the site's Vercel build command.
+Git deployments use the repository root and its committed `vercel.json`: install only the
+site workspace and root development tools, build with `npm run site:build`, and serve
+`apps/site/dist`. This overrides the default root `npm run build`, which also compiles the
+native desktop app and must not run for the landing page. No dashboard build-command
+override is needed; custom-domain and DNS setup remain separate.
 
 ## Asset sources
 
 - `desktop-*.png`: real Modex demo captures at 2760×1760; generated with
   `electron . --demo --screenshot=<directory> --demo-answer=yes` on 2026-10-05.
-- `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 2, using
+- `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 4, using
   the isolated demo pairing fixture. These illustrate the workflow, not public availability.
-- `modex-icon.png`: the shipped icon from `docs/branding/modex-icon.png`.
-- `social-preview.png`: existing repository artwork from `docs/branding/`.
+- `modex-mark.png`: the unmodified official logo supplied by Val.
+- `modex-icon.png` and `social-preview.png`: generated from the official mark with
+  `swift scripts/brand-assets.swift`; see `docs/branding/README.md`.
 - Manrope is self-hosted from `@fontsource-variable/manrope`; its OFL license is included at
   `/licenses/manrope.txt`.
 

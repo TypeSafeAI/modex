@@ -72,14 +72,14 @@ export function describeHttpError(status: number, raw = ""): JevError {
   const mk = (msg: string, code: JevErrorCode) => new JevError(detail || msg, code, status);
   switch (status) {
     case 401:
-    case 403: return mk("TypeSafe rejected the API key.", "auth");
-    case 402: return mk("The TypeSafe organization has no API credits.", "billing");
+    case 403: return mk("Jev rejected the API key.", "auth");
+    case 402: return mk("The Jev account has no API credits.", "billing");
     case 400:
-    case 422: return mk("TypeSafe rejected the routing request as invalid.", "validation");
-    case 429: return mk("TypeSafe rate limit hit.", "rate_limited");
+    case 422: return mk("Jev rejected the routing request as invalid.", "validation");
+    case 429: return mk("Jev rate limit hit.", "rate_limited");
     case 503:
-    case 529: return mk("TypeSafe is overloaded.", "overloaded");
-    default: return mk(`TypeSafe API returned HTTP ${status}.`, "unknown");
+    case 529: return mk("Jev is overloaded.", "overloaded");
+    default: return mk(`Jev API returned HTTP ${status}.`, "unknown");
   }
 }
 
@@ -107,7 +107,7 @@ export function httpTransport(apiKey: string, opts: { fetchImpl?: typeof fetch; 
       });
     } catch (err) {
       const abort = err instanceof Error && err.name === "AbortError";
-      throw new JevError(abort ? "The routing request to TypeSafe timed out." : "Could not reach the TypeSafe API.", abort ? "timeout" : "network");
+      throw new JevError(abort ? "The routing request to Jev timed out." : "Could not reach the Jev API.", abort ? "timeout" : "network");
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onOuter);
@@ -124,7 +124,7 @@ function parseResponse(text: string, status?: number): JevResponse {
     if (!body || typeof body !== "object" || !body.answers || typeof body.answers !== "object") throw new Error("no answers");
     return body;
   } catch {
-    throw new JevError("TypeSafe returned a response Modex could not read.", "bad_response", status);
+    throw new JevError("Jev returned a response Modex could not read.", "bad_response", status);
   }
 }
 

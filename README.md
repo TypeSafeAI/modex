@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/branding/modex-header.webp" alt="Modex — adaptive coding agents" width="100%">
+  <img src="docs/branding/modex-header.png" alt="Modex — adaptive coding agents" width="100%">
 </p>
 
 # Modex
@@ -16,7 +16,7 @@ It never calls a model
 API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
 Claude and Codex CLI credentials remain with their CLIs.
 
-![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
+![Modex — your agents, your workspace](docs/branding/modex-social-preview.png)
 
 ```
 modex/
@@ -35,7 +35,7 @@ modex/
   the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
   row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
   free-text entry.
-- **⚡ Auto routing.** Turn on Auto and a fast judge — TypeSafe's Jev, or a built-in
+- **⚡ Auto routing.** Turn on Auto and a fast judge — Jev, or a built-in
   heuristic when no key is configured — reads each request before the turn and picks
   the model, reasoning effort, and fast mode within the bounds you set (posture, effort
   ceiling, daily premium-turn budget, confidence floor). Every turn gets a one-line receipt
@@ -82,7 +82,6 @@ modex/
   when it is unused, or retries in place while another turn is running or opening.
   A second failure shows the card with both attempts recorded. Early send/retry rejections
   (for example, a busy thread) return to the caller without adding transcript items.
-  > > > > > > > upstream/main
 - **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
   a one-click revert (confirmed first). Diff failures appear in the panel.
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
@@ -181,11 +180,14 @@ For Electron development, also run
 
 ## Release notifications
 
-Installed macOS builds check for a newer stable release at launch and hourly while the
+Starting with v0.0.7, installed macOS builds check for a newer stable release at launch and hourly while the
 workspace is visible, with a check when you return to it. A small banner links to the
 release page; dismissing it hides that version across relaunches. A later release appears
 again. Checks use public GitHub release metadata and require an uploaded installer for
 your Mac. Offline failures stay quiet. Downloads and installation are manual.
+
+If you are on v0.0.6 or earlier, install v0.0.7 from the release page once to enable future
+update notifications; older builds do not contain the banner.
 
 ## Desktop themes
 

@@ -6,7 +6,7 @@ warning on a fresh Mac. v0.0.1–v0.0.4 were ad-hoc signed and needed a right-cl
 
 **Signing team.** Releases are signed and notarized as **Soul Protocol LLC (team
 `9LR8Z8UQ9X`)**, which is the name Gatekeeper and `codesign -dvv` show. This was a deliberate
-choice (2026-10-01), so a separate TypeSafeAI identity is not planned. If that changes, issue a
+choice (2026-10-01). If the signing team changes, issue a
 new Developer ID certificate and a Developer-role API key for the new team, update
 `.env.release` and the `release-signing` secrets, and note the switch in the release notes,
 since users will see a different signer.

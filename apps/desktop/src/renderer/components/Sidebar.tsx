@@ -1,3 +1,4 @@
+import { BrandMark } from "./BrandMark";
 import { useRef, useState, type ReactNode } from "react";
 import type { AppState, Thread } from "../../shared/types";
 import { Icon } from "./ui/Icon";
@@ -44,7 +45,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
   return (
     <aside className="sidebar" data-testid="sidebar">
       <header className="sidebar-head">
-        <h1 className="sidebar-title" data-testid="sidebar-title">Modex</h1>
+        <h1 className="sidebar-title" data-testid="sidebar-title"><BrandMark />Modex</h1>
         <span className="spacer" />
         <IconButton icon="search" label="Search threads" size="md" data-testid="search-toggle" aria-pressed={searching} onClick={() => (searching ? closeSearch() : setSearching(true))} />
       </header>

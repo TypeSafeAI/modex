@@ -10,6 +10,7 @@
     />
     <link rel="canonical" href="https://modex.build/" />
     <link rel="icon" href="/assets/modex-icon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/assets/modex-icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Modex — A home for your coding agents" />
     <meta
@@ -30,15 +31,16 @@
     <header class="site-header wrap">
       <a class="brand" href="#" aria-label="Modex home"
         ><img
-          src="/assets/modex-icon.png"
+          src="/assets/modex-mark.png"
           alt=""
-          width="36"
+          width="28"
           height="36"
-        />Modex<span class="brand-by">by TypeSafe</span></a
+        />Modex</a
       >
       <nav aria-label="Main navigation">
         <a class="nav-detail" href="#workflow">The workflow</a>
         <a class="nav-detail" href="#iphone">For iPhone</a>
+        <a class="nav-github" href="https://github.com/TypeSafeAI/modex">GitHub <span aria-hidden="true">↗</span></a>
         <a class="nav-download" href="#download"
           >Get Modex <span aria-hidden="true">↗</span></a
         >
@@ -133,6 +135,8 @@
               type="button"
               id="play-story"
               aria-pressed="false"
+              aria-haspopup="dialog"
+              aria-controls="walkthrough-dialog"
             >
               <span class="play-symbol" aria-hidden="true">▶</span
               ><span class="play-label">Play walkthrough</span>
@@ -341,9 +345,9 @@
     <footer class="site-footer wrap">
       <a class="brand" href="#"
         ><img
-          src="/assets/modex-icon.png"
+          src="/assets/modex-mark.png"
           alt=""
-          width="28"
+          width="22"
           height="28"
         />Modex</a
       >
@@ -352,8 +356,20 @@
         <a href="https://github.com/TypeSafeAI/modex">GitHub ↗</a
         ><a href="https://github.com/TypeSafeAI/modex/blob/main/LICENSE"
           >MIT license ↗</a
-        ><a href="https://jev.works">TypeSafe / Jev ↗</a>
+        ><a href="https://jev.works">Powered by Jev ↗</a>
       </nav>
     </footer>
+    <dialog id="walkthrough-dialog" class="walkthrough-dialog" aria-labelledby="walkthrough-title">
+      <header class="walkthrough-header">
+        <div>
+          <p>THE MODEX WORKFLOW</p>
+          <h2 id="walkthrough-title">From your Mac. Into your hands.</h2>
+        </div>
+        <button type="button" id="close-walkthrough" aria-label="Close walkthrough" autofocus>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+      <div id="walkthrough-content" class="walkthrough-content"></div>
+    </dialog>
   </body>
 </html>

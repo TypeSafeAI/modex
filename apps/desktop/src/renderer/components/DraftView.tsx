@@ -1,3 +1,4 @@
+import { BrandMark } from "./BrandMark";
 import { useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo, Project } from "../../shared/types";
 import { Composer } from "./Composer";
@@ -49,7 +50,7 @@ export function DraftView({ draft, projects, creating, models, modelsError, onRe
   return (
     <section className="draft-view" data-testid="draft-view" data-project-id={project.id} data-worktree={draft.worktree}>
       <div className="draft-hero">
-        <div className="draft-mark" aria-hidden="true">◆</div>
+        <BrandMark className="draft-mark" />
         <div className="draft-title" role="heading" aria-level={1} data-testid="draft-title">
           What should we build in{" "}
           <ProjectPicker projects={projects} project={project} onPick={(projectId) => onChange({ ...draft, projectId })} />?

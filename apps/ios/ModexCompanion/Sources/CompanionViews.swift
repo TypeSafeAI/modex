@@ -51,9 +51,10 @@ struct CompanionRootView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 34).fill(Palette.accent.opacity(0.07)).frame(width: 226, height: 226)
                 RoundedRectangle(cornerRadius: 28).stroke(Palette.accent.opacity(0.26), lineWidth: 1).frame(width: 226, height: 226)
-                Image(systemName: "macbook.and.iphone")
-                    .font(.system(size: 78, weight: .ultraLight))
-                    .foregroundStyle(Palette.accent)
+                Image("ModexMark")
+                    .resizable().scaledToFit()
+                    .frame(width: 104, height: 132)
+                    .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 48)
@@ -108,7 +109,7 @@ struct CompanionRootView: View {
                         .tracking(-1.3)
                     HStack(spacing: 7) {
                         Circle().fill(model.connected ? Color.green : Color.orange).frame(width: 7, height: 7)
-                        Text(model.connected ? "Mac connected" : "Waiting for your Mac")
+                        Text(model.connected ? "Mac connected" : "Reconnecting to your Mac…")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Palette.muted)
                     }
@@ -158,9 +159,10 @@ struct CompanionRootView: View {
 
     private var brand: some View {
         HStack(spacing: 9) {
-            Image(systemName: "square.stack.3d.up.fill")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Palette.accent)
+            Image("ModexMark")
+                .resizable().scaledToFit()
+                .frame(width: 20, height: 26)
+                .accessibilityHidden(true)
             Text("MODEX").font(.system(size: 13, weight: .heavy, design: .rounded)).tracking(3.2).foregroundStyle(.white)
         }
     }
@@ -354,17 +356,20 @@ private struct PairingSheet: View {
                         .frame(maxWidth: .infinity).padding(17)
                         .foregroundStyle(Palette.background).background(Palette.accent, in: RoundedRectangle(cornerRadius: 15))
                 }
-                .accessibilityIdentifier("scan-pairing-code")
+                    .accessibilityIdentifier("scan-pairing-code")
+                    .disabled(model.isPairing)
                 HStack { Rectangle().fill(Palette.line).frame(height: 1); Text("OR PASTE THE LINK").font(.system(size: 10, weight: .bold)).tracking(1.5).foregroundStyle(Palette.muted); Rectangle().fill(Palette.line).frame(height: 1) }
                 TextField("modex://pair?data=…", text: $link)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .keyboardType(.URL).font(.system(size: 13, design: .monospaced))
                     .padding(15).background(Palette.raised, in: RoundedRectangle(cornerRadius: 13))
                     .accessibilityIdentifier("pairing-link-input")
-                Button("Connect") { Task { await model.pair(link: link); if model.pairing != nil { dismiss() } } }
+                Button(model.isPairing ? "Connecting…" : "Connect") { Task { await model.pair(link: link); if model.pairing != nil { dismiss() } } }
                     .buttonStyle(ActionButtonStyle(prominent: true))
-                    .disabled(link.isEmpty)
+                    .disabled(link.isEmpty || model.isPairing)
                     .accessibilityIdentifier("connect-button")
+                Text("Pair once. This iPhone remembers your Mac and reconnects automatically when it is available on your network.")
+                    .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 Spacer()
             }
             .padding(25).padding(.top, 24)

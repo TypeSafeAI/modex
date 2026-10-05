@@ -16,12 +16,19 @@ struct Pairing: Codable, Equatable {
         let padded = encoded.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
             .padding(toLength: ((encoded.count + 3) / 4) * 4, withPad: "=", startingAt: 0)
         guard let data = Data(base64Encoded: padded), let pairing = try? JSONDecoder().decode(Pairing.self, from: data),
-              pairing.url.scheme == "https", let host = pairing.url.host, privateIPv4(host),
+              validEndpoint(pairing.url),
               pairing.token.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
               pairing.fingerprint.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
             throw CompanionError.message("This pairing code is invalid or does not point to a local Mac.")
         }
         return pairing
+    }
+
+    static func validEndpoint(_ url: URL) -> Bool {
+        guard url.scheme == "https", let host = url.host, privateIPv4(host),
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              url.path.isEmpty || url.path == "/" else { return false }
+        return url.port.map { (1...65535).contains($0) } ?? true
     }
 }
 
@@ -36,7 +43,13 @@ private func privateIPv4(_ address: String) -> Bool {
 
 enum CompanionError: LocalizedError {
     case message(String)
-    var errorDescription: String? { if case .message(let text) = self { text } else { nil } }
+    case accessRevoked
+    var errorDescription: String? {
+        switch self {
+        case .message(let text): return text
+        case .accessRevoked: return "Access was removed on your Mac. Pair again with a new code from Modex."
+        }
+    }
 }
 
 struct CompanionProject: Decodable, Identifiable {
@@ -76,9 +89,12 @@ protocol CompanionClient {
     func snapshot(threadId: String?) async throws -> CompanionSnapshot
     func send(threadId: String, text: String) async throws
     func answer(threadId: String, itemId: String, approve: Bool) async throws
+    func invalidate()
 }
 
-final class CompanionAPI: NSObject, URLSessionDelegate, CompanionClient {
+extension CompanionClient { func invalidate() {} }
+
+final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, CompanionClient {
     let pairing: Pairing
     private var session: URLSession!
 
@@ -89,6 +105,14 @@ final class CompanionAPI: NSObject, URLSessionDelegate, CompanionClient {
         configuration.timeoutIntervalForRequest = 8
         configuration.timeoutIntervalForResource = 12
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+
+    func invalidate() { session.invalidateAndCancel() }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        // Discovery must never redirect a saved bearer credential to another endpoint.
+        completionHandler(nil)
     }
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
@@ -138,6 +162,7 @@ final class CompanionAPI: NSObject, URLSessionDelegate, CompanionClient {
         }
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw CompanionError.message("No response from your Mac.") }
+        if response.statusCode == 401 || response.statusCode == 403 { throw CompanionError.accessRevoked }
         guard (200..<300).contains(response.statusCode) else {
             let detail = try? JSONDecoder().decode(Failure.self, from: data)
             throw CompanionError.message(detail?.error ?? "Your Mac returned an error (\(response.statusCode)).")
@@ -170,12 +195,13 @@ struct PairingStore: PairingStorage {
     }
 
     func save(_ pairing: Pairing) throws {
-        clear()
         let data = try JSONEncoder().encode(pairing)
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                     kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-                                     kSecValueData as String: data]
-        let status = SecItemAdd(query as CFDictionary, nil)
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
+        let attributes: [String: Any] = [kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly, kSecValueData as String: data]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
+        }
         #if targetEnvironment(simulator)
         if status == errSecMissingEntitlement {
             UserDefaults.standard.set(data, forKey: service)

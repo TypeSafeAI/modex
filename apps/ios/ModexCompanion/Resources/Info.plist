@@ -14,6 +14,7 @@
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>works.jev.modex</string><key>CFBundleURLSchemes</key><array><string>modex</string></array></dict></array>
   <key>NSCameraUsageDescription</key><string>Scan the pairing code shown in Modex on your Mac.</string>
   <key>NSLocalNetworkUsageDescription</key><string>Connect to your paired Modex app on a Mac on the same network.</string>
+  <key>NSBonjourServices</key><array><string>_modex._tcp</string></array>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
   <key>LSRequiresIPhoneOS</key><true/>
   <key>UILaunchScreen</key><dict/>
