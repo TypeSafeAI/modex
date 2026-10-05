@@ -76,12 +76,39 @@ test("ClaudeBackend: denial and failure paths", async () => {
   proc.emitLine({ type: "control_request", request_id: "r2", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "rm -rf x" } } });
   const resp = JSON.parse(await proc.waitFor((l) => l.includes("control_response"))) as { response: { response: { behavior: string } } };
   assert.equal(resp.response.response.behavior, "deny");
-  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, result: "boom" });
+  proc.emitLine({ type: "system", subtype: "init", session_id: "sess-2", claude_code_version: "2.1.283", model: "claude-sonnet-5", apiKeySource: "none" });
+  proc.stderr.write("stderr line\n");
+  await new Promise((r) => setImmediate(r));
+  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, result: "boom", errors: ["boom"] });
   proc.close(1);
   const r = await run;
   assert.equal(r.status, "failed");
   assert.equal(r.error, "boom");
   assert.ok(events.includes("approval:Allow Bash: $ rm -rf x?"));
+  // The failure carries what a bug report needs: the CLI build and key source it announced, the result subtype, stderr, argv.
+  assert.equal(r.detail?.resultSubtype, "error_during_execution");
+  assert.deepEqual(r.detail?.errors, ["boom"]);
+  assert.equal(r.detail?.claudeVersion, "2.1.283");
+  assert.equal(r.detail?.apiKeySource, "none");
+  assert.equal(r.detail?.stderr, "stderr line");
+  assert.equal(r.detail?.bin, "claude");
+  assert.ok((r.detail?.argv as string[]).includes("--output-format"));
+});
+
+test("ClaudeBackend: a non-zero exit carries the exit code and stderr tail", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  proc.stderr.write("warning: something\nInvalid API key · Please run /login\n");
+  await new Promise((r) => setImmediate(r));
+  proc.close(1);
+  const r = await run;
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, "warning: something\nInvalid API key · Please run /login");
+  assert.equal(r.detail?.exitCode, 1);
+  assert.equal(r.detail?.stderr, "warning: something\nInvalid API key · Please run /login");
+  assert.equal(r.detail?.bin, "claude");
 });
 
 test("ClaudeBackend: abort kills the process and reports interrupted", async () => {

@@ -1,7 +1,9 @@
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, shortJson } from "./types.js";
+import { LineBuffer, shortJson, stderrTail } from "./types.js";
+import { health, installation, probe } from "./health.js";
+import type { BackendHealth } from "../../../shared/types.js";
 
 /**
  * Drives the Claude Code CLI (`claude -p`) over its stream-json protocol:
@@ -27,6 +29,22 @@ export class ClaudeBackend implements Backend {
 
   async listModels(): Promise<ModelInfo[]> {
     return ClaudeBackend.MODELS;
+  }
+
+  async health() {
+    const installed = await installation(this.bin, this.spawnImpl);
+    if (installed.unavailable) return installed.unavailable;
+    const report = (authentication: BackendHealth["authentication"], detail: string) => health(authentication, detail, "available", installed.version);
+    const result = await probe(this.bin, ["auth", "status"], this.spawnImpl);
+    if (result.failure) return report("failed", result.failure === "timeout" ? "Account check timed out" : "Account check failed");
+    try {
+      const account = JSON.parse(result.output) as { loggedIn?: unknown; authMethod?: unknown };
+      const source = account.authMethod === "claude.ai" ? "Claude subscription" : ["api_key", "api_key_helper"].includes(String(account.authMethod)) ? "API credentials" : account.authMethod === "third_party" ? "Third-party provider" : "CLI account";
+      // Retain main's exit-code checks and CLI version reporting.
+      if (account.loggedIn === true && result.code === 0) return report("authenticated", `Signed in · ${source} · model access unverified`);
+      if (account.loggedIn === false && result.code === 1) return report("signed-out", "Signed out · run claude auth login");
+    } catch { /* Older CLIs do not provide structured account status. */ }
+    return report("unknown", "Account status unavailable · check in Claude CLI");
   }
 
   async dispose(): Promise<void> {}
@@ -55,10 +73,11 @@ export class ClaudeBackend implements Backend {
     if (signal.aborted) return Promise.resolve({ status: "interrupted" });
     return new Promise((resolve) => {
       let child: ChildProcess;
+      const argv = ClaudeBackend.args(opts);
       try {
-        child = this.spawnImpl(this.bin, ClaudeBackend.args(opts), { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+        child = this.spawnImpl(this.bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: process.env });
       } catch (err) {
-        return resolve({ status: "failed", error: `could not start ${this.bin}: ${(err as Error).message}` });
+        return resolve({ status: "failed", error: `could not start ${this.bin}: ${(err as Error).message}`, detail: { bin: this.bin, argv, spawnError: (err as Error).message } });
       }
       const lines = new LineBuffer();
       const started = new Map<string, number>();
@@ -69,12 +88,14 @@ export class ClaudeBackend implements Backend {
       let finished = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let stderr = "";
+      // What the CLI said about itself at startup (build, model, where its key came from), for failure reports.
+      const init: Record<string, unknown> = {};
       const finish = (r: TurnResult) => {
         if (finished) return;
         finished = true;
         clearTimeout(killTimer);
         signal.removeEventListener("abort", onAbort);
-        resolve(signal.aborted ? { status: "interrupted" } : r);
+        resolve(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin: this.bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r);
       };
       const write = (o: unknown) => {
         try {
@@ -89,8 +110,8 @@ export class ClaudeBackend implements Backend {
       };
       signal.addEventListener("abort", onAbort, { once: true });
 
-      child.on("error", (err) => finish({ status: "failed", error: `${this.bin}: ${err.message}. Is Claude Code installed and on PATH?` }));
-      child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
+      child.on("error", (err) => finish({ status: "failed", error: `${this.bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: (err as NodeJS.ErrnoException).code } }));
+      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
       child.stdout?.on("data", (d: Buffer) =>
         lines.push(d, (line) => {
           if (finished || signal.aborted) return;
@@ -100,7 +121,7 @@ export class ClaudeBackend implements Backend {
           } catch {
             return;
           }
-          this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
+          this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
             if (done) {
               child.stdin?.end();
               finish(done);
@@ -108,21 +129,24 @@ export class ClaudeBackend implements Backend {
           });
         }),
       );
-      child.on("close", (code) => {
+      child.on("close", (code, sig) => {
         signal.removeEventListener("abort", onAbort);
         if (signal.aborted) return finish({ status: "interrupted" });
         const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
-        finish(code === 0 ? { status: "completed" } : { status: "failed", error: err || `${this.bin} exited with code ${code}` });
+        finish(code === 0 ? { status: "completed" } : { status: "failed", error: err || `${this.bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
       });
 
       write({ type: "user", message: { role: "user", content: text } });
     });
   }
 
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; nextThinkingId: () => string }): Promise<TurnResult | null> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<TurnResult | null> {
     switch (msg.type) {
       case "system":
-        if (msg.subtype === "init" && msg.session_id) sink.session(msg.session_id);
+        if (msg.subtype === "init") {
+          if (msg.session_id) sink.session(msg.session_id);
+          Object.assign(ctx.init, { claudeVersion: msg.claude_code_version, claudeModel: msg.model, permissionMode: msg.permissionMode, apiKeySource: msg.apiKeySource });
+        }
         return null;
       case "stream_event": {
         const ev = msg.event;
@@ -199,7 +223,7 @@ export class ClaudeBackend implements Backend {
       }
       case "result": {
         if (msg.session_id) sink.session(msg.session_id);
-        if (msg.is_error) return { status: "failed", error: typeof msg.result === "string" ? msg.result : msg.subtype ?? "error" };
+        if (msg.is_error) return { status: "failed", error: typeof msg.result === "string" ? msg.result : msg.subtype ?? "error", detail: { resultSubtype: msg.subtype, errors: msg.errors, sessionId: msg.session_id, numTurns: msg.num_turns, durationMs: msg.duration_ms } };
         return { status: "completed" };
       }
       default:
@@ -229,6 +253,14 @@ interface ClaudeMessage {
   request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] };
   is_error?: boolean;
   result?: unknown;
+  /** `result` extras and `system/init` facts, kept for failure reports. */
+  errors?: unknown;
+  num_turns?: number;
+  duration_ms?: number;
+  claude_code_version?: string;
+  model?: string;
+  permissionMode?: string;
+  apiKeySource?: string;
 }
 
 /** Human title for a Claude Code tool call. */

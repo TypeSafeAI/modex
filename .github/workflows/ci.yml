@@ -9,6 +9,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ios:
+    name: iPhone companion
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          npm ci
+          npm run build
+      - name: Select an available iPhone simulator
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
+          node --input-type=module <<'JS' >> "$GITHUB_ENV"
+          import fs from "node:fs";
+          const { devices } = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/simulators.json`, "utf8"));
+          const phone = Object.values(devices).flat().find(device => device.isAvailable && device.name.startsWith("iPhone"));
+          if (!phone) throw new Error("No iPhone simulator is installed.");
+          console.log(`MODEX_IOS_DESTINATION=platform=iOS Simulator,id=${phone.udid}`);
+          console.log(`MODEX_IOS_DERIVED_DATA=${process.env.RUNNER_TEMP}/modex-ios-tests`);
+          JS
+      - name: Native unit tests
+        working-directory: apps/ios/ModexCompanion
+        run: |
+          xcodegen generate
+          xcodebuild -quiet -project ModexCompanion.xcodeproj -scheme ModexCompanion \
+            -destination "$MODEX_IOS_DESTINATION" -derivedDataPath "$MODEX_IOS_DERIVED_DATA" \
+            -parallel-testing-enabled NO -only-testing:ModexCompanionTests CODE_SIGNING_ALLOWED=NO test
+      - name: Paired iPhone end-to-end test
+        run: apps/ios/ModexCompanion/Scripts/test-e2e.sh
+      - name: Upload iPhone test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: iphone-test-results
+          path: |
+            ${{ runner.temp }}/modex-ios-tests/Logs/Test
+            ~/Library/Developer/Xcode/DerivedData/ModexCompanion-*/Logs/Test
+          if-no-files-found: ignore
+          retention-days: 7
+
   test:
     name: unit + e2e (macOS)
     runs-on: macos-latest
@@ -30,9 +76,12 @@ jobs:
       - name: Unit tests (core + desktop)
         run: npm test
 
-      # The e2e suite launches the real Electron app under Playwright against the offline
-      # mock backend, so it needs no Claude/Codex login on the runner.
-      - name: E2E (Playwright drives the Electron window)
+      - name: Install browser for browser-dev e2e
+        run: npx playwright install chromium
+        working-directory: apps/desktop
+
+      # Both Electron and browser dev use the offline mock backend; no CLI login is needed.
+      - name: E2E (Electron and browser)
         run: npx playwright test
         working-directory: apps/desktop
         env:

@@ -1,6 +1,6 @@
 {
   "name": "@modex/desktop",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "description": "Modex desktop \u2014 a Codex-App-style GUI: projects, parallel agent threads, worktrees, inline approvals, and a live Changes panel.",
   "license": "MIT",
   "private": true,
@@ -11,10 +11,11 @@
     "build:main": "node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && cp src/main/preload.cjs dist/src/main/preload.cjs",
     "build:renderer": "vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\"",
+    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs",
     "start": "electron .",
+    "predev": "npm run build -w @modex/core && npm run build:main",
     "dev": "vite",
-    "screenshot": "electron . --demo --screenshot",
+    "screenshot": "electron . --demo",
     "test:e2e": "npm run build && playwright test",
     "ui:capture": "npm run build && playwright test e2e/layout.spec.ts",
     "ui:compare": "node scripts/ui-compare.mjs",
@@ -23,10 +24,12 @@
   },
   "dependencies": {
     "@modex/core": "0.3.0",
-    "node-pty": "1.2.0-beta.15"
+    "node-pty": "1.2.0-beta.15",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -49,6 +52,8 @@
     },
     "files": [
       "dist/src/main/**",
+      "!dist/src/main/browser-dev.*",
+      "!dist/src/main/commands.*",
       "dist/src/shared/**",
       "dist/renderer/**",
       "demo/**",

@@ -1,5 +1,5 @@
 import { StringDecoder } from "node:string_decoder";
-import type { ApprovalAnswer, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
+import type { ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
 
 export type { ModelInfo };
 
@@ -72,6 +72,7 @@ export interface TurnOptions {
   fast?: boolean;
   /** Resumable handle from a previous turn on this thread. */
   resume?: string;
+  account?: string;
   /** Extra directories the agent may write to (worktree threads pass the project root). */
   addDirs?: string[];
 }
@@ -79,6 +80,10 @@ export interface TurnOptions {
 export interface TurnResult {
   status: "completed" | "interrupted" | "failed";
   error?: string;
+  /** Backend facts behind a failure (exit code, stderr tail, RPC method and code, CLI build, ids) for the debug report. */
+  detail?: Record<string, unknown>;
+  /** What the backend tried on its own before giving up, oldest first. */
+  recovery?: string[];
 }
 
 export interface Backend {
@@ -86,14 +91,16 @@ export interface Backend {
   /** Runs one user turn to completion. `signal` aborts/interrupts the turn. */
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult>;
   /** Optional background naming through a separate CLI conversation. */
-  generateTitle?(text: string, opts: { model: string }, signal: AbortSignal): Promise<string | null>;
+  generateTitle?(text: string, opts: { model: string; account?: string }, signal: AbortSignal): Promise<string | null>;
   /**
    * Last resort when a stopped turn never confirms: forcibly end the backend's work. Optional;
    * backends whose turns always end on their own (Claude escalates to SIGKILL) omit it.
    */
-  forceStop?(): Promise<void>;
+  forceStop?(account?: string): Promise<void>;
   /** Current model catalogue for this backend. */
   listModels(): Promise<ModelInfo[]>;
+  health?(): Promise<BackendHealth>;
+  identity?(): string;
   dispose(): Promise<void>;
 }
 
@@ -115,6 +122,12 @@ export class LineBuffer {
     if (this.buf.trim()) onLine(this.buf);
     this.buf = "";
   }
+}
+
+/** The last non-empty stderr lines, bounded, for failure reports. */
+export function stderrTail(stderr: string, lines = 30, max = 4000): string {
+  const tail = stderr.split("\n").filter((l) => l.trim()).slice(-lines).join("\n");
+  return tail.length > max ? "…" + tail.slice(-max) : tail;
 }
 
 export function shortJson(v: unknown, max = 2000): string {

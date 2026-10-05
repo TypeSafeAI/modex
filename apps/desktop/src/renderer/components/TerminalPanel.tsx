@@ -15,7 +15,7 @@ const token = (name: string) => getComputedStyle(document.documentElement).getPr
  * The thread's embedded shell (a real PTY in main, see engine/terminal.ts). Hiding the panel keeps the
  * shell running; reopening replays its recent output. Close ends the shell; Restart replaces it.
  */
-export function TerminalPanel({ thread, onClose }: { thread: Thread; onClose: () => void }) {
+export function TerminalPanel({ thread, onClose, command, onCommandConsumed }: { thread: Thread; onClose: () => void; /** A command line the app wants typed into the shell (a failure card's sign-in fix); a new `nonce` types it again. */ command?: { text: string; nonce: number }; onCommandConsumed: (nonce: number) => void }) {
   const panel = useRef<HTMLElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   const session = useRef<TerminalSnapshot | null>(null);
@@ -102,6 +102,21 @@ export function TerminalPanel({ thread, onClose }: { thread: Thread; onClose: ()
       terminal.dispose();
     };
   }, [thread.id, generation]);
+
+  // Runs after the effect above, so the session is opening (or open) by the time a command arrives.
+  useEffect(() => {
+    if (!command) return;
+    let alive = true;
+    void (opening.current ?? Promise.reject(new Error("The terminal is not open.")))
+      .then((opened) => {
+        if (!alive) return;
+        // Consume before dispatch so hiding/reopening the panel cannot replay a sign-in.
+        onCommandConsumed(command.nonce);
+        return bridge.invoke("terminal:write", { threadId: thread.id, sessionId: opened.sessionId, data: `${command.text}\r` });
+      })
+      .catch((err) => { if (alive) setError(err instanceof Error ? err.message : String(err)); });
+    return () => { alive = false; };
+  }, [command?.nonce]);
 
   const end = async (restart: boolean) => {
     try {

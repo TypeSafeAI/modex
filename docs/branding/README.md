@@ -1,15 +1,21 @@
 # Proposed Modex branding
 
-Four AI-generated branding assets offered for maintainer review. These are the original PNG exports; adoption and any further refinements are up to the maintainers.
+Four branding assets offered for maintainer review. The artwork was AI-generated, and the header was subsequently refined in Photoshop and exported as WebP.
 
-| File                       | Intended use                 | Original dimensions |
-| -------------------------- | ---------------------------- | ------------------- |
-| `modex-header.webp`        | README header                | 1764 × 550          |
-| `modex-icon.png`           | Square app/repo icon concept | 1254 × 1254         |
-| `modex-social-preview.png` | Social preview concept       | 1774 × 887          |
-| `modex-routing.png`        | README routing illustration  | 1774 × 887          |
+| File                       | Intended use                | Dimensions  |
+| -------------------------- | --------------------------- | ----------- |
+| `modex-header.webp`        | README header               | 1764 × 550  |
+| `modex-icon.png`           | App icon artwork            | 1254 × 1254 |
+| `modex-social-preview.png` | Social preview concept      | 1774 × 887  |
+| `modex-routing.png`        | README routing illustration | 1774 × 887  |
 
-The icon, social preview, and routing illustration have opaque backgrounds. The header is an RGBA PNG. These are raster concepts, not vector masters or packaged platform icons.
+The icon, social preview, and routing illustration have opaque backgrounds. The WebP header supports transparency. These are raster assets, not vector masters.
+
+From v0.0.5, `modex-icon.png` is the app icon. `apps/desktop/scripts/make-icon.swift` places it on the macOS icon grid and writes `apps/desktop/build/icon.icns`. Re-run it after changing the artwork:
+
+```sh
+cd apps/desktop && swift scripts/make-icon.swift ../../docs/branding/modex-icon.png build/icon.icns
+```
 
 ## Header
 

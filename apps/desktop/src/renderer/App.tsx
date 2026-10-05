@@ -1,14 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch } from "../shared/types";
+import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
 import { ChangesPanel } from "./components/ChangesPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { CompanionDialog } from "./components/CompanionDialog";
 import { EmptyState } from "./components/EmptyState";
 import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
+import { Icon } from "./components/ui/Icon";
 import { useSelectionHistory } from "./history";
 import { useLayout } from "./layout";
 import { applyItemEvent, type ItemEvent } from "./transcript";
@@ -27,12 +29,20 @@ export function App() {
   // Unsent composer text by thread id (or `draft:<revision>` for a new chat). Switching threads keeps it;
   // sending, deleting the thread or starting another new chat clears it. Renderer-only: it is not saved.
   const [unsent, setUnsent] = useState<Record<string, string>>({});
-  const setUnsentFor = useCallback((key: string, text: string) => setUnsent((m) => {
-    if (text) return { ...m, [key]: text };
-    if (!(key in m)) return m;
-    const { [key]: _gone, ...rest } = m;
-    return rest;
-  }), []);
+  const unsentRevision = useRef(new Map<string, number>());
+  const setUnsentFor = useCallback((key: string, text: string) => {
+    unsentRevision.current.set(key, (unsentRevision.current.get(key) ?? 0) + 1);
+    setUnsent((m) => {
+      if (text) return { ...m, [key]: text };
+      if (!(key in m)) return m;
+      const { [key]: _gone, ...rest } = m;
+      return rest;
+    });
+  }, []);
+  const restoreUnsentIfCurrent = useCallback((key: string, revision: number, text: string) => {
+    // A newer edit (including clearing a newer draft) owns this composer now.
+    if ((unsentRevision.current.get(key) ?? 0) === revision) setUnsentFor(key, text);
+  }, [setUnsentFor]);
   const loadingItems = useRef(new Map<string, ItemEvent[]>());
   const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
   const changes = changeResult?.threadId === selected ? changeResult.snapshot : null;
@@ -41,14 +51,20 @@ export function App() {
   const changesRequest = useRef(0);
   // Which threads have their terminal panel showing. Hiding a panel leaves its shell running.
   const [terminals, setTerminals] = useState<Record<string, boolean>>({});
+  // A command line for a thread's shell (a failure card's sign-in fix); the panel types it once per nonce.
+  const [terminalCommands, setTerminalCommands] = useState<Record<string, { text: string; nonce: number }>>({});
+  const commandNonce = useRef(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCompanion, setShowCompanion] = useState(false);
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout();
   const showChanges = layout.changes;
   const sidebarOpen = layout.sidebar;
+  const streamerMode = layout.streamerMode;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
   const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
-  const [error, setError] = useState<string | null>(null);
+  // The toast: what failed and, when the action can simply be run again, how.
+  const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // A new chat is a draft (renderer-only) until its first send creates the thread.
@@ -67,7 +83,7 @@ export function App() {
   useEffect(() => {
     void refresh().then((s) => {
       if (!selected && s.threads[0]) setSelected(s.threads[0].id);
-    });
+    }).catch((err: Error) => setError({ message: err.message }));
   }, [refresh]);
 
   // Live events from every thread; the selected thread re-renders, others just update status.
@@ -93,7 +109,7 @@ export function App() {
     } catch (err) {
       if (selectedRef.current !== threadId || request !== changesRequest.current) return;
       setChangeResult(null);
-      setError((err as Error).message);
+      setError({ message: (err as Error).message, retry: () => void loadChanges(threadId) });
     }
   }, []);
 
@@ -116,7 +132,7 @@ export function App() {
       }).catch((err: Error) => {
         if (loadingItems.current.get(selected) !== pending) return;
         loadingItems.current.delete(selected);
-        if (selectedRef.current === selected) setError(err.message);
+        if (selectedRef.current === selected) setError({ message: err.message });
       });
     }
     void loadChanges(selected);
@@ -168,7 +184,7 @@ export function App() {
     const b = thread?.backend ?? draft?.settings.backend;
     if (!b || models[b]) return;
     void bridge.invoke("models:list", { backend: b }).then((r) => setModels((m) => ({ ...m, [b]: r }))).catch((err) => setModels((m) => ({ ...m, [b]: { models: [], error: (err as Error).message } })));
-  }, [thread?.backend, draft?.settings.backend]);
+  }, [thread?.backend, draft?.settings.backend, models]);
 
   // A draft, like a thread, always shows a model the CLI knows: the settings default or the CLI's own.
   useEffect(() => {
@@ -202,20 +218,33 @@ export function App() {
       setError(null);
       return await fn();
     } catch (err) {
-      setError((err as Error).message);
+      setError({ message: (err as Error).message, retry: () => void act(fn) });
       return undefined;
     }
   };
+  /** Ask the CLI for its models again after a failed listing (the composer's Retry). */
+  const retryModels = (backend: BackendId) => setModels((m) => {
+    const next = { ...m };
+    delete next[backend];
+    return next;
+  });
 
   const addProject = () => act(async () => {
-    const p = await bridge.invoke("project:add", undefined);
+    const folder = bridge.platform === "web" ? window.prompt("Local project folder (absolute path)")?.trim() : undefined;
+    if (bridge.platform === "web" && !folder) return;
+    const p = await bridge.invoke("project:add", folder ? { path: folder } : undefined);
     if (p) await refresh();
   });
   /** First send from a draft: create the thread with the draft's settings, then send. */
-  const sendDraft = (text: string) => draft && act(async () => {
+  const sendDraft = async (text: string): Promise<void> => {
+    if (!draft) return;
     const d = draft;
+    const draftKey = `draft:${draftRevision}`;
+    setUnsentFor(draftKey, "");
+    let restoreKey = draftKey;
+    let restoreRevision = unsentRevision.current.get(draftKey)!;
     setCreating(true);
-    try {
+    const sent = await act(async () => {
       const s = d.settings;
       const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
       if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
@@ -223,16 +252,40 @@ export function App() {
       justCreated.current = t.id;
       setDraft(null);
       setSelected(t.id);
-      const r = await bridge.invoke("thread:send", { threadId: t.id, text });
-      if (!r.ok) setError(r.error ?? "send failed");
-    } finally {
-      setCreating(false);
-    }
+      restoreKey = t.id;
+      restoreRevision = unsentRevision.current.get(t.id) ?? 0;
+      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim() });
+      if (!r.ok) setError({ message: r.error ?? "send failed" });
+      return r.ok;
+    });
+    setCreating(false);
+    if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
+  };
+  const send = async (text: string): Promise<void> => {
+    if (!thread) return;
+    const threadId = thread.id;
+    setUnsentFor(threadId, "");
+    const revision = unsentRevision.current.get(threadId)!;
+    const sent = await act(async () => {
+      const r = await bridge.invoke("thread:send", { threadId, text: text.trim() });
+      if (!r.ok) setError({ message: r.error ?? "send failed" });
+      return r.ok;
+    });
+    if (sent !== true) restoreUnsentIfCurrent(threadId, revision, text);
+  };
+  /** The failure card's Retry: main runs the thread's last message again without adding a second bubble. */
+  const retry = () => thread && act(async () => {
+    const r = await bridge.invoke("thread:retry", { threadId: thread.id });
+    if (!r.ok) setError({ message: r.error ?? "retry failed", retry: () => void retry() });
   });
-  const send = (text: string) => thread && act(async () => {
-    const r = await bridge.invoke("thread:send", { threadId: thread.id, text });
-    if (!r.ok) setError(r.error ?? "send failed");
-  });
+  /** The failure card's fix: type the sign-in command into the thread's shell (opening it), or open Settings. */
+  const applyFix = (fix: TurnFix) => {
+    if (fix.kind === "settings") { setShowSettings(true); return; }
+    if (!thread) return;
+    const id = thread.id;
+    setTerminalCommands((m) => ({ ...m, [id]: { text: fix.command, nonce: ++commandNonce.current } }));
+    setTerminals((m) => ({ ...m, [id]: true }));
+  };
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));
   const updateThread = (patch: ThreadPatch) => thread && act(async () => {
@@ -255,13 +308,42 @@ export function App() {
     loadingItems.current.delete(t.id);
     setItems((m) => { const next = { ...m }; delete next[t.id]; return next; });
     setUnsentFor(t.id, "");
+    setTerminals((m) => {
+      if (!(t.id in m)) return m;
+      const { [t.id]: _gone, ...rest } = m;
+      return rest;
+    });
+    setChangeResult((c) => (c?.threadId === t.id ? null : c));
     if (selected === t.id) setSelected(s.threads.find((x) => x.projectId === t.projectId)?.id ?? s.threads[0]?.id ?? null);
   });
   const removeProject = (projectId: string) => act(async () => {
     if (!window.confirm("Remove this project from Modex? Files on disk are not touched.")) return;
+    const removedThreads = state?.threads.filter((t) => t.projectId === projectId) ?? [];
     const s = await bridge.invoke("project:remove", { projectId });
     setState(s);
-    if (thread?.projectId === projectId) setSelected(s.threads[0]?.id ?? null);
+    for (const t of removedThreads) {
+      loadingItems.current.delete(t.id);
+      setUnsentFor(t.id, "");
+    }
+    const removedIds = new Set(removedThreads.map((t) => t.id));
+    setItems((m) => {
+      const next = { ...m };
+      for (const id of removedIds) delete next[id];
+      return next;
+    });
+    setTerminals((m) => {
+      const next = { ...m };
+      for (const id of removedIds) delete next[id];
+      return next;
+    });
+    setChangeResult((c) => (c && removedIds.has(c.threadId) ? null : c));
+    if (draft?.projectId === projectId) {
+      setUnsentFor(`draft:${draftRevision}`, "");
+      setDraft(null);
+    }
+    if (thread?.projectId === projectId || (selected && removedIds.has(selected))) {
+      setSelected(s.threads[0]?.id ?? null);
+    }
   });
   const revert = (path: string) => thread && act(async () => {
     if (!window.confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
@@ -270,10 +352,16 @@ export function App() {
   });
   const openPath = (p: string) => act(() => bridge.invoke("shell:openPath", { path: p }));
   const openTerminal = (p: string) => act(() => bridge.invoke("shell:openTerminal", { path: p }));
-  const saveSettings = (patch: Partial<Settings>) => act(async () => {
-    await bridge.invoke("settings:update", patch);
-    await refresh();
-  });
+  const saveSettings = async (patch: Partial<Settings>): Promise<void> => {
+    const saved = await bridge.invoke("settings:update", patch);
+    // The update response is authoritative even if the subsequent full-state refresh fails.
+    if (saved) setState((current) => current ? { ...current, settings: saved } : current);
+    try {
+      await refresh();
+    } catch (err) {
+      setError({ message: `Settings were saved, but Modex could not refresh its view: ${(err as Error).message}` });
+    }
+  };
 
   // Keyboard shortcuts: ⌘N new thread, ⇧⌘N worktree thread, ⌘⏎ send (handled in Composer), ⇧⌘P plan, ⌘. stop, ⌘J changes,
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
@@ -315,7 +403,7 @@ export function App() {
     inputRef.current?.focus();
   }, [selected]);
 
-  if (!state) return <div className="app loading">Loading…</div>;
+  if (!state) return <div className="app loading">{error?.message ?? "Loading…"}</div>;
 
   const newChat = () => {
     const pid = thread?.projectId ?? draft?.projectId ?? state.projects[0]?.id;
@@ -323,7 +411,7 @@ export function App() {
   };
 
   return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`}>
+    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`} data-streamer-mode={streamerMode ? "true" : "false"}>
       <TitleBar
         thread={thread}
         onRename={(title) => void updateThread({ title })}
@@ -343,7 +431,7 @@ export function App() {
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail onOpenSettings={() => setShowSettings(true)} />
+      <Rail onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
       <div className="sheet" data-testid="sheet">
         {sidebarOpen && (
           <Sidebar
@@ -372,8 +460,11 @@ export function App() {
               onStop={stop}
               onAnswer={answer}
               onUpdate={updateThread}
+              onRetry={() => void retry()}
+              onFix={applyFix}
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
+              onRetryModels={() => retryModels(thread.backend)}
               inputRef={inputRef}
               branch={changes?.branch ?? undefined}
             />
@@ -385,6 +476,7 @@ export function App() {
               creating={creating}
               models={models[draft.settings.backend]?.models ?? []}
               modelsError={models[draft.settings.backend]?.error}
+              onRetryModels={() => retryModels(draft.settings.backend)}
               branch={draftBranch?.projectId === draft.projectId ? draftBranch.branch ?? undefined : undefined}
               onChange={setDraft}
               onSend={sendDraft}
@@ -397,19 +489,35 @@ export function App() {
           ) : null}
           {thread && terminals[thread.id] && (
             <Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
-              <TerminalPanel key={thread.id} thread={thread} onClose={() => closeTerminal(thread.id)} />
+              <TerminalPanel key={thread.id} thread={thread} onClose={() => closeTerminal(thread.id)} command={terminalCommands[thread.id]} onCommandConsumed={(nonce) => setTerminalCommands((commands) => {
+                if (commands[thread.id]?.nonce !== nonce) return commands;
+                const next = { ...commands };
+                delete next[thread.id];
+                return next;
+              })} />
             </Suspense>
           )}
           {error && (
-            <div className="toast" role="alert">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} aria-label="Dismiss">×</button>
+            <div className="toast" role="alert" data-testid="toast">
+              <span data-testid="toast-message">{error.message}</span>
+              {error.retry && <button type="button" className="btn small" data-testid="toast-retry" onClick={() => { const again = error.retry; setError(null); again?.(); }}>Retry</button>}
+              <button type="button" className="btn small" data-testid="toast-copy" title="Copy the error and where it happened" onClick={() => void bridge.invoke("clipboard:write", { text: `Modex error\n${error.message}\n\nat: ${new Date().toISOString()}\nplatform: ${bridge.platform}\nthread: ${thread?.id ?? "none"}\ncwd: ${thread?.cwd ?? "none"}` }).catch(() => {})}>Copy</button>
+              <button type="button" className="toast-close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
             </div>
           )}
         </main>
         {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
       </div>
       {showSettings && <SettingsDialog settings={state.settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
+      {streamerMode && (
+        <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
+          <Icon name="privacy" size={28} />
+          <h1>Streamer Mode</h1>
+          <p>Private workspace content is hidden.</p>
+          <button autoFocus className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Show workspace</button>
+        </section>
+      )}
     </div>
   );
 }

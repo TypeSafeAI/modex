@@ -48,6 +48,10 @@ jobs:
           umask 077
           printf '%s\n' "$TAG_ALLOWED_SIGNERS" > "$RUNNER_TEMP/allowed_signers"
           git config gpg.ssh.allowedSignersFile "$RUNNER_TEMP/allowed_signers"
+          # actions/checkout leaves the pushed tag as a lightweight ref to the commit, which
+          # `git tag -v` cannot verify. Fetch the annotated tag object itself first.
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          [ "$(git cat-file -t "${GITHUB_REF_NAME}")" = tag ] || { echo "::error::${GITHUB_REF_NAME} is not an annotated, signed tag"; exit 1; }
           git tag -v "${GITHUB_REF_NAME}"
 
       - uses: actions/setup-node@v5
@@ -66,16 +70,33 @@ jobs:
           printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
           echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
 
+      # Our own temporary keychain rather than electron-builder's CSC_LINK import: electron-builder
+      # deletes its keychain when it exits, and the DMG is signed and notarized after that.
+      - name: Import the Developer ID certificate into a temporary keychain
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          umask 077
+          kc="$RUNNER_TEMP/release-signing.keychain-db"
+          kc_pass="$(openssl rand -base64 24)"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$kc_pass" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kc_pass" "$kc"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$kc" -f pkcs12 -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pass" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security find-identity -v -p codesigning "$kc"
+          echo "CSC_KEYCHAIN=$kc" >> "$GITHUB_ENV"
+
       - name: Build, sign, notarize, staple, verify
         env:
-          # electron-builder imports the certificate into a temporary keychain from these two.
-          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           MODEX_SIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          # The identity check in the script uses the login keychain; CI's temporary keychain is
-          # named by electron-builder, so the script skips that one check when this is set.
+          # Lets the script build in this checkout (locally it insists on a worktree).
           MODEX_RELEASE_CI: "1"
         run: scripts/release-mac.sh
 
@@ -93,6 +114,8 @@ jobs:
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Modex $GITHUB_REF_NAME" --notes "Draft: notes pending."
           gh release upload "$GITHUB_REF_NAME" Modex-*-arm64.dmg Modex-*-arm64.zip SHA256SUMS.txt --clobber
 
-      - name: Scrub the staged key
+      - name: Scrub the staged key and the keychain
         if: always()
-        run: rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/allowed_signers"
+        run: |
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/allowed_signers" "$RUNNER_TEMP/developer-id.p12"
+          [ -z "${CSC_KEYCHAIN:-}" ] || security delete-keychain "$CSC_KEYCHAIN" || true

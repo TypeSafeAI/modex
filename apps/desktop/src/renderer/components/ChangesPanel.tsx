@@ -16,16 +16,17 @@ export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
     ? selection.path : changes?.files[0]?.path ?? null;
   const [result, setResult] = useState<{ threadId: string; path: string; snapshot: ChangesSnapshot | null; text: string; error?: string } | null>(null);
   const diff = result?.threadId === thread.id && result.path === file && result.snapshot === changes ? result : null;
+  const selectedEntry = file ? changes?.files.find((entry) => entry.path === file) : null;
 
   useEffect(() => {
     if (!file) return;
     let alive = true;
-    void bridge.invoke("changes:diff", { threadId: thread.id, path: file }).then(
+    void bridge.invoke("changes:diff", { threadId: thread.id, path: file, original: selectedEntry?.original }).then(
       (text) => { if (alive) setResult({ threadId: thread.id, path: file, snapshot: changes, text }); },
       (error: Error) => { if (alive) setResult({ threadId: thread.id, path: file, snapshot: changes, text: "", error: error.message }); },
     );
     return () => { alive = false; };
-  }, [file, thread.id, changes]);
+  }, [file, thread.id, changes, selectedEntry?.original]);
 
   const totals = (changes?.files ?? []).reduce((acc, f) => ({ a: acc.a + f.additions, d: acc.d + f.deletions }), { a: 0, d: 0 });
 
@@ -81,6 +82,7 @@ export function Diff({ text }: { text: string }) {
     <pre className="diff-body" data-testid="diff">
       {text.split("\n").map((l, i) => {
         const cls = l.startsWith("+++") || l.startsWith("---") || l.startsWith("diff ") || l.startsWith("index ") || l.startsWith("new file") || l.startsWith("deleted file")
+          || l.startsWith("similarity index") || l.startsWith("rename from") || l.startsWith("rename to") || l.startsWith("copy from") || l.startsWith("copy to")
           ? "hdr" : l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "";
         return <div key={i} className={cls} data-line={cls || "context"}>{l || " "}</div>;
       })}

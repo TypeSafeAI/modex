@@ -33,6 +33,8 @@ interface Props {
   auto: boolean;
   models: ModelInfo[];
   modelsError?: string;
+  /** Asks the CLI for its models again after `modelsError`. */
+  onRetryModels?: () => void;
   /** A suggested next message for an idle thread; shown only while the box is empty. */
   suggestion?: FollowUp | null;
   onBackend: (b: BackendId) => void;
@@ -41,7 +43,7 @@ interface Props {
   onModel: (m: string, effort?: string) => void;
   onEffort: (e: string | undefined) => void;
   onAuto: (auto: boolean) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<void>;
   onStop: () => void;
   /** Set by the ⌘⏎ / focus shortcuts in App. */
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -56,9 +58,10 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onRetryModels, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     const el = ta.current;
@@ -68,10 +71,9 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
   }, [text]);
 
   const submit = () => {
-    const t = text.trim();
-    if (!t || busy) return;
-    onSend(t);
-    setText("");
+    if (!text.trim() || busy || submittingRef.current) return;
+    submittingRef.current = true;
+    void onSend(text).finally(() => { submittingRef.current = false; });
   };
 
   // The suggestion is an offer, never a default: it fills the box only on an explicit click, Tab or → while
@@ -137,7 +139,12 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
             )}
           </div>
         </div>
-        {modelsError && <div className="composer-warn">⚠ {modelsError}</div>}
+        {modelsError && (
+          <div className="composer-warn" role="alert" data-testid="models-error">
+            ⚠ {modelsError}
+            {onRetryModels && <button type="button" className="btn ghost small" data-testid="models-retry" onClick={onRetryModels}>Retry</button>}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { MockBackend } from "./backends/mock.js";
 import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import type { SecretStore } from "./secrets.js";
+import { describeFailure } from "../../shared/failures.js";
 
 interface Live {
   abort: AbortController | null;
@@ -224,27 +225,49 @@ export class ThreadRunner {
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
   async send(threadId: string, text: string): Promise<void> {
+    return this.start(threadId, text);
+  }
+
+  /**
+   * Runs the thread's last message again, in place: the transcript keeps its one user bubble and the
+   * new attempt follows the failure card. Auto routing is not re-asked; the pick already applied.
+   */
+  async retry(threadId: string): Promise<void> {
+    this.assertThreadAvailable(threadId);
+    const user = [...this.slot(threadId).items].reverse().find((item) => item.kind === "user");
+    if (!user || user.kind !== "user") throw new Error("Nothing to retry: this thread has no message yet.");
+    return this.start(threadId, user.text, user.id);
+  }
+
+  private async start(threadId: string, text: string, reuse?: string): Promise<void> {
     this.assertThreadAvailable(threadId);
     const l = this.slot(threadId);
     if (l.run) throw new Error("This thread is still working. Stop it or wait for it to finish.");
-    const run = this.runTurn(threadId, text);
+    const run = this.runTurn(threadId, text, reuse);
     l.run = run;
     try { await run; }
     finally { if (l.run === run) l.run = null; }
   }
 
-  private async runTurn(threadId: string, text: string): Promise<void> {
+  /** `reuse` names an existing user item to run again instead of adding one (Retry). */
+  private async runTurn(threadId: string, text: string, reuse?: string): Promise<void> {
     let thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     const l = this.slot(threadId);
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
 
-    const shouldName = thread.title === "New thread" && !l.items.some((item) => item.kind === "user");
+    const retry = reuse !== undefined;
+    const derivedTitle = text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread";
+    // Name the thread after its first completed turn, including a retried first turn that still carries the opening-message title.
+    const firstTurn = !l.items.some((item) => item.kind === "user" && item.id !== reuse);
+    const shouldName = firstTurn && (thread.title === "New thread" || (retry && thread.title === derivedTitle));
     l.followUp?.abort.abort();
     l.followUp = undefined;
-    this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
-    if (thread.title === "New thread") this.updateThread(threadId, { title: text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread" });
+    if (!retry) {
+      this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
+      if (thread.title === "New thread") this.updateThread(threadId, { title: derivedTitle });
+    }
 
     const fallbackTitle = thread.title;
     const abort = new AbortController();
@@ -253,8 +276,9 @@ export class ThreadRunner {
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
     let fast = false;
+    let routingBlocked: string | undefined;
     const auto = Boolean(thread.auto);
-    if (auto) {
+    if (auto && !retry) {
       // Auto: judge the request, then re-read the thread — the pick is applied as a thread update
       // so the composer, header, and persisted state all show what this turn runs on.
       try {
@@ -262,12 +286,20 @@ export class ThreadRunner {
         const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
         this.addItem(threadId, receipt.item);
         const d = receipt.decision;
-        if (d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
-        else if (d.model !== thread.model || d.effort !== thread.effort) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
+        if (d.blocked) routingBlocked = d.reasons.at(-1) ?? "The reasoning-effort ceiling cannot be guaranteed.";
+        // A blocked route is diagnostic evidence only. Never let it mutate the thread or
+        // discard its current backend session, even if a router implementation returns a
+        // partially populated decision alongside `blocked`.
+        if (!d.blocked && d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
+        else if (!d.blocked && (d.model !== thread.model || d.effort !== thread.effort)) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
         fast = d.fast;
         thread = this.o.store.thread(threadId) ?? thread;
       } catch (err) {
-        this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Auto routing failed (${(err as Error).message}); using the thread's current model.`, at: new Date().toISOString() });
+        if (thread.backend === "mock") {
+          this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Auto routing failed (${(err as Error).message}); using the thread's current model.`, at: new Date().toISOString() });
+        } else {
+          routingBlocked = `Auto could not establish a safe route (${(err as Error).message}). Retry routing or explicitly turn Auto off to use the current model.`;
+        }
       }
     }
     if (abort.signal.aborted) {
@@ -276,28 +308,35 @@ export class ThreadRunner {
       l.abort = null;
       return;
     }
+    if (routingBlocked) {
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Auto routing stopped: ${routingBlocked}`, at: new Date().toISOString() });
+      this.setStatus(threadId, "error");
+      l.abort = null;
+      return;
+    }
     const backend = this.backends[thread.backend];
     l.backend = thread.backend;
     try {
+      const account = thread.backend === "codex" && backend.identity
+        ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
+      if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
       const result = await backend.runTurn(
         text,
-        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, addDirs: thread.worktree ? [] : [] },
+        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [] },
         sink,
         abort.signal,
       );
       if (result.status === "completed" && shouldName && !abort.signal.aborted) this.nameThread(threadId, text, fallbackTitle, backend, thread.model);
       if (auto) this.router.noteOutcome(threadId, result.status);
       if (result.status === "failed") {
-        this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: result.error ?? "The turn failed.", at: new Date().toISOString() });
-        this.setStatus(threadId, "error");
+        this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
       } else {
         if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
       if (auto) this.router.noteOutcome(threadId, "failed");
-      this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: (err as Error).message, at: new Date().toISOString() });
-      this.setStatus(threadId, "error");
+      this.failTurn(threadId, thread, (err as Error).message, { fast, retry });
     } finally {
       // A CLI can exit without closing its last streamed items. Save their tail and stop spinners.
       for (const item of l.items) {
@@ -317,12 +356,46 @@ export class ThreadRunner {
     }
   }
 
+  /** Ends a turn in the error state with a failure card: the CLI's message, a remedy, and everything a bug report needs. */
+  private failTurn(threadId: string, thread: Thread, message: string, extra: { detail?: Record<string, unknown>; recovery?: string[]; fast: boolean; retry: boolean }): void {
+    const settings = this.o.store.settings;
+    const failure = describeFailure({
+      backend: thread.backend,
+      message,
+      detail: extra.detail,
+      recovery: extra.recovery,
+      context: {
+        at: new Date().toISOString(),
+        modex: process.env.MODEX_VERSION,
+        platform: `${process.platform} ${process.arch}`,
+        electron: process.versions.electron,
+        node: process.versions.node,
+        backend: thread.backend,
+        bin: thread.backend === "claude" ? settings.claude_bin : thread.backend === "codex" ? settings.codex_bin : undefined,
+        model: thread.model,
+        effort: thread.effort,
+        mode: thread.mode,
+        plan: thread.plan,
+        auto: Boolean(thread.auto),
+        fast: extra.fast,
+        retry: extra.retry,
+        threadId,
+        sessionHandle: thread.sessionHandle,
+        cwd: thread.cwd,
+        worktree: thread.worktree?.branch,
+      },
+    });
+    this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: failure.summary, failure, at: new Date().toISOString() });
+    this.setStatus(threadId, "error");
+  }
+
   private nameThread(threadId: string, text: string, fallback: string, backend: Backend, model: string): void {
     if (!backend.generateTitle || this.disposing || this.deleting.has(threadId) || this.o.store.thread(threadId)?.title !== fallback) return;
     const abort = new AbortController();
     this.naming.set(threadId, abort);
     const timer = setTimeout(() => abort.abort(), 30_000);
-    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model }, abort.signal)).then((title) => {
+    const account = this.o.store.thread(threadId)?.codexAccount;
+    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model, account }, abort.signal)).then((title) => {
       if (title && !abort.signal.aborted && !this.disposing && this.o.store.thread(threadId)?.title === fallback) {
         this.updateThread(threadId, { title });
       }
@@ -355,11 +428,13 @@ export class ThreadRunner {
     const id = l.backend;
     const backend = id ? this.backends[id] : undefined;
     if (!id || !backend?.forceStop) return;
-    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && o.run).length;
+    const account = id === "codex" ? this.o.store.thread(threadId)?.codexAccount ?? "cli" : undefined;
+    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && o.run &&
+      (account === undefined || (this.o.store.thread(other)?.codexAccount ?? "cli") === account)).length;
     const name = id === "codex" ? "Codex" : id;
     const text = others ? `Force-stopping ${name}. ${others} other ${name} ${others === 1 ? "thread" : "threads"} will stop too.` : `Force-stopping ${name}.`;
     this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text, at: new Date().toISOString() });
-    backend.forceStop().catch((err: Error) => {
+    backend.forceStop(account).catch((err: Error) => {
       if (this.live.get(threadId) === l) this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Force-stop failed: ${err.message}`, at: new Date().toISOString() });
     });
   }
@@ -375,6 +450,9 @@ export class ThreadRunner {
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean } = {}): Thread {
+    // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
+    patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
+      ["mode", "model", "title", "backend", "plan", "effort", "auto"].includes(key))) as ThreadPatch;
     if (patch.title !== undefined) {
       this.naming.get(threadId)?.abort();
       this.naming.delete(threadId);
@@ -383,12 +461,13 @@ export class ThreadRunner {
     const live = this.o.store.thread(threadId);
     const current = live ? { ...live } : undefined;
     // Switching backend starts a fresh backend conversation; the transcript stays.
-    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
+    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch });
     this.o.emit({ threadId, type: "thread", thread: t });
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
-    if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && this.slot(threadId).items.some((i) => i.kind === "route")) {
+    const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");
+    if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && lastRoute && !lastRoute.blocked) {
       void this.router.noteOverride(current, patch.model).then((learned) => {
         if (learned) this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Noted — for ${learned.task.replace(/_/g, " ")} you chose tier ${learned.to} over Auto's tier ${learned.from}. Auto will lean that way next time.`, at: new Date().toISOString() });
       }).catch(() => {});

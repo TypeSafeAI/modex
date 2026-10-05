@@ -23,10 +23,26 @@ function killIfAlive(pid: number, signal: NodeJS.Signals = "SIGKILL"): void {
   try { process.kill(pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
 }
 
-// Exited means a zombie or already reaped (ps exits 1 for an unknown PID).
-function exited(pid: number): boolean {
-  try { return execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim().startsWith("Z"); }
+// macOS can keep a SIGKILLed PTY supervisor in ?E (exiting) until Node yields. Waiting
+// synchronously for Z/reaping then deadlocks this fixture; E also closes its control socket.
+function exiting(pid: number): boolean {
+  try {
+    const state = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    return state.startsWith("Z") || process.platform === "darwin" && state.includes("E");
+  }
   catch (error) { if ((error as { status?: number }).status === 1) return true; throw error; }
+}
+
+async function waitForStopped(pid: number): Promise<void> {
+  let stat = "unavailable";
+  for (let i = 0; i < 300; i++) {
+    try { stat = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim(); }
+    catch (error) { if ((error as { status?: number }).status !== 1) throw error; stat = "exited"; }
+    if (stat.startsWith("T")) return;
+    if (stat === "exited") break;
+    await delay(10);
+  }
+  assert.fail(`fixture supervisor never stopped (ps stat: ${stat})`);
 }
 
 async function waitForPid(file: string): Promise<number> {
@@ -81,13 +97,13 @@ test("cleanup timeout retains ownership and a later close can retry", { skip: pr
     return pty;
   });
   manager.open("one", 80, 24);
-  // Freeze only this fixture's supervisor, then exercise its real control-channel timeout.
-  process.kill(pty.pid, "SIGSTOP");
-  // CI once saw this supervisor gone within 56 ms (#63). Say how it ended rather than failing on
-  // the SIGCONT below: exit 143 means it served CLOSE (never stopped), signal 9 that it was killed.
+  // CI has seen CLOSE win a race with SIGSTOP and exit 143. Wait until the OS reports this
+  // fixture's supervisor stopped before exercising the real control-channel timeout.
   let exit: { exitCode: number; signal?: number } | undefined;
   pty.onExit((event) => { exit = event; });
   try {
+    process.kill(pty.pid, "SIGSTOP");
+    await waitForStopped(pty.pid);
     const outcome = await manager.close("one").then(() => "resolved", (error: Error) => `rejected: ${error.message}`);
     assert.match(outcome, /did not stop/, `a frozen supervisor must time out; close() ${outcome}, exit ${JSON.stringify(exit)}`);
     assert.equal(alive(pty.pid), true);
@@ -122,22 +138,36 @@ test("supervisor death without a cleanup receipt never authorizes deletion", { s
 test("supervisor death seen as a failed CLOSE write still reports a missing cleanup receipt", { skip: process.platform === "win32" }, async () => {
   const cwd = tmpdir("terminal-epipe-");
   let pty!: IPty;
-  const manager = new TerminalManager(() => cwd, () => {}, (_shell, _args, options) => {
+  let output = "";
+  const manager = new TerminalManager(() => cwd, (event) => { if (event.type === "data") output += event.data; }, (_shell, _args, options) => {
     pty = spawnTerminal("/bin/bash", ["--noprofile", "--norc"], options);
     return pty;
   });
   const session = manager.open("one", 80, 24);
   const file = path.join(cwd, "shell.pid");
-  manager.write("one", session.sessionId, `printf '%s' "$$" > ${quote(file)}\r`);
+  // The blocked event loop below cannot drain the PTY master. Silence the prompt and wait
+  // for a marker emitted after the command echo, so pending tty output cannot hold exit up.
+  manager.write("one", session.sessionId, `stty -echo; PS1=; printf '%s' "$$" > ${quote(file)}; printf '\\137\\137EP_READY\\137\\137\\n'\r`);
   const shell = await waitForPid(file);
   try {
+    for (let i = 0; i < 300 && !output.includes("__EP_READY__"); i++) await delay(10);
+    assert.ok(output.includes("__EP_READY__"), "fixture terminal output was not drained");
     process.kill(pty.pid, "SIGKILL");
     // Block without yielding until the supervisor is gone: its EOF stays unread, so close() writes
     // CLOSE into a dead peer and sees EPIPE rather than an already-closed socket.
     const pause = new Int32Array(new SharedArrayBuffer(4));
-    for (let i = 0; i < 300 && !exited(pty.pid); i++) Atomics.wait(pause, 0, 0, 10);
-    assert.ok(exited(pty.pid), "the supervisor survived SIGKILL");
-    await assert.rejects(manager.close("one"), /without confirming cleanup/);
+    for (let i = 0; i < 300 && !exiting(pty.pid); i++) Atomics.wait(pause, 0, 0, 10);
+    if (!exiting(pty.pid)) {
+      let stat = "unavailable";
+      try { stat = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pty.pid)], { encoding: "utf8" }).trim(); } catch { /* the PID may have exited */ }
+      assert.fail(`the supervisor survived SIGKILL (ps stat: ${stat})`);
+    }
+    await assert.rejects(manager.close("one"), (error: Error) => {
+      assert.match(error.message, /without confirming cleanup/);
+      // Prove that this covers the failed-write path, rather than an already-observed EOF.
+      assert.match((error.cause as NodeJS.ErrnoException | undefined)?.code ?? "", /^(EPIPE|ECONNRESET)$/);
+      return true;
+    });
   } finally {
     killIfAlive(shell);
     fs.rmSync(cwd, { recursive: true, force: true });

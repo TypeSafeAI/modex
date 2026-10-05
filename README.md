@@ -8,8 +8,13 @@
 
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
 repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
-stream-json and `codex app-server`), using the logins you already have. It never calls a model
-API directly and never stores credentials.
+stream-json and `codex app-server`), using existing CLI logins or app-owned ChatGPT sign-in.
+App-owned sign-in is under review; see [its acceptance gates](docs/chatgpt-signin.md).
+It never calls a model
+API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
+Claude and Codex CLI credentials remain with their CLIs.
+
+![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
 
 ![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
 
@@ -21,7 +26,7 @@ modex/
 
 ## The desktop app
 
-![Approval card](docs/screenshots/01-thread-approval.png)
+![Modex approval card in the graphite desktop interface](docs/screenshots/04-graphite-approval.png)
 
 - **Two backends, one UI.** Every thread picks **Codex** or **Claude** in the composer. Codex
   threads talk to `codex app-server` (the same JSON-RPC protocol the official Codex App uses);
@@ -39,12 +44,19 @@ modex/
   shared with the [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
   directly when it is installed. The coding turn itself still runs only through the
   CLIs. See [docs/auto-routing.md](docs/auto-routing.md).
+- **Settings you can verify.** Separate sections keep general defaults, coding CLIs,
+  Auto routing, and advanced configuration easy to find, with persistent Save and Cancel
+  actions. Jev transport, model, and allowed backend controls make routing preferences
+  explicit; connection tests identify the saved configuration, and failed saves retain
+  your draft. CLI-only routing never falls back to HTTPS, existing sessions stay on their
+  backend, and Auto stops if it cannot honor your reasoning-effort ceiling.
 - **Launch from anywhere.** Opened from Finder or the Dock, Modex reads your login shell's
   PATH once at startup (interactive `zsh -ilc`, falling back to `-lc`), so `claude`, `codex`,
   and `jev` installed under nvm, Homebrew, or `~/.local/bin` are found exactly as in a terminal.
   Set `MODEX_NO_LOGIN_PATH=1` to skip this.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
+  Removing a project clears its drafts and thread views while leaving its folder on disk.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` so agents never step on
   each other or on your checkout. If the project ships `scripts/worktree.sh` (as this repo
   does), Modex delegates to it — `new modex-<id>` / `remove` — and the thread lives wherever the
@@ -57,16 +69,38 @@ modex/
   threads request `model_reasoning_summary = "detailed"`; Claude Code's CLI reports that the
   model thought but redacts the text, so those rows carry timing only.
 - **Inline approvals.** When the mode requires it, the thread pauses on a card showing the
+  <<<<<<< HEAD
   exact command or patch. _Approve_, _Deny_, or _Always_ (trusts that command prefix for
   the thread). _Stop_ cancels a running turn and any pending approvals.
+  =======
+  exact command or patch. _Approve_, _Deny_, or _Always_ (trusts that command prefix for
+  the thread). _Stop_ cancels a running turn and any pending approvals.
+- **Errors you can act on.** Failed turns show the CLI's message, a next step, **Retry**
+  (the same message, without a second user bubble), and **Copy details** for a bug report.
+  Sign-in failures offer the CLI's login command in the thread's terminal; missing CLIs
+  link to Settings. Codex stale-login failures retry once: Modex restarts the app-server
+  when it is unused, or retries in place while another turn is running or opening.
+  A second failure shows the card with both attempts recorded. Early send/retry rejections
+  (for example, a busy thread) return to the caller without adding transcript items.
+  > > > > > > > upstream/main
 - **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
-  a one-click revert (confirmed first).
+  a one-click revert (confirmed first). Diff failures appear in the panel.
 - **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.
+- **iPhone companion (preview).** Pair Modex Companion with the Mac from the rail to view
+  threads, send follow-ups, and approve or deny requests on the same network. The phone pins
+  the Mac's certificate; coding turns still run through its CLIs. Access stays off until
+  enabled and can be revoked from the Mac. See the [companion guide](docs/ios-companion.md)
+  for builds, TestFlight status, and verification limits.
 - **Unsent text waits for you.** Type into a thread, look at another, come back: the text is
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
-  starts empty.
+  starts empty. If a send fails, the message returns to its composer without replacing text
+  you typed while the send was pending.
+- **Streamer Mode.** Turn it on from the rail before sharing the window. Modex covers the full
+  window with an opaque privacy screen, hiding chats, thread and project names, terminals,
+  diffs, settings, notifications, and paths while work continues underneath. The cover stays
+  on across relaunches and reveals the workspace only when you choose **Show workspace**.
 - **Threads name themselves.** A new thread takes its first message as its title right away.
   After that first turn completes, the same CLI is asked, in a separate throwaway chat
   conversation that never touches the transcript, for a short title, and the sidebar updates
@@ -94,8 +128,9 @@ modex/
 - **Shortcuts.** `⌘N` new thread · `⇧⌘N` thread in a worktree · `⌘⏎` (or `⏎`) send ·
   `⇧⌘P` plan · `⌘.` stop · `⌘J` changes panel.
 
-- **Settings.** Default backend and mode, CLI executables (with a live health check), default
-  model per backend, or the offline mock engine for demos.
+- **Settings.** Default backend and mode, CLI executables with separate installation/version
+  and account checks, default model per backend, or the offline mock engine for demos. Model
+  catalogues and account status do not prove that a coding turn can access a model.
 
 Each CLI applies its own instruction files (`AGENTS.md`, `CLAUDE.md`), hooks, MCP servers, and
 skills exactly as it would in a terminal.
@@ -129,8 +164,20 @@ captures screenshots:
 npm run screenshot -w @modex/desktop -- --screenshot=/tmp/modex-shots --demo-answer=yes
 ```
 
-Development loop: `npm run dev -w @modex/desktop` (Vite on :5178) and
-`MODEX_DEV_URL=http://localhost:5178 npm run desktop` in another shell.
+Browser development: `npm run desktop:dev`, then open <http://127.0.0.1:5178>.
+Open a project by entering its absolute local folder path. Threads, approvals, Changes,
+settings, and the embedded terminal use the desktop runner with separate browser dev state;
+coding turns still run through the logged-in Claude/Codex CLIs. The dev server binds only to
+`127.0.0.1` and checks a per-run token and the request origin for bridge access.
+
+Browser dev state lives in `~/.modex-browser-dev` (override with `MODEX_BROWSER_HOME`),
+separate from the desktop app's `~/.modex`. Manage app-owned ChatGPT and Claude sign-in in
+the desktop app; browser mode does not store their credentials. The optional Auto judge can
+use `TYPESAFE_API_KEY` or the existing Jev configuration.
+Renderer edits hot-reload; restart the dev command after changing the main-process code.
+
+For Electron development, also run
+`MODEX_DEV_URL=http://127.0.0.1:5178 npm run desktop` in another shell.
 
 ## Offline engine (`@modex/core`)
 
@@ -143,6 +190,7 @@ sandbox-mode matrix, a macOS Seatbelt profile, and JSONL sessions.
 
 ```sh
 npm test         # core (patch engine, policy, agent loop) + desktop (backends, runner, git, store)
+npx playwright install chromium # once, for the browser dev regression
 npm run test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
 ```
 

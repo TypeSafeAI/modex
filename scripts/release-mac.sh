@@ -71,9 +71,20 @@ verify() {
     [ "$t" = "$team" ] || die "$bin is signed by '$t', expected '$team'"
   done < <(find "$app/Contents/Resources/app.asar.unpacked" -type f \( -name '*.node' -o -perm -u+x \) 2>/dev/null)
   local dmg zip; dmg="$(ls "$desktop"/release/Modex-*-arm64.dmg)"; zip="$(ls "$desktop"/release/Modex-*-arm64.zip)"
+  say "DMG: signed by the same certificate"
+  codesign --verify --strict --verbose=2 "$dmg"
+  if [ -n "${MODEX_SIGN_HASH:-}" ]; then
+    local dcerts; dcerts="$(mktemp -d)"
+    codesign -d --extract-certificates="$dcerts/c" "$dmg" 2>/dev/null
+    local dleaf; dleaf="$(openssl x509 -inform DER -in "$dcerts/c0" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')"
+    rm -rf "$dcerts"
+    [ "$dleaf" = "$(tr '[:lower:]' '[:upper:]' <<<"$MODEX_SIGN_HASH")" ] || die "DMG signed with certificate $dleaf, expected $MODEX_SIGN_HASH"
+    echo "leaf $dleaf"
+  fi
   if [ "$notarized" = true ]; then
-    say "Gatekeeper: assessment on the notarized app"
+    say "Gatekeeper: assessment on the notarized app and DMG"
     spctl -a -vv -t exec "$app" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID' || die "Gatekeeper does not see a notarized Developer ID app"
+    spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID' || die "Gatekeeper does not see a notarized Developer ID DMG"
     say "stapler: ticket attached to the app and the DMG"
     xcrun stapler validate "$app"
     xcrun stapler validate "$dmg"
@@ -88,6 +99,10 @@ verify() {
   say "version and architecture"
   /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist"
   lipo -archs "$app/Contents/MacOS/Modex"
+  say "app icon is the Modex icon, not Electron's default"
+  local icon; icon="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIconFile' "$app/Contents/Info.plist")"
+  cmp -s "$app/Contents/Resources/$icon" "$desktop/build/icon.icns" || die "bundle icon $icon differs from apps/desktop/build/icon.icns"
+  echo "$icon matches build/icon.icns"
   say "checksums"
   (cd "$desktop/release" && shasum -a 256 "$(basename "$dmg")" "$(basename "$zip")" | tee SHA256SUMS.txt)
 }
@@ -123,13 +138,14 @@ if [ "$notarize" = true ]; then
 else
   echo "notary: skipped (--sign-only rehearsal; do not publish this build)"
 fi
-if [ -z "${MODEX_RELEASE_CI:-}" ]; then
-  security find-identity -v -p codesigning | grep -Fq "\"$MODEX_SIGN_IDENTITY\"" || die "identity not in the keychain: $MODEX_SIGN_IDENTITY"
-  # A renewed certificate sits next to the one it replaced under the same name, and codesign
-  # refuses an ambiguous name. Resolve the exact certificate: MODEX_SIGN_HASH if given, else the
-  # matching certificate that expires last.
-  if [ -z "${MODEX_SIGN_HASH:-}" ]; then
-    MODEX_SIGN_HASH="$(security find-certificate -a -c "$MODEX_SIGN_IDENTITY" -Z -p | python3 -c '
+# Locally the identity is in the login keychain; CI imports it into a temporary keychain on the
+# search list first (CSC_KEYCHAIN, see .github/workflows/release.yml), so both resolve it here.
+security find-identity -v -p codesigning | grep -Fq "\"$MODEX_SIGN_IDENTITY\"" || die "identity not in the keychain: $MODEX_SIGN_IDENTITY"
+# A renewed certificate sits next to the one it replaced under the same name, and codesign
+# refuses an ambiguous name. Resolve the exact certificate: MODEX_SIGN_HASH if given, else the
+# matching certificate that expires last.
+if [ -z "${MODEX_SIGN_HASH:-}" ]; then
+  MODEX_SIGN_HASH="$(security find-certificate -a -c "$MODEX_SIGN_IDENTITY" -Z -p | python3 -c '
 import sys, subprocess, re
 text = sys.stdin.read()
 best = None
@@ -137,19 +153,33 @@ for m in re.finditer(r"SHA-1 hash: ([0-9A-F]{40})\n(-----BEGIN CERTIFICATE-----.
     end = subprocess.run(["openssl", "x509", "-noout", "-enddate"], input=m.group(2).encode(), capture_output=True).stdout.decode().strip()
     if best is None or end > best[1]: best = (m.group(1), end)
 print(best[0] if best else "")')"
-    [ -n "$MODEX_SIGN_HASH" ] || die "could not resolve a certificate hash for: $MODEX_SIGN_IDENTITY"
-  fi
-  export MODEX_SIGN_HASH
+  [ -n "$MODEX_SIGN_HASH" ] || die "could not resolve a certificate hash for: $MODEX_SIGN_IDENTITY"
 fi
-echo "identity: $MODEX_SIGN_IDENTITY${MODEX_SIGN_HASH:+ (certificate $MODEX_SIGN_HASH)}"
+export MODEX_SIGN_HASH
+echo "identity: $MODEX_SIGN_IDENTITY (certificate $MODEX_SIGN_HASH)"
 
 say "build, sign${notarize:+, notarize, staple}"
-# Local: pick the identity by name from the login keychain. CI: electron-builder imports CSC_LINK
-# into a temporary keychain and signs with the identity found there, so CSC_NAME would not resolve.
 # electron-builder takes the name without the "Developer ID Application:" prefix and adds it back.
-if [ -z "${MODEX_RELEASE_CI:-}" ]; then export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"; fi
+export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"
+# The desktop build compiles against, and the bundle ships, @modex/core's dist/, which a fresh
+# checkout or worktree does not have yet.
+(cd "$root" && npm run build -w @modex/core)
 if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release)
 else (cd "$desktop" && npm run dist:release -- -c.mac.notarize=false); fi
+
+# electron-builder notarizes and staples only the app. The DMG is a separate download that
+# Gatekeeper assesses on its own, so it gets its own signature, notarization and ticket.
+dmg="$(ls "$desktop"/release/Modex-*-arm64.dmg)"
+say "DMG: sign${notarize:+, notarize, staple}"
+codesign --force --sign "$MODEX_SIGN_HASH" --timestamp ${CSC_KEYCHAIN:+--keychain "$CSC_KEYCHAIN"} "$dmg"
+if [ "$notarize" = true ]; then
+  if [ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]; then notary=(--keychain-profile "$APPLE_KEYCHAIN_PROFILE")
+  else notary=(--key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"); fi
+  result="$(xcrun notarytool submit "$dmg" "${notary[@]}" --wait --output-format json)"
+  echo "$result"
+  grep -q '"status":"Accepted"' <<<"${result// /}" || die "notarization of $(basename "$dmg") was not accepted"
+  xcrun stapler staple "$dmg"
+fi
 
 verify "$notarize"
 say "done: apps/desktop/release/"

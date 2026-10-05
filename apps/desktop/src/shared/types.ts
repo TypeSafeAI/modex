@@ -37,6 +37,8 @@ export interface Thread {
   auto?: boolean;
   /** Backend resume handle: Claude session id or Codex thread id. */
   sessionHandle?: string;
+  /** Opaque identity binding; never credentials. Older Codex handles belong to CLI auth. */
+  codexAccount?: string;
   status: ThreadStatus;
 }
 
@@ -45,11 +47,37 @@ export type ThreadItem =
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string }
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
-  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string }
+  /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
+  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
   /** An Auto routing decision made before a turn: what was picked and why. */
-  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; reasons: string[]; durationMs: number; at: string };
+  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; reasons: string[]; durationMs: number; at: string };
+
+/** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
+export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unknown";
+
+/** An in-app remedy: a sign-in command Modex types into the thread's terminal, or the Settings dialog. */
+export type TurnFix = { kind: "login"; label: string; command: string } | { kind: "settings"; label: string };
+
+/** A turn that did not complete. Rendered as a card with Retry, the fix, and Copy details. */
+export interface TurnFailure {
+  code: FailureCode;
+  backend: BackendId;
+  /** The CLI's own words, verbatim. */
+  message: string;
+  /** One line in Modex's words; the transcript shows this. */
+  summary: string;
+  /** What to do next, when Modex knows. */
+  hint?: string;
+  /** Sending the same message again is worth a try. */
+  retryable: boolean;
+  fix?: TurnFix;
+  /** What Modex already tried on its own before giving up, oldest first. */
+  recovery?: string[];
+  /** Research-level context for a bug report: versions, ids, exit codes, stderr, RPC details. */
+  debug: Record<string, unknown>;
+}
 
 export type ThreadEvent =
   | { threadId: string; type: "item"; item: ThreadItem }
@@ -165,6 +193,10 @@ export interface RoutingTest {
   code?: string;
   status?: number;
   transport: "cli" | "http" | "none";
+  /** Effective identity of the explicitly tested setup. Never includes credentials. */
+  tested?: { executable: string | null; model: string };
+  /** False when settings changed while this test was running. */
+  current?: boolean;
   ms: number;
 }
 
@@ -182,6 +214,8 @@ export interface RoutingStatus {
   /** Modex's own encrypted store for a hand-entered key. */
   secrets: { backend: string; available: boolean; present: boolean; savedAt: string | null };
   model: string;
+  /** Most recent explicit Settings test; status inspection never makes a provider call. */
+  lastTest?: Omit<RoutingTest, "current"> & { at: number };
   questionSetVersion: number;
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
 }
@@ -224,6 +258,7 @@ export interface ChangedFile {
   code: string;
   additions: number;
   deletions: number;
+  original?: string;
 }
 
 export interface ChangesSnapshot {
@@ -262,6 +297,35 @@ export interface ModexBridge {
   platform: string;
 }
 
+export interface BackendHealth {
+  executable: "available" | "missing" | "unknown";
+  /** Parsed CLI version; raw --version output never crosses IPC. */
+  version?: string;
+  authentication: "authenticated" | "signed-out" | "unsupported" | "unknown" | "failed";
+  /** A catalogue or account check does not demonstrate model entitlement. */
+  access: "unverified";
+  detail: string;
+}
+
+export interface ChatGPTStatus {
+  available: boolean; active: string | null; signingIn: boolean;
+  accounts: { id: string; label: string; registration: string; signedIn: boolean; planEnabled: boolean }[];
+  detail: string;
+}
+
+export interface ClaudeLoginResult {
+  status: "authenticated" | "busy" | "unsupported" | "failed" | "timeout" | "cancelled";
+  detail: string;
+}
+
+export interface CompanionStatus {
+  enabled: boolean;
+  addresses: string[];
+  port?: number;
+  pairingUri?: string;
+  qrDataUrl?: string;
+}
+
 export interface BridgeCommands {
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };
@@ -270,6 +334,8 @@ export interface BridgeCommands {
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
   "thread:send": { req: { threadId: string; text: string }; res: { ok: boolean; error?: string } };
+  /** Runs the thread's last message again in place (no second user bubble); the Retry on a failure card. */
+  "thread:retry": { req: { threadId: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
   "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
@@ -281,7 +347,18 @@ export interface BridgeCommands {
   /** One tiny judge request through the active transport. */
   "routing:test": { req: undefined; res: RoutingTest };
   "models:list": { req: { backend: BackendId }; res: { models: ModelInfo[]; error?: string } };
-  "backends:health": { req: undefined; res: Record<BackendId, { ok: boolean; detail: string }> };
+  "backends:health": { req: undefined; res: Record<BackendId, BackendHealth> };
+  "chatgpt:status": { req: undefined; res: ChatGPTStatus };
+  "chatgpt:signIn": { req: { accountId?: string }; res: ChatGPTStatus };
+  "chatgpt:cancel": { req: undefined; res: void };
+  "chatgpt:select": { req: { accountId: string | null }; res: ChatGPTStatus };
+  "chatgpt:signOut": { req: { accountId: string }; res: { status: ChatGPTStatus; detail: string } };
+  "claude:login": { req: undefined; res: ClaudeLoginResult };
+  "claude:cancelLogin": { req: undefined; res: void };
+  "companion:status": { req: undefined; res: CompanionStatus };
+  "companion:start": { req: undefined; res: CompanionStatus };
+  "companion:stop": { req: undefined; res: CompanionStatus };
+  "companion:reset": { req: undefined; res: CompanionStatus };
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };
   /** A project checkout's current branch, for a draft's context strip; null outside a git repository. */
   "project:branch": { req: { projectId: string }; res: string | null };
@@ -291,9 +368,11 @@ export interface BridgeCommands {
   "terminal:resize": { req: { threadId: string; sessionId: string; cols: number; rows: number }; res: void };
   "terminal:close": { req: { threadId: string; sessionId: string }; res: void };
   "changes:status": { req: { threadId: string }; res: ChangesSnapshot };
-  "changes:diff": { req: { threadId: string; path: string }; res: string };
+  "changes:diff": { req: { threadId: string; path: string; original?: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
   "settings:update": { req: Partial<Settings>; res: Settings };
   "shell:openPath": { req: { path: string }; res: void };
   "shell:openTerminal": { req: { path: string }; res: void };
+  /** System clipboard via main: works whether or not the window has focus (the Web API needs focus). */
+  "clipboard:write": { req: { text: string }; res: void };
 }

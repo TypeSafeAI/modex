@@ -42,7 +42,10 @@ itself driving one of them.
 - `docs/status.md` — what has shipped, what is on `main` but unreleased, what is in flight, what is
   next. Update it in the PR that changes any of those. `docs/reviews/` holds release evidence.
 - Real models run only through the `claude` and `codex` CLIs. There is no API mode for
-  coding turns; do not add one. The one network call outside the CLIs is the optional Auto
+  coding turns; do not add one. App-owned Sign in with ChatGPT may make authentication-only
+  requests to OpenAI's authorization, OpenID metadata/JWKS, token and revocation endpoints;
+  tokens stay in main-process OS-encrypted storage and the account's Codex child environment.
+  These calls never carry prompts or files or execute inference. The other network call outside the CLIs is the optional Auto
   routing judge (Jev, `apps/desktop/src/main/engine/routing/`), which answers typed questions
   about a request and never runs a turn or sees file contents; without `TYPESAFE_API_KEY`
   it is replaced by a built-in heuristic. See `docs/auto-routing.md`.

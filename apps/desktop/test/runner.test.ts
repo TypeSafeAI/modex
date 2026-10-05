@@ -270,7 +270,24 @@ test("two threads in the same project run concurrently and independently", async
     await runner.send(a.id, "while busy");
     await p;
   }, /still working/);
+  assert.equal(runner.items(a.id).filter((i) => i.kind === "notice").length, 0, "concurrent send rejection leaves no notice item");
 });
+
+test("send while a turn is running rejects and does not record a notice item", async () => {
+  const h = harness([{ content: "first step" }, { content: "second step" }]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(project.id, { mode: "chat" });
+  const run = runner.send(thread.id, "task 1");
+  await assert.rejects(runner.send(thread.id, "task 2 while busy"), /still working/);
+  await run;
+  const notices = runner.items(thread.id).filter((i) => i.kind === "notice");
+  assert.equal(notices.length, 0, "concurrent send rejection must not leave a notice item");
+  const userItems = runner.items(thread.id).filter((i) => i.kind === "user");
+  assert.equal(userItems.length, 1, "rejected send must not record the user message");
+});
+
 
 test("worktree threads work on an isolated branch; deleting removes the worktree", async () => {
   const h = harness([
@@ -356,16 +373,50 @@ test("a failing project script surfaces as an error, not a half-created thread",
   assert.equal(h.store.snapshot().threads.length, 0);
 });
 
-test("a backend failure becomes an error notice, not a crash", async () => {
+test("a backend failure becomes a failure card with the remedy and the debug context, not a crash", async () => {
   const h = harness();
   const project = h.store.addProject(gitRepo());
-  const failing: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "failed", error: "codex: not logged in" }) };
-  const runner = new ThreadRunner({ ...h, backends: { mock: failing } });
-  const thread = await runner.createThread(project.id);
+  const failing: Backend = { id: "codex", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "failed", error: "codex: not logged in", detail: { rpcCode: 401 } }) };
+  const runner = new ThreadRunner({ ...h, backends: { codex: failing } });
+  const thread = await runner.createThread(project.id, { backend: "codex" });
   await runner.send(thread.id, "hi");
   assert.equal(runner.status(thread.id), "error");
-  const notice = runner.items(thread.id).find((i) => i.kind === "notice") as { text: string };
-  assert.match(notice.text, /not logged in/);
+  const notice = runner.items(thread.id).find((i) => i.kind === "notice") as Extract<ThreadItem, { kind: "notice" }>;
+  assert.equal(notice.level, "error");
+  assert.match(notice.text, /Codex is signed out/);
+  assert.equal(notice.failure?.code, "auth");
+  assert.equal(notice.failure?.message, "codex: not logged in");
+  assert.deepEqual(notice.failure?.fix, { kind: "login", label: "Sign in to Codex", command: "codex login" });
+  assert.equal(notice.failure?.debug.threadId, thread.id);
+  assert.equal(notice.failure?.debug.cwd, thread.cwd);
+  assert.equal(notice.failure?.debug.rpcCode, 401);
+  assert.equal(notice.failure?.debug.bin, "codex");
+  assert.equal(notice.failure?.debug.retry, false);
+  assert.ok(new Store(h.home).items(thread.id).some((i) => i.kind === "notice" && i.failure?.code === "auth"), "the failure is persisted with the transcript");
+  await runner.dispose();
+});
+
+test("Retry runs the last message again in place: one user bubble, then the new attempt", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  let attempts = 0;
+  const flaky: Backend = { id: "codex", listModels: async () => [], dispose: async () => {}, runTurn: async (text, _opts, sink) => {
+    if (++attempts === 1) return { status: "failed", error: "stream disconnected before completion" };
+    sink.assistant(`ok: ${text}`);
+    return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { codex: flaky } });
+  const thread = await runner.createThread(project.id, { backend: "codex" });
+  await assert.rejects(runner.retry(thread.id), /Nothing to retry/);
+  await runner.send(thread.id, "build it");
+  assert.equal(runner.status(thread.id), "error");
+  await runner.retry(thread.id);
+  assert.equal(runner.status(thread.id), "idle");
+  const items = runner.items(thread.id);
+  assert.deepEqual(items.map((i) => i.kind), ["user", "notice", "assistant"]);
+  assert.equal((items[2] as { text: string }).text, "ok: build it");
+  assert.equal(attempts, 2);
+  await runner.dispose();
 });
 
 test("switching backend resets the resume handle and model; plan/effort persist", async () => {
@@ -434,7 +485,7 @@ test("Auto threads: a route item lands before the turn, the pick is applied, and
   assert.equal(seen[1]!.model, "big");
 });
 
-test("Auto threads: a routing failure is a warning, not a lost turn", async () => {
+test("Auto mock threads keep model discovery errors in a receipt without losing the turn", async () => {
   const h = harness([{ content: "fine" }]);
   const project = h.store.addProject(gitRepo());
   const { Router } = await import("../src/main/engine/routing/router.js");
@@ -443,8 +494,11 @@ test("Auto threads: a routing failure is a warning, not a lost turn", async () =
   const thread = await runner.createThread(project.id, { auto: true });
   await runner.send(thread.id, "hello");
   const kinds = runner.items(thread.id).map((i) => i.kind);
-  assert.deepEqual(kinds, ["user", "notice", "assistant"]);
-  assert.match((runner.items(thread.id)[1] as { text: string }).text, /Auto routing failed \(no models\)/);
+  assert.deepEqual(kinds, ["user", "route", "assistant"]);
+  const receipt = runner.items(thread.id)[1]!;
+  assert.ok(receipt.kind === "route");
+  assert.ok(receipt.reasons.some((reason) => /no models/.test(reason)));
+  assert.equal(receipt.blocked, undefined, "the offline mock has no hidden reasoning effort to constrain");
   assert.equal(runner.status(thread.id), "idle");
 });
 

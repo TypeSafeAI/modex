@@ -1,7 +1,16 @@
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer } from "./types.js";
+import { LineBuffer, stderrTail } from "./types.js";
+import { health, installation } from "./health.js";
+import type { BackendHealth } from "../../../shared/types.js";
+
+/**
+ * Codex's own wording when the sign-in it loaded at startup no longer matches ~/.codex/auth.json
+ * (the user ran `codex login` again, or as someone else, while the app-server was running). The
+ * server refuses to refresh the old token; a fresh server reads the file again and works.
+ */
+const STALE_AUTH = /(?:access token|authentication session) could not be refreshed/i;
 
 /**
  * Drives the Codex CLI through `codex app-server`, the JSON-RPC-over-stdio protocol the
@@ -14,40 +23,47 @@ export class CodexBackend implements Backend {
   private child: ChildProcess | null = null;
   private ready: Promise<void> | null = null;
   private nextId = 1;
-  private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  /** Includes turns still awaiting initialize/thread creation, before they subscribe to events. */
+  private activeTurns = 0;
+  private readonly pending = new Map<number, { method: string; resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private readonly subscribers = new Set<(msg: RpcMessage) => void>();
   private readonly disconnects = new Set<(error: Error) => void>();
   private readonly loaded = new Set<string>();
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
   private readonly changePaths = new Map<string, string[]>();
+  /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
+  private userAgent: string | null = null;
 
-  constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn) {}
+  constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn,
+    private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
       try {
-        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"'], { stdio: ["pipe", "pipe", "pipe"], env: process.env, detached: true });
+        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"', ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: this.configuration?.env ?? process.env, detached: true });
       } catch (err) {
-        return reject(new Error(`could not start ${this.bin} app-server: ${(err as Error).message}`));
+        return reject(new CodexError(`could not start ${this.bin} app-server: ${(err as Error).message}`, { bin: this.bin, spawnError: (err as Error).message }));
       }
       this.child = child;
       this.loaded.clear();
       const lines = new LineBuffer();
       let stderr = "";
-      child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
+      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
       child.stdout?.on("data", (d: Buffer) => { if (this.child === child) lines.push(d, (line) => this.dispatch(line)); });
       child.on("error", (err) => {
-        const error = new Error(`${this.bin}: ${err.message}. Is the Codex CLI installed and on PATH?`);
+        const error = new CodexError(`${this.bin}: ${err.message}. Is the Codex CLI installed and on PATH?`, { bin: this.bin, spawnError: err.message, errno: (err as NodeJS.ErrnoException).code, pid: child.pid });
         if (this.child === child) this.disconnect(error);
         reject(error);
       });
-      child.on("close", (code) => {
-        if (this.child === child) this.disconnect(new Error(`codex app-server exited (${code}) ${stderr.trim().split("\n").slice(-2).join(" ")}`));
+      child.on("close", (code, signal) => {
+        const output = this.configuration?.redact(stderr) ?? stderr;
+        if (this.child === child) this.disconnect(new CodexError(`codex app-server exited (${code}) ${output.trim().split("\n").slice(-2).join(" ")}`, { exitCode: code, signal, stderr: stderrTail(output), pid: child.pid, userAgent: this.userAgent }));
       });
-      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} })
-        .then(() => {
+      this.request<{ userAgent?: string }>("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} }, 5000)
+        .then((r) => {
+          this.userAgent = typeof r?.userAgent === "string" ? r.userAgent : null;
           this.notify("initialized", {});
           resolve();
         })
@@ -68,7 +84,7 @@ export class CodexBackend implements Backend {
   private dispatch(line: string): void {
     let msg: RpcMessage;
     try {
-      msg = JSON.parse(line) as RpcMessage;
+      msg = JSON.parse(line, (_key, value: unknown) => typeof value === "string" ? this.configuration?.redact(value) ?? value : value) as RpcMessage;
     } catch {
       return;
     }
@@ -76,7 +92,7 @@ export class CodexBackend implements Backend {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
-        if (msg.error) p.reject(new Error(msg.error.message ?? "codex error"));
+        if (msg.error) p.reject(new CodexError(msg.error.message ?? "codex error", { method: p.method, rpcCode: msg.error.code, rpcData: msg.error.data }));
         else p.resolve(msg.result);
       }
       return;
@@ -88,13 +104,21 @@ export class CodexBackend implements Backend {
     this.child?.stdin?.write(JSON.stringify(o) + "\n");
   }
 
-  private request<T = unknown>(method: string, params: unknown): Promise<T> {
+  private request<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
     if (!this.child || this.child.exitCode !== null || !this.child.stdin?.writable) {
-      return Promise.reject(new Error("codex app-server is not running"));
+      return Promise.reject(new CodexError("codex app-server is not running", { method }));
     }
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("timeout"));
+      }, timeoutMs);
+      this.pending.set(id, {
+        method,
+        resolve: (value) => { clearTimeout(timer); resolve(value as T); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
       this.send({ id, method, params });
     });
   }
@@ -119,20 +143,46 @@ export class CodexBackend implements Backend {
       }));
   }
 
+  async health() {
+    const installed = await installation(this.bin, this.spawnImpl);
+    if (installed.unavailable) return installed.unavailable;
+    const report = (authentication: BackendHealth["authentication"], detail: string) => health(authentication, detail, "available", installed.version);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        this.ensure().then(() => this.request<{ account: { type?: unknown } | null; requiresOpenaiAuth?: boolean }>("account/read", { refreshToken: false }, 5000)),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), 5000); }),
+      ]);
+      if (result.account?.type === "chatgpt") return report("authenticated", "ChatGPT signed in · model access unverified");
+      if (result.account?.type === "apiKey") return report("authenticated", "API key configured · model access unverified");
+      if (result.account !== null) return report("unknown", "Account status unavailable · check in Codex CLI");
+      if (result.requiresOpenaiAuth === false) return report("unknown", "Custom provider · account status unknown");
+      return report("signed-out", "Signed out · run codex login");
+    } catch (error) {
+      if (error instanceof CodexError && error.detail.rpcCode === -32601) return report("unsupported", "CLI does not support account status · update Codex");
+      return report("unknown", (error as Error).message === "timeout" ? "Account check timed out" : "Account status unavailable · check in Codex CLI");
+    } finally { clearTimeout(timer); }
+  }
+
   /**
    * Kills the shared app-server and every command it started. Every running Codex turn ends:
    * the stopped ones as interrupted, any others as failed. The next turn starts a fresh server.
    */
   async forceStop(): Promise<void> {
+    this.restart("Codex was force-stopped from another thread. Send again to continue.");
+  }
+
+  /** Ends the current server (and its commands); the next request starts a fresh one. */
+  private restart(reason: string): void {
     const child = this.child;
     if (!child) return;
-    this.disconnect(new Error("Codex was force-stopped from another thread. Send again to continue."));
+    this.disconnect(new CodexError(reason, { pid: child.pid }));
     killGroup(child);
   }
 
   async dispose(): Promise<void> {
     const child = this.child;
-    this.disconnect(new Error("codex app-server disposed"));
+    this.disconnect(new CodexError("codex app-server disposed", {}));
     if (child) await new Promise<void>((resolve) => {
       child.once("close", () => resolve());
       killGroup(child);
@@ -151,12 +201,41 @@ export class CodexBackend implements Backend {
     return generateTitle(this, opts, text, signal);
   }
 
+  /**
+   * One turn, with one silent recovery: when Codex reports that its sign-in went stale, the turn
+   * is run again on a server that has read the current sign-in. Other failures return as they are.
+   */
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    this.activeTurns++;
+    try {
+      const first = await this.attempt(text, opts, sink, signal);
+      if (first.status !== "failed" || signal.aborted || !STALE_AUTH.test(first.error ?? "")) return first;
+      // A fresh server reads ~/.codex/auth.json again. While other threads are mid-turn on this one,
+      // keep it and retry in place instead; never interrupt another thread to refresh auth.
+      const shared = this.activeTurns > 1 || this.pending.size > 0;
+      const step = shared
+        ? "retried once on the running codex app-server (other Codex turns were active)"
+        : "restarted codex app-server so it reads the current sign-in, then retried once";
+      sink.notice("info", "Codex's sign-in changed since it started. Reconnecting and retrying…");
+      if (!shared) this.restart("Codex was restarted to pick up a new sign-in.");
+      const opened = first.detail?.codexThreadId;
+      const resume = typeof opened === "string" ? opened : opts.resume;
+      const second = await this.attempt(text, { ...opts, resume }, sink, signal);
+      if (second.status !== "failed") return second;
+      return { ...second, detail: { ...second.detail, firstAttempt: { error: first.error, ...first.detail } }, recovery: [`${step}: failed again`] };
+    } finally {
+      this.activeTurns--;
+    }
+  }
+
+  private async attempt(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     if (signal.aborted) return { status: "interrupted" };
+    const failed = (err: unknown, extra: Record<string, unknown>): TurnResult =>
+      signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message, detail: { ...extra, ...detailOf(err), userAgent: this.userAgent, pid: this.child?.pid } };
     try {
       await duringSetup(this.ensure(), signal);
     } catch (err) {
-      return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message };
+      return failed(err, { stage: "start app-server" });
     }
     const pol = CodexBackend.policy(opts);
     let threadId = opts.resume;
@@ -169,7 +248,7 @@ export class CodexBackend implements Backend {
         threadId = r.thread.id;
       }
     } catch (err) {
-      return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message };
+      return failed(err, { stage: "open thread", codexThreadId: opts.resume });
     }
     if (signal.aborted) return { status: "interrupted" };
     this.loaded.add(threadId);
@@ -183,6 +262,11 @@ export class CodexBackend implements Backend {
     const reasoning = new Set<string>();
     let turnId: string | null = null;
     const streaming = new Map<string, string>();
+    // Codex announces a fatal error as an `error` notification before `turn/completed` reports the
+    // failure. The notification carries the better message and an error code; it is held here and
+    // reported once, with the completion, instead of as a separate red line.
+    let lastError: Record<string, unknown> | null = null;
+    const retried: string[] = [];
 
     return new Promise<TurnResult>((resolve) => {
       let done = false;
@@ -191,12 +275,15 @@ export class CodexBackend implements Backend {
       let abortTimer: ReturnType<typeof setTimeout> | undefined;
       let interrupted = false;
       const child = this.child;
+      const detail = (extra: Record<string, unknown>): Record<string, unknown> => ({
+        codexThreadId: tid, turnId, userAgent: this.userAgent, pid: child?.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
+      });
       const interrupt = () => {
         if (interrupted || !turnId || this.child !== child) return;
         interrupted = true;
         void this.request("turn/interrupt", { threadId: tid, turnId }).catch(() => {});
       };
-      const onDisconnect = (error: Error) => finish(signal.aborted ? { status: "interrupted" } : { status: "failed", error: error.message });
+      const onDisconnect = (error: Error) => finish(signal.aborted ? { status: "interrupted" } : { status: "failed", error: error.message, detail: detail(detailOf(error)) });
       const finish = (r: TurnResult) => {
         if (done) return;
         done = true;
@@ -303,15 +390,21 @@ export class CodexBackend implements Backend {
             turnId = (p.turn as { id: string }).id;
             break;
           case "error": {
-            const e = p.error as { message?: string } | undefined;
-            if (e?.message && !p.willRetry) sink.notice("error", e.message);
+            const e = p.error as Record<string, unknown> | undefined;
+            const message = typeof e?.message === "string" ? e.message : null;
+            if (!message) break;
+            if (p.willRetry) retried.push(message);
+            else lastError = { ...(e ?? {}), at: new Date().toISOString() };
             break;
           }
           case "turn/completed": {
             const turn = p.turn as { status: string; error?: { message?: string } | null };
-            if (turn.status === "failed") finish({ status: "failed", error: turn.error?.message ?? "turn failed" });
-            else if (turn.status === "interrupted") finish({ status: "interrupted" });
-            else finish({ status: "completed" });
+            if (turn.status === "failed") finish({ status: "failed", error: turn.error?.message ?? (lastError?.message as string | undefined) ?? "turn failed", detail: detail({ turnError: turn.error ?? undefined }) });
+            else {
+              // An error the server reported but did not fail the turn on still deserves a line.
+              if (lastError) sink.notice("error", String(lastError.message));
+              finish(turn.status === "interrupted" ? { status: "interrupted" } : { status: "completed" });
+            }
             break;
           }
           default:
@@ -339,7 +432,7 @@ export class CodexBackend implements Backend {
           if (!done) for (const msg of queued) onMsg(msg);
           queued.length = 0;
         })
-        .catch((err: Error) => finish({ status: "failed", error: err.message }));
+        .catch((err: Error) => finish({ status: "failed", error: err.message, detail: detail(detailOf(err)) }));
     });
   }
 
@@ -384,6 +477,17 @@ export class CodexBackend implements Backend {
   }
 }
 
+/** An error with the facts behind it (RPC method and code, exit code, stderr) for the failure report. */
+class CodexError extends Error {
+  constructor(message: string, readonly detail: Record<string, unknown>) {
+    super(message);
+  }
+}
+
+function detailOf(err: unknown): Record<string, unknown> {
+  return err instanceof CodexError ? err.detail : {};
+}
+
 /** Per-thread Codex config overrides: surface reasoning summaries so the Thinking item has something to show. */
 const THREAD_CONFIG = { model_reasoning_summary: "detailed" };
 
@@ -399,7 +503,7 @@ interface RpcMessage {
   method?: string;
   params?: unknown;
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
 }
 interface CodexModel {
   id: string;

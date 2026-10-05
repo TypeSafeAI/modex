@@ -1,10 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
+import { updateSettings } from "./engine/settings-update.js";
 import { ThreadRunner } from "./engine/runner.js";
+import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
+import { AccountCodexBackend } from "./engine/backends/account-codex.js";
+import { ClaudeLogin } from "./engine/claude-login.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
 import { openTerminal } from "./engine/open-terminal.js";
@@ -12,7 +16,10 @@ import { TerminalManager, isTrustedTerminalSender } from "./engine/terminal.js";
 import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
-import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
+import { CompanionServer } from "./engine/companion.js";
+import QRCode from "qrcode";
+import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
+import { describeFailure } from "../shared/failures.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -26,6 +33,13 @@ const demo = flag("demo");
 const screenshotDir = flag("screenshot");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? path.join(os.homedir(), ".modex");
 fs.mkdirSync(home, { recursive: true });
+// The scripted demo and screenshots must never discover a real Jev key or call the network.
+if (demo) {
+  process.env.TYPESAFE_API_KEY = "";
+  process.env.JEV_API_KEY = "";
+  process.env.JEV_CONFIG = path.join(home, "no-jev-config.json");
+  process.env.MODEX_NO_LOGIN_PATH = "1";
+}
 // An isolated home (e2e, demo) also gets its own Chromium profile, so renderer preferences in
 // localStorage (panel layout) and window-state.json never leak between runs or into the user's real app.
 if (demo || process.env.MODEX_HOME) app.setPath("userData", path.join(home, "electron"));
@@ -48,11 +62,27 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
-const runner = new ThreadRunner({ home, store, emit, secrets, beforeDeleteThread: (id) => terminals.close(id) });
+const osCipher = electronCipher(safeStorage);
+const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
+const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
+const accountCodex = new AccountCodexBackend(chatgpt, store.settings.codex_bin);
+process.env.MODEX_VERSION = app.getVersion();
+const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
+const companion = new CompanionServer(home, {
+  state: () => store.snapshot(),
+  items: (id) => runner.items(id),
+  status: (id) => runner.status(id),
+  send: async (id, text) => { await pathReady; return startTurn(id, runner.send(id, text)); },
+  answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
+});
+const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => ({
+  ...status,
+  ...(status.pairingUri ? { qrDataUrl: await QRCode.toDataURL(status.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }) } : {}),
+});
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
@@ -101,16 +131,27 @@ handle("project:remove", async ({ projectId }) => {
 handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
-handle("thread:send", async ({ threadId, text }) => {
-  try {
-    void runner.send(threadId, text).catch((err: Error) => emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: err.message, at: new Date().toISOString() } }));
-    // Give the runner a tick to reject synchronously-detectable problems (busy thread, missing cwd).
-    await new Promise((r) => setTimeout(r, 0));
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: (err as Error).message };
-  }
-});
+/**
+ * Starts a turn without waiting for it. A rejection the runner can detect up front (busy thread,
+ * missing cwd, nothing to retry) is returned to the caller, as in PR #61. Accepted turns
+ * report their failures through the runner's persisted failure card.
+ */
+async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: boolean; error?: string }> {
+  let accepting = true;
+  let earlyError: string | undefined;
+  run.catch((err: Error) => {
+    if (accepting) { earlyError = err.message; return; }
+    const thread = store.thread(threadId);
+    const failure = describeFailure({ backend: thread?.backend ?? "mock", message: err.message, context: { at: new Date().toISOString(), modex: process.env.MODEX_VERSION, platform: `${process.platform} ${process.arch}`, threadId, cwd: thread?.cwd } });
+    emit({ threadId, type: "item", item: { id: `err-${Date.now()}`, kind: "notice", level: "error", text: failure.summary, failure: { ...failure, retryable: false }, at: new Date().toISOString() } });
+  });
+  // Give the runner a tick to reject synchronously-detectable problems (busy thread, missing cwd).
+  await new Promise((r) => setTimeout(r, 0));
+  accepting = false;
+  return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
+}
+handle("thread:send", ({ threadId, text }) => startTurn(threadId, runner.send(threadId, text)));
+handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
@@ -123,14 +164,32 @@ handle("project:branch", async ({ projectId }) => {
   return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
 });
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
-handle("changes:diff", ({ threadId, path: rel }) => gitx.diff(cwdFor(threadId), rel));
+handle("changes:diff", ({ threadId, path: rel, original }) => gitx.diff(cwdFor(threadId), rel, original));
 handle("changes:revert", async ({ threadId, path: rel }) => {
   const cwd = cwdFor(threadId);
   await gitx.revert(cwd, rel);
   return gitx.status(cwd);
 });
-handle("settings:update", (patch) => store.updateSettings(patch));
+handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
 handle("models:list", ({ backend }) => runner.listModels(backend));
+handle("chatgpt:status", () => chatgpt.status());
+handle("chatgpt:signIn", async ({ accountId }) => {
+  try {
+    if (accountId) await accountCodex.accountChange(accountId, () => chatgpt.signIn(accountId));
+    else await chatgpt.signIn();
+    return chatgpt.status();
+  } catch { throw new Error("ChatGPT sign-in did not complete. Finish active turns, check protected storage, or retry authorization."); }
+});
+handle("chatgpt:cancel", () => chatgpt.cancel());
+handle("chatgpt:select", ({ accountId }) => { chatgpt.select(accountId); return chatgpt.status(); });
+handle("chatgpt:signOut", async ({ accountId }) => {
+  const detail = await accountCodex.accountChange(accountId, () => chatgpt.signOut(accountId)); return { status: chatgpt.status(), detail };
+});
+const claudeLogin = new ClaudeLogin();
+const sessionClaudeBin = store.settings.claude_bin;
+SPAWNS.add("claude:login");
+handle("claude:login", () => claudeLogin.run(sessionClaudeBin));
+handle("claude:cancelLogin", () => claudeLogin.cancel());
 handle("routing:status", () => runner.router.status());
 handle("routing:reset", () => {
   runner.router.fit.reset();
@@ -140,18 +199,23 @@ handle("routing:setKey", ({ key }) => runner.router.setKey(key));
 handle("routing:clearKey", () => runner.router.clearKey());
 handle("routing:test", () => runner.router.test());
 handle("backends:health", async () => {
-  const out = {} as Record<BackendId, { ok: boolean; detail: string }>;
-  for (const id of ["claude", "codex", "mock"] as BackendId[]) {
-    const r = await runner.listModels(id);
-    out[id] = r.error ? { ok: false, detail: r.error } : { ok: true, detail: `${r.models.length} model${r.models.length === 1 ? "" : "s"}` };
-  }
-  return out;
+  const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
+    const backend = runner.backend(id);
+    const status = backend.health ? await backend.health() : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
+    return [id, status] as const;
+  }));
+  return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];
 });
+handle("companion:status", () => companionView(companion.status()));
+handle("companion:start", async () => companionView(await companion.start()));
+handle("companion:stop", async () => companionView(await companion.stop()));
+handle("companion:reset", () => companionView(companion.resetAccess()));
 handle("shell:openPath", async ({ path: p }) => {
   const err = await shell.openPath(p);
   if (err) throw new Error(err);
 });
 handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
+handle("clipboard:write", ({ text }) => { clipboard.writeText(String(text).slice(0, 200_000)); });
 handle("terminal:open", ({ threadId, cols, rows }) => terminals.open(threadId, cols, rows));
 handle("terminal:write", ({ threadId, sessionId, data }) => terminals.write(threadId, sessionId, data));
 handle("terminal:resize", ({ threadId, sessionId, cols, rows }) => terminals.resize(threadId, sessionId, cols, rows));
@@ -217,6 +281,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   win = createWindow();
+  if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
     await new Promise<void>((r) => win!.webContents.once("did-finish-load", () => r()));
@@ -232,11 +297,14 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || screenshotDir) app.quit();
 });
 app.on("before-quit", (event) => {
+  chatgpt.cancel();
+  claudeLogin.cancel();
   if (shutdownComplete) return;
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;
-  void Promise.allSettled([terminals.dispose(), runner.dispose()]).then((results) => {
+  void Promise.allSettled([companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
+    chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {
       shuttingDown = false;
