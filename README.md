@@ -176,6 +176,14 @@ Renderer edits hot-reload; restart the dev command after changing the main-proce
 For Electron development, also run
 `MODEX_DEV_URL=http://127.0.0.1:5178 npm run desktop` in another shell.
 
+## Release notifications
+
+Installed macOS builds check for a newer stable release at launch and hourly while the
+workspace is visible, with a check when you return to it. A small banner links to the
+release page; dismissing it hides that version across relaunches. A later release appears
+again. Checks use public GitHub release metadata and require an uploaded installer for
+your Mac. Offline failures stay quiet. Downloads and installation are manual.
+
 ## Desktop themes
 
 Choose **Jev** or **OpenCoven** in Settings → General → Theme, then Save. Jev keeps the

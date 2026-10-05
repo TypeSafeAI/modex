@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { UpdateBanner } from "./components/UpdateBanner";
 import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
@@ -450,6 +451,7 @@ export function App() {
           />
         )}
         <main className="main" data-testid="main">
+          <UpdateBanner />
           {thread && project ? (
             <ThreadView
               key={thread.id}

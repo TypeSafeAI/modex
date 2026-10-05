@@ -1,4 +1,5 @@
 import { THEMES } from "../shared/theme.js";
+import { ReleaseChecker } from "./engine/updates.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
 import fs from "node:fs";
 import os from "node:os";
@@ -56,6 +57,10 @@ const pathReady = hydratePath(process.env).then(
 
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
+const updates = new ReleaseChecker({
+  currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
+  enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
+});
 let win: BrowserWindow | null = null;
 let shuttingDown = false;
 let shutdownComplete = false;
@@ -113,6 +118,8 @@ const terminals = new TerminalManager(
   // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
 );
+
+handle("updates:check", () => updates.check());
 
 handle("state:get", () => {
   const state = store.snapshot();

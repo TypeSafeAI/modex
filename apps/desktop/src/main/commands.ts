@@ -40,6 +40,7 @@ export function registerCommands(handle: RegisterCommand, {
     accepting = false;
     return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
   }
+  handle("updates:check", () => null); // Browser development stays offline.
   handle("state:get", () => {
     const state = store.snapshot();
     return { ...state, threads: state.threads.map((t) => ({ ...t, status: runner.status(t.id) })) };
