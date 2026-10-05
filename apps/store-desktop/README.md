@@ -63,7 +63,11 @@ checks return no GitHub update; Store distribution must use Apple-owned updates.
 - The desktop Playwright suite includes a real host/client flow using the offline scripted
   engine: approval and file edit, terminal command, restart/reconnect with an unsent draft,
   and revocation. This source-mode test does not prove sandboxed execution or live model access.
-- The packaged preview was signed locally and opened on 2026-10-05. Strict code-signature
-  verification and App Sandbox entitlement checks passed; the running process was separately
-  checked as sandboxed. The native window showed the connection screen. Pairing and complete
-  functionality through that signed sandboxed process remain acceptance work.
+- The packaged preview and a separate host were signed locally on 2026-10-05. Strict deep
+  signature verification passed, and the running client was confirmed sandboxed. A native
+  smoke test covered explicit pairing, OS-encrypted saved access, an approved scripted edit,
+  its diff, terminal execution, recovery after an abrupt host restart with the draft preserved,
+  client relaunch and revocation that removes saved access. The test used an isolated project
+  and offline engine. Graceful host shutdown, fresh-user/sleep/upgrade behavior, live CLI
+  accounts and the complete parity matrix remain acceptance work; see the
+  [evidence and limitations](../../docs/mac-store-preview-plan.md).

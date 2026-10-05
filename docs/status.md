@@ -225,12 +225,13 @@ Roughly in the order they earn their place; none is scheduled.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
 
 
-## Local Mac Store preview in flight
+## Local Mac Store development preview (unreleased)
 
-The isolated `store-preview` branch adds a dedicated opt-in loopback host and a sandboxed
-Electron MAS client that reuses the desktop renderer. Pairing/pinning/revocation unit tests
-and one real host/client workflow passed. The locally signed MAS app opens its connection
-screen with App Sandbox verified. Full signed-client/host acceptance, the remaining parity
-matrix, provisioning, App Review eligibility and macOS TestFlight are still pending; this
-is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+PR #119 adds a dedicated opt-in loopback host and a sandboxed Electron MAS client that
+reuses the desktop renderer. Val approved integrating this development preview. Transport
+boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
+saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
+App Sandbox was verified on the running client. Graceful host shutdown, full parity and
+real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
+pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
 [run instructions](../apps/store-desktop/README.md).

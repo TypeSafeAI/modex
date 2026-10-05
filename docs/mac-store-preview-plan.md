@@ -11,10 +11,15 @@ engine. The iPhone-on-Mac Companion is not this desktop target.
 - [x] Add a client that pins host identity before sending credentials, keeps credentials outside the renderer, and reconnects safely.
 - [x] Build a separate sandboxed Electron MAS target using the existing renderer and official branding; exclude the execution engine and PTY modules.
 - [x] Show connection/recovery states, preserve the workspace while disconnected, and use Store-owned updates.
-- [ ] Verify auth boundaries, revocation, real host/client commands, streaming and terminal behavior.
+- [x] Verify transport auth boundaries, revocation and a signed host/client workflow with approvals, streaming, edits and a terminal.
+- [ ] Complete the full parity matrix, real CLI and fresh-user acceptance.
 - [x] Sign and open the local preview, verifying actual App Sandbox and displayed UI.
 
-## Delivery limits
+## Preview landing and delivery limits
+
+Val approved landing the opt-in development preview through PR #119 after implementation
+verification. This approval covers integrating the preview; the parity, provisioning and
+App Review gates below remain required before claiming a finished Store edition or shipping it.
 
 The published v0.0.7 Developer ID app and Companion build 4 stay unchanged. This work is
 an isolated development preview until the full parity matrix in `mac-app-store.md` passes.
@@ -40,8 +45,8 @@ App Sandbox, outgoing network access and the product application group; child ex
 inherit the sandbox. The opened `works.jev.modex.desktop` window displayed the official
 pink identity and connection screen. An external sandbox check on the running process
 returned `control=0 target=1 errno=0`. The private diagnostic is not included in the product.
-The signed client has not yet been paired with a production host; full sandboxed acceptance
-and Store distribution remain pending.
+At this initial opening, signed client/host pairing had not yet been exercised. The follow-up
+signed smoke test below closes that basic workflow gap; full acceptance remains pending.
 
 During the broader local regression run the Mac ran low on disk space. Three checksum-
 verified duplicate v0.0.7 download files were removed from this session's temporary directory;
@@ -59,3 +64,33 @@ conflict was the root package scripts; the resolved scripts retain the Store bui
 the website unit/browser suites. The integrated build, typecheck and all 289 unit tests
 passed. The complete integrated end-to-end run passed 101 desktop and five website tests.
 This integration does not close the signed-client or Store distribution acceptance gaps.
+
+The final transport boundary checks also exercise rejected browser origins, altered HTTP
+Host headers, missing/unknown grants and incompatible protocol versions. Revocation before
+a request body completes prevents command dispatch; revocation during an accepted request
+invalidates its authorization callback and withholds the eventual result. Already accepted
+work remains host-owned, as stated in the host's consent and revocation dialogs.
+
+## Approved preview integration, 2026-10-05
+
+The final build and typecheck passed with 291 unit tests. The full desktop E2E run had 100
+passes and one 90-second timeout while closing the iPhone-pairing test app. Its trace shows
+all functional assertions passed before `Close context` stalled. The unchanged test then
+passed in isolation (6.2 seconds); all five website E2E tests also passed. No timeout or
+assertion was weakened. This is a recorded local shutdown limitation, not a claimed fix.
+
+A separate Developer ID signed host and the signed MAS client completed a native smoke
+test in an isolated project using the offline scripted engine. Both passed strict deep
+signature verification, and 48 packaged host/client code files matched the tested build.
+The client was confirmed sandboxed at runtime (`control=0 target=1 errno=0`). Explicit
+host consent, pairing, an approved CONTRIBUTING.md edit, streamed output, the Changes diff
+and a real host terminal command all worked. Saved access used the real OS encryption path
+and a mode-0600 credential file, with no test cipher in the packaged client.
+
+The client recovered automatically after an abrupt host restart and kept its unsent draft.
+The host's listener closed after SIGTERM but the process remained, so the isolated test
+process was force-stopped before this restart; this does not prove graceful host shutdown.
+Relaunching the client restored access and the saved thread without a new invitation.
+Revoking the client through the host menu disconnected it, removed its encrypted credential
+file and left zero host grants. Fresh-user, sleep/wake, upgrade, real CLI/account flows and
+the rest of the parity matrix remain release gates, along with Apple provisioning/review.
