@@ -1,8 +1,14 @@
+import path from "node:path";
 import { spawn } from "node:child_process";
 import type { BackendHealth } from "../../../shared/types.js";
 
+/** Keep an nvm CLI's adjacent Node runtime reachable even when a shell profile failed. */
+export function cliEnvironment(bin: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return path.isAbsolute(bin) ? { ...env, PATH: [path.dirname(bin), env.PATH].filter(Boolean).join(path.delimiter) } : env;
+}
+
 /** A bounded, non-inference CLI probe. Raw output never crosses IPC. */
-export function probe(bin: string, args: string[], spawnImpl = spawn, timeoutMs = 5000): Promise<{ code: number | null; output: string; failure?: "missing" | "timeout" | "failed" }> {
+export function probe(bin: string, args: string[], spawnImpl = spawn, timeoutMs = 5000, env: NodeJS.ProcessEnv = process.env): Promise<{ code: number | null; output: string; failure?: "missing" | "timeout" | "failed" }> {
   return new Promise((resolve) => {
     let done = false;
     let output = "";
@@ -14,7 +20,7 @@ export function probe(bin: string, args: string[], spawnImpl = spawn, timeoutMs 
       resolve(result);
     };
     try {
-      const child = spawnImpl(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+      const child = spawnImpl(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: cliEnvironment(bin, env) });
       child.stderr?.resume();
       child.stdout?.on("data", (data: Buffer) => {
         if (done) return;

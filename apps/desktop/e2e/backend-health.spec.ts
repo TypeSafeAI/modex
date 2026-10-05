@@ -17,12 +17,12 @@ test("static models never make a missing Claude executable ready", async () => {
     await expect(tid(page, "chatgpt-accounts")).toContainText("Existing conversations keep their original account");
     await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeVisible();
     await expect(page.getByLabel("Active account for new Codex conversations")).toHaveValue("");
-    await expect(page.getByText("CLI not found", { exact: true })).toHaveCount(2);
+    await expect(page.getByText(/executable is invalid or not executable/)).toHaveCount(2);
     await expect(page.getByText(/^ready ·/)).toHaveCount(0);
     await page.getByRole("button", { name: "Sign in to Claude Code", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Account commands unavailable" })).toHaveCount(1);
+    await expect(page.getByRole("status").filter({ hasText: "Could not start Claude sign-in" })).toHaveCount(1);
     await page.getByLabel("Claude executable").fill("another-cli");
-    await expect(page.getByText("Path changed · save and restart to check", { exact: true })).toBeVisible();
+    await expect(page.getByText("Override changed · verified when you save", { exact: true })).toBeVisible();
   } finally {
     await app.close();
     fs.rmSync(home, { recursive: true, force: true });
@@ -58,6 +58,32 @@ test("a stale account result cannot replace refresh, and a failed check offers r
     await expect(page.getByText("Stale account")).toHaveCount(0);
     await page.getByRole("button", { name: "Refresh account status" }).click();
     await expect(page.getByText("Account check unavailable · retry", { exact: true })).toHaveCount(2);
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("CLI overrides are verified before persistence and can return to automatic discovery", async () => {
+  const { home, repo } = seedHome();
+  const { app, page } = await launch(home);
+  const statePath = path.join(home, "app", "state.json");
+  const before = fs.readFileSync(statePath, "utf8");
+  try {
+    await tid(page, "open-settings").click();
+    await page.getByRole("button", { name: "Coding CLIs", exact: true }).click();
+    await page.getByLabel("Claude executable").fill("claude --dangerously-skip-permissions");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("executable");
+    expect(fs.readFileSync(statePath, "utf8")).toBe(before);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByLabel("Claude executable").fill("");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await tid(page, "open-settings").click();
+    await page.getByRole("button", { name: "Coding CLIs", exact: true }).click();
+    await expect(page.getByLabel("Claude executable")).toHaveValue("");
   } finally {
     await app.close();
     fs.rmSync(home, { recursive: true, force: true });

@@ -56,6 +56,17 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 ## On `main`, not yet released
 
+- **Automatic CLI discovery and verified overrides.** Claude and Codex resolve an executable
+  from the hydrated login PATH, native installs, Homebrew and common version managers before
+  launching. Settings shows the selected path; blank overrides keep discovery automatic.
+  Explicit overrides must be executable files and pass the correct CLI's bounded `--version`
+  check before any settings are saved. Command strings (including permission flags) are
+  rejected; paths containing spaces are supported. Override changes apply after restart so
+  active Codex app-server sessions remain intact. This fixes the v0.0.6 `spawn claude
+  --dangerously-skip-permissions ENOENT` configuration failure; clear that override in Settings.
+  Build, typecheck, 15 core/259 desktop/1 bridge tests and all 98 desktop e2e checks passed
+  locally. Live executable verification passed for Claude Code 2.1.288 and Codex 0.160.0.
+
 - **Release notification banner.** Installed Mac builds check public GitHub release
   metadata at launch and hourly, and show a dismissible banner for a newer stable release
   with an installer for the current architecture. View update opens its release page.
