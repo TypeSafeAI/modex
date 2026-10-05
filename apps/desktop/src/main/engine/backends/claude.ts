@@ -1,8 +1,9 @@
+import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
-import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { ApprovalRequest, Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
-import { health, installation, probe } from "./health.js";
+import { cliEnvironment, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
 
 /**
@@ -13,7 +14,9 @@ import type { BackendHealth } from "../../../shared/types.js";
  */
 export class ClaudeBackend implements Backend {
   readonly id = "claude" as const;
-  constructor(private readonly bin = process.env.MODEX_CLAUDE_BIN ?? "claude", private readonly spawnImpl = spawn) {}
+  private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
+
+  constructor(private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude", private readonly spawnImpl = spawn) {}
 
   /** `claude --effort` levels (from `claude --help`); no default so the CLI's own setting applies. */
   static readonly EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -73,11 +76,13 @@ export class ClaudeBackend implements Backend {
     if (signal.aborted) return Promise.resolve({ status: "interrupted" });
     return new Promise((resolve) => {
       let child: ChildProcess;
+      let bin = "claude";
       const argv = ClaudeBackend.args(opts);
       try {
-        child = this.spawnImpl(this.bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+        bin = this.bin;
+        child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin) });
       } catch (err) {
-        return resolve({ status: "failed", error: `could not start ${this.bin}: ${(err as Error).message}`, detail: { bin: this.bin, argv, spawnError: (err as Error).message } });
+        return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv, spawnError: (err as Error).message } });
       }
       const lines = new LineBuffer();
       const started = new Map<string, number>();
@@ -95,7 +100,7 @@ export class ClaudeBackend implements Backend {
         finished = true;
         clearTimeout(killTimer);
         signal.removeEventListener("abort", onAbort);
-        resolve(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin: this.bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r);
+        resolve(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r);
       };
       const write = (o: unknown) => {
         try {
@@ -110,7 +115,7 @@ export class ClaudeBackend implements Backend {
       };
       signal.addEventListener("abort", onAbort, { once: true });
 
-      child.on("error", (err) => finish({ status: "failed", error: `${this.bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: (err as NodeJS.ErrnoException).code } }));
+      child.on("error", (err) => finish({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: (err as NodeJS.ErrnoException).code } }));
       child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
       child.stdout?.on("data", (d: Buffer) =>
         lines.push(d, (line) => {
@@ -133,7 +138,7 @@ export class ClaudeBackend implements Backend {
         signal.removeEventListener("abort", onAbort);
         if (signal.aborted) return finish({ status: "interrupted" });
         const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
-        finish(code === 0 ? { status: "completed" } : { status: "failed", error: err || `${this.bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
+        finish(code === 0 ? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
       });
 
       write({ type: "user", message: { role: "user", content: text } });
@@ -202,12 +207,13 @@ export class ClaudeBackend implements Backend {
         }
         const tool = req.tool_name ?? "tool";
         const title = toolTitle(tool, req.input ?? {});
-        const answer = await sink.approval({
+        const request: ApprovalRequest = {
           question: `Allow ${req.tool_name}: ${title}?`,
           detail: shortJson(req.input ?? {}),
           canAlways: Boolean(req.permission_suggestions?.length),
           action: { backend: "claude", tool, title, cwd: ctx.cwd, input: req.input ?? {} },
-        });
+        };
+        const answer = await sink.approval(request);
         const allow = answer !== "no";
         ctx.write({
           type: "control_response",
@@ -216,7 +222,7 @@ export class ClaudeBackend implements Backend {
             request_id: msg.request_id,
             response: allow
               ? { behavior: "allow", updatedInput: req.input ?? {}, ...(answer === "always" && req.permission_suggestions?.length ? { updatedPermissions: req.permission_suggestions } : {}) }
-              : { behavior: "deny", message: "The user denied this action in Modex." },
+              : { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) },
           },
         });
         return null;
@@ -261,6 +267,12 @@ interface ClaudeMessage {
   model?: string;
   permissionMode?: string;
   apiKeySource?: string;
+}
+
+/** What Claude is told when an approval is denied; a refusal by one of the user's approval rules names the rule. */
+export function denyMessage(rule?: string): string {
+  const when = rule?.replace(/\s+/g, " ").trim();
+  return when ? `The user denied this action in Modex (rule: ${when.length > 200 ? `${when.slice(0, 199)}…` : when}).` : "The user denied this action in Modex.";
 }
 
 /** Human title for a Claude Code tool call. */

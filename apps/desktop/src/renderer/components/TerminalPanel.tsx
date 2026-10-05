@@ -1,3 +1,4 @@
+import type { Theme } from "../../shared/theme";
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -10,12 +11,15 @@ const MIN_H = 140;
 const DEFAULT_H = 240;
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const terminalTheme = () => ({ background: token("--bg-main"), foreground: token("--text-1"), cursor: token("--text-1"), selectionBackground: token("--bg-row-selected") });
 
 /**
  * The thread's embedded shell (a real PTY in main, see engine/terminal.ts). Hiding the panel keeps the
  * shell running; reopening replays its recent output. Close ends the shell; Restart replaces it.
  */
-export function TerminalPanel({ thread, onClose, command, onCommandConsumed }: { thread: Thread; onClose: () => void; /** A command line the app wants typed into the shell (a failure card's sign-in fix); a new `nonce` types it again. */ command?: { text: string; nonce: number }; onCommandConsumed: (nonce: number) => void }) {
+export function TerminalPanel({ theme, thread, onClose, command, onCommandConsumed }: { theme: Theme; thread: Thread; onClose: () => void; /** A command line the app wants typed into the shell (a failure card's sign-in fix); a new `nonce` types it again. */ command?: { text: string; nonce: number }; onCommandConsumed: (nonce: number) => void }) {
+  const terminalRef = useRef<Terminal | null>(null);
+  useEffect(() => { if (terminalRef.current) terminalRef.current.options.theme = terminalTheme(); }, [theme]);
   const panel = useRef<HTMLElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   const session = useRef<TerminalSnapshot | null>(null);
@@ -56,8 +60,9 @@ export function TerminalPanel({ thread, onClose, command, onCommandConsumed }: {
       fontFamily: token("--font-mono") || "ui-monospace, Menlo, monospace",
       scrollback: 3000,
       screenReaderMode: true,
-      theme: { background: token("--bg-main"), foreground: token("--text-1"), cursor: token("--text-1"), selectionBackground: token("--bg-row-selected") },
+      theme: terminalTheme(),
     });
+    terminalRef.current = terminal;
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(host);
@@ -100,6 +105,7 @@ export function TerminalPanel({ thread, onClose, command, onCommandConsumed }: {
       input.dispose();
       resize.disconnect();
       terminal.dispose();
+      if (terminalRef.current === terminal) terminalRef.current = null;
     };
   }, [thread.id, generation]);
 

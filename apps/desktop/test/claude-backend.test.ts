@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ClaudeBackend, toolTitle } from "../src/main/engine/backends/claude.js";
+import { ClaudeBackend, denyMessage, toolTitle } from "../src/main/engine/backends/claude.js";
+import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 
 test("ClaudeBackend.args maps modes and plan onto claude -p flags", () => {
@@ -170,4 +171,38 @@ test("ClaudeBackend: can_use_tool carries a structured action; a rule's 'yes' al
     { backend: "claude", tool: "Bash", title: "$ npm test", cwd: "/repo", input: { command: "npm test" } },
     { backend: "claude", tool: "Edit", title: "edit src/a.ts", cwd: "/repo", input: { file_path: "src/a.ts", old_string: "a", new_string: "b" } },
   ]);
+});
+
+test("ClaudeBackend: a rule's refusal names the rule in the deny message; a human's 'no' keeps today's", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const { sink, requests } = collectSink(["no", "no", "yes"]);
+  const consulted: ApprovalRequest[] = [];
+  // Stands in for the runner: the Bash request was refused by a rule, the Edit by a person.
+  const refusedByRule = (req: ApprovalRequest) => { consulted.push(req); return req.action?.tool === "Bash" ? "push to\n  main" : undefined; };
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, { ...sink, refusedByRule }, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  type Reply = { response: { response: { behavior: string; message?: string } } };
+  proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "git push origin main" } } });
+  const r1 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r1"'))) as Reply;
+  assert.deepEqual(r1.response.response, { behavior: "deny", message: "The user denied this action in Modex (rule: push to main)." });
+  proc.emitLine({ type: "control_request", request_id: "r2", request: { subtype: "can_use_tool", tool_name: "Edit", input: { file_path: "a.ts", old_string: "a", new_string: "b" } } });
+  const r2 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r2"'))) as Reply;
+  assert.deepEqual(r2.response.response, { behavior: "deny", message: "The user denied this action in Modex." });
+  proc.emitLine({ type: "control_request", request_id: "r3", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "npm test" } } });
+  const r3 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r3"'))) as Reply;
+  assert.equal(r3.response.response.behavior, "allow");
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "ok" });
+  proc.close(0);
+  await run;
+  assert.deepEqual(consulted, requests.slice(0, 2), "asked about the very requests it sent, and only for a 'no'");
+});
+
+test("denyMessage keeps the rule on one line and bounded", () => {
+  assert.equal(denyMessage(), "The user denied this action in Modex.");
+  assert.equal(denyMessage("  "), "The user denied this action in Modex.");
+  const long = denyMessage("x".repeat(500));
+  assert.ok(long.startsWith("The user denied this action in Modex (rule: xxx"));
+  assert.ok(long.endsWith("…)."));
+  assert.ok(long.length < 260);
 });

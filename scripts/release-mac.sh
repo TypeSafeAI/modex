@@ -66,10 +66,20 @@ verify() {
   grep -q 'disable-library-validation' <<<"$ents" && die "library validation is disabled; the build loads something unsigned"
   say "nested code is signed by the same team (node-pty, spawn-helper, terminal supervisor)"
   local team; team="$(grep -o 'TeamIdentifier=[A-Z0-9]*' <<<"$info" | head -1)"
-  while IFS= read -r bin; do
+  local unpacked="$app/Contents/Resources/app.asar.unpacked" native_count=0
+  [ -d "$unpacked" ] || die "unpacked native modules are missing"
+  while IFS= read -r -d '' bin; do
+    # node-pty also ships PE/ELF prebuilds. Their generic codesign xattrs are not
+    # portable through ZIPs; they are sealed resources, not executable macOS code.
+    # Check every Mach-O file, including binaries without an executable mode bit.
+    case "$(file -b "$bin")" in *Mach-O*) ;; *) continue ;; esac
+    codesign --verify --strict "$bin"
     local t; t="$(codesign -dvv "$bin" 2>&1 | grep -o 'TeamIdentifier=[A-Z0-9]*' | head -1 || true)"
     [ "$t" = "$team" ] || die "$bin is signed by '$t', expected '$team'"
-  done < <(find "$app/Contents/Resources/app.asar.unpacked" -type f \( -name '*.node' -o -perm -u+x \) 2>/dev/null)
+    native_count=$((native_count + 1))
+  done < <(find "$unpacked" -type f -print0)
+  [ "$native_count" -gt 0 ] || die "no Mach-O native modules found"
+  echo "$native_count native Mach-O files verified"
   local dmg zip; dmg="$(ls "$desktop"/release/Modex-*-arm64.dmg)"; zip="$(ls "$desktop"/release/Modex-*-arm64.zip)"
   say "DMG: signed by the same certificate"
   codesign --verify --strict --verbose=2 "$dmg"
@@ -147,30 +157,32 @@ security find-identity -v -p codesigning | grep -Fq "\"$MODEX_SIGN_IDENTITY\"" |
 if [ -z "${MODEX_SIGN_HASH:-}" ]; then
   MODEX_SIGN_HASH="$(security find-certificate -a -c "$MODEX_SIGN_IDENTITY" -Z -p | python3 -c '
 import sys, subprocess, re
+from datetime import datetime
 text = sys.stdin.read()
 best = None
 for m in re.finditer(r"SHA-1 hash: ([0-9A-F]{40})\n(-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----)", text, re.S):
     end = subprocess.run(["openssl", "x509", "-noout", "-enddate"], input=m.group(2).encode(), capture_output=True).stdout.decode().strip()
-    if best is None or end > best[1]: best = (m.group(1), end)
+    expiry = datetime.strptime(end, "notAfter=%b %d %H:%M:%S %Y GMT")
+    if best is None or expiry > best[1]: best = (m.group(1), expiry)
 print(best[0] if best else "")')"
   [ -n "$MODEX_SIGN_HASH" ] || die "could not resolve a certificate hash for: $MODEX_SIGN_IDENTITY"
 fi
 export MODEX_SIGN_HASH
 echo "identity: $MODEX_SIGN_IDENTITY (certificate $MODEX_SIGN_HASH)"
 
-say "build, sign${notarize:+, notarize, staple}"
+if [ "$notarize" = true ]; then say "build, sign, notarize, staple"; else say "build and sign (notarization skipped)"; fi
 # electron-builder takes the name without the "Developer ID Application:" prefix and adds it back.
 export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"
 # The desktop build compiles against, and the bundle ships, @modex/core's dist/, which a fresh
 # checkout or worktree does not have yet.
 (cd "$root" && npm run build -w @modex/core)
-if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release)
+if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release -- -c.mac.notarize=true)
 else (cd "$desktop" && npm run dist:release -- -c.mac.notarize=false); fi
 
 # electron-builder notarizes and staples only the app. The DMG is a separate download that
 # Gatekeeper assesses on its own, so it gets its own signature, notarization and ticket.
 dmg="$(ls "$desktop"/release/Modex-*-arm64.dmg)"
-say "DMG: sign${notarize:+, notarize, staple}"
+if [ "$notarize" = true ]; then say "DMG: sign, notarize, staple"; else say "DMG: sign (notarization skipped)"; fi
 codesign --force --sign "$MODEX_SIGN_HASH" --timestamp ${CSC_KEYCHAIN:+--keychain "$CSC_KEYCHAIN"} "$dmg"
 if [ "$notarize" = true ]; then
   if [ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]; then notary=(--keychain-profile "$APPLE_KEYCHAIN_PROFILE")

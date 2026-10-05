@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { UpdateBanner } from "./components/UpdateBanner";
 import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
@@ -13,6 +14,7 @@ import { Rail } from "./components/Rail";
 import { Icon } from "./components/ui/Icon";
 import { useSelectionHistory } from "./history";
 import { useLayout } from "./layout";
+import { applyTheme } from "./theme";
 import { applyItemEvent, type ItemEvent } from "./transcript";
 
 /** ⌃` shows or hides the thread's terminal. xterm maps no byte to it, so it reaches this handler even from inside the shell. */
@@ -23,6 +25,7 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) =
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
+  useLayoutEffect(() => { if (state) applyTheme(state.settings.theme); }, [state?.settings.theme]);
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
@@ -448,6 +451,7 @@ export function App() {
           />
         )}
         <main className="main" data-testid="main">
+          <UpdateBanner />
           {thread && project ? (
             <ThreadView
               key={thread.id}
@@ -489,7 +493,7 @@ export function App() {
           ) : null}
           {thread && terminals[thread.id] && (
             <Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
-              <TerminalPanel key={thread.id} thread={thread} onClose={() => closeTerminal(thread.id)} command={terminalCommands[thread.id]} onCommandConsumed={(nonce) => setTerminalCommands((commands) => {
+              <TerminalPanel key={thread.id} theme={state.settings.theme} thread={thread} onClose={() => closeTerminal(thread.id)} command={terminalCommands[thread.id]} onCommandConsumed={(nonce) => setTerminalCommands((commands) => {
                 if (commands[thread.id]?.nonce !== nonce) return commands;
                 const next = { ...commands };
                 delete next[thread.id];
@@ -508,7 +512,7 @@ export function App() {
         </main>
         {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
       {streamerMode && (
         <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">

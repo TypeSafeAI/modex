@@ -12,8 +12,11 @@ import { fileURLToPath } from "node:url";
 export const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const mockScript = path.join(appDir, "demo", "mock-script.json");
 
-/** A throwaway MODEX_HOME with one git project and no threads, on the offline mock backend in Chat mode. */
-export function seedHome(): { home: string; repo: string } {
+/**
+ * A throwaway MODEX_HOME with one git project and no threads, on the offline mock backend in Chat mode.
+ * `settings` is merged over the seeded settings (e.g. approval rules).
+ */
+export function seedHome(settings: Record<string, unknown> = {}): { home: string; repo: string } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-home-"));
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-repo-"));
   const env = { ...process.env, GIT_AUTHOR_NAME: "e2e", GIT_AUTHOR_EMAIL: "e2e@modex.local", GIT_COMMITTER_NAME: "e2e", GIT_COMMITTER_EMAIL: "e2e@modex.local" };
@@ -31,7 +34,7 @@ export function seedHome(): { home: string; repo: string } {
       threads: [],
       // Chat mode is read-only, so the scripted apply_patch must be approved — that is the card we click.
       // HTTPS transport so a real `jev` on the machine's PATH never changes what the judge reports.
-      settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", mock_script: mockScript, routing: { jev_transport: "http" } },
+      settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", mock_script: mockScript, routing: { jev_transport: "http" }, ...settings },
     }),
   );
   return { home, repo };

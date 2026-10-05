@@ -1,5 +1,9 @@
 # Auto routing with Jev
 
+The same Jev transport and credential lookup also serve [approval rules](approval-rules.md).
+Approval judgments are independent of Auto routing: they only evaluate pending approval
+requests and never choose or run a coding model.
+
 Auto is the ⚡ toggle in the composer. When it is on, Modex asks a small, fast judge a few
 typed questions about each request *before* the turn runs, then picks the backend, model,
 reasoning effort, and fast mode for that turn — within limits you set — and shows a

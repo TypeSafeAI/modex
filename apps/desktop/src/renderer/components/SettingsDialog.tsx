@@ -1,11 +1,15 @@
+import { ThemePicker } from "./ThemePicker";
 import { useEffect, useRef, useState } from "react";
-import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
+import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, Project, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { sameJudgeSettings, testMatchesJudge } from "../../shared/judge-settings";
 import { bridge } from "../bridge";
+import { ApprovalRules } from "./ApprovalRules";
 
 interface Props {
   settings: Settings;
+  projects: Project[];
+  currentProjectId?: string;
   onSave: (patch: Partial<Settings>) => Promise<void>;
   onClose: () => void;
 }
@@ -25,8 +29,8 @@ const errorMessage = (err: unknown, fallback: string) =>
 const backendHealthText = (status: BackendHealth | undefined, failed: boolean) =>
   status ? `${status.version ? `v${status.version} · ` : ""}${status.detail}` : failed ? "Account check unavailable · retry" : "checking…";
 
-export function SettingsDialog({ settings, onSave, onClose }: Props) {
-  const [section, setSection] = useState<"general" | "clis" | "routing" | "advanced">("routing");
+export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose }: Props) {
+  const [section, setSection] = useState<"general" | "clis" | "routing" | "approvals" | "advanced">("routing");
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -254,7 +258,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   };
 
   const sections = [
-    ["general", "General"], ["clis", "Coding CLIs"], ["routing", "Auto routing"], ["advanced", "Advanced / demo"],
+    ["general", "General"], ["clis", "Coding CLIs"], ["routing", "Auto routing"], ["approvals", "Approval rules"], ["advanced", "Advanced / demo"],
   ] as const;
 
   return (
@@ -272,6 +276,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
         <div className="settings-scroll" ref={contentRef} data-testid="settings-content" inert={interactionLocked}>
         {section === "general" && <section id="settings-general" aria-labelledby="settings-general-title" className="settings-section">
           <h3 id="settings-general-title">General</h3>
+          <ThemePicker value={s.theme} onChange={(theme) => set("theme", theme)} />
           <label className="field">
             <span>Default backend for new threads</span>
             <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>
@@ -318,17 +323,19 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
           <p role="status">{claudeLoginDetail}</p>
           <p className="hint">Sign-in applies immediately to the saved CLI path and is shared with other Claude Code clients. It remains applied if you cancel Settings. Claude owns credentials; API or enterprise configuration may take precedence. For manual-input recovery, run claude auth login in your terminal. No logout or account-switch action is provided.</p>
           <button type="button" onClick={() => setHealthRevision((revision) => revision + 1)}>Refresh account status</button>
-          <p className="hint">Checks the saved executable paths used by this app session. Model catalogues do not confirm account access. Path changes require a restart.</p>
+          <p className="hint">Finds installed CLIs from your login PATH and standard install locations. Leave overrides blank for automatic discovery. Overrides are verified before saving and apply after restart. Model catalogues do not confirm account access.</p>
         <div className="grid2">
           <label className="field">
             <span>Claude executable</span>
-            <input value={s.claude_bin} onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
-            <small className={s.claude_bin === settings.claude_bin && health?.claude.authentication === "authenticated" ? "ok" : "warn"}>{s.claude_bin !== settings.claude_bin ? "Path changed · save and restart to check" : backendHealthText(health?.claude, healthFailed)}</small>
+            <input value={s.claude_bin === "claude" ? "" : s.claude_bin} placeholder="Automatic discovery" onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
+            <small className={s.claude_bin === settings.claude_bin && health?.claude.authentication === "authenticated" ? "ok" : "warn"}>{s.claude_bin !== settings.claude_bin ? "Override changed · verified when you save" : backendHealthText(health?.claude, healthFailed)}</small>
+            {health?.claude.resolvedPath && <small>Using: {health.claude.resolvedPath}</small>}
           </label>
           <label className="field">
             <span>Codex executable</span>
-            <input value={s.codex_bin} onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
-            <small className={s.codex_bin === settings.codex_bin && health?.codex.authentication === "authenticated" ? "ok" : "warn"}>{s.codex_bin !== settings.codex_bin ? "Path changed · save and restart to check" : backendHealthText(health?.codex, healthFailed)}</small>
+            <input value={s.codex_bin === "codex" ? "" : s.codex_bin} placeholder="Automatic discovery" onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
+            <small className={s.codex_bin === settings.codex_bin && health?.codex.authentication === "authenticated" ? "ok" : "warn"}>{s.codex_bin !== settings.codex_bin ? "Override changed · verified when you save" : backendHealthText(health?.codex, healthFailed)}</small>
+            {health?.codex.resolvedPath && <small>Using: {health.codex.resolvedPath}</small>}
           </label>
         </div>
         <div className="grid2">
@@ -476,6 +483,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
             <small>Used only by the Mock backend for scripted offline demos and tests.</small>
           </label>
         </section>}
+        {section === "approvals" && <ApprovalRules rules={s.approval_rules} projects={projects} currentProjectId={currentProjectId} gateEnabled={s.approval_gate.enabled} routing={routing} onChange={(rules) => set("approval_rules", rules)} />}
         </div>
         <footer className="settings-footer" data-testid="settings-actions">
           {saveError && <p className="warn" role="alert" data-testid="settings-save-error">{saveError} Your draft is still here; retry or cancel.</p>}

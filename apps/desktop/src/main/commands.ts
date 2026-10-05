@@ -1,9 +1,11 @@
+import { cliHealth } from "./engine/cli-path.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 import type { Store } from "./engine/store.js";
 import type { ThreadRunner } from "./engine/runner.js";
 import type { TerminalManager } from "./engine/terminal.js";
 import * as gitx from "./engine/git.js";
-import { updateSettings } from "./engine/settings-update.js";
+import { saveSettings } from "./engine/settings-update.js";
+import { previewApproval, validateRules } from "./engine/approvals/preview.js";
 import { describeFailure } from "../shared/failures.js";
 
 export type CommandHandler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
@@ -21,6 +23,7 @@ export function registerCommands(handle: RegisterCommand, {
   openPath: (path: string) => Promise<void>;
   openTerminal: (path: string) => Promise<void>;
 }): void {
+  const sessionCliSettings = store.settings;
   function cwdFor(threadId: string): string {
     const thread = store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
@@ -39,6 +42,7 @@ export function registerCommands(handle: RegisterCommand, {
     accepting = false;
     return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
   }
+  handle("updates:check", () => null); // Browser development stays offline.
   handle("state:get", () => {
     const state = store.snapshot();
     return { ...state, threads: state.threads.map((t) => ({ ...t, status: runner.status(t.id) })) };
@@ -78,7 +82,16 @@ export function registerCommands(handle: RegisterCommand, {
     await gitx.revert(cwd, rel);
     return gitx.status(cwd);
   });
-  handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
+  handle("settings:update", (patch) => saveSettings(store, runner.router, {
+    ...patch,
+    ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
+  }));
+  handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
+  handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
+  handle("approvals:try", (req) => previewApproval(req, {
+    project: (id) => store.project(id), config: store.snapshot().settings.approval_gate,
+    jev: () => runner.router.jev(),
+  }));
   handle("models:list", ({ backend }) => runner.listModels(backend));
   handle("routing:status", () => runner.router.status());
   handle("routing:reset", () => {
@@ -91,7 +104,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("backends:health", async () => {
     const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
       const backend = runner.backend(id);
-      const status = backend.health ? await backend.health() : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
+      const status = backend.health ? await (id === "mock" ? backend.health() : cliHealth(id, sessionCliSettings[`${id}_bin`], () => backend.health!())) : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
       return [id, status] as const;
     }));
     return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];

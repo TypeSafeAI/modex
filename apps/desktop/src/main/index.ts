@@ -1,10 +1,13 @@
+import { cliHealth, resolveCli } from "./engine/cli-path.js";
+import { THEMES } from "../shared/theme.js";
+import { ReleaseChecker } from "./engine/updates.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
-import { updateSettings } from "./engine/settings-update.js";
+import { saveSettings } from "./engine/settings-update.js";
 import { ThreadRunner } from "./engine/runner.js";
 import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
 import { AccountCodexBackend } from "./engine/backends/account-codex.js";
@@ -20,6 +23,7 @@ import { CompanionServer } from "./engine/companion.js";
 import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
+import { previewApproval, validateRules } from "./engine/approvals/preview.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -54,6 +58,10 @@ const pathReady = hydratePath(process.env).then(
 
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
+const updates = new ReleaseChecker({
+  currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
+  enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
+});
 let win: BrowserWindow | null = null;
 let shuttingDown = false;
 let shutdownComplete = false;
@@ -62,10 +70,12 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
-const osCipher = electronCipher(safeStorage);
+// Settings reads ChatGPT status in packaged e2e too; keep its test home off the OS keychain.
+const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
 const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
-const accountCodex = new AccountCodexBackend(chatgpt, store.settings.codex_bin);
+const sessionCliSettings = store.settings;
+const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
 const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
 const companion = new CompanionServer(home, {
@@ -82,7 +92,7 @@ const companionView = async (status: CompanionStatus): Promise<CompanionStatus> 
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
@@ -110,6 +120,8 @@ const terminals = new TerminalManager(
   // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
 );
+
+handle("updates:check", () => updates.check());
 
 handle("state:get", () => {
   const state = store.snapshot();
@@ -170,7 +182,20 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   await gitx.revert(cwd, rel);
   return gitx.status(cwd);
 });
-handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
+handle("settings:update", async (patch) => {
+  const settings = await saveSettings(store, runner.router, {
+    ...patch,
+    ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
+  });
+  win?.setBackgroundColor(THEMES[settings.theme].background);
+  return settings;
+});
+handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
+handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
+handle("approvals:try", (req) => previewApproval(req, {
+  project: (id) => store.project(id), config: store.snapshot().settings.approval_gate,
+  jev: () => runner.router.jev(),
+}));
 handle("models:list", ({ backend }) => runner.listModels(backend));
 handle("chatgpt:status", () => chatgpt.status());
 handle("chatgpt:signIn", async ({ accountId }) => {
@@ -186,9 +211,8 @@ handle("chatgpt:signOut", async ({ accountId }) => {
   const detail = await accountCodex.accountChange(accountId, () => chatgpt.signOut(accountId)); return { status: chatgpt.status(), detail };
 });
 const claudeLogin = new ClaudeLogin();
-const sessionClaudeBin = store.settings.claude_bin;
 SPAWNS.add("claude:login");
-handle("claude:login", () => claudeLogin.run(sessionClaudeBin));
+handle("claude:login", () => claudeLogin.run(resolveCli("claude", sessionCliSettings.claude_bin)));
 handle("claude:cancelLogin", () => claudeLogin.cancel());
 handle("routing:status", () => runner.router.status());
 handle("routing:reset", () => {
@@ -201,7 +225,7 @@ handle("routing:test", () => runner.router.test());
 handle("backends:health", async () => {
   const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
     const backend = runner.backend(id);
-    const status = backend.health ? await backend.health() : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
+    const status = backend.health ? await (id === "mock" ? backend.health() : cliHealth(id, sessionCliSettings[`${id}_bin`], () => backend.health!())) : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
     return [id, status] as const;
   }));
   return Object.fromEntries(entries) as BridgeCommands["backends:health"]["res"];
@@ -234,7 +258,7 @@ function createWindow(): BrowserWindow {
     minWidth: min.width,
     minHeight: min.height,
     title: "Modex",
-    backgroundColor: "#0f0f11", // --bg-main: no colour flash before the renderer paints
+    backgroundColor: THEMES[store.settings.theme].background, // Match the saved canvas before first paint.
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     // e2e captures run at the 1786×1049 reference size; CI runners have smaller displays, and macOS
     // otherwise clamps the window to the screen (1024×677 on the GitHub macOS runner).

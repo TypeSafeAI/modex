@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { probe } from "./backends/health.js";
+import { cliEnvironment, probe } from "./backends/health.js";
 import type { ClaudeLoginResult } from "../../shared/types.js";
 
 /** Claude owns browser authorization and credential persistence; Modex never parses tokens. */
@@ -35,7 +35,7 @@ export class ClaudeLogin {
           resolve(result);
         };
         try {
-          const child = this.spawnImpl(bin, ["auth", "login"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+          const child = this.spawnImpl(bin, ["auth", "login"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: cliEnvironment(bin) });
           this.child = child;
           child.stdout?.resume();
           child.stderr?.resume();

@@ -51,6 +51,11 @@ export interface TurnSink {
   toolStart(tool: ToolStart): void;
   toolUpdate(id: string, patch: ToolUpdate): void;
   approval(req: ApprovalRequest): Promise<ApprovalAnswer>;
+  /**
+   * After `approval(req)` answered "no": the "when" text of the approval rule that refused it on the
+   * user's behalf, so the backend can tell the model why. Undefined when a human answered.
+   */
+  refusedByRule?(req: ApprovalRequest): string | undefined;
   notice(level: "info" | "warn" | "error", text: string): void;
   /** Reasoning text as it streams; the first delta for an id opens a Thinking item. */
   thinkingDelta(id: string, delta: string): void;

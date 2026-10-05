@@ -1,18 +1,47 @@
 # Design tokens: where the numbers come from
 
 `src/renderer/tokens.css` holds the current Modex tokens. This file records the original Codex
-desktop measurements behind the shell geometry and type scale. The 2026-10-03 visual refinement
-keeps those dimensions while giving Modex a cooler graphite palette. `e2e/layout.spec.ts` asserts
-the current values, so future changes remain deliberate and reviewable.
+desktop measurements behind the shell geometry and type scale. The 2026-10-04 refinement
+keeps those dimensions and uses Jev-inspired dark blue surfaces with pink brand accents.
+`e2e/layout.spec.ts` asserts the geometry, so future changes remain deliberate and reviewable.
 
 ## Current visual direction
 
-The main canvas stays near-black (`#0e1218`). A slightly lighter graphite sidebar and a softer
-composer separate navigation, work, and input without heavy outlines. Cool blue appears at focus
-and active states. Text values have more contrast than the original samples, especially for labels,
-placeholders, and tool metadata. Very low-opacity light on the titlebar, upper canvas, and composer
-adds depth; the layout keeps its measured 42 px titlebar, 48 px rail, 240 px sidebar, and 736 px
-composer. Motion remains short and follows the existing reduced-motion setting.
+The main canvas is near-black blue (`#0b0f1b`). The sidebar (`#101523`) and composer
+(`#1d2435`) distinguish navigation and input without heavy outlines. Jev's dark pink
+(`#ef7bcd`) marks focus and selection; TypeSafe UI's warmer pink (`#f386a1`) fills primary
+actions. Both use dark text on filled pink for contrast. Text values remain legible on every
+surface, including placeholders and metadata. Very low-opacity light on the titlebar, upper
+canvas, and composer adds depth. The layout keeps its measured 42 px titlebar, 48 px rail,
+240 px sidebar, and 736 px composer. Motion remains short and respects reduced motion.
+The accent references are [Jev](https://jev.works/) and
+[TypeSafe UI](https://ui.jev.works/); the blue-black surfaces are Modex's adaptation.
+
+## OpenCoven theme
+
+Settings → General → Theme offers **Jev** (the existing default) and **OpenCoven**.
+Changes follow Settings' Save/Cancel behavior and survive relaunch. The native window,
+renderer and already-open terminal use the selected palette; switching never restarts a shell.
+Theme changes suppress color transitions for the swap and keep the existing reduced-motion behavior.
+
+OpenCoven maps Coven Cave's default dark `src/styles/globals/foundations.css` at
+`287de394676484c01b3de628fe93e4f104bb252c` to Modex's existing semantic surfaces. Colors
+were rasterized to sRGB through Chromium to keep Electron and xterm consistent:
+
+| Cave token | Source | Modex mapping |
+| --- | --- | --- |
+| background | `oklch(0.225 0.004 291)` | Main canvas `#1c1b1d` |
+| bg-panel | `oklch(0.205 0.004 291)` | Shell/sidebar `#171719` |
+| card | `oklch(0.245 0.005 291)` | Composer/message `#202023` |
+| bg-elevated | `oklch(0.275 0.006 291)` | Menus/selection `#27272a` |
+| bg-hover | `oklch(0.305 0.007 291)` | Hover `#2f2e32` |
+| accent-presence | `#9386d0` | Lavender accent and primary fill |
+| primary-foreground | `oklch(0.16 0.008 291)` | Primary-action ink `#0d0d11` |
+
+The Cave foreground/input/border ladder stays neutral, with secondary text adjusted for
+Modex's small metadata labels. Pink-specific accents now derive from the selected accent;
+Coven's surfaces omit the blue sheen. Semantic warning, error, diff and backend colors keep
+their meanings. The theme changes neither shell geometry nor typography.
 
 ## Reference
 
@@ -47,8 +76,8 @@ anti-aliased edges are darker than the real colour.
 | `--accent-warn` | `#dc9258` | "Full access", most saturated pixel in 735–802 × 999–1015 |
 
 **Derived** (no reference pixel): `--bg-row-hover`, `--bg-elevated`, `--bg-sunken` and
-`--border-strong`, each chosen between measured neighbours. `--accent` stays Modex's blue. Codex is
-monochrome apart from "Full access".
+`--border-strong`, each chosen between measured neighbours. Codex is monochrome apart from
+"Full access"; the current Modex accent is specified above.
 
 ## Type sizes
 

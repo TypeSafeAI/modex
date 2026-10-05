@@ -4,6 +4,8 @@
 
 # Modex
 
+[Download Modex for Mac](https://modex.build) · iPhone companion coming soon.
+
 [![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
 
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
@@ -67,12 +69,12 @@ modex/
   threads request `model_reasoning_summary = "detailed"`; Claude Code's CLI reports that the
   model thought but redacts the text, so those rows carry timing only.
 - **Inline approvals.** When the mode requires it, the thread pauses on a card showing the
-  <<<<<<< HEAD
-  exact command or patch. _Approve_, _Deny_, or _Always_ (trusts that command prefix for
-  the thread). _Stop_ cancels a running turn and any pending approvals.
-  =======
-  exact command or patch. _Approve_, _Deny_, or _Always_ (trusts that command prefix for
-  the thread). _Stop_ cancels a running turn and any pending approvals.
+  exact command or patch. *Approve*, *Deny*, or *Always* (trusts that command prefix for
+  the thread). *Stop* cancels a running turn and any pending approvals.
+- **Approval rules (preview).** Settings can save project-scoped Allow, Ask, and Never rules
+  and try them against a sample without executing it. Language rules stay visibly inactive
+  without Jev; exact-match rules need no judge. The production gate remains off pending
+  validation and the v0.0.5 release prerequisite. See [approval rules](docs/approval-rules.md).
 - **Errors you can act on.** Failed turns show the CLI's message, a next step, **Retry**
   (the same message, without a second user bubble), and **Copy details** for a bug report.
   Sign-in failures offer the CLI's login command in the thread's terminal; missing CLIs
@@ -176,6 +178,20 @@ Renderer edits hot-reload; restart the dev command after changing the main-proce
 
 For Electron development, also run
 `MODEX_DEV_URL=http://127.0.0.1:5178 npm run desktop` in another shell.
+
+## Release notifications
+
+Installed macOS builds check for a newer stable release at launch and hourly while the
+workspace is visible, with a check when you return to it. A small banner links to the
+release page; dismissing it hides that version across relaunches. A later release appears
+again. Checks use public GitHub release metadata and require an uploaded installer for
+your Mac. Offline failures stay quiet. Downloads and installation are manual.
+
+## Desktop themes
+
+Choose **Jev** or **OpenCoven** in Settings → General → Theme, then Save. Jev keeps the
+midnight-blue workspace and pink accent; OpenCoven uses Coven Cave's charcoal/black surfaces
+and lavender purple. Your choice survives relaunch and also updates the embedded terminal.
 
 ## Offline engine (`@modex/core`)
 

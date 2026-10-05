@@ -14,3 +14,8 @@ apps/ios/ModexCompanion/build/
 .env.release
 *.p8
 *.p12
+
+# Site deployment and local browser review artifacts.
+.vercel/
+.playwright-cli/
+output/playwright/

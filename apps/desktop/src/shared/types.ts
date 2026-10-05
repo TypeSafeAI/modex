@@ -1,3 +1,4 @@
+import type { Theme } from "./theme.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -46,7 +47,8 @@ export type ThreadItem =
   | { id: string; kind: "user"; text: string; at: string }
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string }
-  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
+  /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
+  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
@@ -86,6 +88,8 @@ export type ThreadEvent =
   | { threadId: string; type: "thread"; thread: Thread };
 
 export interface Settings {
+  /** Saved desktop appearance. Older settings retain Jev. */
+  theme: Theme;
   /** Backend for new threads. */
   default_backend: BackendId;
   default_mode: Mode;
@@ -138,7 +142,33 @@ export interface ApprovalReceipt {
   via: "match" | "jev";
   p?: number;
   ms: number;
+  /** Jev's probability that the action is destructive, when Jev was asked. */
+  destructive?: number;
   downgraded?: "destructive" | "escalation" | "jev-unavailable";
+}
+
+/** A dry run against the rule draft. No action is executed or recorded. */
+export interface ApprovalPreviewRequest {
+  projectId: string;
+  rules: ApprovalRule[];
+  backend: "claude" | "codex";
+  tool: string;
+  title: string;
+  mode: Mode;
+  escalation: boolean;
+}
+
+export interface ApprovalPreview {
+  decision: RuleDecision;
+  rule?: ApprovalRule;
+  source: "match" | "jev" | "none";
+  p?: number;
+  ms: number;
+  destructive?: number;
+  downgraded?: ApprovalReceipt["downgraded"];
+  jevError?: string;
+  gateEnabled: boolean;
+  jevAvailable: boolean;
 }
 
 /**
@@ -298,6 +328,8 @@ export interface ModexBridge {
 }
 
 export interface BackendHealth {
+  /** Absolute executable selected for this app session. */
+  resolvedPath?: string;
   executable: "available" | "missing" | "unknown";
   /** Parsed CLI version; raw --version output never crosses IPC. */
   version?: string;
@@ -326,7 +358,10 @@ export interface CompanionStatus {
   qrDataUrl?: string;
 }
 
+export interface ReleaseUpdate { version: string; url: string; }
+
 export interface BridgeCommands {
+  "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };
   "project:remove": { req: { projectId: string }; res: AppState };
@@ -371,6 +406,9 @@ export interface BridgeCommands {
   "changes:diff": { req: { threadId: string; path: string; original?: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
   "settings:update": { req: Partial<Settings>; res: Settings };
+  "approvals:rules:get": { req: undefined; res: ApprovalRule[] };
+  "approvals:rules:set": { req: { rules: ApprovalRule[] }; res: ApprovalRule[] };
+  "approvals:try": { req: ApprovalPreviewRequest; res: ApprovalPreview };
   "shell:openPath": { req: { path: string }; res: void };
   "shell:openTerminal": { req: { path: string }; res: void };
   /** System clipboard via main: works whether or not the window has focus (the Web API needs focus). */

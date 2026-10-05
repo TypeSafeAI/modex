@@ -83,6 +83,7 @@ export function receiptFor(d: GateDecision): ApprovalReceipt | undefined {
     via: d.source,
     ...(d.p !== undefined ? { p: round(d.p) } : {}),
     ms: d.ms,
+    ...(d.destructive !== undefined ? { destructive: round(d.destructive) } : {}),
     ...(d.downgraded ? { downgraded: d.downgraded } : {}),
   };
 }
