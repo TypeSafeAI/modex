@@ -235,3 +235,10 @@ App Sandbox was verified on the running client. Graceful host shutdown, full par
 real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
 pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
 [run instructions](../apps/store-desktop/README.md).
+
+The shared Mac connection settings now recognize existing system CLI sign-ins and recheck
+them on return from Terminal or a browser. Authenticated Claude no longer asks for another
+login; an authenticated Codex CLI account remains selected unless the user chooses another
+account. Executable overrides still require verification before saving. Read-only checks on
+this Mac confirmed Claude Code 2.1.289 and Codex 0.160.1 are already authenticated; this is
+account-detection evidence, not a new live coding-turn or Store distribution acceptance.

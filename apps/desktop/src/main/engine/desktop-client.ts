@@ -6,7 +6,7 @@ import type { ClientRequest, IncomingMessage } from "node:http";
 import { DESKTOP_PROTOCOL } from "../../shared/desktop-protocol.js";
 
 export interface DesktopCredentials { port: number; fingerprint: string; token: string; clientId: string }
-export interface DesktopConnectionStatus { state: "unpaired" | "connecting" | "connected" | "offline"; detail: string }
+export interface DesktopConnectionStatus { state: "unpaired" | "authorizing" | "connecting" | "connected" | "offline"; detail: string; confirmationCode?: string }
 interface Invitation { port: number; fingerprint: string; code: string }
 const hex = /^[a-f0-9]{64}$/;
 
@@ -24,13 +24,13 @@ export function parseDesktopInvitation(value: string): Invitation {
 }
 
 /** Inspect a TLS certificate without sending HTTP, pairing codes or access tokens. */
-export async function pinnedDesktopCertificate(port: number, fingerprint: string): Promise<string> {
+export async function pinnedDesktopCertificate(port: number, fingerprint: string, timeoutMs = 5000): Promise<string> {
   if (!Number.isInteger(port) || port < 1024 || port > 65535 || !hex.test(fingerprint)) throw new Error("Invalid host identity.");
   return new Promise((resolve, reject) => {
     const socket = tls.connect({ host: "127.0.0.1", port, rejectUnauthorized: false, minVersion: "TLSv1.2" });
     const fail = (error: Error) => { socket.destroy(); reject(error); };
     socket.once("error", fail);
-    socket.setTimeout(5000, () => fail(new Error("Start your Modex host to connect.")));
+    socket.setTimeout(timeoutMs, () => fail(new Error("Start your Modex host to connect.")));
     socket.once("secureConnect", () => {
       const cert = socket.getPeerCertificate();
       const digest = cert.raw && crypto.createHash("sha256").update(cert.raw).digest("hex");
@@ -48,10 +48,10 @@ class HostResponseError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-async function request(port: number, ca: string, endpoint: string, body: unknown, token?: string): Promise<Record<string, unknown>> {
+async function request(port: number, ca: string, endpoint: string, body: unknown, token?: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
-    const req = https.request({ hostname: "127.0.0.1", port, path: endpoint, method: "POST", ca, rejectUnauthorized: true,
+    const req = https.request({ hostname: "127.0.0.1", port, path: endpoint, method: "POST", ca, rejectUnauthorized: true, signal,
       headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     }, (res) => {
       const chunks: Buffer[] = [];
@@ -86,11 +86,35 @@ export class DesktopClient extends EventEmitter {
   private streamRequest?: ClientRequest;
   private timer?: ReturnType<typeof setTimeout>;
   private retryDelay = 500;
+  private authorization?: AbortController;
   private state: DesktopConnectionStatus = { state: "unpaired", detail: "Connect to your Modex host to open the workspace." };
 
   constructor(private readonly save: (credentials: DesktopCredentials | undefined) => void) { super(); }
   status(): DesktopConnectionStatus { return { ...this.state }; }
   private update(state: DesktopConnectionStatus): void { this.state = state; this.emit("status", this.status()); }
+
+  async connectLocal(host: { port: number; fingerprint: string }, clientId: string): Promise<void> {
+    if (!hex.test(clientId)) throw new Error("Invalid desktop installation identity.");
+    this.dispose();
+    const generation = this.generation;
+    const authorization = new AbortController();
+    this.authorization = authorization;
+    const confirmationCode = crypto.randomInt(100000, 1000000).toString();
+    this.update({ state: "authorizing", detail: "Confirm this code in the Modex host to use its workspace and existing CLI sign-ins.", confirmationCode });
+    try {
+      const ca = await pinnedDesktopCertificate(host.port, host.fingerprint);
+      if (generation !== this.generation) throw new Error("Connection cancelled.");
+      const result = await request(host.port, ca, "/connect", { clientId, confirmationCode, protocol: DESKTOP_PROTOCOL }, undefined, authorization.signal);
+      if (generation !== this.generation) throw new Error("Connection cancelled.");
+      if (result.protocol !== DESKTOP_PROTOCOL || typeof result.token !== "string" || !hex.test(result.token)) throw new Error("The host returned invalid desktop access.");
+      const credentials = { port: host.port, fingerprint: host.fingerprint, token: result.token, clientId };
+      this.save(credentials);
+      this.start(credentials);
+    } catch (error) {
+      if (generation === this.generation) this.update({ state: "unpaired", detail: error instanceof Error ? error.message : "The host could not connect." });
+      throw error;
+    } finally { if (this.authorization === authorization) this.authorization = undefined; }
+  }
 
   async pair(uri: string, clientId: string): Promise<void> {
     if (!hex.test(clientId)) throw new Error("Invalid desktop installation identity.");
@@ -124,6 +148,8 @@ export class DesktopClient extends EventEmitter {
 
   dispose(): void {
     ++this.generation;
+    this.authorization?.abort();
+    this.authorization = undefined;
     clearTimeout(this.timer);
     this.timer = undefined;
     this.stream?.destroy();

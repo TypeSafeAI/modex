@@ -14,7 +14,7 @@
 .host-card label { font-size: 12px; color: #b2b6c6; }
 .host-card input { width: 100%; height: 48px; border: 1px solid #ffffff24; border-radius: 10px; background: #101625; padding: 0 14px; font-size: 13px; color: #f3f1f5; }
 .host-card input:focus-visible, .host-card button:focus-visible { outline: 2px solid #f386a1; outline-offset: 3px; }
-.host-card form button { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; min-height: 48px; border: none; border-radius: 10px; background: #f386a1; color: #12111a; font-size: 13px; font-weight: 600; margin-top: 6px; cursor: pointer; }
+.host-connect, .host-card form button { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; min-height: 48px; border: none; border-radius: 10px; background: #f386a1; color: #12111a; font-size: 13px; font-weight: 600; margin-top: 6px; cursor: pointer; }
 .host-card button:disabled { opacity: .45; cursor: default; }
 .host-footnote { color: #a3a9ba; font-size: 11px; line-height: 1.7; margin-top: 18px; }
 .host-error { border-left: 2px solid #f386a1; padding-left: 12px; color: #f3b3c4; line-height: 1.7; font-size: 12px; margin-top: 20px; }
@@ -22,3 +22,12 @@
 .host-wait span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .host-forget { border: none; padding: 10px 0; background: transparent; color: #f386a1; font-size: 12px; cursor: pointer; margin-top: 14px; }
 .host-card footer { border-top: 1px solid #ffffff14; margin-top: 38px; padding-top: 18px; color: #a3a9ba; font-size: 11px; }
+
+.host-connect { width: 100%; }
+.host-detected { display: flex; align-items: baseline; gap: 10px; font-size: 13px; line-height: 1.7; color: #b2b6c6; margin: 26px 0 18px; }
+.host-detected > span { flex: 0 0 6px; height: 6px; border-radius: 50%; background: #6e7588; }
+.host-detected > .host-ready { background: #f386a1; box-shadow: 0 0 12px #f386a133; }
+.host-manual { margin-top: 26px; border-top: 1px solid #ffffff14; padding-top: 18px; }
+.host-manual summary { cursor: pointer; color: #b2b6c6; font-size: 12px; }
+.host-manual summary:focus-visible { outline: 2px solid #f386a1; outline-offset: 5px; }
+.host-code { margin: 28px 0 8px; font-variant-numeric: tabular-nums; font-size: 40px; letter-spacing: 10px; color: #f386a1; }

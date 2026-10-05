@@ -9,11 +9,78 @@ import { once } from "node:events";
 import { DesktopHost } from "../src/main/engine/desktop-host.js";
 import { DesktopClient, parseDesktopInvitation, type DesktopCredentials } from "../src/main/engine/desktop-client.js";
 import { DESKTOP_PROTOCOL } from "../src/shared/desktop-protocol.js";
+import { discoverDesktops } from "../src/main/engine/desktop-discovery.js";
 
 async function connected(client: DesktopClient): Promise<void> {
   if (client.status().state === "connected") return;
   await once(client, "connected", { signal: AbortSignal.timeout(5000) });
 }
+
+test("system discovery exposes only a live pinned host and connection still requires host approval", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-desktop-discovery-test-"));
+  const directory = path.join(home, "discovery");
+  let credentials: DesktopCredentials | undefined;
+  let approve!: (allowed: boolean) => void;
+  let prompted!: () => void;
+  let confirmationCode = "";
+  const prompt = new Promise<void>((resolve) => { prompted = resolve; });
+  const host = new DesktopHost(home, { version: "0.0.7", channels: () => ["echo"], async invoke(_channel, payload) { return payload; },
+    authorize: (code) => { confirmationCode = code; prompted(); return new Promise((resolve) => { approve = resolve; }); } }, directory);
+  const client = new DesktopClient((value) => { credentials = value; });
+  try {
+    await host.start();
+    const hosts = await discoverDesktops(directory);
+    assert.equal(hosts.length, 1);
+    const record = fs.readFileSync(path.join(directory, `${hosts[0]!.fingerprint}.json`), "utf8");
+    assert.deepEqual(Object.keys(JSON.parse(record)).sort(), ["fingerprint", "port", "protocol", "version"]);
+    const connecting = client.connectLocal(hosts[0]!, "a".repeat(64));
+    await prompt;
+    assert.equal(client.status().state, "authorizing");
+    assert.equal(client.status().confirmationCode, confirmationCode);
+    assert.equal(credentials, undefined);
+    assert.equal(host.clients().length, 0);
+    await assert.rejects(client.invoke("echo", "blocked"), /disconnected/);
+    approve(true); await connecting; await connected(client);
+    assert.equal(await client.invoke("echo", "allowed"), "allowed");
+    const saved = credentials as DesktopCredentials | undefined;
+    assert.ok(saved?.token);
+    assert.ok(!record.includes(saved.token));
+    await host.dispose();
+    assert.deepEqual(await discoverDesktops(directory), []);
+    // Stale and forged records cannot become offers after a host stops.
+    fs.writeFileSync(path.join(directory, `${hosts[0]!.fingerprint}.json`), record);
+    assert.deepEqual(await discoverDesktops(directory), []);
+  } finally { client.dispose(); await host.dispose(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+for (const outcome of ["denied", "cancelled"] as const) test(`local host ${outcome} authorization cannot persist or dispatch access`, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-desktop-authorization-test-"));
+  let prompted!: () => void;
+  const prompt = new Promise<void>((resolve) => { prompted = resolve; });
+  let approved!: () => void;
+  let authorizationSignal!: AbortSignal;
+  let credentials: DesktopCredentials | undefined;
+  const host = new DesktopHost(home, { version: "0.0.7", channels: () => [], async invoke() {}, authorize: (_code, signal) => {
+    authorizationSignal = signal; prompted();
+    if (outcome === "denied") return Promise.resolve(false);
+    return new Promise((resolve) => { approved = () => resolve(true); signal.addEventListener("abort", approved, { once: true }); });
+  } });
+  const client = new DesktopClient((value) => { credentials = value; });
+  try {
+    await host.start();
+    const identity = parseDesktopInvitation(host.invite());
+    const connection = client.connectLocal(identity, "a".repeat(64));
+    const rejected = assert.rejects(connection);
+    await prompt;
+    if (outcome === "cancelled") client.disconnect();
+    await rejected;
+    if (outcome === "cancelled") {
+      if (!authorizationSignal.aborted) await once(authorizationSignal, "abort", { signal: AbortSignal.timeout(2000) });
+    }
+    assert.equal(credentials, undefined);
+    assert.equal(host.clients().length, 0);
+  } finally { approved?.(); client.dispose(); await host.dispose(); fs.rmSync(home, { recursive: true, force: true }); }
+});
 
 test("desktop authority pairs once, persists over host restart, streams and is revoked", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-desktop-host-test-"));
@@ -69,20 +136,21 @@ test("desktop requests reject browser origins, altered hosts, missing grants and
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-desktop-boundary-test-"));
   let credentials: DesktopCredentials | undefined;
   let calls = 0;
+  let authorizations = 0;
   const client = new DesktopClient((value) => { credentials = value; });
-  const host = new DesktopHost(home, { version: "0.0.7", channels: () => ["echo"], async invoke() { ++calls; return "ok"; } });
+  const host = new DesktopHost(home, { version: "0.0.7", channels: () => ["echo"], async invoke() { ++calls; return "ok"; }, async authorize() { ++authorizations; return false; } });
   try {
     await host.start();
     await client.pair(host.invite(), "a".repeat(64)); await connected(client);
     const ca = fs.readFileSync(path.join(home, "desktop-host", "cert.pem"));
-    const invoke = (headers: Record<string, string>, protocol = DESKTOP_PROTOCOL) => new Promise<number>((resolve, reject) => {
-      const req = https.request({ hostname: "127.0.0.1", port: credentials!.port, path: "/invoke", method: "POST", ca,
+    const invoke = (headers: Record<string, string>, protocol = DESKTOP_PROTOCOL, endpoint = "/invoke") => new Promise<number>((resolve, reject) => {
+      const req = https.request({ hostname: "127.0.0.1", port: credentials!.port, path: endpoint, method: "POST", ca,
         // Verify the actual TLS destination while independently exercising the HTTP Host guard.
         checkServerIdentity: (_hostname, cert) => tls.checkServerIdentity("127.0.0.1", cert),
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${credentials!.token}`, ...headers } }, (res) => {
         res.resume(); res.on("end", () => resolve(res.statusCode!)); res.on("error", reject);
       });
-      req.on("error", reject); req.end(JSON.stringify({ channel: "echo", protocol }));
+      req.on("error", reject); req.end(JSON.stringify({ channel: "echo", protocol, clientId: "c".repeat(64), confirmationCode: "123456" }));
     });
     assert.equal(await invoke({ Origin: "https://example.com" }), 403);
     assert.equal(await invoke({ "Sec-Fetch-Site": "cross-site" }), 403);
@@ -93,6 +161,11 @@ test("desktop requests reject browser origins, altered hosts, missing grants and
     assert.equal(calls, 0);
     assert.equal(await invoke({}), 200);
     assert.equal(calls, 1);
+    assert.equal(await invoke({ Origin: "https://example.com" }, DESKTOP_PROTOCOL, "/connect"), 403);
+    assert.equal(await invoke({ "Sec-Fetch-Site": "cross-site" }, DESKTOP_PROTOCOL, "/connect"), 403);
+    assert.equal(await invoke({ Host: "example.com" }, DESKTOP_PROTOCOL, "/connect"), 403);
+    assert.equal(await invoke({}, DESKTOP_PROTOCOL + 1, "/connect"), 409);
+    assert.equal(authorizations, 0);
   } finally { client.dispose(); await host.dispose(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 

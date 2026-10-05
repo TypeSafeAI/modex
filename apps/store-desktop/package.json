@@ -32,6 +32,7 @@
       "package.json"
     ],
     "asar": true,
+    "asarUnpack": ["dist/apps/desktop/src/main/engine/desktop-system"],
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "../desktop/build/icon.icns",

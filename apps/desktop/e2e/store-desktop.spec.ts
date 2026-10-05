@@ -6,7 +6,7 @@ import { appDir, seedHome, tid, items } from "./support";
 
 async function startHost(home: string): Promise<ElectronApplication> {
   const host = await electron.launch({ args: [appDir, "--desktop-host"], cwd: appDir,
-    env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", JEV_API_KEY: "", TYPESAFE_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") } });
+    env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_DESKTOP_DISCOVERY_DIR: path.join(home, "discovery"), MODEX_NO_LOGIN_PATH: "1", JEV_API_KEY: "", TYPESAFE_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") } });
   await host.firstWindow();
   await expect.poll(() => host.evaluate(({ Menu }) => !!Menu.getApplicationMenu()?.items.find((item) => item.label === "Desktop access"))).toBe(true);
   return host;
@@ -30,6 +30,7 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
   const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome } });
   try {
     const page = await client.firstWindow();
+    await page.getByText("Use a connection link instead", { exact: true }).click();
     await page.getByLabel("Connection link", { exact: true }).fill(await pairingLink(host));
     await page.getByRole("button", { name: "Connect to my Mac" }).click();
     await expect(tid(page, "draft-view")).toBeVisible();
@@ -60,6 +61,44 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
     });
     await expect(page.getByText(/Your Mac removed this desktop's access/)).toBeVisible();
     expect(fs.existsSync(path.join(clientHome, "host-access.enc"))).toBe(false);
+  } finally {
+    await client.close(); await host.close();
+    fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); fs.rmSync(clientHome, { recursive: true, force: true });
+  }
+});
+
+test("Store preview discovers this Mac, confirms access once and restores saved access without another link", async () => {
+  const { home, repo } = seedHome();
+  const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-discovery-e2e-"));
+  const host = await startHost(home);
+  const clientDir = path.resolve(appDir, "../store-desktop");
+  const startClient = () => electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome, MODEX_DESKTOP_DISCOVERY_DIR: path.join(home, "discovery") } });
+  let client = await startClient();
+  try {
+    await host.evaluate(({ dialog }) => {
+      const control = globalThis as typeof globalThis & { hostConfirmation: string; hostApprovals: number; approveHost: () => void };
+      control.hostApprovals = 0;
+      dialog.showMessageBox = (async (_window, options) => {
+        control.hostApprovals++;
+        control.hostConfirmation = options!.message;
+        return new Promise((resolve) => { control.approveHost = () => resolve({ response: 1, checkboxChecked: false }); });
+      }) as typeof dialog.showMessageBox;
+    });
+    const page = await client.firstWindow();
+    await expect(page.getByRole("button", { name: "Connect to this Mac", exact: true })).toBeEnabled();
+    await expect(page.getByLabel("Connection link", { exact: true })).toBeHidden();
+    await page.getByRole("button", { name: "Connect to this Mac", exact: true }).click();
+    const code = page.getByLabel("Connection confirmation code");
+    await expect(code).toHaveText(/^[0-9]{6}$/);
+    await expect.poll(() => host.evaluate(() => (globalThis as typeof globalThis & { hostConfirmation: string }).hostConfirmation)).toContain(await code.textContent());
+    await expect(tid(page, "draft-view")).toHaveCount(0);
+    expect(fs.existsSync(path.join(clientHome, "host-access.enc"))).toBe(false);
+    await host.evaluate(() => (globalThis as typeof globalThis & { approveHost: () => void }).approveHost());
+    await expect(tid(page, "draft-view")).toBeVisible();
+    await client.close();
+    client = await startClient();
+    await expect(tid(await client.firstWindow(), "draft-view")).toBeVisible();
+    expect(await host.evaluate(() => (globalThis as typeof globalThis & { hostApprovals: number }).hostApprovals)).toBe(1);
   } finally {
     await client.close(); await host.close();
     fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); fs.rmSync(clientHome, { recursive: true, force: true });

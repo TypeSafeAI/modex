@@ -56,6 +56,18 @@ test("describeFailure: Claude sign-in errors point at claude auth login; a missi
   assert.match(missing.summary, /Claude Code could not be started/);
 });
 
+test("describeFailure: recoverable outages expose a contextual resolve action", () => {
+  const quota = describeFailure({ backend: "codex", message: "The ChatGPT user has reached their Subscription Sharing usage limit." });
+  assert.equal(quota.code, "rate_limited");
+  assert.deepEqual(quota.fix, { kind: "models", label: "Try another model" });
+
+  const network = describeFailure({ backend: "claude", message: "stream disconnected before completion: error sending request" });
+  assert.deepEqual(network.fix, { kind: "retry", label: "Retry connection" });
+
+  const crashed = describeFailure({ backend: "codex", message: "codex app-server exited (137) killed" });
+  assert.deepEqual(crashed.fix, { kind: "retry", label: "Restart and retry" });
+});
+
 test("describeFailure: unknown errors keep the message as the summary; shutdown is not retryable; mock has no login fix", () => {
   const odd = describeFailure({ backend: "mock", message: "Mock backend selected but no mock script is configured (Settings → Mock script).\nsecond line" });
   assert.equal(odd.code, "unknown");

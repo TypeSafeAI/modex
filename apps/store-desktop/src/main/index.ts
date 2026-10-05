@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DesktopClient, type DesktopCredentials } from "../../../desktop/src/main/engine/desktop-client.js";
+import { desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const testing = !app.isPackaged && process.env.MODEX_E2E === "1";
@@ -40,7 +41,44 @@ app.whenReady().then(() => {
   client.on("thread", (event) => send("thread:event", event));
   client.on("terminal", (event) => send("terminal:event", event));
   client.on("connected", () => { if (connectedBefore) send("host:reconnected"); connectedBefore = true; });
+  const system = (async () => {
+    if (testing) return { directory: process.env.MODEX_DESKTOP_DISCOVERY_DIR, installed: undefined };
+    if (!app.isPackaged || process.platform !== "darwin") return { directory: undefined, installed: undefined };
+    const directory = await desktopSystem("directory").then((value) => path.join(value, "desktop-hosts")).catch(() => undefined);
+    const adjacent = path.resolve(app.getPath("exe"), "../../../..", "Modex Host Preview.app");
+    const installed = await desktopSystem("installed", adjacent).catch(() => undefined);
+    return { directory, installed };
+  })();
+  const discover = async () => {
+    const { directory, installed } = await system;
+    const hosts = directory ? await discoverDesktops(directory) : [];
+    return { hosts, installed };
+  };
   ipcMain.handle("host:status", (event) => { trusted(event); return storageError ? { state: "unpaired", detail: storageError } : client.status(); });
+  ipcMain.handle("host:discover", async (event) => {
+    trusted(event);
+    const { hosts, installed } = await discover();
+    return { available: hosts.length === 1, installed: !!installed && hosts.length === 0,
+      detail: hosts.length > 1 ? "More than one host is open. Close the unused host, then check again." : hosts.length === 1 ? "Modex is running on this Mac. Your projects and CLI sign-ins are ready to connect." : installed ? "Modex is installed on this Mac. Open it and connect your workspace." : "Open the current Modex host preview on this Mac, then check again." };
+  });
+  ipcMain.handle("host:connect", async (event) => {
+    trusted(event);
+    if (pairing) throw new Error("A connection is already in progress.");
+    pairing = true;
+    try {
+      let { hosts, installed } = await discover();
+      if (hosts.length === 0 && installed) {
+        await desktopSystem("launch", installed);
+        for (let attempt = 0; attempt < 30 && hosts.length === 0; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          hosts = (await discover()).hosts;
+        }
+      }
+      if (hosts.length !== 1) throw new Error(hosts.length ? "Close the unused host and try again." : "The host is not ready. Open Modex and check again.");
+      await client.connectLocal(hosts[0]!, clientId);
+      storageError = undefined;
+    } finally { pairing = false; }
+  });
   ipcMain.handle("host:pair", async (event, uri: unknown) => {
     trusted(event);
     if (typeof uri !== "string" || uri.length > 512) throw new Error("Paste a connection link from the host.");

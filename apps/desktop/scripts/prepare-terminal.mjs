@@ -3,6 +3,9 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { prepareDesktopSystem } from "../../../scripts/prepare-desktop-system.mjs";
+
+prepareDesktopSystem(fileURLToPath(new URL("../dist/src/main/engine/desktop-system", import.meta.url)));
 
 // node-pty's published Unix helpers can lose their executable bit in the npm archive.
 // Set it before packaging so signed application resources never need to be modified at runtime.

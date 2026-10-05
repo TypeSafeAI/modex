@@ -35,6 +35,7 @@ interface Props {
   modelsError?: string;
   /** Asks the CLI for its models again after `modelsError`. */
   onRetryModels?: () => void;
+  openModelPickerRequest?: number;
   /** A suggested next message for an idle thread; shown only while the box is empty. */
   suggestion?: FollowUp | null;
   onBackend: (b: BackendId) => void;
@@ -58,7 +59,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onRetryModels, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const submittingRef = useRef(false);
@@ -131,7 +132,7 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
               </button>
             )}
             <span className="spacer" />
-            <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} onModel={onModel} onEffort={onEffort} />
+            <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} openRequest={openModelPickerRequest} onModel={onModel} onEffort={onEffort} />
             {busy ? (
               <IconButton icon="stop" label="Stop" shortcut="⌘." className="send-btn stop" data-testid="stop" tooltipSide="top" onClick={onStop} />
             ) : (

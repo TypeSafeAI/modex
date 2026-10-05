@@ -25,6 +25,7 @@ interface Props {
   models: ModelInfo[];
   modelsError?: string;
   onRetryModels?: () => void;
+  openModelPickerRequest?: number;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   /** The checkout's current branch (from the Changes snapshot), for the composer's context strip. */
   branch?: string;
@@ -48,7 +49,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, models, modelsError, onRetryModels, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
@@ -158,6 +159,7 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
         models={models}
         modelsError={modelsError}
         onRetryModels={onRetryModels}
+        openModelPickerRequest={openModelPickerRequest}
         suggestion={followUp?.key === suggestionKey ? followUp.value : null}
         onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}
@@ -246,13 +248,14 @@ function Item({ item, onAnswer, onFix, onRetry }: { item: ThreadItem; onAnswer: 
 
 /**
  * A turn that did not complete: what went wrong in plain words, the CLI's own message, and the
- * ways out — Retry (newest failure only), the fix when Modex has one, and Copy details, which
+ * ways out — a contextual resolve action, Retry (newest failure only), the fix when Modex has one, and Copy details, which
  * puts the full report (also shown by Details) on the clipboard for a bug report.
  */
 function FailureItem({ failure, onFix, onRetry }: { failure: TurnFailure; onFix: Props["onFix"]; onRetry?: () => void }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const report = failureReport(failure);
+  const hasResolveAction = Boolean(failure.fix && failure.fix.kind !== "retry");
   const copy = () => {
     void bridge.invoke("clipboard:write", { text: report }).then(() => {
       setCopied(true);
@@ -268,8 +271,9 @@ function FailureItem({ failure, onFix, onRetry }: { failure: TurnFailure; onFix:
       {failure.hint && <div className="failure-hint" data-testid="failure-hint">{failure.hint}</div>}
       {failure.message !== failure.summary && <pre className="failure-message" data-testid="failure-message">{failure.message}</pre>}
       <div className="row failure-actions">
-        {onRetry && failure.retryable && <button type="button" className="btn primary small" data-testid="failure-retry" onClick={onRetry}>Retry</button>}
-        {failure.fix && <button type="button" className="btn small" data-testid="failure-fix" data-fix-kind={failure.fix.kind} onClick={() => onFix(failure.fix!)}>{failure.fix.label}</button>}
+        {onRetry && failure.retryable && <button type="button" className={`btn ${hasResolveAction ? "ghost" : "primary"} small`} data-testid="failure-retry" onClick={onRetry}>{failure.fix?.kind === "retry" ? failure.fix.label : "Retry"}</button>}
+        {failure.fix && failure.fix.kind !== "retry" && <button type="button" className="btn primary small" data-testid="failure-fix" data-fix-kind={failure.fix.kind} onClick={() => onFix(failure.fix!)}>{failure.fix.label}</button>}
+        {!onRetry && failure.fix?.kind === "retry" && <button type="button" className="btn primary small" data-testid="failure-fix" data-fix-kind="retry" onClick={() => onFix(failure.fix!)}>{failure.fix.label}</button>}
         <button type="button" className="btn small" data-testid="failure-copy" onClick={copy}>{copied ? "Copied" : "Copy details"}</button>
         <button type="button" className="btn ghost small" data-testid="failure-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? "Hide details" : "Details"}</button>
       </div>

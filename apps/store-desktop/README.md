@@ -49,8 +49,26 @@ The bundle is `release/mas-dev-arm64/Modex Store Preview.app`. The first command
 leaves it unsigned. The second signs the MAS runtime for a **local development preview**
 with App Sandbox, outgoing network access and the configured Soul Protocol team/application
 group. It has no execution engine, PTY dependency, incoming-network entitlement or file
-access grants outside its container. The ordinary `electron .` source run does not prove
+access grants outside its private and shared app containers. The ordinary `electron .` source run does not prove
 Apple App Sandbox behavior.
+
+Install the signed preview client and host in `/Applications`. App Sandbox permits the
+installed-host signature check there; nested bundles under the user's home directory may
+not be readable. Signed builds discover a running host through the product's macOS application group. The
+shared records contain only its port, certificate fingerprint and version; each offer is
+checked against the live loopback TLS certificate. **Connect to this Mac** shows a six-digit
+code and requests one native host confirmation. Compare the codes, allow access, and the
+encrypted saved connection reconnects automatically afterward. Existing Claude/Codex CLI
+sign-ins stay on the host and appear as connected in Settings.
+
+If the host is closed, the client can find and open a compatible installed host after
+checking its bundle identifier, desktop protocol marker and Soul Protocol code signature.
+The preview first checks for a sibling `Modex Host Preview.app`, then macOS's registered
+apps. Older published builds without desktop-host support are not launched as hosts.
+The host preview uses its isolated Application Support directory; normal Modex uses its
+existing workspace. A second launch enables the host in the existing process rather than
+starting a second engine over the same data. Manual links remain under **Use a connection
+link instead**, including for unsigned source builds.
 
 Distribution needs the distinct `works.jev.modex.desktop` App Store Connect record,
 appropriate Apple provisioning/signing, a processed TestFlight build and the documented

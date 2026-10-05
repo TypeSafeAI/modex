@@ -94,3 +94,24 @@ Relaunching the client restored access and the saved thread without a new invita
 Revoking the client through the host menu disconnected it, removed its encrypted credential
 file and left zero host grants. Fresh-user, sleep/wake, upgrade, real CLI/account flows and
 the rest of the parity matrix remain release gates, along with Apple provisioning/review.
+
+## Existing Mac login detection
+
+Val requested reuse of the sign-ins already present on the Mac. The desktop and Store
+client share connection settings, so both now show existing CLI authentication without
+another login prompt and recheck status after returning from Terminal or a browser.
+Explicitly selected ChatGPT registrations and executable overrides remain respected;
+detecting an account does not copy credentials, start OAuth, or change the selected account.
+The Store client continues querying its authorized host for account status.
+
+Read-only probes through the real backends confirmed authenticated Claude Code 2.1.289
+and Codex 0.160.1 on this Mac. The build, typecheck, 291 unit tests and seven focused E2E
+tests passed, including initial detection, login/logout on focus and no authentication
+mutation during detection. Full regression and updated signed-preview evidence follow.
+
+### Local host detection follow-up
+
+- [ ] Discover compatible running hosts through the macOS application group, with pinned loopback TLS and no credentials in discovery records.
+- [ ] Find and open a compatible, same-team signed installed host when needed.
+- [ ] Request one native host confirmation directly from the client, then reuse the existing encrypted saved connection and revocation flow.
+- [ ] Keep manual connection links as recovery; verify denial, cancellation, origin boundaries, discovery and reconnection.

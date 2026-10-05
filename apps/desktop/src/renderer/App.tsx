@@ -70,6 +70,7 @@ export function App() {
   // The toast: what failed and, when the action can simply be run again, how.
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
+  const [modelPickerRequest, setModelPickerRequest] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // A new chat is a draft (renderer-only) until its first send creates the thread.
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -293,6 +294,12 @@ export function App() {
   /** The failure card's fix: type the sign-in command into the thread's shell (opening it), or open Settings. */
   const applyFix = (fix: TurnFix) => {
     if (fix.kind === "settings") { setShowSettings(true); return; }
+    if (fix.kind === "models") {
+      if (thread && (!models[thread.backend]?.models.length || models[thread.backend]?.error)) retryModels(thread.backend);
+      setModelPickerRequest((request) => request + 1);
+      return;
+    }
+    if (fix.kind === "retry") { void retry(); return; }
     if (!thread) return;
     const id = thread.id;
     setTerminalCommands((m) => ({ ...m, [id]: { text: fix.command, nonce: ++commandNonce.current } }));
@@ -478,6 +485,7 @@ export function App() {
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
               onRetryModels={() => retryModels(thread.backend)}
+              openModelPickerRequest={modelPickerRequest}
               inputRef={inputRef}
               branch={changes?.branch ?? undefined}
             />

@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("modex", {
 });
 contextBridge.exposeInMainWorld("modexHost", {
   status: () => ipcRenderer.invoke("host:status"),
+  discover: () => ipcRenderer.invoke("host:discover"),
+  connect: () => ipcRenderer.invoke("host:connect"),
   pair: (uri) => ipcRenderer.invoke("host:pair", uri),
   disconnect: () => ipcRenderer.invoke("host:disconnect"),
   onStatus: (cb) => subscribe("host:status", cb),

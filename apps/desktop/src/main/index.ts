@@ -21,6 +21,7 @@ import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
 import { CompanionServer } from "./engine/companion.js";
 import { DesktopHost } from "./engine/desktop-host.js";
+import { desktopSystem } from "./engine/desktop-discovery.js";
 import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
@@ -36,7 +37,13 @@ const flag = (name: string): string | undefined => {
 
 const demo = flag("demo");
 const screenshotDir = flag("screenshot");
-const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? path.join(os.homedir(), ".modex");
+// Electron resolves app.getName() from the packaged metadata, which can still be the
+// shared Modex product name even when this bundle is the signed Host Preview. The
+// executable path is stable for this companion bundle and keeps the host self-starting
+// when it is opened directly from Finder or by the Store client.
+const hostPreview = app.isPackaged && (app.getName() === "Modex Host Preview" || /Modex Host Preview\.app[\\/]/.test(process.execPath));
+const hostPreviewHome = path.join(os.homedir(), "Library", "Application Support", "Modex Host Preview");
+const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? (hostPreview ? hostPreviewHome : path.join(os.homedir(), ".modex"));
 fs.mkdirSync(home, { recursive: true });
 // The scripted demo and screenshots must never discover a real Jev key or call the network.
 if (demo) {
@@ -48,6 +55,8 @@ if (demo) {
 // An isolated home (e2e, demo) also gets its own Chromium profile, so renderer preferences in
 // localStorage (panel layout) and window-state.json never leak between runs or into the user's real app.
 if (demo || process.env.MODEX_HOME) app.setPath("userData", path.join(home, "electron"));
+
+if (!demo && !app.requestSingleInstanceLock()) app.exit(0);
 
 // A Finder/Dock launch inherits launchd's minimal PATH, which hides claude, codex, and jev.
 // Resolve the user's login-shell PATH once, in the background, and make every channel that
@@ -311,12 +320,26 @@ function createWindow(): BrowserWindow {
   return w;
 }
 
-app.whenReady().then(async () => {
-  win = createWindow();
-  if (flag("desktop-host") && !demo) {
+let startingDesktopHost: Promise<void> | undefined;
+function startDesktopHost(): Promise<void> {
+  if (demo || desktopHost) return Promise.resolve();
+  if (startingDesktopHost) return startingDesktopHost;
+  startingDesktopHost = (async () => {
+    let discoveryDirectory: string | undefined;
+    if (!app.isPackaged && process.env.MODEX_E2E && process.env.MODEX_DESKTOP_DISCOVERY_DIR) discoveryDirectory = process.env.MODEX_DESKTOP_DISCOVERY_DIR;
+    else if (app.isPackaged && process.platform === "darwin") {
+      try { discoveryDirectory = path.join(await desktopSystem("directory"), "desktop-hosts"); }
+      catch { console.warn("[modex] system discovery unavailable; manual desktop links remain available"); }
+    }
     desktopHost = new DesktopHost(home, {
       version: app.getVersion(),
       channels: () => [...desktopCommands.keys()],
+      authorize: async (confirmationCode, signal) => {
+        if (!win || win.isDestroyed()) win = createWindow();
+        win.show(); win.focus();
+        const result = await dialog.showMessageBox(win, { type: "question", title: "Connect Modex on this Mac", message: `Does your desktop show ${confirmationCode}?`, detail: "Approve only if this code matches the Modex connection screen you just opened. This gives that desktop access to your projects, coding agents, existing CLI sign-ins, terminals, settings and approvals. Access stays saved until you revoke it from Desktop access.", buttons: ["Cancel", "Allow this desktop"], defaultId: 0, cancelId: 0, signal });
+        return result.response === 1 && !signal.aborted;
+      },
       invoke: async (channel, payload, authorized) => {
         if (SPAWNS.has(channel as keyof BridgeCommands)) await pathReady;
         if (shuttingDown || !authorized()) throw new Error("Desktop host access is unavailable.");
@@ -324,7 +347,7 @@ app.whenReady().then(async () => {
         if (!command) throw new Error("Unknown desktop command.");
         return command(payload);
       },
-    });
+    }, discoveryDirectory);
     try {
       await desktopHost.start();
       const menu = Menu.getApplicationMenu() ?? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]);
@@ -342,10 +365,26 @@ app.whenReady().then(async () => {
       ] }));
       Menu.setApplicationMenu(menu);
     } catch (error) {
+      await desktopHost.dispose();
+      desktopHost = undefined;
       console.error("[modex] desktop host could not start:", (error as Error).message);
       dialog.showErrorBox("Desktop host could not start", "Its local port may already be in use. Quit the other Modex host and try again.");
     }
-  }
+  })().finally(() => { startingDesktopHost = undefined; });
+  return startingDesktopHost;
+}
+
+app.on("second-instance", (_event, args) => {
+  void app.whenReady().then(async () => {
+    if (!win || win.isDestroyed()) win = createWindow();
+    if (args.includes("--desktop-host")) await startDesktopHost();
+    win.show(); win.focus();
+  });
+});
+
+app.whenReady().then(async () => {
+  win = createWindow();
+  if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
   if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
