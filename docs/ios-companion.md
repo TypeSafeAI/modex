@@ -36,6 +36,8 @@ xcodebuild -project ModexCompanion.xcodeproj -scheme ModexCompanion \
   -only-testing:ModexCompanionTests CODE_SIGNING_ALLOWED=NO test
 cd ../../..
 apps/ios/ModexCompanion/Scripts/test-e2e.sh
+# Also exercise the Mac's private network address instead of loopback:
+MODEX_IOS_LAN=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 ```
 
 The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
@@ -44,7 +46,8 @@ pairing, an approval, a follow-up, and cancelling or confirming Forget Mac. The 
 does not claim live Claude or Codex account access. Unsigned simulator builds use a
 simulator-only pairing store if Keychain reports a missing signing entitlement; iPhone
 builds always use Keychain. The `iPhone companion` CI job runs both suites on an available
-iPhone simulator and retains the Xcode test results.
+iPhone simulator and retains the Xcode test results. The optional LAN run still uses the
+simulator and an isolated fixture; it does not replace acceptance on a physical iPhone.
 
 On 2026-10-04, the workspace build and typecheck passed, all 15 core and 232 desktop unit
 tests passed, all 90 Electron end-to-end tests passed, and the iPhone simulator completed
@@ -54,9 +57,9 @@ App Store Connect, so the target was aligned to Val's `works.jev.modex` app reco
 target passed its simulator unit tests and paired approval/follow-up e2e. Its signed IPA
 passed ZIP integrity and Apple validation, uploaded successfully, and reached Apple's
 `VALID` import and processing state: App Store Connect app `6818982013`, version 0.1.0,
-build 1, delivery `bce3dd75-1a7e-46de-831c-42278f1150f9`. Internal tester access and
-physical iPhone acceptance remain to be verified. The Release configuration also built
-for the generic iPhone device target with signing disabled.
+build 1, delivery `bce3dd75-1a7e-46de-831c-42278f1150f9`. Distribution of the newer
+build is recorded below; physical iPhone acceptance remains open. The Release configuration
+also built for the generic iPhone device target with signing disabled.
 
 Build 2 hardens first-run pairing and request lifetimes. Certificate generation uses the
 OpenSSL shipped by macOS with named P-256 parameters, which both Electron and iOS accept.
@@ -71,9 +74,22 @@ tests plus the browser bridge test, all 91 desktop e2e tests, all 10 native test
 paired iPhone flow passed. The initial simulator failure exposed LibreSSL's explicit-curve
 default; the named-curve fix passed both Electron pairing and the real iOS HTTPS flow.
 A signed device archive, distribution IPA export, strict code-signature verification and
-ZIP integrity check also passed. Build 2 still needs Apple validation, upload and processing
-verification. Build 1's `VALID` status does not cover these changes. Internal tester access
-and physical iPhone acceptance remain open.
+ZIP integrity check also passed. On 2026-10-05, build 2 passed Apple validation, uploaded
+as delivery `2d203cf7-abc3-483d-a83b-4be82499abeb`, and reached `VALID` processing. Its
+App Store Connect state is `IN_BETA_TESTING`, assigned to the existing Internal group with
+one tester. Physical iPhone installation and acceptance remain open.
+
+Apple initially held build 2 at `MISSING_EXPORT_COMPLIANCE` because its uploaded plist
+omitted `ITSAppUsesNonExemptEncryption`. The client uses Apple's URLSession TLS, Keychain,
+and CryptoKit SHA-256, with no bundled cryptography implementation. Its exemption was
+recorded in App Store Connect, matching build 1. The source plist now declares `false` for
+future uploads; a Release device build verified that Boolean in the built app. See
+[Apple's encryption guidance](https://developer.apple.com/documentation/Security/complying-with-encryption-export-regulations).
+
+After the companion merged in #103, the paired simulator flow also passed against the
+combined v0.0.6 palette candidate using `MODEX_IOS_LAN=1` and the Mac's private network
+address. The Mac candidate passed all 91 source and signed packaged e2e checks. The
+private-network simulator result still does not establish physical iPhone acceptance.
 
 ## TestFlight
 

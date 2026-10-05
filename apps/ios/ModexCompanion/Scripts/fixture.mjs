@@ -30,7 +30,7 @@ const server = new CompanionServer(home, {
   status: (id) => runner.status(id),
   send: async (id, text) => { void runner.send(id, text); return { ok: true }; },
   answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
-}, () => ["127.0.0.1"]);
+}, process.env.MODEX_IOS_LAN === "1" ? undefined : () => ["127.0.0.1"]);
 await server.start();
 void runner.send(threadId, "Prepare the change");
 while (runner.status(threadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));

@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-04._
+_Last updated 2026-10-05._
 
 ## Shipped
 
@@ -26,14 +26,18 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 - **v0.0.6 is being recut before publication.** The first signed tag points to PR #97's
   verified tree, but its release run was cancelled before approval. PR #106 adds the
-  Jev-inspired near-black blue and pink palette. The Developer ID sign-only rehearsal and
-  all 90 packaged e2e tests passed. Local notarization, a new signed candidate, and the
-  protected release run are required before publication.
+  Jev-inspired near-black blue and pink palette plus the merged iPhone companion service.
+  The combined Developer ID rehearsal passed notarization, stapling, Gatekeeper,
+  signature and container verification on 2026-10-05. All 91 e2e checks passed against
+  the notarized package (the browser check uses its separate development bridge). A new signed candidate and the protected release run
+  are required before publication.
   [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
   remain CLI-owned. Apple Silicon authorization acceptance passed on 2026-10-04 using
-  Claude Code 2.1.273 and the documented Terminal fallback; model access remains unverified.
+  Claude Code 2.1.273 and the documented Terminal fallback. A later live Haiku turn through
+  Modex's backend and Claude Code 2.1.288 completed with tools disabled and no tool requests.
+  This verifies that account/model pair; other models and live tool execution remain unverified.
 - **ChatGPT sign-in (#76, PR #92).** [Design and recovery](chatgpt-signin.md) cover
   OAuth, protected storage, account-isolated Codex processes and identity-bound resumes.
   Real Apple Silicon acceptance passed for authorization, completed Codex turns, rotating
@@ -45,17 +49,25 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Browser review (PR #105).** The renderer can connect to a separate localhost development
   bridge for reviewing real project and thread flows in Chromium. The bridge is excluded from
   packaged releases. Its browser flow and macOS CI passed before merge.
+- **iPhone companion service (#103).** An opt-in paired HTTPS service and native SwiftUI app
+  support same-network threads, follow-ups, and single approvals while coding stays on the
+  Mac's CLIs. Both desktop and iPhone CI jobs passed on both runs before merge. The service
+  is included in the replacement v0.0.6 candidate; iPhone distribution is tracked below.
 
 ## In flight
 
-- **iPhone companion MVP (draft PR #103).** A native SwiftUI app and paired local HTTPS service let a phone
-  view threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
+- **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
+  threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
   Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
   passed Apple validation, uploaded, and reached `VALID` processing in App Store Connect.
   Build 2 fixes first-run Mac TLS compatibility, pending-request revocation, stale responses,
   thread draft isolation, and disconnect confirmation. All 91 desktop e2e tests, 10 native
   tests, and the paired simulator flow passed; iPhone tests now also run in CI.
-  Build 2 upload, internal tester access, and physical iPhone acceptance remain open.
+  The signed build 2 distribution IPA also passed strict signature and ZIP verification.
+  On 2026-10-05, build 2 passed Apple validation and upload, reached `VALID`, and entered
+  `IN_BETA_TESTING` in the existing Internal group with one tester. Physical iPhone
+  installation and acceptance remain open. The source plist now records the system-encryption
+  exemption so future uploads retain it.
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 

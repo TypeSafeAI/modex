@@ -62,7 +62,8 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
-const osCipher = electronCipher(safeStorage);
+// Settings reads ChatGPT status in packaged e2e too; keep its test home off the OS keychain.
+const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
 const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
 const accountCodex = new AccountCodexBackend(chatgpt, store.settings.codex_bin);
@@ -234,7 +235,7 @@ function createWindow(): BrowserWindow {
     minWidth: min.width,
     minHeight: min.height,
     title: "Modex",
-    backgroundColor: "#0f0f11", // --bg-main: no colour flash before the renderer paints
+    backgroundColor: "#0b0f1b", // --bg-main: no colour flash before the renderer paints
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     // e2e captures run at the 1786×1049 reference size; CI runners have smaller displays, and macOS
     // otherwise clamps the window to the screen (1024×677 on the GitHub macOS runner).
