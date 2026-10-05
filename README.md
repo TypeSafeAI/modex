@@ -35,7 +35,7 @@ modex/
   the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
   row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
   free-text entry.
-- **⚡ Auto routing.** Turn on Auto and a fast judge — TypeSafe's Jev, or a built-in
+- **⚡ Auto routing.** Turn on Auto and a fast judge — Jev, or a built-in
   heuristic when no key is configured — reads each request before the turn and picks
   the model, reasoning effort, and fast mode within the bounds you set (posture, effort
   ceiling, daily premium-turn budget, confidence floor). Every turn gets a one-line receipt

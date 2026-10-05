@@ -1,8 +1,8 @@
 # Modex — developer and agent entry point
 
-> Unofficial TypeSafeAI community project, not an official TypeSafe AI, OpenAI, or Anthropic desktop application. Community organization created by VC Moderator [@BunsDev](https://github.com/BunsDev).
+> Independent open-source application maintained by [@BunsDev](https://github.com/BunsDev). Optional Auto routing is powered by Jev.
 
-![Modex editorial card: coding agents, one desktop](assets/social-preview.svg)
+![Modex: your agents, your workspace](../branding/modex-social-preview.png)
 
 [Setup and features](../../README.md) · [Agent instructions](../../AGENTS.md) · [Contributing](../../CONTRIBUTING.md) · [Screenshots](SCREENSHOTS.md)
 
@@ -37,6 +37,6 @@ Run the existing platform-appropriate suite, preserve the macOS CI gate, and rep
 
 ## Sharing
 
-The SVG above is editable 1280×640 editorial artwork, not a screenshot. The [shared publishing checklist](https://github.com/TypeSafeAI/.github/blob/main/docs/discovery/SHARING.md) separates committed files, website metadata, and GitHub About/topics/Social preview settings. A committed manifest does not apply settings.
+The image above uses the official Modex mark and is editorial artwork, not a screenshot. The [shared publishing checklist](https://github.com/TypeSafeAI/.github/blob/main/docs/discovery/SHARING.md) separates committed files, website metadata, and GitHub About/topics/Social preview settings. A committed manifest does not apply settings.
 
 Use relevant descriptions such as local coding-agent desktop, CLI backends, worktrees, and approvals. Do not claim official affiliation, a new hosted runtime, universal model support, an available installer, or production safety without matching implementation evidence. Preserve the repository's MIT license and third-party attribution.

@@ -9,13 +9,13 @@ keeps those dimensions and uses Jev-inspired dark blue surfaces with pink brand 
 
 The main canvas is near-black blue (`#0b0f1b`). The sidebar (`#101523`) and composer
 (`#1d2435`) distinguish navigation and input without heavy outlines. Jev's dark pink
-(`#ef7bcd`) marks focus and selection; TypeSafe UI's warmer pink (`#f386a1`) fills primary
+(`#ef7bcd`) marks focus and selection; Jev UI's warmer pink (`#f386a1`) fills primary
 actions. Both use dark text on filled pink for contrast. Text values remain legible on every
 surface, including placeholders and metadata. Very low-opacity light on the titlebar, upper
 canvas, and composer adds depth. The layout keeps its measured 42 px titlebar, 48 px rail,
 240 px sidebar, and 736 px composer. Motion remains short and respects reduced motion.
 The accent references are [Jev](https://jev.works/) and
-[TypeSafe UI](https://ui.jev.works/); the blue-black surfaces are Modex's adaptation.
+[Jev UI](https://ui.jev.works/); the blue-black surfaces are Modex's adaptation.
 
 ## OpenCoven theme
 

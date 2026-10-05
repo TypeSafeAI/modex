@@ -13,7 +13,7 @@ This is an explicit reproduction command, not a claim it was run here. It seeds 
 
 Capture an overview, an approval before it is accepted, and the Changes panel after the synthetic demonstration. Include the source commit, command, operating system, viewport, theme, fixture, and offline mode in the capture record. Review repository paths, user names, notifications, and terminal output for private information before publishing.
 
-Follow the [shared evidence protocol](https://github.com/TypeSafeAI/.github/blob/main/docs/discovery/SCREENSHOTS.md). The editorial card in this directory is not a screenshot; it must not be used to imply that any command executed or approval was granted.
+Follow the [shared evidence protocol](https://github.com/TypeSafeAI/.github/blob/main/docs/discovery/SCREENSHOTS.md). The [official brand artwork](../branding/modex-social-preview.png) is not a screenshot; it must not be used to imply that any command executed or approval was granted.
 
 ## 2026-10-03 graphite interface capture
 

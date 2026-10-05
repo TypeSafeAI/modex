@@ -325,27 +325,27 @@ test("pinned premium Auto routes count toward the daily limit and block a second
 
 test("router: Jev failing or absent falls back to the heuristic and says so in the receipt", async () => {
   const home = tmpdir("modex-home-");
-  const failing = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { throw new JevError("TypeSafe is overloaded.", "overloaded", 529); } });
+  const failing = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { throw new JevError("Jev is overloaded.", "overloaded", 529); } });
   const r = await failing.route({ thread: thread(), text: "quick: bump the version", items: [], project: { name: "demo" } });
   assert.equal(r.source, "heuristic");
-  assert.match(r.item.reasons[0]!, /Jev unavailable — TypeSafe is overloaded\. \(overloaded\)/);
+  assert.match(r.item.reasons[0]!, /Jev unavailable — Jev is overloaded\. \(overloaded\)/);
   assert.deepEqual([r.item.model, r.item.fast], ["gpt-5.5", true]);
   // A rejected key or an empty credit balance turns Jev off for the session instead of retrying every turn.
   let calls = 0;
-  const broke = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { calls++; throw new JevError("The TypeSafe organization has no API credits.", "billing", 402); } });
+  const broke = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { calls++; throw new JevError("The Jev account has no API credits.", "billing", 402); } });
   const first = await broke.route({ thread: thread(), text: "hi", items: [], project: { name: "demo" } });
   assert.match(first.item.reasons[0]!, /no API credits\. \(billing\)/);
   const second = await broke.route({ thread: thread(), text: "hi again", items: [], project: { name: "demo" } });
   assert.equal(calls, 1);
-  assert.match(second.item.reasons[0]!, /Jev is off for this session — The TypeSafe organization has no API credits\./);
+  assert.match(second.item.reasons[0]!, /Jev is off for this session — The Jev account has no API credits\./);
   const bs = await broke.status();
   assert.equal(bs.live, false);
   assert.match(bs.detail!, /credits/);
   const offline = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: null });
   const o = await offline.route({ thread: thread(), text: "why is this slow?", items: [], project: { name: "demo" } });
-  assert.match(o.item.reasons[0]!, /No TypeSafe API key/);
+  assert.match(o.item.reasons[0]!, /No Jev API key/);
   assert.equal((await offline.status()).live, false);
-  assert.match((await offline.status()).detail!, /No TypeSafe API key found/);
+  assert.match((await offline.status()).detail!, /No Jev API key found/);
   // an aborted turn (user pressed Stop while judging) propagates the signal to the transport
   const ac = new AbortController();
   const aborting = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async (_req, signal) => { ac.abort(); assert.equal(signal?.aborted, true); throw new JevError("timed out", "timeout"); } });
@@ -426,7 +426,7 @@ test("jev CLI transport: runs `jev run - --raw` with the key in the child env on
   assert.equal((res.answers.task as { choice: string }).choice, "ops");
   // Errors: the CLI's JSON error object, its plain-text form, and a bare exit 3.
   assert.deepEqual([cliError('{"error":{"code":"billing","message":"No credits.","status":402,"exit":1}}', 1).code, cliError('{"error":{"code":"billing","message":"No credits.","status":402,"exit":1}}', 1).message], ["billing", "No credits."]);
-  assert.equal(cliError("error: TypeSafe rejected the API key. (HTTP 401)", 3).code, "auth");
+  assert.equal(cliError("error: Jev rejected the API key. (HTTP 401)", 3).code, "auth");
   assert.equal(cliError("error: No API key. Run `jev doctor`.", 3).code, "auth");
   assert.equal(cliError("boom", 1).code, "unknown");
   const pretty = cliError(JSON.stringify({ error: { code: "auth", message: "Cannot authenticate with the server.", status: 401, exit: 3 } }, null, 2), 3);
@@ -481,7 +481,7 @@ test("router: prefers the jev CLI when found, stores a hand-entered key in the k
   // Clearing the key with HTTPS-only policy leaves nothing to judge with.
   st = await router.clearKey();
   assert.deepEqual([st.live, st.transport.kind, st.keySource], [false, "none", "none"]);
-  assert.match(st.detail!, /No TypeSafe API key found/);
+  assert.match(st.detail!, /No Jev API key found/);
   assert.deepEqual((await router.test()).ok, false);
   // A locked 1Password reference is reported as the problem, not silently ignored.
   await router.setKey("op://Vault/Jev/password");
@@ -490,7 +490,7 @@ test("router: prefers the jev CLI when found, stores a hand-entered key in the k
   assert.deepEqual([ls.live, ls.keySource, ls.keyRef], [false, "modex", "op://Vault/Jev/password"]);
   assert.match(ls.detail!, /1Password is locked/);
   // A rejected key disables Jev for the session; a successful test or a new key re-enables it.
-  const rejecting = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { throw new JevError("TypeSafe rejected the API key.", "auth", 401); } });
+  const rejecting = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { throw new JevError("Jev rejected the API key.", "auth", 401); } });
   await rejecting.route({ thread: thread(), text: "x", items: [], project: { name: "demo" } });
   assert.equal((await rejecting.status()).live, false);
   rejecting.reset();
@@ -635,7 +635,7 @@ test("router: enforces CLI-only, prefers CLI in Auto, and skips CLI for HTTPS", 
   router = new Router({ ...base, policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }), detectCli });
   status = await router.status();
   assert.deepEqual(status.transport, { kind: "none" });
-  assert.match(status.detail!, /No TypeSafe API key found/);
+  assert.match(status.detail!, /No Jev API key found/);
   assert.deepEqual(cliChecks, []);
 });
 

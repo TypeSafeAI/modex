@@ -1,6 +1,6 @@
 {
   "repository": "TypeSafeAI/modex",
-  "description": "Unofficial open desktop app for running Codex and Claude Code CLIs with parallel threads, worktrees, approvals, diffs, and optional Jev auto-routing.",
+  "description": "Independent open desktop app for running Codex and Claude Code CLIs with parallel threads, worktrees, approvals, diffs, and optional Jev auto-routing.",
   "topics": [
     "coding-agents",
     "codex",
@@ -10,7 +10,6 @@
     "developer-tools",
     "ai-agents",
     "git-worktree",
-    "typesafe-ai",
     "jev"
   ],
   "status": "proposed-not-applied",

@@ -102,12 +102,6 @@ summary:focus-visible {
   object-fit: contain;
   flex-shrink: 0;
 }
-.brand-by {
-  font: 11px var(--mono);
-  letter-spacing: 0;
-  color: var(--muted);
-  margin-left: 7px;
-}
 .site-header nav {
   display: flex;
   align-items: center;
@@ -120,10 +114,12 @@ summary:focus-visible {
   align-items: center;
   gap: 12px;
 }
-.nav-detail {
+.nav-detail,
+.nav-github {
   color: var(--muted);
 }
-.nav-detail:hover {
+.nav-detail:hover,
+.nav-github:hover {
   color: var(--ink);
 }
 .nav-download {
@@ -952,12 +948,11 @@ h1 span {
   .site-header {
     height: 78px;
   }
-  .brand-by,
   .nav-detail {
     display: none !important;
   }
   .site-header nav {
-    gap: 0;
+    gap: 14px;
   }
   .site-header .brand {
     font-size: 20px;

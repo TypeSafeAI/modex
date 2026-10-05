@@ -189,7 +189,44 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .settings-footer { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 12px; min-height: 62px; padding: 10px 22px; border-top: 1px solid var(--line); background: var(--bg-1); }
 .settings-footer .row { flex: none; }
 .settings-footer [role="alert"] { margin: 0 auto 0 0; font-size: 12px; }
-.settings-modal :is(button, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-modal :is(button, input, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.connections-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.connections-heading h3 { margin-bottom: 4px; font-size: 15px; }
+.connections-heading p, .connection-heading p { margin: 0; color: var(--fg-2); font-size: 12px; }
+.connections-heading .btn, .connection-actions .btn, .connection-command .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; }
+.connections-heading .btn { flex: none; }
+.connections-note { margin: 12px 0 16px; color: var(--fg-2); font-size: 12px; line-height: 1.5; }
+.connections-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.connection-card { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-1); }
+.connection-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.connection-heading h4 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.connection-heading p { line-height: 1.5; }
+.connection-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 7px; color: var(--fg-2); font-size: 11px; white-space: nowrap; background: var(--bg-2); }
+.connection-badge > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.connection-badge.connected { color: var(--ok); }
+.connection-health { margin: 14px 0; color: var(--fg-1); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.connection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.connection-actions .btn { max-width: 100%; white-space: normal; text-align: center; }
+.connection-feedback { margin: 10px 0 0; color: var(--fg-2); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.connection-feedback:empty { display: none; }
+.connection-account { margin: 16px 0 0; }
+.connection-account small { color: var(--fg-2); line-height: 1.5; }
+.connection-account + .connection-actions { margin-top: 10px; }
+.connection-footnote { margin: 12px 0 0; color: var(--fg-2); font-size: 11.5px; line-height: 1.6; }
+.connection-details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; font-size: 12px; color: var(--fg-1); }
+.connection-details summary { cursor: pointer; padding-block: 6px; min-height: 30px; }
+.connection-details > p { margin: 8px 0; color: var(--fg-2); line-height: 1.5; }
+.connection-command { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--bg-2); border-radius: 10px; }
+.connection-command code { flex: 1 1 150px; min-width: 0; font-size: 11px; overflow-wrap: anywhere; user-select: text; }
+.connection-command .btn { flex: none; min-height: 30px; }
+.connection-path-heading { margin: 20px 0 12px; }
+.connection-path-heading h4 { margin: 0 0 5px; color: var(--fg-1); font-size: 13px; }
+.connection-path-heading p { margin: 0; color: var(--fg-2); font-size: 12px; line-height: 1.6; }
+.connection-path { overflow-wrap: anywhere; color: var(--fg-2); }
+@media (max-width: 760px) {
+  .connections-grid { grid-template-columns: minmax(0, 1fr); }
+  .connections-heading { flex-wrap: wrap; }
+}
 @media (max-width: 560px) {
   .settings-modal { width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100vh - 16px); max-height: calc(100vh - 16px); }
   .settings-header { padding: 14px 15px 10px; }

@@ -37,9 +37,11 @@ links. Val manages the `modex.build` custom-domain and DNS setup in Vercel manua
 public deployment remains available at <https://modex-0xbuns.vercel.app> during setup;
 canonical and social metadata point to `https://modex.build/`.
 
-For Git deployments, use the repository root, build command `npm run site:build`, and output
-directory `apps/site/dist`. The default root `npm run build` also compiles the macOS desktop
-app and is not the site's Vercel build command.
+Git deployments use the repository root and its committed `vercel.json`: install only the
+site workspace and root development tools, build with `npm run site:build`, and serve
+`apps/site/dist`. This overrides the default root `npm run build`, which also compiles the
+native desktop app and must not run for the landing page. No dashboard build-command
+override is needed; custom-domain and DNS setup remain separate.
 
 ## Asset sources
 

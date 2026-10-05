@@ -6,6 +6,13 @@ space in both Jev and OpenCoven themes. Do not substitute the old diamond, stack
 or generated logo concepts. A higher-resolution or vector master can replace the source
 when supplied; the current platform icons necessarily scale up this raster.
 
+## Product attribution
+
+Modex is an independent application maintained by Val Alexander / OpenCoven. Use
+**Powered by Jev** for the optional routing integration. Never describe Modex as made by
+TypeSafe. Repository URLs, the established desktop bundle ID and compatible environment
+variable names are technical identifiers, not product attribution.
+
 ## Generate platform assets
 
 From the repository root on macOS:

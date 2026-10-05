@@ -86,7 +86,7 @@ export class Router {
   }
 
   private setup(): Promise<Setup> {
-    if (this.o.transport === null) return Promise.resolve({ transport: null, kind: "none", key: { key: null, source: "none" }, cli: null, unavailableReason: "No TypeSafe API key found and no jev CLI on PATH." });
+    if (this.o.transport === null) return Promise.resolve({ transport: null, kind: "none", key: { key: null, source: "none" }, cli: null, unavailableReason: "No Jev API key found and no jev CLI on PATH." });
     if (this.o.transport) return Promise.resolve({ transport: this.o.transport, kind: "http", key: { key: "injected", source: "env" }, cli: null });
     return (this.setupPromise ??= this.buildSetup());
   }
@@ -106,7 +106,7 @@ export class Router {
       return { transport: null, kind: "none", key, cli, unavailableReason: `Jev CLI-only transport is selected, but “${bin}” was not found or could not be run. Install or repair the Jev CLI, or choose Auto or HTTPS transport.` };
     }
     if (key.key) return { transport: httpTransport(key.key, { timeoutMs }), kind: "http", key, cli };
-    return { transport: null, kind: "none", key, cli, unavailableReason: key.problem ?? "No TypeSafe API key found — Modex keychain, TYPESAFE_API_KEY, ~/.config/jev/config.json, and your login shell are all empty." };
+    return { transport: null, kind: "none", key, cli, unavailableReason: key.problem ?? "No Jev API key found — Modex keychain, TYPESAFE_API_KEY, ~/.config/jev/config.json, and your login shell are all empty." };
   }
 
   /**

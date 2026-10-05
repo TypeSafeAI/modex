@@ -42,7 +42,7 @@
     "vite": "^8.3.1"
   },
   "productName": "Modex",
-  "author": "TypeSafeAI",
+  "author": "Val Alexander / OpenCoven",
   "build": {
     "appId": "ai.typesafe.modex",
     "productName": "Modex",

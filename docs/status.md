@@ -64,6 +64,8 @@ The homepage link, canonical URL and social metadata target `https://modex.build
 Val handles custom-domain and DNS setup in Vercel manually; the public preview is
 [modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app). Build and deployment commands and
 asset provenance are in [the site README](../apps/site/README.md).
+The repository now pins Vercel to the site-only build and output directory, so Git
+deployments do not attempt to compile the native desktop helper on Linux.
 
 ## On `main`, not yet released
 
@@ -77,6 +79,11 @@ Mac address/port changes, explicit revocation handling and Copy pairing link. Th
 pink mark now spans desktop and companion icons, in-app branding, website
 navigation, social artwork and documentation. Play walkthrough opens a full-width
 presentation with pause/resume, replay and keyboard dismissal.
+Coding CLI connections use separate provider cards, account-state badges, cancellable
+browser sign-in, and copyable terminal recovery commands for the resolved executable.
+Missing CLIs have an install/path remedy, and overrides remain verified before saving.
+Product attribution identifies Modex as independent; the site credits **Powered by Jev**
+and exposes GitHub in the main navigation on desktop and mobile.
 [Release ledger](reviews/2026-10-05-v0.0.7-release-review.md).
 
 - **Automatic CLI discovery and verified overrides.** Claude and Codex resolve an executable
