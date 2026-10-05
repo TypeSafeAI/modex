@@ -45,6 +45,7 @@ export class ReleaseChecker {
     return this.pending;
   }
   private async load(): Promise<ReleaseUpdate | null> {
+    const startedAt = this.now();
     try {
       const response = await (this.options.fetcher ?? fetch)(LATEST_RELEASE, {
         headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2026-03-10", "User-Agent": `Modex/${this.options.currentVersion}` },
@@ -52,9 +53,9 @@ export class ReleaseChecker {
       });
       if (!response.ok) throw new Error("Release check unavailable");
       this.available = releaseUpdate(await response.json(), this.options.currentVersion, this.options.platform, this.options.arch);
-      this.nextCheck = this.now() + HOUR;
+      this.nextCheck = startedAt + HOUR;
     } catch {
-      this.nextCheck = this.now() + 15 * 60 * 1000;
+      this.nextCheck = startedAt + 15 * 60 * 1000;
     }
     return this.available;
   }

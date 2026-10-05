@@ -39,10 +39,11 @@ test("release checks coalesce callers, use bounded fixed-origin requests and ref
   const checker = new ReleaseChecker({ currentVersion: "0.0.6", platform: "darwin", arch: "arm64", enabled: true, fetcher, now: () => now });
   const first = checker.check(), second = checker.check();
   assert.equal(first, second);
+  now += 2_000; // Network latency must not push the next hourly tick into the cache window.
   finish(Response.json(release()));
   assert.equal((await first)?.version, "0.0.7");
   await checker.check(); assert.equal(calls, 1);
-  now += 60 * 60 * 1000;
+  now = 100 + 60 * 60 * 1000;
   const later = checker.check(); finish(Response.json(release("0.0.8")));
   assert.equal((await later)?.version, "0.0.8"); assert.equal(calls, 2);
 });
