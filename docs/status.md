@@ -128,6 +128,10 @@ presentation with pause/resume, replay and keyboard dismissal.
   exemption. Build 3 adds the official Modex icon and in-app branding; all 10 native tests
   and paired simulator flow passed. On 2026-10-05 its signed IPA passed validation and
   upload, reached `VALID`, and entered `IN_BETA_TESTING` in the same Internal group.
+  Build 4 adds persistent pairing and automatic recovery after Mac address/port changes.
+  All 14 native tests and the extended LAN simulator flow passed, including revocation
+  across relaunches. On 2026-10-05 its signed IPA passed Apple validation and upload,
+  reached `VALID`, and entered `IN_BETA_TESTING` in the existing Internal group.
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 

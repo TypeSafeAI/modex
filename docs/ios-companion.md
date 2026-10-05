@@ -50,7 +50,7 @@ recovery permanently. Bonjour publishes only the address and public certificate 
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 4 candidate), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 4), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -123,6 +123,16 @@ passed Apple validation and upload, then reached `VALID` and `IN_BETA_TESTING` i
 existing Internal group with one tester (build ID `ee29b4ab-89d6-401d-a4ae-c4a860c71ae0`).
 Physical iPhone installation and acceptance remain open; the public website continues to
 show **Coming soon**. See the [v0.0.7 ledger](reviews/2026-10-05-v0.0.7-release-review.md).
+
+Build 4 adds persistent pairing, trusted local discovery and automatic recovery after the
+Mac address or port changes. On 2026-10-05, all 14 native tests and the extended LAN
+simulator flow passed, including Mac service restart, a second phone relaunch with the new
+address, and revocation that survives another relaunch. Its signed IPA passed strict
+signature, ZIP integrity, Apple validation and upload. App Store Connect confirmed `VALID`
+and `IN_BETA_TESTING` in the existing Internal group (build ID
+`d731a884-b6ec-46a5-9027-9b696053c909`). IPA SHA-256:
+`86689d1fee48647eb293a67dc1d654a0c4f121d5638f598fca927cac0118d45f`.
+Automatic address discovery requires Mac v0.0.7; physical iPhone acceptance remains open.
 
 ## TestFlight
 
