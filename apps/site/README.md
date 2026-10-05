@@ -45,10 +45,11 @@ app and is not the site's Vercel build command.
 
 - `desktop-*.png`: real Modex demo captures at 2760×1760; generated with
   `electron . --demo --screenshot=<directory> --demo-answer=yes` on 2026-10-05.
-- `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 2, using
+- `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 3, using
   the isolated demo pairing fixture. These illustrate the workflow, not public availability.
-- `modex-icon.png`: the shipped icon from `docs/branding/modex-icon.png`.
-- `social-preview.png`: existing repository artwork from `docs/branding/`.
+- `modex-mark.png`: the unmodified official logo supplied by Val.
+- `modex-icon.png` and `social-preview.png`: generated from the official mark with
+  `swift scripts/brand-assets.swift`; see `docs/branding/README.md`.
 - Manrope is self-hosted from `@fontsource-variable/manrope`; its OFL license is included at
   `/licenses/manrope.txt`.
 

@@ -18,7 +18,13 @@ export function UpdateBanner() {
     check();
     const timer = window.setInterval(onVisible, 60 * 60 * 1000);
     document.addEventListener("visibilitychange", onVisible);
-    return () => { active = false; clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+    window.addEventListener("focus", onVisible);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, []);
   if (!update || update.version === dismissed) return null;
   const dismiss = () => {
@@ -26,8 +32,11 @@ export function UpdateBanner() {
     try { localStorage.setItem(DISMISSED, update.version); } catch { /* Keep this session dismissible without storage. */ }
   };
   return <aside className="update-banner" data-testid="update-banner" aria-label="Modex update">
-    <Icon name="info" />
-    <span role="status">Modex {update.version} is available</span>
+    <span className="update-banner-icon"><Icon name="download" /></span>
+    <div className="update-banner-copy" role="status">
+      <strong>Modex {update.version} is available</strong>
+      <span>See what’s new and download the latest version.</span>
+    </div>
     <a href={update.url} target="_blank" rel="noreferrer">View update <Icon name="arrow-right" size={14} /></a>
     <button type="button" className="icon-btn" aria-label="Dismiss update notification" onClick={dismiss}><Icon name="close" /></button>
   </aside>;

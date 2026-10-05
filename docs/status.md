@@ -67,6 +67,16 @@ asset provenance are in [the site README](../apps/site/README.md).
 
 ## On `main`, not yet released
 
+**v0.0.7 candidate.** A patch release is being prepared with the changes below and a
+polished update banner: clearer release/download copy, larger controls, keyboard focus,
+reduced-motion support and a fresh check when the app regains focus. Requests remain
+cached and coalesced in the main process. v0.0.6 predates the banner and needs one manual
+update; v0.0.7 enables notifications for subsequent releases.
+The official pink mark now spans desktop and companion icons, in-app branding, website
+navigation, social artwork and documentation. Play walkthrough opens a full-width
+presentation with pause/resume, replay and keyboard dismissal.
+[Release ledger](reviews/2026-10-05-v0.0.7-release-review.md).
+
 - **Automatic CLI discovery and verified overrides.** Claude and Codex resolve an executable
   from the hydrated login PATH, native installs, Homebrew and common version managers before
   launching. Settings shows the selected path; blank overrides keep discovery automatic.

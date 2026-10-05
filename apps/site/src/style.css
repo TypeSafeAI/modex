@@ -99,8 +99,8 @@ summary:focus-visible {
   letter-spacing: -0.8px;
 }
 .brand img {
-  border-radius: 9px;
-  outline: 1px solid rgba(255, 255, 255, 0.1);
+  object-fit: contain;
+  flex-shrink: 0;
 }
 .brand-by {
   font: 11px var(--mono);
@@ -1249,6 +1249,102 @@ h1 span {
   .companion-visual {
     min-height: 520px;
   }
+}
+/* Playback uses the full viewport, independent of the hero's two-column layout. */
+:root.walkthrough-open { overflow: hidden; }
+.walkthrough-dialog {
+  width: 100dvw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.walkthrough-dialog::backdrop { background: var(--canvas); }
+.walkthrough-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px clamp(20px, 4vw, 64px);
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.walkthrough-header p { color: var(--pink); font: 10px var(--mono); letter-spacing: 0.12em; }
+.walkthrough-header h2 { margin-top: 7px; font: 550 clamp(17px, 2vw, 24px)/1.3 var(--display); letter-spacing: -0.03em; }
+.walkthrough-header button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.walkthrough-header button:hover { color: var(--ink); border-color: var(--pink); }
+.walkthrough-content { padding: 0 clamp(20px, 4vw, 64px) 24px; }
+.walkthrough-dialog .showcase { position: relative; margin: 0; }
+.walkthrough-dialog .scene-glow { inset: 0; z-index: 0; }
+.walkthrough-dialog .device-stage {
+  --stage-height: max(260px, min(60vw, calc(100dvh - 275px)));
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: var(--stage-height);
+  margin: 0;
+  overflow: hidden;
+  perspective: 2200px;
+}
+.walkthrough-dialog .mac-device {
+  width: min(84%, calc(var(--stage-height) * 1.36));
+  left: 48%;
+  top: 50%;
+  transform: translate(-55%, -50%) rotateX(3deg) rotateY(-7deg) rotateZ(-1deg);
+}
+.walkthrough-dialog .phone-device {
+  width: min(21%, calc(var(--stage-height) * 0.35));
+  right: 4%;
+  top: 50%;
+  transform: translateY(-45%) rotateY(-8deg) rotateZ(5deg);
+}
+.walkthrough-dialog .showcase[data-step="1"] .mac-device { transform: translate(-58%, -50%) rotateY(-9deg); }
+.walkthrough-dialog .showcase[data-step="1"] .phone-device {
+  width: min(28%, calc(var(--stage-height) * 0.40));
+  right: 10%;
+  top: 50%;
+  transform: translateY(-50%) rotateY(-3deg) rotateZ(1deg);
+}
+.walkthrough-dialog .showcase[data-step="2"] .mac-device { transform: translate(-55%, -50%) rotateY(-3deg); }
+.walkthrough-dialog .showcase[data-step="2"] .phone-device { right: 4%; top: 50%; transform: translateY(-45%) rotateY(-5deg) rotateZ(3deg); }
+.walkthrough-dialog .device-caption, .walkthrough-dialog .connection-label { display: none; }
+.walkthrough-dialog .showcase-controls { margin-top: 0; padding-top: 16px; }
+.walkthrough-dialog .play-control { padding: 10px 14px; border: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
+.walkthrough-dialog .scene-description { min-height: 0; max-width: none; margin-top: 14px; }
+.walkthrough-dialog .capture-note { margin-top: 8px; }
+@media (max-width: 760px) {
+  .walkthrough-dialog .device-stage { --stage-height: max(280px, min(100vw, calc(100dvh - 330px))); }
+  .walkthrough-dialog .mac-device { width: 92%; left: 48%; transform: translate(-50%, -70%) rotateY(-7deg); }
+  .walkthrough-dialog .phone-device { width: 30%; right: 3%; transform: translateY(-18%) rotateZ(5deg); }
+  .walkthrough-dialog .showcase[data-step="1"] .mac-device { transform: translate(-55%, -70%) rotateY(-9deg); }
+  .walkthrough-dialog .showcase[data-step="1"] .phone-device { width: min(44%, calc(var(--stage-height) * 0.40)); right: 8%; transform: translateY(-43%) rotateZ(1deg); }
+  .walkthrough-dialog .showcase[data-step="2"] .mac-device { transform: translate(-50%, -70%) rotateY(-3deg); }
+  .walkthrough-dialog .showcase[data-step="2"] .phone-device { transform: translateY(-18%) rotateZ(3deg); }
+  .walkthrough-dialog .showcase-controls { flex-wrap: wrap; gap: 12px; }
+  .walkthrough-dialog .step-buttons { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+  .walkthrough-dialog .step-buttons button { padding: 10px 5px; font-size: 11px; }
+  .walkthrough-dialog .play-control { margin-left: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root {

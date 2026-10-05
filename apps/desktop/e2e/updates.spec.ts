@@ -53,6 +53,28 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: update banner ope
   await page.clock.fastForward(60 * 60 * 1000);
   await expect(restored).toContainText("Modex 999.0.1 is available");
   await page.screenshot({ path: test.info().outputPath(`update-banner-${theme}.png`) });
+  // Returning to an open window also discovers a rollout; the main process keeps
+  // these checks cached/coalesced so switching applications never floods GitHub.
+  await offer("999.0.2", false);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(restored).toContainText("Modex 999.0.2 is available");
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(900, 600));
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(900);
+  await restored.getByRole("link", { name: "View update" }).focus();
+  await expect(restored.getByRole("link", { name: "View update" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(restored.getByRole("button", { name: "Dismiss update notification" })).toBeFocused();
+  const fits = await restored.evaluate((element) => {
+    const banner = element.getBoundingClientRect();
+    return Array.from(element.querySelectorAll("a, button, [role=status]")).every((child) => {
+      const bounds = child.getBoundingClientRect();
+      return bounds.left >= banner.left && bounds.right <= banner.right && bounds.bottom <= banner.bottom;
+    }) && element.scrollWidth === element.clientWidth;
+  });
+  expect(fits).toBe(true);
+  await page.screenshot({ path: test.info().outputPath(`update-banner-${theme}-compact.png`) });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(restored.getByRole("link", { name: "View update" })).toHaveCSS("transition-duration", "0s");
   await offer(null);
   await expect(restored).toHaveCount(0);
 });

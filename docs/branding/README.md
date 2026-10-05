@@ -1,34 +1,39 @@
-# Proposed Modex branding
+# Official Modex branding
 
-Four AI-generated branding assets offered for maintainer review. These are the original PNG exports; adoption and any further refinements are up to the maintainers.
+`modex-mark.png` is the official logo supplied by Val on 2026-10-05. This transparent
+447 × 565 PNG is preserved byte-for-byte. Keep its pink color, aspect ratio, and clear
+space in both Jev and OpenCoven themes. Do not substitute the old diamond, stack symbol,
+or generated logo concepts. A higher-resolution or vector master can replace the source
+when supplied; the current platform icons necessarily scale up this raster.
 
-| File | Intended use | Original dimensions |
-| --- | --- | --- |
-| `modex-header.png` | README header | 2172 × 724 |
-| `modex-icon.png` | Square app/repo icon concept | 1254 × 1254 |
-| `modex-social-preview.png` | Social preview concept | 1774 × 887 |
-| `modex-routing.png` | README routing illustration | 1774 × 887 |
+## Generate platform assets
 
-The icon, social preview, and routing illustration have opaque backgrounds. The header is an RGBA PNG. These are raster concepts, not vector masters or packaged platform icons.
-
-From v0.0.5, `modex-icon.png` is the app icon. `apps/desktop/scripts/make-icon.swift` places it on the macOS icon grid and writes `apps/desktop/build/icon.icns`. Re-run it after changing the artwork:
+From the repository root on macOS:
 
 ```sh
-cd apps/desktop && swift scripts/make-icon.swift ../../docs/branding/modex-icon.png build/icon.icns
+swift scripts/brand-assets.swift
+(cd apps/desktop && swift scripts/make-icon.swift ../../docs/branding/modex-icon.png build/icon.icns)
 ```
 
-## Header
+The first script copies the original mark into desktop, iOS, and website assets. It packages
+it on an opaque near-black blue background (`#080c17`) for iOS and web icons, and produces
+the README and social artwork. It does not redraw, recolor, stretch, or crop the mark.
+The second script adds the macOS rounded body, transparent surround and shadow, then
+packs every required icon size. App and DMG volume icons use the same `.icns` file.
 
-![Modex header](modex-header.png)
+| File | Use | Dimensions |
+| --- | --- | --- |
+| `modex-mark.png` | Canonical transparent logo | 447 × 565 |
+| `modex-icon.png` | iOS App Store and website icon | 1024 × 1024, opaque |
+| `modex-header.png` | README header | 1800 × 600 |
+| `modex-social-preview.png` | Website social preview | 1200 × 630 |
+| `modex-routing.png` | README routing illustration | 1600 × 720 |
 
-## Icon
+The desktop sidebar, welcome and new-chat screens use the transparent mark. The companion
+uses it on onboarding and its workspace header, with the opaque tile as its home-screen
+icon. Website navigation and footer use the transparent mark; its favicon, touch icon,
+social preview, and captured product screens share the same identity.
 
-<img src="modex-icon.png" alt="Modex icon" width="256">
-
-## Social preview
+<img src="modex-mark.png" alt="Official Modex mark" width="112">
 
 ![Modex social preview](modex-social-preview.png)
-
-## Routing illustration
-
-![Modex routing illustration](modex-routing.png)

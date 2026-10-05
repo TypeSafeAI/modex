@@ -51,9 +51,10 @@ struct CompanionRootView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 34).fill(Palette.accent.opacity(0.07)).frame(width: 226, height: 226)
                 RoundedRectangle(cornerRadius: 28).stroke(Palette.accent.opacity(0.26), lineWidth: 1).frame(width: 226, height: 226)
-                Image(systemName: "macbook.and.iphone")
-                    .font(.system(size: 78, weight: .ultraLight))
-                    .foregroundStyle(Palette.accent)
+                Image("ModexMark")
+                    .resizable().scaledToFit()
+                    .frame(width: 104, height: 132)
+                    .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 48)
@@ -158,9 +159,10 @@ struct CompanionRootView: View {
 
     private var brand: some View {
         HStack(spacing: 9) {
-            Image(systemName: "square.stack.3d.up.fill")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Palette.accent)
+            Image("ModexMark")
+                .resizable().scaledToFit()
+                .frame(width: 20, height: 26)
+                .accessibilityHidden(true)
             Text("MODEX").font(.system(size: 13, weight: .heavy, design: .rounded)).tracking(3.2).foregroundStyle(.white)
         }
     }

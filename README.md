@@ -16,7 +16,7 @@ It never calls a model
 API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
 Claude and Codex CLI credentials remain with their CLIs.
 
-![Modex — adaptive coding agents, neon banner](docs/branding/modex-social-preview.png)
+![Modex — your agents, your workspace](docs/branding/modex-social-preview.png)
 
 ```
 modex/
@@ -180,11 +180,14 @@ For Electron development, also run
 
 ## Release notifications
 
-Installed macOS builds check for a newer stable release at launch and hourly while the
+Starting with v0.0.7, installed macOS builds check for a newer stable release at launch and hourly while the
 workspace is visible, with a check when you return to it. A small banner links to the
 release page; dismissing it hides that version across relaunches. A later release appears
 again. Checks use public GitHub release metadata and require an uploaded installer for
 your Mac. Offline failures stay quiet. Downloads and installation are manual.
+
+If you are on v0.0.6 or earlier, install v0.0.7 from the release page once to enable future
+update notifications; older builds do not contain the banner.
 
 ## Desktop themes
 

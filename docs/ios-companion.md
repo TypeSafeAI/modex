@@ -26,7 +26,7 @@ The server needs the Mac app to be running. There is no relay or internet endpoi
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 2), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 3 candidate), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion

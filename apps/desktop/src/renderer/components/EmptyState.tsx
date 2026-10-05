@@ -1,3 +1,4 @@
+import { BrandMark } from "./BrandMark";
 import { Kbd } from "./ui/Kbd";
 
 interface Props {
@@ -9,7 +10,7 @@ export function EmptyState({ onAddProject }: Props) {
   return (
     <div className="empty" data-testid="empty-state">
       <div className="empty-card">
-        <div className="brand-mark big">◆</div>
+        <BrandMark className="big" />
         <h1 data-testid="empty-title">What are we building?</h1>
         <p>Modex runs Claude Code and Codex — through their CLIs, with your existing logins — in your local repositories. Each thread works in its project (or its own git worktree), streams every command and edit as it happens, and asks before doing anything outside the sandbox.</p>
         <div className="row">

@@ -47,10 +47,8 @@ let master: CGImage = {
   ctx.saveGState()
   ctx.addPath(shape)
   ctx.clip()
-  // Trim 6% of the artwork's dark margin so the mark keeps its weight inside the smaller body.
-  let trim = Int(Double(art.width) * 0.06)
-  let crop = art.cropping(to: CGRect(x: trim, y: trim, width: art.width - 2 * trim, height: art.height - 2 * trim))!
-  ctx.draw(crop, in: body)
+  // Preserve the official artwork and its clear space without cropping.
+  ctx.draw(art, in: body)
   ctx.restoreGState()
   // A faint edge keeps the dark body distinct from a dark Dock or desktop.
   ctx.addPath(CGPath(roundedRect: body.insetBy(dx: 1, dy: 1), cornerWidth: 184, cornerHeight: 184, transform: nil))
