@@ -14,11 +14,11 @@
   },
   "scripts": {
     "build": "npm run build -w @modex/core && npm run build -w @modex/desktop && npm run build -w @modex/site",
-    "test": "npm run test -w @modex/core && npm run test -w @modex/desktop",
+    "test": "npm run test -w @modex/core && npm run test -w @modex/desktop && npm run test -w @modex/site",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop": "npm run start -w @modex/desktop",
     "desktop:dev": "npm run dev -w @modex/desktop",
-    "test:e2e": "npm run test:e2e -w @modex/desktop",
+    "test:e2e": "npm run test:e2e -w @modex/desktop && npm run test:e2e -w @modex/site",
     "site:dev": "npm run dev -w @modex/site",
     "site:build": "npm run build -w @modex/site"
   },
