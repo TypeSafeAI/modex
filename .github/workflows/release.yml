@@ -62,6 +62,10 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Install browser for browser-dev e2e
+        run: npx playwright install chromium
+        working-directory: apps/desktop
+
       - name: Stage the API key (mode 600, outside the checkout)
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
