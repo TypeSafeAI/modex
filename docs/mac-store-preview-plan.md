@@ -53,3 +53,9 @@ flow). The preceding run had 99 passes, a 90-second shutdown-hook timeout and a 
 window-startup timeout during local resource pressure. Both passed on the unchanged-source
 rerun after disk space recovered; no timeout or assertion was relaxed. This records the
 local infrastructure limitation without claiming it was fixed in application code.
+
+After website PR #118 landed, main was integrated into this preview branch. The only
+conflict was the root package scripts; the resolved scripts retain the Store build and
+the website unit/browser suites. The integrated build, typecheck and all 289 unit tests
+passed. The complete integrated end-to-end run passed 101 desktop and five website tests.
+This integration does not close the signed-client or Store distribution acceptance gaps.

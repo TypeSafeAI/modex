@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#080c17" />
     <meta
       name="description"
-      content="A calm Mac workspace for Claude Code and Codex. Keep projects, threads, changes, and approvals together. Free and open source, with an iPhone companion coming soon."
+      content="A calm Mac workspace for Claude Code and Codex. Keep projects, threads, changes, and approvals together. Free and open source, with an iPhone companion on TestFlight."
     />
     <link rel="canonical" href="https://modex.build/" />
     <link rel="icon" href="/assets/modex-icon.png" type="image/png" />
@@ -15,7 +15,7 @@
     <meta property="og:title" content="Modex — A home for your coding agents" />
     <meta
       property="og:description"
-      content="Claude Code and Codex, in one calm workspace. Made for your Mac. An iPhone companion is on the way."
+      content="Claude Code and Codex, in one calm workspace. Made for your Mac. Try the iPhone companion on TestFlight."
     />
     <meta property="og:url" content="https://modex.build/" />
     <meta
@@ -52,8 +52,8 @@
         <div class="hero-copy">
           <a
             class="release-label"
-            href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
-            ><span class="status-dot"></span> v__MODEX_VERSION__ is here
+            data-release-link href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
+            ><span class="status-dot"></span> <span><span data-release-version>v__MODEX_VERSION__</span> is here</span>
             <span aria-hidden="true">↗</span></a
           >
           <h1 id="hero-title">
@@ -66,16 +66,24 @@
             Make room for the work you want to do.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="__MODEX_DOWNLOAD__"
+            <a class="button button-primary" data-mac-download href="__MODEX_DOWNLOAD__"
               ><svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4" /></svg
               >Download for Mac</a
             >
-            <a class="text-link" href="#iphone"
-              >iPhone companion <span class="coming-tag">Soon</span></a
+            <a class="text-link" href="__MODEX_TESTFLIGHT__"
+              >iPhone companion <span class="beta-tag">TestFlight</span></a
             >
           </div>
           <p class="platform-note">Apple silicon · Free & open source</p>
+          <div class="community-stats" hidden>
+            <div class="stat-links" aria-label="Modex on GitHub">
+              <a data-stat="stars" href="https://github.com/TypeSafeAI/modex/stargazers" hidden><span aria-hidden="true">☆</span><strong data-count></strong> stars</a>
+              <a data-stat="downloads" href="https://github.com/TypeSafeAI/modex/releases" hidden><span aria-hidden="true">↓</span><strong data-count></strong> Mac downloads</a>
+              <a data-stat="forks" href="https://github.com/TypeSafeAI/modex/forks" hidden><span aria-hidden="true">⑂</span><strong data-count></strong> forks</a>
+            </div>
+            <p data-stats-note>From GitHub · refreshed periodically</p>
+          </div>
         </div>
 
         <div class="showcase" id="workflow" data-step="0">
@@ -146,7 +154,7 @@
             Bring a project, choose an agent, and see each change as it happens.
           </p>
           <p class="capture-note">
-            Real app screens from demo projects. iPhone companion coming soon.
+            Real app screens from demo projects. iPhone beta distributed through TestFlight.
           </p>
         </div>
       </section>
@@ -204,7 +212,7 @@
         </div>
         <div class="companion-copy">
           <p class="eyebrow">
-            MODEX COMPANION <span class="coming-tag">Coming soon</span>
+            MODEX COMPANION <span class="beta-tag">TestFlight beta</span>
           </p>
           <h2 id="companion-title">
             A little distance.<br /><span>The same flow.</span>
@@ -227,8 +235,8 @@
             </li>
           </ul>
           <p class="availability-note">
-            The iPhone app is in private testing. A public download is coming
-            soon.
+            <a href="__MODEX_TESTFLIGHT__">View the iPhone beta on TestFlight <span aria-hidden="true">↗</span></a>.<br />
+            Pair once, then pick up where you left off.
           </p>
         </div>
       </section>
@@ -248,19 +256,19 @@
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3 4h18v13H3zM8 21h8m-4-4v4" /></svg
               ><span class="platform-label">macOS</span
-              ><span class="version-pill">v__MODEX_VERSION__</span>
+              ><span class="version-pill" data-release-version>v__MODEX_VERSION__</span>
             </div>
             <h3>Meet your new workspace.</h3>
             <p>
               For Macs with Apple silicon.<br />Developer ID signed. Apple
               notarized.
             </p>
-            <a class="button button-primary" href="__MODEX_DOWNLOAD__"
+            <a class="button button-primary" data-mac-download href="__MODEX_DOWNLOAD__"
               >Download for Mac <span aria-hidden="true">↓</span></a
             >
             <a
               class="release-notes"
-              href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
+              data-release-link href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
               >Release notes & ZIP download <span aria-hidden="true">↗</span></a
             >
           </article>
@@ -277,10 +285,8 @@
               Your Mac workspace, within reach.<br />For iPhone with iOS 18 or
               later.
             </p>
-            <div class="coming-soon-state">
-              <span class="status-dot"></span>Coming soon
-            </div>
-            <p class="quiet-caption">The companion is in private testing.</p>
+            <a class="button button-secondary" href="__MODEX_TESTFLIGHT__">View TestFlight beta <span aria-hidden="true">↗</span></a>
+            <p class="quiet-caption">Check TestFlight for beta availability.</p>
           </article>
         </div>
       </section>
@@ -326,6 +332,12 @@
               The first companion release is for the same local network. Your
               Mac must be awake, running Modex, and reachable by your iPhone.
             </p>
+          </details>
+          <details>
+            <summary>What does the download count include?<span aria-hidden="true">+</span></summary>
+            <p>The Mac download count comes from GitHub: DMG and ZIP downloads across
+              all stable releases. It counts downloads, not individual people. Stars,
+              forks and release information refresh periodically.</p>
           </details>
           <details>
             <summary>
