@@ -323,17 +323,19 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <p role="status">{claudeLoginDetail}</p>
           <p className="hint">Sign-in applies immediately to the saved CLI path and is shared with other Claude Code clients. It remains applied if you cancel Settings. Claude owns credentials; API or enterprise configuration may take precedence. For manual-input recovery, run claude auth login in your terminal. No logout or account-switch action is provided.</p>
           <button type="button" onClick={() => setHealthRevision((revision) => revision + 1)}>Refresh account status</button>
-          <p className="hint">Checks the saved executable paths used by this app session. Model catalogues do not confirm account access. Path changes require a restart.</p>
+          <p className="hint">Finds installed CLIs from your login PATH and standard install locations. Leave overrides blank for automatic discovery. Overrides are verified before saving and apply after restart. Model catalogues do not confirm account access.</p>
         <div className="grid2">
           <label className="field">
             <span>Claude executable</span>
-            <input value={s.claude_bin} onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
-            <small className={s.claude_bin === settings.claude_bin && health?.claude.authentication === "authenticated" ? "ok" : "warn"}>{s.claude_bin !== settings.claude_bin ? "Path changed · save and restart to check" : backendHealthText(health?.claude, healthFailed)}</small>
+            <input value={s.claude_bin === "claude" ? "" : s.claude_bin} placeholder="Automatic discovery" onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
+            <small className={s.claude_bin === settings.claude_bin && health?.claude.authentication === "authenticated" ? "ok" : "warn"}>{s.claude_bin !== settings.claude_bin ? "Override changed · verified when you save" : backendHealthText(health?.claude, healthFailed)}</small>
+            {health?.claude.resolvedPath && <small>Using: {health.claude.resolvedPath}</small>}
           </label>
           <label className="field">
             <span>Codex executable</span>
-            <input value={s.codex_bin} onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
-            <small className={s.codex_bin === settings.codex_bin && health?.codex.authentication === "authenticated" ? "ok" : "warn"}>{s.codex_bin !== settings.codex_bin ? "Path changed · save and restart to check" : backendHealthText(health?.codex, healthFailed)}</small>
+            <input value={s.codex_bin === "codex" ? "" : s.codex_bin} placeholder="Automatic discovery" onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
+            <small className={s.codex_bin === settings.codex_bin && health?.codex.authentication === "authenticated" ? "ok" : "warn"}>{s.codex_bin !== settings.codex_bin ? "Override changed · verified when you save" : backendHealthText(health?.codex, healthFailed)}</small>
+            {health?.codex.resolvedPath && <small>Using: {health.codex.resolvedPath}</small>}
           </label>
         </div>
         <div className="grid2">

@@ -1,3 +1,4 @@
+import { verifyCliOverride } from "./cli-path.js";
 import type { Settings } from "../../shared/types.js";
 import { sameJudgeSettings } from "../../shared/judge-settings.js";
 import type { Router } from "./routing/router.js";
@@ -10,4 +11,14 @@ export function updateSettings(store: Pick<Store, "settings" | "updateSettings">
   const after = settings.routing;
   if (patch.routing && !sameJudgeSettings(before, after)) router.reset();
   return settings;
+}
+
+/** Validate every explicit override before any part of the settings patch is persisted. */
+export async function saveSettings(store: Pick<Store, "settings" | "updateSettings">, router: Pick<Router, "reset">, patch: Partial<Settings>): Promise<Settings> {
+  const checked = { ...patch };
+  for (const cli of ["claude", "codex"] as const) {
+    const key = `${cli}_bin` as const;
+    if (checked[key] !== undefined) checked[key] = await verifyCliOverride(cli, checked[key]);
+  }
+  return updateSettings(store, router, checked);
 }

@@ -1,8 +1,9 @@
+import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
-import { health, installation } from "./health.js";
+import { cliEnvironment, health, installation } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
 
 /**
@@ -34,17 +35,21 @@ export class CodexBackend implements Backend {
   /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
   private userAgent: string | null = null;
 
-  constructor(private readonly bin = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn,
+  private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
+
+  constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn,
     private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
+      let bin = "codex";
       try {
-        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"', ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: this.configuration?.env ?? process.env, detached: true });
+        bin = this.bin;
+        child = this.spawnImpl(bin, ["app-server", "-c", 'model_reasoning_summary="detailed"', ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin, this.configuration?.env), detached: true });
       } catch (err) {
-        return reject(new CodexError(`could not start ${this.bin} app-server: ${(err as Error).message}`, { bin: this.bin, spawnError: (err as Error).message }));
+        return reject(new CodexError(`could not start ${bin} app-server: ${(err as Error).message}`, { bin, spawnError: (err as Error).message }));
       }
       this.child = child;
       this.loaded.clear();
@@ -53,7 +58,7 @@ export class CodexBackend implements Backend {
       child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
       child.stdout?.on("data", (d: Buffer) => { if (this.child === child) lines.push(d, (line) => this.dispatch(line)); });
       child.on("error", (err) => {
-        const error = new CodexError(`${this.bin}: ${err.message}. Is the Codex CLI installed and on PATH?`, { bin: this.bin, spawnError: err.message, errno: (err as NodeJS.ErrnoException).code, pid: child.pid });
+        const error = new CodexError(`${bin}: ${err.message}. Is the Codex CLI installed and on PATH?`, { bin, spawnError: err.message, errno: (err as NodeJS.ErrnoException).code, pid: child.pid });
         if (this.child === child) this.disconnect(error);
         reject(error);
       });
