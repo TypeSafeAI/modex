@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/branding/modex-header.png" alt="Modex — adaptive coding agents" width="900">
+  <img src="docs/branding/modex-header.png" alt="Modex — adaptive coding agents" width="100%">
 </p>
 
 # Modex
@@ -117,12 +117,12 @@ modex/
   size if its display is gone).
 - **Modes**, mirroring Codex, mapped onto each CLI's native policy:
 
-  | Mode | Codex (`approvalPolicy` / sandbox) | Claude (`--permission-mode`) |
-  | --- | --- | --- |
-  | Chat | `untrusted` / read-only | `manual`, edits disallowed |
-  | Agent | `on-request` / workspace-write | `acceptEdits` |
-  | Agent (full access) | `never` / danger-full-access | `bypassPermissions` |
-  | **Plan** toggle | read-only + plan instructions | `plan` |
+  | Mode                | Codex (`approvalPolicy` / sandbox) | Claude (`--permission-mode`) |
+  | ------------------- | ---------------------------------- | ---------------------------- |
+  | Chat                | `untrusted` / read-only            | `manual`, edits disallowed   |
+  | Agent               | `on-request` / workspace-write     | `acceptEdits`                |
+  | Agent (full access) | `never` / danger-full-access       | `bypassPermissions`          |
+  | **Plan** toggle     | read-only + plan instructions      | `plan`                       |
 
 - **Shortcuts.** `⌘N` new thread · `⇧⌘N` thread in a worktree · `⌘⏎` (or `⏎`) send ·
   `⇧⌘P` plan · `⌘.` stop · `⌘J` changes panel.
@@ -216,7 +216,7 @@ server-requests) and the runner end to end with the offline engine: approvals pa
 a turn, denial leaves the tree untouched, `Stop` interrupts, two threads run concurrently, and
 worktree threads are created and removed. The e2e suite (`apps/desktop/e2e/app.spec.ts`)
 launches the packaged app with a seeded `MODEX_HOME` and the offline mock backend, so it needs
-no CLI login: it asserts the approval card blocks the edit until *Approve* is clicked, that the
+no CLI login: it asserts the approval card blocks the edit until _Approve_ is clicked, that the
 Changes panel shows the resulting diff, and that the thread is restored after a relaunch.
 
 ## Working on Modex
@@ -228,7 +228,7 @@ Every session works in its own worktree: `scripts/worktree.sh new <name>` create
 ## Branch protection
 
 `main` is meant to accept only signed commits that passed the CI check. The ruleset lives at
-`.github/rulesets/main.json` (import it under *Settings → Rules → Rulesets → Import*, or
+`.github/rulesets/main.json` (import it under _Settings → Rules → Rulesets → Import_, or
 `gh api -X POST repos/TypeSafeAI/modex/rulesets --input .github/rulesets/main.json`). GitHub
 only enforces rulesets on private repositories for paid org plans; on the Free plan the repo
 must be public for the rules to apply.
