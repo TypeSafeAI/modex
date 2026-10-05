@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ModelInfo } from "../../shared/types";
 import { Icon } from "./ui/Icon";
 import { Menu, MenuItem } from "./ui/Menu";
@@ -11,6 +11,8 @@ interface Props {
   disabled?: boolean;
   onModel: (id: string, effort?: string) => void;
   onEffort: (effort: string | undefined) => void;
+  /** Incremented by a failure card's resolve action to focus the picker. */
+  openRequest?: number;
 }
 
 /**
@@ -19,11 +21,17 @@ interface Props {
  * row. There is no free-text entry — a model is always one the CLI can run. Popover behaviour
  * (focus, arrow keys, Escape, outside click) comes from the shared Menu primitive.
  */
-export function ModelMenu({ models, model, effort, error, disabled, onModel, onEffort }: Props) {
+export function ModelMenu({ models, model, effort, error, disabled, onModel, onEffort, openRequest }: Props) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const selected = models.find((m) => m.id === model);
   const close = () => { setOpen(false); trigger.current?.focus(); };
+
+  useEffect(() => {
+    if (openRequest === undefined || openRequest === 0 || !models.length || error || disabled) return;
+    setOpen(true);
+    requestAnimationFrame(() => trigger.current?.focus());
+  }, [openRequest, models.length, error, disabled]);
 
   const label = error ? "Models unavailable" : models.length === 0 ? "Loading models…" : selected ? selected.label : "Choose model";
   const effortLabel = selected?.efforts?.length ? (effort ?? selected.defaultEffort ?? "default") : "";

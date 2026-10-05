@@ -1,0 +1,51 @@
+{
+  "name": "@modex/store-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Sandboxed Modex desktop client preview for a separately installed Mac host.",
+  "author": "Val Alexander / OpenCoven",
+  "main": "dist/apps/store-desktop/src/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.main.json && node scripts/prepare.mjs && vite build",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "start": "electron .",
+    "dist:preview": "npm run build && electron-builder --mac mas-dev --arm64 --publish never"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.5",
+    "electron-builder": "26.15.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vite": "^8.3.1"
+  },
+  "build": {
+    "appId": "works.jev.modex.desktop",
+    "productName": "Modex Store Preview",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": ["dist/apps/desktop/src/main/engine/desktop-system"],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "../desktop/build/icon.icns",
+      "extendInfo": {
+        "ElectronTeamID": "9LR8Z8UQ9X"
+      }
+    },
+    "masDev": {
+      "identity": null,
+      "entitlements": "build/entitlements.plist",
+      "entitlementsInherit": "build/entitlements.inherit.plist"
+    },
+    "electronVersion": "44.4.5",
+    "npmRebuild": false
+  }
+}

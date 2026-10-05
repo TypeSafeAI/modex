@@ -26,6 +26,7 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) =
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   useLayoutEffect(() => { if (state) applyTheme(state.settings.theme); }, [state?.settings.theme]);
+  const [connectionRevision, setConnectionRevision] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
@@ -69,6 +70,7 @@ export function App() {
   // The toast: what failed and, when the action can simply be run again, how.
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
+  const [modelPickerRequest, setModelPickerRequest] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // A new chat is a draft (renderer-only) until its first send creates the thread.
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -88,6 +90,14 @@ export function App() {
       if (!selected && s.threads[0]) setSelected(s.threads[0].id);
     }).catch((err: Error) => setError({ message: err.message }));
   }, [refresh]);
+
+  useEffect(() => bridge.onReconnect?.(() => {
+    setConnectionRevision((revision) => revision + 1);
+    void refresh().then((snapshot) => {
+      const current = selectedRef.current;
+      if (current && !snapshot.threads.some((thread) => thread.id === current)) setSelected(null);
+    }).catch((err: Error) => setError({ message: err.message }));
+  }), [refresh]);
 
   // Live events from every thread; the selected thread re-renders, others just update status.
   useEffect(() => {
@@ -139,7 +149,7 @@ export function App() {
       });
     }
     void loadChanges(selected);
-  }, [selected, loadChanges]);
+  }, [selected, loadChanges, connectionRevision]);
 
   // A draft has no thread to take a Changes snapshot from, so it asks for its project's branch directly.
   const [draftBranch, setDraftBranch] = useState<{ projectId: string; branch: string | null } | null>(null);
@@ -284,6 +294,12 @@ export function App() {
   /** The failure card's fix: type the sign-in command into the thread's shell (opening it), or open Settings. */
   const applyFix = (fix: TurnFix) => {
     if (fix.kind === "settings") { setShowSettings(true); return; }
+    if (fix.kind === "models") {
+      if (thread && (!models[thread.backend]?.models.length || models[thread.backend]?.error)) retryModels(thread.backend);
+      setModelPickerRequest((request) => request + 1);
+      return;
+    }
+    if (fix.kind === "retry") { void retry(); return; }
     if (!thread) return;
     const id = thread.id;
     setTerminalCommands((m) => ({ ...m, [id]: { text: fix.command, nonce: ++commandNonce.current } }));
@@ -469,6 +485,7 @@ export function App() {
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
               onRetryModels={() => retryModels(thread.backend)}
+              openModelPickerRequest={modelPickerRequest}
               inputRef={inputRef}
               branch={changes?.branch ?? undefined}
             />

@@ -59,8 +59,12 @@ export type ThreadItem =
 /** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
 export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unknown";
 
-/** An in-app remedy: a sign-in command Modex types into the thread's terminal, or the Settings dialog. */
-export type TurnFix = { kind: "login"; label: string; command: string } | { kind: "settings"; label: string };
+/** An in-app remedy: a sign-in command, model picker, retry, or the Settings dialog. */
+export type TurnFix =
+  | { kind: "login"; label: string; command: string }
+  | { kind: "settings"; label: string }
+  | { kind: "models"; label: string }
+  | { kind: "retry"; label: string };
 
 /** A turn that did not complete. Rendered as a card with Retry, the fix, and Copy details. */
 export interface TurnFailure {
@@ -325,6 +329,8 @@ export interface ModexBridge {
   onEvent(cb: (event: ThreadEvent) => void): () => void;
   onTerminalEvent(cb: (event: TerminalEvent) => void): () => void;
   platform: string;
+  /** Optional host transport: refresh snapshots after reconnect without discarding drafts. */
+  onReconnect?(cb: () => void): () => void;
 }
 
 export interface BackendHealth {

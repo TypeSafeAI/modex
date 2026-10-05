@@ -109,6 +109,27 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     return () => { current = false; };
   }, [healthRevision]);
 
+  // A Terminal/browser login belongs to the installed CLI. Recheck it when the user
+  // returns instead of asking them to authorize the same account inside Modex.
+  useEffect(() => {
+    if (section !== "clis") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      if (document.visibilityState !== "visible" || chatgptBusyRef.current || claudeLoginRef.current) return;
+      timer = setTimeout(() => {
+        if (document.visibilityState === "visible" && !chatgptBusyRef.current && !claudeLoginRef.current) setHealthRevision((revision) => revision + 1);
+      }, 250);
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { clearTimeout(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [section]);
+
+  const systemCodexConnected = !!chatgpt && !chatgptFailed && chatgpt.active === null
+    && health?.codex.executable === "available" && health.codex.authentication === "authenticated";
+  const systemClaudeConnected = health?.claude.executable === "available" && health.claude.authentication === "authenticated";
+
   const accountAction = async (action: () => Promise<void>, signingIn = false) => {
     if (chatgptBusyRef.current) return;
     chatgptBusyRef.current = true; setChatgptBusy(true); setChatgptSigningIn(signingIn); setChatgptDetail("Updating account…");
@@ -298,19 +319,20 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <div className="connections-heading">
-            <div><h3 id="settings-clis-title">Connect your coding tools</h3><p>Sign in once. Coding stays on your Mac.</p></div>
+            <div><h3 id="settings-clis-title">Your coding tools</h3><p>Modex automatically uses the CLI sign-ins already on this Mac.</p></div>
             <button type="button" className="btn small" disabled={claudeLoginBusy || chatgptBusy} onClick={() => { setClaudeLoginDetail(""); setChatgptDetail(""); setHealthRevision((revision) => revision + 1); }}><Icon name="restart" />Refresh account status</button>
           </div>
           <p className="connections-note">Sign-in and account changes apply immediately, even if you cancel Settings. Save other preferences below.</p>
           <div className="connections-grid">
           <div className="connection-card" data-testid="chatgpt-accounts" role="group" aria-labelledby="codex-connection-title">
             <header className="connection-heading">
-              <div><h4 id="codex-connection-title">Codex</h4><p>Connect ChatGPT or use your existing CLI login.</p></div>
+              <div><h4 id="codex-connection-title">Codex</h4><p>Use the account already connected to Codex on your Mac.</p></div>
               <ConnectionStatus health={health?.codex} failed={healthFailed} busy={chatgptBusy} busyLabel={chatgptSigningIn ? "Signing in…" : "Updating…"} account={chatgpt?.accounts.find((account) => account.id === chatgpt.active)} />
             </header>
             <p className="connection-health">{backendHealthText(health?.codex, healthFailed)}</p>
+            {systemCodexConnected && <p className="connection-feedback" role="status">Using your existing Codex sign-in. No additional login needed.</p>}
             <div className="connection-actions">
-              <button type="button" className="btn primary" disabled={chatgptBusy || !chatgpt?.available} onClick={() => { void accountAction(async () => { setChatgptDetail("Complete sign-in in your browser, then return here."); setChatgpt(await bridge.invoke("chatgpt:signIn", {})); setChatgptDetail("ChatGPT identity verified. Complete a Codex turn to verify model access."); }, true); }}><Icon name="arrow-right" />{chatgptSigningIn ? "Waiting for sign-in…" : "Continue with ChatGPT"}</button>
+              <button type="button" className={`btn ${systemCodexConnected ? "small ghost" : "primary"}`} disabled={chatgptBusy || !chatgpt?.available || !health} onClick={() => { void accountAction(async () => { setChatgptDetail("Complete sign-in in your browser, then return here."); setChatgpt(await bridge.invoke("chatgpt:signIn", {})); setChatgptDetail("ChatGPT identity verified. Complete a Codex turn to verify model access."); }, true); }}><Icon name="arrow-right" />{chatgptSigningIn ? "Waiting for sign-in…" : systemCodexConnected ? "Add another ChatGPT account" : "Continue with ChatGPT"}</button>
               {chatgptSigningIn && <button type="button" className="btn" onClick={() => { void bridge.invoke("chatgpt:cancel", undefined).catch(() => setChatgptDetail("Could not cancel sign-in. Try again.")); }}>Cancel ChatGPT sign-in</button>}
             </div>
             <p className="connection-feedback" role="status">{chatgptDetail || (chatgptFailed ? "Account check unavailable. Refresh to retry, or use terminal login below." : chatgpt?.detail || "Checking protected credential storage…")}</p>
@@ -334,8 +356,9 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
               <ConnectionStatus health={health?.claude} failed={healthFailed} busy={claudeLoginBusy} />
             </header>
             <p className="connection-health">{backendHealthText(health?.claude, healthFailed)}</p>
+            {systemClaudeConnected && <p className="connection-feedback" role="status">Using your existing Claude Code sign-in. No additional login needed.</p>}
             <div className="connection-actions">
-              <button type="button" className="btn primary" disabled={claudeLoginBusy || s.claude_bin !== settings.claude_bin || health?.claude.executable === "missing"} onClick={async () => {
+              {!systemClaudeConnected && <button type="button" className="btn primary" disabled={claudeLoginBusy || !health || s.claude_bin !== settings.claude_bin || health?.claude.executable !== "available"} onClick={async () => {
                 if (claudeLoginRef.current) return;
                 claudeLoginRef.current = true;
                 setClaudeLoginBusy(true);
@@ -343,7 +366,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
                 try { const result = await bridge.invoke("claude:login", undefined); setClaudeLoginDetail(result.detail); }
                 catch { setClaudeLoginDetail("Could not start Claude sign-in. Check the executable below or use terminal login."); }
                 finally { claudeLoginRef.current = false; setClaudeLoginBusy(false); setHealthRevision((revision) => revision + 1); }
-              }}><Icon name="arrow-right" />{claudeLoginBusy ? "Waiting for sign-in…" : "Sign in to Claude Code"}</button>
+              }}><Icon name="arrow-right" />{claudeLoginBusy ? "Waiting for sign-in…" : "Sign in to Claude Code"}</button>}
               {claudeLoginBusy && <button type="button" className="btn" onClick={() => { void bridge.invoke("claude:cancelLogin", undefined).catch(() => setClaudeLoginDetail("Could not cancel sign-in. Try again.")); }}>Cancel sign-in</button>}
             </div>
             {s.claude_bin !== settings.claude_bin && <p className="connection-feedback">Save and restart Modex to use the new executable, or revert your path change to sign in now.</p>}

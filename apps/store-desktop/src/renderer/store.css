@@ -1,0 +1,33 @@
+.store-workspace { height: 100vh; }
+.host-connection { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 55% 20%, #1c1c302e, transparent 65%), #080c17f7; overflow: auto; padding: 60px 24px; color: #f3f1f5; }
+.host-titlebar { position: fixed; inset: 0 0 auto; height: 42px; -webkit-app-region: drag; }
+.host-card { width: min(100%, 440px); }
+.host-brand { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; letter-spacing: -.6px; }
+.host-brand img { width: 27px; height: 34px; object-fit: contain; }
+.host-preview { margin-left: auto; color: #b2b6c6; font-size: 10px; font-weight: 400; letter-spacing: .1px; border: 1px solid #ffffff1f; border-radius: 5px; padding: 5px 8px; }
+.host-eyebrow { color: #f386a1; font-size: 10px; letter-spacing: 1.8px; margin-top: 45px; }
+.host-card h1 { font-size: 34px; line-height: 1.2; letter-spacing: -1.3px; font-weight: 550; margin: 14px 0 20px; }
+.host-description { color: #b2b6c6; font-size: 15px; line-height: 1.65; }
+.host-instructions { font-size: 13px; line-height: 1.8; color: #b2b6c6; margin: 22px 0; }
+.host-instructions strong { font-weight: 500; color: #f3f1f5; }
+.host-card form { display: grid; gap: 10px; margin-top: 26px; }
+.host-card label { font-size: 12px; color: #b2b6c6; }
+.host-card input { width: 100%; height: 48px; border: 1px solid #ffffff24; border-radius: 10px; background: #101625; padding: 0 14px; font-size: 13px; color: #f3f1f5; }
+.host-card input:focus-visible, .host-card button:focus-visible { outline: 2px solid #f386a1; outline-offset: 3px; }
+.host-connect, .host-card form button { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; min-height: 48px; border: none; border-radius: 10px; background: #f386a1; color: #12111a; font-size: 13px; font-weight: 600; margin-top: 6px; cursor: pointer; }
+.host-card button:disabled { opacity: .45; cursor: default; }
+.host-footnote { color: #a3a9ba; font-size: 11px; line-height: 1.7; margin-top: 18px; }
+.host-error { border-left: 2px solid #f386a1; padding-left: 12px; color: #f3b3c4; line-height: 1.7; font-size: 12px; margin-top: 20px; }
+.host-wait { display: flex; gap: 10px; align-items: center; margin-top: 30px; font-size: 13px; color: #f386a1; }
+.host-wait span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.host-forget { border: none; padding: 10px 0; background: transparent; color: #f386a1; font-size: 12px; cursor: pointer; margin-top: 14px; }
+.host-card footer { border-top: 1px solid #ffffff14; margin-top: 38px; padding-top: 18px; color: #a3a9ba; font-size: 11px; }
+
+.host-connect { width: 100%; }
+.host-detected { display: flex; align-items: baseline; gap: 10px; font-size: 13px; line-height: 1.7; color: #b2b6c6; margin: 26px 0 18px; }
+.host-detected > span { flex: 0 0 6px; height: 6px; border-radius: 50%; background: #6e7588; }
+.host-detected > .host-ready { background: #f386a1; box-shadow: 0 0 12px #f386a133; }
+.host-manual { margin-top: 26px; border-top: 1px solid #ffffff14; padding-top: 18px; }
+.host-manual summary { cursor: pointer; color: #b2b6c6; font-size: 12px; }
+.host-manual summary:focus-visible { outline: 2px solid #f386a1; outline-offset: 5px; }
+.host-code { margin: 28px 0 8px; font-variant-numeric: tabular-nums; font-size: 40px; letter-spacing: 10px; color: #f386a1; }

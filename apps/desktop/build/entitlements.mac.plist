@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
+    <key>com.apple.security.application-groups</key>
+    <array><string>9LR8Z8UQ9X.works.jev.modex.desktop</string></array>
     <!--
       Hardened-runtime entitlements for the notarized build. Electron's JIT needs the first two.
       Library validation stays ON: node-pty's pty.node, its spawn-helper and the terminal supervisor

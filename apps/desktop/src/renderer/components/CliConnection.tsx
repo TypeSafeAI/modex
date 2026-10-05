@@ -21,7 +21,7 @@ export function TerminalLogin({ backend, path, disabled }: { backend: "claude" |
   return (
     <details className="connection-details">
       <summary>Use terminal login</summary>
-      <p>Run this in Terminal, finish sign-in, then refresh account status here.</p>
+      <p>Run this in Terminal and finish sign-in. Modex detects the account when you return.</p>
       <div className="connection-command"><code>{command}</code><button type="button" className="btn small" disabled={disabled} onClick={async () => {
         setError(false);
         try { await bridge.invoke("clipboard:write", { text: command }); setCopied(command); }

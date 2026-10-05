@@ -62,10 +62,12 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/node-pty/**",
-      "dist/src/main/engine/terminal-supervisor"
+      "dist/src/main/engine/terminal-supervisor",
+      "dist/src/main/engine/desktop-system"
     ],
     "mac": {
       "extendInfo": {
+        "ModexDesktopHostProtocol": 1,
         "NSLocalNetworkUsageDescription": "Let your paired iPhone find and reconnect to Modex on this Mac.",
         "NSBonjourServices": ["_modex._tcp"]
       },

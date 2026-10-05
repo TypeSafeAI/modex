@@ -100,6 +100,32 @@ test("the fix on a sign-in failure opens the thread's terminal and types the log
   await expect(tid(page, "terminal-screen")).not.toContainText("modex-sign-in-2");
 });
 
+test("a usage outage offers a direct model-picker action", async () => {
+  const threadId = await currentRow(page).getAttribute("data-thread-id");
+  await expect(tid(page, "model-picker")).toContainText("Scripted mock");
+  await app.evaluate(({ BrowserWindow }, threadId) => BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", {
+    type: "item",
+    threadId,
+    item: {
+      id: "quota-fail", kind: "notice", level: "error", text: "Codex is rate-limited or out of quota.", at: new Date().toISOString(),
+      failure: {
+        code: "rate_limited", backend: "mock",
+        message: "The active subscription has reached its usage limit.",
+        summary: "Codex is rate-limited or out of quota.",
+        hint: "Wait a moment, or pick another model, then retry.",
+        retryable: true,
+        fix: { kind: "models", label: "Try another model" },
+        debug: {},
+      },
+    },
+  }), threadId);
+  const quota = page.locator('[data-testid="item"][data-failure-code="rate_limited"]');
+  await expect(tid(quota, "failure-fix")).toHaveText("Try another model");
+  await tid(quota, "failure-fix").click();
+  await expect(tid(page, "model-menu")).toBeVisible();
+  await expect(tid(page, "model-option")).toHaveCount(1);
+});
+
 test("early send and retry rejections return errors without adding transcript cards", async () => {
   const t = await page.evaluate(async () => {
     const state = await window.modex!.invoke("state:get", undefined);

@@ -229,3 +229,22 @@ Roughly in the order they earn their place; none is scheduled.
 - PRs merge through `~/.claude/scripts/gh-merge-when-green.sh <pr> --squash` after CI, with
   signed commits only.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
+
+
+## Local Mac Store development preview (unreleased)
+
+PR #119 adds a dedicated opt-in loopback host and a sandboxed Electron MAS client that
+reuses the desktop renderer. Val approved integrating this development preview. Transport
+boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
+saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
+App Sandbox was verified on the running client. Graceful host shutdown, full parity and
+real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
+pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+[run instructions](../apps/store-desktop/README.md).
+
+The shared Mac connection settings now recognize existing system CLI sign-ins and recheck
+them on return from Terminal or a browser. Authenticated Claude no longer asks for another
+login; an authenticated Codex CLI account remains selected unless the user chooses another
+account. Executable overrides still require verification before saving. Read-only checks on
+this Mac confirmed Claude Code 2.1.289 and Codex 0.160.1 are already authenticated; this is
+account-detection evidence, not a new live coding-turn or Store distribution acceptance.

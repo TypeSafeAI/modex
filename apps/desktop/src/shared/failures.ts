@@ -65,14 +65,17 @@ export function describeFailure(input: FailureInput): TurnFailure {
     case "rate_limited":
       summary = `${name} is rate-limited or out of quota.`;
       hint = "Wait a moment, or pick another model, then retry.";
+      fix = { kind: "models", label: "Try another model" };
       break;
     case "network":
       summary = `${name} lost its connection.`;
       hint = "Check the network, then retry.";
+      fix = { kind: "retry", label: "Retry connection" };
       break;
     case "crashed":
       summary = `${name} stopped unexpectedly.`;
       hint = "Retry starts it again.";
+      fix = { kind: "retry", label: "Restart and retry" };
       break;
     default:
       summary = firstLine(message);

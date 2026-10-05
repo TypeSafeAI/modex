@@ -210,6 +210,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .connection-feedback { margin: 10px 0 0; color: var(--fg-2); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .connection-feedback:empty { display: none; }
 .connection-account { margin: 16px 0 0; }
+.connection-account select { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .connection-account small { color: var(--fg-2); line-height: 1.5; }
 .connection-account + .connection-actions { margin-top: 10px; }
 .connection-footnote { margin: 12px 0 0; color: var(--fg-2); font-size: 11.5px; line-height: 1.6; }
@@ -483,7 +484,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .failure-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; background: rgba(240, 107, 107, .16); color: var(--danger); font-size: 12px; font-weight: var(--weight-semibold); }
 .failure-hint { margin: 6px 0 0 28px; color: var(--text-2); }
 .failure-message { margin: 8px 0 0 28px; padding: 8px 10px; max-height: 120px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-3); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.failure-actions { margin: 10px 0 0 28px; flex-wrap: wrap; }
+.failure-actions { margin: 10px 0 0 28px; flex-wrap: wrap; gap: 8px; }
 .failure-report { margin: 10px 0 0 28px; padding: 10px 12px; max-height: 320px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-2); font: 11.5px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 
 /* Approval: the one bordered card, because it blocks the turn. Sized to the column, not its padding box. */

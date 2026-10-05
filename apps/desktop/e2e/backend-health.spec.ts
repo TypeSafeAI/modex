@@ -91,19 +91,60 @@ test("CLI overrides are verified before persistence and can return to automatic 
   }
 });
 
+test("existing system sign-ins are detected without login and refresh when returning from Terminal", async () => {
+  const { home, repo } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await app.evaluate(({ ipcMain }) => {
+      const controls = globalThis as typeof globalThis & { modexSystemSignedIn: boolean; modexLoginCalls: number };
+      controls.modexSystemSignedIn = true;
+      controls.modexLoginCalls = 0;
+      const status = () => ({ executable: "available", version: "2.1.288", authentication: controls.modexSystemSignedIn ? "authenticated" : "signed-out", access: "unverified", detail: controls.modexSystemSignedIn ? "Signed in through CLI" : "Signed out" });
+      for (const channel of ["backends:health", "chatgpt:status", "chatgpt:signIn", "chatgpt:select", "claude:login"]) ipcMain.removeHandler(channel);
+      ipcMain.handle("backends:health", () => ({ claude: status(), codex: status(), mock: status() }));
+      ipcMain.handle("chatgpt:status", () => ({ available: true, active: null, signingIn: false, accounts: [], detail: "Model access is unverified until a Codex turn completes." }));
+      for (const channel of ["chatgpt:signIn", "chatgpt:select", "claude:login"]) ipcMain.handle(channel, () => { controls.modexLoginCalls++; throw new Error("Detection must not change authentication."); });
+    });
+    await tid(page, "open-settings").click();
+    await page.getByRole("button", { name: "Coding CLIs", exact: true }).click();
+    await expect(tid(page, "claude-account")).toContainText("Using your existing Claude Code sign-in. No additional login needed.");
+    await expect(tid(page, "chatgpt-accounts")).toContainText("Using your existing Codex sign-in. No additional login needed.");
+    await expect(page.getByRole("button", { name: "Sign in to Claude Code", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add another ChatGPT account", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Active account for new Codex conversations")).toHaveValue("");
+    // A logout in Terminal is picked up as well as a new login; no stale green badge.
+    await app.evaluate(() => { (globalThis as typeof globalThis & { modexSystemSignedIn: boolean }).modexSystemSignedIn = false; });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tid(page, "claude-account")).toContainText("Sign in needed");
+    await expect(page.getByRole("button", { name: "Sign in to Claude Code", exact: true })).toBeEnabled();
+    await app.evaluate(() => { (globalThis as typeof globalThis & { modexSystemSignedIn: boolean }).modexSystemSignedIn = true; });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tid(page, "claude-account")).toContainText("No additional login needed");
+    await expect(tid(page, "chatgpt-accounts")).toContainText("No additional login needed");
+    expect(await app.evaluate(() => (globalThis as typeof globalThis & { modexLoginCalls: number }).modexLoginCalls)).toBe(0);
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 for (const theme of ["jev", "coven"] as const) test(`${theme}: connection cards guide sign-in, cancellation and terminal recovery`, async ({}, testInfo) => {
   const { home, repo } = seedHome({ theme });
   const { app, page } = await launch(home);
   try {
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]!.setSize(900, 600);
+      const controls = globalThis as typeof globalThis & { modexFocusHealthCalls: number };
+      controls.modexFocusHealthCalls = 0;
       let claudeAttempts = 0;
       let cancelClaude: (() => void) | undefined;
       let accountSignedIn = false;
       const status = (backend: string) => ({ executable: "available", resolvedPath: `/tmp/Val's tools/${backend}`, version: "2.1.288", authentication: "signed-out", access: "unverified", detail: "Sign in to connect your account." });
       const accountStatus = () => ({ available: true, active: accountSignedIn ? "account-1" : null, signingIn: false, detail: "Model access is unverified until a Codex turn completes.", accounts: accountSignedIn ? [{ id: "account-1", label: "Personal", registration: "Modex", signedIn: true, planEnabled: false }] : [] });
       for (const channel of ["backends:health", "chatgpt:status", "chatgpt:signIn", "claude:login", "claude:cancelLogin"]) ipcMain.removeHandler(channel);
-      ipcMain.handle("backends:health", () => ({ claude: status("claude"), codex: status("codex"), mock: status("mock") }));
+      ipcMain.handle("backends:health", () => { controls.modexFocusHealthCalls++; return { claude: status("claude"), codex: status("codex"), mock: status("mock") }; });
       ipcMain.handle("chatgpt:status", accountStatus);
       ipcMain.handle("chatgpt:signIn", () => { accountSignedIn = true; return accountStatus(); });
       ipcMain.handle("claude:login", () => {
@@ -132,6 +173,11 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: connection cards 
     await expect(codex.getByText("Identity verified", { exact: true })).toBeVisible();
     await expect(codex.getByText("Plan authorized", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("Active account for new Codex conversations")).toHaveValue("account-1");
+    const beforeFocus = await app.evaluate(() => (globalThis as typeof globalThis & { modexFocusHealthCalls: number }).modexFocusHealthCalls);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { modexFocusHealthCalls: number }).modexFocusHealthCalls)).toBeGreaterThan(beforeFocus);
+    await expect(page.getByLabel("Active account for new Codex conversations")).toHaveValue("account-1");
+    await expect(codex.getByText("Using your existing Codex sign-in. No additional login needed.", { exact: true })).toHaveCount(0);
     await expect(tid(page, "settings-content")).toHaveJSProperty("scrollWidth", await tid(page, "settings-content").evaluate((el) => el.clientWidth));
     await tid(page, "settings-content").evaluate((el) => el.scrollTo(0, 0));
     await page.getByRole("dialog", { name: "Settings" }).screenshot({ path: testInfo.outputPath(`connections-${theme}.png`) });
