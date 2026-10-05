@@ -44,7 +44,7 @@ test('offline, partial and hostile responses keep all verified fallback links us
     await page.goto('/');
     await expectVersion(page, '0.0.7');
     await expect(page.locator('.community-stats')).toBeHidden();
-    await expect(page.getByRole('link', { name: 'View TestFlight beta' })).toHaveAttribute('href', invite);
+    await expect(page.getByRole('link', { name: 'iPhone companion TestFlight' })).toHaveAttribute('href', invite);
   }
 });
 
@@ -56,24 +56,102 @@ test('cached counts are labeled and zero remains a real count', async ({ page })
   await expect(page.locator('[data-stats-note]')).toHaveText('Last available GitHub counts');
 });
 
-test('hero stats and TestFlight buttons fit mobile, and walkthrough still fills the viewport', async ({ page }) => {
+test('headerless landing and all carousel steps fit the viewport, with details available on demand', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.route('**/api/release', (route) => route.fulfill({ json: feed() }));
   await page.goto('/');
-  for (const width of [320, 375, 390, 768, 1024, 1440]) {
-    await page.setViewportSize({ width, height: 1000 });
+  await expect(page.locator('body > header, #play-story, #walkthrough-dialog')).toHaveCount(0);
+  for (const [width, height] of [[320, 568], [375, 667], [390, 844], [768, 1024], [1024, 768], [1440, 900], [1920, 1080], [844, 390], [667, 375]]) {
+    await page.setViewportSize({ width, height });
     await expect(page.locator('.community-stats')).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await expect(page.locator('.nav-github')).toBeVisible();
-    await page.getByRole('button', { name: 'Play walkthrough', exact: true }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    const bounds = await dialog.boundingBox();
-    expect(bounds!.width).toBeGreaterThanOrEqual(width - 2);
-    expect(bounds!.x).toBeGreaterThanOrEqual(-1);
+    expect(await page.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+    }))).toEqual({ width, height });
+    const main = (await page.locator('main').boundingBox())!;
+    expect(main.y).toBe(0);
+    const copy = (await page.locator('.hero-copy').boundingBox())!;
+    expect(copy.y).toBeGreaterThanOrEqual(main.y);
+    expect(copy.y + copy.height).toBeLessThanOrEqual(main.y + main.height);
+    for (const selector of ['.hero-actions .button', '.hero-actions .text-link', '[data-scene-step="0"]', '[data-scene-step="1"]', '[data-scene-step="2"]', '.site-footer']) {
+      const box = (await page.locator(selector).boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(height + 1);
+    }
+    for (let step = 0; step < 3; step++) {
+      await page.locator(`[data-scene-step="${step}"]`).click();
+      await expect(page.locator('.showcase')).toHaveAttribute('data-step', String(step));
+      for (const selector of ['#desktop-screen', '#phone-screen']) {
+        const image = (await page.locator(selector).boundingBox())!;
+        expect(image.width).toBeGreaterThan(0);
+        expect(image.height).toBeGreaterThan(0);
+        expect(image.x).toBeGreaterThanOrEqual(0);
+        expect(image.y).toBeGreaterThanOrEqual(0);
+        expect(image.x + image.width).toBeLessThanOrEqual(width + 1);
+        expect(image.y + image.height).toBeLessThanOrEqual(height + 1);
+      }
+    }
+    await expect(page.locator('.site-footer').getByRole('link', { name: 'GitHub' })).toBeVisible();
+    await page.getByRole('link', { name: 'About Modex', exact: true }).click();
+    const details = page.getByRole('dialog', { name: 'More about Modex' });
+    await expect(details).toBeVisible();
+    await details.getByRole('link', { name: 'View TestFlight beta' }).scrollIntoViewIfNeeded();
+    await expect(details.getByRole('link', { name: 'View TestFlight beta' })).toBeInViewport();
+    await page.getByRole('button', { name: 'Close details' }).click();
+    await expect(details).toBeHidden();
+    await expect(page.getByRole('link', { name: 'About Modex', exact: true })).toBeFocused();
+    await page.getByRole('link', { name: 'About Modex', exact: true }).click();
     await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
+    await expect(details).toBeHidden();
   }
+});
+
+test('carousel loops automatically until a step is clicked or activated by keyboard', async ({ page }) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.route('**/api/release', (route) => route.fulfill({ json: feed() }));
+  for (const activation of ['click', 'keyboard']) {
+    await page.goto('/');
+    await expect(page.locator('.scene-description')).toHaveAttribute('aria-live', 'off');
+    for (const step of [1, 2, 0, 1]) {
+      await page.clock.runFor(4_000);
+      await expect(page.locator('.showcase')).toHaveAttribute('data-step', String(step));
+    }
+    const choice = page.getByRole('button', { name: 'Keep it moving' });
+    if (activation === 'click') await choice.click();
+    else { await choice.focus(); await page.keyboard.press('Enter'); }
+    await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.scene-description')).toHaveAttribute('aria-live', 'polite');
+    await page.clock.runFor(16_000);
+    await expect(page.locator('.showcase')).toHaveAttribute('data-step', '2');
+    // Temporary interruptions must not undo the visitor's manual selection.
+    await page.getByRole('link', { name: 'About Modex', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.clock.runFor(8_000);
+    await expect(page.locator('.showcase')).toHaveAttribute('data-step', '2');
+  }
+});
+
+test('carousel respects reduced motion and pauses while details are open', async ({ page }) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.route('**/api/release', (route) => route.fulfill({ json: feed() }));
+  await page.goto('/');
+  await page.clock.runFor(12_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '0');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.clock.runFor(4_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '1');
+  await page.getByRole('link', { name: 'About Modex', exact: true }).click();
+  await page.clock.runFor(12_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '1');
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(4_000);
+  await expect(page.locator('.showcase')).toHaveAttribute('data-step', '2');
 });
 
 test('verified download and TestFlight links work without JavaScript', async ({ browser }) => {
@@ -81,6 +159,6 @@ test('verified download and TestFlight links work without JavaScript', async ({ 
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:5187');
   await expectVersion(page, '0.0.7');
-  await expect(page.getByRole('link', { name: 'View TestFlight beta' })).toHaveAttribute('href', invite);
+  await expect(page.getByRole('link', { name: 'iPhone companion TestFlight' })).toHaveAttribute('href', invite);
   await context.close();
 });

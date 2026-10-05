@@ -28,34 +28,18 @@
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    <header class="site-header wrap">
-      <a class="brand" href="#" aria-label="Modex home"
-        ><img
-          src="/assets/modex-mark.png"
-          alt=""
-          width="28"
-          height="36"
-        />Modex</a
-      >
-      <nav aria-label="Main navigation">
-        <a class="nav-detail" href="#workflow">The workflow</a>
-        <a class="nav-detail" href="#iphone">For iPhone</a>
-        <a class="nav-github" href="https://github.com/TypeSafeAI/modex">GitHub <span aria-hidden="true">↗</span></a>
-        <a class="nav-download" href="#download"
-          >Get Modex <span aria-hidden="true">↗</span></a
-        >
-      </nav>
-    </header>
-
     <main id="main">
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="hero-copy">
+          <div class="hero-identity">
+            <a class="brand" href="/" aria-label="Modex home"><img src="/assets/modex-mark.png" alt="" width="28" height="36" />Modex</a>
           <a
             class="release-label"
             data-release-link href="https://github.com/TypeSafeAI/modex/releases/tag/v__MODEX_VERSION__"
             ><span class="status-dot"></span> <span><span data-release-version>v__MODEX_VERSION__</span> is here</span>
             <span aria-hidden="true">↗</span></a
           >
+          </div>
           <h1 id="hero-title">
             A home for your<br /><span>coding agents.</span>
           </h1>
@@ -86,7 +70,7 @@
           </div>
         </div>
 
-        <div class="showcase" id="workflow" data-step="0">
+        <div class="showcase" id="workflow" data-step="0" role="region" aria-roledescription="carousel" aria-label="The Modex workflow">
           <div class="scene-glow" aria-hidden="true"></div>
           <div class="device-stage" aria-label="Interactive product showcase">
             <div class="device-rig">
@@ -126,7 +110,7 @@
             <div
               class="step-buttons"
               role="group"
-              aria-label="Explore the workflow"
+              aria-label="Choose a workflow step to pause the carousel"
             >
               <button type="button" data-scene-step="0" aria-pressed="true">
                 <span>01</span> Start on Mac
@@ -138,19 +122,8 @@
                 <span>03</span> Keep it moving
               </button>
             </div>
-            <button
-              class="play-control"
-              type="button"
-              id="play-story"
-              aria-pressed="false"
-              aria-haspopup="dialog"
-              aria-controls="walkthrough-dialog"
-            >
-              <span class="play-symbol" aria-hidden="true">▶</span
-              ><span class="play-label">Play walkthrough</span>
-            </button>
           </div>
-          <p class="scene-description" aria-live="polite">
+          <p class="scene-description" aria-live="off">
             Bring a project, choose an agent, and see each change as it happens.
           </p>
           <p class="capture-note">
@@ -159,6 +132,16 @@
         </div>
       </section>
 
+    </main>
+
+    <dialog id="details-dialog" class="details-dialog" aria-labelledby="details-title">
+      <header class="details-header">
+        <h2 id="details-title">More about Modex</h2>
+        <button type="button" id="close-details" aria-label="Close details" autofocus>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+      <div id="about" class="details-content">
       <section class="principles wrap" aria-label="Made for the way you work">
         <article>
           <span class="feature-symbol" aria-hidden="true">⌘</span>
@@ -352,7 +335,8 @@
           </details>
         </div>
       </section>
-    </main>
+      </div>
+    </dialog>
 
     <footer class="site-footer wrap">
       <a class="brand" href="#"
@@ -365,23 +349,12 @@
       >
       <p>A little more room to build.</p>
       <nav aria-label="Footer">
+        <a class="details-link" data-details="about" href="https://github.com/TypeSafeAI/modex#readme">About Modex</a>
         <a href="https://github.com/TypeSafeAI/modex">GitHub ↗</a
         ><a href="https://github.com/TypeSafeAI/modex/blob/main/LICENSE"
           >MIT license ↗</a
         ><a href="https://jev.works">Powered by Jev ↗</a>
       </nav>
     </footer>
-    <dialog id="walkthrough-dialog" class="walkthrough-dialog" aria-labelledby="walkthrough-title">
-      <header class="walkthrough-header">
-        <div>
-          <p>THE MODEX WORKFLOW</p>
-          <h2 id="walkthrough-title">From your Mac. Into your hands.</h2>
-        </div>
-        <button type="button" id="close-walkthrough" aria-label="Close walkthrough" autofocus>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
-        </button>
-      </header>
-      <div id="walkthrough-content" class="walkthrough-content"></div>
-    </dialog>
   </body>
 </html>

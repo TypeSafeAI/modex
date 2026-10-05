@@ -1,7 +1,7 @@
 # Modex landing page
 
 Vite/TypeScript site for **https://modex.build**, with a small cached Vercel function for
-public GitHub release metadata. Uses CSS perspective and a three-step product walkthrough;
+public GitHub release metadata. Uses CSS perspective and an automatically looping three-step product carousel;
 no WebGL, analytics or third-party fonts.
 
 ## Develop and verify
@@ -19,7 +19,10 @@ npm run test:e2e -w @modex/site
 
 Vite dev and preview expose the same `/api/release` handler as production. Browser tests
 intercept this endpoint and exercise future releases, invalid responses, offline fallback,
-periodic refresh, mobile layouts, the full-width walkthrough and JavaScript-disabled links.
+periodic refresh, all carousel steps across desktop/mobile viewport sizes, automatic looping,
+manual selection stopping autoplay, reduced motion, details dialogs and JavaScript-disabled links.
+The headerless landing view uses the full viewport without page scrolling; supporting content
+remains available through About Modex.
 Both the feed unit tests and site browser tests run in CI.
 
 ## Automatic releases and counts
