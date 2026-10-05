@@ -1,3 +1,4 @@
+import type { Theme } from "./theme.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -87,6 +88,8 @@ export type ThreadEvent =
   | { threadId: string; type: "thread"; thread: Thread };
 
 export interface Settings {
+  /** Saved desktop appearance. Older settings retain Jev. */
+  theme: Theme;
   /** Backend for new threads. */
   default_backend: BackendId;
   default_mode: Mode;

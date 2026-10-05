@@ -20,6 +20,10 @@
   --bg-sunken: #080c16;
 
   --bg-rail-active: #2a2138;
+  --shell-sheen: rgba(146, 174, 226, .035);
+  --sidebar-sheen: rgba(111, 146, 201, .035);
+  --canvas-sheen: rgba(105, 136, 190, .065);
+  --bubble-border: rgba(166, 186, 218, .08);
 
   /* Lines */
   --border-pane: #2b3144;
@@ -91,6 +95,42 @@
   --duration-fast: 120ms;
   --duration-base: 180ms;
   --tooltip-delay: 400ms;
+}
+
+/* OpenCoven Cave's default dark palette, mapped to the existing Modex surfaces.
+ * sRGB equivalents of foundations.css at 287de394; see design/tokens.md. */
+:root[data-theme="coven"] {
+  --bg-window: #171719;
+  --bg-sidebar: #171719;
+  --bg-main: #1c1b1d;
+  --bg-row-hover: #2f2e32;
+  --bg-row-selected: #27272a;
+  --bg-composer: #202023;
+  --bg-composer-context: #151517;
+  --bg-user-bubble: #202023;
+  --bg-elevated: #27272a;
+  --bg-sunken: #151517;
+  --bg-rail-active: #27272a;
+  --shell-sheen: transparent;
+  --sidebar-sheen: transparent;
+  --canvas-sheen: transparent;
+  --bubble-border: rgba(250, 250, 250, .12);
+  --border-pane: rgba(250, 250, 250, .12);
+  --border-rail: rgba(250, 250, 250, .12);
+  --border-composer: rgba(250, 250, 250, .18);
+  --border-strong: rgba(250, 250, 250, .48);
+  --rule: rgba(250, 250, 250, .12);
+  --text-1: #fafafa;
+  --text-2: #e4e4e7;
+  --text-3: #aaa9b0;
+  --text-4: #929198;
+  --text-placeholder: #aaa9b0;
+  --text-info: #bfbfc4;
+  --text-muted: #b6b5bd;
+  --accent: #9386d0;
+  --accent-strong: #9386d0;
+  --accent-strong-hover: #9f94d6;
+  --accent-ink: #0d0d11;
 }
 
 @media (prefers-reduced-motion: reduce) {

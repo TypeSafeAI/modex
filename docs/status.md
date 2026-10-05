@@ -56,6 +56,11 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 ## On `main`, not yet released
 
+- **OpenCoven desktop theme.** Settings → General → Theme adds Cave's charcoal/black
+  surfaces and lavender purple accent alongside the default Jev palette. Save/Cancel,
+  keyboard selection, relaunch persistence, the native window and an already-open terminal
+  share the choice. Local build, typecheck, unit tests and all 95 e2e checks passed,
+  including terminal-session continuity and contrast checks. This follows v0.0.6.
 - **Approval rules editor (#107).** Settings drafts, project-scoped previews and decision
   receipts merged after v0.0.6. Both desktop and iPhone jobs passed on both final CI runs.
   The production gate remains off; human acceptance before enabling it is tracked below.

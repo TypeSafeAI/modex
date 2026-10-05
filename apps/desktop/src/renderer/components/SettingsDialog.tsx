@@ -1,3 +1,4 @@
+import { ThemePicker } from "./ThemePicker";
 import { useEffect, useRef, useState } from "react";
 import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, Project, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
@@ -275,6 +276,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         <div className="settings-scroll" ref={contentRef} data-testid="settings-content" inert={interactionLocked}>
         {section === "general" && <section id="settings-general" aria-labelledby="settings-general-title" className="settings-section">
           <h3 id="settings-general-title">General</h3>
+          <ThemePicker value={s.theme} onChange={(theme) => set("theme", theme)} />
           <label className="field">
             <span>Default backend for new threads</span>
             <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>

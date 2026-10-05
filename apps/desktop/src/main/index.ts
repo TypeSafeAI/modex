@@ -1,3 +1,4 @@
+import { THEMES } from "../shared/theme.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen } from "electron";
 import fs from "node:fs";
 import os from "node:os";
@@ -172,10 +173,14 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   await gitx.revert(cwd, rel);
   return gitx.status(cwd);
 });
-handle("settings:update", (patch) => updateSettings(store, runner.router, {
-  ...patch,
-  ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
-}));
+handle("settings:update", (patch) => {
+  const settings = updateSettings(store, runner.router, {
+    ...patch,
+    ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
+  });
+  win?.setBackgroundColor(THEMES[settings.theme].background);
+  return settings;
+});
 handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
 handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
 handle("approvals:try", (req) => previewApproval(req, {
@@ -245,7 +250,7 @@ function createWindow(): BrowserWindow {
     minWidth: min.width,
     minHeight: min.height,
     title: "Modex",
-    backgroundColor: "#0b0f1b", // --bg-main: no colour flash before the renderer paints
+    backgroundColor: THEMES[store.settings.theme].background, // Match the saved canvas before first paint.
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     // e2e captures run at the 1786×1049 reference size; CI runners have smaller displays, and macOS
     // otherwise clamps the window to the screen (1024×677 on the GitHub macOS runner).

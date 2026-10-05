@@ -17,6 +17,32 @@ canvas, and composer adds depth. The layout keeps its measured 42 px titlebar, 4
 The accent references are [Jev](https://jev.works/) and
 [TypeSafe UI](https://ui.jev.works/); the blue-black surfaces are Modex's adaptation.
 
+## OpenCoven theme
+
+Settings → General → Theme offers **Jev** (the existing default) and **OpenCoven**.
+Changes follow Settings' Save/Cancel behavior and survive relaunch. The native window,
+renderer and already-open terminal use the selected palette; switching never restarts a shell.
+Theme changes suppress color transitions for the swap and keep the existing reduced-motion behavior.
+
+OpenCoven maps Coven Cave's default dark `src/styles/globals/foundations.css` at
+`287de394676484c01b3de628fe93e4f104bb252c` to Modex's existing semantic surfaces. Colors
+were rasterized to sRGB through Chromium to keep Electron and xterm consistent:
+
+| Cave token | Source | Modex mapping |
+| --- | --- | --- |
+| background | `oklch(0.225 0.004 291)` | Main canvas `#1c1b1d` |
+| bg-panel | `oklch(0.205 0.004 291)` | Shell/sidebar `#171719` |
+| card | `oklch(0.245 0.005 291)` | Composer/message `#202023` |
+| bg-elevated | `oklch(0.275 0.006 291)` | Menus/selection `#27272a` |
+| bg-hover | `oklch(0.305 0.007 291)` | Hover `#2f2e32` |
+| accent-presence | `#9386d0` | Lavender accent and primary fill |
+| primary-foreground | `oklch(0.16 0.008 291)` | Primary-action ink `#0d0d11` |
+
+The Cave foreground/input/border ladder stays neutral, with secondary text adjusted for
+Modex's small metadata labels. Pink-specific accents now derive from the selected accent;
+Coven's surfaces omit the blue sheen. Semantic warning, error, diff and backend colors keep
+their meanings. The theme changes neither shell geometry nor typography.
+
 ## Reference
 
 Codex desktop screenshots at **1786×1049, 1× scale**. The red traffic light measures 12 px, which is
