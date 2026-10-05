@@ -15,3 +15,7 @@ The first scratch probe timed out before Electron's ready event because it await
 ## Reconciliation with the replacement release
 
 Merged v0.0.6 commit `ed5486fad050cae27f0620e5a43ae5308f7c05e8` into the integration branch. Only `docs/status.md` required conflict resolution. The combined tree passed `npm ci`, build, typecheck, 15 core and 248 desktop unit tests, the browser bridge test, and all 94 desktop e2e checks on 2026-10-05. This change follows the v0.0.6 tag and keeps the production approval gate disabled.
+
+Hosted CI on `28be117` passed both desktop jobs and the push iPhone job. The PR iPhone job first failed after tapping Pair with your Mac: the saved UI hierarchy still showed onboarding, and no pairing request was reached. A rerun of that failed job passed the complete native and paired suites with no source change. This remains a hosted UI-test reliability observation, not a demonstrated production fix or physical-device acceptance. Evidence: push run `37297774873`; PR run `37297781376`, attempt 2.
+
+The subsequent reconciliation with release-workflow fix `3498616` changes only workflow and documentation; its app source and dependency tree match the tested `28be117` integration. Build, unit tests and typecheck were rerun before pushing.

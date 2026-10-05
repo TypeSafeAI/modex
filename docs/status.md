@@ -24,13 +24,16 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- **v0.0.6 is running in protected release CI.** PR #106 merged as `ed5486f`
-  after both desktop and iPhone jobs passed in both final CI runs. The replacement signed
-  tag now points to that commit, including the Jev-inspired near-black blue/pink palette
-  and companion service. The full local rehearsal passed notarization, stapling,
-  Gatekeeper, signature/container verification and all 91 packaged e2e checks. Release
-  run `37296872994` has received `release-signing` approval; CI signing/notarization,
-  downloaded-artifact verification and publication remain in progress. The earlier release run is cancelled.
+- **v0.0.6 is awaiting the corrected protected release run.** PR #106 merged as
+  `ed5486f`; the full local signed/notarized rehearsal and all 91 packaged e2e checks passed.
+  Approved Release run `37296872994` signed, notarized, stapled and verified its artifacts,
+  then passed all 90 packaged Electron checks. Its browser-development check could not
+  launch because the workflow had not installed Playwright Chromium. No release assets
+  were uploaded or published. PR #110 adds the missing install step and passed desktop
+  and iPhone jobs on both CI runs, then merged as `3498616`. The signed replacement tag
+  points to that commit; Release run `37300304273` still needs protected approval,
+  successful CI, downloaded-artifact verification and publication. The app payload is
+  unchanged from the full rehearsal.
   [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
