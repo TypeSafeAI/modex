@@ -176,6 +176,12 @@ Renderer edits hot-reload; restart the dev command after changing the main-proce
 For Electron development, also run
 `MODEX_DEV_URL=http://127.0.0.1:5178 npm run desktop` in another shell.
 
+## Desktop themes
+
+Choose **Jev** or **OpenCoven** in Settings → General → Theme, then Save. Jev keeps the
+midnight-blue workspace and pink accent; OpenCoven uses Coven Cave's charcoal/black surfaces
+and lavender purple. Your choice survives relaunch and also updates the embedded terminal.
+
 ## Offline engine (`@modex/core`)
 
 The "mock" backend is a small in-process agent loop with a scripted model. It exists so the UI

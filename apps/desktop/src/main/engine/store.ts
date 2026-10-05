@@ -1,3 +1,4 @@
+import { normalizeTheme } from "../../shared/theme.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -5,6 +6,7 @@ import type { ApprovalGateConfig, ApprovalRule, AppState, BackendId, EffortLevel
 import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, EFFORT_LEVELS } from "../../shared/types.js";
 
 export const DEFAULT_SETTINGS: Settings = {
+  theme: "jev",
   default_backend: "codex",
   default_mode: "agent",
   default_model: { codex: "", claude: "", mock: "mock" },
@@ -77,6 +79,7 @@ export function migrateSettings(raw: unknown): Settings {
   const model = r.default_model;
   return {
     ...DEFAULT_SETTINGS,
+    theme: normalizeTheme(r.theme),
     default_backend: r.default_backend === "claude" || r.default_backend === "codex" || r.default_backend === "mock" ? r.default_backend : DEFAULT_SETTINGS.default_backend,
     default_mode: r.default_mode === "chat" || r.default_mode === "agent" || r.default_mode === "full-access" ? r.default_mode : DEFAULT_SETTINGS.default_mode,
     default_model: model && typeof model === "object" ? { ...DEFAULT_SETTINGS.default_model, ...(model as Record<string, string>) } : { ...DEFAULT_SETTINGS.default_model },
@@ -138,6 +141,7 @@ export class Store {
     const settings = {
       ...this.state.settings,
       ...patch,
+      theme: normalizeTheme(patch.theme ?? this.state.settings.theme),
       ...(patch.routing ? { routing: migrateRouting({ ...this.state.settings.routing, ...patch.routing }) } : {}),
       ...(patch.approval_rules ? { approval_rules: migrateApprovalRules(patch.approval_rules) } : {}),
       ...(patch.approval_gate ? { approval_gate: migrateApprovalGate({ ...this.state.settings.approval_gate, ...patch.approval_gate }) } : {}),
