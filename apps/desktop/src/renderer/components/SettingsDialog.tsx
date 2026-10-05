@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
+import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, Project, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { sameJudgeSettings, testMatchesJudge } from "../../shared/judge-settings";
 import { bridge } from "../bridge";
+import { ApprovalRules } from "./ApprovalRules";
 
 interface Props {
   settings: Settings;
+  projects: Project[];
+  currentProjectId?: string;
   onSave: (patch: Partial<Settings>) => Promise<void>;
   onClose: () => void;
 }
@@ -25,8 +28,8 @@ const errorMessage = (err: unknown, fallback: string) =>
 const backendHealthText = (status: BackendHealth | undefined, failed: boolean) =>
   status ? `${status.version ? `v${status.version} · ` : ""}${status.detail}` : failed ? "Account check unavailable · retry" : "checking…";
 
-export function SettingsDialog({ settings, onSave, onClose }: Props) {
-  const [section, setSection] = useState<"general" | "clis" | "routing" | "advanced">("routing");
+export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose }: Props) {
+  const [section, setSection] = useState<"general" | "clis" | "routing" | "approvals" | "advanced">("routing");
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -254,7 +257,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   };
 
   const sections = [
-    ["general", "General"], ["clis", "Coding CLIs"], ["routing", "Auto routing"], ["advanced", "Advanced / demo"],
+    ["general", "General"], ["clis", "Coding CLIs"], ["routing", "Auto routing"], ["approvals", "Approval rules"], ["advanced", "Advanced / demo"],
   ] as const;
 
   return (
@@ -476,6 +479,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
             <small>Used only by the Mock backend for scripted offline demos and tests.</small>
           </label>
         </section>}
+        {section === "approvals" && <ApprovalRules rules={s.approval_rules} projects={projects} currentProjectId={currentProjectId} gateEnabled={s.approval_gate.enabled} routing={routing} onChange={(rules) => set("approval_rules", rules)} />}
         </div>
         <footer className="settings-footer" data-testid="settings-actions">
           {saveError && <p className="warn" role="alert" data-testid="settings-save-error">{saveError} Your draft is still here; retry or cancel.</p>}

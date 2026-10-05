@@ -4,6 +4,7 @@ import type { ThreadRunner } from "./engine/runner.js";
 import type { TerminalManager } from "./engine/terminal.js";
 import * as gitx from "./engine/git.js";
 import { updateSettings } from "./engine/settings-update.js";
+import { previewApproval, validateRules } from "./engine/approvals/preview.js";
 import { describeFailure } from "../shared/failures.js";
 
 export type CommandHandler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
@@ -78,7 +79,16 @@ export function registerCommands(handle: RegisterCommand, {
     await gitx.revert(cwd, rel);
     return gitx.status(cwd);
   });
-  handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
+  handle("settings:update", (patch) => updateSettings(store, runner.router, {
+    ...patch,
+    ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
+  }));
+  handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
+  handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
+  handle("approvals:try", (req) => previewApproval(req, {
+    project: (id) => store.project(id), config: store.snapshot().settings.approval_gate,
+    jev: () => runner.router.jev(),
+  }));
   handle("models:list", ({ backend }) => runner.listModels(backend));
   handle("routing:status", () => runner.router.status());
   handle("routing:reset", () => {

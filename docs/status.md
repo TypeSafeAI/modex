@@ -24,14 +24,16 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## On `main`, not yet released
 
-- **v0.0.6 is being recut after a release CI setup failure.** PR #106 merged as
+- **v0.0.6 is awaiting the corrected protected release run.** PR #106 merged as
   `ed5486f`; the full local signed/notarized rehearsal and all 91 packaged e2e checks passed.
   Approved Release run `37296872994` signed, notarized, stapled and verified its artifacts,
   then passed all 90 packaged Electron checks. Its browser-development check could not
   launch because the workflow had not installed Playwright Chromium. No release assets
-  were uploaded or published. The release workflow now installs Chromium, matching ordinary
-  CI. This workflow-only correction leaves the rehearsed app payload unchanged; the new
-  signed tag and protected release run still require verification before publication.
+  were uploaded or published. PR #110 adds the missing install step and passed desktop
+  and iPhone jobs on both CI runs, then merged as `3498616`. The signed replacement tag
+  points to that commit; Release run `37300304273` still needs protected approval,
+  successful CI, downloaded-artifact verification and publication. The app payload is
+  unchanged from the full rehearsal.
   [Review](reviews/2026-10-03-v0.0.6-release-review.md).
 - **Claude sign-in (#77, PR #91).** Settings launches the saved Claude CLI's browser login,
   cancels its own attempt, and verifies structured account status afterward. Credentials
@@ -79,9 +81,13 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
-  (PR #107) adds Settings → Approval rules with a "Try it" box, receipts on approval cards, the
-  `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and the docs. It remains in progress
-  for a later release; v0.0.6 ships with the gate off. The
+  (PR #107) adds a Settings draft editor, project-scoped Try it previews, compact persisted
+  receipts, the `(rule: …)` deny reason, `e2e/approvals.spec.ts`, and [usage docs](approval-rules.md).
+  The gate remains off: saved rules can be previewed but do not decide live approvals.
+  Reconciliation with the merged companion passed build, typecheck, 15 core and 248 desktop
+  tests plus the browser bridge test, and all 94 desktop e2e checks. This integration follows
+  v0.0.6. Three live Jev preview examples passed on 2026-10-05; human acceptance and
+  broader judge evaluation remain open before enabling the gate. The
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.

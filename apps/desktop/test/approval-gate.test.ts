@@ -73,9 +73,11 @@ test("destructive downgrade: an allow on something Jev finds destructive is aske
   const rm: ApprovalAction = { backend: "claude", tool: "Bash", title: "$ rm -rf dist", input: { command: "rm -rf dist" } };
   let d = await decide(rm, ctx([r], fakeJev({ "clean build output": 0.95 }, 0.71).transport));
   assert.deepEqual([d.decision, d.downgraded, d.destructive, d.rule?.id], ["ask", "destructive", 0.71, r.id]);
-  assert.deepEqual(receiptFor(d), { source: "rule", ruleId: r.id, when: "clean build output", decision: "ask", via: "jev", p: 0.95, ms: d.ms, downgraded: "destructive" });
+  // The receipt carries Jev's destructive score, so the card can say "looks destructive (Jev 0.71)".
+  assert.deepEqual(receiptFor(d), { source: "rule", ruleId: r.id, when: "clean build output", decision: "ask", via: "jev", p: 0.95, ms: d.ms, destructive: 0.71, downgraded: "destructive" });
   d = await decide(rm, ctx([r], fakeJev({ "clean build output": 0.95 }, 0.49).transport));
   assert.equal(d.decision, "allow");
+  assert.equal(receiptFor(d)?.destructive, 0.49, "an allow's receipt keeps the score it was checked against");
   // An exact-match allow is checked for destructiveness too when Jev is live.
   d = await decide(rm, ctx([rule("anything in bash", "allow", { match: "Bash: *" })], fakeJev({}, 0.9).transport));
   assert.deepEqual([d.decision, d.downgraded, d.source], ["ask", "destructive", "match"]);

@@ -20,6 +20,7 @@ import { CompanionServer } from "./engine/companion.js";
 import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
+import { previewApproval, validateRules } from "./engine/approvals/preview.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -83,7 +84,7 @@ const companionView = async (status: CompanionStatus): Promise<CompanionStatus> 
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
   ipcMain.handle(channel, async (event, req) => {
@@ -171,7 +172,16 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   await gitx.revert(cwd, rel);
   return gitx.status(cwd);
 });
-handle("settings:update", (patch) => updateSettings(store, runner.router, patch));
+handle("settings:update", (patch) => updateSettings(store, runner.router, {
+  ...patch,
+  ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
+}));
+handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
+handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
+handle("approvals:try", (req) => previewApproval(req, {
+  project: (id) => store.project(id), config: store.snapshot().settings.approval_gate,
+  jev: () => runner.router.jev(),
+}));
 handle("models:list", ({ backend }) => runner.listModels(backend));
 handle("chatgpt:status", () => chatgpt.status());
 handle("chatgpt:signIn", async ({ accountId }) => {

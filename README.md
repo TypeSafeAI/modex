@@ -69,6 +69,10 @@ modex/
 - **Inline approvals.** When the mode requires it, the thread pauses on a card showing the
   exact command or patch. *Approve*, *Deny*, or *Always* (trusts that command prefix for
   the thread). *Stop* cancels a running turn and any pending approvals.
+- **Approval rules (preview).** Settings can save project-scoped Allow, Ask, and Never rules
+  and try them against a sample without executing it. Language rules stay visibly inactive
+  without Jev; exact-match rules need no judge. The production gate remains off pending
+  validation and the v0.0.5 release prerequisite. See [approval rules](docs/approval-rules.md).
 - **Errors you can act on.** Failed turns show the CLI's message, a next step, **Retry**
   (the same message, without a second user bubble), and **Copy details** for a bug report.
   Sign-in failures offer the CLI's login command in the thread's terminal; missing CLIs

@@ -482,6 +482,8 @@ export class ThreadRunner {
     // Backend ids are only guaranteed unique inside a turn (Claude and mock restart at think-1).
     const prefix = newId();
     const scoped = (id: string) => `${prefix}:${id}`;
+    // Requests a rule refused, with the rule's "when" text, for backends that pass a reason to the model.
+    const refusals = new WeakMap<ApprovalRequest, string>();
     return {
       delta: (text) => {
         if (!active()) return;
@@ -524,10 +526,14 @@ export class ThreadRunner {
           if (r.ask) return askUser(r.decidedBy);
           if (!active() || l.abort?.signal.aborted) return "no";
           // Answered by a rule: the card lands already answered, and the thread never waits on it.
-          if (r.decidedBy) this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, answer: r.answer, decidedBy: r.decidedBy, at: at() });
+          if (r.decidedBy) {
+            this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: r.answer, decidedBy: r.decidedBy, at: at() });
+            if (r.answer === "no") refusals.set(req, r.decidedBy.when);
+          }
           return r.answer;
         });
       },
+      refusedByRule: (req) => refusals.get(req),
       notice: (level, text) => { if (active()) this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }); },
       thinkingDelta: (id, delta) => {
         if (!active()) return;

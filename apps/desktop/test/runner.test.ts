@@ -6,6 +6,7 @@ import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
@@ -829,6 +830,36 @@ test("approval gate: a never rule refuses with a receipt; the mock engine's writ
   assert.equal(card.decidedBy?.decision, "never");
   assert.ok(!statusesOf(h.events).includes("waiting"));
   assert.match((runner.items(thread.id).find((i) => i.kind === "tool") as { output?: string }).output ?? "", /not approved/);
+});
+
+test("approval gate: a rule's refusal reaches Claude as a deny that names the rule; a human's 'no' does not", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "p", when: "push to main", decision: "never", match: "Bash: git push*", enabled: true }] });
+  const proc = new FakeProcess();
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
+  const runner = new ThreadRunner({ ...h, router, backends: { claude: new ClaudeBackend("claude", fakeSpawn(proc).spawn) } });
+  const thread = await runner.createThread(project.id, { backend: "claude", mode: "agent" });
+  runner.updateThread(thread.id, { title: "Ship" }); // a titled thread skips auto-naming, which would spawn the CLI again
+  const done = runner.send(thread.id, "ship it");
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  type Reply = { response: { response: { behavior: string; message?: string } } };
+  proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "git push origin main" } } });
+  const r1 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r1"'))) as Reply;
+  assert.deepEqual(r1.response.response, { behavior: "deny", message: "The user denied this action in Modex (rule: push to main)." });
+  const receipt = runner.items(thread.id).find((i) => i.kind === "approval") as Extract<ThreadItem, { kind: "approval" }>;
+  assert.deepEqual([receipt.answer, receipt.decidedBy?.decision, receipt.title], ["no", "never", "$ git push origin main"]);
+  // No rule applies to this one: today's card, and a person says no.
+  proc.emitLine({ type: "control_request", request_id: "r2", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "npm publish" } } });
+  const card = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval" && !i.answer));
+  assert.equal(runner.status(thread.id), "waiting");
+  runner.answer(thread.id, card.id, "no");
+  const r2 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r2"'))) as Reply;
+  assert.deepEqual(r2.response.response, { behavior: "deny", message: "The user denied this action in Modex." });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "ok" });
+  proc.close(0);
+  await done;
+  assert.equal(statusesOf(h.events).filter((s) => s === "waiting").length, 1, "only the human's card waited");
 });
 
 test("approval gate: an ask rule keeps today's card, with the rule attached", async () => {

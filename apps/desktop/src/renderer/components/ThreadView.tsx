@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
+import type { ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
+import { askedBecause, receiptVia } from "../../shared/approval-receipt";
 import { bridge } from "../bridge";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
@@ -232,24 +233,7 @@ function Item({ item, onAnswer, onFix, onRetry }: { item: ThreadItem; onAnswer: 
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
-      return (
-        <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer ? "true" : "false"}>
-          <div className="approval-head" data-testid="approval-question">
-            <span className="shield">⚠</span>
-            <span>{item.question}</span>
-          </div>
-          {item.detail && <pre className="detail">{item.detail}</pre>}
-          {item.answer ? (
-            <div className="approval-answer" data-testid="approval-answer">{item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
-          ) : (
-            <div className="row">
-              <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
-              {item.canAlways !== false && <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>}
-              <button className="btn danger small" onClick={() => onAnswer(item.id, "no")}>Deny</button>
-            </div>
-          )}
-        </div>
-      );
+      return <ApprovalItem item={item} onAnswer={onAnswer} />;
     case "notice":
       if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
       return <div className={`notice ${item.level}`} data-testid="item" data-item-kind="notice" data-level={item.level}>{item.text}</div>;
@@ -290,6 +274,66 @@ function FailureItem({ failure, onFix, onRetry }: { failure: TurnFailure; onFix:
         <button type="button" className="btn ghost small" data-testid="failure-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? "Hide details" : "Details"}</button>
       </div>
       {open && <pre className="failure-report" data-testid="failure-report">{report}</pre>}
+    </div>
+  );
+}
+
+type ApprovalEntry = Extract<ThreadItem, { kind: "approval" }>;
+
+/**
+ * An approval. A rule's allow or refusal is a compact receipt row (the turn never waited on it);
+ * anything a human answers is today's card, plus one line saying why when a rule sent it here.
+ */
+function ApprovalItem({ item, onAnswer }: { item: ApprovalEntry; onAnswer: Props["onAnswer"] }) {
+  const r = item.decidedBy;
+  if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
+  return (
+    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer ? "true" : "false"} data-decided-by={r?.decision}>
+      <div className="approval-head" data-testid="approval-question">
+        <span className="shield">⚠</span>
+        <span>{item.question}</span>
+      </div>
+      {r?.decision === "ask" && <div className="approval-reason" data-testid="approval-reason">{askedBecause(r)}</div>}
+      {item.detail && <pre className="detail">{item.detail}</pre>}
+      {item.answer ? (
+        <div className="approval-answer" data-testid="approval-answer">{item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+      ) : (
+        <div className="row">
+          <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
+          {item.canAlways !== false && <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>}
+          <button className="btn danger small" onClick={() => onAnswer(item.id, "no")}>Deny</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "✓ Allowed: $ npm test · rule "run the test suite" · Jev 0.94 · 410 ms", or the same row for a refusal. Expands to the request. */
+function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt: ApprovalReceipt }) {
+  const [open, setOpen] = useState(false);
+  const allowed = r.decision === "allow";
+  const title = item.title ?? item.question;
+  const via = `${receiptVia(r)} · ${r.ms} ms${r.downgraded === "jev-unavailable" ? " · Jev unavailable" : ""}`;
+  return (
+    <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered="true" data-decided-by={r.decision}>
+      <button className="receipt-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="receipt-icon" aria-hidden="true">{allowed ? "✓" : "✕"}</span>
+        <span className="receipt-label" data-testid="approval-receipt">
+          {allowed ? <>Allowed: <code>{title}</code></> : <>Refused by rule "{r.when}"</>}
+        </span>
+        <span className="receipt-meta" data-testid="receipt-meta">{allowed ? `rule "${r.when}" · ${via}` : <><code>{title}</code> · {via}</>}</span>
+        <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
+      </button>
+      {open && (
+        <div className="receipt-body" data-testid="item-body">
+          <div className="receipt-question">{item.question}</div>
+          {item.detail && <pre className="detail">{item.detail}</pre>}
+          <div className="dim">
+            {allowed ? "Approved once" : "Denied"} by your rule "{r.when}" ({receiptVia(r)}, {r.ms} ms){r.destructive !== undefined ? `; Jev put the chance that it is destructive at ${r.destructive.toFixed(2)}` : ""}.
+            {r.downgraded === "jev-unavailable" ? " Jev was unavailable, so only rules with an exact match could apply." : ""}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
