@@ -78,7 +78,7 @@ test('rate limits preserve last good links and counts, and cold failure has no f
   assert.deepEqual(stale.release, good.release); assert.deepEqual(stale.stats, good.stats);
   assert.equal(stale.checkedAt, good.checkedAt); assert.equal(stale.stale, true);
   const cold = await createReleaseFeed({ fetchImpl })();
-  assert.equal(cold.release.version, '0.0.7'); assert.deepEqual(cold.stats, { stars: null, forks: null, downloads: null });
+  assert.equal(cold.release.version, '0.0.8'); assert.deepEqual(cold.stats, { stars: null, forks: null, downloads: null });
   assert.equal(cold.checkedAt, null);
 });
 

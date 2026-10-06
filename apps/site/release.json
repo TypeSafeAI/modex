@@ -1,5 +1,5 @@
 {
-  "version": "0.0.7",
+  "version": "0.0.8",
   "architecture": "Apple silicon",
   "ios": "testflight",
   "testflightUrl": "https://testflight.apple.com/join/Qr14JKCh"
