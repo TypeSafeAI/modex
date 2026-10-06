@@ -157,7 +157,10 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
-No standalone desktop changes pending release.
+**Mobile thread creation and skills (#128).** The paired Mac service now supports starting
+Local or Worktree threads and discovering provider-native commands. The iPhone demo also
+exercises thread creation and skills without a Mac. These changes require a new desktop
+release and a rebuilt Companion build; the published v0.0.8 host predates these endpoints.
 
 ## In flight
 
@@ -166,8 +169,12 @@ No standalone desktop changes pending release.
   sandbox and standalone-app rules require an architecture and review gate. The
   [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
   end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
-  command is now documented, but no macOS Store/TestFlight build has been uploaded; the
-  required Mac Store profile and installer certificate are still missing locally.
+  command is documented. App Store Connect now contains processed macOS build 0.0.7
+  (`VALID`); distribution provisioning and installer signing are available locally.
+  The 0.0.8 Store candidate and Companion build 5 add offline demo access after Apple's
+  Guideline 2.1 request for a review QR. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
+  contains instructions, the reusable QR and validation evidence. Apple acceptance of
+  demo access and the Store architecture remains pending.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the

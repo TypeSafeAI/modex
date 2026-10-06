@@ -54,7 +54,7 @@ recovery permanently. Bonjour publishes only the address and public certificate 
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 4), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 5), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -139,6 +139,16 @@ and `IN_BETA_TESTING` in the existing Internal group (build ID
 Automatic address discovery requires Mac v0.0.7; physical iPhone acceptance remains open.
 
 ## TestFlight
+
+Build 5 adds an offline workspace on the welcome screen, plus the non-expiring
+`modex://demo` review link. It uses in-memory sample threads and scripted replies, does
+not browse for a Mac or create a network client, and leaves saved pairing data untouched.
+The demo also supports Local/Worktree thread creation and a searchable sample skill for
+Codex and Claude, with provider and location choices visibly simulated. Reset restores the
+approval and clears drafts; leaving or restarting discards the demo. The QR, exact review
+instructions and current verification/submission state are in the
+[review access ledger](reviews/2026-10-06-review-demo-access.md). This addresses the reported
+pairing/access blocker; Apple acceptance of demo access remains pending.
 
 The iPhone build has a separate release path from the signed and notarized macOS release.
 The App Store Connect record for **Modex Companion** uses `works.jev.modex` under Soul

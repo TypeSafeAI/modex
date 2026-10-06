@@ -20,8 +20,8 @@ struct CompanionRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if model.pairing == nil { onboarding }
-                else { dashboard }
+                if model.hasWorkspace { dashboard }
+                else { onboarding }
             }
             .background(Palette.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
@@ -52,6 +52,8 @@ struct CompanionRootView: View {
     }
 
     private var onboarding: some View {
+        GeometryReader { geometry in
+        ScrollView {
         VStack(alignment: .leading, spacing: 0) {
             brand
             Spacer()
@@ -84,7 +86,17 @@ struct CompanionRootView: View {
             }
             .accessibilityIdentifier("pair-button")
             .padding(.top, 34)
-            Text("Your Mac and iPhone need to share a network.")
+            Button { Task { await model.startDemo() } } label: {
+                HStack { Image(systemName: "play.circle"); Text("Explore a demo workspace"); Spacer() }
+                    .font(.system(size: 15, weight: .semibold))
+                    .padding(19)
+                    .foregroundStyle(.white)
+                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: 17))
+                    .overlay(RoundedRectangle(cornerRadius: 17).stroke(Palette.line, lineWidth: 1))
+            }
+            .accessibilityIdentifier("demo-button")
+            .padding(.top, 12)
+            Text("Pairing needs a Mac running Modex on the same network. The demo needs nothing.")
                 .font(.system(size: 12))
                 .foregroundStyle(Palette.muted)
                 .frame(maxWidth: .infinity)
@@ -93,6 +105,10 @@ struct CompanionRootView: View {
         }
         .padding(.horizontal, 26)
         .padding(.top, 24)
+        .frame(minHeight: geometry.size.height)
+        }
+        .scrollIndicators(.hidden)
+        }
     }
 
     private var dashboard: some View {
@@ -109,7 +125,13 @@ struct CompanionRootView: View {
                     .accessibilityLabel("New thread")
                     .accessibilityIdentifier("new-thread")
                     Menu {
-                        Button("Forget paired Mac…", role: .destructive) { showForgetConfirmation = true }
+                        if model.isDemo {
+                            Button("Pair with your Mac…") { showPairing = true }
+                            Button("Reset demo workspace") { Task { await model.startDemo() } }
+                            Button("Leave demo workspace", role: .destructive) { model.disconnect() }
+                        } else {
+                            Button("Forget paired Mac…", role: .destructive) { showForgetConfirmation = true }
+                        }
                     } label: {
                         Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold))
                             .frame(width: 44, height: 44).background(Palette.surface, in: RoundedRectangle(cornerRadius: 13))
@@ -121,11 +143,21 @@ struct CompanionRootView: View {
                     Text("Workspace")
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .tracking(-1.3)
-                    HStack(spacing: 7) {
-                        Circle().fill(model.connected ? Color.green : Color.orange).frame(width: 7, height: 7)
-                        Text(model.connected ? "Mac connected" : "Reconnecting to your Mac…")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Palette.muted)
+                    if model.isDemo {
+                        HStack(spacing: 7) {
+                            Image(systemName: "play.circle.fill").font(.system(size: 11)).foregroundStyle(Palette.accent)
+                            Text("Demo workspace · not connected to a Mac")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Palette.muted)
+                                .accessibilityIdentifier("demo-status")
+                        }
+                    } else {
+                        HStack(spacing: 7) {
+                            Circle().fill(model.connected ? Color.green : Color.orange).frame(width: 7, height: 7)
+                            Text(model.connected ? "Mac connected" : "Reconnecting to your Mac…")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Palette.muted)
+                        }
                     }
                     if let detail = model.connectionError {
                         Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted).lineLimit(2)
@@ -219,7 +251,7 @@ private struct ThreadDetailView: View {
                     .accessibilityLabel("Back to threads")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(thread.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    Text("\(thread.backend.capitalized) · \(currentStatus.capitalized)").font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text("\(model.isDemo ? "Demo · " : "")\(thread.backend.capitalized) · \(currentStatus.capitalized)").font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
                 Circle().fill(currentStatus == "waiting" ? Palette.accent : currentStatus == "running" ? Color.green : Palette.muted).frame(width: 8, height: 8)
@@ -236,7 +268,7 @@ private struct ThreadDetailView: View {
                                 .id(item.id)
                         }
                         if currentStatus == "running" {
-                            HStack(spacing: 8) { ProgressView().tint(Palette.accent); Text("Working on your Mac").foregroundStyle(Palette.muted).font(.system(size: 12)) }
+                            HStack(spacing: 8) { ProgressView().tint(Palette.accent); Text(model.isDemo ? "Working in the demo" : "Working on your Mac").foregroundStyle(Palette.muted).font(.system(size: 12)) }
                                 .padding(.vertical, 10)
                         }
                     }
@@ -255,7 +287,7 @@ private struct ThreadDetailView: View {
         .confirmationDialog("Approve this action?", isPresented: Binding(get: { approvalToConfirm != nil }, set: { if !$0 { approvalToConfirm = nil } }), titleVisibility: .visible) {
             Button("Approve once") { if let id = approvalToConfirm { Task { await model.answer(itemId: id, approve: true) } }; approvalToConfirm = nil }
             Button("Cancel", role: .cancel) { approvalToConfirm = nil }
-        } message: { Text("The action will run on your Mac in this thread.") }
+        } message: { Text(model.isDemo ? "This is the demo. Nothing runs on a Mac; your answer is only recorded here." : "The action will run on your Mac in this thread.") }
         .sheet(isPresented: $showCommands) {
             CommandSheet(projectId: thread.projectId, backend: thread.backend) { insertion in
                 insert(insertion, into: &model.draft)
@@ -315,7 +347,7 @@ private struct NewThreadSheet: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("New thread").font(.system(size: 30, weight: .semibold, design: .rounded)).tracking(-1)
-                    Text("Runs on your Mac using its saved provider and model.").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                    Text(model.isDemo ? "Creates a demo thread with scripted replies. Location and provider choices are simulated; nothing runs on a Mac." : "Runs on your Mac using its saved provider and model.").font(.system(size: 13)).foregroundStyle(Palette.muted)
                 }
                 Picker("Project", selection: $projectId) {
                     ForEach(model.snapshot.projects) { project in Text(project.name).tag(project.id) }
@@ -442,9 +474,10 @@ private struct CommandSheet: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.foregroundStyle(Palette.muted) } }
         }
         .presentationDetents([.medium, .large])
-        .task {
+        .task(id: "\(projectId)\u{0}\(backend)") {
+            loading = true
             await model.loadCommands(projectId: projectId, backend: backend)
-            loading = false
+            if !Task.isCancelled { loading = false }
         }
     }
 }
@@ -547,7 +580,7 @@ private struct PairingSheet: View {
                     .keyboardType(.URL).font(.system(size: 13, design: .monospaced))
                     .padding(15).background(Palette.raised, in: RoundedRectangle(cornerRadius: 13))
                     .accessibilityIdentifier("pairing-link-input")
-                Button(model.isPairing ? "Connecting…" : "Connect") { Task { await model.pair(link: link); if model.pairing != nil { dismiss() } } }
+                Button(model.isPairing ? "Connecting…" : "Connect") { Task { if await model.open(link: link) { dismiss() } } }
                     .buttonStyle(ActionButtonStyle(prominent: true))
                     .disabled(link.isEmpty || model.isPairing)
                     .accessibilityIdentifier("connect-button")
@@ -561,7 +594,7 @@ private struct PairingSheet: View {
             .sheet(isPresented: $scanning) {
                 QRScannerView { scanned in
                     scanning = false
-                    Task { await model.pair(link: scanned); if model.pairing != nil { dismiss() } }
+                    Task { if await model.open(link: scanned) { dismiss() } }
                 }
                 .ignoresSafeArea()
             }

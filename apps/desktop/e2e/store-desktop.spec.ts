@@ -34,6 +34,10 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
     await page.getByLabel("Connection link", { exact: true }).fill(await pairingLink(host));
     await page.getByRole("button", { name: "Connect to my Mac" }).click();
     await expect(tid(page, "draft-view")).toBeVisible();
+    expect(await page.evaluate(async () => {
+      try { await (window as any).modexHost.demo("start"); return false; } catch { return true; }
+    })).toBe(true);
+    await expect(tid(page, "draft-view")).toBeVisible();
     await tid(page, "composer-input").fill("Build the demo through the Store host");
     await page.keyboard.press("Meta+Enter");
     await expect(items(page, "approval").first()).toBeVisible();

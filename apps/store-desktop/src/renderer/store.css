@@ -1,4 +1,12 @@
 .store-workspace { height: 100vh; }
+.store-demo-workspace { padding-top: 62px; }
+.store-demo-workspace > .app { height: 100%; }
+.store-demo-banner { position: absolute; inset: 0 0 auto; min-height: 62px; display: flex; align-items: center; gap: 12px; padding: 8px 18px 8px 84px; background: var(--bg-elevated); color: var(--text-1); border-bottom: 1px solid var(--border-pane); z-index: 10; }
+.store-demo-banner > div { display: grid; gap: 4px; flex: 1; font-size: 12px; }
+.store-demo-banner span { font-size: 11px; color: var(--text-3); }
+.store-demo-banner button, .host-demo { background: transparent; color: #f386a1; border: 1px solid #f386a160; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+.store-demo-banner button:focus-visible { outline: 2px solid #f386a1; outline-offset: 3px; }
+.host-demo { width: 100%; display: flex; justify-content: space-between; margin-top: 24px; min-height: 48px; align-items: center; font-weight: 600; }
 .host-connection { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 55% 20%, #1c1c302e, transparent 65%), #080c17f7; overflow: auto; padding: 60px 24px; color: #f3f1f5; }
 .host-titlebar { position: fixed; inset: 0 0 auto; height: 42px; -webkit-app-region: drag; }
 .host-card { width: min(100%, 440px); }

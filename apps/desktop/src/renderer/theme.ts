@@ -8,8 +8,8 @@ export function restoreTheme(): void {
   applyTheme(theme);
 }
 
-export function applyTheme(theme: Theme): void {
-  try { localStorage.setItem(CACHE_KEY, theme); } catch { /* Settings still persist in main. */ }
+export function applyTheme(theme: Theme, persist = true): void {
+  if (persist) try { localStorage.setItem(CACHE_KEY, theme); } catch { /* Settings still persist in main. */ }
   const root = document.documentElement;
   if (root.dataset.theme === theme) return;
   const style = document.createElement("style");

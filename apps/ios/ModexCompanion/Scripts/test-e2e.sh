@@ -34,4 +34,4 @@ xcodebuild -quiet -project ModexCompanion.xcodeproj -scheme ModexCompanion \
 xctestrun="$(find "$derived_data/Build/Products" -maxdepth 1 -name 'ModexCompanion_*.xctestrun' -print -quit)"
 if [[ -z "$xctestrun" ]]; then echo "Xcode did not create an iPhone test plan." >&2; exit 1; fi
 xcodebuild -xctestrun "$xctestrun" -destination "$destination" \
-  -parallel-testing-enabled NO -only-testing:ModexCompanionUITests/CompanionFlowTests test-without-building
+  -parallel-testing-enabled NO -only-testing:ModexCompanionUITests/DemoWorkspaceTests -only-testing:ModexCompanionUITests/CompanionFlowTests test-without-building
