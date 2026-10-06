@@ -105,7 +105,11 @@ jobs:
         run: scripts/release-mac.sh
 
       - name: E2E against the packaged app
-        run: npm run test:e2e
+        run: |
+          # Store integration specs also launch the source client using development Electron.
+          npm run build -w @modex/store-desktop
+          node -e "console.log(require('electron'))"
+          npm run test:e2e
         env:
           CI: "1"
           MODEX_PACKAGED_APP: ${{ github.workspace }}/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex
