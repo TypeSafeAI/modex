@@ -176,7 +176,7 @@ test.describe("Phase 3 · shell", () => {
     const project = await box(tid(page, "project-toggle").first());
     expect(project.y).toBe(166);
     const row = await box(tid(page, "thread-row").first());
-    expect([row.x, row.y, row.width, row.height]).toEqual([57, 197, 213, 30]); // x 57–269, 31 px pitch from the project row
+    expect([row.x, row.y, row.width, row.height]).toEqual([57, 197, 213, 72]); // title, provider/model, and checkout/PR metadata
     expect(await css(tid(page, "thread-row").first(), "border-top-left-radius")).toBe("10px");
     const label = await box(tid(page, "thread-row-title").first());
     near(label.x, 89);

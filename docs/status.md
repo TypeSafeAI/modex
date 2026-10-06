@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-05._
+_Last updated 2026-10-06._
 
 ## Shipped
 
@@ -141,6 +141,17 @@ and exposes GitHub in the main navigation on desktop and mobile.
   terminal, and isolated browser pages run inside tabs. [Design and verification](reviews/2026-10-05-right-workspace.md).
 
 ## In flight
+
+- **v0.0.8 standalone macOS release.** The release branch starts from current `main` and
+  adds provider/model, live branch and GitHub PR state to every visible thread in the left
+  sidebar. It includes the merged tabbed workspace, empty-screen polish and failure recovery.
+  Source verification, signed/notarized candidate verification and release notes are tracked
+  in [the release ledger](reviews/2026-10-06-v0.0.8-release-review.md). v0.0.7 remains the
+  published release until the protected release workflow and downloaded-artifact checks pass.
+  PR #126 is merged; the first release run passed signing and all 111 standalone desktop
+  tests, but three Store integration tests timed out because the release job had not built
+  their source client. The release job now prepares that client and development Electron
+  before the packaged suite. Publication remains gated on a successful corrected run.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's

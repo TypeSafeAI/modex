@@ -11,6 +11,21 @@ function profileEntitlement(metadata, key) {
   return metadata?.Entitlements?.[key] ?? metadata?.Entitlements?.[`com.apple.${key}`];
 }
 
+function hasStoreDistributionType(metadata) {
+  if (metadata?.ProfileDistributionType === 'STORE') return true;
+  const encodedProfile = metadata?.['DER-Encoded-Profile'];
+  if (typeof encodedProfile !== 'string') return false;
+  let payload;
+  try {
+    payload = Buffer.from(encodedProfile, 'base64').toString('utf8');
+  } catch {
+    return false;
+  }
+  const marker = 'ProfileDistributionType';
+  const markerIndex = payload.indexOf(marker);
+  return markerIndex >= 0 && payload.indexOf('STORE', markerIndex + marker.length) >= 0;
+}
+
 export function validateMasProfileMetadata(metadata, options = {}) {
   if (!metadata || typeof metadata !== 'object') fail('provisioning profile did not contain a plist');
   const bundleId = options.bundleId ?? MAS_BUNDLE_ID;
@@ -19,7 +34,7 @@ export function validateMasProfileMetadata(metadata, options = {}) {
   if (!Array.isArray(metadata.Platform) || !metadata.Platform.includes('OSX')) {
     fail('provisioning profile is not for macOS (Platform must include OSX)');
   }
-  if (metadata.ProfileDistributionType !== 'STORE') {
+  if (!hasStoreDistributionType(metadata)) {
     fail('provisioning profile is not a Mac App Store profile');
   }
   if (!Array.isArray(metadata.TeamIdentifier) || !metadata.TeamIdentifier.includes(teamId)) {

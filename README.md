@@ -35,6 +35,12 @@ modex/
   the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
   row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
   free-text entry.
+- **Thread details at a glance.** The left sidebar shows each thread's provider, model and
+  current checkout branch, plus a linked draft/open/merged/closed PR when available. GitHub
+  metadata uses your signed-in `gh` CLI, refreshes on app focus and once a minute, and is
+  cached across threads. Missing authentication or network access shows **PR unavailable**;
+  **No PR** means GitHub returned no matching pull request. GitHub.com origin/upstream
+  remotes are supported; demos, tests and browser development keep this lookup offline.
 - **⚡ Auto routing.** Turn on Auto and a fast judge — Jev, or a built-in
   heuristic when no key is configured — reads each request before the turn and picks
   the model, reasoning effort, and fast mode within the bounds you set (posture, effort
