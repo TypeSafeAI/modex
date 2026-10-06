@@ -1,6 +1,7 @@
 import { BrandMark } from "./BrandMark";
-import { useRef, useState, type ReactNode } from "react";
-import type { AppState, Thread } from "../../shared/types";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { AppState, PullRequestSummary, Thread, ThreadContext } from "../../shared/types";
+import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
@@ -103,23 +104,8 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
               {!isCollapsed && (
                 <ul className="threads">
                   {all.length === 0 && <li className="side-hint small">No threads</li>}
-                  {visible.map((t) => (
-                    <li key={t.id} className={`side-row thread-row${t.id === selected ? " selected" : ""}`} data-testid="thread-row" data-thread-id={t.id} data-status={t.status} aria-current={t.id === selected ? "true" : undefined}>
-                      <button className="thread-main" title={t.title} onClick={() => onSelect(t.id)}>
-                        <span className="side-row-label" data-testid="thread-row-title">{t.title}</span>
-                      </button>
-                      <span className="row-meta">
-                        {unsent?.[t.id] && t.id !== selected && <span className="row-glyph unsent" data-testid="thread-row-unsent" title="Unsent message"><Icon name="compose" size={14} /></span>}
-                        <RowStatus status={t.status} />
-                        {t.worktree && <span className="row-glyph" data-testid="thread-row-worktree" title={`Worktree · ${t.worktree.branch}`}><Icon name="branch" size={14} /></span>}
-                      </span>
-                      <span className="row-actions">
-                        <RowMenu label="Thread actions" testId="thread-menu">
-                          <MenuItem data-testid="thread-delete" className="danger" onClick={() => onDeleteThread(t)}>Delete thread</MenuItem>
-                        </RowMenu>
-                      </span>
-                    </li>
-                  ))}
+                  {visible.map((t) => <ThreadRow key={t.id} thread={t} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])}
+                    onSelect={() => onSelect(t.id)} onDelete={() => onDeleteThread(t)} />)}
                   {!q && matches.length > THREADS_PER_PROJECT && selectedIndex < THREADS_PER_PROJECT && (
                     <li>
                       <button className="side-row show-more" data-testid="show-more" aria-expanded={Boolean(expanded[p.id])} onClick={() => setExpanded((x) => ({ ...x, [p.id]: !x[p.id] }))}>
@@ -135,6 +121,74 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
       </nav>
     </aside>
   );
+}
+
+function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
+  thread: Thread; selected: boolean; unsent: boolean; onSelect: () => void; onDelete: () => void;
+}) {
+  const [context, setContext] = useState<ThreadContext | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
+      try {
+        const result = await bridge.invoke("thread:context", { threadId: t.id });
+        if (active) { setContext(result); setFailed(false); }
+      } catch { if (active) { setContext(null); setFailed(true); } }
+      finally { pending = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 60_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const reconnect = bridge.onReconnect?.(() => { setContext(null); void refresh(); });
+    return () => { active = false; clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); reconnect?.(); };
+  }, [t.id, t.cwd, t.status]);
+
+  const provider = t.backend === "claude" ? "Claude Code" : t.backend === "codex" ? "Codex" : "Mock";
+  const model = t.model || "Default model";
+  const pr = context?.pullRequest;
+  const prLabel = pr ? pullRequestLabel(pr) : failed ? "PR unavailable" : "Loading…";
+  const prTitle = pr && "number" in pr ? `${prLabel} · ${pr.title}` : pr && "detail" in pr ? pr.detail : "Reading checkout and pull request status";
+  const branch = context ? context.isRepo ? context.branch ?? "Detached HEAD" : "Local folder" : failed ? "Status unavailable" : "Checking branch…";
+  return (
+    <li className={`side-row thread-row${selected ? " selected" : ""}`} data-testid="thread-row" data-thread-id={t.id} data-status={t.status} aria-current={selected ? "true" : undefined}>
+      <button className="thread-main" title={t.title} aria-label={t.title} aria-describedby={`thread-provider-${t.id}`} onClick={onSelect}>
+        <span className="side-row-label" data-testid="thread-row-title">{t.title}</span>
+        <span id={`thread-provider-${t.id}`} className="thread-provider-line" title={`${t.auto ? "Auto · " : ""}${provider} · ${model}${t.effort ? ` · ${t.effort}` : ""}`}>
+          <span data-testid="thread-row-provider">{provider}</span>
+          <span aria-hidden="true">·</span>
+          <span data-testid="thread-row-model">{t.auto ? `Auto · ${model}` : model}</span>
+        </span>
+      </button>
+      <div className="thread-context-line">
+        <span className="thread-branch" title={`${t.worktree ? "Worktree" : "Checkout"} · ${branch}`}>
+          <Icon name="branch" size={11} /><span data-testid="thread-row-branch">{branch}</span>
+        </span>
+        {pr && "url" in pr
+          ? <a className="thread-pr" data-testid="thread-row-pr" data-state={pr.state} title={prTitle} href={pr.url} target="_blank" rel="noreferrer">{prLabel}</a>
+          : <span className="thread-pr" data-testid="thread-row-pr" title={prTitle}>{prLabel}</span>}
+      </div>
+      <span className="row-meta">
+        {unsent && !selected && <span className="row-glyph unsent" data-testid="thread-row-unsent" title="Unsent message"><Icon name="compose" size={14} /></span>}
+        <RowStatus status={t.status} />
+        {t.worktree && <span className="row-glyph" data-testid="thread-row-worktree" title={`Worktree · ${t.worktree.branch}`}><Icon name="branch" size={14} /></span>}
+      </span>
+      <span className="row-actions">
+        <RowMenu label="Thread actions" testId="thread-menu">
+          <MenuItem data-testid="thread-delete" className="danger" onClick={onDelete}>Delete thread</MenuItem>
+        </RowMenu>
+      </span>
+    </li>
+  );
+}
+
+function pullRequestLabel(pr: PullRequestSummary): string {
+  if ("number" in pr) return `#${pr.number} ${pr.state[0]!.toUpperCase()}${pr.state.slice(1)}`;
+  return { none: "No PR", "no-remote": "No GitHub remote", detached: "No branch PR", disabled: "PR offline", unavailable: "PR unavailable" }[pr.state];
 }
 
 /** Right-hand status on a thread row: a spinning ring while working, a dot when it needs you or failed. */

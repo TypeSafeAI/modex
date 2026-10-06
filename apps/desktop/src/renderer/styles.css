@@ -371,7 +371,23 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .project { margin-bottom: 9px; }
 .project-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 9px; padding: 0 var(--space-2) 0 7px; border-radius: inherit; }
 .threads { list-style: none; margin: 0; padding: 0; }
-.thread-main { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; padding: 0 var(--space-2) 0 32px; border-radius: inherit; }
+.thread-row { height: 72px; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 1fr 24px; align-items: stretch; }
+.thread-main { grid-column: 1; grid-row: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 3px; padding: 5px 8px 0 32px; border-radius: inherit; }
+.thread-provider-line, .thread-context-line { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--text-3); font-size: 11px; line-height: 16px; }
+.thread-provider-line > :first-child { flex: none; }
+.thread-provider-line > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-context-line { grid-column: 1 / -1; grid-row: 2; padding: 1px 8px 7px 32px; gap: 7px; }
+.thread-branch { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
+.thread-branch .icon-svg { flex: none; }
+.thread-branch > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-pr { flex: none; max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); text-decoration: none; }
+a.thread-pr { border-radius: 3px; }
+a.thread-pr:hover { text-decoration: underline; }
+.thread-pr[data-state="open"] { color: var(--ok); }
+.thread-pr[data-state="merged"] { color: var(--accent); }
+.thread-pr[data-state="closed"] { color: var(--danger); }
+.thread-row > .row-meta { grid-column: 2; grid-row: 1; align-self: start; min-width: 24px; padding-top: 10px; }
+.thread-row > .row-actions { top: 4px; bottom: auto; }
 .show-more { width: calc(100% - 8px); padding-left: 32px; color: var(--text-3); }
 .row-meta { display: flex; align-items: center; gap: 6px; flex: none; padding-right: var(--space-2); color: var(--text-3); }
 .row-glyph { display: inline-flex; }

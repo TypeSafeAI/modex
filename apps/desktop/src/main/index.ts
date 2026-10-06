@@ -1,4 +1,5 @@
 import { WorkspaceBrowser } from "./workspace-browser.js";
+import { ThreadContextReader } from "./engine/thread-context.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
@@ -70,6 +71,7 @@ const pathReady = hydratePath(process.env).then(
 
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
+const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
   enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
@@ -202,6 +204,7 @@ handle("project:branch", async ({ projectId }) => {
   return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
 });
 handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
+handle("thread:context", async ({ threadId }) => { await pathReady; return threadContexts.read(cwdFor(threadId)); });
 handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
 handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));
