@@ -3,6 +3,7 @@ import XCTest
 
 final class CompanionFlowTests: XCTestCase {
     func testPairApproveAndFollowUpThroughTheMac() throws {
+        continueAfterFailure = false
         guard let file = Bundle(for: Self.self).url(forResource: "LocalPairing", withExtension: "json"),
               let data = try? Data(contentsOf: file),
               let fixture = try? JSONDecoder().decode(Fixture.self, from: data) else {
@@ -43,8 +44,15 @@ final class CompanionFlowTests: XCTestCase {
         let mobileSkill = app.staticTexts["$mobile-check"]
         XCTAssertTrue(mobileSkill.waitForExistence(timeout: 10), "The Mac's project skill should appear for Codex.")
         mobileSkill.tap()
+        XCTAssertTrue(commandSearch.waitForNonExistence(timeout: 10), "The skill sheet must finish dismissing before submitting.")
+        let createThread = app.buttons["create-thread"]
+        let readyToCreate = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"),
+            object: createThread
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [readyToCreate], timeout: 10), .completed, "Create thread must be ready for interaction.")
         capture(app, name: "New thread on iPhone")
-        app.buttons["create-thread"].tap()
+        createThread.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Start from phone $mobile-check")).firstMatch.waitForExistence(timeout: 20))
         app.buttons["Back to threads"].tap()
 
