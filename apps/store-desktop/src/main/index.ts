@@ -100,7 +100,7 @@ app.whenReady().then(() => {
   });
   function createWindow(): void {
     nativeTheme.themeSource = "dark";
-    win = new BrowserWindow({ width: 1380, height: 880, minWidth: 900, minHeight: 600, title: "Modex Store Preview", backgroundColor: "#080c17", titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 14 }, show: false,
+    win = new BrowserWindow({ width: 1380, height: 880, minWidth: 900, minHeight: 600, title: "Modex", backgroundColor: "#080c17", titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 14 }, show: false,
       webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.webContents.on("will-navigate", (event) => event.preventDefault());
     win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); return { action: "deny" }; });
