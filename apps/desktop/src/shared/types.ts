@@ -303,6 +303,17 @@ export interface ChangesSnapshot {
   files: ChangedFile[];
 }
 
+export type PullRequestSummary =
+  | { state: "open" | "draft" | "merged" | "closed"; number: number; title: string; url: string }
+  | { state: "none" | "no-remote" | "detached" | "disabled" | "unavailable"; detail: string };
+
+/** Live checkout context; never persisted on the thread or inferred from an old worktree name. */
+export interface ThreadContext {
+  isRepo: boolean;
+  branch: string | null;
+  pullRequest: PullRequestSummary;
+}
+
 export const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: "chat", label: "Chat", hint: "Read-only. Asks before any command or edit." },
   { id: "agent", label: "Agent", hint: "Edits and runs commands inside the project; asks to go outside it." },
@@ -405,6 +416,7 @@ export interface BridgeCommands {
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };
   /** A project checkout's current branch, for a draft's context strip; null outside a git repository. */
   "project:branch": { req: { projectId: string }; res: string | null };
+  "thread:context": { req: { threadId: string }; res: ThreadContext };
   /** Opens (or reattaches to) the thread's shell; cols/rows are the panel's current size. */
   "terminal:open": { req: { threadId: string; cols: number; rows: number }; res: TerminalSnapshot };
   "terminal:write": { req: { threadId: string; sessionId: string; data: string }; res: void };

@@ -1,4 +1,5 @@
 import { cliHealth } from "./engine/cli-path.js";
+import { ThreadContextReader } from "./engine/thread-context.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 import type { Store } from "./engine/store.js";
 import type { ThreadRunner } from "./engine/runner.js";
@@ -25,6 +26,7 @@ export function registerCommands(handle: RegisterCommand, {
   openTerminal: (path: string) => Promise<void>;
 }): void {
   const sessionCliSettings = store.settings;
+  const threadContexts = new ThreadContextReader({ enabled: false });
   function cwdFor(threadId: string): string {
     const thread = store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
@@ -77,6 +79,7 @@ export function registerCommands(handle: RegisterCommand, {
     return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
   });
   handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
+  handle("thread:context", ({ threadId }) => threadContexts.read(cwdFor(threadId)));
   handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
   handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
   handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));
