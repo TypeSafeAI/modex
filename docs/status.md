@@ -162,7 +162,10 @@ and exposes GitHub in the main navigation on desktop and mobile.
   required Mac Store profile and installer certificate are still missing locally.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
-  threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
+  threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
+  Mac keeps CLI execution. A compact provider-aware picker exposes Claude skills and custom
+  slash commands plus Codex skills discovered from the project and user skill directories;
+  no paths or command bodies leave the Mac.
   Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
   passed Apple validation, uploaded, and reached `VALID` processing in App Store Connect.
   Build 2 fixes first-run Mac TLS compatibility, pending-request revocation, stale responses,

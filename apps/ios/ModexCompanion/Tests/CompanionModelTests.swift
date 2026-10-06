@@ -159,6 +159,40 @@ import XCTest
         XCTAssertEqual(model.draft, "Keep this newer draft")
     }
 
+    func testCreateThreadSelectsTheNewThreadAndClearsOnlyTheSubmittedDraft() async {
+        let (model, client) = fixture()
+        model.newThreadDraft = "Build the mobile flow"
+        client.createdThread = CompanionThread(id: "new", projectId: "p", title: "Build the mobile flow", backend: "codex", status: "idle", updatedAt: "now")
+
+        _ = await model.createThread(projectId: "p", worktree: true, provider: "claude")
+
+        XCTAssertEqual(client.createdProjectId, "p")
+        XCTAssertEqual(client.createdText, "Build the mobile flow")
+        XCTAssertEqual(client.createdWorktree, true)
+        XCTAssertEqual(client.createdProvider, "claude")
+        XCTAssertEqual(model.selectedThreadId, "new")
+        XCTAssertEqual(model.newThreadDraft, "")
+    }
+
+    func testCommandResultsStayScopedToTheirProjectAndProvider() async {
+        let (model, client) = fixture()
+        let codex = Pending<[CompanionCommand]>(requested: expectation(description: "codex commands"))
+        let claude = Pending<[CompanionCommand]>(requested: expectation(description: "claude commands"))
+        await client.enqueueCommands(codex)
+        await client.enqueueCommands(claude)
+        let oldRequest = Task { await model.loadCommands(projectId: "p", backend: "codex") }
+        await fulfillment(of: [codex.requested], timeout: 2)
+        let currentRequest = Task { await model.loadCommands(projectId: "p", backend: "claude") }
+        await fulfillment(of: [claude.requested], timeout: 2)
+        XCTAssertTrue(model.availableCommands(projectId: "p", backend: "claude").isEmpty)
+        await claude.resolve(.success([CompanionCommand(id: "command:check", title: "check", detail: "Check", insertion: "/check ", kind: "command")]))
+        await currentRequest.value
+        await codex.resolve(.success([CompanionCommand(id: "skill:verify", title: "verify", detail: "Verify", insertion: "$verify ", kind: "skill")]))
+        await oldRequest.value
+        XCTAssertEqual(model.availableCommands(projectId: "p", backend: "claude").map(\.id), ["command:check"])
+        XCTAssertTrue(model.availableCommands(projectId: "p", backend: "codex").isEmpty)
+    }
+
     func testDisconnectResetsPendingActionsAndIgnoresTheirErrors() async {
         let (model, client) = fixture()
         await model.select("a")
@@ -248,11 +282,21 @@ private actor ControlledClient: CompanionClient {
     private var snapshots: [Pending<CompanionSnapshot>] = []
     private var sends: [Pending<Void>] = []
     private var answers: [Pending<Void>] = []
+    private var commandLists: [Pending<[CompanionCommand]>] = []
+    nonisolated(unsafe) var createdThread: CompanionThread?
+    nonisolated(unsafe) var createdProjectId: String?
+    nonisolated(unsafe) var createdText: String?
+    nonisolated(unsafe) var createdWorktree: Bool?
+    nonisolated(unsafe) var createdProvider: String?
     func enqueueSnapshot(_ pending: Pending<CompanionSnapshot>) { snapshots.append(pending) }
     func enqueueSend(_ pending: Pending<Void>) { sends.append(pending) }
     func enqueueAnswer(_ pending: Pending<Void>) { answers.append(pending) }
+    func enqueueCommands(_ pending: Pending<[CompanionCommand]>) { commandLists.append(pending) }
     func snapshot(threadId: String?) async throws -> CompanionSnapshot {
         if !snapshots.isEmpty { return try await snapshots.removeFirst().value() }
+        if let createdThread {
+            return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: [createdThread], items: [])
+        }
         return makeSnapshot(threadId)
     }
     func send(threadId: String, text: String) async throws {
@@ -260,6 +304,17 @@ private actor ControlledClient: CompanionClient {
     }
     func answer(threadId: String, itemId: String, approve: Bool) async throws {
         if !answers.isEmpty { try await answers.removeFirst().value() }
+    }
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread {
+        createdProjectId = projectId
+        createdText = text
+        createdWorktree = worktree
+        createdProvider = provider
+        return createdThread!
+    }
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand] {
+        if !commandLists.isEmpty { return try await commandLists.removeFirst().value() }
+        return []
     }
 }
 

@@ -3,6 +3,12 @@ import XCTest
 @testable import ModexCompanion
 
 final class PairingTests: XCTestCase {
+    func testOlderSnapshotDefaultsToCodexWithoutAutoRouting() throws {
+        let snapshot = try JSONDecoder().decode(CompanionSnapshot.self, from: Data(#"{"projects":[],"threads":[],"items":[]}"#.utf8))
+        XCTAssertEqual(snapshot.defaultBackend, "codex")
+        XCTAssertFalse(snapshot.autoByDefault)
+    }
+
     @MainActor func testDiscoveryAcceptsOnlyLocalEndpointsForTheSavedIdentity() {
         let fingerprint = String(repeating: "b", count: 64)
         let good = ["fingerprint": fingerprint, "url": "https://192.168.1.45:43210"]

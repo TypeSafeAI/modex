@@ -99,6 +99,7 @@ const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
+  create: async (projectId, options) => { await pathReady; return runner.createThread(projectId, options); },
   send: async (id, text) => { await pathReady; return startTurn(id, runner.send(id, text)); },
   answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
 });

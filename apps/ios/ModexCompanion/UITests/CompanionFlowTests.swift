@@ -29,6 +29,25 @@ final class CompanionFlowTests: XCTestCase {
         let thread = app.buttons["thread-abcdef12"]
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "The paired Mac's thread should appear.")
         capture(app, name: "Paired workspace")
+
+        app.buttons["new-thread"].tap()
+        let newThreadInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
+        XCTAssertTrue(newThreadInput.waitForExistence(timeout: 10))
+        newThreadInput.tap()
+        newThreadInput.typeText("Start from phone")
+        app.buttons["new-thread-commands"].tap()
+        let commandSearch = app.textFields["Find a skill or command"]
+        XCTAssertTrue(commandSearch.waitForExistence(timeout: 10))
+        commandSearch.tap()
+        commandSearch.typeText("mobile-check")
+        let mobileSkill = app.staticTexts["$mobile-check"]
+        XCTAssertTrue(mobileSkill.waitForExistence(timeout: 10), "The Mac's project skill should appear for Codex.")
+        mobileSkill.tap()
+        capture(app, name: "New thread on iPhone")
+        app.buttons["create-thread"].tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Start from phone $mobile-check")).firstMatch.waitForExistence(timeout: 20))
+        app.buttons["Back to threads"].tap()
+
         app.terminate()
         app.launch()
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "Pairing must survive relaunch without scanning again.")

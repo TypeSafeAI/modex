@@ -6,13 +6,15 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { AddressInfo } from "node:net";
-import type { AppState, ApprovalAnswer, ThreadItem } from "../../shared/types.js";
+import type { AppState, ApprovalAnswer, BackendId, Thread, ThreadItem } from "../../shared/types.js";
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
+import { discoverMobileCommands } from "./mobile-commands.js";
 
 interface CompanionSource {
   state(): AppState;
   items(threadId: string): ThreadItem[];
   status(threadId: string): string;
+  create?(projectId: string, options: { worktree: boolean; backend?: BackendId; auto?: boolean }): Promise<Thread>;
   send(threadId: string, text: string): Promise<{ ok: boolean; error?: string }>;
   answer(threadId: string, itemId: string, answer: ApprovalAnswer): void;
 }
@@ -218,9 +220,42 @@ export class CompanionServer {
       // The phone can then leave that transcript without treating this as a lost connection.
       this.reply(res, 200, {
         projects: state.projects.map((p) => ({ id: p.id, name: p.name })),
-        threads: state.threads.map((t) => ({ id: t.id, projectId: t.projectId, title: t.title, backend: t.backend, status: this.source.status(t.id), updatedAt: t.updatedAt })),
+        threads: state.threads.map((t) => mobileThread(t, this.source.status(t.id))),
         items: thread ? this.source.items(thread.id).map(mobileItem) : [],
+        defaultBackend: state.settings.default_backend ?? "codex",
+        autoByDefault: state.settings.routing?.auto_by_default ?? false,
       });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/v1/commands") {
+      const state = this.source.state();
+      const project = state.projects.find((candidate) => candidate.id === url.searchParams.get("projectId"));
+      const backend = url.searchParams.get("backend");
+      if (!project) { this.reply(res, 404, { error: "Project not found." }); return; }
+      if (backend !== "codex" && backend !== "claude" && backend !== "mock") { this.reply(res, 400, { error: "Choose a valid provider." }); return; }
+      this.reply(res, 200, { commands: discoverMobileCommands(os.homedir(), project.path, backend) });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v1/threads") {
+      let input: Record<string, unknown>;
+      try { input = await this.body(req); }
+      catch { this.reply(res, 400, { error: "Invalid request body." }); return; }
+      if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
+      const projectId = input.projectId;
+      const value = input.text;
+      if (typeof projectId !== "string" || !this.source.state().projects.some((project) => project.id === projectId)) { this.reply(res, 404, { error: "Project not found." }); return; }
+      if (typeof value !== "string" || !value.trim() || value.length > 20_000) { this.reply(res, 400, { error: "Enter a message under 20,000 characters." }); return; }
+      if (typeof input.worktree !== "boolean") { this.reply(res, 400, { error: "Choose Local or Worktree." }); return; }
+      const backend = input.backend;
+      if (backend !== undefined && backend !== "codex" && backend !== "claude" && backend !== "mock") { this.reply(res, 400, { error: "Choose a valid provider." }); return; }
+      if (typeof input.auto !== "boolean") { this.reply(res, 400, { error: "Choose Auto or a provider." }); return; }
+      if (!this.source.create) { this.reply(res, 501, { error: "Thread creation is unavailable." }); return; }
+      const thread = await this.source.create(projectId, { worktree: input.worktree, ...(backend ? { backend } : {}), auto: input.auto });
+      if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
+      const result = await this.source.send(thread.id, value.trim());
+      if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
+      if (!result.ok) { this.reply(res, 409, { error: "The first turn could not start on your Mac." }); return; }
+      this.reply(res, 201, { thread: mobileThread(thread, this.source.status(thread.id)) });
       return;
     }
     const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer)$/.exec(url.pathname);
@@ -238,7 +273,8 @@ export class CompanionServer {
       if (typeof value !== "string" || !value.trim() || value.length > 20_000) { this.reply(res, 400, { error: "Enter a message under 20,000 characters." }); return; }
       if (this.source.status(threadId) !== "idle") { this.reply(res, 409, { error: "This thread is busy." }); return; }
       const result = await this.source.send(threadId, value.trim());
-      this.reply(res, result.ok ? 202 : 409, result);
+      if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
+      this.reply(res, result.ok ? 202 : 409, result.ok ? { ok: true } : { ok: false, error: "The follow-up could not start on your Mac." });
       return;
     }
     const itemId = input.itemId;
@@ -249,6 +285,10 @@ export class CompanionServer {
     this.source.answer(threadId, itemId, answer);
     this.reply(res, 200, { ok: true });
   }
+}
+
+function mobileThread(thread: Thread, status: string): Record<string, unknown> {
+  return { id: thread.id, projectId: thread.projectId, title: thread.title, backend: thread.backend, status, updatedAt: thread.updatedAt };
 }
 
 function mobileItem(item: ThreadItem): Record<string, unknown> {

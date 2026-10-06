@@ -13,6 +13,7 @@ private enum Palette {
 struct CompanionRootView: View {
     @EnvironmentObject private var model: CompanionModel
     @State private var showPairing = false
+    @State private var showNewThread = false
     @State private var showForgetConfirmation = false
     @State private var path: [String] = []
 
@@ -32,6 +33,12 @@ struct CompanionRootView: View {
         }
         .tint(Palette.accent)
         .sheet(isPresented: $showPairing) { PairingSheet() }
+        .sheet(isPresented: $showNewThread) {
+            NewThreadSheet { id in
+                showNewThread = false
+                path.append(id)
+            }
+        }
         .onChange(of: model.snapshot.threads.map(\.id)) { _, ids in
             path.removeAll { !ids.contains($0) }
         }
@@ -94,6 +101,13 @@ struct CompanionRootView: View {
                 HStack {
                     brand
                     Spacer()
+                    Button { showNewThread = true } label: {
+                        Image(systemName: "square.and.pencil").font(.system(size: 17, weight: .semibold))
+                            .frame(width: 44, height: 44).background(Palette.accent, in: RoundedRectangle(cornerRadius: 13))
+                            .foregroundStyle(Palette.background)
+                    }
+                    .accessibilityLabel("New thread")
+                    .accessibilityIdentifier("new-thread")
                     Menu {
                         Button("Forget paired Mac…", role: .destructive) { showForgetConfirmation = true }
                     } label: {
@@ -127,7 +141,9 @@ struct CompanionRootView: View {
                     VStack(spacing: 12) {
                         Image(systemName: "text.bubble").font(.system(size: 27, weight: .light)).foregroundStyle(Palette.accent)
                         Text("No threads yet").font(.system(size: 18, weight: .medium))
-                        Text("Start a thread on your Mac and it will appear here.").font(.system(size: 13)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
+                        Text("Start from your iPhone or Mac.").font(.system(size: 13)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
+                        Button("New thread") { showNewThread = true }
+                            .buttonStyle(ActionButtonStyle(prominent: true))
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 58)
                     .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20))
@@ -194,6 +210,7 @@ private struct ThreadDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let thread: CompanionThread
     @State private var approvalToConfirm: String?
+    @State private var showCommands = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -239,6 +256,12 @@ private struct ThreadDetailView: View {
             Button("Approve once") { if let id = approvalToConfirm { Task { await model.answer(itemId: id, approve: true) } }; approvalToConfirm = nil }
             Button("Cancel", role: .cancel) { approvalToConfirm = nil }
         } message: { Text("The action will run on your Mac in this thread.") }
+        .sheet(isPresented: $showCommands) {
+            CommandSheet(projectId: thread.projectId, backend: thread.backend) { insertion in
+                insert(insertion, into: &model.draft)
+                showCommands = false
+            }
+        }
     }
 
     private var currentStatus: String { model.snapshot.threads.first(where: { $0.id == thread.id })?.status ?? thread.status }
@@ -247,6 +270,14 @@ private struct ThreadDetailView: View {
         VStack(spacing: 0) {
             Rectangle().fill(Palette.line).frame(height: 1)
             HStack(alignment: .bottom, spacing: 11) {
+                Button { showCommands = true } label: {
+                    Text("/").font(.system(size: 18, weight: .semibold, design: .monospaced))
+                        .frame(width: 43, height: 43)
+                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line, lineWidth: 1))
+                }
+                .accessibilityLabel("Skills and commands")
+                .accessibilityIdentifier("thread-commands")
                 TextField("Send a follow-up…", text: $model.draft, axis: .vertical)
                     .lineLimit(1...5)
                     .font(.system(size: 15))
@@ -268,6 +299,158 @@ private struct ThreadDetailView: View {
         }
         .background(Palette.background)
     }
+}
+
+private struct NewThreadSheet: View {
+    @EnvironmentObject private var model: CompanionModel
+    @Environment(\.dismiss) private var dismiss
+    let onCreated: (String) -> Void
+    @State private var projectId = ""
+    @State private var worktree = false
+    @State private var provider = "codex"
+    @State private var showCommands = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("New thread").font(.system(size: 30, weight: .semibold, design: .rounded)).tracking(-1)
+                    Text("Runs on your Mac using its saved provider and model.").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                }
+                Picker("Project", selection: $projectId) {
+                    ForEach(model.snapshot.projects) { project in Text(project.name).tag(project.id) }
+                }
+                .pickerStyle(.menu)
+                .tint(.white)
+                .padding(.horizontal, 14).frame(height: 48)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 15))
+                Picker("Location", selection: $worktree) {
+                    Text("Worktree").tag(true)
+                    Text("Local").tag(false)
+                }
+                .pickerStyle(.segmented)
+                Picker("Provider", selection: $provider) {
+                    Text("Auto").tag("auto")
+                    Text("Codex").tag("codex")
+                    Text("Claude").tag("claude")
+                    if model.snapshot.defaultBackend == "mock" { Text("Mock").tag("mock") }
+                }
+                .pickerStyle(.segmented)
+                VStack(spacing: 11) {
+                    TextField("What should we build?", text: $model.newThreadDraft, axis: .vertical)
+                        .lineLimit(3...8).font(.system(size: 16)).padding(16)
+                        .accessibilityIdentifier("new-thread-input")
+                    HStack {
+                        Button { showCommands = true } label: {
+                            HStack(spacing: 7) {
+                                Text("/").font(.system(size: 15, weight: .bold, design: .monospaced))
+                                Text("Skills").font(.system(size: 13, weight: .semibold))
+                            }
+                            .padding(.horizontal, 13).frame(height: 38)
+                            .background(Palette.raised, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .accessibilityIdentifier("new-thread-commands")
+                        Spacer()
+                        Button {
+                            Task {
+                                if let id = await model.createThread(projectId: projectId, worktree: worktree, provider: provider) { onCreated(id) }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up").font(.system(size: 17, weight: .semibold))
+                                .frame(width: 42, height: 42).background(Palette.accent, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(Palette.background)
+                        }
+                        .disabled(projectId.isEmpty || model.newThreadDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.creatingThread)
+                        .accessibilityLabel("Create thread")
+                        .accessibilityIdentifier("create-thread")
+                    }.padding(.horizontal, 12).padding(.bottom, 12)
+                }
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line, lineWidth: 1))
+                Spacer()
+            }
+            .padding(22)
+            .background(Palette.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() }.foregroundStyle(Palette.muted) }
+            }
+        }
+        .presentationDetents([.large])
+        .onAppear {
+            if projectId.isEmpty { projectId = model.snapshot.projects.first?.id ?? "" }
+            provider = model.snapshot.autoByDefault ? "auto" : model.snapshot.defaultBackend
+        }
+        .sheet(isPresented: $showCommands) {
+            CommandSheet(projectId: projectId, backend: provider == "auto" ? model.snapshot.defaultBackend : provider) { insertion in
+                if provider == "auto" { provider = model.snapshot.defaultBackend }
+                insert(insertion, into: &model.newThreadDraft)
+                showCommands = false
+            }
+        }
+    }
+}
+
+private struct CommandSheet: View {
+    @EnvironmentObject private var model: CompanionModel
+    @Environment(\.dismiss) private var dismiss
+    let projectId: String
+    let backend: String
+    let onSelect: (String) -> Void
+    @State private var query = ""
+    @State private var loading = true
+
+    private var filtered: [CompanionCommand] {
+        let commands = model.availableCommands(projectId: projectId, backend: backend)
+        guard !query.isEmpty else { return commands }
+        return commands.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.detail.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Palette.muted)
+                    TextField("Find a skill or command", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
+                }
+                .padding(.horizontal, 14).frame(height: 44)
+                .background(Palette.raised, in: RoundedRectangle(cornerRadius: 14))
+                if loading {
+                    ProgressView().tint(Palette.accent).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if filtered.isEmpty {
+                    ContentUnavailableView("No commands found", systemImage: "command", description: Text("Install skills on your Mac or type a command directly."))
+                        .foregroundStyle(Palette.muted)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(filtered) { command in
+                                Button { onSelect(command.insertion) } label: {
+                                    HStack(spacing: 13) {
+                                        Text(command.insertion.trimmingCharacters(in: .whitespaces))
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced)).foregroundStyle(Palette.accent)
+                                            .frame(width: 112, alignment: .leading).lineLimit(1)
+                                        Text(command.detail).font(.system(size: 13)).foregroundStyle(Palette.muted).lineLimit(2)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(14).background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }.scrollIndicators(.hidden)
+                }
+            }
+            .padding(18).background(Palette.background.ignoresSafeArea())
+            .navigationTitle("Skills & commands").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.foregroundStyle(Palette.muted) } }
+        }
+        .presentationDetents([.medium, .large])
+        .task {
+            await model.loadCommands(projectId: projectId, backend: backend)
+            loading = false
+        }
+    }
+}
+
+private func insert(_ insertion: String, into text: inout String) {
+    text = text.isEmpty ? insertion : text + (text.last?.isWhitespace == true ? "" : " ") + insertion
 }
 
 private struct ItemView: View {
