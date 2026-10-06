@@ -1,0 +1,9 @@
+Draft reply — send only after the replacement iOS build is uploaded and its Beta App Review Information is updated. Attach modex-demo-qr.png.
+
+Thank you for identifying the access issue. We added a clearly labeled offline demo workspace in Modex Companion 0.1.0 (build 5).
+
+From the welcome screen, tap "Explore a demo workspace". No Mac, account, network connection or camera permission is required. You can browse sample threads, approve or deny the pending action, send follow-ups and receive scripted replies. Workspace options provides Reset and Leave demo.
+
+The attached non-expiring QR encodes modex://demo and opens the same workspace. The welcome-screen button provides access without scanning a second device. The demo contains no credentials and cannot replace an existing saved Mac pairing.
+
+We request acceptance of this built-in demo as review access under Guideline 2.1. Live coding execution remains on the user's privately paired Mac; the demo transparently simulates those actions. Please let us know if you need a live-host review arrangement in addition to this access.

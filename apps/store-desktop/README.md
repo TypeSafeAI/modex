@@ -9,6 +9,14 @@ explicitly started Mac host. This does not establish App Review eligibility or c
 
 ## Build and run from source
 
+For review without a host, choose **Explore a demo workspace** on the welcome screen.
+Threads, approval decisions, follow-ups, a sample file/diff and terminal input echo run
+entirely in memory. The banner labels simulated behavior and offers Reset/Leave demo.
+Real host access and saved appearance/layout preferences are preserved. Account sign-in,
+external pages and system tools explain that they need a connected workspace.
+See the [review access packet](../../docs/reviews/2026-10-06-review-demo-access.md) for the
+exact App Store Connect notes, build verification and submission state.
+
 From the repository root:
 
 ```sh

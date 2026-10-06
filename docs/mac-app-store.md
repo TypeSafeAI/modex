@@ -4,7 +4,12 @@ Requested on 2026-10-05: the full desktop experience through the Mac App Store a
 TestFlight, with the same official identity. Val selected investigation of a sandboxed
 Store front end with a separately installed, signed Mac host.
 
-**Status: a local signed, sandboxed MAS preview builds and opens; no Mac App Store/TestFlight build has been uploaded.**
+**Status: App Store Connect has processed macOS build 0.0.7 (`VALID`). A 0.0.8 candidate adds offline review access; review acceptance remains pending.**
+The live record is **Modex Mac App Store**, app ID `6819549715`, bundle
+`works.jev.modex.desktop`. On 2026-10-06, its App Store version remained
+`PREPARE_FOR_SUBMISSION`. The Mac Store profile and distribution/installer identities
+are available locally. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
+tracks the replacement build, demo instructions and remaining review steps.
 The preview implementation and evidence are in [the preview ledger](mac-store-preview-plan.md);
 [source launch and signing instructions](../apps/store-desktop/README.md) are available.
 The existing Developer ID release remains the supported full desktop app. Companion

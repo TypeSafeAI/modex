@@ -14,7 +14,7 @@ import { Rail } from "./components/Rail";
 import { Icon } from "./components/ui/Icon";
 import { useSelectionHistory } from "./history";
 import { useLayout } from "./layout";
-import { applyTheme } from "./theme";
+import { applyTheme, restoreTheme } from "./theme";
 import { applyItemEvent, type ItemEvent } from "./transcript";
 
 /** ⌃` shows or hides the thread's terminal. xterm maps no byte to it, so it reaches this handler even from inside the shell. */
@@ -23,9 +23,10 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 // xterm is only loaded once a terminal is first opened.
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 
-export function App() {
+export function App({ persistPreferences = true }: { persistPreferences?: boolean } = {}) {
   const [state, setState] = useState<AppState | null>(null);
-  useLayoutEffect(() => { if (state) applyTheme(state.settings.theme); }, [state?.settings.theme]);
+  useLayoutEffect(() => { if (state) applyTheme(state.settings.theme, persistPreferences); }, [state?.settings.theme, persistPreferences]);
+  useLayoutEffect(() => () => { if (!persistPreferences) restoreTheme(); }, [persistPreferences]);
   const [connectionRevision, setConnectionRevision] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
@@ -61,7 +62,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCompanion, setShowCompanion] = useState(false);
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
-  const [layout, setLayout] = useLayout();
+  const [layout, setLayout] = useLayout(persistPreferences);
   const showChanges = layout.changes;
   const sidebarOpen = layout.sidebar;
   const streamerMode = layout.streamerMode;

@@ -7,7 +7,7 @@ import "../../../desktop/src/renderer/tokens.css";
 import "../../../desktop/src/renderer/styles.css";
 import "./store.css";
 
-type Status = { state: "unpaired" | "authorizing" | "connecting" | "connected" | "offline"; detail: string; confirmationCode?: string };
+type Status = { state: "unpaired" | "authorizing" | "connecting" | "connected" | "offline" | "demo"; detail: string; confirmationCode?: string; workspaceId?: string };
 type Discovery = { available: boolean; installed: boolean; detail: string };
 declare global {
   interface Window {
@@ -17,6 +17,7 @@ declare global {
       connect(): Promise<void>;
       pair(uri: string): Promise<void>;
       disconnect(): Promise<void>;
+      demo(action: "start" | "reset" | "leave"): Promise<void>;
       onStatus(cb: (status: Status) => void): () => void;
     };
   }
@@ -31,7 +32,7 @@ function StoreShell() {
   useEffect(() => {
     let sawEvent = false;
     let live = true;
-    const update = (value: Status) => { if (!live) return; setStatus(value); if (value.state === "connected") setOpened(true); };
+    const update = (value: Status) => { if (!live) return; setStatus(value); if (value.state === "connected" || value.state === "demo") setOpened(true); else if (value.state === "unpaired") setOpened(false); };
     const unsubscribe = window.modexHost.onStatus((value) => { sawEvent = true; update(value); });
     void window.modexHost.status().then((value) => { if (!sawEvent) update(value); }).catch((error: Error) => setError(error.message));
     return () => { live = false; unsubscribe(); };
@@ -48,7 +49,14 @@ function StoreShell() {
     void check();
     return () => { live = false; clearTimeout(timer); };
   }, [status.state]);
-  const connected = status.state === "connected";
+  const inDemo = status.state === "demo";
+  const connected = status.state === "connected" || inDemo;
+  async function demo(action: "start" | "reset" | "leave") {
+    setBusy(true); setError("");
+    try { await window.modexHost.demo(action); }
+    catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }
   async function pair(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
     try { await window.modexHost.pair(uri.trim()); setUri(""); }
@@ -62,7 +70,15 @@ function StoreShell() {
     finally { setBusy(false); }
   }
   return <>
-    {opened && <div className="store-workspace" inert={!connected}><App /></div>}
+    {opened && <div className={`store-workspace${inDemo ? " store-demo-workspace" : ""}`} inert={!connected}>
+      {inDemo && <section className="store-demo-banner" aria-label="Demo workspace">
+        <div><strong>Offline demo</strong><span>No host connected · replies and files are simulated</span></div>
+        <button disabled={busy} onClick={() => void demo("reset")}>Reset demo</button>
+        <button disabled={busy} onClick={() => void demo("leave")}>Leave demo</button>
+        {error && <span role="alert">{error}</span>}
+      </section>}
+      <App key={status.workspaceId ?? "host"} persistPreferences={!inDemo} />
+    </div>}
     {!connected && <main className="host-connection" aria-labelledby="host-title">
       <div className="host-titlebar" />
       <section className="host-card">
@@ -71,6 +87,8 @@ function StoreShell() {
         <h1 id="host-title">{status.state === "offline" ? "Your work is still here." : "Make yourself at home."}</h1>
         <p className="host-description" role="status">{status.detail}</p>
         {status.state === "unpaired" ? <>
+          <button className="host-demo" disabled={busy} onClick={() => void demo("start")}>Explore a demo workspace<span aria-hidden="true">↗</span></button>
+          <p className="host-footnote">Try threads, approvals and follow-ups offline. No host, account or connection code needed. Demo changes stay in memory.</p>
           <div className="host-detected" role="status"><span className={discovery?.available ? "host-ready" : ""} />{discovery?.detail ?? "Looking for Modex on this Mac…"}</div>
           <button className="host-connect" disabled={busy || !discovery || (!discovery.available && !discovery.installed)} onClick={() => void connect()}>{busy ? "Opening your host…" : discovery?.installed ? "Open Modex and connect" : "Connect to this Mac"}<span aria-hidden="true">↗</span></button>
           <p className="host-footnote">Confirm access once in the host. Modex then uses the accounts already signed in on your Mac.</p>

@@ -12,6 +12,8 @@ import SwiftUI
     @Published var sending = false
     @Published var answeringId: String?
     @Published private(set) var isPairing = false
+    /// True while showing the offline scripted workspace. It never coexists with a saved pairing.
+    @Published private(set) var isDemo = false
 
     private var api: (any CompanionClient)?
     private let store: any PairingStorage
@@ -36,16 +38,21 @@ import SwiftUI
         if let pairing { api = makeClient(pairing) }
     }
 
+    /// Whether there is a workspace to show: a paired Mac or the demo.
+    var hasWorkspace: Bool { pairing != nil || isDemo }
+
     func startPolling() {
-        guard pollTask == nil, let pairing else { return }
-        connected = false
-        discovery.start(fingerprint: pairing.fingerprint) { [weak self] url in
-            guard let self, Pairing.validEndpoint(url) else { return }
-            if self.discoveredURL != url { self.retrySavedEndpoint = false }
-            self.discoveredURL = url
-            if !self.connected {
-                self.discoveryTask?.cancel()
-                self.discoveryTask = Task { await self.refresh() }
+        guard pollTask == nil, api != nil else { return }
+        if let pairing {
+            connected = false
+            discovery.start(fingerprint: pairing.fingerprint) { [weak self] url in
+                guard let self, Pairing.validEndpoint(url) else { return }
+                if self.discoveredURL != url { self.retrySavedEndpoint = false }
+                self.discoveredURL = url
+                if !self.connected {
+                    self.discoveryTask?.cancel()
+                    self.discoveryTask = Task { await self.refresh() }
+                }
             }
         }
         pollTask = Task {
@@ -64,6 +71,20 @@ import SwiftUI
         discovery.stop()
     }
 
+    /// Demo QR links carry no credentials. Every other link still uses pinned Mac pairing.
+    func open(link: String) async -> Bool {
+        if link.trimmingCharacters(in: .whitespacesAndNewlines) == "modex://demo" {
+            guard pairing == nil, !isPairing else {
+                error = "Keep your paired workspace, or forget that Mac before opening the demo."
+                return false
+            }
+            if !isDemo { await startDemo() }
+            return isDemo
+        }
+        await pair(link: link)
+        return pairing != nil && error == nil
+    }
+
     func pair(link: String) async {
         pairingRevision += 1
         let attempt = pairingRevision
@@ -80,6 +101,7 @@ import SwiftUI
             stopPolling()
             invalidateConnection()
             pairing = candidate
+            isDemo = false
             api?.invalidate()
             api = client
             adopted = true
@@ -98,13 +120,39 @@ import SwiftUI
         }
     }
 
+    /// Open the scripted demo workspace. It replaces nothing persistent: the Keychain is
+    /// untouched and leaving the demo returns to the welcome screen.
+    func startDemo() async {
+        guard pairing == nil, !isPairing else { return }
+        let connection = connectionRevision
+        let attempt = pairingRevision
+        let client = DemoCompanionClient()
+        guard let first = try? await client.snapshot(threadId: nil), pairing == nil, !isPairing,
+              connection == connectionRevision, attempt == pairingRevision, !Task.isCancelled else { return }
+        stopPolling()
+        invalidateConnection()
+        api?.invalidate()
+        api = client
+        isDemo = true
+        discoveredURL = nil
+        snapshot = first
+        selectedThreadId = nil
+        draft = ""
+        drafts = [:]
+        connected = true
+        connectionError = nil
+        error = nil
+        startPolling()
+    }
+
     func disconnect() {
         stopPolling()
         pairingRevision += 1
         isPairing = false
         invalidateConnection()
-        store.clear()
+        if pairing != nil { store.clear() }
         pairing = nil
+        isDemo = false
         api?.invalidate()
         api = nil
         discoveredURL = nil
@@ -138,9 +186,11 @@ import SwiftUI
     }
 
     func refresh() async {
-        guard let api, let pairing, !Task.isCancelled else { return }
-        let candidate = !connected && !retrySavedEndpoint && discoveredURL != nil && discoveredURL != pairing.url
-            ? Pairing(url: discoveredURL!, token: pairing.token, fingerprint: pairing.fingerprint) : nil
+        guard let api, !Task.isCancelled else { return }
+        let candidate = pairing.flatMap { pairing in
+            !connected && !retrySavedEndpoint && discoveredURL != nil && discoveredURL != pairing.url
+                ? Pairing(url: discoveredURL!, token: pairing.token, fingerprint: pairing.fingerprint) : nil
+        }
         let client = candidate.map(makeClient) ?? api
         var adopted = false
         defer { if candidate != nil && !adopted { client.invalidate() } }

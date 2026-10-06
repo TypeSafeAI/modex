@@ -7,6 +7,7 @@ import { DesktopClient, type DesktopCredentials } from "../../../desktop/src/mai
 import { desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
 import { WorkspaceBrowser } from "../../../desktop/src/main/workspace-browser.js";
 import type { BridgeCommands } from "../../../desktop/src/shared/types.js";
+import { StoreDemo } from "./demo.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const testing = !app.isPackaged && process.env.MODEX_E2E === "1";
@@ -17,6 +18,7 @@ let client: DesktopClient;
 let pairing = false;
 let storageError: string | undefined;
 let connectedBefore = false;
+let demo: StoreDemo | undefined;
 function trusted(event: IpcMainInvokeEvent): void {
   if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error("Untrusted desktop request.");
 }
@@ -41,11 +43,12 @@ app.whenReady().then(() => {
     fs.renameSync(`${credentialsFile}.tmp`, credentialsFile);
   });
   client.on("status", (status) => {
+    if (demo) return;
     if (status.state !== "connected") workspaceBrowser?.show(null);
     send("host:status", status);
   });
-  client.on("thread", (event) => send("thread:event", event));
-  client.on("terminal", (event) => send("terminal:event", event));
+  client.on("thread", (event) => { if (!demo) send("thread:event", event); });
+  client.on("terminal", (event) => { if (!demo) send("terminal:event", event); });
   client.on("connected", () => { if (connectedBefore) send("host:reconnected"); connectedBefore = true; });
   const system = (async () => {
     if (testing) return { directory: process.env.MODEX_DESKTOP_DISCOVERY_DIR, installed: undefined };
@@ -60,15 +63,31 @@ app.whenReady().then(() => {
     const hosts = directory ? await discoverDesktops(directory) : [];
     return { hosts, installed };
   };
-  ipcMain.handle("host:status", (event) => { trusted(event); return storageError ? { state: "unpaired", detail: storageError } : client.status(); });
+  const status = () => demo ? { state: "demo", detail: "Offline demo workspace", workspaceId: demo.id } : storageError ? { state: "unpaired", detail: storageError } : client.status();
+  ipcMain.handle("host:status", (event) => { trusted(event); return status(); });
+  ipcMain.handle("host:demo", (event, action: unknown) => {
+    trusted(event);
+    if (action === "leave" && demo) { demo.dispose(); demo = undefined; }
+    else if ((action === "start" && !demo) || (action === "reset" && demo)) {
+      if (pairing || client.status().state !== "unpaired") throw new Error("Finish your host connection before opening the demo.");
+      demo?.dispose();
+      let workspace: StoreDemo | undefined;
+      workspace = new StoreDemo(event => { if (workspace && demo === workspace) send("thread:event", event); }, event => { if (workspace && demo === workspace) send("terminal:event", event); });
+      demo = workspace;
+    } else throw new Error("That demo action is no longer available.");
+    workspaceBrowser?.dispose();
+    send("host:status", status());
+  });
   ipcMain.handle("host:discover", async (event) => {
     trusted(event);
+    if (demo) return { available: false, installed: false, detail: "Offline demo: no host connected." };
     const { hosts, installed } = await discover();
     return { available: hosts.length === 1, installed: !!installed && hosts.length === 0,
       detail: hosts.length > 1 ? "More than one host is open. Close the unused host, then check again." : hosts.length === 1 ? "Modex is running on this Mac. Your projects and CLI sign-ins are ready to connect." : installed ? "Modex is installed on this Mac. Open it and connect your workspace." : "Open the current Modex host preview on this Mac, then check again." };
   });
   ipcMain.handle("host:connect", async (event) => {
     trusted(event);
+    if (demo) throw new Error("Leave the demo before connecting your Mac.");
     if (pairing) throw new Error("A connection is already in progress.");
     pairing = true;
     try {
@@ -88,14 +107,16 @@ app.whenReady().then(() => {
   ipcMain.handle("host:pair", async (event, uri: unknown) => {
     trusted(event);
     if (typeof uri !== "string" || uri.length > 512) throw new Error("Paste a connection link from the host.");
+    if (demo) throw new Error("Leave the demo before connecting your Mac.");
     if (pairing) throw new Error("A connection is already in progress.");
     pairing = true;
     try { await client.pair(uri, clientId); storageError = undefined; } finally { pairing = false; }
   });
-  ipcMain.handle("host:disconnect", (event) => { trusted(event); client.disconnect(); storageError = undefined; });
+  ipcMain.handle("host:disconnect", (event) => { trusted(event); if (demo) throw new Error("Leave the demo first."); client.disconnect(); storageError = undefined; });
   ipcMain.handle("store:invoke", async (event, request: { channel?: unknown; payload?: unknown }) => {
     trusted(event);
     if (!request || typeof request.channel !== "string" || request.channel.length > 80) throw new Error("Invalid workspace action.");
+    if (demo && request.channel !== "clipboard:write") return demo.invoke(request.channel, request.payload);
     if (request.channel === "browser:command") {
       const payload = request.payload as BridgeCommands["browser:command"]["req"];
       if (payload.action !== "close" && client.status().state !== "connected") throw new Error("Connect to your Mac to use the workspace browser.");
@@ -142,5 +163,5 @@ app.whenReady().then(() => {
   }
   app.on("activate", () => { if (!win) createWindow(); });
 });
-app.on("before-quit", () => { workspaceBrowser?.dispose(); client?.dispose(); });
+app.on("before-quit", () => { demo?.dispose(); workspaceBrowser?.dispose(); client?.dispose(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

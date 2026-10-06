@@ -1,0 +1,18 @@
+Review access: Modex Companion 0.1.0, build 5
+
+On a fresh installation, tap "Explore a demo workspace" below "Pair with your Mac". This opens a built-in offline workspace. No account, Mac, network connection, camera permission, subscription or expiring pairing code is required.
+
+Optional demo QR: attach modex-demo-qr.png from this review packet. It encodes exactly modex://demo and contains no credentials. Open it with iPhone Camera, or scan it in the app's pairing sheet. Opening modex://demo directly reaches the same demo. The welcome-screen button is the fallback when reviewing on a single device.
+
+QR image: https://raw.githubusercontent.com/TypeSafeAI/modex/main/docs/reviews/modex-demo-qr.png
+
+Suggested review steps:
+1. Open "Review launch changes". Tap "Approve once", confirm, and observe the approval result. Approvals only change the demo transcript.
+2. Enter a follow-up and tap the send arrow. A clearly scripted response appears.
+3. Return to the thread list and inspect the other sample threads. Immediately after opening or resetting the demo, the release-notes thread briefly shows Running before completing.
+4. Open Workspace options (the ellipsis) and choose "Reset demo workspace" to restore the pending approval. You can then test "Deny".
+5. "Leave demo workspace" returns to welcome. "Pair with your Mac..." remains available. Quitting the app discards the demo.
+
+The demo is visibly labeled and available to every user. Its provider names, tool activity and responses are examples; no AI request or command runs. Real operation uses a private, authenticated connection to the user's Mac running Modex. The Mac keeps coding execution and Claude/Codex accounts. A real pairing QR is private to that Mac and network, so it cannot serve as reusable remote review access.
+
+We request acceptance of this built-in demo as review access under Guideline 2.1. Please let us know if you require an additional live-host review arrangement. Apple approval of demo access and the app remains pending.
