@@ -10,18 +10,24 @@ export function EmptyState({ onAddProject }: Props) {
   return (
     <div className="empty" data-testid="empty-state">
       <div className="empty-card">
-        <BrandMark className="big" />
-        <h1 data-testid="empty-title">What are we building?</h1>
-        <p>Modex runs Claude Code and Codex — through their CLIs, with your existing logins — in your local repositories. Each thread works in its project (or its own git worktree), streams every command and edit as it happens, and asks before doing anything outside the sandbox.</p>
-        <div className="row">
-          <button className="btn primary" data-testid="empty-open-project" onClick={onAddProject}>Open project…</button>
+        <div className="empty-aura" aria-hidden="true">
+          <BrandMark className="big" />
         </div>
-        <ul className="features">
-          <li><b>Chat</b> — read-only, asks before every command or edit.</li>
-          <li><b>Agent</b> — edits and runs commands inside the project; asks to leave it.</li>
-          <li><b>Agent (full access)</b> — no sandbox, no prompts.</li>
-          <li><b>Plan</b> — read-only investigation that ends in a plan. <Kbd>⌘N</Kbd> new chat · <Kbd>⌘⏎</Kbd> send · <Kbd>⇧⌘P</Kbd> plan</li>
+        <p className="empty-kicker">MODEX / PERSONAL DEV WORKSPACE</p>
+        <h1 data-testid="empty-title">What are we building?</h1>
+        <p className="empty-intro">A focused desk for Claude Code and Codex, grounded in your local repositories. Keep the work visible, deliberate, and close to the code.</p>
+        <button className="btn primary empty-cta" data-testid="empty-open-project" onClick={onAddProject}>
+          <span>Open a project</span>
+          <span className="empty-cta-arrow" aria-hidden="true">↗</span>
+        </button>
+        <div className="empty-rule" aria-hidden="true" />
+        <ul className="empty-modes" aria-label="Available work modes">
+          <li className="empty-mode"><strong>Chat</strong><span>read-only</span></li>
+          <li className="empty-mode"><strong>Agent</strong><span>build in project</span></li>
+          <li className="empty-mode"><strong>Full access</strong><span>no prompts</span></li>
+          <li className="empty-mode"><strong>Plan</strong><span>investigate first</span></li>
         </ul>
+        <p className="empty-shortcuts"><Kbd>⌘N</Kbd><span>new chat</span><Kbd>⌘⏎</Kbd><span>send</span><Kbd>⇧⌘P</Kbd><span>plan</span></p>
       </div>
     </div>
   );
