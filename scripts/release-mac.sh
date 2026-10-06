@@ -93,8 +93,9 @@ verify() {
   fi
   if [ "$notarized" = true ]; then
     say "Gatekeeper: assessment on the notarized app and DMG"
-    spctl -a -vv -t exec "$app" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID' || die "Gatekeeper does not see a notarized Developer ID app"
-    spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID' || die "Gatekeeper does not see a notarized Developer ID DMG"
+    # Drain all output so grep cannot close tee's pipe early under pipefail.
+    spctl -a -vv -t exec "$app" 2>&1 | tee /dev/stderr | grep -F 'source=Notarized Developer ID' >/dev/null || die "Gatekeeper does not see a notarized Developer ID app"
+    spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 | tee /dev/stderr | grep -F 'source=Notarized Developer ID' >/dev/null || die "Gatekeeper does not see a notarized Developer ID DMG"
     say "stapler: ticket attached to the app and the DMG"
     xcrun stapler validate "$app"
     xcrun stapler validate "$dmg"

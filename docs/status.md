@@ -17,6 +17,7 @@ _Last updated 2026-10-06._
 | v0.0.5 | 2026-10-03 | #69 | First Developer ID signed and notarized build, from the protected `Release` workflow; the Modex app icon; Jev settings and routing limits (#51); terminals no longer leak a PTY each. [Review](reviews/2026-10-03-v0.0.5-release-review.md). |
 | v0.0.6 | 2026-10-05 | #106, #110 | Jev-inspired near-black blue/pink workspace, Claude/ChatGPT sign-in, Retry, Streamer Mode and the paired iPhone service. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.6). |
 | v0.0.7 | 2026-10-05 | #117 | Official pink identity, persistent Companion pairing, update banner, OpenCoven theme, verified CLI discovery, polished connections and full-width website walkthrough. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.7). |
+| v0.0.8 | 2026-10-06 | #126, #127 | Per-thread provider/model, live branch and PR state; tabbed workspace, empty-screen polish and failure recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.8). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -61,7 +62,7 @@ The download site lives in `apps/site`, deployed to Vercel project `modex` for
 `modex.build`. It uses the Jev near-black blue/pink palette and a three-stage CSS 3D
 carousel with real demo captures. Mac links point to the published signed/notarized
 latest stable Apple Silicon release automatically through a cached public GitHub feed,
-with independently verified v0.0.7 links as the static fallback. The page shows GitHub
+with independently verified v0.0.8 links as the static fallback. The page shows GitHub
 stars, forks and total stable Mac installer downloads; missing counts remain hidden and
 cached counts are labeled after a failed refresh. The iPhone buttons now use Val's
 [public TestFlight invitation](https://testflight.apple.com/join/Qr14JKCh).
@@ -133,25 +134,32 @@ and exposes GitHub in the main navigation on desktop and mobile.
   receipts merged after v0.0.6. Both desktop and iPhone jobs passed on both final CI runs.
   The production gate remains off; human acceptance before enabling it is tracked below.
 
-## On `main`, not yet released
+## v0.0.8 release
 
+Published on 2026-10-06 from signed tag `2d55c3f` at verified merge commit `3dc6b84`
+(#126, release setup recovery #127). Protected Release run `37436514563` passed signing,
+notarization, stapling and **114 desktop + 7 website packaged e2e tests**. Downloaded
+artifacts passed independent checksum, certificate, strict signature, native code,
+Gatekeeper, ticket, icon, version and container checks. All 311 files/symlinks in
+the DMG and ZIP app payloads match; the unauthenticated public DMG matches the verified
+CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/download/v0.0.8/verification-v0.0.8.txt).
+[Release ledger](reviews/2026-10-06-v0.0.8-release-review.md).
+
+- **Thread details in the left sidebar.** Each thread shows its provider/model, current
+  checkout branch and linked draft/open/merged/closed GitHub PR state. Missing GitHub CLI
+  access and absent PRs remain explicit. Metadata requests are bounded and cached.
 - **Right workspace replacement.** The right workspace replaces the stacked Changes
   panel with the reference tab strip, new-tab launcher, full view, and a side-by-side review
   with numbered diffs and a filterable file tree. Files previews, the existing per-thread
   terminal, and isolated browser pages run inside tabs. [Design and verification](reviews/2026-10-05-right-workspace.md).
+- **Workspace polish and failure recovery.** A clearer empty workspace makes new projects
+  and chats easier to start; coding CLI failures expose Retry and connection controls.
+
+## On `main`, not yet released
+
+No standalone desktop changes pending release.
 
 ## In flight
-
-- **v0.0.8 standalone macOS release.** The release branch starts from current `main` and
-  adds provider/model, live branch and GitHub PR state to every visible thread in the left
-  sidebar. It includes the merged tabbed workspace, empty-screen polish and failure recovery.
-  Source verification, signed/notarized candidate verification and release notes are tracked
-  in [the release ledger](reviews/2026-10-06-v0.0.8-release-review.md). v0.0.7 remains the
-  published release until the protected release workflow and downloaded-artifact checks pass.
-  PR #126 is merged; the first release run passed signing and all 111 standalone desktop
-  tests, but three Store integration tests timed out because the release job had not built
-  their source client. The release job now prepares that client and development Electron
-  before the packaged suite. Publication remains gated on a successful corrected run.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
