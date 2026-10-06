@@ -42,7 +42,7 @@ test('offline, partial and hostile responses keep all verified fallback links us
   for (const candidate of [undefined, { release: { version: '0.0.8' } }, { ...feed(), release: { ...feed().release, downloadUrl: 'https://example.com/untrusted.dmg' }, stats: { stars: '9999', downloads: -1 } }]) {
     response = candidate;
     await page.goto('/');
-    await expectVersion(page, '0.0.7');
+    await expectVersion(page, '0.0.8');
     await expect(page.locator('.community-stats')).toBeHidden();
     await expect(page.getByRole('link', { name: 'iPhone companion TestFlight' })).toHaveAttribute('href', invite);
   }
@@ -158,7 +158,7 @@ test('verified download and TestFlight links work without JavaScript', async ({ 
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:5187');
-  await expectVersion(page, '0.0.7');
+  await expectVersion(page, '0.0.8');
   await expect(page.getByRole('link', { name: 'iPhone companion TestFlight' })).toHaveAttribute('href', invite);
   await context.close();
 });
