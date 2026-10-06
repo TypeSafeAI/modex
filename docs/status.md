@@ -157,7 +157,10 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
-No standalone desktop changes pending release.
+**Mobile thread creation and skills (#128).** The paired Mac service now supports starting
+Local or Worktree threads and discovering provider-native commands. The iPhone demo also
+exercises thread creation and skills without a Mac. These changes require a new desktop
+release and a rebuilt Companion build; the published v0.0.8 host predates these endpoints.
 
 ## In flight
 
@@ -174,7 +177,10 @@ No standalone desktop changes pending release.
   demo access and the Store architecture remains pending.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
-  threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.
+  threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
+  Mac keeps CLI execution. A compact provider-aware picker exposes Claude skills and custom
+  slash commands plus Codex skills discovered from the project and user skill directories;
+  no paths or command bodies leave the Mac.
   Simulator and paired API verification passed; a signed IPA using `works.jev.modex`
   passed Apple validation, uploaded, and reached `VALID` processing in App Store Connect.
   Build 2 fixes first-run Mac TLS compatibility, pending-request revocation, stale responses,

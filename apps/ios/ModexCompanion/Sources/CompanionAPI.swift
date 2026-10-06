@@ -83,10 +83,41 @@ struct CompanionSnapshot: Decodable {
     let projects: [CompanionProject]
     let threads: [CompanionThread]
     let items: [CompanionItem]
+    let defaultBackend: String
+    let autoByDefault: Bool
+
+    init(projects: [CompanionProject], threads: [CompanionThread], items: [CompanionItem], defaultBackend: String = "codex", autoByDefault: Bool = false) {
+        self.projects = projects
+        self.threads = threads
+        self.items = items
+        self.defaultBackend = defaultBackend
+        self.autoByDefault = autoByDefault
+    }
+
+    private enum CodingKeys: String, CodingKey { case projects, threads, items, defaultBackend, autoByDefault }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        projects = try values.decode([CompanionProject].self, forKey: .projects)
+        threads = try values.decode([CompanionThread].self, forKey: .threads)
+        items = try values.decode([CompanionItem].self, forKey: .items)
+        defaultBackend = try values.decodeIfPresent(String.self, forKey: .defaultBackend) ?? "codex"
+        autoByDefault = try values.decodeIfPresent(Bool.self, forKey: .autoByDefault) ?? false
+    }
+}
+
+struct CompanionCommand: Decodable, Identifiable, Equatable {
+    let id: String
+    let title: String
+    let detail: String
+    let insertion: String
+    let kind: String
 }
 
 protocol CompanionClient {
     func snapshot(threadId: String?) async throws -> CompanionSnapshot
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand]
     func send(threadId: String, text: String) async throws
     func answer(threadId: String, itemId: String, approve: Bool) async throws
     func invalidate()
@@ -103,7 +134,7 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
         super.init()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 8
-        configuration.timeoutIntervalForResource = 12
+        configuration.timeoutIntervalForResource = 75
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }
 
@@ -138,6 +169,21 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
         return try await request(components.url!, method: "GET", body: nil)
     }
 
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread {
+        let url = pairing.url.appending(path: "v1/threads")
+        var body: [String: Any] = ["projectId": projectId, "text": text, "worktree": worktree, "auto": provider == "auto"]
+        if provider != "auto" { body["backend"] = provider }
+        let result: CreatedThread = try await request(url, method: "POST", body: body, timeout: 60)
+        return result.thread
+    }
+
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand] {
+        var components = URLComponents(url: pairing.url.appending(path: "v1/commands"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "projectId", value: projectId), URLQueryItem(name: "backend", value: backend)]
+        let result: CommandList = try await request(components.url!, method: "GET", body: nil)
+        return result.commands
+    }
+
     func send(threadId: String, text: String) async throws {
         let url = pairing.url.appending(path: "v1/threads/\(threadId)/send")
         let _: OK = try await request(url, method: "POST", body: ["text": text])
@@ -149,16 +195,19 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
     }
 
     private struct OK: Decodable { let ok: Bool }
+    private struct CreatedThread: Decodable { let thread: CompanionThread }
+    private struct CommandList: Decodable { let commands: [CompanionCommand] }
     private struct Failure: Decodable { let error: String }
 
-    private func request<T: Decodable>(_ url: URL, method: String, body: [String: String]?) async throws -> T {
+    private func request<T: Decodable>(_ url: URL, method: String, body: [String: Any]?, timeout: TimeInterval = 8) async throws -> T {
         var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
         request.httpMethod = method
         request.setValue("Bearer \(pairing.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw CompanionError.message("No response from your Mac.") }

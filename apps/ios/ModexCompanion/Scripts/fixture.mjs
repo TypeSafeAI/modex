@@ -16,6 +16,8 @@ let restartTimer;
 let restartTask;
 let blocker;
 const project = store.addProject(repo);
+fs.mkdirSync(path.join(repo, ".codex", "skills", "mobile-check"), { recursive: true });
+fs.writeFileSync(path.join(repo, ".codex", "skills", "mobile-check", "SKILL.md"), "---\nname: mobile-check\ndescription: Verify the mobile companion flow.\n---\n");
 const threadId = "abcdef12";
 store.addThread({ id: threadId, projectId: project.id, title: "Review launch changes", cwd: repo, backend: "mock", mode: "chat", model: "mock", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
 const backend = {
@@ -42,6 +44,7 @@ const server = new CompanionServer(home, {
   state: () => store.snapshot(),
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
+  create: (projectId, options) => runner.createThread(projectId, { ...options, backend: "mock", auto: false }),
   send: async (id, text) => { void runner.send(id, text); return { ok: true }; },
   answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
 }, process.env.MODEX_IOS_LAN === "1" ? undefined : () => ["127.0.0.1"]);

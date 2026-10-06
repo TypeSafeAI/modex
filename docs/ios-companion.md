@@ -3,7 +3,10 @@
 The iPhone app is a companion for a running Modex Mac app. Its first release works when the
 iPhone can reach the Mac on the same local network. It shows projects and threads, live
 transcripts, pending approvals, and lets the user send follow-ups or approve or deny one
-request. Claude and Codex coding turns continue to run through their CLIs on the Mac.
+request. A paired phone can also start a thread in a selected project, in the project checkout
+or an isolated worktree. The compact command picker discovers the selected provider's skills
+and custom commands on the Mac: Claude entries use `/name`, while Codex skills use `$name`.
+Claude and Codex coding turns continue to run through their CLIs on the Mac.
 
 ## Pairing and access
 
@@ -15,8 +18,9 @@ request. Claude and Codex coding turns continue to run through their CLIs on the
    paired phones must scan again. The Mac restarts the listener when Modex launches if it was
    left on.
 
-The listener is off until enabled. It exposes only a small paired API: snapshots, sending a
-follow-up, and answering an unanswered approval once. It omits project paths, backend session
+The listener is off until enabled. It exposes only a small paired API: snapshots, thread
+creation, provider-scoped command discovery, sending a follow-up, and answering an unanswered
+approval once. It omits project paths, skill paths, backend session
 handles, settings, and tool arguments from snapshots. The iPhone offers only Approve once and
 Deny, with an extra confirmation before approval. The Mac certificate and token live under
 `~/.modex/companion/` with owner-only permissions, outside the repository and app bundle.
@@ -50,7 +54,7 @@ recovery permanently. Bonjour publishes only the address and public certificate 
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 4), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.1.0 (build 5), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -68,7 +72,7 @@ MODEX_IOS_LAN=1 MODEX_IOS_RECONNECT=1 apps/ios/ModexCompanion/Scripts/test-e2e.s
 
 The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
 fixture with the real thread runner and paired HTTPS API, then drives the simulator through
-pairing, an approval, a follow-up, and cancelling or confirming Forget Mac. The fixture is offline and uses a fake backend; it
+pairing, creating a thread, an approval, a follow-up, and cancelling or confirming Forget Mac. The fixture is offline and uses a fake backend; it
 does not claim live Claude or Codex account access. Unsigned simulator builds use a
 simulator-only pairing store if Keychain reports a missing signing entitlement; iPhone
 builds always use Keychain. The `iPhone companion` CI job runs both suites on an available
@@ -139,7 +143,9 @@ Automatic address discovery requires Mac v0.0.7; physical iPhone acceptance rema
 Build 5 adds an offline workspace on the welcome screen, plus the non-expiring
 `modex://demo` review link. It uses in-memory sample threads and scripted replies, does
 not browse for a Mac or create a network client, and leaves saved pairing data untouched.
-Reset restores the approval; leaving or restarting discards the demo. The QR, exact review
+The demo also supports Local/Worktree thread creation and a searchable sample skill for
+Codex and Claude, with provider and location choices visibly simulated. Reset restores the
+approval and clears drafts; leaving or restarting discards the demo. The QR, exact review
 instructions and current verification/submission state are in the
 [review access ledger](reviews/2026-10-06-review-demo-access.md). This addresses the reported
 pairing/access blocker; Apple acceptance of demo access remains pending.

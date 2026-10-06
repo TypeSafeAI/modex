@@ -11,7 +11,8 @@ Suggested review steps:
 2. Enter a follow-up and tap the send arrow. A clearly scripted response appears.
 3. Return to the thread list and inspect the other sample threads. Immediately after opening or resetting the demo, the release-notes thread briefly shows Running before completing.
 4. Open Workspace options (the ellipsis) and choose "Reset demo workspace" to restore the pending approval. You can then test "Deny".
-5. "Leave demo workspace" returns to welcome. "Pair with your Mac..." remains available. Quitting the app discards the demo.
+5. Tap New thread (the compose icon). Choose the demo project, Local or Worktree, and Auto, Codex or Claude. Open Skills, search for demo-review, and insert it into the prompt. Send the prompt to create a sample thread and receive a scripted reply. These choices do not run a skill or create a real worktree.
+6. "Leave demo workspace" returns to welcome. "Pair with your Mac..." remains available. Quitting the app discards the demo.
 
 The demo is visibly labeled and available to every user. Its provider names, tool activity and responses are examples; no AI request or command runs. Real operation uses a private, authenticated connection to the user's Mac running Modex. The Mac keeps coding execution and Claude/Codex accounts. A real pairing QR is private to that Mac and network, so it cannot serve as reusable remote review access.
 

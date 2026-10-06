@@ -165,7 +165,12 @@ test("paired HTTPS companion reads live threads, sends a turn, and answers only 
     state: () => state,
     items: () => items,
     status: () => status,
-    send: async (_id, text) => { sent.push(text); status = "waiting"; return { ok: true }; },
+    send: async (_id, text) => {
+      sent.push(text);
+      if (text === "Fail safely") return { ok: false, error: "working directory is missing: /private/source" };
+      status = "waiting";
+      return { ok: true };
+    },
     answer: (_id, _item, value) => { answered.push(value); (items[0] as Extract<ThreadItem, { kind: "approval" }>).answer = value; status = "running"; },
   }, () => ["127.0.0.1"]);
   try {
@@ -197,8 +202,11 @@ test("paired HTTPS companion reads live threads, sends a turn, and answers only 
     assert.deepEqual(removed.body.items, []);
     assert.equal(removed.body.threads[0].id, "abcdef12");
     assert.equal((await request("/v1/threads/abcdef12/send", "POST", { text: "   " })).status, 400);
+    const failedFollowUp = await request("/v1/threads/abcdef12/send", "POST", { text: "Fail safely" });
+    assert.equal(failedFollowUp.status, 409);
+    assert.equal(JSON.stringify(failedFollowUp.body).includes("/private/source"), false);
     assert.equal((await request("/v1/threads/abcdef12/send", "POST", { text: "Follow up" })).status, 202);
-    assert.deepEqual(sent, ["Follow up"]);
+    assert.deepEqual(sent, ["Fail safely", "Follow up"]);
     assert.equal((await request("/v1/threads/abcdef12/send", "POST", { text: "duplicate" })).status, 409);
     assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes" })).status, 200);
     assert.deepEqual(answered, ["yes"]);
@@ -217,6 +225,68 @@ test("paired HTTPS companion reads live threads, sends a turn, and answers only 
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
     }
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("paired companion creates a local or worktree thread and starts its first turn", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-create-"));
+  const created: Array<{ projectId: string; worktree: boolean; backend?: string; auto?: boolean }> = [];
+  const sent: Array<{ id: string; text: string }> = [];
+  let releaseCreate: (() => void) | undefined;
+  let markCreateStarted: (() => void) | undefined;
+  const createStarted = new Promise<void>((resolve) => { markCreateStarted = resolve; });
+  const createGate = new Promise<void>((resolve) => { releaseCreate = resolve; });
+  const state = { projects: [{ id: "p1", name: "example", path: "/private/source", addedAt: "now" }], threads: [], version: 1, settings: DEFAULT_SETTINGS } as AppState;
+  const server = new CompanionServer(home, {
+    state: () => state,
+    items: () => [],
+    status: () => "idle",
+    create: async (projectId, options) => {
+      created.push({ projectId, ...options });
+      if (!options.worktree) { markCreateStarted?.(); await createGate; }
+      const thread = { id: "feedface", projectId, title: "New thread", backend: "codex" as const, status: "idle" as const, cwd: "/private/source", mode: "agent" as const, model: "", plan: false, createdAt: "now", updatedAt: "now" };
+      state.threads.push(thread);
+      return thread;
+    },
+    send: async (id, text) => {
+      sent.push({ id, text });
+      return text === "Fail safely" ? { ok: false, error: "working directory is missing: /private/source" } : { ok: true };
+    },
+    answer: () => {},
+  }, () => ["127.0.0.1"]);
+  try {
+    const pairing = await server.start();
+    const data = new URL(pairing.pairingUri!).searchParams.get("data")!;
+    const credentials = JSON.parse(Buffer.from(data, "base64url").toString()) as { url: string; token: string };
+    const request = (body: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req = https.request(`${credentials.url}/v1/threads`, { method: "POST", rejectUnauthorized: false, headers: { authorization: `Bearer ${credentials.token}`, "content-type": "application/json" } }, (res) => {
+        let text = "";
+        res.on("data", (chunk) => { text += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
+      });
+      req.on("error", reject);
+      req.end(JSON.stringify(body));
+    });
+    assert.equal((await request({ projectId: "missing", text: "Build it", worktree: false })).status, 404);
+    assert.equal((await request({ projectId: "p1", text: "   ", worktree: false })).status, 400);
+    const response = await request({ projectId: "p1", text: "Build it", worktree: true, backend: "claude", auto: false });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.thread.id, "feedface");
+    assert.equal(JSON.stringify(response.body).includes("/private/source"), false);
+    assert.deepEqual(created, [{ projectId: "p1", worktree: true, backend: "claude", auto: false }]);
+    assert.deepEqual(sent, [{ id: "feedface", text: "Build it" }]);
+    const failed = await request({ projectId: "p1", text: "Fail safely", worktree: true, backend: "codex", auto: false });
+    assert.equal(failed.status, 409);
+    assert.equal(JSON.stringify(failed.body).includes("/private/source"), false);
+    const revoked = request({ projectId: "p1", text: "Must not run", worktree: false, backend: "codex", auto: false });
+    await createStarted;
+    server.resetAccess();
+    releaseCreate?.();
+    assert.equal((await revoked).status, 401);
+    assert.equal(sent.some((entry) => entry.text === "Must not run"), false);
   } finally {
     await server.stop();
     fs.rmSync(home, { recursive: true, force: true });

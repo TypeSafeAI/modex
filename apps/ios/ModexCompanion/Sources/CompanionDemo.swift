@@ -57,6 +57,28 @@ actor DemoCompanionClient: CompanionClient {
         return CompanionSnapshot(projects: [project], threads: entries.map(\.thread), items: items)
     }
 
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread {
+        guard projectId == Self.projectId else { throw CompanionError.message("Choose the demo project.") }
+        guard ["auto", "codex", "claude"].contains(provider) else { throw CompanionError.message("Choose a valid demo provider.") }
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty, prompt.count <= 20_000 else { throw CompanionError.message("Enter a message under 20,000 characters.") }
+        let stamp = Self.stamp(.now)
+        let thread = CompanionThread(id: nextId("thread"), projectId: projectId, title: String(prompt.prefix(60)), backend: provider == "auto" ? "codex" : provider, status: "idle", updatedAt: stamp)
+        let location = worktree ? "Worktree" : "Local"
+        let notice = CompanionItem(id: nextId("notice"), kind: "notice", text: "Demo · \(location) · \(provider). These choices are simulated. No worktree, skill or coding process runs on a Mac.", title: nil, question: nil, detail: nil, answer: nil, status: nil, level: "info", at: stamp)
+        let index = entries.count
+        entries.append(Entry(thread: thread, items: [notice]))
+        try await send(threadId: thread.id, text: prompt)
+        return entries[index].thread
+    }
+
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand] {
+        guard projectId == Self.projectId else { throw CompanionError.message("Choose the demo project.") }
+        guard ["codex", "claude"].contains(backend) else { throw CompanionError.message("Choose a valid demo provider.") }
+        let prefix = backend == "claude" ? "/" : "$"
+        return [CompanionCommand(id: "skill:demo-review", title: "demo-review", detail: "Demo skill · scripted reply only", insertion: "\(prefix)demo-review ", kind: "skill")]
+    }
+
     func send(threadId: String, text: String) async throws {
         guard let index = entries.firstIndex(where: { $0.thread.id == threadId }) else {
             throw CompanionError.message("That demo thread is no longer available.")

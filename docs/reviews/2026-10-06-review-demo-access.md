@@ -86,9 +86,32 @@ and the [Mac Store constraints](../mac-app-store.md).
 Artifacts and logs are retained outside the worktree at
 `/Users/buns/Documents/Codex/artifacts/modex-review-access-2026-10-06`.
 
+## PR #128 integration
+
+The merged client also supports offline thread creation and a searchable `demo-review`
+skill. The review notes above include that flow. Provider and Local/Worktree choices remain
+explicitly simulated. Reset discards created threads, drafts and command results.
+
+Integration verification: workspace build/typecheck and unit tests passed (15 core,
+282 desktop plus the browser bridge, 10 site and 9 Store); all 116 desktop and 7 site
+end-to-end tests passed. All 28 native unit tests and the expanded offline demo UI test
+passed on iPhone SE (3rd generation). The iPhone 16 Pro simulator also passed the
+expanded demo and paired-Mac creation/skill/approval/follow-up flows (2 UI tests).
+Fresh code review found and fixed lost follow-up
+drafts during creation, stale create completions, and cancelled/stale command loads;
+the new regressions failed before those fixes and passed afterward.
+
+The signed artifacts recorded above predate this integration. Rebuild Companion from the
+combined source before uploading it; do not submit the cached IPA as proof of #128. Build 5
+has not been uploaded in the audit above; verify the current App Store Connect build number
+before upload and increment it if already used. The published v0.0.8 standalone Mac host
+also predates the new paired endpoints. Real mobile creation requires an updated host;
+the offline review demo has no host dependency.
+
 ## Remaining delivery steps
 
-Upload the validated replacement candidates, verify processing, and select them for the
+Rebuild and validate the replacement Companion candidate, then upload the intended iOS
+and Mac Store candidates, verify processing, and select them for the
 appropriate test groups/review. Replace each app's review notes with its own text above
 and reply to the iOS reviewer with the QR attached. Sending the reviewer message and
 submitting to Apple require Val's go-ahead; this patch does not silently perform either.

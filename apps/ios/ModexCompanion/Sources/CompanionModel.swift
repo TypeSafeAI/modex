@@ -9,7 +9,10 @@ import SwiftUI
     @Published private(set) var connectionError: String?
     @Published var error: String?
     @Published var draft = ""
+    @Published var newThreadDraft = ""
     @Published var sending = false
+    @Published private(set) var creatingThread = false
+    @Published private(set) var commands: [CompanionCommand] = []
     @Published var answeringId: String?
     @Published private(set) var isPairing = false
     /// True while showing the offline scripted workspace. It never coexists with a saved pairing.
@@ -28,7 +31,10 @@ import SwiftUI
     private var refreshRevision = 0
     private var pairingRevision = 0
     private var sendOperation: UUID?
+    private var createOperation: UUID?
     private var answerOperation: UUID?
+    private var commandOperation: UUID?
+    private var commandContext: String?
 
     init(store: any PairingStorage = PairingStore(), discovery: (any CompanionDiscovery)? = nil, makeClient: @escaping (Pairing) -> any CompanionClient = { CompanionAPI(pairing: $0) }) {
         self.store = store
@@ -109,6 +115,7 @@ import SwiftUI
             snapshot = first
             selectedThreadId = nil
             draft = ""
+            newThreadDraft = ""
             drafts = [:]
             connected = true
             connectionError = nil
@@ -138,6 +145,7 @@ import SwiftUI
         snapshot = first
         selectedThreadId = nil
         draft = ""
+        newThreadDraft = ""
         drafts = [:]
         connected = true
         connectionError = nil
@@ -159,6 +167,7 @@ import SwiftUI
         connected = false
         selectedThreadId = nil
         draft = ""
+        newThreadDraft = ""
         drafts = [:]
         snapshot = CompanionSnapshot(projects: [], threads: [], items: [])
         error = nil
@@ -169,16 +178,21 @@ import SwiftUI
         connectionRevision += 1
         refreshRevision += 1
         sendOperation = nil
+        createOperation = nil
         answerOperation = nil
+        commandOperation = nil
+        commandContext = nil
         retrySavedEndpoint = false
         sending = false
         answeringId = nil
+        creatingThread = false
+        commands = []
     }
 
     func select(_ threadId: String) async {
         if let selectedThreadId { drafts[selectedThreadId] = draft }
         if selectedThreadId != threadId {
-            snapshot = CompanionSnapshot(projects: snapshot.projects, threads: snapshot.threads, items: [])
+            snapshot = CompanionSnapshot(projects: snapshot.projects, threads: snapshot.threads, items: [], defaultBackend: snapshot.defaultBackend, autoByDefault: snapshot.autoByDefault)
         }
         selectedThreadId = threadId
         draft = drafts[threadId] ?? ""
@@ -218,7 +232,7 @@ import SwiftUI
                 self.selectedThreadId = nil
                 draft = ""
                 drafts.removeValue(forKey: selectedThreadId)
-                snapshot = CompanionSnapshot(projects: result.projects, threads: result.threads, items: [])
+                snapshot = CompanionSnapshot(projects: result.projects, threads: result.threads, items: [], defaultBackend: result.defaultBackend, autoByDefault: result.autoByDefault)
             }
         } catch {
             guard connection == connectionRevision, request == refreshRevision,
@@ -254,6 +268,51 @@ import SwiftUI
         } catch {
             if connection == connectionRevision, sendOperation == operation, !revokeIfNeeded(error) { self.error = error.localizedDescription }
         }
+    }
+
+    func createThread(projectId: String, worktree: Bool, provider: String) async -> String? {
+        guard let api, !creatingThread else { return nil }
+        let submittedDraft = newThreadDraft
+        let text = submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let connection = connectionRevision
+        let operation = UUID()
+        createOperation = operation
+        creatingThread = true
+        defer { if createOperation == operation { creatingThread = false; createOperation = nil } }
+        do {
+            let thread = try await api.createThread(projectId: projectId, text: text, worktree: worktree, provider: provider)
+            guard connection == connectionRevision, createOperation == operation else { return nil }
+            if newThreadDraft == submittedDraft { newThreadDraft = "" }
+            await select(thread.id)
+            guard connection == connectionRevision, createOperation == operation else { return nil }
+            return thread.id
+        } catch {
+            if connection == connectionRevision, createOperation == operation, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+            return nil
+        }
+    }
+
+    func loadCommands(projectId: String, backend: String) async {
+        guard let api, !Task.isCancelled else { return }
+        let connection = connectionRevision
+        let operation = UUID()
+        let context = "\(projectId)\u{0}\(backend)"
+        commandOperation = operation
+        if commandContext != context { commands = [] }
+        do {
+            let result = try await api.commands(projectId: projectId, backend: backend)
+            if connection == connectionRevision, commandOperation == operation, !Task.isCancelled {
+                commands = result
+                commandContext = context
+            }
+        } catch {
+            if connection == connectionRevision, commandOperation == operation, !Task.isCancelled, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+        }
+    }
+
+    func availableCommands(projectId: String, backend: String) -> [CompanionCommand] {
+        commandContext == "\(projectId)\u{0}\(backend)" ? commands : []
     }
 
     func answer(itemId: String, approve: Bool) async {

@@ -3,6 +3,7 @@ import XCTest
 /// Runs without a Mac or fixture: the path App Review follows from the welcome screen.
 final class DemoWorkspaceTests: XCTestCase {
     func testDemoWorkspaceNeedsNoMac() {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
         let demo = app.buttons["demo-button"]
@@ -45,6 +46,33 @@ final class DemoWorkspaceTests: XCTestCase {
         app.buttons["send-followup"].tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.waitForExistence(timeout: 20), "The demo must answer a follow-up.")
         capture(app, name: "Demo follow-up")
+        app.buttons["Back to threads"].tap()
+
+        app.buttons["new-thread"].tap()
+        let newInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
+        XCTAssertTrue(newInput.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Creates a demo thread with scripted replies. Location and provider choices are simulated; nothing runs on a Mac."].exists)
+        app.segmentedControls.buttons["Worktree"].tap()
+        app.segmentedControls.buttons["Claude"].tap()
+        newInput.tap()
+        newInput.typeText("Review from phone")
+        app.buttons["new-thread-commands"].tap()
+        let search = app.textFields["Find a skill or command"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("demo-review")
+        let skill = app.staticTexts["/demo-review"]
+        XCTAssertTrue(skill.waitForExistence(timeout: 10))
+        skill.tap()
+        XCTAssertTrue(search.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(newInput.waitForExistence(timeout: 10))
+        XCTAssertEqual(newInput.value as? String, "Review from phone /demo-review ")
+        let create = app.buttons["create-thread"]
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"), object: create)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        create.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Review from phone /demo-review\"")).firstMatch.waitForExistence(timeout: 20))
+        capture(app, name: "Demo thread with a skill")
         app.buttons["Back to threads"].tap()
 
         app.buttons["workspace-options"].tap()

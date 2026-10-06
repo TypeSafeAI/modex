@@ -3,6 +3,7 @@ import XCTest
 
 final class CompanionFlowTests: XCTestCase {
     func testPairApproveAndFollowUpThroughTheMac() throws {
+        continueAfterFailure = false
         guard let file = Bundle(for: Self.self).url(forResource: "LocalPairing", withExtension: "json"),
               let data = try? Data(contentsOf: file),
               let fixture = try? JSONDecoder().decode(Fixture.self, from: data) else {
@@ -29,6 +30,32 @@ final class CompanionFlowTests: XCTestCase {
         let thread = app.buttons["thread-abcdef12"]
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "The paired Mac's thread should appear.")
         capture(app, name: "Paired workspace")
+
+        app.buttons["new-thread"].tap()
+        let newThreadInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
+        XCTAssertTrue(newThreadInput.waitForExistence(timeout: 10))
+        newThreadInput.tap()
+        newThreadInput.typeText("Start from phone")
+        app.buttons["new-thread-commands"].tap()
+        let commandSearch = app.textFields["Find a skill or command"]
+        XCTAssertTrue(commandSearch.waitForExistence(timeout: 10))
+        commandSearch.tap()
+        commandSearch.typeText("mobile-check")
+        let mobileSkill = app.staticTexts["$mobile-check"]
+        XCTAssertTrue(mobileSkill.waitForExistence(timeout: 10), "The Mac's project skill should appear for Codex.")
+        mobileSkill.tap()
+        XCTAssertTrue(commandSearch.waitForNonExistence(timeout: 10), "The skill sheet must finish dismissing before submitting.")
+        let createThread = app.buttons["create-thread"]
+        let readyToCreate = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"),
+            object: createThread
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [readyToCreate], timeout: 10), .completed, "Create thread must be ready for interaction.")
+        capture(app, name: "New thread on iPhone")
+        createThread.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Start from phone $mobile-check")).firstMatch.waitForExistence(timeout: 20))
+        app.buttons["Back to threads"].tap()
+
         app.terminate()
         app.launch()
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "Pairing must survive relaunch without scanning again.")
