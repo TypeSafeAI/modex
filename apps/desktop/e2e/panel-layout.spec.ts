@@ -17,7 +17,8 @@ async function panel(id: "sidebar" | "changes", visible: boolean): Promise<void>
   const toggle = tid(page, `${id}-toggle`);
   if ((await toggle.getAttribute("aria-pressed")) !== String(visible)) await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", String(visible));
-  await expect(tid(page, id === "sidebar" ? id : "changes-panel")).toHaveCount(visible ? 1 : 0);
+  const pane = tid(page, id === "sidebar" ? id : "workspace");
+  if (visible) await expect(pane).toBeVisible(); else await expect(pane).toBeHidden();
 }
 
 // Assert against the sheet, not just the main pane: centering within a collapsed main
@@ -34,7 +35,8 @@ async function expectLayout(): Promise<void> {
     const bottom = outer.bottom - parseFloat(style.borderBottomWidth);
     const main = element("main").getBoundingClientRect();
     const sidebar = element("sidebar")?.getBoundingClientRect();
-    const changes = element("changes-panel")?.getBoundingClientRect();
+    const workspace = element("workspace");
+    const changes = workspace && !workspace.hidden ? workspace.getBoundingClientRect() : undefined;
     const errors = [main.left - (sidebar?.right ?? left), main.right - (changes?.left ?? right)];
     for (const pane of [main, sidebar, changes]) {
       if (pane) errors.push(pane.top - top, pane.bottom - bottom);
@@ -108,8 +110,8 @@ for (const width of [1366, 960]) {
       await expectLayout();
       await expect.poll(async () => {
         const terminal = (await tid(page, "terminal-panel").boundingBox())!;
-        const main = (await tid(page, "main").boundingBox())!;
-        return Math.max(Math.abs(terminal.x - main.x), Math.abs(terminal.width - main.width), Math.abs(terminal.y + terminal.height - main.y - main.height));
+        const workspace = (await tid(page, "workspace").boundingBox())!;
+        return Math.max(Math.abs(terminal.x - workspace.x - 1), Math.abs(terminal.width - workspace.width + 1), Math.abs(terminal.y + terminal.height - workspace.y - workspace.height));
       }).toBeLessThanOrEqual(1);
     }
   });

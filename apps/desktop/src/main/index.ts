@@ -1,3 +1,4 @@
+import { WorkspaceBrowser } from "./workspace-browser.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
@@ -13,6 +14,7 @@ import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
 import { AccountCodexBackend } from "./engine/backends/account-codex.js";
 import { ClaudeLogin } from "./engine/claude-login.js";
 import * as gitx from "./engine/git.js";
+import { listWorkspaceFiles, readWorkspaceFile } from "./engine/workspace-files.js";
 import { runDemo } from "./engine/demo.js";
 import { openTerminal } from "./engine/open-terminal.js";
 import { TerminalManager, isTrustedTerminalSender } from "./engine/terminal.js";
@@ -73,6 +75,7 @@ const updates = new ReleaseChecker({
   enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
 });
 let win: BrowserWindow | null = null;
+let workspaceBrowser: WorkspaceBrowser | null = null;
 let shuttingDown = false;
 let shutdownComplete = false;
 let desktopHost: DesktopHost | undefined;
@@ -107,14 +110,14 @@ type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) =
 const SPAWNS = new Set<keyof BridgeCommands>(["settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
 const desktopCommands = new Map<string, (payload: unknown) => unknown>();
 
-function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
-  desktopCommands.set(channel, (payload) => fn(payload as BridgeCommands[K]["req"]));
+function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, options: { localOnly?: boolean } = {}): void {
+  if (!options.localOnly) desktopCommands.set(channel, (payload) => fn(payload as BridgeCommands[K]["req"]));
   ipcMain.handle(channel, async (event, req) => {
     if (shuttingDown) throw new Error("Modex is shutting down.");
     if (SPAWNS.has(channel)) await pathReady;
     if (shuttingDown) throw new Error("Modex is shutting down.");
-    // A shell is full user authority: only the app's own window, top frame, may drive one.
-    if (channel.startsWith("terminal:") && !isTrustedTerminalSender(event, win)) throw new Error("Untrusted terminal request.");
+    // Guest pages never receive app authority: commands belong to the app window's top frame.
+    if (!isTrustedTerminalSender(event, win)) throw new Error(channel.startsWith("terminal:") ? "Untrusted terminal request." : "Untrusted app request.");
     return fn(req as BridgeCommands[K]["req"]);
   });
 }
@@ -137,6 +140,12 @@ const terminals = new TerminalManager(
   // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
 );
+
+handle("browser:command", ({ id, action, url }) => {
+  if (!workspaceBrowser) throw new Error("Browser unavailable.");
+  return workspaceBrowser.command(id, action, url);
+}, { localOnly: true });
+handle("browser:show", ({ id, bounds, fullView }) => workspaceBrowser?.show(id, bounds, fullView), { localOnly: true });
 
 handle("updates:check", () => updates.check());
 
@@ -192,8 +201,10 @@ handle("project:branch", async ({ projectId }) => {
   const p = store.project(projectId);
   return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
 });
+handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
+handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
-handle("changes:diff", ({ threadId, path: rel, original }) => gitx.diff(cwdFor(threadId), rel, original));
+handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));
 handle("changes:revert", async ({ threadId, path: rel }) => {
   const cwd = cwdFor(threadId);
   await gitx.revert(cwd, rel);
@@ -284,6 +295,11 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  const browser = new WorkspaceBrowser(w);
+  workspaceBrowser = browser;
+  w.webContents.on("did-start-navigation", () => browser.dispose());
+  w.on("close", () => browser.dispose());
+  w.on("closed", () => { browser.dispose(); if (workspaceBrowser === browser) workspaceBrowser = null; });
   if (devUrl) void w.loadURL(devUrl);
   else void w.loadFile(path.join(here, "..", "..", "renderer", "index.html"));
   w.once("ready-to-show", () => {

@@ -16,23 +16,19 @@ function killIfAlive(pid: number): void {
   try { process.kill(pid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
 }
 
-test("terminal sizing reports its actual container limit after a window resize", async () => {
+test("terminal fills its workspace after a window resize", async () => {
   const { home, repo } = seedHome();
   const { app, page } = await launch(home);
   try {
     await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat" }));
     await page.reload();
     await tid(page, "terminal-toggle").click();
-    const handle = tid(page, "terminal-resize");
-    await handle.focus();
-    for (let i = 0; i < 30; i++) await page.keyboard.press("ArrowUp");
+    await expect(tid(page, "terminal-panel")).toBeVisible();
     for (const [width, height] of [[1380, 880], [900, 600]]) {
       await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]!.setContentSize(size.width, size.height), { width, height });
       await expect.poll(async () => {
-        const limit = await tid(page, "terminal-panel").evaluate((panel) => Math.floor(panel.parentElement!.clientHeight / 2));
-        return Number(await handle.getAttribute("aria-valuemax")) - limit;
-      }).toBe(0);
-      await expect.poll(async () => Number(await handle.getAttribute("aria-valuenow")) - (await tid(page, "terminal-panel").boundingBox())!.height).toBe(0);
+        return tid(page, "terminal-panel").evaluate((panel) => Math.abs(panel.getBoundingClientRect().height - panel.parentElement!.clientHeight));
+      }).toBeLessThanOrEqual(1);
     }
     await page.screenshot({ path: test.info().outputPath("terminal-minimum-window.png") });
   } finally {

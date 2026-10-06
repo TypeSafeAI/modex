@@ -353,7 +353,7 @@ test("selecting a file never shows the previous file's diff while loading", asyn
   await expect(tid(page, "changes-diff")).toContainText("first diff");
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler("changes:diff");
-    ipcMain.handle("changes:diff", () => new Promise((resolve) => setTimeout(() => resolve("+replacement diff"), 400)));
+    ipcMain.handle("changes:diff", () => new Promise((resolve) => setTimeout(() => resolve("@@ -0,0 +1 @@\n+replacement diff"), 400)));
   });
   await page.getByRole("button", { name: "View diff for b.txt", exact: true }).click();
   expect(await tid(page, "changes-diff").innerText()).not.toContain("first diff");

@@ -34,7 +34,7 @@ async function changesHidden(): Promise<void> {
     await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]!.setContentSize(s.width, s.height), REFERENCE);
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(REFERENCE.width);
   }
-  if (await tid(page, "changes-panel").count()) await page.keyboard.press("Meta+j");
+  if (await tid(page, "workspace").isVisible()) await page.keyboard.press("Meta+j");
   await expect(tid(page, "changes-panel")).toHaveCount(0);
   // Let the grid settle: the composer is centred in the full-width main pane.
   await expect.poll(async () => { const m = (await box(tid(page, "main"))); const c = (await box(tid(page, "composer-box"))); return Math.round(Math.abs(c.x + c.width / 2 - (m.x + 1 + (m.width - 1) / 2))); }).toBeLessThanOrEqual(1);
@@ -270,53 +270,38 @@ test.describe("Phase 7 · title bar actions", () => {
     await check(main.x + main.width);
     await page.keyboard.press("Meta+j");
     await expect(tid(page, "changes-panel")).toHaveCount(1);
-    const panel = await box(tid(page, "changes-panel"));
+    const panel = await box(tid(page, "workspace"));
     await check(panel.x);
-    expect((await box(page.locator('[data-testid="changes-panel"] > header'))).height).toBe(42);
+    expect((await box(page.locator('[data-testid="changes-panel"] > header'))).height).toBe(48);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
     await changesHidden();
   });
 });
 
 test.describe("Terminal · title bar and panel", () => {
-  // No reference shows a terminal; the gate keeps it from disturbing what the references do fix.
-  test("the toggle sits one 34 px step left of ⋯; the open panel spans the main pane under the composer", async () => {
+  test("the terminal occupies a right workspace tab and leaves the composer usable", async () => {
     await changesHidden();
-    const more0 = await box(tid(page, "thread-menu-toggle"));
-    const changes0 = await box(tid(page, "changes-toggle"));
+    const more = await box(tid(page, "thread-menu-toggle"));
     const toggle = tid(page, "terminal-toggle");
     const t = await box(toggle);
-    expect(Math.abs(more0.x + more0.width / 2 - (t.x + t.width / 2) - 34)).toBeLessThanOrEqual(1);
-    expect(Math.abs(t.y + t.height / 2 - 20)).toBeLessThanOrEqual(1);
-
+    expect(Math.abs(more.x + more.width / 2 - (t.x + t.width / 2) - 34)).toBeLessThanOrEqual(1);
     await page.keyboard.press("Control+Backquote");
     const panel = tid(page, "terminal-panel");
     await expect(panel).toBeVisible();
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
-    const main = await box(tid(page, "main"));
-    // The panel enters with a 180 ms rise (v0.0.3), so its bottom edge sits a few px low until the
-    // animation ends; CI measured 2–3 px on a slow runner. Wait for it to settle against the pane.
-    await expect.poll(async () => { const p = await box(panel); return Math.abs(p.y + p.height - (main.y + main.height)); }).toBeLessThanOrEqual(1);
-    const p = await box(panel);
-    expect(Math.abs(p.x - main.x) + Math.abs(p.x + p.width - (main.x + main.width))).toBeLessThanOrEqual(2);
-    const c = await box(tid(page, "composer-box"));
-    expect(Math.round(c.width)).toBe(736);
-    expect(c.y + c.height).toBeLessThanOrEqual(p.y);
-    // The title bar's right-hand controls do not move.
-    for (const [id, before] of [["thread-menu-toggle", more0], ["changes-toggle", changes0]] as const) {
-      const after = await box(tid(page, id));
-      expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
-    }
-    await capture("terminal-open");
-
-    // With Changes open too, the panel stays in the main pane, left of the Changes panel.
-    await page.keyboard.press("Meta+j");
-    await expect(tid(page, "changes-panel")).toHaveCount(1);
-    const changesPanel = await box(tid(page, "changes-panel"));
-    const p2 = await box(panel);
-    expect(p2.x + p2.width).toBeLessThanOrEqual(changesPanel.x + 1);
-    await capture("terminal-open-changes");
-
+    await expect.poll(async () => {
+      const p = await box(panel), w = await box(tid(page, "workspace"));
+      return Math.max(Math.abs(p.x - w.x - 1), Math.abs(p.width - w.width + 1), Math.abs(p.y + p.height - w.y - w.height));
+    }).toBeLessThanOrEqual(1);
+    const main = await box(tid(page, "main")), composer = await box(tid(page, "composer-box"));
+    expect(composer.x).toBeGreaterThanOrEqual(main.x);
+    expect(composer.x + composer.width).toBeLessThanOrEqual(main.x + main.width);
+    await capture("terminal-workspace");
+    await page.getByRole("tab", { name: "Review", exact: true }).click();
+    await expect(tid(page, "changes-panel")).toBeVisible();
+    await expect(panel).toHaveCount(0);
+    await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+    await expect(panel).toBeVisible();
     await page.keyboard.press("Control+Backquote");
     await expect(panel).toHaveCount(0);
     await changesHidden();

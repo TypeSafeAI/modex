@@ -4,7 +4,7 @@ import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread,
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
-import { ChangesPanel } from "./components/ChangesPanel";
+import { Workspace } from "./components/Workspace";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { CompanionDialog } from "./components/CompanionDialog";
 import { EmptyState } from "./components/EmptyState";
@@ -302,6 +302,7 @@ export function App() {
     if (fix.kind === "retry") { void retry(); return; }
     if (!thread) return;
     const id = thread.id;
+    setLayout({ changes: true });
     setTerminalCommands((m) => ({ ...m, [id]: { text: fix.command, nonce: ++commandNonce.current } }));
     setTerminals((m) => ({ ...m, [id]: true }));
   };
@@ -316,8 +317,8 @@ export function App() {
     inputRef.current?.focus();
   };
   const toggleTerminal = (threadId: string) => {
-    if (terminals[threadId]) closeTerminal(threadId);
-    else setTerminals((m) => ({ ...m, [threadId]: true }));
+    if (terminals[threadId] && showChanges) closeTerminal(threadId);
+    else { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [threadId]: true })); }
   };
   const deleteThread = (t: Thread) => act(async () => {
     const removeWorktree = t.worktree ? window.confirm(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`) : true;
@@ -386,7 +387,7 @@ export function App() {
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (showSettings) return;
+      if (showSettings || showCompanion || streamerMode) return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -415,7 +416,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [thread, state, draft, showSettings, terminals]);
+  }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals]);
 
   // Focus the composer whenever the selected thread changes.
   useEffect(() => {
@@ -442,7 +443,7 @@ export function App() {
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         showChanges={showChanges}
         onToggleChanges={() => setShowChanges((v) => !v)}
-        showTerminal={Boolean(thread && terminals[thread.id])}
+        showTerminal={Boolean(thread && showChanges && terminals[thread.id])}
         onToggleTerminal={() => thread && toggleTerminal(thread.id)}
         changedCount={changes?.files.length ?? 0}
         onOpenPath={openPath}
@@ -508,26 +509,29 @@ export function App() {
           ) : state.projects.length === 0 ? (
             <EmptyState onAddProject={addProject} />
           ) : null}
-          {thread && terminals[thread.id] && (
-            <Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
+        </main>
+        {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
+          visible={showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
+          suspended={showSettings || showCompanion || streamerMode}
+          onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
+          onHideTerminal={() => closeTerminal(thread.id)} onFocusChat={() => requestAnimationFrame(() => inputRef.current?.focus())}
+          terminal={terminals[thread.id] ? (<Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
               <TerminalPanel key={thread.id} theme={state.settings.theme} thread={thread} onClose={() => closeTerminal(thread.id)} command={terminalCommands[thread.id]} onCommandConsumed={(nonce) => setTerminalCommands((commands) => {
                 if (commands[thread.id]?.nonce !== nonce) return commands;
                 const next = { ...commands };
                 delete next[thread.id];
                 return next;
               })} />
-            </Suspense>
-          )}
-          {error && (
-            <div className="toast" role="alert" data-testid="toast">
-              <span data-testid="toast-message">{error.message}</span>
-              {error.retry && <button type="button" className="btn small" data-testid="toast-retry" onClick={() => { const again = error.retry; setError(null); again?.(); }}>Retry</button>}
-              <button type="button" className="btn small" data-testid="toast-copy" title="Copy the error and where it happened" onClick={() => void bridge.invoke("clipboard:write", { text: `Modex error\n${error.message}\n\nat: ${new Date().toISOString()}\nplatform: ${bridge.platform}\nthread: ${thread?.id ?? "none"}\ncwd: ${thread?.cwd ?? "none"}` }).catch(() => {})}>Copy</button>
-              <button type="button" className="toast-close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
-            </div>
-          )}
-        </main>
-        {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
+            </Suspense>) : null}
+        />}
+        {error && (
+          <div className="toast" role="alert" data-testid="toast">
+            <span data-testid="toast-message">{error.message}</span>
+            {error.retry && <button type="button" className="btn small" data-testid="toast-retry" onClick={() => { const again = error.retry; setError(null); again?.(); }}>Retry</button>}
+            <button type="button" className="btn small" data-testid="toast-copy" title="Copy the error and where it happened" onClick={() => void bridge.invoke("clipboard:write", { text: `Modex error\n${error.message}\n\nat: ${new Date().toISOString()}\nplatform: ${bridge.platform}\nthread: ${thread?.id ?? "none"}\ncwd: ${thread?.cwd ?? "none"}` }).catch(() => {})}>Copy</button>
+            <button type="button" className="toast-close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
+          </div>
+        )}
       </div>
       {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}

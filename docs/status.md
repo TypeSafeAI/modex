@@ -135,7 +135,10 @@ and exposes GitHub in the main navigation on desktop and mobile.
 
 ## On `main`, not yet released
 
-No additional desktop changes since v0.0.7.
+- **Right workspace replacement.** The right workspace replaces the stacked Changes
+  panel with the reference tab strip, new-tab launcher, full view, and a side-by-side review
+  with numbered diffs and a filterable file tree. Files previews, the existing per-thread
+  terminal, and isolated browser pages run inside tabs. [Design and verification](reviews/2026-10-05-right-workspace.md).
 
 ## In flight
 

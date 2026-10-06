@@ -657,7 +657,7 @@ test("title bar: ⋯ menu (rename, open, copy, delete), Changes icon with a coun
 
   // The Changes icon toggles the panel (⌘J does the same) and badges the number of changed files.
   const toggle = tid(page, "changes-toggle");
-  await expect(toggle).toHaveAccessibleName("Changes");
+  await expect(toggle).toHaveAccessibleName("Workspace");
   const shown = (await toggle.getAttribute("aria-pressed")) === "true";
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", String(!shown));

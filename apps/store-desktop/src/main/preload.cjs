@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("modex", {
   invoke: (channel, payload) => ipcRenderer.invoke("store:invoke", { channel, payload }),
   onEvent: (cb) => subscribe("thread:event", cb),
   onTerminalEvent: (cb) => subscribe("terminal:event", cb),
+  onWorkspaceShortcut: (cb) => subscribe("workspace:shortcut", cb),
   onReconnect: (cb) => subscribe("host:reconnected", cb),
 });
 contextBridge.exposeInMainWorld("modexHost", {

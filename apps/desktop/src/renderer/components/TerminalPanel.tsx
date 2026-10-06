@@ -7,9 +7,6 @@ import type { TerminalEvent, TerminalSnapshot, Thread } from "../../shared/types
 import { bridge } from "../bridge";
 import { IconButton } from "./ui/IconButton";
 
-const MIN_H = 140;
-const DEFAULT_H = 240;
-
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const terminalTheme = () => ({ background: token("--bg-main"), foreground: token("--text-1"), cursor: token("--text-1"), selectionBackground: token("--bg-row-selected") });
 
@@ -20,31 +17,14 @@ const terminalTheme = () => ({ background: token("--bg-main"), foreground: token
 export function TerminalPanel({ theme, thread, onClose, command, onCommandConsumed }: { theme: Theme; thread: Thread; onClose: () => void; /** A command line the app wants typed into the shell (a failure card's sign-in fix); a new `nonce` types it again. */ command?: { text: string; nonce: number }; onCommandConsumed: (nonce: number) => void }) {
   const terminalRef = useRef<Terminal | null>(null);
   useEffect(() => { if (terminalRef.current) terminalRef.current.options.theme = terminalTheme(); }, [theme]);
-  const panel = useRef<HTMLElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   const session = useRef<TerminalSnapshot | null>(null);
   const opening = useRef<Promise<TerminalSnapshot> | null>(null);
-  const drag = useRef<{ y: number; height: number } | null>(null);
-  const [height, setHeight] = useState(DEFAULT_H);
-  const [maxHeight, setMaxHeight] = useState(window.innerHeight / 2);
   const [generation, setGeneration] = useState(0);
   const [error, setError] = useState("");
   const [exitCode, setExitCode] = useState<number | null>(null);
   useEffect(() => bridge.onReconnect?.(() => setGeneration((value) => value + 1)), []);
 
-  useEffect(() => {
-    const parent = panel.current?.parentElement;
-    if (!parent) return;
-    const measure = () => {
-      const limit = Math.max(MIN_H, Math.floor(parent.clientHeight / 2));
-      setMaxHeight(limit);
-      setHeight((value) => Math.min(value, limit));
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(parent);
-    measure();
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     const host = screen.current;
@@ -133,27 +113,10 @@ export function TerminalPanel({ theme, thread, onClose, command, onCommandConsum
       else onClose();
     } catch (err) { setError((err as Error).message); }
   };
-  const clamp = (value: number) => Math.round(Math.max(MIN_H, Math.min(maxHeight, value)));
   const where = thread.worktree?.branch ?? thread.cwd.split(/[\\/]/).filter(Boolean).pop() ?? thread.cwd;
 
   return (
-    <section ref={panel} className="terminal-panel" data-testid="terminal-panel" aria-label="Terminal" style={{ height }}>
-      <div
-        className="terminal-resize"
-        data-testid="terminal-resize"
-        role="separator"
-        aria-label="Resize terminal"
-        aria-orientation="horizontal"
-        aria-valuemin={MIN_H}
-        aria-valuemax={maxHeight}
-        aria-valuenow={height}
-        tabIndex={0}
-        onPointerDown={(e) => { drag.current = { y: e.clientY, height }; e.currentTarget.setPointerCapture(e.pointerId); }}
-        onPointerMove={(e) => { if (drag.current) setHeight(clamp(drag.current.height + drag.current.y - e.clientY)); }}
-        onPointerUp={() => { drag.current = null; }}
-        onPointerCancel={() => { drag.current = null; }}
-        onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); setHeight((v) => clamp(v + (e.key === "ArrowUp" ? 20 : -20))); } }}
-      />
+    <section className="terminal-panel" data-testid="terminal-panel" aria-label="Terminal">
       <header className="terminal-head">
         <span className="terminal-title">Terminal</span>
         <span className="terminal-cwd" data-testid="terminal-cwd" title={thread.cwd}>{where}</span>

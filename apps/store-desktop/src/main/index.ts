@@ -5,11 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DesktopClient, type DesktopCredentials } from "../../../desktop/src/main/engine/desktop-client.js";
 import { desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
+import { WorkspaceBrowser } from "../../../desktop/src/main/workspace-browser.js";
+import type { BridgeCommands } from "../../../desktop/src/shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const testing = !app.isPackaged && process.env.MODEX_E2E === "1";
 if (testing && process.env.MODEX_STORE_HOME) app.setPath("userData", process.env.MODEX_STORE_HOME);
 let win: BrowserWindow | undefined;
+let workspaceBrowser: WorkspaceBrowser | undefined;
 let client: DesktopClient;
 let pairing = false;
 let storageError: string | undefined;
@@ -37,7 +40,10 @@ app.whenReady().then(() => {
     fs.writeFileSync(`${credentialsFile}.tmp`, encrypted, { mode: 0o600 });
     fs.renameSync(`${credentialsFile}.tmp`, credentialsFile);
   });
-  client.on("status", (status) => send("host:status", status));
+  client.on("status", (status) => {
+    if (status.state !== "connected") workspaceBrowser?.show(null);
+    send("host:status", status);
+  });
   client.on("thread", (event) => send("thread:event", event));
   client.on("terminal", (event) => send("terminal:event", event));
   client.on("connected", () => { if (connectedBefore) send("host:reconnected"); connectedBefore = true; });
@@ -90,6 +96,16 @@ app.whenReady().then(() => {
   ipcMain.handle("store:invoke", async (event, request: { channel?: unknown; payload?: unknown }) => {
     trusted(event);
     if (!request || typeof request.channel !== "string" || request.channel.length > 80) throw new Error("Invalid workspace action.");
+    if (request.channel === "browser:command") {
+      const payload = request.payload as BridgeCommands["browser:command"]["req"];
+      if (payload.action !== "close" && client.status().state !== "connected") throw new Error("Connect to your Mac to use the workspace browser.");
+      if (!workspaceBrowser) throw new Error("Browser unavailable.");
+      return workspaceBrowser.command(payload.id, payload.action, payload.url);
+    }
+    if (request.channel === "browser:show") {
+      const payload = request.payload as BridgeCommands["browser:show"]["req"];
+      return workspaceBrowser?.show(client.status().state === "connected" ? payload.id : null, payload.bounds, payload.fullView);
+    }
     if (request.channel === "updates:check") return null; // Store-owned updates only.
     if (request.channel === "clipboard:write") {
       const payload = request.payload as { text?: unknown };
@@ -102,6 +118,12 @@ app.whenReady().then(() => {
     nativeTheme.themeSource = "dark";
     win = new BrowserWindow({ width: 1380, height: 880, minWidth: 900, minHeight: 600, title: "Modex Store Preview", backgroundColor: "#080c17", titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 14 }, show: false,
       webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const browser = new WorkspaceBrowser(win);
+    workspaceBrowser = browser;
+    win.webContents.on("did-start-navigation", () => browser.dispose());
+    win.webContents.on("render-process-gone", () => browser.dispose());
+    win.on("close", () => browser.dispose());
+    win.on("closed", () => { browser.dispose(); if (workspaceBrowser === browser) workspaceBrowser = undefined; });
     win.webContents.on("will-navigate", (event) => event.preventDefault());
     win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); return { action: "deny" }; });
     win.once("ready-to-show", () => { if (testing) win?.showInactive(); else win?.show(); });
@@ -120,5 +142,5 @@ app.whenReady().then(() => {
   }
   app.on("activate", () => { if (!win) createWindow(); });
 });
-app.on("before-quit", () => client?.dispose());
+app.on("before-quit", () => { workspaceBrowser?.dispose(); client?.dispose(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

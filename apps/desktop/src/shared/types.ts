@@ -1,3 +1,4 @@
+import type { BrowserBounds, BrowserSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 /** Types shared between the Electron main process and the React renderer. */
 
@@ -325,6 +326,7 @@ export type TerminalEvent = { threadId: string; sessionId: string; sequence: num
 
 /** The API the preload exposes to the renderer as `window.modex`. */
 export interface ModexBridge {
+  onWorkspaceShortcut?(cb: (shortcut: WorkspaceShortcut) => void): () => void;
   invoke<K extends keyof BridgeCommands>(channel: K, payload: BridgeCommands[K]["req"]): Promise<BridgeCommands[K]["res"]>;
   onEvent(cb: (event: ThreadEvent) => void): () => void;
   onTerminalEvent(cb: (event: TerminalEvent) => void): () => void;
@@ -409,7 +411,11 @@ export interface BridgeCommands {
   "terminal:resize": { req: { threadId: string; sessionId: string; cols: number; rows: number }; res: void };
   "terminal:close": { req: { threadId: string; sessionId: string }; res: void };
   "changes:status": { req: { threadId: string }; res: ChangesSnapshot };
-  "changes:diff": { req: { threadId: string; path: string; original?: string }; res: string };
+  "changes:diff": { req: { threadId: string; path: string; original?: string; fullContext?: boolean }; res: string };
+  "browser:command": { req: { id: string; action: "navigate" | "back" | "forward" | "reload" | "state" | "close"; url?: string }; res: BrowserSnapshot | null };
+  "browser:show": { req: { id: string | null; bounds?: BrowserBounds; fullView?: boolean }; res: void };
+  "files:list": { req: { threadId: string }; res: { paths: string[]; truncated: boolean } };
+  "files:read": { req: { threadId: string; path: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
   "settings:update": { req: Partial<Settings>; res: Settings };
   "approvals:rules:get": { req: undefined; res: ApprovalRule[] };

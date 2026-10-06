@@ -4,6 +4,18 @@
  * shell and composer phases draw from one vocabulary; nothing here stands for a feature Modex lacks.
  */
 const PATHS = {
+  "terminal-box": "M3 2.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM4.5 6l2 2-2 2M8.5 10h3",
+  files: "M6 3V2h6l2 2v6h-2M2 5h4l2 2h4v7H2z",
+  "diff-color": "M2.5 3h11v10h-11zM3 12.5L13 3.5M4 10V5h7",
+  globe: "M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM2 8h12M8 2c-3 3-3 9 0 12M8 2c3 3 3 9 0 12",
+  review: "M4 2.5h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM5.5 6.5h5M8 4v5M5.5 11h5",
+  expand: "M9.5 2.5h4v4M6.5 13.5h-4v-4",
+  tabs: "M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM8 2.5v11",
+  grid: "M2.5 2.5h4v4h-4zM9.5 2.5h4v4h-4zM2.5 9.5h4v4h-4zM9.5 9.5h4v4h-4z",
+  file: "M4 2h5l3 3v9H4zM9 2v4h3",
+  wrap: "M2 4h11M2 8h9a3 3 0 0 1 0 6H8M10 12l-2 2 2 2M2 12h3",
+  fold: "M4 2v5M2 4l2-2 2 2M4 14V9M2 12l2 2 2-2M9 4h5M9 8h5M9 12h5",
+  comment: "M3 2.5h10v8H8l-3 3v-3H3z",
   plus: "M8 3.5v9M3.5 8h9",
   home: "M2.5 7.25L8 2.75l5.5 4.5v5.75a.5.5 0 0 1-.5.5h-3.25v-4h-3.5v4H3a.5.5 0 0 1-.5-.5z",
   close: "M4.5 4.5l7 7M11.5 4.5l-7 7",
