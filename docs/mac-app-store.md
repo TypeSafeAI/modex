@@ -73,3 +73,30 @@ renderer reuse, not production transport authorization or Store acceptance.
 
 The iPhone reconnection work in v0.0.7 supplies useful identity/revocation behavior, but it
 is intentionally not the full desktop RPC surface. It does not complete these gates.
+
+## Reproducible Apple distribution path
+
+The store workspace now contains a fail-closed MAS release command. It requires all three Apple
+artifacts before it builds: an `Apple Distribution` application identity, a separate `3rd Party
+Mac Developer Installer` identity, and an `OSX` App Store provisioning profile whose application
+identifier is `9LR8Z8UQ9X.works.jev.modex.desktop`. The command verifies the signed app, sandbox
+entitlements, package signature and (when requested) App Store Connect validation before upload.
+
+From a release worktree on Apple Silicon:
+
+```sh
+export MODEX_MAS_PROVISIONING_PROFILE="$HOME/Downloads/Modex_Mac_AppStore.provisionprofile"
+npm run dist:mas -w @modex/store-desktop
+
+export APPLE_API_KEY="$HOME/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8"
+export APPLE_API_KEY_ID="<KEY_ID>"
+export APPLE_API_ISSUER="<ISSUER_ID>"
+npm run dist:mas:validate -w @modex/store-desktop
+npm run dist:mas:upload -w @modex/store-desktop
+```
+
+The current machine has the application distribution certificate but no matching Mac Store
+profile or installer identity, and App Store Connect credentials are not active in the CLI. That
+is why this repository change prepares and verifies the release path without claiming that a
+TestFlight build has been accepted. After upload, App Store Connect processing, TestFlight
+enablement, a fresh-user install/launch and App Review still need live Apple-side evidence.

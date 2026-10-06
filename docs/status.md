@@ -143,7 +143,9 @@ No additional desktop changes since v0.0.7.
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The
   [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
-  end-to-end acceptance gates. No macOS Store/TestFlight build has been uploaded.
+  end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
+  command is now documented, but no macOS Store/TestFlight build has been uploaded; the
+  required Mac Store profile and installer certificate are still missing locally.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.

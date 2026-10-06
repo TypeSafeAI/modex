@@ -1,16 +1,20 @@
 {
   "name": "@modex/store-desktop",
-  "version": "0.0.1",
+  "version": "0.0.7",
   "private": true,
   "type": "module",
-  "description": "Sandboxed Modex desktop client preview for a separately installed Mac host.",
-  "author": "Val Alexander / OpenCoven",
+  "description": "Sandboxed Modex desktop client for a separately installed Mac host.",
+  "author": "Powered by Jev",
   "main": "dist/apps/store-desktop/src/main/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.main.json && node scripts/prepare.mjs && vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test": "node --test test/*.test.mjs",
     "start": "electron .",
-    "dist:preview": "npm run build && electron-builder --mac mas-dev --arm64 --publish never"
+    "dist:preview": "npm run build && electron-builder --mac mas-dev --arm64 --publish never",
+    "dist:mas": "npm run build && node scripts/release-mas.mjs",
+    "dist:mas:validate": "npm run build && node scripts/release-mas.mjs --validate",
+    "dist:mas:upload": "npm run build && node scripts/release-mas.mjs --upload"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
@@ -22,7 +26,7 @@
   },
   "build": {
     "appId": "works.jev.modex.desktop",
-    "productName": "Modex Store Preview",
+    "productName": "Modex",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -42,6 +46,11 @@
     },
     "masDev": {
       "identity": null,
+      "entitlements": "build/entitlements.plist",
+      "entitlementsInherit": "build/entitlements.inherit.plist"
+    },
+    "mas": {
+      "type": "distribution",
       "entitlements": "build/entitlements.plist",
       "entitlementsInherit": "build/entitlements.inherit.plist"
     },
