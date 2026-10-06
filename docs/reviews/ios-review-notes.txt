@@ -2,7 +2,7 @@ Review access: Modex Companion 0.1.0, build 5
 
 On a fresh installation, tap "Explore a demo workspace" below "Pair with your Mac". This opens a built-in offline workspace. No account, Mac, network connection, camera permission, subscription or expiring pairing code is required.
 
-Optional demo QR: attach modex-demo-qr.png from this review packet. It encodes exactly modex://demo and contains no credentials. Open it with iPhone Camera, or scan it in the app's pairing sheet. Opening modex://demo directly reaches the same demo. The welcome-screen button is the fallback when reviewing on a single device.
+Optional demo QR: modex-demo-qr.png is available at the image URL below and is attached to our App Review reply. It encodes exactly modex://demo and contains no credentials. Open it with iPhone Camera, or scan it in the app's pairing sheet. Opening modex://demo directly reaches the same demo. The welcome-screen button is the fallback when reviewing on a single device.
 
 QR image: https://raw.githubusercontent.com/TypeSafeAI/modex/main/docs/reviews/modex-demo-qr.png
 
