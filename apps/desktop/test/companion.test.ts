@@ -222,3 +222,43 @@ test("paired HTTPS companion reads live threads, sends a turn, and answers only 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("companion binds to 0.0.0.0 for LAN interfaces and preserves port across IP updates", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-lan-"));
+  let addresses = ["192.168.1.10", "192.168.2.20"];
+  const advertised: CompanionAdvertisement[] = [];
+  const source = {
+    state: () => ({ version: 1 as const, projects: [], threads: [], settings: DEFAULT_SETTINGS }),
+    items: () => [], status: () => "idle", send: async () => ({ ok: true }), answer: () => {},
+  };
+  const publisher = (service: CompanionAdvertisement) => { advertised.push(service); return () => {}; };
+  const server = new CompanionServer(home, source, () => addresses, publisher);
+  const decode = (uri: string) => JSON.parse(Buffer.from(new URL(uri).searchParams.get("data")!, "base64url").toString());
+  try {
+    const started = await server.start();
+    assert.equal(started.enabled, true);
+    assert.deepEqual(started.addresses, ["192.168.1.10", "192.168.2.20"]);
+    const decoded = decode(started.pairingUri!);
+    assert.equal(decoded.url, `https://192.168.1.10:${started.port}`);
+
+    // Verify underlying server socket is bound to 0.0.0.0 (all interfaces)
+    const address = (server as unknown as { server: https.Server }).server.address() as net.AddressInfo;
+    assert.equal(address.address, "0.0.0.0");
+    assert.equal(address.port, started.port);
+
+    // Switch active Wi-Fi interface / DHCP lease to 192.168.1.50
+    addresses = ["192.168.1.50"];
+    await server.refreshNetwork();
+
+    // Port and server socket are preserved without tearing down the HTTPS server
+    const current = server.status();
+    assert.equal(current.port, started.port);
+    const updated = decode(current.pairingUri!);
+    assert.equal(updated.url, `https://192.168.1.50:${started.port}`);
+    assert.equal(advertised.at(-1)?.host, "192.168.1.50");
+    assert.equal(advertised.at(-1)?.port, started.port);
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
