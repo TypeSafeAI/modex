@@ -166,8 +166,12 @@ No standalone desktop changes pending release.
   sandbox and standalone-app rules require an architecture and review gate. The
   [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
   end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
-  command is now documented, but no macOS Store/TestFlight build has been uploaded; the
-  required Mac Store profile and installer certificate are still missing locally.
+  command is documented. App Store Connect now contains processed macOS build 0.0.7
+  (`VALID`); distribution provisioning and installer signing are available locally.
+  The 0.0.8 Store candidate and Companion build 5 add offline demo access after Apple's
+  Guideline 2.1 request for a review QR. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
+  contains instructions, the reusable QR and validation evidence. Apple acceptance of
+  demo access and the Store architecture remains pending.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, send follow-ups, and answer approvals while the Mac keeps CLI execution.

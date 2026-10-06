@@ -9,7 +9,7 @@ import SwiftUI
             CompanionRootView()
                 .environmentObject(model)
                 .preferredColorScheme(.dark)
-                .onOpenURL { url in Task { await model.pair(link: url.absoluteString) } }
+                .onOpenURL { url in Task { _ = await model.open(link: url.absoluteString) } }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { model.startPolling() }
                     else { model.stopPolling() }

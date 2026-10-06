@@ -268,3 +268,140 @@ private func makeSnapshot(_ threadId: String?) -> CompanionSnapshot {
     let items = threadId.map { [CompanionItem(id: "item-\($0)", kind: "assistant", text: "Thread \($0)", title: nil, question: nil, detail: nil, answer: nil, status: nil, level: nil, at: "2026-10-04T00:00:00Z")] } ?? []
     return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: threads, items: items)
 }
+
+@MainActor final class DemoWorkspaceModelTests: XCTestCase {
+    func testDemoWorkspaceNeedsNoPairingAndLeavesNothingBehind() async {
+        let store = EmptyPairingStore()
+        let discovery = RecordingDiscovery()
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { _ in
+            XCTFail("The demo must not create a network client.")
+            return UnreachableClient()
+        })
+        XCTAssertNil(model.pairing)
+        XCTAssertFalse(model.hasWorkspace)
+
+        await model.startDemo()
+        model.stopPolling()
+        XCTAssertTrue(model.isDemo)
+        XCTAssertTrue(model.hasWorkspace)
+        XCTAssertTrue(model.connected)
+        XCTAssertNil(model.pairing, "The demo must not pretend to be a paired Mac.")
+        XCTAssertFalse(store.saved, "The demo must not write to the Keychain.")
+        XCTAssertFalse(discovery.started, "The demo must not browse the local network.")
+        XCTAssertEqual(model.snapshot.threads.count, 3)
+
+        let waiting = model.snapshot.threads.first { $0.status == "waiting" }
+        XCTAssertNotNil(waiting)
+        await model.select(waiting!.id)
+        let approval = model.snapshot.items.first { $0.kind == "approval" && $0.answer == nil }
+        XCTAssertNotNil(approval, "The demo must offer an approval to answer.")
+        await model.answer(itemId: approval!.id, approve: true)
+        XCTAssertEqual(model.snapshot.items.first { $0.id == approval!.id }?.answer, "yes")
+        XCTAssertEqual(model.snapshot.threads.first { $0.id == waiting!.id }?.status, "idle")
+        XCTAssertNil(model.error)
+
+        model.draft = "Ship it"
+        await model.send()
+        XCTAssertEqual(model.draft, "")
+        XCTAssertEqual(model.snapshot.items.last?.kind, "user")
+        XCTAssertEqual(model.snapshot.items.last?.text, "Ship it")
+
+        model.disconnect()
+        XCTAssertFalse(model.isDemo)
+        XCTAssertFalse(model.hasWorkspace)
+        XCTAssertNil(model.pairing)
+        XCTAssertTrue(model.snapshot.threads.isEmpty)
+    }
+
+    func testDemoRunningThreadFinishesOnItsOwn() async throws {
+        let client = DemoCompanionClient(notesDelay: .zero)
+        let before = try await client.snapshot(threadId: DemoCompanionClient.notesThreadId)
+        XCTAssertEqual(before.threads.first { $0.id == DemoCompanionClient.notesThreadId }?.status, "idle")
+        XCTAssertEqual(before.items.last?.kind, "assistant")
+        try await client.send(threadId: DemoCompanionClient.notesThreadId, text: "Continue the notes")
+        let followup = try await client.snapshot(threadId: DemoCompanionClient.notesThreadId)
+        XCTAssertEqual(followup.threads.first { $0.id == DemoCompanionClient.notesThreadId }?.status, "running")
+        XCTAssertEqual(followup.items.last?.text, "Continue the notes", "The seeded completion must not replay during a follow-up.")
+        let fresh = DemoCompanionClient(notesDelay: .seconds(60))
+        let pending = try await fresh.snapshot(threadId: DemoCompanionClient.notesThreadId)
+        XCTAssertEqual(pending.threads.first { $0.id == DemoCompanionClient.notesThreadId }?.status, "running")
+        await XCTAssertThrowsErrorAsync(try await fresh.send(threadId: DemoCompanionClient.notesThreadId, text: "Too early"))
+    }
+
+    func testDemoCannotEnterWhileAMacIsPaired() async {
+        let model = CompanionModel(store: PairedStore(), discovery: RecordingDiscovery(), makeClient: { _ in UnreachableClient() })
+        await model.startDemo()
+        XCTAssertFalse(model.isDemo)
+        XCTAssertNotNil(model.pairing)
+    }
+
+    func testDemoLinkIsExactAndNeverCreatesOrClearsPairing() async {
+        let store = EmptyPairingStore()
+        let model = CompanionModel(store: store, discovery: RecordingDiscovery(), makeClient: { _ in
+            XCTFail("A demo link must never create a network client.")
+            return UnreachableClient()
+        })
+        for link in ["https://demo", "modex://demo?host=evil", "modex://demo/path", "modex://demo#pair", "modex://user@demo"] {
+            let accepted = await model.open(link: link)
+            XCTAssertFalse(accepted)
+            XCTAssertFalse(model.isDemo)
+        }
+        let accepted = await model.open(link: "modex://demo")
+        XCTAssertTrue(accepted)
+        model.stopPolling()
+        await model.select(DemoCompanionClient.launchThreadId)
+        await model.answer(itemId: "launch-approval", approve: false)
+        XCTAssertEqual(model.snapshot.items.first { $0.id == "launch-approval" }?.answer, "no")
+        await model.startDemo()
+        model.stopPolling()
+        await model.select(DemoCompanionClient.launchThreadId)
+        XCTAssertNil(model.snapshot.items.first { $0.id == "launch-approval" }?.answer, "Reset restores the approval.")
+        model.disconnect()
+        XCTAssertFalse(store.saved)
+        XCTAssertFalse(store.cleared, "Leaving a demo must not delete any saved Keychain entry.")
+    }
+
+    func testDemoLinkCannotReplaceSavedMac() async {
+        let store = MemoryPairingStore()
+        let original = store.pairing
+        let model = CompanionModel(store: store, discovery: RecordingDiscovery(), makeClient: { _ in UnreachableClient() })
+        let accepted = await model.open(link: "modex://demo")
+        XCTAssertFalse(accepted)
+        XCTAssertFalse(model.isDemo)
+        XCTAssertEqual(model.pairing, original)
+        XCTAssertEqual(store.pairing, original)
+    }
+}
+
+private func XCTAssertThrowsErrorAsync<T>(_ expression: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected an error.", file: file, line: line)
+    } catch {}
+}
+
+private final class EmptyPairingStore: PairingStorage {
+    var saved = false
+    var cleared = false
+    func load() -> Pairing? { nil }
+    func save(_ pairing: Pairing) throws { saved = true }
+    func clear() { cleared = true }
+}
+
+private final class PairedStore: PairingStorage {
+    func load() -> Pairing? { Pairing(url: URL(string: "https://127.0.0.1:43120")!, token: String(repeating: "a", count: 64), fingerprint: String(repeating: "b", count: 64)) }
+    func save(_ pairing: Pairing) throws {}
+    func clear() {}
+}
+
+@MainActor private final class RecordingDiscovery: CompanionDiscovery {
+    var started = false
+    func start(fingerprint: String, found: @escaping (URL) -> Void) { started = true }
+    func stop() {}
+}
+
+private struct UnreachableClient: CompanionClient {
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot { throw CompanionError.message("unreachable") }
+    func send(threadId: String, text: String) async throws { throw CompanionError.message("unreachable") }
+    func answer(threadId: String, itemId: String, approve: Bool) async throws { throw CompanionError.message("unreachable") }
+}

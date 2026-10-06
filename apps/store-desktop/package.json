@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.main.json && node scripts/prepare.mjs && vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "test": "node --test test/*.test.mjs",
+    "test": "tsc -p tsconfig.main.json && node --test test/*.test.mjs",
     "start": "electron .",
     "dist:preview": "npm run build && electron-builder --mac mas-dev --arm64 --publish never",
     "dist:mas": "npm run build && node scripts/release-mas.mjs",

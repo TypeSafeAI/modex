@@ -1,0 +1,17 @@
+Review access: Modex Mac App Store 0.0.8
+Bundle: works.jev.modex.desktop
+
+On a fresh installation, click "Explore a demo workspace" on the welcome screen. No host installation, account, network connection or pairing code is required for the offline demo. The banner reads "Offline demo" and "No host connected".
+
+Suggested review steps:
+1. The selected "Review launch changes" thread contains an approval. Click "Approve" or "Deny".
+2. After approval, open Review to inspect the sample README diff, or Files to read the in-memory README. Reverting affects only this sample.
+3. Enter a follow-up in the composer and send it with Command-Return. A scripted response appears. Use New chat to create another sample thread, or "Open project..." (the plus beside Projects) to add another sample project.
+4. Open the terminal tab to inspect its labeled, simulated input echo. No shell or commands run. Settings and appearance controls are available; demo preferences are discarded on exit/reset.
+5. Click "Reset demo" in the top banner to restore the initial workspace, or "Leave demo" to return to the connection screen.
+
+The demo is available to every user. It never connects to a host, invokes coding CLIs, reads real project files or saves access credentials. External browser pages, account sign-in, live AI execution, system tools, companion pairing and judge-backed approval-rule previews require a connected host and explain that limitation in demo mode.
+
+The production Store client uses an explicitly authorized, separately installed Modex host on the same Mac for those operations. It does not install, download or silently launch a privileged execution helper. Existing host installation/discovery and connection controls remain on the welcome screen. Updates for this edition are Store-owned.
+
+We request acceptance of this built-in demo as review access under Guideline 2.1. Please advise if a live-host review arrangement is needed. This access fix does not establish acceptance of the separate-host architecture under the Mac App Store guidelines; that review remains pending.
