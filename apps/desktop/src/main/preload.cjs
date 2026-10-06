@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld("modex", {
     ipcRenderer.on("thread:event", listener);
     return () => ipcRenderer.removeListener("thread:event", listener);
   },
+  onWorkspaceShortcut: (cb) => {
+    const listener = (_e, shortcut) => cb(shortcut);
+    ipcRenderer.on("workspace:shortcut", listener);
+    return () => ipcRenderer.removeListener("workspace:shortcut", listener);
+  },
   onTerminalEvent: (cb) => {
     const listener = (_e, event) => cb(event);
     ipcRenderer.on("terminal:event", listener);

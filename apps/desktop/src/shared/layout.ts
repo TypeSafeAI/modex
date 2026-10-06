@@ -5,7 +5,7 @@
 export type Layout = {
   /** Thread list beside the rail. */
   sidebar: boolean;
-  /** Changes panel on the right of a thread. */
+  /** Tabbed workspace on the right of a thread (the key is kept for existing preferences). */
   changes: boolean;
   /** Opaque, fail-closed cover for screen sharing and livestreams. */
   streamerMode: boolean;

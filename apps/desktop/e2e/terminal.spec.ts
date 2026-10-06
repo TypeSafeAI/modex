@@ -5,8 +5,8 @@ import path from "node:path";
 import { createThread, launch, seedHome, tid } from "./support";
 
 /**
- * The embedded terminal: a real PTY per thread (main process, engine/terminal.ts) shown in a bottom
- * panel. These tests type into the real shell and read what it prints, so they cover the IPC, the
+ * The embedded terminal: a real PTY per thread (main process, engine/terminal.ts) shown in the right
+ * workspace. These tests type into the real shell and read what it prints, so they cover the IPC, the
  * xterm wiring and the key routing together. Selectors are test ids and ARIA state only.
  */
 
@@ -72,6 +72,19 @@ test("the title-bar button and ⌃` open a real shell in the thread's folder; hi
   await run(`printf 'SESSION=%s\\n' "$MODEX_TERMINAL_TEST"`);
   await expect(tid(page, "terminal-screen")).toContainText("SESSION=retained");
   expect(await screenText()).toContain(`TTY=yes`); // replayed history from before hiding
+  await page.keyboard.press("Meta+j");
+  await expect(tid(page, "workspace")).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(panel()).toBeVisible();
+  await run(`printf 'REOPENED=%s\\n' "$MODEX_TERMINAL_TEST"`);
+  await expect(tid(page, "terminal-screen")).toContainText("REOPENED=retained");
+  await page.keyboard.press("Meta+j");
+  await expect(tid(page, "workspace")).toBeHidden();
+  await page.keyboard.press("Control+Backquote");
+  await expect(panel()).toBeVisible();
+  await run(`printf 'KEYBOARD=%s\\n' "$MODEX_TERMINAL_TEST"`);
+  await expect(tid(page, "terminal-screen")).toContainText("KEYBOARD=retained");
 });
 
 test("inside the shell, ⌃C and ⌃J are the shell's, not the app's shortcuts", async () => {
@@ -120,13 +133,10 @@ test("making the panel taller gives the shell more rows", async () => {
     return Number((await screenText()).match(new RegExp(`${marker}=(\\d+) \\d+`))![1]);
   };
   const before = await rows("BEFORE");
-  const handle = tid(page, "terminal-resize");
-  const height = Number(await handle.getAttribute("aria-valuenow"));
-  await handle.focus();
-  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowUp");
-  await expect(handle).toHaveAttribute("aria-valuenow", String(height + 100));
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 1000));
   await tid(page, "terminal-screen").click();
   await expect.poll(() => rows("AFTER"), { timeout: 10_000 }).toBeGreaterThan(before);
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
 });
 
 test("exit shows the code, Restart starts a fresh shell, and Close ends it", async () => {

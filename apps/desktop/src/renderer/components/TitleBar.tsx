@@ -26,9 +26,6 @@ interface Props {
   platform: string;
 }
 
-/** Width of the Changes panel; while it is open the thread's actions sit at the main pane's right edge. */
-const CHANGES_W = 420;
-
 /**
  * The 42 px window titlebar (a drag region). Left, over the rail and sidebar: space for the traffic
  * lights, back/forward through selected threads, and the sidebar toggle. Right, over the thread: its
@@ -36,9 +33,9 @@ const CHANGES_W = 420;
  */
 export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, platform }: Props) {
   const [renameSignal, setRenameSignal] = useState(0);
-  const inset = thread && showChanges ? CHANGES_W : 0;
+  const inset = Boolean(thread && showChanges);
   return (
-    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar" style={{ ["--changes-w" as string]: inset ? "var(--changes-panel-w, 420px)" : "0px" }}>
+    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar" style={{ ["--changes-w" as string]: inset ? "var(--changes-panel-w, 672px)" : "0px" }}>
       <div className="titlebar-nav">
         <IconButton icon="arrow-left" label="Back" size="md" data-testid="nav-back" disabled={!canBack} onClick={onBack} />
         <IconButton icon="arrow-right" label="Forward" size="md" data-testid="nav-forward" disabled={!canForward} onClick={onForward} />
@@ -51,8 +48,8 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
           <div className="titlebar-actions">
             <IconButton icon="terminal" label={showTerminal ? "Hide terminal" : "Show terminal"} shortcut="⌃`" size="md" className={showTerminal ? "on" : undefined} data-testid="terminal-toggle" aria-pressed={showTerminal} onClick={onToggleTerminal} />
             <ThreadMenu thread={thread} platform={platform} onRename={() => setRenameSignal((n) => n + 1)} onOpenPath={onOpenPath} onOpenTerminal={onOpenTerminal} onDelete={onDelete} />
-            <Tooltip label={showChanges ? "Hide changes" : "Show changes"} shortcut="⌘J">
-              <button className={`icon-btn md changes-toggle${showChanges ? " on" : ""}`} data-testid="changes-toggle" aria-label="Changes" aria-pressed={showChanges} onClick={onToggleChanges}>
+            <Tooltip label={showChanges ? "Hide workspace" : "Show workspace"} shortcut="⌘J">
+              <button className={`icon-btn md changes-toggle${showChanges ? " on" : ""}`} data-testid="changes-toggle" aria-label="Workspace" aria-pressed={showChanges} onClick={onToggleChanges}>
                 <Icon name="changes" size={16} />
                 {changedCount > 0 && <span className="count-badge" data-testid="changes-count">{changedCount}</span>}
               </button>

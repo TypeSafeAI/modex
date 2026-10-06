@@ -152,7 +152,8 @@ function diffOutput(result: { stdout: string; stderr: string; code: number }, no
 }
 
 /** Unified diff for one path; untracked files are rendered as pure additions. */
-export async function diff(cwd: string, rel: string, original?: string): Promise<string> {
+export async function diff(cwd: string, rel: string, original?: string, fullContext = false): Promise<string> {
+  const context = fullContext ? ["--unified=100000"] : [];
   const { root, prefix } = await repoContext(cwd);
   const repoRel = toRepoRel(prefix, rel);
   let orig = original ? toRepoRel(prefix, original) : undefined;
@@ -171,14 +172,14 @@ export async function diff(cwd: string, rel: string, original?: string): Promise
   }
 
   if (code === "??") {
-    return diffOutput(await git(root, ["--literal-pathspecs", "diff", "--no-index", "--", "/dev/null", repoRel]), true);
+    return diffOutput(await git(root, ["--literal-pathspecs", "diff", ...context, "--no-index", "--", "/dev/null", repoRel]), true);
   }
 
   const committed = await hasCommits(root);
   const target = committed ? "HEAD" : "--cached";
 
   if (orig) {
-    const renamed = diffOutput(await git(root, ["--literal-pathspecs", "diff", "-M", target, "--", orig, repoRel]));
+    const renamed = diffOutput(await git(root, ["--literal-pathspecs", "diff", ...context, "-M", target, "--", orig, repoRel]));
     const headers = renamed.match(/^diff --git /gm) || [];
     if (headers.length === 1) {
       return renamed;
@@ -186,12 +187,12 @@ export async function diff(cwd: string, rel: string, original?: string): Promise
     // If rewrite similarity dropped below git's rename threshold, compare the original
     // HEAD blob directly against the destination file. -- also protects a leading-dash name.
     if (committed) {
-      const fallback = diffOutput(await git(root, ["--literal-pathspecs", "diff", `HEAD:${orig}`, "--", repoRel]));
+      const fallback = diffOutput(await git(root, ["--literal-pathspecs", "diff", ...context, `HEAD:${orig}`, "--", repoRel]));
       if (fallback) return fallback;
     }
   }
 
-  return diffOutput(await git(root, ["--literal-pathspecs", "diff", target, "--", repoRel]));
+  return diffOutput(await git(root, ["--literal-pathspecs", "diff", ...context, target, "--", repoRel]));
 }
 
 /** Discards changes to one path (tracked → checkout from HEAD; untracked → delete). Destructive. */

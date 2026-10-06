@@ -4,6 +4,7 @@ import type { Store } from "./engine/store.js";
 import type { ThreadRunner } from "./engine/runner.js";
 import type { TerminalManager } from "./engine/terminal.js";
 import * as gitx from "./engine/git.js";
+import { listWorkspaceFiles, readWorkspaceFile } from "./engine/workspace-files.js";
 import { saveSettings } from "./engine/settings-update.js";
 import { previewApproval, validateRules } from "./engine/approvals/preview.js";
 import { describeFailure } from "../shared/failures.js";
@@ -75,8 +76,10 @@ export function registerCommands(handle: RegisterCommand, {
     const p = store.project(projectId);
     return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
   });
+  handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
+  handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
   handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
-  handle("changes:diff", ({ threadId, path: rel, original }) => gitx.diff(cwdFor(threadId), rel, original));
+  handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));
   handle("changes:revert", async ({ threadId, path: rel }) => {
     const cwd = cwdFor(threadId);
     await gitx.revert(cwd, rel);

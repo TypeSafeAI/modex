@@ -59,12 +59,12 @@ a { color: var(--accent); }
 .pill { background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; font-size: 12px; color: var(--fg-1); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
-.patch, .diff-body { margin: 0; padding: 8px 0; overflow: auto; white-space: pre; }
-.patch div, .diff-body div { padding: 0 12px; }
-.patch .add, .diff-body .add { background: var(--add-bg); color: #b6f0c4; }
-.patch .del, .diff-body .del { background: var(--del-bg); color: #ffc1bd; }
-.patch .hdr, .diff-body .hdr { color: var(--fg-2); }
-.patch .hunk, .diff-body .hunk { color: var(--accent); }
+.patch { margin: 0; padding: 8px 0; overflow: auto; white-space: pre; }
+.patch div { padding: 0 12px; }
+.patch .add { background: var(--add-bg); color: #b6f0c4; }
+.patch .del { background: var(--del-bg); color: #ffc1bd; }
+.patch .hdr { color: var(--fg-2); }
+.patch .hunk { color: var(--accent); }
 
 .spinner { width: 12px; height: 12px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -317,7 +317,6 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* Optional panes must not shift main out of the flexible track when unmounted. */
 .sheet > .sidebar { grid-area: 1 / 1; }
 .sheet > .main { grid-area: 1 / 2; }
-.sheet > .changes { grid-area: 1 / 3; }
 .main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); background-image: radial-gradient(ellipse 75% 40% at 50% -10%, var(--canvas-sheen), transparent); }
 .sidebar + .main { border-left: 1px solid var(--border-pane); }
 
@@ -518,26 +517,10 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .menu.thread-actions { min-width: 240px; }
 .menu.thread-actions .menu-label span { display: block; max-width: 320px; overflow: hidden; color: var(--text-3); font: 11.5px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 
-/* ── Changes panel: tokens only, header on the title bar's 42 px rhythm. ── */
-.changes { width: var(--changes-panel-w, 420px); display: flex; flex-direction: column; min-height: 0; background: var(--bg-sidebar); border-left: 1px solid var(--border-pane); }
-.changes-head { height: 42px; flex: none; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--border-pane); }
-.changes-title { color: var(--text-1); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+/* Change totals are shared by the title bar and the workspace review. */
 .stat { font: 12px var(--font-mono); }
 .stat.add { color: var(--add); }
 .stat.del { color: var(--del); }
-.files { max-height: 40%; flex: none; margin: 0; padding: 6px; overflow: auto; list-style: none; border-bottom: 1px solid var(--border-pane); }
-.file { display: flex; align-items: center; gap: var(--space-2); height: 28px; padding: 0 6px; border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; }
-.file-select { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; align-self: stretch; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.file:hover { background: var(--bg-row-hover); }
-.file.selected { background: var(--bg-row-selected); color: var(--text-1); }
-.file-path { flex: 1; min-width: 0; overflow: hidden; font: 12px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.code { width: 16px; font: 11px var(--font-mono); text-align: center; }
-.code.c-M { color: var(--warn); }
-.code.c-A, .code.c-\? { color: var(--add); }
-.code.c-D { color: var(--del); }
-.code.c-R { color: var(--accent); }
-.diff { flex: 1; min-height: 0; overflow: auto; background: var(--bg-sunken); }
-.diff-file { position: sticky; top: 0; padding: 6px var(--space-3); border-bottom: 1px solid var(--border-pane); background: var(--bg-sidebar); color: var(--text-3); font: 12px var(--font-mono); }
 
 /* ── Accessibility baseline (Phase 8) ─────────────────────────────────────────────────────────────
    Contrast: the reference's muted greys (--text-3/-muted/-4, placeholder) fall short of WCAG AA 4.5:1 and
@@ -545,7 +528,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 
 /* Leave room for the composer at the supported 900px minimum without changing saved pane preferences. */
 @media (max-width: 1100px) {
-  .app { --sidebar-w: 180px; --changes-panel-w: 300px; }
+  .app { --sidebar-w: 180px; }
 }
 
 /* Every control shows a keyboard focus ring unless it styles its own (zero specificity: specific rules win). */
@@ -562,16 +545,13 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
   .row-status.running { border-color: var(--text-2); border-top-color: var(--text-2); border-style: dotted; }
 }
 
-/* ── Embedded terminal: a bottom panel in the main pane (no reference screenshot; built from the tokens) ── */
+/* ── Terminal content in the right workspace. ── */
 .titlebar-actions .icon-btn.on { color: var(--text-1); }
-.terminal-panel { position: relative; flex: none; display: flex; flex-direction: column; min-height: 140px; max-height: 50%; border-top: 1px solid var(--border-pane); background: var(--bg-main); }
+.terminal-panel { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 140px; min-width: 0; background: var(--bg-main); }
 .terminal-panel.loading { height: 240px; align-items: center; justify-content: center; color: var(--text-info); font-size: var(--text-xs); } /* the panel's default height: no jump when xterm arrives */
 .terminal-panel:not(.loading) { animation: terminal-in var(--duration-base) var(--ease-out); }
 @keyframes terminal-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* The grab zone is 6 px; the line it lights up is 2 px, so the affordance reads as an edge, not a bar. */
-.terminal-resize { position: absolute; z-index: 1; top: -3px; left: 0; right: 0; height: 6px; cursor: row-resize; touch-action: none; outline: 0; }
-.terminal-resize::after { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 2px; background: var(--accent); opacity: 0; transition: opacity var(--duration-fast) var(--ease-out); }
-.terminal-resize:hover::after, .terminal-resize:focus-visible::after, .terminal-resize:active::after { opacity: 1; }
 .terminal-head { height: 36px; flex: none; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-5); font-size: var(--text-xs); }
 .terminal-title { color: var(--text-2); font-weight: var(--weight-medium); }
 .terminal-cwd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-info); font-family: var(--font-mono); }

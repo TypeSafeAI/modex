@@ -82,9 +82,11 @@ modex/
   when it is unused, or retries in place while another turn is running or opening.
   A second failure shows the card with both attempts recorded. Early send/retry rejections
   (for example, a busy thread) return to the caller without adding transcript items.
-- **Changes panel.** Working-tree status for the thread's directory with per-file diffs and
-  a one-click revert (confirmed first). Diff failures appear in the panel.
-- **Embedded terminal.** Open a shell in the thread's folder with the title-bar terminal
+- **Tabbed workspace.** Review working-tree changes with numbered diffs, a filterable file
+  tree, and confirmed per-file discard. Open Files, Terminal, or browser tabs beside the chat;
+  use Shift + Command + B for a new tab or Shift + Command + F for full view. Escape exits
+  full view. Files previews stay inside the project; browser pages use isolated desktop views.
+- **Embedded terminal.** Open a shell in a workspace tab with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.
 - **iPhone companion (preview).** Pair Modex Companion with the Mac from the rail to view
@@ -112,7 +114,7 @@ modex/
   turn (edited files, ran checks, a failed tool, "next steps" in the answer) and never sees
   the transcript; otherwise, or offline, a built-in rule picks. See
   [docs/auto-routing.md](docs/auto-routing.md#the-follow-up-question).
-- **Layout that sticks.** The sidebar and Changes panel stay open or closed across relaunches,
+- **Layout that sticks.** The sidebar and workspace stay open or closed across relaunches,
   and the window reopens at its last size, position and maximized state (back to the default
   size if its display is gone).
 - **Modes**, mirroring Codex, mapped onto each CLI's native policy:
