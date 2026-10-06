@@ -56,7 +56,8 @@ windows and persisted panel combinations. Unit tests cover file boundaries and b
 Verified locally on macOS on 2026-10-05:
 
 - `npm run typecheck` and `npm run build` passed.
-- `npm test`: 297 passed (15 core, 271 desktop, 1 browser development bridge, 10 site).
+- `npm test`: 300 passed (15 core, 271 desktop, 1 browser development bridge, 10 site,
+  3 Store release-configuration tests).
 - `npm run test:e2e`: 111 desktop and 7 site tests passed after integrating main's Store preview.
 - After the final icon/menu alignment, the desktop build and all workspace E2E tests
   passed again. The three captured states were visually inspected against the supplied images;

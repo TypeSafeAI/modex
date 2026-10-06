@@ -1,6 +1,8 @@
-# Modex Store Preview
+# Modex for macOS
 
-A development preview of the full desktop renderer inside an Electron **MAS** client.
+A sandboxed Mac App Store client of the full desktop renderer inside an Electron **MAS**
+bundle. Coding, terminal processes, projects, credentials and file operations remain owned by an
+explicitly started, signed Mac host.
 Coding, terminal processes, projects, credentials and file operations remain owned by an
 explicitly started Mac host. This does not establish App Review eligibility or complete the
 [Store acceptance gates](../../docs/mac-app-store.md).
@@ -38,14 +40,14 @@ This preview currently keeps a persistent port; conflicts fail visibly instead o
 changing endpoints. Certificate renewal, host upgrades, multiple-client coordination and
 the complete parity matrix still need acceptance work.
 
-## Local sandboxed MAS bundle
+## Local sandboxed MAS preview
 
 ```sh
 npm run dist:preview -w @modex/store-desktop
 MODEX_STORE_SIGN_IDENTITY=<Developer-ID-certificate-SHA1> node apps/store-desktop/scripts/sign-preview.mjs
 ```
 
-The bundle is `release/mas-dev-arm64/Modex Store Preview.app`. The first command deliberately
+The bundle is `release/mas-dev-arm64/Modex.app`. The first command deliberately
 leaves it unsigned. The second signs the MAS runtime for a **local development preview**
 with App Sandbox, outgoing network access and the configured Soul Protocol team/application
 group. It has no execution engine, PTY dependency, incoming-network entitlement or file
@@ -70,10 +72,36 @@ existing workspace. A second launch enables the host in the existing process rat
 starting a second engine over the same data. Manual links remain under **Use a connection
 link instead**, including for unsigned source builds.
 
-Distribution needs the distinct `works.jev.modex.desktop` App Store Connect record,
-appropriate Apple provisioning/signing, a processed TestFlight build and the documented
-App Review/parity gates. The Developer ID preview is not such a build. Store client update
-checks return no GitHub update; Store distribution must use Apple-owned updates.
+## Mac App Store / macOS TestFlight distribution
+
+Apple distribution is intentionally fail-closed. Download the macOS App Store provisioning
+profile for `works.jev.modex.desktop` into a location outside the repository and make sure the
+keychain contains both an `Apple Distribution` application certificate and a separate `3rd Party
+Mac Developer Installer` certificate. The release command validates the profile's platform,
+team, bundle identifier, distribution type and expiry before invoking electron-builder.
+
+```sh
+export MODEX_MAS_PROVISIONING_PROFILE="$HOME/Downloads/Modex_Mac_AppStore.provisionprofile"
+npm run dist:mas -w @modex/store-desktop
+```
+
+The verified `.pkg` can be checked with App Store Connect before upload. Supply an App Store
+Connect API key outside the repository for the network steps:
+
+```sh
+export APPLE_API_KEY="$HOME/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8"
+export APPLE_API_KEY_ID="<KEY_ID>"
+export APPLE_API_ISSUER="<ISSUER_ID>"
+npm run dist:mas:validate -w @modex/store-desktop
+npm run dist:mas:upload -w @modex/store-desktop
+```
+
+`--validate` and `--upload` use `xcrun altool` with an ephemeral key lookup directory; the key
+contents are never printed or copied into the checkout. Upload success is not TestFlight
+acceptance: App Store Connect must finish processing the macOS build, the build must be enabled
+for testing, and a real TestFlight install/launch must still pass. See
+[the Store acceptance gates](../../docs/mac-app-store.md) for the remaining review and parity
+requirements.
 
 ## Verification
 

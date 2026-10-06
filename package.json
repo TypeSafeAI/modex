@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "npm run build -w @modex/core && npm run build -w @modex/desktop && npm run build -w @modex/site && npm run build -w @modex/store-desktop",
-    "test": "npm run test -w @modex/core && npm run test -w @modex/desktop && npm run test -w @modex/site",
+    "test": "npm run test -w @modex/core && npm run test -w @modex/desktop && npm run test -w @modex/site && npm run test -w @modex/store-desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop": "npm run start -w @modex/desktop",
     "desktop:dev": "npm run dev -w @modex/desktop",
