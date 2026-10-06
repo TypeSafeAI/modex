@@ -49,11 +49,11 @@ function profileMetadata(profilePath) {
   const cms = spawnSync('/usr/bin/security', ['cms', '-D', '-i', profilePath], { encoding: 'utf8' });
   if (cms.status !== 0) throw new Error(`MAS release: cannot decode provisioning profile: ${profilePath}`);
   const python = spawnSync('/usr/bin/python3', ['-c', [
-    'import datetime, json, plistlib, sys',
-    'def clean(value):',
-    '  if isinstance(value, (bytes, bytearray)): return None',
+    'import base64, datetime, json, plistlib, sys',
+    'def clean(value, key=None):',
+    '  if isinstance(value, (bytes, bytearray)): return base64.b64encode(value).decode("ascii") if key == "DER-Encoded-Profile" else None',
     '  if isinstance(value, (datetime.datetime, datetime.date)): return value.isoformat()',
-    '  if isinstance(value, dict): return {k: clean(v) for k, v in value.items() if k not in ("DER-Encoded-Profile", "DeveloperCertificates")}',
+    '  if isinstance(value, dict): return {k: clean(v, k) for k, v in value.items() if k != "DeveloperCertificates"}',
     '  if isinstance(value, list): return [clean(v) for v in value]',
     '  return value',
     'print(json.dumps(clean(plistlib.loads(sys.stdin.buffer.read()))))',
@@ -86,7 +86,8 @@ function requireApiCredentials() {
 }
 
 function findPackage() {
-  const candidates = readdirSync(releaseDir).filter((name) => name.endsWith('.pkg'));
+  const candidates = readdirSync(releaseDir, { recursive: true })
+    .filter((name) => name.endsWith('.pkg'));
   if (candidates.length !== 1) throw new Error(`MAS release: expected one .pkg in ${releaseDir}, found ${candidates.length}`);
   return path.join(releaseDir, candidates[0]);
 }
@@ -99,7 +100,9 @@ function findApp() {
 
 function verifyApp(app, appIdentity) {
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
-  const details = capture('/usr/bin/codesign', ['-dvv', app]);
+  const detailsResult = spawnSync('/usr/bin/codesign', ['-dvv', app], { encoding: 'utf8' });
+  if (detailsResult.status !== 0) throw new Error(`MAS release: codesign details failed for ${app}`);
+  const details = `${detailsResult.stdout}\n${detailsResult.stderr}`;
   if (!details.includes(`Authority=${appIdentity}`)) throw new Error(`MAS release: app is not signed by ${appIdentity}`);
   if (!details.includes(`TeamIdentifier=${MAS_TEAM_ID}`)) throw new Error(`MAS release: app team is not ${MAS_TEAM_ID}`);
   const entitlements = capture('/usr/bin/codesign', ['-d', '--entitlements', '-', '--xml', app]);
