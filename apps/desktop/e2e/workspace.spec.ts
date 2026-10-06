@@ -22,9 +22,11 @@ test.beforeEach(async () => {
   fs.appendFileSync(path.join(repo, ".beads/interactions.jsonl"), '{"id":"int-new","actor":"Val Alexander","field":"status","value":"closed"}\n{"id":"int-next","field":"status","value":"closed"}\n');
   fs.writeFileSync(path.join(repo, ".beads/.beads.gate.lock"), "");
   ({ app, page } = await launch(seed.home));
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1540, 1097));
   await expect(tid(page, "draft-view")).toBeVisible();
   await createThread(page, "Review the right workspace");
+  // Apply reference geometry after startup/thread setup: macOS can restore initial bounds on show.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1540, 1097));
+  await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width: 1540, height: 1097 });
 });
 test.afterEach(async () => { await app?.close(); });
 

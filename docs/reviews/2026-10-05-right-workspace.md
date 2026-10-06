@@ -61,6 +61,8 @@ Verified locally on macOS on 2026-10-05:
 - After the final icon/menu alignment, the desktop build and all workspace E2E tests
   passed again. The three captured states were visually inspected against the supplied images;
   the tests assert key dimensions and behavior, not a pixel-exact comparison with the reference.
+  Reference captures apply their window size after thread setup and await the renderer's exact
+  viewport dimensions, avoiding macOS startup geometry restoration during the capture.
 - Independent review found and verified fixes for aborted navigation replacing a newer page's
   state, missing-final-newline counters, and guest cleanup when a window is destroyed. Landing
   review also covered Store-local browser ownership, offline visibility, native Escape routing,
