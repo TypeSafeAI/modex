@@ -8,7 +8,7 @@ let page: Page;
 let home: string;
 let repo: string;
 test.beforeEach(async () => {
-  ({ home, repo } = seedHome());
+  ({ home, repo } = seedHome({ theme: "jev" }));
   ({ app, page } = await launch(home));
 });
 test.afterEach(async () => {

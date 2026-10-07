@@ -33,9 +33,8 @@ interface Props {
  */
 export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, platform }: Props) {
   const [renameSignal, setRenameSignal] = useState(0);
-  const inset = Boolean(thread && showChanges);
   return (
-    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar" style={{ ["--changes-w" as string]: inset ? "var(--changes-panel-w, 672px)" : "0px" }}>
+    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar">
       <div className="titlebar-nav">
         <IconButton icon="arrow-left" label="Back" size="md" data-testid="nav-back" disabled={!canBack} onClick={onBack} />
         <IconButton icon="arrow-right" label="Forward" size="md" data-testid="nav-forward" disabled={!canForward} onClick={onForward} />
@@ -43,6 +42,7 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
       </div>
       {thread && (
         <div className="titlebar-main">
+          <Icon name="folder" size={16} className="titlebar-folder" />
           <ThreadTitle key={thread.id} title={thread.title} onRename={onRename} renameSignal={renameSignal} />
           <span className="spacer" />
           <div className="titlebar-actions">

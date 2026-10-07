@@ -345,9 +345,9 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* Nav buttons centred at x 99 / 133 / 167 (34 px pitch), clear of the traffic lights. */
 .titlebar-nav { flex: none; width: calc(var(--rail-w) + 1px + var(--sidebar-w)); display: flex; align-items: center; gap: 6px; padding-left: 85px; }
 .titlebar.sidebar-closed .titlebar-nav { width: auto; padding-right: 12px; }
-/* Actions end 6 px inside the main pane's right edge (reference: ⋯ at x 992, panel toggle at 1026); the pane ends
-   4 px before the window edge, or the Changes panel's width further in while it is open. */
-.titlebar-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); padding: 0 calc(var(--changes-w, 0px) + 10px) 0 14px; }
+/* Actions remain 10 px inside the window edge regardless of workspace visibility. */
+.titlebar-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); padding: 0 10px 0 14px; }
+.titlebar-folder { flex: none; color: var(--text-3); }
 .titlebar-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .title-text { min-width: 0; max-width: 100%; field-sizing: content; padding: 3px 0; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-1); font: var(--weight-medium) var(--text-md)/18px var(--font-sans); cursor: default; text-overflow: ellipsis; outline: none; }
 .title-text.editing { margin-left: -7px; padding: 3px 6px; border-color: var(--accent); background: var(--bg-sidebar); cursor: text; }
@@ -680,3 +680,37 @@ a.thread-pr:hover { text-decoration: underline; }
 .agent-detail, .agent-parent { font: var(--text-xs)/17px var(--font-sans); color: var(--text-3); }
 .agent-parent { color: var(--text-4); }
 .agent-row[data-state="waiting"] .agent-detail { color: var(--warn); }
+
+/* Reference shell: flat neutral surfaces, compact navigation, and a stable window toolbar. */
+:root[data-theme="graphite"] .sheet { border-color: transparent; box-shadow: none; margin: 0 3px 3px 0; }
+:root[data-theme="graphite"] .titlebar-nav { position: relative; }
+:root[data-theme="graphite"] .titlebar:not(.sidebar-closed) .titlebar-nav::after { content: ""; position: absolute; right: 0; height: 20px; width: 1px; background: var(--border-pane); }
+:root[data-theme="graphite"] .titlebar-main { gap: 12px; }
+:root[data-theme="graphite"] .title-text { font-size: 14px; }
+:root[data-theme="graphite"] .rail { padding-left: 8px; }
+:root[data-theme="graphite"] .sidebar-title .brand-mark { display: none; }
+:root[data-theme="graphite"] .thread-row { height: 30px; grid-template-rows: 30px; border-radius: 10px; }
+:root[data-theme="graphite"] .thread-main { padding: 0 8px 0 32px; }
+:root[data-theme="graphite"] .thread-provider-line,
+:root[data-theme="graphite"] .thread-context-line { display: none; }
+/* Metadata remains available on deliberate inspection without expanding every resting row. */
+:root[data-theme="graphite"] .thread-row:focus-within { height: 72px; grid-template-rows: 1fr 24px; }
+:root[data-theme="graphite"] .thread-row:focus-within .thread-provider-line,
+:root[data-theme="graphite"] .thread-row:focus-within .thread-context-line { display: flex; }
+:root[data-theme="graphite"] .thread-row > .row-meta { padding-top: 9px; }
+:root[data-theme="graphite"] .main { container-type: inline-size; container-name: thread-main; }
+:root[data-theme="graphite"] .composer-box { box-shadow: none; background-image: none; }
+:root[data-theme="graphite"] .side-row.selected { box-shadow: none; }
+.repository-overview { display: none; position: absolute; z-index: 2; top: 8px; right: 8px; width: 300px; padding: 12px; border-radius: 16px; background: var(--bg-elevated); color: var(--text-2); font-size: 13px; }
+.repository-overview-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px 7px; color: var(--text-3); }
+.repository-overview-row { display: flex; align-items: center; width: 100%; min-height: 32px; gap: 10px; padding: 5px 8px; text-align: left; border-radius: 6px; }
+.repository-overview-row > span:not(.spacer) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-overview-row .icon-svg { flex: none; }
+button.repository-overview-row { appearance: none; background: transparent; border: 0; cursor: pointer; }
+button.repository-overview-row:hover { background: var(--bg-row-hover); }
+.repository-overview-counts { display: flex; gap: 4px; font-variant-numeric: tabular-nums; }
+.repository-overview-counts .additions { color: var(--ok); }
+.repository-overview-counts .deletions { color: var(--danger); }
+.repository-overview-muted { color: var(--text-3); }
+.repository-overview-rule { height: 1px; background: var(--rule); margin: 7px 8px; }
+@container thread-main (min-width: 1400px) { .repository-overview { display: block; } }
