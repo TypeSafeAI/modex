@@ -1,3 +1,4 @@
+import { toolSummary } from "../../shared/tool-summary";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
@@ -384,15 +385,8 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
   );
 }
 
-export function toolSummary(item: Extract<ThreadItem, { kind: "tool" }>): string {
-  const title = item.title.trim().replace(/\s+/g, " ");
-  if (title) return title;
-  const name = item.name.replace(/[_-]+/g, " ").trim();
-  const path = typeof item.args.path === "string" ? item.args.path.trim() : "";
-  return [name, path].filter(Boolean).join(" ") || "tool";
-}
-
 function toolStatusLabel(item: Extract<ThreadItem, { kind: "tool" }>): string {
+  if (item.agent) return { running: "Working", waiting: "Waiting", completed: "Done", failed: "Failed", stopped: "Stopped", unknown: "Status unavailable" }[item.agent.state];
   if (item.status === "running") return "Working";
   return item.ok === false ? "Failed" : "Done";
 }
@@ -404,10 +398,9 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const status = toolStatusLabel(item);
   return (
     <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
-      <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`}>
+      <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`} title={summary}>
         <span className="tool-icon">{icon}</span>
         <code className="tool-title" data-testid="tool-title"><span data-testid="tool-summary">{summary}</span></code>
-        <span className="spacer" />
         {item.status === "running" ? <span className="spinner" aria-label="Working" /> : <span className="tool-meta">{status.toLowerCase()}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
@@ -415,6 +408,10 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
         <div className="tool-body" data-testid="item-body">
           {item.name === "apply_patch" && typeof item.args.patch === "string" ? <Patch text={item.args.patch} /> : null}
           {item.output ? <pre className="output" data-testid="tool-output">{item.output}</pre> : item.status === "running" ? <pre className="output dim">running…</pre> : null}
+          {item.name !== "apply_patch" && Object.keys(item.args).length > 0 && <details className="tool-arguments">
+            <summary>Arguments</summary>
+            <pre className="output" data-testid="tool-arguments">{JSON.stringify(item.args, null, 2)}</pre>
+          </details>}
         </div>
       )}
     </div>

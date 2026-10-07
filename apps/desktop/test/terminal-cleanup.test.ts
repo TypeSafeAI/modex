@@ -96,22 +96,37 @@ test("cleanup timeout retains ownership and a later close can retry", { skip: pr
     pty = spawnTerminal("/bin/bash", ["--noprofile", "--norc"], options);
     return pty;
   });
-  manager.open("one", 80, 24);
+  const session = manager.open("one", 80, 24);
   // CI has seen CLOSE win a race with SIGSTOP and exit 143. Wait until the OS reports this
   // fixture's supervisor stopped before exercising the real control-channel timeout.
   let exit: { exitCode: number; signal?: number } | undefined;
   pty.onExit((event) => { exit = event; });
+  let shell: number | undefined;
   try {
+    // Do not freeze the PID while the native PTY helper is still starting up.
+    // Prove that the supervisor has launched a working shell first.
+    const file = path.join(cwd, "shell.pid");
+    manager.write("one", session.sessionId, `printf '%s' "$$" > ${quote(file)}\r`);
+    shell = await waitForPid(file);
     process.kill(pty.pid, "SIGSTOP");
     await waitForStopped(pty.pid);
     const outcome = await manager.close("one").then(() => "resolved", (error: Error) => `rejected: ${error.message}`);
     assert.match(outcome, /did not stop/, `a frozen supervisor must time out; close() ${outcome}, exit ${JSON.stringify(exit)}`);
     assert.equal(alive(pty.pid), true);
-  } finally { killIfAlive(pty.pid, "SIGCONT"); }
-  await manager.close("one");
-  assert.equal(alive(pty.pid), false);
-  await manager.dispose();
-  fs.rmSync(cwd, { recursive: true, force: true });
+  } finally {
+    killIfAlive(pty.pid, "SIGCONT");
+    try {
+      await manager.close("one");
+      assert.equal(alive(pty.pid), false);
+    } finally {
+      // Failed setup/assertions must not leave this fixture's PTY/control socket
+      // holding the entire test worker open until the CI job times out.
+      killIfAlive(pty.pid);
+      if (shell) killIfAlive(shell);
+      try { await manager.dispose(); }
+      finally { fs.rmSync(cwd, { recursive: true, force: true }); }
+    }
+  }
 });
 
 test("supervisor death without a cleanup receipt never authorizes deletion", { skip: process.platform === "win32" }, async () => {

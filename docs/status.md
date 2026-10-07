@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-06._
+_Last updated 2026-10-07._
 
 ## Shipped
 
@@ -160,6 +160,16 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
   The Mac App Store client leaves updates to the Store; it does not offer GitHub installers.
 
 ## On `main`, not yet released
+
+**Consistent themes and live agent activity.** The right workspace, review/browser controls,
+menus, status colors and typography now share Jev/OpenCoven tokens with the chat and sidebar.
+Tools fold into one line with summaries derived from their structured command/path/query when
+needed; original arguments and results remain expandable. Individual Claude Agent/Task and
+Codex child-agent activity appears in the sidebar immediately during the parent turn, across
+thread selection and renderer reconnects. Launch receipts do not mark background work done;
+a stream that ends without a final status records “Status unavailable.” The activity rail
+opens the sidebar and focuses an active parent. Browser status refreshes preserve an address
+being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also

@@ -3,11 +3,12 @@ import { IconButton } from "./ui/IconButton";
 export interface RailActiveWork {
   count: number;
   waiting: number;
+  agents?: number;
 }
 
-function activeWorkLabel({ count, waiting }: RailActiveWork): string {
+function activeWorkLabel({ count, waiting, agents = 0 }: RailActiveWork): string {
   const threads = `${count} active thread${count === 1 ? "" : "s"}`;
-  return waiting ? `${threads}; ${waiting} waiting for approval` : threads;
+  return [threads, agents ? `${agents} agent${agents === 1 ? "" : "s"}` : "", waiting ? `${waiting} waiting for approval` : ""].filter(Boolean).join("; ");
 }
 
 /**

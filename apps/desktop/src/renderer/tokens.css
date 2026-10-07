@@ -50,6 +50,17 @@
   --ok: #4fc38a;
   --warn: #e8b458;
   --danger: #f06b6b;
+  --danger-text: #ffb3b3;
+  --danger-bg: color-mix(in srgb, var(--danger) 12%, transparent);
+  --danger-border: color-mix(in srgb, var(--danger) 40%, transparent);
+  --provider-claude: #e8b48a;
+  --provider-codex: #9fd4b5;
+  --diff-add-text: #b6f0c4;
+  --diff-del-text: #ffc1bd;
+  --syntax-string: #6ed5c5;
+  --syntax-keyword: #bdadf3;
+  --syntax-number: #e9b97d;
+  --syntax-key: #92bee9;
   --add: #3fb950;
   --add-bg: rgba(63, 185, 80, 0.13);
   --del: #f85149;

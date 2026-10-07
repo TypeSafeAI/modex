@@ -51,7 +51,7 @@ test("reference review has a numbered diff and a filterable tree on its right", 
   await page.mouse.move(10, 10);
   await tid(page, "review-filter").blur();
   const workspace = tid(page, "workspace");
-  await expect(workspace).toHaveCSS("background-color", "rgb(16, 16, 16)");
+  await expect(workspace).toHaveCSS("background-color", "rgb(11, 15, 27)");
   expect(Math.round((await workspace.boundingBox())!.width)).toBe(647);
   expect(Math.round((await tid(page, "review-tree").boundingBox())!.width)).toBe(255);
   await workspace.screenshot({ path: info.outputPath("review.png"), scale: "css" });
@@ -149,6 +149,30 @@ test("Review errors remain visible in full view", async () => {
   await tid(page, "changes-refresh").click();
   await expect(tid(page, "toast")).toBeVisible();
   await expect(tid(page, "toast-message")).toContainText("Review refresh unavailable");
+});
+
+test("a delayed browser snapshot cannot replace an address being edited", async () => {
+  await app.evaluate(({ ipcMain }) => {
+    let release: (() => void) | undefined;
+    const snapshot = { id: "", url: "", title: "", loading: true, back: false, forward: false };
+    ipcMain.removeHandler("browser:command");
+    ipcMain.handle("browser:command", (_event, request) => {
+      snapshot.id = request.id;
+      if (request.action === "navigate") return { ...snapshot, url: request.url };
+      if (request.action === "state") return new Promise((resolve) => { release = () => resolve({ ...snapshot, loading: false }); });
+      return null;
+    });
+    ipcMain.handle("test:release-browser-snapshot", () => { release?.(); return Boolean(release); });
+  });
+  await page.keyboard.press("Meta+Shift+b");
+  const input = tid(page, "workspace-address");
+  await input.fill("https://example.com/slow");
+  await input.press("Enter");
+  await expect(tid(page, "workspace-browser")).toBeVisible();
+  await input.fill("https://example.com/fast");
+  await expect.poll(() => page.evaluate(() => (window as any).modex.invoke("test:release-browser-snapshot"))).toBe(true);
+  await expect(tid(page, "workspace-browser").getByRole("status")).toHaveCount(0);
+  await expect(input).toHaveValue("https://example.com/fast");
 });
 
 test("superseded navigation, overlays, guest shortcuts and window destruction preserve browser lifecycle", async () => {
