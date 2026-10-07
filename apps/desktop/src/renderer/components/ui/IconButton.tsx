@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, Ref } from "react";
 import { Icon, type IconName } from "./Icon";
 import { Tooltip } from "./Tooltip";
 
-interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "title"> {
+interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   icon: IconName;
   /** Accessible name, also shown as the tooltip. Required: an icon alone has no name. */
   label: string;

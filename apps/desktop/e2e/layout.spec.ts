@@ -128,6 +128,30 @@ test.describe("Design tokens", () => {
     expect(await css(page.locator("body"), "color")).toBe("rgb(248, 243, 250)");
     expect(await css(tid(page, "sidebar"), "background-color")).toBe("rgb(16, 21, 35)");
   });
+
+  test("shared typography keeps UI and tool summaries legible", async () => {
+    const type = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const body = getComputedStyle(document.body);
+      const codeElement = document.createElement("code");
+      codeElement.className = "mono";
+      document.body.append(codeElement);
+      const codeFamily = getComputedStyle(codeElement).fontFamily;
+      codeElement.remove();
+      return {
+        sans: root.getPropertyValue("--font-sans").trim(),
+        mono: root.getPropertyValue("--font-mono").trim(),
+        bodyFamily: body.fontFamily,
+        bodyLineHeight: body.lineHeight,
+        codeFamily,
+      };
+    });
+    expect(type.sans).toContain("-apple-system");
+    expect(type.mono).toContain("ui-monospace");
+    expect(type.bodyFamily).toContain("-apple-system");
+    expect(type.bodyLineHeight).toBe("20.25px");
+    expect(type.codeFamily).toContain("ui-monospace");
+  });
 });
 
 test.describe("Phase 3 · shell", () => {
