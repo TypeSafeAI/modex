@@ -77,9 +77,14 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
         confirmation.buttons["Approve once"].tap()
         XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 20))
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 10), "The approval sheet must finish dismissing before focusing the composer.")
 
         let input = app.descendants(matching: .any)["followup-input"].firstMatch
-        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        let readyToCompose = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"),
+            object: input
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [readyToCompose], timeout: 10), .completed, "The follow-up composer must be ready for interaction.")
         input.tap()
         input.typeText("Please summarize the result")
         app.buttons["send-followup"].tap()
