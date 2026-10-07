@@ -1,4 +1,5 @@
 import { BrandMark } from "./BrandMark";
+import { ActiveAgents, type ActiveAgent } from "./ActiveAgents";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AppState, PullRequestSummary, Thread, ThreadContext } from "../../shared/types";
 import { bridge } from "../bridge";
@@ -20,12 +21,13 @@ interface Props {
   onRemoveProject: (projectId: string) => void;
   /** Threads holding unsent composer text; their rows carry a small pen glyph. */
   unsent?: Record<string, string>;
+  agents?: ActiveAgent[];
 }
 
 /** Threads shown per project before "Show more". */
 export const THREADS_PER_PROJECT = 5;
 
-export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject, unsent }: Props) {
+export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject, unsent, agents = [] }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
@@ -70,6 +72,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
         <span className="side-row-label">New chat</span>
       </button>
 
+      <ActiveAgents agents={agents} onSelect={onSelect} />
       <div className="section-label">
         <span>Projects</span>
         <span className="spacer" />

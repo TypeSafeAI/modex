@@ -51,7 +51,7 @@ test("reference review has a numbered diff and a filterable tree on its right", 
   await page.mouse.move(10, 10);
   await tid(page, "review-filter").blur();
   const workspace = tid(page, "workspace");
-  await expect(workspace).toHaveCSS("background-color", "rgb(16, 16, 16)");
+  await expect(workspace).toHaveCSS("background-color", "rgb(11, 15, 27)");
   expect(Math.round((await workspace.boundingBox())!.width)).toBe(647);
   expect(Math.round((await tid(page, "review-tree").boundingBox())!.width)).toBe(255);
   await workspace.screenshot({ path: info.outputPath("review.png"), scale: "css" });

@@ -96,7 +96,13 @@ export class ThreadRunner {
   private slot(threadId: string): Live {
     let l = this.live.get(threadId);
     if (!l) {
-      l = { abort: null, run: null, backend: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
+      // Disk history has no live CLI stream after a process restart. Keep the last
+      // result truthful, and never revive these agents when the parent runs again.
+      const items = this.o.store.items(threadId).map((item): ThreadItem => {
+        if (item.kind !== "tool" || !item.agent || !["running", "waiting"].includes(item.agent.state)) return item;
+        return { ...item, status: "done", ok: undefined, agent: { ...item.agent, state: "unknown", detail: "Modex restarted without a final agent status" } };
+      });
+      l = { abort: null, run: null, backend: null, pending: new Map(), items, status: "idle", streaming: null };
       this.live.set(threadId, l);
     }
     return l;
@@ -505,10 +511,10 @@ export class ThreadRunner {
       toolStart: (t) => {
         if (!active()) return;
         l.streaming = null;
-        this.addItem(threadId, { id: scoped(t.id), kind: "tool", name: t.name, title: t.title, args: redact(t.args), status: "running", at: at() });
+        this.addItem(threadId, { id: scoped(t.id), kind: "tool", name: t.name, title: t.title, args: redact(t.args), ...(t.agent ? { agent: t.agent } : {}), status: "running", at: at() });
       },
       toolUpdate: (id, patch) => {
-        if (active()) this.patchItem(threadId, scoped(id), patch, { persist: patch.status === "done" || patch.ok !== undefined });
+        if (active()) this.patchItem(threadId, scoped(id), { ...patch, ...(patch.args ? { args: redact(patch.args) } : {}) }, { persist: patch.status === "done" || patch.ok !== undefined });
       },
       approval: (req) => {
         // Today's flow: a card the user answers. Rules can only add a receipt to it.

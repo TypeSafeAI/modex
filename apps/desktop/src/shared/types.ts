@@ -44,10 +44,18 @@ export interface Thread {
   status: ThreadStatus;
 }
 
+/** A CLI-reported delegated task. Unknown means the stream ended without a final state. */
+export interface AgentActivity {
+  id: string;
+  label: string;
+  state: "running" | "waiting" | "completed" | "failed" | "stopped" | "unknown";
+  detail?: string;
+}
+
 export type ThreadItem =
   | { id: string; kind: "user"; text: string; at: string }
   | { id: string; kind: "assistant"; text: string; at: string }
-  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string }
+  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
