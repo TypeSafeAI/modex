@@ -24,14 +24,16 @@ import {
 
 const routes = [
   { id: "overview", label: "Overview", icon: "grid", section: "Workspace" },
-  { id: "activity", label: "Activity", icon: "pulse" },
-  { id: "models", label: "Models & tools", icon: "layers" },
-  { id: "projects", label: "Projects", icon: "folder" },
+  { id: "activity", label: "Activity", icon: "pulse", section: "Workspace" },
+  { id: "models", label: "Models", icon: "layers", section: "Workspace" },
+  { id: "projects", label: "Projects", icon: "folder", section: "Workspace" },
   { id: "accounts", label: "Accounts", icon: "users", section: "Manage" },
-  { id: "sources", label: "Sources & coverage", icon: "database" },
+  { id: "sources", label: "Sources", icon: "database", section: "Manage" },
 ] as const;
 type View = (typeof routes)[number]["id"];
+type NavSection = (typeof routes)[number]["section"];
 const paths: Record<string, ReactNode> = {
+  chevron: <path d="m9 5 7 7-7 7" />,
   grid: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -488,6 +490,10 @@ const pageCopy: Record<View, { title: string; subtitle: string }> = {
 };
 export function UsageDashboard({ events }: { events: UsageEvent[] }) {
   const [view, setView] = useState<View>("overview");
+  const [collapsed, setCollapsed] = useState<Record<NavSection, boolean>>({
+    Workspace: false,
+    Manage: false,
+  });
   const [filters, setFilters] = useState<Filters>({
     tool: "all",
     since: "",
@@ -552,6 +558,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
       ),
   );
   const total = summarize(filtered);
+  const all = useMemo(() => summarize(events), [events]);
   const tools = groupEvents(filtered, (event) => event.tool);
   const months = [
     ...new Set(events.map((event) => event.at.slice(0, 7))),
@@ -572,6 +579,8 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
     setProject(null);
   };
   const navigate = (next: View) => {
+    const section = routes.find((route) => route.id === next)!.section;
+    setCollapsed((current) => ({ ...current, [section]: false }));
     setView(next);
     setQuery("");
     setProject(null);
@@ -610,40 +619,72 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             modex<span className="brand-byline">by TypeSafe</span>
           </span>
         </a>
-        <div className="workspace-label">
-          <span className="workspace-avatar">M</span>
-          <div>
-            My workspace<span>AI usage ledger</span>
-          </div>
-          <span className="workspace-dot" />
-        </div>
         <nav aria-label="Usage navigation">
-          {routes.map((route) => (
-            <div key={route.id}>
-              {"section" in route && (
-                <p className="nav-caption">{route.section}</p>
-              )}
+          {(["Workspace", "Manage"] as const).map((section) => (
+            <div className="nav-group" key={section}>
               <button
-                className={"nav-link " + (view === route.id ? "selected" : "")}
-                aria-current={view === route.id ? "page" : undefined}
-                onClick={() => navigate(route.id)}
+                className="nav-caption"
+                aria-expanded={!collapsed[section]}
+                aria-controls={"nav-" + section.toLowerCase()}
+                onClick={() =>
+                  setCollapsed((current) => ({
+                    ...current,
+                    [section]: !current[section],
+                  }))
+                }
               >
-                <Icon name={route.icon} />
-                <span>{route.label}</span>
-                {route.id === "activity" && (
-                  <span className="nav-count">{events.length}</span>
-                )}
+                <span>{section}</span>
+                <span className="nav-group-context" aria-hidden="true">
+                  {collapsed[section] &&
+                  routes.find((route) => route.id === view)?.section === section
+                    ? routes.find((route) => route.id === view)?.label
+                    : routes.filter((route) => route.section === section)
+                        .length}
+                </span>
+                <Icon name="chevron" />
               </button>
+              <div
+                id={"nav-" + section.toLowerCase()}
+                className={
+                  "nav-group-items" +
+                  (collapsed[section] ? " is-collapsed" : "")
+                }
+              >
+                {routes
+                  .filter((route) => route.section === section)
+                  .map((route) => (
+                    <button
+                      key={route.id}
+                      className={
+                        "nav-link " + (view === route.id ? "selected" : "")
+                      }
+                      aria-current={view === route.id ? "page" : undefined}
+                      onClick={() => navigate(route.id)}
+                    >
+                      <Icon name={route.icon} />
+                      <span>{route.label}</span>
+                      {route.id === "activity" && (
+                        <span className="nav-count">{events.length}</span>
+                      )}
+                    </button>
+                  ))}
+              </div>
             </div>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="local-note">
-            <Icon name="shield" />
-            <strong>Local by design</strong>
-            <p>
-              This preview uses sample records. Your accounts stay untouched.
-            </p>
+          <div className="demo-stamp">
+            <span className="demo-kicker">
+              <span />
+              Interactive preview
+            </span>
+            <strong>
+              <span>Demo</span> <span>Data</span>
+            </strong>
+            <span className="demo-caption">
+              {compact(events.length)} sample calls ·{" "}
+              {new Set(events.map((event) => event.tool)).size} sources
+            </span>
           </div>
           <button
             className="nav-link theme-switch"
@@ -703,10 +744,10 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           <div className="sample-banner">
             <Icon name="info" />
             <p>
-              <strong>You’re exploring sample data.</strong> {events.length}{" "}
-              recorded calls across{" "}
-              {new Set(events.map((event) => event.tool)).size} tools.
-              Connectors and live collection are not enabled.
+              <strong>Demo Data.</strong> A fictional workspace with{" "}
+              {events.length} calls across{" "}
+              {new Set(events.map((event) => event.tool)).size} sources.
+              Illustrative estimates; no accounts connected.
             </p>
             <button onClick={() => navigate("sources")}>
               View coverage
@@ -1030,12 +1071,12 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                     <Icon name="shield" />
                   </div>
                   <h3>
-                    Usage is measured. <br />
-                    Cost is an estimate.
+                    Explore the patterns. <br />
+                    Keep the gaps visible.
                   </h3>
                   <p>
-                    API equivalents use a saved price snapshot. They don’t
-                    represent a provider invoice or your subscription balance.
+                    Demo prices show how estimates work. Unpriced calls still
+                    count as activity; they don’t silently become free usage.
                   </p>
                   <button
                     className="text-button"
@@ -1128,8 +1169,8 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           )}
           {view === "models" && (
             <Panel
-              title="Models & tools"
-              detail="Token totals include cached input. Prices use the saved sample snapshot."
+              title="Models"
+              detail="Token totals include cached input. Demo prices are illustrative, not current rates."
             >
               {visible.length ? (
                 <div className="table-wrap">
@@ -1304,10 +1345,14 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                           {group.name === "unattributed"
                             ? "Unattributed usage"
                             : group.name.startsWith("codex")
-                              ? "ChatGPT Pro"
+                              ? "ChatGPT"
                               : group.name.startsWith("claude")
-                                ? "Claude Max 20x"
-                                : "Gemini Code Assist"}
+                                ? "Claude"
+                                : group.name.startsWith("github")
+                                  ? "GitHub Copilot"
+                                  : group.name.startsWith("gemini")
+                                    ? "Gemini"
+                                    : group.name}
                         </h3>
                         <p className="mono">{group.name}</p>
                         <div className="account-value">
@@ -1342,7 +1387,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
               </Panel>
               <Panel
                 title="Reading cost estimates"
-                detail="A price snapshot makes estimates reproducible."
+                detail="Demo rates illustrate the calculation; they are not current provider prices."
               >
                 <div className="explanation-grid">
                   <div>
@@ -1382,17 +1427,19 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   <Icon name="check" />
                 </span>
                 <div>
-                  <h2>A small ledger, with a clear boundary.</h2>
+                  <h2>A complete demo. Clear boundaries.</h2>
                   <p>
-                    13 synthetic calls · 11 sessions · 10 tools ·
-                    January–September 2026
+                    {all.calls} synthetic calls · {all.sessions} sessions ·{" "}
+                    {new Set(events.map((event) => event.tool)).size} sources ·{" "}
+                    {first && dateLabel(first, { year: "numeric" })}–
+                    {last && dateLabel(last, { year: "numeric" })}
                   </p>
                 </div>
                 <span className="badge teal">Sample records</span>
               </div>
               <Panel
-                title="Included sources"
-                detail="Fixture coverage for the entire sample dataset; independent of date and tool filters."
+                title="Demo sources"
+                detail="Examples for exploring the dashboard, not connected integrations. Counts cover the full demo."
               >
                 <div className="table-wrap">
                   <table>
@@ -1425,8 +1472,10 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                                 }
                               >
                                 {group.unpriced
-                                  ? "Missing rate"
-                                  : "Snapshot estimate"}
+                                  ? group.unpriced === group.calls
+                                    ? "Unpriced"
+                                    : "Partial estimate"
+                                  : "Demo estimate"}
                               </span>
                             </td>
                           </tr>
@@ -1436,7 +1485,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   </table>
                 </div>
               </Panel>
-              <Panel title="Coverage & definitions">
+              <Panel title="What this demo shows">
                 <div className="explanation-grid">
                   <div>
                     <Icon name="shield" />
@@ -1448,11 +1497,11 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   </div>
                   <div>
                     <Icon name="database" />
-                    <h3>Recorded usage only</h3>
+                    <h3>Gaps stay visible</h3>
                     <p>
-                      Historical logs can be incomplete. Deduplication and
-                      fork-replay heuristics need validation before live
-                      collection is enabled.
+                      Unpriced calls and unattributed projects are intentional.
+                      The workload, model mix, and prices are fictional
+                      examples, not a benchmark or a prediction of your bill.
                     </p>
                   </div>
                   <div>
@@ -1466,8 +1515,26 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   </div>
                 </div>
               </Panel>
+              <Panel
+                title="GitHub Copilot"
+                detail="A demo source, ready to explore with the tool filter."
+              >
+                <p className="panel-note">
+                  These synthetic sessions illustrate token usage. Copilot
+                  billing units and subscription allowances are separate from
+                  API-equivalent USD, so these calls remain unpriced. No GitHub
+                  account is connected and no Copilot usage is imported.{" "}
+                  <a
+                    href="https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/usage-and-billing"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    About Copilot usage reporting ↗
+                  </a>
+                </p>
+              </Panel>
               <p className="attribution">
-                Sample records adapted from{" "}
+                Demo scenarios expanded from synthetic fixtures in{" "}
                 <a
                   href="https://github.com/CompleteTech-LLC/ai-usage-ledger-skill"
                   target="_blank"
@@ -1535,7 +1602,8 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             ))}
           </dl>
           <p className="panel-note">
-            Synthetic record. Cost is a list-price estimate, not a charge.
+            Synthetic record. Cost uses an illustrative demo rate, not a current
+            price or charge.
           </p>
         </Dialog>
       )}

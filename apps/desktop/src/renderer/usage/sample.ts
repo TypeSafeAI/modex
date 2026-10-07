@@ -1,7 +1,7 @@
-import type { UsageEvent } from "./ledger";
+import type { UsageEvent } from "./ledger.js";
 
-// Synthetic upstream fixtures, normalized without prompts or source-file paths.
-export const sampleEvents: UsageEvent[] = [
+// Synthetic upstream fixtures used only as workload seeds, never as live prices.
+const seeds: UsageEvent[] = [
   {
     at: "2026-01-01T10:00:05+00:00",
     tool: "claude-code",
@@ -223,4 +223,86 @@ export const sampleEvents: UsageEvent[] = [
     cost: 0.002175,
     uncachedCost: 0.002625,
   },
+  {
+    at: "2026-09-01T10:00:00Z",
+    tool: "github-copilot",
+    model: "gpt-5",
+    session: "copilot-demo",
+    account: "github:demo",
+    kind: "main",
+    id: "copilot-seed",
+    project: "",
+    input: 2400,
+    cached: 600,
+    cacheWrite: 0,
+    output: 480,
+    reasoning: 120,
+    // Copilot credits/request multipliers are not USD. No conversion is assumed.
+    cost: null,
+    uncachedCost: null,
+  },
 ];
+
+// Fixed scenarios, not a benchmark: repeated sessions, cold/warm context,
+// quiet/busy months, missing prices and unattributed work. No random or clock input.
+const projects = [
+  "/demo/atlas-web",
+  "/demo/design-system",
+  "/demo/payments-api",
+  "/demo/docs",
+  "",
+];
+const otherSeeds = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+const monthlyLoad = [2, 3, 2, 5, 4, 6, 4, 7, 5];
+export const sampleEvents: UsageEvent[] = [];
+for (let month = 0; month < 9; month++) {
+  for (let workday = 0; workday < 5; workday++) {
+    const date = new Date(Date.UTC(2026, month, 2 + workday * 5));
+    // Move weekend scenarios to Monday; all sessions have a plausible workday.
+    if (date.getUTCDay() === 0) date.setUTCDate(date.getUTCDate() + 1);
+    if (date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 2);
+    const day = date.toISOString().slice(0, 10);
+    const sourceIndexes = [
+      (month + workday) % 2 === 0 ? 0 : 1,
+      13,
+      otherSeeds[(month * 5 + workday) % otherSeeds.length]!,
+    ];
+    for (const [slot, seedIndex] of sourceIndexes.entries()) {
+      const seed = seeds[seedIndex]!;
+      const session = "demo-" + day + "-" + slot;
+      const project = projects[(month + workday + slot) % projects.length]!;
+      const turns = 2 + ((month + workday + slot) % 4);
+      for (let turn = 0; turn < turns; turn++) {
+        const scale = monthlyLoad[month]! * (2 + turn);
+        const subagent =
+          slot === 0 && (month + workday) % 4 === 0 && turn === turns - 1;
+        sampleEvents.push({
+          ...seed,
+          id: session + "-call-" + turn,
+          at:
+            day +
+            "T" +
+            String(9 + slot * 3).padStart(2, "0") +
+            ":" +
+            String(8 + turn * 4).padStart(2, "0") +
+            ":00Z",
+          session: session + (subagent ? "-subagent" : ""),
+          project,
+          account: seed.account.replace(":example", ":demo"),
+          kind: subagent ? "subagent" : "main",
+          input: seed.input * scale,
+          cached: seed.cached * scale,
+          cacheWrite: seed.cacheWrite * scale,
+          output: seed.output * scale,
+          reasoning: seed.reasoning * scale,
+          cost:
+            seed.cost === null ? null : Number((seed.cost * scale).toFixed(6)),
+          uncachedCost:
+            seed.uncachedCost === null
+              ? null
+              : Number((seed.uncachedCost * scale).toFixed(6)),
+        });
+      }
+    }
+  }
+}

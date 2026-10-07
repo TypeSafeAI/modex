@@ -163,8 +163,10 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 **Usage dashboard preview.** A standalone React preview now follows
 the TypeSafe UI palette and typography, with overview, activity, models, projects,
-accounts, and coverage views. Filters, call details, CSV export, and both appearances
-work against synthetic fixture records. This is not yet a desktop navigation entry
+accounts, and coverage views. Collapsible navigation and an oversized Demo Data stamp
+frame 471 synthetic calls across 11 sources, including GitHub Copilot. Filters,
+call details, CSV export, and both appearances work against the same fictional
+workspace; missing costs remain unpriced. This is not yet a desktop navigation entry
 or live usage collector. Run and provenance details: [usage preview](usage-preview.md).
 
 **Consistent themes and live agent activity.** The right workspace, review/browser controls,

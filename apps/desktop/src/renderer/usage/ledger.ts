@@ -110,6 +110,7 @@ export function exportCsv(events: UsageEvent[]): string {
     .join("\r\n");
 }
 export const toolNames: Record<string, string> = {
+  "github-copilot": "GitHub Copilot",
   codex: "Codex",
   "claude-code": "Claude Code",
   aider: "Aider",
@@ -123,6 +124,7 @@ export const toolNames: Record<string, string> = {
 };
 export const toolName = (tool: string) => toolNames[tool] ?? tool;
 export const toolColors: Record<string, string> = {
+  "github-copilot": "violet",
   aider: "pink",
   codex: "teal",
   "claude-code": "amber",

@@ -7,6 +7,7 @@ import {
   costLabel,
   type UsageEvent,
 } from "../src/renderer/usage/ledger.js";
+import { sampleEvents } from "../src/renderer/usage/sample.js";
 const event = (patch: Partial<UsageEvent> = {}): UsageEvent => ({
   id: "1",
   at: "2026-04-01T12:00:00Z",
@@ -73,4 +74,50 @@ test("cost labels distinguish unknown buckets, partial totals, and measured zero
   );
   assert.equal(costLabel(summarize([event({ cost: 0 })])), "$0.00");
   assert.equal(costLabel(summarize([])), "$0.00");
+});
+
+test("demo activity is consistent across sessions, filters, and Copilot exports", () => {
+  const copilot = filterEvents(sampleEvents, {
+    tool: "github-copilot",
+    since: "",
+    until: "",
+  });
+  assert.ok(copilot.length > 1, "Copilot needs explorable sample sessions");
+  assert.equal(costLabel(summarize(copilot)), "Unpriced");
+  assert.ok(exportCsv(copilot).includes("github-copilot"));
+  assert.equal(
+    new Set(sampleEvents.map((row) => row.id)).size,
+    sampleEvents.length,
+  );
+  const sessions = new Map<string, UsageEvent[]>();
+  for (const row of sampleEvents) {
+    const key = row.tool + ":" + row.session;
+    sessions.set(key, [...(sessions.get(key) ?? []), row]);
+    assert.ok(row.reasoning <= row.output, "Reasoning is part of output");
+    assert.ok(
+      row.input >= 0 &&
+        row.cached >= 0 &&
+        row.cacheWrite >= 0 &&
+        row.output >= 0,
+    );
+    if (row.cost !== null)
+      assert.ok(row.uncachedCost !== null && row.uncachedCost >= row.cost);
+  }
+  for (const rows of sessions.values()) {
+    assert.equal(new Set(rows.map((row) => row.project)).size, 1);
+    assert.equal(new Set(rows.map((row) => row.account)).size, 1);
+  }
+  const monthly = [
+    ...new Set(sampleEvents.map((row) => row.at.slice(0, 7))),
+  ].map((month) =>
+    summarize(sampleEvents.filter((row) => row.at.startsWith(month))),
+  );
+  assert.equal(
+    monthly.reduce((sum, total) => sum + total.tokens, 0),
+    summarize(sampleEvents).tokens,
+  );
+  assert.ok(
+    summarize(sampleEvents).unpriced > copilot.length,
+    "Show gaps beyond one provider",
+  );
 });

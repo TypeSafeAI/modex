@@ -27,20 +27,33 @@ inclusive UTC days. CSV export includes the filtered search results. Missing
 prices remain unpriced, and reasoning is already included in output tokens.
 
 Both appearances use TypeSafe UI's palette and self-hosted IBM Plex fonts.
+The sidebar groups Workspace and Manage into keyboard-operable disclosures,
+with concise Models and Sources labels and a large Demo Data stamp. Following a
+link into a collapsed group reopens it so the current destination stays visible.
 Narrow screens switch to a horizontal navigation strip and stacked panels; wider
-tables scroll within their panel. Charts include a text summary and data table.
+tables scroll within their panel. All six mobile destinations stay available
+regardless of the desktop disclosure state. Charts include a text summary and data table.
 Dialogs support Escape; focus moves to the heading after a navigation change.
 
 ## Fixture and asset provenance
 
-- `src/renderer/usage/sample.ts` contains 13 synthetic calls from the fixtures in
+- `src/renderer/usage/sample.ts` expands 13 synthetic workload seeds from the fixtures in
   [AI Usage Ledger](https://github.com/CompleteTech-LLC/ai-usage-ledger-skill), revision
   `28c39ea06315232e8752c3f36fb5aac8761a412e`. The generated `all_events.csv` was normalized
-  into typed rows. Fixture-directory prefixes became `/sample`; raw-source paths
-  were omitted. Its MIT notice is retained in `usage/public/licenses/LEDGER-LICENSE.txt`.
+  into typed rows, then expanded into a deterministic fictional workspace: 471 calls,
+  147 sessions, 45 active days, and 11 sources across January–September 2026. Four
+  named demo projects and unattributed work illustrate drilling into a ledger.
+  Raw-source paths are omitted. Its MIT notice is retained in `usage/public/licenses/LEDGER-LICENSE.txt`.
 - The sample's model names, accounts, dates, and saved prices are fixture values,
   not verified provider offerings or current rates. API equivalents are estimates,
-  not charges or subscription balances. Three calls lack a price.
+  not charges or subscription balances. Scaling each seed's token categories and
+  costs together keeps the demo internally consistent. The workload includes
+  subagents, cache reads/writes, quiet and busy months, and 212 unpriced calls.
+- GitHub Copilot adds synthetic sessions throughout the demo, including filters,
+  chart legends, activity, accounts, source coverage, and CSV. Its token values are
+  illustrative. Its API-equivalent cost remains unpriced; Copilot billing units
+  are never treated as USD. GitHub's [usage and billing documentation](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/usage-and-billing)
+  describes the separate reporting surfaces. No Copilot connector or import is implemented.
 - Palette, spacing, surface treatment, and typography follow
   [TypeSafe UI](https://ui.jev.works), with token references from
   [its source](https://github.com/TypeSafeAI/typesafe-ui/blob/main/packages/ui/src/styles/globals.css).
@@ -62,7 +75,10 @@ node --test apps/desktop/dist/test/usage-ledger.test.js
 ```
 
 The focused tests cover inclusive UTC filtering, token/cost aggregation, missing
-prices, partial cost labels, and CSV escaping. Browser interaction checks
+prices, partial cost labels, CSV escaping, and demo session/account consistency.
+`e2e/usage.spec.ts` checks keyboard disclosure activation, automatic group reopening,
+mobile navigation after desktop collapse, Copilot filtering, unknown costs,
+account attribution, and a real CSV download. Browser interaction checks
 complement these; they do not constitute VoiceOver or human keyboard-only acceptance.
 
 Safari verification on 2026-10-07 covered both appearances, navigation, empty
