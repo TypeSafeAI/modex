@@ -81,7 +81,10 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(thinking, "item-body")).toContainText("inspect the repo layout");
   await tid(thinking, "item-toggle").click();
   await expect(tid(thinking, "item-body")).toHaveCount(0);
-  await expect(tid(page, "tool-title").filter({ hasText: "$ git status" })).toBeVisible();
+  const gitStatusTool = tid(page, "tool-summary").filter({ hasText: "$ git status" });
+  await expect(gitStatusTool).toBeVisible();
+  await expect(gitStatusTool).toHaveCSS("white-space", "nowrap");
+  await expect(gitStatusTool.locator("../..")).toHaveAttribute("aria-label", /Done: \$ git status/);
   const card = items(page, "approval").first();
   await expect(card).toBeVisible();
   await expect(tid(card, "approval-question")).toContainText("Allow add CONTRIBUTING.md?");
@@ -95,6 +98,10 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "send")).toHaveCount(0);
   await expect(tid(page, "access-picker")).toBeDisabled();
   await expect(page.locator('[data-testid="thread-row"][data-status="waiting"]')).toHaveCount(1);
+  await expect(tid(page, "rail-work")).toBeVisible();
+  await expect(tid(page, "rail-work-count")).toHaveText("1");
+  await expect(tid(page, "rail-work")).toHaveAttribute("aria-label", /1 active thread/);
+  await expect(tid(page, "rail-work")).toHaveAttribute("title", /waiting for approval/i);
   expect(fs.existsSync(path.join(repo, "CONTRIBUTING.md"))).toBe(false);
 
   // Send while a turn is running returns { ok: false, error: /still working/ } and leaves no notice item.
@@ -113,6 +120,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "turn-header")).toHaveAttribute("data-live", "false");
   await expect(items(page, "assistant").last()).toContainText("added CONTRIBUTING.md");
   await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+  await expect(tid(page, "rail-work")).toHaveCount(0);
   expect(fs.readFileSync(path.join(repo, "CONTRIBUTING.md"), "utf8")).toContain("# Contributing to Modex");
 
   // The Changes panel picked up the new file with its diff.
@@ -242,6 +250,18 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await expect(tid(route, "route-label")).toContainText("Auto picked");
   await expect(tid(route, "route-label")).toContainText("Mock · mock");
   await expect(tid(route, "route-meta")).toContainText("quick answer · heuristic");
+  const routeColor = await route.locator(".route-icon").evaluate((el) => getComputedStyle(el).color);
+  const warnColor = await page.evaluate(() => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--accent-warn").trim();
+    const probe = document.createElement("span");
+    probe.style.color = token;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  expect(routeColor).toBe(warnColor);
+  await expect(tid(page, "auto-chip")).toHaveCSS("color", warnColor);
   await expect(tid(route, "item-body")).toHaveCount(0);
   await tid(route, "item-toggle").click();
   await expect(tid(route, "item-body")).toContainText("No Jev API key found");

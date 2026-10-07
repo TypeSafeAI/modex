@@ -384,16 +384,31 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
   );
 }
 
+export function toolSummary(item: Extract<ThreadItem, { kind: "tool" }>): string {
+  const title = item.title.trim().replace(/\s+/g, " ");
+  if (title) return title;
+  const name = item.name.replace(/[_-]+/g, " ").trim();
+  const path = typeof item.args.path === "string" ? item.args.path.trim() : "";
+  return [name, path].filter(Boolean).join(" ") || "tool";
+}
+
+function toolStatusLabel(item: Extract<ThreadItem, { kind: "tool" }>): string {
+  if (item.status === "running") return "Working";
+  return item.ok === false ? "Failed" : "Done";
+}
+
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
   const icon = item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
+  const summary = toolSummary(item);
+  const status = toolStatusLabel(item);
   return (
     <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
-      <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`}>
         <span className="tool-icon">{icon}</span>
-        <code className="tool-title" data-testid="tool-title">{item.title}</code>
+        <code className="tool-title" data-testid="tool-title"><span data-testid="tool-summary">{summary}</span></code>
         <span className="spacer" />
-        {item.status === "running" ? <span className="spinner" /> : <span className="tool-meta">{item.ok === false ? "failed" : "done"}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
+        {item.status === "running" ? <span className="spinner" aria-label="Working" /> : <span className="tool-meta">{status.toLowerCase()}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
       {open && (

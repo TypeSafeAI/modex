@@ -430,6 +430,12 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     const pid = thread?.projectId ?? draft?.projectId ?? state.projects[0]?.id;
     if (pid) openDraft(pid);
   };
+  const activeThreads = state.threads.filter((candidate) => candidate.status === "running" || candidate.status === "waiting");
+  const activeWork = { count: activeThreads.length, waiting: activeThreads.filter((candidate) => candidate.status === "waiting").length };
+  const openActiveWork = () => {
+    const next = activeThreads[0];
+    if (next) selectThread(next.id);
+  };
 
   return (
     <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`} data-streamer-mode={streamerMode ? "true" : "false"}>
@@ -452,7 +458,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
+      <Rail activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
       <div className="sheet" data-testid="sheet">
         {sidebarOpen && (
           <Sidebar
