@@ -151,6 +151,30 @@ test("Review errors remain visible in full view", async () => {
   await expect(tid(page, "toast-message")).toContainText("Review refresh unavailable");
 });
 
+test("a delayed browser snapshot cannot replace an address being edited", async () => {
+  await app.evaluate(({ ipcMain }) => {
+    let release: (() => void) | undefined;
+    const snapshot = { id: "", url: "", title: "", loading: true, back: false, forward: false };
+    ipcMain.removeHandler("browser:command");
+    ipcMain.handle("browser:command", (_event, request) => {
+      snapshot.id = request.id;
+      if (request.action === "navigate") return { ...snapshot, url: request.url };
+      if (request.action === "state") return new Promise((resolve) => { release = () => resolve({ ...snapshot, loading: false }); });
+      return null;
+    });
+    ipcMain.handle("test:release-browser-snapshot", () => { release?.(); return Boolean(release); });
+  });
+  await page.keyboard.press("Meta+Shift+b");
+  const input = tid(page, "workspace-address");
+  await input.fill("https://example.com/slow");
+  await input.press("Enter");
+  await expect(tid(page, "workspace-browser")).toBeVisible();
+  await input.fill("https://example.com/fast");
+  await expect.poll(() => page.evaluate(() => (window as any).modex.invoke("test:release-browser-snapshot"))).toBe(true);
+  await expect(tid(page, "workspace-browser").getByRole("status")).toHaveCount(0);
+  await expect(input).toHaveValue("https://example.com/fast");
+});
+
 test("superseded navigation, overlays, guest shortcuts and window destruction preserve browser lifecycle", async () => {
   const { createServer } = await import("node:http");
   const server = createServer((req, res) => { if (req.url === "/slow") return; res.writeHead(200, { "Content-Type": "text/html" }); res.end("<title>Fast destination</title><h1>Ready</h1>"); });

@@ -168,7 +168,8 @@ needed; original arguments and results remain expandable. Individual Claude Agen
 Codex child-agent activity appears in the sidebar immediately during the parent turn, across
 thread selection and renderer reconnects. Launch receipts do not mark background work done;
 a stream that ends without a final status records “Status unavailable.” The activity rail
-opens the sidebar and focuses an active parent. [Acceptance](reviews/2026-10-07-ui-completion.md).
+opens the sidebar and focuses an active parent. Browser status refreshes preserve an address
+being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also

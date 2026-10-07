@@ -22,6 +22,9 @@ thread activity counts but did not consume either CLI's subagent events.
 - Workspace/review/browser controls and status colors use the same theme/font tokens as
   chat/sidebar. Jev and OpenCoven screenshots were visually inspected at 1000×720; the
   prior hardcoded workspace palette and premature summary truncation are gone.
+- Hosted CI exposed an existing address-edit race: a delayed loading-page snapshot could
+  overwrite the next URL before submission. The field now preserves edits until navigation
+  or a tab switch; a controlled delayed snapshot reproduced the failure before the fix.
 
 ## Verification
 
@@ -33,7 +36,7 @@ thread activity counts but did not consume either CLI's subagent events.
   and output, keyboard operation, narrow layout and reduced motion.
 - `npm run build`, `npm test` and `npm run typecheck` passed. Unit coverage: 15 core,
   287 desktop, 1 browser bridge, 10 site, and 9 Store client checks.
-- `npm run test:e2e` passed: 119 desktop and 7 site checks. The final Codex idle-state
+- `npm run test:e2e` passed: 120 desktop and 7 site checks. The final Codex idle-state
   correction also passed its focused protocol test and the complete build/unit/typecheck
   gates. Hosted desktop and iPhone results and the merge receipt are recorded in the PR.
 
