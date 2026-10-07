@@ -96,9 +96,10 @@ export class CompanionServer {
     const server = https.createServer({ key, cert, minVersion: "TLSv1.2" }, (req, res) => {
       void this.handle(server, req, res).catch(() => this.reply(res, 500, { error: "Your Mac could not complete the request." }));
     });
+    const bindHost = host === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0";
     const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
         server.once("error", reject);
-        server.listen(port, host, () => { server.off("error", reject); resolve(); });
+        server.listen(port, bindHost, () => { server.off("error", reject); resolve(); });
       });
     try {
       await listen(this.config.port ?? 0);
@@ -121,21 +122,29 @@ export class CompanionServer {
     return this.status();
   }
 
-  /** Rebind after Wi-Fi changes or a launch without a network; keep the same trust and token. */
+  /** Refresh LAN discovery without interrupting the listener; rebind when its scope changes. */
   refreshNetwork(): Promise<void> {
     if (this.reconnecting) return this.reconnecting;
     const reconnecting = (async () => {
       if (!this.config.enabled || !this.monitor || this.starting) return;
       const host = this.addresses()[0] ?? "";
       if (this.server && this.host !== host) {
-        const server = this.server;
-        this.server = null;
-        this.generation += 1;
-        this.host = "";
-        this.port = 0;
-        this.unpublish?.();
-        this.unpublish = undefined;
-        await this.close(server);
+        const wasLoopback = this.host === "127.0.0.1";
+        const isLoopback = host === "127.0.0.1";
+        if (!host || wasLoopback !== isLoopback) {
+          const server = this.server;
+          this.server = null;
+          this.generation += 1;
+          this.host = "";
+          this.port = 0;
+          this.unpublish?.();
+          this.unpublish = undefined;
+          await this.close(server);
+        } else {
+          this.host = host;
+          this.unpublish?.();
+          this.unpublish = this.publish({ host, port: this.port, fingerprint: this.fingerprint });
+        }
       }
       if (this.config.enabled && this.monitor && !this.server && host) await this.start();
     })().finally(() => { if (this.reconnecting === reconnecting) this.reconnecting = null; });
@@ -182,8 +191,12 @@ export class CompanionServer {
 
   status(): CompanionStatus {
     const addresses = this.addresses();
-    if (!this.server) return { enabled: this.config.enabled, addresses };
-    const data = Buffer.from(JSON.stringify({ url: `https://${this.host}:${this.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
+    const host = addresses[0];
+    // Do not offer a stale QR while offline or awaiting a loopback/LAN rebind.
+    if (!this.server || !host || (host === "127.0.0.1") !== (this.host === "127.0.0.1")) {
+      return { enabled: this.config.enabled, addresses };
+    }
+    const data = Buffer.from(JSON.stringify({ url: `https://${host}:${this.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
     return { enabled: true, addresses, port: this.port, pairingUri: `modex://pair?data=${data}` };
   }
 

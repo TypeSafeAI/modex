@@ -311,3 +311,12 @@ login; an authenticated Codex CLI account remains selected unless the user choos
 account. Executable overrides still require verification before saving. Read-only checks on
 this Mac confirmed Claude Code 2.1.289 and Codex 0.160.1 are already authenticated; this is
 account-detection evidence, not a new live coding-turn or Store distribution acceptance.
+
+## Companion multi-interface binding (#109, unreleased)
+
+Binds LAN companion HTTPS to `0.0.0.0` (wildcard) while retaining loopback isolation for tests,
+preserving the listener, assigned port, token and certificate across LAN address updates.
+Bonjour and the pairing QR follow the active primary address. Offline transitions close the
+listener; loopback/LAN transitions rebind to preserve loopback isolation, with no stale QR
+during either transition. This avoids application-initiated connection teardown; physical
+network changes can still interrupt a phone connection. Contributor: @Yash990-bit (#124).
