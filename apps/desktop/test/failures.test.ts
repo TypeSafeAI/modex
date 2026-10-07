@@ -79,3 +79,12 @@ test("describeFailure: unknown errors keep the message as the summary; shutdown 
   assert.equal(describeFailure({ backend: "mock", message: "codex: not logged in" }).fix, undefined);
   assert.equal(describeFailure({ backend: "codex", message: "" }).message, "The turn failed.");
 });
+
+test("missing mock script offers script recovery instead of installing a CLI", () => {
+  const failure = describeFailure({ backend: "mock", message: "ENOENT: no such file or directory, open '/Applications/Modex Graphite Preview.app/Contents/apps/desktop/demo/mock-script.json'" });
+  assert.equal(failure.code, "unknown");
+  assert.equal(failure.summary, "The demo script could not be loaded.");
+  assert.match(failure.hint!, /Mock script/);
+  assert.equal(failure.fix?.kind, "settings");
+  assert.doesNotMatch(failureReport(failure), /Install the CLI|CLI said/);
+});

@@ -64,6 +64,8 @@ xcodebuild -project ModexCompanion.xcodeproj -scheme ModexCompanion \
   -only-testing:ModexCompanionTests CODE_SIGNING_ALLOWED=NO test
 cd ../../..
 apps/ios/ModexCompanion/Scripts/test-e2e.sh
+# Verify optimized Release code in the simulator (testability is enabled for the test host):
+MODEX_IOS_CONFIGURATION=Release MODEX_IOS_DERIVED_DATA=/tmp/modex-ios-release-e2e apps/ios/ModexCompanion/Scripts/test-e2e.sh
 # Also exercise the Mac's private network address instead of loopback:
 MODEX_IOS_LAN=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 # Also restart the Mac fixture on another port and then revoke the saved pairing:

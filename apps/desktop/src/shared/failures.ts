@@ -45,7 +45,9 @@ export interface FailureInput {
 
 export function describeFailure(input: FailureInput): TurnFailure {
   const message = (input.message || "The turn failed.").trim();
-  const code = classifyFailure(message);
+  const classified = classifyFailure(message);
+  const missingMockScript = input.backend === "mock" && classified === "not_installed";
+  const code = missingMockScript ? "unknown" : classified;
   const name = BACKEND_NAMES[input.backend];
   const login = LOGIN_COMMANDS[input.backend];
   let summary: string;
@@ -78,7 +80,11 @@ export function describeFailure(input: FailureInput): TurnFailure {
       fix = { kind: "retry", label: "Restart and retry" };
       break;
     default:
-      summary = firstLine(message);
+      summary = missingMockScript ? "The demo script could not be loaded." : firstLine(message);
+      if (missingMockScript) {
+        hint = "Choose an existing JSON file in Settings → Mock script, then retry.";
+        fix = { kind: "settings", label: "Open Settings" };
+      }
       break;
   }
   const retryable = !/shutting down|being deleted|being removed/i.test(message);
@@ -99,7 +105,7 @@ export function describeFailure(input: FailureInput): TurnFailure {
 export function failureReport(f: TurnFailure): string {
   const lines = [`Modex: ${BACKEND_NAMES[f.backend]} turn failed (${f.code})`, `Summary: ${f.summary}`];
   if (f.hint) lines.push(`Next step: ${f.hint}`);
-  lines.push("", "CLI said:", indent(f.message));
+  lines.push("", f.backend === "mock" ? "Backend said:" : "CLI said:", indent(f.message));
   if (f.recovery?.length) lines.push("", "Recovery attempted:", ...f.recovery.map((step) => `  - ${step}`));
   lines.push("", "Details:", JSON.stringify(f.debug, null, 2));
   return lines.join("\n");

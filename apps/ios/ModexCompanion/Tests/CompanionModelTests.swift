@@ -18,6 +18,7 @@ import XCTest
         XCTAssertEqual(store.pairing, original)
         XCTAssertEqual(model.pairing, original)
         XCTAssertFalse(model.connected)
+        XCTAssertTrue(model.connectionError?.contains("scan") == true, "Offline recovery must explain how to scan a fresh pairing code.")
 
         let moved = URL(string: "https://192.168.1.23:45123")!
         let restoredDiscovery = FakeDiscovery()
@@ -184,6 +185,28 @@ import XCTest
         client.createdThread = nil
         await model.select("a")
         XCTAssertEqual(model.draft, "Keep my follow-up")
+    }
+
+    func testRescanningTheSameMacPreservesAllDraftsButAnotherMacClearsThem() async throws {
+        for sameMac in [true, false] {
+            let (model, _) = fixture()
+            await model.select("a")
+            model.draft = "Keep thread A"
+            await model.select("b")
+            model.draft = "Keep thread B"
+            model.newThreadDraft = "Keep my new task"
+            let original = try XCTUnwrap(model.pairing)
+            let replacement = Pairing(url: URL(string: "https://192.168.1.24:43210")!, token: String(repeating: "c", count: 64), fingerprint: sameMac ? original.fingerprint : String(repeating: "d", count: 64))
+            let encoded = try JSONEncoder().encode(replacement).base64EncodedString()
+            await model.pair(link: "modex://pair?data=\(encoded)")
+            model.stopPolling()
+            XCTAssertEqual(model.pairing, replacement)
+            XCTAssertEqual(model.newThreadDraft, sameMac ? "Keep my new task" : "")
+            await model.select("b")
+            XCTAssertEqual(model.draft, sameMac ? "Keep thread B" : "")
+            await model.select("a")
+            XCTAssertEqual(model.draft, sameMac ? "Keep thread A" : "")
+        }
     }
 
     func testOldCreationCannotClearANewCreationsBusyState() async throws {

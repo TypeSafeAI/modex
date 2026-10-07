@@ -16,6 +16,9 @@ let restartTimer;
 let restartTask;
 let blocker;
 const project = store.addProject(repo);
+const emptyProjectPath = path.join(repo, "empty-project");
+fs.mkdirSync(emptyProjectPath);
+store.addProject(emptyProjectPath);
 fs.mkdirSync(path.join(repo, ".codex", "skills", "mobile-check"), { recursive: true });
 fs.writeFileSync(path.join(repo, ".codex", "skills", "mobile-check", "SKILL.md"), "---\nname: mobile-check\ndescription: Verify the mobile companion flow.\n---\n");
 const threadId = "abcdef12";
@@ -30,7 +33,9 @@ const backend = {
       sink.assistant(answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
     } else {
       sink.assistant(`Follow-up received: ${text}`);
-      if (reconnect && text === "Please summarize the result") {
+      if (text === "Pause for recovery") {
+        restartTimer = setTimeout(() => { restartTask = pauseMac(); }, 1500);
+      } else if (reconnect && text === "Please summarize the result") {
         restartTimer = setTimeout(() => { restartTask = restartMac(); }, 1500);
       } else if (reconnect && text === "Revoke this phone") {
         restartTimer = setTimeout(() => { server.resetAccess(); }, 1000);
@@ -52,6 +57,12 @@ await server.start();
 void runner.send(threadId, "Prepare the change");
 while (runner.status(threadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
 fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect }));
+
+async function pauseMac() {
+  await server.dispose();
+  await new Promise((resolve) => setTimeout(resolve, 25000));
+  if (!closing) await server.start();
+}
 
 async function restartMac() {
   const status = server.status();

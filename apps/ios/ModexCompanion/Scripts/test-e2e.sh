@@ -28,9 +28,10 @@ cd "$app_dir"
 xcodegen generate
 destination="${MODEX_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 16 Pro,OS=26.5}"
 derived_data="${MODEX_IOS_DERIVED_DATA:-/tmp/modex-ios-e2e-derived}"
+configuration="${MODEX_IOS_CONFIGURATION:-Debug}"
 xcodebuild -quiet -project ModexCompanion.xcodeproj -scheme ModexCompanion \
-  -destination "$destination" -derivedDataPath "$derived_data" \
-  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO build-for-testing
+  -destination "$destination" -derivedDataPath "$derived_data" -configuration "$configuration" \
+  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES build-for-testing
 xctestrun="$(find "$derived_data/Build/Products" -maxdepth 1 -name 'ModexCompanion_*.xctestrun' -print -quit)"
 if [[ -z "$xctestrun" ]]; then echo "Xcode did not create an iPhone test plan." >&2; exit 1; fi
 xcodebuild -xctestrun "$xctestrun" -destination "$destination" \
