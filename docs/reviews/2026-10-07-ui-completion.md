@@ -25,6 +25,9 @@ thread activity counts but did not consume either CLI's subagent events.
 - Hosted CI exposed an existing address-edit race: a delayed loading-page snapshot could
   overwrite the next URL before submission. The field now preserves edits until navigation
   or a tab switch; a controlled delayed snapshot reproduced the failure before the fix.
+- A hosted terminal fixture failed before the supervisor reached a stopped state and left
+  its worker alive. It now waits for a working shell before freezing the supervisor and
+  always tears down after assertions. The five-second timeout and ownership checks remain.
 
 ## Verification
 
