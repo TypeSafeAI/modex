@@ -52,12 +52,12 @@ enum CompanionError: LocalizedError {
     }
 }
 
-struct CompanionProject: Decodable, Identifiable {
+struct CompanionProject: Decodable, Identifiable, Equatable {
     let id: String
     let name: String
 }
 
-struct CompanionThread: Decodable, Identifiable {
+struct CompanionThread: Decodable, Identifiable, Equatable {
     let id: String
     let projectId: String
     let title: String
@@ -66,7 +66,7 @@ struct CompanionThread: Decodable, Identifiable {
     let updatedAt: String
 }
 
-struct CompanionItem: Decodable, Identifiable {
+struct CompanionItem: Decodable, Identifiable, Equatable {
     let id: String
     let kind: String
     let text: String?
@@ -79,7 +79,7 @@ struct CompanionItem: Decodable, Identifiable {
     let at: String
 }
 
-struct CompanionSnapshot: Decodable {
+struct CompanionSnapshot: Decodable, Equatable {
     let projects: [CompanionProject]
     let threads: [CompanionThread]
     let items: [CompanionItem]

@@ -168,6 +168,8 @@ The iPhone groups threads into project cards, including empty projects. Each pro
 New thread action selects that project, and the composer stays above the keyboard.
 Disconnected workspaces offer **Scan pairing code** and **Try again**. Rescanning the
 same pinned Mac preserves unsent drafts; pairing a different Mac clears them.
+Unchanged polls preserve the current UI instead of rebuilding open menu actions; real
+workspace changes and connection recovery continue to publish immediately.
 [Verification and acceptance limits](reviews/2026-10-07-workspace-polish.md).
 
 **Packaged demo recovery.** Demo startup resolves its script from Electron's bundled app

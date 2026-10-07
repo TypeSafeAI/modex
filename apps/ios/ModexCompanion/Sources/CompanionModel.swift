@@ -232,10 +232,11 @@ import SwiftUI
                 self.api = client
                 adopted = true
             }
-            snapshot = result
-            connected = true
+            // Rebuilding an unchanged workspace replaces open menu actions during polling.
+            if snapshot != result { snapshot = result }
+            if !connected { connected = true }
             retrySavedEndpoint = false
-            connectionError = nil
+            if connectionError != nil { connectionError = nil }
             if let selectedThreadId, !result.threads.contains(where: { $0.id == selectedThreadId }) {
                 self.selectedThreadId = nil
                 draft = ""
@@ -246,10 +247,11 @@ import SwiftUI
             guard connection == connectionRevision, request == refreshRevision,
                   threadId == selectedThreadId, !Task.isCancelled else { return }
             if revokeIfNeeded(error) { return }
-            connected = false
+            if connected { connected = false }
             // An untrusted/stale advertisement must not starve the saved address forever.
             retrySavedEndpoint = candidate != nil
-            connectionError = "Keep Modex open on your Mac and use the same network. Still disconnected? Open iPhone companion on your Mac and scan its pairing code again."
+            let message = "Keep Modex open on your Mac and use the same network. Still disconnected? Open iPhone companion on your Mac and scan its pairing code again."
+            if connectionError != message { connectionError = message }
         }
     }
 
