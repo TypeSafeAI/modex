@@ -171,6 +171,8 @@ or live usage collector. Run and provenance details: [usage preview](usage-previ
 
 **Consistent themes and live agent activity.** The right workspace, review/browser controls,
 menus, status colors and typography now share Jev/OpenCoven tokens with the chat and sidebar.
+The logo itself uses lavender in OpenCoven, preserving its transparent silhouette and
+the original pink artwork in other themes.
 Tools fold into one line with summaries derived from their structured command/path/query when
 needed; original arguments and results remain expandable. Individual Claude Agent/Task and
 Codex child-agent activity appears in the sidebar immediately during the parent turn, across
