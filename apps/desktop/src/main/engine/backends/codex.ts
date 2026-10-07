@@ -2,7 +2,7 @@ import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
-import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
 import { cliEnvironment, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
@@ -203,7 +203,7 @@ export class CodexBackend implements Backend {
     return { approvalPolicy: "never", sandbox: "danger-full-access", sandboxPolicy: { type: "dangerFullAccess" } };
   }
 
-  generateTitle(text: string, opts: { model: string }, signal: AbortSignal): Promise<string | null> {
+  generateTitle(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null> {
     return generateTitle(this, opts, text, signal);
   }
 

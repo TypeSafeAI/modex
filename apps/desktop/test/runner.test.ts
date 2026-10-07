@@ -786,6 +786,59 @@ test("shutdown waits for cancelled title generation to finish", async () => {
   } finally { finish(null); await closing; }
 });
 
+test("autonaming uses the successful attempt's last assistant reply, excluding earlier failures and tools", async () => {
+  const h = harness();
+  let attempts = 0;
+  let context: string | undefined;
+  const backend: Backend = {
+    ...h.backends.mock, id: "mock", listModels: async () => [], dispose: async () => {},
+    async runTurn(_text, _opts, sink) {
+      if (++attempts === 1) { sink.assistant("Wrong diagnosis from failed attempt"); return { status: "failed", error: "try again" }; }
+      sink.assistant("Investigating login");
+      sink.toolStart({ id: "tool", name: "read", title: "read file", args: {} });
+      sink.toolUpdate("tool", { output: "PRIVATE_FILE_CONTENT", status: "done" });
+      sink.thinkingDelta("thinking", "PRIVATE_REASONING");
+      sink.assistant("Fixed cookie path handling");
+      return { status: "completed" };
+    },
+    async generateTitle(_text, opts: { model: string; reply?: string }) { context = opts.reply; return "Fix cookie path handling"; },
+  };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try {
+    await runner.send(thread.id, "fix login");
+    await runner.retry(thread.id);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(context, "Fixed cookie path handling");
+    assert.equal(h.store.thread(thread.id)?.title, "Fix cookie path handling");
+  } finally { await runner.dispose(); }
+});
+
+test("manual ownership survives relaunch and a retry even when its text matches the fallback", async () => {
+  const h = harness();
+  let titles = 0;
+  const backend: Backend = {
+    id: "mock", listModels: async () => [], dispose: async () => {},
+    runTurn: async () => ({ status: "failed", error: "try again" }),
+    generateTitle: async () => { titles++; return "Generated title"; },
+  };
+  let runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try {
+    await runner.send(thread.id, "fix login");
+    runner.updateThread(thread.id, { title: "My title" });
+    runner.updateThread(thread.id, { title: "fix login" });
+    await runner.dispose();
+    const store = new Store(h.home);
+    backend.runTurn = async () => ({ status: "completed" });
+    runner = new ThreadRunner({ ...h, store, backends: { mock: backend } });
+    await runner.retry(thread.id);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(titles, 0);
+    assert.equal(store.thread(thread.id)?.title, "fix login");
+  } finally { await runner.dispose(); }
+});
+
 test("follow-up: none while a turn runs, one cached suggestion once it completes, cleared by the next send", async () => {
   const h = harness([{ tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] }, { content: "Added NOTE.md." }]);
   const runner = new ThreadRunner({ ...h, router: new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null }) });

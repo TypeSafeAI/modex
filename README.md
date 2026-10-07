@@ -110,9 +110,10 @@ modex/
   on across relaunches and reveals the workspace only when you choose **Show workspace**.
 - **Threads name themselves.** A new thread takes its first message as its title right away.
   After that first turn completes, the same CLI is asked, in a separate throwaway chat
-  conversation that never touches the transcript, for a short title, and the sidebar updates
-  when it answers. Renaming by hand or deleting the thread cancels the request, and a failed
-  or slow answer keeps the first-message title.
+  conversation that never touches the transcript, for a short title based on the request and
+  completed reply. The sidebar updates when it answers. Invalid titles fall back to the first
+  message; renaming by hand or deleting the thread cancels the request, and a failed or slow
+  answer keeps the first-message title.
 - **One suggested next step.** When a turn finishes, the composer offers a single follow-up
   (run the checks, review the changes, chase the remaining failure, finish what was asked…).
   Tab, → or a click fills it into the empty box; sending is still your keystroke, and anything
