@@ -424,15 +424,13 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     inputRef.current?.focus();
   }, [selected]);
 
-  if (!state) return <div className="app loading">{error?.message ?? "Loading…"}</div>;
-
   const newChat = () => {
-    const pid = thread?.projectId ?? draft?.projectId ?? state.projects[0]?.id;
+    const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;
     if (pid) openDraft(pid);
   };
 
-  return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`} data-streamer-mode={streamerMode ? "true" : "false"}>
+  const workspace = state ? (
+    <>
       <TitleBar
         thread={thread}
         onRename={(title) => void updateThread({ title })}
@@ -536,6 +534,13 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
       </div>
       {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
+    </>
+  ) : <span>{error?.message ?? "Loading…"}</span>;
+
+  // The privacy cover must exist even while startup is pending or has failed.
+  return (
+    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} data-streamer-mode={streamerMode ? "true" : "false"}>
+      {workspace}
       {streamerMode && (
         <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
           <Icon name="privacy" size={28} />

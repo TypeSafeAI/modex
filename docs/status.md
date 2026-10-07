@@ -161,6 +161,11 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
+**Streamer Mode startup privacy.** The privacy cover now stays mounted while the workspace
+loads and if startup fails. Error details remain hidden from the window and accessibility
+tree until you choose **Show workspace**. Electron regression tests cover delayed startup,
+startup errors, and explicit reveal after a relaunch.
+
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
 exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these

@@ -107,7 +107,8 @@ modex/
 - **Streamer Mode.** Turn it on from the rail before sharing the window. Modex covers the full
   window with an opaque privacy screen, hiding chats, thread and project names, terminals,
   diffs, settings, notifications, and paths while work continues underneath. The cover stays
-  on across relaunches and reveals the workspace only when you choose **Show workspace**.
+  on across relaunches, including loading and startup errors, and reveals the workspace
+  only when you choose **Show workspace**.
 - **Threads name themselves.** A new thread takes its first message as its title right away.
   After that first turn completes, the same CLI is asked, in a separate throwaway chat
   conversation that never touches the transcript, for a short title, and the sidebar updates
