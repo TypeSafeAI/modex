@@ -154,13 +154,18 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
   terminal, and isolated browser pages run inside tabs. [Design and verification](reviews/2026-10-05-right-workspace.md).
 - **Workspace polish and failure recovery.** A clearer empty workspace makes new projects
   and chats easier to start; coding CLI failures expose Retry and connection controls.
+- **Update banner verified in the published app.** v0.0.8 retains the launch, hourly, and
+  focus checks from v0.0.7. The live feed offers v0.0.8 to v0.0.7 and no update to v0.0.8.
+  A newer stable release with a matching installer triggers the dismissible banner.
+  The Mac App Store client leaves updates to the Store; it does not offer GitHub installers.
 
 ## On `main`, not yet released
 
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
-exercises thread creation and skills without a Mac. These changes require a new desktop
-release and a rebuilt Companion build; the published v0.0.8 host predates these endpoints.
+exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these
+changes and is submitted for beta review. Real paired use still requires a new standalone
+desktop release; the published v0.0.8 host predates these endpoints.
 
 ## In flight
 
@@ -169,12 +174,13 @@ release and a rebuilt Companion build; the published v0.0.8 host predates these 
   sandbox and standalone-app rules require an architecture and review gate. The
   [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
   end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
-  command is documented. App Store Connect now contains processed macOS build 0.0.7
-  (`VALID`); distribution provisioning and installer signing are available locally.
-  The 0.0.8 Store candidate and Companion build 5 add offline demo access after Apple's
-  Guideline 2.1 request for a review QR. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
-  contains instructions, the reusable QR and validation evidence. Apple acceptance of
-  demo access and the Store architecture remains pending.
+  command is documented. Mac Store 0.0.8 and Companion 0.1.0 (5) passed processing and
+  are `WAITING_FOR_REVIEW` as of 2026-10-06 23:51 UTC. Both beta review records contain
+  offline demo instructions, and both reviewer replies are posted; the iOS reply includes
+  the reusable QR. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
+  records build IDs and verification. The production Mac draft is 0.0.8 with its build
+  and review notes selected, but still needs screenshots, description, keywords, and
+  support URL. Apple acceptance of demo access and the Store architecture remains pending.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
@@ -197,6 +203,9 @@ release and a rebuilt Companion build; the published v0.0.8 host predates these 
   All 14 native tests and the extended LAN simulator flow passed, including revocation
   across relaunches. On 2026-10-05 its signed IPA passed Apple validation and upload,
   reached `VALID`, and entered `IN_BETA_TESTING` in the existing Internal group.
+  On 2026-10-06, build 5 combined the offline demo and #128 creation/skills flows,
+  passed processing, and entered internal testing and external `WAITING_FOR_REVIEW`.
+  Its updated notes and posted QR reply address the earlier review-access rejection.
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 

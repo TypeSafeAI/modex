@@ -17,7 +17,7 @@ installation, verifies it on both clients, and prepares accurate review instruct
 The original `companion-demo-workspace` worktree is preserved. Apple approval remains an
 external decision; fixes and review notes must not claim approval or unverified features.
 
-## App Store Connect audit
+## Initial App Store Connect audit
 
 Read through the authenticated REST API on 2026-10-06; no submission or reviewer message
 was sent during this audit.
@@ -101,18 +101,45 @@ Fresh code review found and fixed lost follow-up
 drafts during creation, stale create completions, and cancelled/stale command loads;
 the new regressions failed before those fixes and passed afterward.
 
-The signed artifacts recorded above predate this integration. Rebuild Companion from the
-combined source before uploading it; do not submit the cached IPA as proof of #128. Build 5
-has not been uploaded in the audit above; verify the current App Store Connect build number
-before upload and increment it if already used. The published v0.0.8 standalone Mac host
+The initial Companion artifact above predates this integration. The delivery below used
+a fresh build 5 from the combined source after checking that its build number was unused.
+The published v0.0.8 standalone Mac host
 also predates the new paired endpoints. Real mobile creation requires an updated host;
 the offline review demo has no host dependency.
 
+## Submitted replacements
+
+Val authorized upload and review submission after #128 landed as signed commit `b5964c2`.
+Authenticated API readback at **2026-10-06 23:51 UTC** confirmed:
+
+| App | Version | Build and review submission ID | Processing | Beta review |
+| --- | --- | --- | --- | --- |
+| Modex Companion | 0.1.0 (5) | `ba880ae0-e6f9-4c29-9d3c-ccdc87f0b96e` | `VALID` | `WAITING_FOR_REVIEW` |
+| Modex Mac App Store | 0.0.8 (0.0.8) | `b65a5d8f-c3b3-480a-9164-e421aee66c71` | `VALID` | `WAITING_FOR_REVIEW` |
+
+Both builds are `IN_BETA_TESTING` internally and assigned to their existing external
+groups. What to Test and platform-specific Beta App Review Information were saved and
+read back. Sign-in required is off for the offline demo, and existing contacts were
+preserved. The Mac build carries forward the existing 0.0.7 encryption classification;
+the offline demo adds no encryption or transport changes.
+
+The rebuilt Companion IPA includes #128. Its archive/export, strict signature, ZIP
+integrity, and Apple validation passed before upload. SHA-256:
+`d575d37ba2d13bf796c1d21efa787a6719cc0f52c02842586e0c363b91f0625b`.
+The Mac package retains the validated checksum above because #128 changes no Store
+or shared renderer code.
+
+The iOS reviewer reply was posted with `modex-demo-qr.png` attached. The Mac reviewer
+reply was also posted with its demo steps. App Store Connect displayed both replies;
+the Mac TestFlight page also displayed Waiting for Review with Internal and Public groups.
+Receipts and sanitized API readbacks are retained at
+`/Users/buns/Documents/Codex/artifacts/modex-pr128-review-2026-10-06/submission/`.
+
 ## Remaining delivery steps
 
-Rebuild and validate the replacement Companion candidate, then upload the intended iOS
-and Mac Store candidates, verify processing, and select them for the
-appropriate test groups/review. Replace each app's review notes with its own text above
-and reply to the iOS reviewer with the QR attached. Sending the reviewer message and
-submitting to Apple require Val's go-ahead; this patch does not silently perform either.
-Physical-device/TestFlight acceptance and Apple's review decision remain open.
+- Complete physical-device/TestFlight installation and Camera scanning acceptance.
+- Await Apple's demo-access and beta review decision, including the separate-host question.
+- Complete the production Mac listing. Its 0.0.8 draft has the uploaded build and review
+  notes selected, but description, keywords, support URL, and screenshots are missing.
+- Publish a new standalone host release for real paired mobile creation and skills.
+  The existing v0.0.8 host predates those endpoints; the offline demo needs no host.
