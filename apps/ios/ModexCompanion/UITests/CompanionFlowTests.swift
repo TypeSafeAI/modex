@@ -31,6 +31,15 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(thread.waitForExistence(timeout: 20), "The paired Mac's thread should appear.")
         capture(app, name: "Paired workspace")
 
+        let emptyProject = app.buttons["New thread in empty-project"]
+        if !emptyProject.isHittable { app.swipeUp() }
+        XCTAssertTrue(emptyProject.waitForExistence(timeout: 10), "Projects without threads must remain visible.")
+        emptyProject.tap()
+        let selectedProject = app.buttons["new-thread-project"]
+        XCTAssertTrue(selectedProject.waitForExistence(timeout: 10))
+        XCTAssertTrue((selectedProject.label + " " + (selectedProject.value as? String ?? "")).contains("empty-project"), "A project's New thread action must preselect that project.")
+        app.buttons["Cancel"].tap()
+        if !app.buttons["new-thread"].isHittable { app.swipeDown() }
         app.buttons["new-thread"].tap()
         let newThreadInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
         XCTAssertTrue(newThreadInput.waitForExistence(timeout: 10))
@@ -68,9 +77,14 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
         confirmation.buttons["Approve once"].tap()
         XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 20))
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 10), "The approval sheet must finish dismissing before focusing the composer.")
 
         let input = app.descendants(matching: .any)["followup-input"].firstMatch
-        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        let readyToCompose = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"),
+            object: input
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [readyToCompose], timeout: 10), .completed, "The follow-up composer must be ready for interaction.")
         input.tap()
         input.typeText("Please summarize the result")
         app.buttons["send-followup"].tap()
@@ -83,6 +97,28 @@ final class CompanionFlowTests: XCTestCase {
             app.terminate()
             app.launch()
             XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].waitForExistence(timeout: 20), "The verified new address must survive another relaunch.")
+        }
+        if fixture.reconnect != true {
+            thread.tap()
+            let recoveryInput = app.descendants(matching: .any)["followup-input"].firstMatch
+            XCTAssertTrue(recoveryInput.waitForExistence(timeout: 10))
+            recoveryInput.tap()
+            recoveryInput.typeText("Pause for recovery")
+            app.buttons["send-followup"].tap()
+            XCTAssertTrue(app.staticTexts["Follow-up received: Pause for recovery"].waitForExistence(timeout: 10))
+            app.buttons["Back to threads"].tap()
+            let repair = app.buttons["repair-pairing"]
+            XCTAssertTrue(repair.waitForExistence(timeout: 15), "A disconnected workspace must offer pairing recovery without forgetting the Mac.")
+            XCTAssertFalse(app.buttons["new-thread"].isEnabled)
+            XCTAssertTrue(app.buttons["retry-connection"].isHittable)
+            capture(app, name: "Disconnected workspace recovery")
+            repair.tap()
+            XCTAssertTrue(app.buttons["scan-pairing-code"].waitForExistence(timeout: 10))
+            app.buttons["Done"].tap()
+            XCTAssertTrue(repair.waitForExistence(timeout: 5), "Cancelling a rescan must keep the saved workspace.")
+            app.buttons["retry-connection"].tap()
+            XCTAssertTrue(app.staticTexts["Mac connected"].waitForExistence(timeout: 60))
+            XCTAssertTrue(app.buttons["new-thread"].isEnabled)
         }
         app.buttons["workspace-options"].tap()
         app.buttons["Forget paired Mac…"].tap()

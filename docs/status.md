@@ -161,6 +161,21 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
+**Workspace welcome and Companion recovery.** The desktop welcome uses responsive
+project and work-mode cards, with **Open Project** as the primary action. Its logo tile
+uses the theme's neutral surface; only the logo artwork changes to purple in Coven.
+The iPhone groups threads into project cards, including empty projects. Each project's
+New thread action selects that project, and the composer stays above the keyboard.
+Disconnected workspaces offer **Scan pairing code** and **Try again**. Rescanning the
+same pinned Mac preserves unsent drafts; pairing a different Mac clears them.
+Unchanged polls preserve the current UI instead of rebuilding open menu actions; real
+workspace changes and connection recovery continue to publish immediately.
+[Verification and acceptance limits](reviews/2026-10-07-workspace-polish.md).
+
+**Packaged demo recovery.** Demo startup resolves its script from Electron's bundled app
+path, including ASAR packages. Missing mock scripts open Mock script settings instead of
+suggesting a coding CLI installation.
+
 **Usage dashboard preview.** A standalone React preview now follows
 the TypeSafe UI palette and typography, with overview, activity, models, projects,
 accounts, and coverage views. Collapsible navigation and an oversized Demo Data stamp

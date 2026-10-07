@@ -409,7 +409,12 @@ app.whenReady().then(async () => {
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
     await new Promise<void>((r) => win!.webContents.once("did-finish-load", () => r()));
-    await runDemo({ store, runner, home, repoPath: path.resolve(here, "..", "..", "..", "..", ".."), screenshotDir, answer: flag("demo-answer"), capture: (name) => capture(name) });
+    await runDemo({
+      store, runner, home,
+      repoPath: app.isPackaged ? app.getAppPath() : path.resolve(here, "..", "..", "..", "..", ".."),
+      scriptPath: path.join(app.getAppPath(), "demo", "mock-script.json"),
+      screenshotDir, answer: flag("demo-answer"), capture: (name) => capture(name),
+    });
     if (screenshotDir) app.quit();
   }
   app.on("activate", () => {

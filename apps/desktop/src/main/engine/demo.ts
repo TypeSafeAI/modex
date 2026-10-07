@@ -10,6 +10,8 @@ export interface DemoOptions {
   home: string;
   /** Repository to demo against (a temp copy is made so nothing real is modified). */
   repoPath: string;
+  /** Bundled script resolved from Electron app.getAppPath(), also valid inside ASAR. */
+  scriptPath: string;
   screenshotDir?: string;
   /** "yes" | "no" — auto-answer the approval so the transcript completes. Unset leaves the card waiting. */
   answer?: string;
@@ -25,8 +27,7 @@ export interface DemoOptions {
 export async function runDemo(o: DemoOptions): Promise<void> {
   const demoRepo = path.join(o.home, "demo-repo");
   copyRepoForDemo(o.repoPath, demoRepo);
-  const script = path.resolve(o.repoPath, "apps", "desktop", "demo", "mock-script.json");
-  o.store.updateSettings({ default_backend: "mock", mock_script: script, default_mode: "chat", routing: { ...o.store.settings.routing, jev_transport: "http" } });
+  o.store.updateSettings({ default_backend: "mock", mock_script: o.scriptPath, default_mode: "chat", routing: { ...o.store.settings.routing, jev_transport: "http" } });
   const project = o.store.addProject(demoRepo);
   // A second, finished thread so the sidebar shows history.
   const earlier = await o.runner.createThread(project.id, { mode: "agent", backend: "mock" });
