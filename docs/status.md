@@ -161,6 +161,12 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
+**Usage dashboard preview.** A standalone React preview now follows
+the TypeSafe UI palette and typography, with overview, activity, models, projects,
+accounts, and coverage views. Filters, call details, CSV export, and both appearances
+work against synthetic fixture records. This is not yet a desktop navigation entry
+or live usage collector. Run and provenance details: [usage preview](usage-preview.md).
+
 **Consistent themes and live agent activity.** The right workspace, review/browser controls,
 menus, status colors and typography now share Jev/OpenCoven tokens with the chat and sidebar.
 Tools fold into one line with summaries derived from their structured command/path/query when
