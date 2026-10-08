@@ -252,6 +252,11 @@ startup errors, and explicit reveal after a relaunch.
 
 ## In flight
 
+- **v0.0.9 candidate.** The rebased Graphite shell and Modex GitHub identity are being
+  prepared in `release-0-0-9`. Publication is held for verified production sign-in,
+  signed/notarized artifact checks, packaged E2E and hosted CI.
+  [Release evidence](reviews/2026-10-08-v0.0.9-release-review.md).
+
 - **Modex GitHub identity.** Native WorkOS public-client PKCE, encrypted renewable
   sessions and a separate Settings account card are implemented on `workos-oauth`.
   Production is the default; staging is explicitly selected and isolated. Hosted AuthKit
