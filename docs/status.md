@@ -161,11 +161,22 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
+**Web answers and Sources.** Transcript Markdown renders web links in the system browser.
+Trailing citation lists become numbered cards after streaming ends; annotations and additional
+links preserve the full answer. WebSearch shows result links and its summary, while WebFetch
+renders readable prose. Saved threads use the same parsers without a migration.
+
 **Claude background turns.** A successful reply keeps stdin open while background tasks
 run, so follow-up permission prompts can be answered. Task completion, errors, cancellation,
 a 15-second idle window after work drains and a 30-minute cap bound the wait. Termination
 escalates to SIGKILL when Claude ignores SIGTERM. Regression tests cover captured CLI events,
 prompts after the first reply and Stop.
+
+**Reference desktop shell (PR #137).** Graphite adds the neutral October 7
+reference palette, a wider compact sidebar, a folder/title header with fixed right-edge
+actions, and a responsive repository overview linked to the real workspace. New profiles
+default to Graphite; saved Jev/OpenCoven preferences remain intact. Build, typecheck, unit, and UI
+verification are recorded in [the review](reviews/2026-10-07-reference-shell.md); this is not released.
 
 **Workspace welcome and Companion recovery.** The desktop welcome uses responsive
 project and work-mode cards, with **Open Project** as the primary action. Its logo tile
@@ -220,12 +231,6 @@ tree until you choose **Show workspace**. Electron regression tests cover delaye
 startup errors, and explicit reveal after a relaunch.
 
 ## In flight
-
-**Reference desktop shell (`reference-shell`).** Graphite adds the neutral October 7
-reference palette, a wider compact sidebar, a folder/title header with fixed right-edge
-actions, and a responsive repository overview linked to the real workspace. New profiles
-default to Graphite; saved Jev/OpenCoven preferences remain intact. Build, typecheck, unit, and UI
-verification are recorded in [the review](reviews/2026-10-07-reference-shell.md); this is not released.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's

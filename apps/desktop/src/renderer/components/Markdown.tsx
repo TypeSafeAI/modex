@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from "react";
+import { tokenizeInline, type InlineToken } from "../../shared/inline";
 
-/** Small, dependency-free Markdown subset: headings, fenced code, inline code, bold, lists, paragraphs. */
+/** Small, dependency-free Markdown subset: headings, fenced code, inline code, bold, links, lists, paragraphs. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -44,18 +45,15 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
 });
 
 function inline(s: string): ReactNode[] {
-  const out: ReactNode[] = [];
-  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let k = 0;
-  while ((m = re.exec(s))) {
-    if (m.index > last) out.push(s.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith("`")) out.push(<code key={k++}>{tok.slice(1, -1)}</code>);
-    else out.push(<b key={k++}>{tok.slice(2, -2)}</b>);
-    last = m.index + tok.length;
-  }
-  if (last < s.length) out.push(s.slice(last));
-  return out;
+  return nodes(tokenizeInline(s));
+}
+
+/** Links open in the system browser: main denies the new window and hands http(s) URLs to the OS. */
+function nodes(tokens: InlineToken[]): ReactNode[] {
+  return tokens.map((t, k) =>
+    t.type === "text" ? t.text
+    : t.type === "code" ? <code key={k}>{t.text}</code>
+    : t.type === "bold" ? <b key={k}>{nodes(t.children)}</b>
+    : <a key={k} href={t.href} target="_blank" rel="noreferrer" title={t.href}>{nodes(t.children)}</a>,
+  );
 }
