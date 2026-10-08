@@ -104,6 +104,7 @@ import SwiftUI
             let first = try await client.snapshot(threadId: nil)
             guard attempt == pairingRevision, !Task.isCancelled else { return }
             try store.save(candidate)
+            let recoveringSameMac = pairing?.fingerprint == candidate.fingerprint
             stopPolling()
             invalidateConnection()
             pairing = candidate
@@ -113,10 +114,17 @@ import SwiftUI
             adopted = true
             discoveredURL = nil
             snapshot = first
-            selectedThreadId = nil
-            draft = ""
-            newThreadDraft = ""
-            drafts = [:]
+            if !recoveringSameMac {
+                selectedThreadId = nil
+                draft = ""
+                newThreadDraft = ""
+                drafts = [:]
+            } else if let selectedThreadId, !first.threads.contains(where: { $0.id == selectedThreadId }) {
+                // A rescan of the same pinned Mac keeps unsent work, except for a deleted thread.
+                self.selectedThreadId = nil
+                draft = ""
+                drafts.removeValue(forKey: selectedThreadId)
+            }
             connected = true
             connectionError = nil
             error = nil
@@ -224,10 +232,11 @@ import SwiftUI
                 self.api = client
                 adopted = true
             }
-            snapshot = result
-            connected = true
+            // Rebuilding an unchanged workspace replaces open menu actions during polling.
+            if snapshot != result { snapshot = result }
+            if !connected { connected = true }
             retrySavedEndpoint = false
-            connectionError = nil
+            if connectionError != nil { connectionError = nil }
             if let selectedThreadId, !result.threads.contains(where: { $0.id == selectedThreadId }) {
                 self.selectedThreadId = nil
                 draft = ""
@@ -238,10 +247,11 @@ import SwiftUI
             guard connection == connectionRevision, request == refreshRevision,
                   threadId == selectedThreadId, !Task.isCancelled else { return }
             if revokeIfNeeded(error) { return }
-            connected = false
+            if connected { connected = false }
             // An untrusted/stale advertisement must not starve the saved address forever.
             retrySavedEndpoint = candidate != nil
-            connectionError = "Your Mac is temporarily unavailable. Pairing is saved; reconnecting automatically."
+            let message = "Keep Modex open on your Mac and use the same network. Still disconnected? Open iPhone companion on your Mac and scan its pairing code again."
+            if connectionError != message { connectionError = message }
         }
     }
 
