@@ -5,7 +5,9 @@ WorkOS. This first slice establishes Modex identity. It does not connect reposit
 change CLI credentials, grant model access, or sync workspace data.
 
 Electron main starts a loopback listener on an ephemeral `127.0.0.1` port and opens the
-system browser. Authorization uses `GitHubOAuth`, a fresh state and S256 PKCE challenge.
+system browser. Authorization uses hosted `authkit`, a fresh state and S256 PKCE challenge.
+GitHub is enabled in WorkOS; the hosted flow completes required email verification before
+returning to Modex. Direct `GitHubOAuth` skips that hosted challenge handling and is not used.
 The listener checks the path, HTTP method, loopback peer, Host header, state, duplicate
 parameters and single-use callback. Cancel, window unmount, timeout and shutdown end the
 pending sign-in. The five-minute limit includes token exchange.

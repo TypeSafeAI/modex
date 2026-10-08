@@ -254,7 +254,8 @@ startup errors, and explicit reveal after a relaunch.
 
 - **Modex GitHub identity.** Native WorkOS public-client PKCE, encrypted renewable
   sessions and a separate Settings account card are implemented on `workos-oauth`.
-  Production is the default; staging is explicitly selected and isolated. No repository
+  Production is the default; staging is explicitly selected and isolated. Hosted AuthKit
+  handles required email verification before the desktop exchanges the PKCE code. No repository
   integration or model account changes are included. Live production sign-in, refresh,
   restart and remote sign-out remain release gates. [Design and acceptance](modex-signin.md).
 

@@ -31,11 +31,13 @@ function fixture(options: { browser?: (url: URL) => Promise<void>; changedIdenti
   return { auth, home, requests, urls, advance: () => { now += 3600000; }, cleanup: () => { auth.dispose(); fs.rmSync(home, { recursive: true, force: true }); } };
 }
 
-test("public GitHub PKCE sign-in persists only renewable identity and exposes no tokens", async () => {
+test("public PKCE sign-in routes through hosted AuthKit and persists only renewable identity", async () => {
   const f = fixture(); try {
     await f.auth.signIn();
     const url = f.urls[0]!; const req = f.requests[0]!;
-    assert.equal(url.searchParams.get("provider"), "GitHubOAuth");
+    // Direct GitHubOAuth returns a verification challenge to the native client.
+    // Hosted AuthKit must finish those challenges before returning the code.
+    assert.equal(url.searchParams.get("provider"), "authkit");
     assert.equal(url.searchParams.get("code_challenge"), createHash("sha256").update(req.code_verifier!).digest("base64url"));
     assert.equal(req.client_secret, undefined); assert.equal(url.searchParams.get("scope"), null);
     assert.equal(f.auth.status().user?.email, "val@example.test");

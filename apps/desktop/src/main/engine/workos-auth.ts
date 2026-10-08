@@ -165,7 +165,9 @@ export class WorkOSAuth {
         server.listen(0, "127.0.0.1", () => {
           if (controller.signal.aborted) { aborted(); return; }
           const port = (server!.address() as { port: number }).port;
-          const query = new URLSearchParams({ client_id: this.options.config.clientId, provider: "GitHubOAuth", response_type: "code", redirect_uri: `http://127.0.0.1:${port}${CALLBACK}`, state, code_challenge_method: "S256", code_challenge: createHash("sha256").update(verifier).digest("base64url") });
+          // Hosted AuthKit completes email verification and other challenges before
+          // returning a code; direct GitHubOAuth can leave a public client stranded.
+          const query = new URLSearchParams({ client_id: this.options.config.clientId, provider: "authkit", response_type: "code", redirect_uri: `http://127.0.0.1:${port}${CALLBACK}`, state, code_challenge_method: "S256", code_challenge: createHash("sha256").update(verifier).digest("base64url") });
           void this.options.openBrowser(`${API}/user_management/authorize?${query}`).catch(() => reject(new Error("Could not open the system browser.")));
         });
       });
