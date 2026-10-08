@@ -22,7 +22,7 @@ test("Space connects to an existing Open Knowledge editor and leaves it running 
   test.skip(process.env.MODEX_TEST_OPEN_KNOWLEDGE !== "1", "Requires the real Open Knowledge runtime");
   test.setTimeout(240_000);
   const { home, repo } = seedHome();
-  fs.writeFileSync(path.join(home, "app", "knowledge.json"), JSON.stringify({ version: 1, folder: repo }));
+  fs.writeFileSync(path.join(home, "app", "knowledge.json"), JSON.stringify({ version: 1, folder: fs.realpathSync(repo) }));
   fs.writeFileSync(path.join(repo, "Existing.md"), "# Already running\n\nThis server belongs to another window.\n");
   const { app, page } = await launch(home);
   let child: ReturnType<typeof spawn> | undefined;
@@ -101,7 +101,7 @@ test("Knowledge is reachable below Home and keeps the chat draft", async () => {
 
 test("Knowledge remembers the selected folder and reports a missing runtime", async () => {
   const { home, repo } = seedHome();
-  fs.writeFileSync(path.join(home, "app", "knowledge.json"), JSON.stringify({ version: 1, folder: repo }));
+  fs.writeFileSync(path.join(home, "app", "knowledge.json"), JSON.stringify({ version: 1, folder: fs.realpathSync(repo) }));
   const { app, page } = await launch(home);
   try {
     await tid(page, "rail-space").click();
