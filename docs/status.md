@@ -18,6 +18,7 @@ _Last updated 2026-10-08._
 | v0.0.6 | 2026-10-05 | #106, #110 | Jev-inspired near-black blue/pink workspace, Claude/ChatGPT sign-in, Retry, Streamer Mode and the paired iPhone service. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.6). |
 | v0.0.7 | 2026-10-05 | #117 | Official pink identity, persistent Companion pairing, update banner, OpenCoven theme, verified CLI discovery, polished connections and full-width website walkthrough. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.7). |
 | v0.0.8 | 2026-10-06 | #126, #127 | Per-thread provider/model, live branch and PR state; tabbed workspace, empty-screen polish and failure recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.8). |
+| v0.0.9 | 2026-10-08 | #137, #139, #144, #141, #142 | Graphite shell, Settings privacy, Pages/Knowledge, Sources, background turns and separate GitHub identity. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.9). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -159,7 +160,18 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
   A newer stable release with a matching installer triggers the dismissible banner.
   The Mac App Store client leaves updates to the Store; it does not offer GitHub installers.
 
-## On `main`, not yet released
+## v0.0.9 release
+
+Published on 2026-10-08 from signed tag `v0.0.9` at `82dfac9`. All open delivery PRs
+were merged or handled before release. The protected workflow signed, notarized and
+stapled the Apple Silicon DMG and ZIP, then passed 152 desktop and 7 site packaged tests.
+Independent downloads passed Gatekeeper, signatures, ticket and checksum checks; all
+311 DMG/ZIP app payload entries match. Their ASAR is byte-identical to the signed app
+that passed the fresh production GitHub authentication lifecycle. Public unauthenticated
+downloads match the verified artifacts, and GitHub's latest endpoint returns v0.0.9.
+[Verification receipt](https://github.com/TypeSafeAI/modex/releases/download/v0.0.9/verification-v0.0.9.txt)
+and [release ledger](reviews/2026-10-08-v0.0.9-release-review.md).
+Mac App Store and iPhone distribution remain separate tracks.
 
 **Space and local knowledge.** Space adds a section below Home with
 nested pages, favorites, templates, searchable Markdown blocks, autosave, import/export,
@@ -172,7 +184,7 @@ The embedded editor follows Graphite, Jev, and OpenCoven, including live theme c
 editor text and controls, and a matching background while loading or reloading.
 Home panes retain their grid positions and full-view behavior when switching to Space and back.
 Imported lists retain dedented items and keep checkbox edits aligned with their source text.
-It requires Node.js 24+ and Git. Changes remain unreleased; the
+It requires Node.js 24+ and Git. The
 [implementation review](reviews/2026-10-08-space-knowledge.md) records verification
 and integration boundaries.
 
@@ -196,7 +208,7 @@ prompts after the first reply and Stop.
 reference palette, a wider compact sidebar, a folder/title header with fixed right-edge
 actions, and a responsive repository overview linked to the real workspace. New profiles
 default to Graphite; saved Jev/OpenCoven preferences remain intact. Build, typecheck, unit, and UI
-verification are recorded in [the review](reviews/2026-10-07-reference-shell.md); this is not released.
+verification are recorded in [the review](reviews/2026-10-07-reference-shell.md).
 
 **Workspace welcome and Companion recovery.** The desktop welcome uses responsive
 project and work-mode cards, with **Open Project** as the primary action. Its logo tile
@@ -236,8 +248,8 @@ being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
 exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these
-changes and is submitted for beta review. Real paired use still requires a new standalone
-desktop release; the published v0.0.8 host predates these endpoints.
+changes and was submitted for beta review. The v0.0.9 standalone desktop now supplies
+these endpoints for real paired use.
 
 **Chat title quality.** The title request now includes a bounded final reply and asks for a
 short action-and-subject title in the user's language. Validation normalizes plain text and
@@ -258,18 +270,7 @@ integration or model account changes are included. Live signed production sign-i
 repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
 remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
-
 ## In flight
-
-- **v0.0.9 candidate.** Graphite, Settings, Sources, background turns, Pages/Knowledge
-  and Modex GitHub identity are prepared in `release-0-0-9`. Signed/notarized artifact
-  checks and 152 desktop plus 7 site packaged tests passed on the replacement build with
-  the Page focus fix. Fresh complete live production authentication acceptance passed
-  on that signed build, including renewal after actual token expiry and confirmed remote
-  session revocation. The desktop and authentication changes are on protected main.
-  Publication still requires the release PR checks and merge, the hosted release build,
-  and verification of its downloads.
-  [Release evidence](reviews/2026-10-08-v0.0.9-release-review.md).
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
