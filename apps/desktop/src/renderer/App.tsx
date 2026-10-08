@@ -188,7 +188,6 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     setSelected(null);
     setDraftRevision((revision) => revision + 1);
     setDraft({ projectId, worktree, settings: draftDefaults(state) });
-    setTimeout(() => inputRef.current?.focus(), 0);
   };
   // Nothing selected and no draft, but there are projects (first launch, last thread deleted): open a draft.
   useEffect(() => {
@@ -423,10 +422,10 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     return () => window.removeEventListener("keydown", onKey);
   }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals]);
 
-  // Focus the composer whenever the selected thread changes.
+  // Focus after React commits the selected thread or newly mounted draft.
   useEffect(() => {
     inputRef.current?.focus();
-  }, [selected]);
+  }, [selected, draftRevision, draft?.projectId]);
 
   const newChat = () => {
     const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;

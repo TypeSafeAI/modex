@@ -6,12 +6,19 @@ test('reference shell keeps title actions reachable and matches the compact neut
   const { home, repo } = seedHome();
   const { app, page } = await launch(home);
   try {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(2177, 1050));
     await createThread(page, 'Assess codebase and optimize');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(2177, 1050));
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite');
     await expect(tid(page, 'sidebar')).toHaveCSS('width', '344px');
     await expect(tid(page, 'titlebar')).toHaveCSS('height', '44px');
     await expect(tid(page, 'titlebar').locator('.titlebar-folder')).toBeVisible();
+    const row = page.locator('.thread-row').first();
+    await tid(page, 'composer-input').focus();
+    await row.hover();
+    await expect(row.locator('.thread-provider-line')).toBeVisible();
+    await expect(row.locator('.thread-context-line')).toBeVisible();
+    await tid(page, 'titlebar').hover();
+    await expect(row.locator('.thread-provider-line')).toBeHidden();
     const rightEdge = async () => {
       const b = (await tid(page, 'changes-toggle').boundingBox())!;
       return Math.abs(b.x + b.width - (await page.evaluate(() => innerWidth) - 10));

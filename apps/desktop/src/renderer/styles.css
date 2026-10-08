@@ -693,10 +693,10 @@ a.thread-pr:hover { text-decoration: underline; }
 :root[data-theme="graphite"] .thread-main { padding: 0 8px 0 32px; }
 :root[data-theme="graphite"] .thread-provider-line,
 :root[data-theme="graphite"] .thread-context-line { display: none; }
-/* Metadata remains available on deliberate inspection without expanding every resting row. */
-:root[data-theme="graphite"] .thread-row:focus-within { height: 72px; grid-template-rows: 1fr 24px; }
-:root[data-theme="graphite"] .thread-row:focus-within .thread-provider-line,
-:root[data-theme="graphite"] .thread-row:focus-within .thread-context-line { display: flex; }
+/* Metadata remains available on pointer or keyboard inspection without expanding every resting row. */
+:root[data-theme="graphite"] .thread-row:is(:hover, :focus-within) { height: 72px; grid-template-rows: 1fr 24px; }
+:root[data-theme="graphite"] .thread-row:is(:hover, :focus-within) .thread-provider-line,
+:root[data-theme="graphite"] .thread-row:is(:hover, :focus-within) .thread-context-line { display: flex; }
 :root[data-theme="graphite"] .thread-row > .row-meta { padding-top: 9px; }
 :root[data-theme="graphite"] .main { container-type: inline-size; container-name: thread-main; }
 :root[data-theme="graphite"] .composer-box { box-shadow: none; background-image: none; }
