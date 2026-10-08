@@ -127,30 +127,33 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     }
   }, []);
 
-  // Selecting a thread loads its items and its working-tree state.
+  const loadItems = useCallback((threadId: string) => {
+    if (loadingItems.current.has(threadId)) return;
+    // Replay events that race the snapshot; this also hydrates active, unselected threads.
+    const pending: ItemEvent[] = [];
+    loadingItems.current.set(threadId, pending);
+    void bridge.invoke("thread:items", { threadId }).then((list) => {
+      if (loadingItems.current.get(threadId) !== pending) return;
+      loadingItems.current.delete(threadId);
+      setItems((m) => ({ ...m, [threadId]: pending.reduce(applyItemEvent, list) }));
+    }).catch((err: Error) => {
+      if (loadingItems.current.get(threadId) !== pending) return;
+      loadingItems.current.delete(threadId);
+      if (selectedRef.current === threadId) setError({ message: err.message });
+    });
+  }, []);
   useEffect(() => {
     if (!selected) return;
     if (justCreated.current === selected) {
       justCreated.current = null;
       setItems((m) => ({ ...m, [selected]: m[selected] ?? [] }));
-    } else {
-      // thread:items snapshots the runner's live memory, including unflushed output.
-      // Only events arriving during the IPC request need replaying over that snapshot.
-      const pending: ItemEvent[] = [];
-      loadingItems.current.set(selected, pending);
-      void bridge.invoke("thread:items", { threadId: selected }).then((list) => {
-        if (loadingItems.current.get(selected) !== pending) return;
-        const snapshot = pending.reduce(applyItemEvent, list);
-        loadingItems.current.delete(selected);
-        setItems((m) => ({ ...m, [selected]: snapshot }));
-      }).catch((err: Error) => {
-        if (loadingItems.current.get(selected) !== pending) return;
-        loadingItems.current.delete(selected);
-        if (selectedRef.current === selected) setError({ message: err.message });
-      });
-    }
+    } else loadItems(selected);
     void loadChanges(selected);
-  }, [selected, loadChanges, connectionRevision]);
+  }, [selected, loadChanges, loadItems, connectionRevision]);
+  const runningIds = state?.threads.filter(t => t.status === "running" || t.status === "waiting").map(t => t.id).join(",") ?? "";
+  useEffect(() => {
+    for (const id of runningIds.split(",").filter(Boolean)) loadItems(id);
+  }, [runningIds, loadItems, connectionRevision]);
 
   // A draft has no thread to take a Changes snapshot from, so it asks for its project's branch directly.
   const [draftBranch, setDraftBranch] = useState<{ projectId: string; branch: string | null } | null>(null);
@@ -428,6 +431,15 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;
     if (pid) openDraft(pid);
   };
+  const activeThreads = state?.threads.filter((candidate) => candidate.status === "running" || candidate.status === "waiting") ?? [];
+  const activeAgents = activeThreads.flatMap(t => (items[t.id] ?? []).flatMap(item =>
+    item.kind === "tool" && item.agent && (item.agent.state === "running" || item.agent.state === "waiting")
+      ? [{ threadId: t.id, threadTitle: t.title, agent: item.agent }] : []));
+  const activeWork = { count: activeThreads.length, agents: activeAgents.length, waiting: activeThreads.filter((candidate) => candidate.status === "waiting").length };
+  const openActiveWork = () => {
+    const next = activeThreads[0];
+    if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
+  };
 
   const workspace = state ? (
     <>
@@ -450,7 +462,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
+      <Rail activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
       <div className="sheet" data-testid="sheet">
         {sidebarOpen && (
           <Sidebar
@@ -464,6 +476,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
             onDeleteThread={deleteThread}
             onRemoveProject={removeProject}
             unsent={unsent}
+            agents={activeAgents}
           />
         )}
         <main className="main" data-testid="main">

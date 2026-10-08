@@ -1,10 +1,11 @@
+import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
 import { cliEnvironment, health, installation } from "./health.js";
-import type { BackendHealth } from "../../../shared/types.js";
+import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 
 /**
  * Codex's own wording when the sign-in it loaded at startup no longer matches ~/.codex/auth.json
@@ -263,6 +264,8 @@ export class CodexBackend implements Backend {
     const input = opts.plan
       ? `${PLAN_PREFIX}\n\n${text}`
       : text;
+    const agents = new AgentTracker(sink);
+    const activities = new Set<string>();
     const tools = new Map<string, { started: number; output: string }>();
     const reasoning = new Set<string>();
     let turnId: string | null = null;
@@ -292,6 +295,7 @@ export class CodexBackend implements Backend {
       const finish = (r: TurnResult) => {
         if (done) return;
         done = true;
+        agents.finish(signal.aborted || r.status === "interrupted");
         this.subscribers.delete(onMsg);
         this.disconnects.delete(onDisconnect);
         clearTimeout(abortTimer);
@@ -309,7 +313,32 @@ export class CodexBackend implements Backend {
       const onMsg = (msg: RpcMessage) => {
         if (done) return;
         const p = (msg.params ?? {}) as Record<string, unknown>;
-        if (p.threadId && p.threadId !== tid) return;
+        if (msg.method === "thread/started") {
+          const thread = p.thread as { id?: string; agentNickname?: string; source?: { subAgent?: { thread_spawn?: { parent_thread_id?: string; agent_path?: string } } } } | undefined;
+          const spawn = thread?.source?.subAgent?.thread_spawn;
+          if (thread?.id && (spawn?.parent_thread_id === tid || (spawn?.parent_thread_id && agents.has(spawn.parent_thread_id)))) {
+            agents.update(thread.id, { state: "running", ...(thread.agentNickname || spawn.agent_path ? { label: thread.agentNickname ?? spawn.agent_path } : {}) });
+          }
+          return;
+        }
+        if (p.threadId && p.threadId !== tid) {
+          const id = String(p.threadId);
+          if (!agents.has(id)) return;
+          if (msg.method === "thread/status/changed") {
+            const status = p.status as { type?: string; activeFlags?: string[] } | undefined;
+            // Idle/unloaded describe the connection, not the result of the last turn.
+            // Completion comes from the turn or collaboration lifecycle event.
+            if (status?.type !== "active" && status?.type !== "systemError") return;
+            const state = status.type === "active" ? (status.activeFlags?.length ? "waiting" : "running") : "failed";
+            agents.update(id, { state, detail: state === "waiting" ? "Waiting for approval or input" : undefined });
+          } else if (msg.id !== undefined && msg.method) {
+            void this.handleServerRequest(msg, sink);
+          } else if (msg.method === "turn/completed") {
+            const turn = p.turn as { status?: string; error?: { message?: string } } | undefined;
+            agents.update(id, { state: turn?.status === "completed" ? "completed" : turn?.status === "interrupted" ? "stopped" : "failed", detail: turn?.error?.message }, turn?.error?.message);
+          }
+          return;
+        }
         if (starting) {
           if (msg.method === "turn/started") {
             turnId = (p.turn as { id: string }).id;
@@ -324,6 +353,24 @@ export class CodexBackend implements Backend {
         if (msg.id !== undefined && msg.method) {
           void this.handleServerRequest(msg, sink);
           return;
+        }
+        if (msg.method === "item/started" || msg.method === "item/completed") {
+          const item = p.item as CodexItem;
+          if (item.type === "subAgentActivity" && item.agentThreadId && !activities.has(item.id)) {
+            activities.add(item.id);
+            const state = item.kind === "completed" ? "completed" : item.kind === "interrupted" ? "stopped" : "running";
+            agents.update(item.agentThreadId, { state, ...(item.agentPath ? { label: item.agentPath } : {}) });
+            return;
+          }
+          if (item.type === "collabAgentToolCall") {
+            const ids = new Set([...(item.receiverThreadIds ?? []), ...Object.keys(item.agentsStates ?? {})]);
+            for (const id of ids) {
+              const snapshot = item.agentsStates?.[id];
+              const state = snapshot ? agentState(snapshot.status) : undefined;
+              agents.update(id, { ...(state ? { state } : {}), ...(!agents.has(id) && item.prompt ? { label: item.prompt } : {}), ...(snapshot?.message ? { detail: snapshot.message } : {}) }, snapshot?.message ?? undefined, item.prompt ? { prompt: item.prompt } : undefined);
+            }
+            return;
+          }
         }
         switch (msg.method) {
           case "item/started": {
@@ -541,6 +588,12 @@ interface CodexItem {
   result?: unknown;
   error?: unknown;
   query?: string;
+  receiverThreadIds?: string[];
+  agentsStates?: Record<string, { status: string; message?: string | null }>;
+  prompt?: string | null;
+  agentThreadId?: string;
+  agentPath?: string;
+  kind?: string;
 }
 
 /** Cancel setup locally without killing the shared server used by other threads. */
@@ -567,4 +620,15 @@ function killGroup(child: ChildProcess): void {
     }
   }
   child.kill("SIGKILL");
+}
+
+/** Codex reports the agent state separately from the status of its spawn/wait call. */
+function agentState(status: string): AgentActivity["state"] {
+  switch (status) {
+    case "pendingInit": case "running": return "running";
+    case "completed": return "completed";
+    case "errored": return "failed";
+    case "interrupted": case "shutdown": return "stopped";
+    default: return "unknown";
+  }
 }

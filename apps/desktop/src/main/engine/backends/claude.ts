@@ -1,3 +1,4 @@
+import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -90,6 +91,9 @@ export class ClaudeBackend implements Backend {
       const thinking = new Map<number, string>();
       let thinkingSeq = 0;
       let streaming = "";
+      const agents = new AgentTracker(sink);
+      const tasks = new Map<string, string>();
+      const background = new Set<string>();
       let finished = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let stderr = "";
@@ -98,6 +102,7 @@ export class ClaudeBackend implements Backend {
       const finish = (r: TurnResult) => {
         if (finished) return;
         finished = true;
+        agents.finish(signal.aborted || r.status === "interrupted");
         clearTimeout(killTimer);
         signal.removeEventListener("abort", onAbort);
         resolve(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r);
@@ -126,7 +131,7 @@ export class ClaudeBackend implements Backend {
           } catch {
             return;
           }
-          this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
+          this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
             if (done) {
               child.stdin?.end();
               finish(done);
@@ -145,12 +150,38 @@ export class ClaudeBackend implements Backend {
     });
   }
 
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<TurnResult | null> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<TurnResult | null> {
+    // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
+    if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
+      const tool = msg.message?.content?.find((b) => b.type === "tool_use");
+      if (tool) ctx.agents.update(msg.parent_tool_use_id, { state: "running", detail: toolTitle(tool.name ?? "tool", tool.input ?? {}) });
+      return null;
+    }
     switch (msg.type) {
       case "system":
         if (msg.subtype === "init") {
           if (msg.session_id) sink.session(msg.session_id);
           Object.assign(ctx.init, { claudeVersion: msg.claude_code_version, claudeModel: msg.model, permissionMode: msg.permissionMode, apiKeySource: msg.apiKeySource });
+        }
+        if (msg.task_id && !msg.ambient) {
+          const id = msg.tool_use_id ?? ctx.tasks.get(msg.task_id) ?? msg.task_id;
+          if (msg.subtype === "task_started" && (msg.task_type === "local_agent" || msg.task_type === "remote_agent")) {
+            ctx.tasks.set(msg.task_id, id);
+            if (msg.is_backgrounded !== false) ctx.background.add(id);
+            ctx.agents.update(id, { state: "running", ...(msg.description ? { label: msg.description } : {}) });
+          } else if (ctx.agents.has(id)) {
+            if (msg.subtype === "task_progress") ctx.agents.update(id, { state: "running", detail: msg.summary ?? msg.last_tool_name ?? msg.description });
+            if (msg.subtype === "task_notification") ctx.agents.update(id, { state: msg.status === "completed" ? "completed" : msg.status === "failed" ? "failed" : "stopped", detail: msg.summary }, msg.summary);
+            if (msg.subtype === "task_updated") {
+              if (msg.patch?.is_backgrounded) ctx.background.add(id);
+              const status = msg.patch?.status;
+              ctx.agents.update(id, {
+                ...(status ? { state: status === "completed" ? "completed" : status === "failed" ? "failed" : status === "killed" ? "stopped" : "running" } : {}),
+                ...(msg.patch?.description ? { label: msg.patch.description } : {}),
+                ...(msg.patch?.error ? { detail: msg.patch.error } : {}),
+              }, msg.patch?.error);
+            }
+          }
         }
         return null;
       case "stream_event": {
@@ -183,6 +214,11 @@ export class ClaudeBackend implements Backend {
             sink.assistant(block.text);
             ctx.streaming = "";
           } else if (block.type === "tool_use" && block.id) {
+            if (block.name === "Agent" || block.name === "Task") {
+              if (block.input?.run_in_background === true || (block.name === "Agent" && block.input?.run_in_background !== false)) ctx.background.add(block.id);
+              ctx.agents.update(block.id, { state: "running", label: String(block.input?.description ?? block.input?.subagent_type ?? "Subagent") }, undefined, block.input);
+              continue;
+            }
             ctx.started.set(block.id, Date.now());
             sink.toolStart({ id: block.id, name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {} });
           }
@@ -193,6 +229,10 @@ export class ClaudeBackend implements Backend {
         for (const block of msg.message?.content ?? []) {
           if (block.type === "tool_result" && block.tool_use_id) {
             const content = typeof block.content === "string" ? block.content : (block.content ?? []).map((c) => (c.type === "text" ? c.text : `[${c.type}]`)).join("\n");
+            if (ctx.agents.has(block.tool_use_id)) {
+              if (block.is_error || !ctx.background.has(block.tool_use_id)) ctx.agents.update(block.tool_use_id, { state: block.is_error ? "failed" : "completed" }, content);
+              continue;
+            }
             const t0 = ctx.started.get(block.tool_use_id);
             sink.toolUpdate(block.tool_use_id, { output: content, ok: !block.is_error, status: "done", durationMs: t0 ? Date.now() - t0 : undefined });
           }
@@ -252,6 +292,17 @@ interface ContentBlock {
 interface ClaudeMessage {
   type: string;
   subtype?: string;
+  parent_tool_use_id?: string | null;
+  task_id?: string;
+  tool_use_id?: string;
+  task_type?: string;
+  is_backgrounded?: boolean;
+  ambient?: boolean;
+  description?: string;
+  summary?: string;
+  last_tool_name?: string;
+  status?: string;
+  patch?: { status?: string; description?: string; error?: string; is_backgrounded?: boolean };
   session_id?: string;
   message?: { content?: ContentBlock[] };
   event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
@@ -287,7 +338,7 @@ export function toolTitle(name: string, input: Record<string, unknown>): string 
     case "Grep": return `grep ${s("pattern")}`;
     case "WebFetch": return `fetch ${s("url")}`;
     case "WebSearch": return `search ${s("query")}`;
-    case "Task": return `agent: ${s("description")}`;
+    case "Agent": case "Task": return `agent: ${s("description")}`;
     default: return name;
   }
 }

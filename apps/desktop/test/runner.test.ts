@@ -25,6 +25,28 @@ function harness(steps: MockStep[] = []) {
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
 
+test("cold recovery marks unfinished agents unknown without reviving them on the next turn", async () => {
+  const h = harness();
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  const saved: ThreadItem[] = ["running", "waiting", "completed"].map((state, index) => ({
+    id: `agent:${index}`, kind: "tool", name: "subagent", title: `agent: ${state}`,
+    args: {}, at: new Date().toISOString(), status: state === "completed" ? "done" : "running",
+    agent: { id: String(index), label: state, state: state as "running" | "waiting" | "completed" },
+  }));
+  h.store.saveItems(thread.id, saved);
+  await runner.dispose();
+  const recovered = new ThreadRunner({ ...h, store: new Store(h.home) });
+  try {
+    const items = recovered.items(thread.id);
+    assert.deepEqual(items.map((item) => item.kind === "tool" && item.agent?.state), ["unknown", "unknown", "completed"]);
+    assert.ok(items.every((item) => item.kind === "tool" && item.status === "done"));
+    assert.deepEqual(items[2], saved[2], "completed agent history changed");
+    await recovered.send(thread.id, "continue");
+    assert.ok(recovered.items(thread.id).every((item) => item.kind !== "tool" || !item.agent || !["running", "waiting"].includes(item.agent.state)));
+  } finally { await recovered.dispose(); }
+});
+
 test("thread deletion fences access and waits for terminal cleanup before removing a worktree", async () => {
   const h = harness();
   let finish!: () => void;

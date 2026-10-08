@@ -1,5 +1,5 @@
 import { StringDecoder } from "node:string_decoder";
-import type { ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
+import type { AgentActivity, ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
 
 export type { ModelInfo };
 
@@ -10,9 +10,13 @@ export interface ToolStart {
   /** One-line human title, e.g. "$ npm test" or "edit src/app.ts". */
   title: string;
   args: Record<string, unknown>;
+  agent?: AgentActivity;
 }
 
 export interface ToolUpdate {
+  args?: Record<string, unknown>;
+  title?: string;
+  agent?: AgentActivity;
   output?: string;
   ok?: boolean;
   status?: "running" | "done";

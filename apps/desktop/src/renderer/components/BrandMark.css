@@ -1,0 +1,11 @@
+.brand-mark { position: relative; display: block; }
+.brand-mark > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+
+:root[data-theme="coven"] .brand-mark > img { visibility: hidden; }
+:root[data-theme="coven"] .brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent-strong);
+  mask: url("../assets/modex-mark.png") center / contain no-repeat;
+}

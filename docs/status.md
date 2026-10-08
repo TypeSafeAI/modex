@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-06._
+_Last updated 2026-10-07._
 
 ## Shipped
 
@@ -165,6 +165,26 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 loads and if startup fails. Error details remain hidden from the window and accessibility
 tree until you choose **Show workspace**. Electron regression tests cover delayed startup,
 startup errors, and explicit reveal after a relaunch.
+
+**Usage dashboard preview.** A standalone React preview now follows
+the TypeSafe UI palette and typography, with overview, activity, models, projects,
+accounts, and coverage views. Collapsible navigation and an oversized Demo Data stamp
+frame 471 synthetic calls across 11 sources, including GitHub Copilot. Filters,
+call details, CSV export, and both appearances work against the same fictional
+workspace; missing costs remain unpriced. This is not yet a desktop navigation entry
+or live usage collector. Run and provenance details: [usage preview](usage-preview.md).
+
+**Consistent themes and live agent activity.** The right workspace, review/browser controls,
+menus, status colors and typography now share Jev/OpenCoven tokens with the chat and sidebar.
+The logo itself uses lavender in OpenCoven, preserving its transparent silhouette and
+the original pink artwork in other themes.
+Tools fold into one line with summaries derived from their structured command/path/query when
+needed; original arguments and results remain expandable. Individual Claude Agent/Task and
+Codex child-agent activity appears in the sidebar immediately during the parent turn, across
+thread selection and renderer reconnects. Launch receipts do not mark background work done;
+a stream that ends without a final status records “Status unavailable.” The activity rail
+opens the sidebar and focuses an active parent. Browser status refreshes preserve an address
+being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also

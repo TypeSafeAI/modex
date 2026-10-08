@@ -26,6 +26,8 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   const [terminalMenu, setTerminalMenu] = useState(false);
   const [pageMenu, setPageMenu] = useState(false);
   const [address, setAddress] = useState("");
+  const addressEdited = useRef(false);
+  const addressTab = useRef(active);
   const [error, setError] = useState("");
   const addRef = useRef<HTMLButtonElement>(null);
   const toolsRef = useRef<HTMLButtonElement>(null);
@@ -65,7 +67,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     } else if (currentRef.current?.kind === "terminal") setActive("review");
   }, [Boolean(terminal)]);
   useEffect(() => {
-    setAddress(current.browser?.url ?? "");
+    if (addressTab.current !== active) { addressTab.current = active; addressEdited.current = false; }
+    // A loading-page snapshot can arrive while the next URL is being typed.
+    if (!addressEdited.current) setAddress(current.browser?.url ?? "");
     setError("");
     if (current.kind === "new") addressRef.current?.focus();
   }, [active, current.browser?.url]);
@@ -99,6 +103,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   }));
   const browserCommand = async (action: "navigate" | "back" | "forward" | "reload", value?: string) => {
     const id = current.id;
+    addressEdited.current = false;
     setError("");
     try {
       const snapshot = await bridge.invoke("browser:command", { id, action, url: value });
@@ -167,7 +172,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       {browserPage && <>
         <div className="workspace-navigation">
           <div className="workspace-history"><IconButton icon="arrow-left" label="Go back" size="md" disabled={!current.browser?.back} onClick={() => void browserCommand("back")} /><IconButton icon="arrow-right" label="Go forward" size="md" disabled={!current.browser?.forward} onClick={() => void browserCommand("forward")} /><span className="history-separator" /><IconButton icon="restart" label="Reload page" size="md" disabled={current.kind === "new"} onClick={() => void browserCommand("reload")} /></div>
-          <form className="workspace-address-form" onSubmit={(e) => { e.preventDefault(); void browserCommand("navigate", address); }}><input ref={addressRef} data-testid="workspace-address" aria-label="Search or enter a URL" placeholder="Search or enter a URL" value={address} onChange={(e) => setAddress(e.target.value)} spellCheck={false} /></form>
+          <form className="workspace-address-form" onSubmit={(e) => { e.preventDefault(); void browserCommand("navigate", address); }}><input ref={addressRef} data-testid="workspace-address" aria-label="Search or enter a URL" placeholder="Search or enter a URL" value={address} onChange={(e) => { addressEdited.current = true; setAddress(e.target.value); }} spellCheck={false} /></form>
           <IconButton icon="comment" label="Focus chat" className="workspace-circle" size="md" onClick={() => { setFull(false); onFocusChat(); }} />
           <span className="workspace-menu-anchor"><IconButton ref={pageRef} icon="more" label="Page options" className="workspace-circle" size="md" aria-haspopup="menu" aria-expanded={pageMenu} onClick={() => setPageMenu(!pageMenu)} /><Menu open={pageMenu} anchorRef={pageRef} onClose={() => setPageMenu(false)} label="Page options" placement="bottom-end"><MenuItem disabled={!current.browser?.url} onClick={() => { void bridge.invoke("clipboard:write", { text: current.browser?.url ?? "" }); setPageMenu(false); }}>Copy page URL</MenuItem><MenuItem onClick={() => { closeTab(current); setPageMenu(false); }}>Close tab</MenuItem></Menu></span>
         </div>

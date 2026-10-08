@@ -1,6 +1,8 @@
+import "./BrandMark.css";
+
 const mark = new URL("../assets/modex-mark.png", import.meta.url).href;
 
-/** The official mark keeps its original color in every app theme. */
+/** Preserve the official silhouette; only Coven recolors it with its accent. */
 export function BrandMark({ className = "" }: { className?: string }) {
-  return <img src={mark} className={`brand-mark ${className}`} alt="" aria-hidden="true" draggable={false} />;
+  return <span className={`brand-mark ${className}`} aria-hidden="true"><img src={mark} alt="" draggable={false} /></span>;
 }
