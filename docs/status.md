@@ -215,6 +215,11 @@ startup errors, and explicit reveal after a relaunch.
 
 ## In flight
 
+**Settings polish (`settings-polish`).** Settings navigation uses a quieter inset tab
+strip, consistent icons and a raised selected state. Coding CLI account labels show
+the account name and sign-in state without exposing OAuth registration identifiers;
+selection and authentication still use the unchanged internal account IDs.
+
 **Reference desktop shell (`reference-shell`).** Graphite adds the neutral October 7
 reference palette, a wider compact sidebar, a folder/title header with fixed right-edge
 actions, and a responsive repository overview linked to the real workspace. New profiles

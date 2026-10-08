@@ -284,7 +284,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
   };
 
   const sections = [
-    ["general", "General"], ["clis", "Coding CLIs"], ["routing", "Auto routing"], ["approvals", "Approval rules"], ["advanced", "Advanced / demo"],
+    ["general", "General", "gear"], ["clis", "Coding CLIs", "terminal"], ["routing", "Auto routing", "branch"], ["approvals", "Approval rules", "privacy"], ["advanced", "Advanced / demo", "grid"],
   ] as const;
 
   return (
@@ -293,11 +293,11 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         <header className="settings-header" data-testid="settings-header">
           <div>
             <h2>Settings</h2>
-            <p>Modex runs the Claude Code and Codex CLIs for coding. Jev classifies requests for Auto routing; it never sees project files or runs coding turns.</p>
+            <p>Personalize your workspace and connected tools.</p>
           </div>
         </header>
         <nav className="settings-nav" aria-label="Settings sections" data-testid="settings-nav">
-          {sections.map(([id, label]) => <button key={id} type="button" disabled={interactionLocked} className={`settings-nav-item${section === id ? " active" : ""}`} aria-current={section === id ? "page" : undefined} onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })} onClick={() => chooseSection(id)}>{label}</button>)}
+          {sections.map(([id, label, icon]) => <button key={id} type="button" disabled={interactionLocked} className={`settings-nav-item${section === id ? " active" : ""}`} aria-current={section === id ? "page" : undefined} onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })} onClick={() => chooseSection(id)}><Icon name={icon} /><span>{label}</span></button>)}
         </nav>
         <div className="settings-scroll" ref={contentRef} data-testid="settings-content" inert={interactionLocked}>
         {section === "general" && <section id="settings-general" aria-labelledby="settings-general-title" className="settings-section">
@@ -339,7 +339,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <label className="field connection-account"><span>Active account for new Codex conversations</span>
               <select disabled={chatgptBusy || !chatgpt?.available} value={chatgpt?.active ?? ""} onChange={(event) => { const id = event.target.value || null; void accountAction(async () => { setChatgpt(await bridge.invoke("chatgpt:select", { accountId: id })); setChatgptDetail("Account selected for new conversations."); }); }}>
                 <option value="">Existing Codex CLI authentication</option>
-                {chatgpt?.accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.registration} · {account.signedIn ? account.planEnabled ? "plan authorized" : "identity only" : "signed out"}</option>)}
+                {chatgpt?.accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.signedIn ? account.planEnabled ? "plan authorized" : "identity only" : "signed out"}</option>)}
               </select>
               <small>Existing conversations keep their original account.</small>
             </label>
