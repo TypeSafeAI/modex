@@ -1,7 +1,9 @@
+import { KnowledgeService } from "./engine/knowledge.js";
 import { WorkspaceBrowser } from "./workspace-browser.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
+import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
 import fs from "node:fs";
@@ -71,6 +73,7 @@ const pathReady = hydratePath(process.env).then(
 
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
+const knowledge = new KnowledgeService(home);
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
@@ -78,8 +81,11 @@ const updates = new ReleaseChecker({
 });
 let win: BrowserWindow | null = null;
 let workspaceBrowser: WorkspaceBrowser | null = null;
+let knowledgeBrowser: WorkspaceBrowser | null = null;
+let knowledgeURL: string | null = null;
 let shuttingDown = false;
 let shutdownComplete = false;
+let checkingWindowClose = false;
 let desktopHost: DesktopHost | undefined;
 const emit = (event: ThreadEvent): void => {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
@@ -110,7 +116,7 @@ const companionView = async (status: CompanionStatus): Promise<CompanionStatus> 
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
+const SPAWNS = new Set<keyof BridgeCommands>(["knowledge:install", "knowledge:start", "settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
 const desktopCommands = new Map<string, (payload: unknown) => unknown>();
 
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, options: { localOnly?: boolean } = {}): void {
@@ -150,7 +156,55 @@ handle("browser:command", ({ id, action, url }) => {
 }, { localOnly: true });
 handle("browser:show", ({ id, bounds, fullView }) => workspaceBrowser?.show(id, bounds, fullView), { localOnly: true });
 
+// The companion owns its local server. Only this window can install, select folders, or show it.
+handle("knowledge:state", () => knowledge.snapshot(), { localOnly: true });
+handle("knowledge:choose", async () => {
+  const result = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"], title: "Choose knowledge folder", buttonLabel: "Use this folder" });
+  return result.canceled || !result.filePaths[0] ? knowledge.snapshot() : knowledge.selectFolder(result.filePaths[0]);
+}, { localOnly: true });
+handle("knowledge:install", () => knowledge.install(), { localOnly: true });
+handle("knowledge:start", () => knowledge.start(), { localOnly: true });
+handle("knowledge:stop", async () => {
+  knowledgeBrowser?.dispose(); knowledgeURL = null;
+  return knowledge.stop();
+}, { localOnly: true });
+handle("knowledge:show", async ({ bounds }) => {
+  const state = knowledge.snapshot();
+  if (!bounds || state.status !== "ready" || !state.url) { knowledgeBrowser?.show(null); return null; }
+  if (!knowledgeBrowser) throw new Error("Knowledge view unavailable.");
+  if (knowledgeURL !== state.url) {
+    await knowledgeBrowser.command("knowledge", "navigate", state.url);
+    knowledgeURL = state.url;
+  }
+  knowledgeBrowser.show("knowledge", bounds);
+  return knowledgeBrowser.command("knowledge", "state");
+}, { localOnly: true });
+handle("knowledge:reload", () => knowledgeBrowser?.command("knowledge", "reload") ?? null, { localOnly: true });
+handle("knowledge:external", async () => {
+  const state = knowledge.snapshot();
+  if (state.status !== "ready" || !state.url) throw new Error("Open your knowledge base first.");
+  await shell.openExternal(state.url);
+}, { localOnly: true });
+handle("knowledge:copy", ({ pageId }) => {
+  const page = store.space.list().find(page => page.id === pageId && !page.trashedAt);
+  if (!page) throw new Error("This page is no longer available.");
+  return knowledge.copyPage(page);
+}, { localOnly: true });
+
 handle("updates:check", () => updates.check());
+handle("space:export", async ({ pageId }) => {
+  const page = store.space.list().find(page => page.id === pageId && !page.trashedAt);
+  if (!page) throw new Error("This page is no longer available.");
+  const title = page.title.trim() || "Untitled page";
+  const result = await dialog.showSaveDialog(win!, { title: "Export Markdown", defaultPath: `${title.replace(/[^\p{L}\p{N}\s_-]/gu, "").trim() || "Untitled page"}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] });
+  if (result.canceled || !result.filePath) return null;
+  await fs.promises.writeFile(result.filePath, `# ${title}\n\n${page.markdown}\n`, { mode: 0o600 });
+  return result.filePath;
+}, { localOnly: true });
+handle("space:list", () => store.space.list());
+handle("space:create", (input) => store.space.create(input));
+handle("space:save", (page) => store.space.save(page));
+handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
 
 handle("state:get", () => {
   const state = store.snapshot();
@@ -215,11 +269,13 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   return gitx.status(cwd);
 });
 handle("settings:update", async (patch) => {
+  const previousTheme = store.settings.theme;
   const settings = await saveSettings(store, runner.router, {
     ...patch,
     ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
   });
   win?.setBackgroundColor(THEMES[settings.theme].background);
+  if (settings.theme !== previousTheme) void knowledgeBrowser?.refreshAppearance();
   return settings;
 });
 handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
@@ -301,8 +357,15 @@ function createWindow(): BrowserWindow {
   });
   const browser = new WorkspaceBrowser(w);
   workspaceBrowser = browser;
+  const knowledgeView = new WorkspaceBrowser(w, {
+    partition: "modex-knowledge", shortcuts: false,
+    appearance: () => knowledgeAppearance(store.settings.theme),
+    allowURL: url => { try { return new URL(url).origin === knowledge.snapshot().url; } catch { return false; } },
+  });
+  knowledgeBrowser = knowledgeView; knowledgeURL = null;
+  w.webContents.on("did-start-navigation", () => { knowledgeView.dispose(); knowledgeURL = null; });
+  w.on("closed", () => { knowledgeView.dispose(); if (knowledgeBrowser === knowledgeView) { knowledgeBrowser = null; knowledgeURL = null; } });
   w.webContents.on("did-start-navigation", () => browser.dispose());
-  w.on("close", () => browser.dispose());
   w.on("closed", () => { browser.dispose(); if (workspaceBrowser === browser) workspaceBrowser = null; });
   if (devUrl) void w.loadURL(devUrl);
   else void w.loadFile(path.join(here, "..", "..", "renderer", "index.html"));
@@ -426,13 +489,31 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || screenshotDir) app.quit();
 });
 app.on("before-quit", (event) => {
-  chatgpt.cancel();
-  claudeLogin.cancel();
   if (shutdownComplete) return;
   event.preventDefault();
-  if (shuttingDown) return;
+  if (shuttingDown || checkingWindowClose) return;
+  // Let unsaved-page beforeunload handlers veto quitting while services and IPC
+  // are still usable. Teardown starts only after the renderer accepts closing.
+  if (win && !win.isDestroyed()) {
+    const window = win;
+    checkingWindowClose = true;
+    const cancelled = () => {
+      checkingWindowClose = false;
+      window.removeListener("closed", closed);
+    };
+    const closed = () => {
+      checkingWindowClose = false;
+      app.quit();
+    };
+    window.webContents.once("will-prevent-unload", cancelled);
+    window.once("closed", closed);
+    window.close();
+    return;
+  }
+  chatgpt.cancel();
+  claudeLogin.cancel();
   shuttingDown = true;
-  void Promise.allSettled([desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
+  void Promise.allSettled([knowledge.dispose(), desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
     chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {

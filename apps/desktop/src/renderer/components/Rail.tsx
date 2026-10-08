@@ -14,11 +14,12 @@ function activeWorkLabel({ count, waiting, agents = 0 }: RailActiveWork): string
 /**
  * The 48 px icon rail. Chat remains the main surface; companion pairing and Settings live below it.
  */
-export function Rail({ onOpenSettings, onOpenCompanion, onEnableStreamerMode, activeWork, onOpenActiveWork }: { onOpenSettings: () => void; onOpenCompanion: () => void; onEnableStreamerMode: () => void; activeWork?: RailActiveWork; onOpenActiveWork?: () => void }) {
+export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenSettings, onOpenCompanion, onEnableStreamerMode, activeWork, onOpenActiveWork }: { surface?: "chat" | "space"; onOpenChat?: () => void; onOpenSpace?: () => void; onOpenSettings: () => void; onOpenCompanion: () => void; onEnableStreamerMode: () => void; activeWork?: RailActiveWork; onOpenActiveWork?: () => void }) {
   const workLabel = activeWork && activeWork.count > 0 ? activeWorkLabel(activeWork) : "";
   return (
     <nav className="rail" aria-label="Surfaces" data-testid="rail">
-      <IconButton icon="home" label="Chat" size="lg" className="rail-btn active" aria-current="page" data-testid="rail-chat" tooltipSide="bottom" />
+      <IconButton icon="home" label="Chat" size="lg" className={`rail-btn${surface === "chat" ? " active" : ""}`} aria-current={surface === "chat" ? "page" : undefined} data-testid="rail-chat" tooltipSide="bottom" onClick={onOpenChat} />
+      {onOpenSpace && <IconButton icon="space" label="Space" size="lg" className={`rail-btn${surface === "space" ? " active" : ""}`} aria-current={surface === "space" ? "page" : undefined} data-testid="rail-space" tooltipSide="bottom" onClick={onOpenSpace} />}
       {workLabel && (
         <div className="rail-work">
           <IconButton icon="terminal" label={`Active work: ${workLabel}`} title={workLabel} size="lg" className="rail-btn rail-work-btn" data-testid="rail-work" tooltipSide="bottom" onClick={onOpenActiveWork} />

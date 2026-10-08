@@ -4,6 +4,9 @@
  * shell and composer phases draw from one vocabulary; nothing here stands for a feature Modex lacks.
  */
 const PATHS = {
+  space: "M5 2h7a1 1 0 0 1 1 1v8M3 4h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4.5 7h3M4.5 9.5h2",
+  star: "M8 1.8l1.85 3.75 4.15.6-3 2.93.71 4.13L8 11.26l-3.71 1.95L5 9.08 2 6.15l4.15-.6z",
+  trash: "M2.5 4h11M6 4V2.5h4V4M4 4l.5 9.5h7L12 4M6.5 6.5v4.5M9.5 6.5v4.5",
   "terminal-box": "M3 2.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM4.5 6l2 2-2 2M8.5 10h3",
   files: "M6 3V2h6l2 2v6h-2M2 5h4l2 2h4v7H2z",
   "diff-color": "M2.5 3h11v10h-11zM3 12.5L13 3.5M4 10V5h7",

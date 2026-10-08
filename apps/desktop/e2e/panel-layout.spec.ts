@@ -73,6 +73,13 @@ for (const width of [1366, 960]) {
       await expectLayout();
       await expect(tid(page, "composer-input")).toHaveValue("Keep this draft while toggling");
       await expect(tid(page, "draft-view")).toHaveAttribute("data-project-id", project!);
+      await tid(page, "rail-space").click();
+      await expect(tid(page, "space")).toBeVisible();
+      await expect(tid(page, "main")).toBeHidden();
+      await tid(page, "rail-chat").click();
+      await expect(tid(page, "space")).toBeHidden();
+      await expectLayout();
+      await expect(tid(page, "composer-input")).toHaveValue("Keep this draft while toggling");
     }
   });
 

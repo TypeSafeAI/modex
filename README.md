@@ -69,6 +69,8 @@ modex/
   project's convention says (here: `.worktrees/`). Otherwise it uses a `modex/<id>` branch under
   `~/.modex/worktrees/`.
 - **Live transcript.** Assistant replies stream in token by token and render as Markdown;
+  web links open in your browser, trailing citations appear as Sources cards, and web tools
+  show readable results. Citation annotations and additional links stay in the answer.
   tool calls render as collapsible items (`$ command`, `read`, `edit …`) with output and timing.
   Model reasoning — Codex reasoning summaries, Claude extended thinking — streams into a
   collapsible **Thinking** item that folds to "Thought for Ns" when the model moves on. Codex

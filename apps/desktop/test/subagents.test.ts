@@ -43,7 +43,12 @@ test("Claude tracks concurrent background agents without treating the launch rec
     proc.emitLine({ type: "system", subtype: "task_updated", task_id: "task-b", patch: { status: "failed", error: "No capacity" } });
     assert.equal(tools.get("agent:b")?.agent?.state, "failed");
     assert.equal(tools.get("agent:b")?.ok, false);
-  } finally { proc.emitLine({ type: "result", is_error: false }); await run; }
+  } finally {
+    // The background shell holds the turn open until it ends (see claude-background.test.ts).
+    proc.emitLine({ type: "system", subtype: "task_notification", task_id: "shell", status: "completed" });
+    proc.emitLine({ type: "result", is_error: false });
+    await run;
+  }
 });
 
 test("Claude foreground Task completes with its result; missing final agent state remains unknown", async () => {

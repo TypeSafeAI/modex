@@ -1,8 +1,10 @@
 import { toolSummary } from "../../shared/tool-summary";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, receiptVia } from "../../shared/approval-receipt";
+import { safeHref } from "../../shared/inline";
+import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from "../../shared/sources";
 import { bridge } from "../bridge";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
@@ -127,6 +129,8 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
     if (item.kind !== "notice") break;
     if (item.failure) { retryId = item.id; break; }
   }
+  // The newest item of a running turn may still be streaming.
+  const liveId = busy ? items.at(-1)?.id : undefined;
 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
@@ -141,7 +145,7 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
           <Fragment key={turn.user?.id ?? `pre-${i}`}>
             {turn.user && <Item item={turn.user} onAnswer={onAnswer} onFix={onFix} />}
             {turn.user && (i === lastUser && busy ? <TurnHeader start={turn.user.at} status={thread.status} /> : turn.rest.length > 0 && <TurnHeader start={turn.user.at} end={turnEnd(turn.rest)} />)}
-            {turn.rest.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} onFix={onFix} onRetry={!busy && item.id === retryId ? onRetry : undefined} />)}
+            {turn.rest.map((item) => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onFix={onFix} onRetry={!busy && item.id === retryId ? onRetry : undefined} />)}
           </Fragment>
         ))}
       </div>
@@ -227,12 +231,12 @@ function TurnHeader({ start, end, status }: { start: string; end?: number; statu
   );
 }
 
-function Item({ item, onAnswer, onFix, onRetry }: { item: ThreadItem; onAnswer: Props["onAnswer"]; onFix: Props["onFix"]; onRetry?: () => void }) {
+function Item({ item, live, onAnswer, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
       return <div className="msg user" data-testid="item" data-item-kind="user"><div className="bubble" data-testid="item-text">{item.text}</div></div>;
     case "assistant":
-      return <div className="msg assistant" data-testid="item" data-item-kind="assistant"><Markdown text={item.text} /></div>;
+      return <AssistantItem text={item.text} live={Boolean(live)} />;
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
@@ -245,6 +249,41 @@ function Item({ item, onAnswer, onFix, onRetry }: { item: ThreadItem; onAnswer: 
     case "route":
       return <RouteItem item={item} />;
   }
+}
+
+/**
+ * An answer. A trailing "Sources:" list becomes numbered cards once the text has stopped streaming;
+ * until then it reads as the list it is, so the cards never flicker in and out mid-line.
+ */
+function AssistantItem({ text, live }: { text: string; live: boolean }) {
+  const { body, sources } = useMemo(() => (live ? { body: text, sources: [] } : splitSources(text)), [text, live]);
+  return (
+    <div className="msg assistant" data-testid="item" data-item-kind="assistant">
+      <Markdown text={body} />
+      {sources.length > 0 && <Sources links={sources} />}
+    </div>
+  );
+}
+
+function Sources({ links }: { links: SourceLink[] }) {
+  return (
+    <div className="sources" data-testid="sources">
+      <div className="sources-label">{links.length === 1 ? "Source" : `Sources · ${links.length}`}</div>
+      <ol className="sources-list">
+        {links.map((l, i) => (
+          <li key={l.url}>
+            <a className="source" data-testid="source-link" href={l.url} target="_blank" rel="noreferrer" title={l.url}>
+              <span className="source-index" aria-hidden="true">{i + 1}</span>
+              <span className="source-text">
+                <span className="source-title">{l.title}</span>
+                <span className="source-domain">{l.domain}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
 
 /**
@@ -393,27 +432,56 @@ function toolStatusLabel(item: Extract<ThreadItem, { kind: "tool" }>): string {
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
-  const icon = item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
+  // Claude Code calls them WebSearch and WebFetch; Codex reports a `webSearch` item.
+  const web = item.name === "WebSearch" || item.name === "webSearch" ? "search" : item.name === "WebFetch" ? "fetch" : null;
+  const search = useMemo(() => (web === "search" && item.output && item.ok !== false ? parseWebSearch(item.output) : null), [web, item.output, item.ok]);
+  const page = web === "fetch" && typeof item.args.url === "string" ? safeHref(item.args.url) : null;
+  const icon = web === "search" ? <Icon name="search" size={13} /> : web === "fetch" ? <Icon name="globe" size={13} /> : item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
   const summary = toolSummary(item);
   const status = toolStatusLabel(item);
+  const outcome = search ? `${search.links.length} ${search.links.length === 1 ? "result" : "results"}` : status.toLowerCase();
   return (
     <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
       <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`} title={summary}>
         <span className="tool-icon">{icon}</span>
         <code className="tool-title" data-testid="tool-title"><span data-testid="tool-summary">{summary}</span></code>
-        {item.status === "running" ? <span className="spinner" aria-label="Working" /> : <span className="tool-meta">{status.toLowerCase()}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
+        {item.status === "running" ? <span className="spinner" aria-label="Working" /> : <span className="tool-meta" data-testid="tool-meta">{outcome}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
       {open && (
         <div className="tool-body" data-testid="item-body">
           {item.name === "apply_patch" && typeof item.args.patch === "string" ? <Patch text={item.args.patch} /> : null}
-          {item.output ? <pre className="output" data-testid="tool-output">{item.output}</pre> : item.status === "running" ? <pre className="output dim">running…</pre> : null}
+          {page && <a className="tool-link" data-testid="tool-link" href={page} target="_blank" rel="noreferrer">{page}</a>}
+          {search ? <SearchResults search={search} />
+            : item.output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={item.output} /></div> : <pre className="output" data-testid="tool-output">{item.output}</pre>)
+            : item.status === "running" ? <pre className="output dim">running…</pre> : null}
           {item.name !== "apply_patch" && Object.keys(item.args).length > 0 && <details className="tool-arguments">
             <summary>Arguments</summary>
             <pre className="output" data-testid="tool-arguments">{JSON.stringify(item.args, null, 2)}</pre>
           </details>}
         </div>
       )}
+    </div>
+  );
+}
+
+/** What a web search found: the results as links, then what the search tool told the model about them. */
+function SearchResults({ search }: { search: WebSearch }) {
+  return (
+    <div className="search" data-testid="search-results">
+      {search.links.length > 0 && (
+        <ol className="search-links">
+          {search.links.map((l) => (
+            <li key={l.url}>
+              <a className="search-link" data-testid="search-result" href={l.url} target="_blank" rel="noreferrer" title={l.url}>
+                <span className="source-title">{l.title}</span>
+                <span className="source-domain">{l.domain}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      )}
+      {search.summary && <div className="search-summary" data-testid="search-summary"><Markdown text={search.summary} /></div>}
     </div>
   );
 }

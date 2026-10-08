@@ -17,7 +17,12 @@ export class ClaudeBackend implements Backend {
   readonly id = "claude" as const;
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
-  constructor(private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude", private readonly spawnImpl = spawn) {}
+  constructor(
+    private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
+    private readonly spawnImpl = spawn,
+    /** How long a turn waits on background work; tests shorten these. */
+    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {},
+  ) {}
 
   /** `claude --effort` levels (from `claude --help`); no default so the CLI's own setting applies. */
   static readonly EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -93,17 +98,75 @@ export class ClaudeBackend implements Backend {
       let streaming = "";
       const agents = new AgentTracker(sink);
       const tasks = new Map<string, string>();
+      // The one record of background work still running (keyed by tool_use id, else task id). The
+      // agent display reads it, and the turn may end only while it is empty; see `onResult`.
       const background = new Set<string>();
+      // Task ids the CLI's own `background_tasks_changed` list has named, so leaving that list ends them.
+      const listed = new Set<string>();
       let finished = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let stderr = "";
       // What the CLI said about itself at startup (build, model, where its key came from), for failure reports.
       const init: Record<string, unknown> = {};
+      // Background work (Bash or Agent with run_in_background) outlives the `result` that ends the model's
+      // reply. When it finishes, the CLI starts a follow-up turn by itself, and that turn's permission
+      // prompts are answered on stdin. Closing stdin at the first `result` failed every later prompt with
+      // "Tool permission request failed: AbortError: Stream closed". So a successful `result` that arrives
+      // while work is outstanding is held, and the turn ends at the first `result` with nothing outstanding.
+      let held: TurnResult | null = null;
+      // The CLI has begun a follow-up turn since `held` (it announces each turn with `system/init`); its own `result` will come.
+      let followUp = false;
+      let approvals = 0;
+      let announced = false;
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      let capTimer: ReturnType<typeof setTimeout> | undefined;
+      const idleMs = this.timing.backgroundIdleMs ?? BACKGROUND_IDLE_MS;
+      const capMs = this.timing.backgroundCapMs ?? BACKGROUND_CAP_MS;
+      const settle = (r: TurnResult) => {
+        child.stdin?.end();
+        finish(r);
+      };
+      // Once the work has drained, the CLI normally starts its follow-up turn at once. If it stays quiet
+      // for `idleMs` (and no prompt is waiting on the user), the held reply stands. Every message re-arms
+      // this, so no message, `system/status` included, can leave a drained turn waiting for nothing.
+      const armIdle = () => {
+        clearTimeout(idleTimer);
+        idleTimer = undefined;
+        if (finished || !held || followUp || approvals > 0 || background.size > 0) return;
+        const done = held;
+        idleTimer = setTimeout(() => settle(done), idleMs);
+      };
+      const onResult = (msg: ClaudeMessage) => {
+        if (msg.session_id) sink.session(msg.session_id);
+        const r = resultOf(msg);
+        // An error ends the turn at once, as on a turn without background work; holding it would hide it.
+        if (r.status === "failed") {
+          if (background.size > 0) sink.notice("warn", `Claude reported an error while ${work(background.size)} ${background.size === 1 ? "was" : "were"} still running. The turn ends now, so that work may stop.`);
+          return settle(r);
+        }
+        if (background.size === 0) return settle(r);
+        held = r;
+        followUp = false;
+        armIdle();
+        if (!announced) {
+          announced = true;
+          const one = background.size === 1;
+          sink.notice("info", `Claude is still running ${work(background.size)}; this turn continues when ${one ? "it finishes" : "they finish"}. Stop ends ${one ? "it" : "them"}.`);
+        }
+        // The wait is bounded: a task that never reports an end must not hold the turn (and the CLI) open forever.
+        capTimer ??= setTimeout(() => {
+          const still = background.size > 0 ? `still reported ${work(background.size)} running` : "had not finished the turn its background work started";
+          sink.notice("warn", `Claude ${still} ${duration(capMs)} after its reply. Modex ended the turn and stopped Claude.`);
+          settle(held ?? { status: "completed" });
+          terminate();
+        }, capMs);
+      };
       const finish = (r: TurnResult) => {
         if (finished) return;
         finished = true;
         agents.finish(signal.aborted || r.status === "interrupted");
-        clearTimeout(killTimer);
+        clearTimeout(idleTimer);
+        clearTimeout(capTimer);
         signal.removeEventListener("abort", onAbort);
         resolve(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r);
       };
@@ -114,10 +177,13 @@ export class ClaudeBackend implements Backend {
           /* closed */
         }
       };
-      const onAbort = () => {
-        killTimer = setTimeout(() => child.kill("SIGKILL"), 1500);
+      // Turn settlement must not cancel escalation while the child is still alive.
+      const terminate = () => {
+        if (child.exitCode !== null || child.signalCode != null) return;
+        killTimer ??= setTimeout(() => child.kill("SIGKILL"), 1500);
         child.kill("SIGTERM");
       };
+      const onAbort = terminate;
       signal.addEventListener("abort", onAbort, { once: true });
 
       child.on("error", (err) => finish({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: (err as NodeJS.ErrnoException).code } }));
@@ -131,31 +197,39 @@ export class ClaudeBackend implements Backend {
           } catch {
             return;
           }
-          this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
-            if (done) {
-              child.stdin?.end();
-              finish(done);
-            }
-          });
+          if (msg.type === "result") return onResult(msg);
+          // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
+          const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
+          if (msg.type === "control_request") {
+            approvals++;
+            void handled.finally(() => {
+              approvals--;
+              armIdle();
+            });
+          }
+          if (msg.type === "system" && msg.subtype === "init" && held) followUp = true;
+          armIdle();
         }),
       );
       child.on("close", (code, sig) => {
+        clearTimeout(killTimer);
         signal.removeEventListener("abort", onAbort);
         if (signal.aborted) return finish({ status: "interrupted" });
         const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
-        finish(code === 0 ? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
+        finish(code === 0 ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
       });
 
       write({ type: "user", message: { role: "user", content: text } });
     });
   }
 
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<TurnResult | null> {
+  /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
       if (tool) ctx.agents.update(msg.parent_tool_use_id, { state: "running", detail: toolTitle(tool.name ?? "tool", tool.input ?? {}) });
-      return null;
+      return;
     }
     switch (msg.type) {
       case "system":
@@ -163,17 +237,42 @@ export class ClaudeBackend implements Backend {
           if (msg.session_id) sink.session(msg.session_id);
           Object.assign(ctx.init, { claudeVersion: msg.claude_code_version, claudeModel: msg.model, permissionMode: msg.permissionMode, apiKeySource: msg.apiKeySource });
         }
+        if (msg.subtype === "background_tasks_changed" && Array.isArray(msg.tasks)) {
+          // The CLI's full list of running background tasks: whatever has left it has ended.
+          const now = new Set(msg.tasks.map((t) => t?.task_id).filter((t): t is string => typeof t === "string"));
+          for (const t of ctx.listed) if (!now.has(t)) ctx.background.delete(ctx.tasks.get(t) ?? t);
+          ctx.listed.clear();
+          for (const t of now) {
+            ctx.listed.add(t);
+            ctx.background.add(ctx.tasks.get(t) ?? t);
+          }
+        }
         if (msg.task_id && !msg.ambient) {
           const id = msg.tool_use_id ?? ctx.tasks.get(msg.task_id) ?? msg.task_id;
+          if (msg.tool_use_id && ctx.tasks.get(msg.task_id) !== id) {
+            ctx.tasks.set(msg.task_id, id);
+            // Work first named by task id (from `background_tasks_changed`) is now known by its tool_use id.
+            if (ctx.background.delete(msg.task_id)) ctx.background.add(id);
+          }
+          if (msg.subtype === "task_started") {
+            if (msg.is_backgrounded === false) ctx.background.delete(id);
+            else ctx.background.add(id);
+          }
+          if (msg.subtype === "task_updated" && msg.patch?.is_backgrounded !== undefined) {
+            if (msg.patch.is_backgrounded) ctx.background.add(id);
+            else ctx.background.delete(id);
+          }
+          if ((msg.subtype === "task_notification" && msg.status !== "running") || (msg.subtype === "task_updated" && TERMINAL_TASK_STATUSES.has(msg.patch?.status ?? ""))) {
+            ctx.background.delete(id);
+            ctx.listed.delete(msg.task_id);
+          }
           if (msg.subtype === "task_started" && (msg.task_type === "local_agent" || msg.task_type === "remote_agent")) {
             ctx.tasks.set(msg.task_id, id);
-            if (msg.is_backgrounded !== false) ctx.background.add(id);
             ctx.agents.update(id, { state: "running", ...(msg.description ? { label: msg.description } : {}) });
           } else if (ctx.agents.has(id)) {
             if (msg.subtype === "task_progress") ctx.agents.update(id, { state: "running", detail: msg.summary ?? msg.last_tool_name ?? msg.description });
             if (msg.subtype === "task_notification") ctx.agents.update(id, { state: msg.status === "completed" ? "completed" : msg.status === "failed" ? "failed" : "stopped", detail: msg.summary }, msg.summary);
             if (msg.subtype === "task_updated") {
-              if (msg.patch?.is_backgrounded) ctx.background.add(id);
               const status = msg.patch?.status;
               ctx.agents.update(id, {
                 ...(status ? { state: status === "completed" ? "completed" : status === "failed" ? "failed" : status === "killed" ? "stopped" : "running" } : {}),
@@ -183,7 +282,7 @@ export class ClaudeBackend implements Backend {
             }
           }
         }
-        return null;
+        return;
       case "stream_event": {
         const ev = msg.event;
         if (ev?.type === "message_start") ctx.thinking.clear();
@@ -201,7 +300,7 @@ export class ClaudeBackend implements Backend {
           ctx.streaming += ev.delta.text;
           sink.delta(ev.delta.text);
         }
-        return null;
+        return;
       }
       case "assistant": {
         for (const [i, block] of (msg.message?.content ?? []).entries()) {
@@ -214,8 +313,9 @@ export class ClaudeBackend implements Backend {
             sink.assistant(block.text);
             ctx.streaming = "";
           } else if (block.type === "tool_use" && block.id) {
+            // Agent runs in the background unless told otherwise; any tool may be asked to.
+            if (block.input?.run_in_background === true || (block.name === "Agent" && block.input?.run_in_background !== false)) ctx.background.add(block.id);
             if (block.name === "Agent" || block.name === "Task") {
-              if (block.input?.run_in_background === true || (block.name === "Agent" && block.input?.run_in_background !== false)) ctx.background.add(block.id);
               ctx.agents.update(block.id, { state: "running", label: String(block.input?.description ?? block.input?.subagent_type ?? "Subagent") }, undefined, block.input);
               continue;
             }
@@ -223,12 +323,14 @@ export class ClaudeBackend implements Backend {
             sink.toolStart({ id: block.id, name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {} });
           }
         }
-        return null;
+        return;
       }
       case "user": {
         for (const block of msg.message?.content ?? []) {
           if (block.type === "tool_result" && block.tool_use_id) {
             const content = typeof block.content === "string" ? block.content : (block.content ?? []).map((c) => (c.type === "text" ? c.text : `[${c.type}]`)).join("\n");
+            // A background launch that failed (or was denied) leaves nothing running.
+            if (block.is_error) ctx.background.delete(block.tool_use_id);
             if (ctx.agents.has(block.tool_use_id)) {
               if (block.is_error || !ctx.background.has(block.tool_use_id)) ctx.agents.update(block.tool_use_id, { state: block.is_error ? "failed" : "completed" }, content);
               continue;
@@ -237,13 +339,13 @@ export class ClaudeBackend implements Backend {
             sink.toolUpdate(block.tool_use_id, { output: content, ok: !block.is_error, status: "done", durationMs: t0 ? Date.now() - t0 : undefined });
           }
         }
-        return null;
+        return;
       }
       case "control_request": {
         const req = msg.request;
         if (req?.subtype !== "can_use_tool") {
           ctx.write({ type: "control_response", response: { subtype: "error", request_id: msg.request_id, error: `unsupported control request ${req?.subtype ?? "?"}` } });
-          return null;
+          return;
         }
         const tool = req.tool_name ?? "tool";
         const title = toolTitle(tool, req.input ?? {});
@@ -265,15 +367,10 @@ export class ClaudeBackend implements Backend {
               : { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) },
           },
         });
-        return null;
-      }
-      case "result": {
-        if (msg.session_id) sink.session(msg.session_id);
-        if (msg.is_error) return { status: "failed", error: typeof msg.result === "string" ? msg.result : msg.subtype ?? "error", detail: { resultSubtype: msg.subtype, errors: msg.errors, sessionId: msg.session_id, numTurns: msg.num_turns, durationMs: msg.duration_ms } };
-        return { status: "completed" };
+        return;
       }
       default:
-        return null;
+        return;
     }
   }
 }
@@ -303,6 +400,8 @@ interface ClaudeMessage {
   last_tool_name?: string;
   status?: string;
   patch?: { status?: string; description?: string; error?: string; is_backgrounded?: boolean };
+  /** `system/background_tasks_changed`: every background task still running. */
+  tasks?: { task_id?: string }[];
   session_id?: string;
   message?: { content?: ContentBlock[] };
   event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
@@ -319,6 +418,22 @@ interface ClaudeMessage {
   permissionMode?: string;
   apiKeySource?: string;
 }
+
+/** A `result` message as a turn outcome. */
+function resultOf(msg: ClaudeMessage): TurnResult {
+  if (msg.is_error) return { status: "failed", error: typeof msg.result === "string" ? msg.result : msg.subtype ?? "error", detail: { resultSubtype: msg.subtype, errors: msg.errors, sessionId: msg.session_id, numTurns: msg.num_turns, durationMs: msg.duration_ms } };
+  return { status: "completed" };
+}
+
+/** After background work drains, how long to wait for the CLI to begin its follow-up turn before the held reply stands. */
+export const BACKGROUND_IDLE_MS = 15_000;
+/** The longest a turn stays open after Claude's reply while background work is still reported running (or its follow-up turn has not replied). */
+export const BACKGROUND_CAP_MS = 30 * 60_000;
+/** Task statuses after which a background task is no longer running. */
+const TERMINAL_TASK_STATUSES = new Set(["completed", "failed", "killed", "stopped", "cancelled", "canceled"]);
+
+const work = (n: number) => (n === 1 ? "a background task" : `${n} background tasks`);
+const duration = (ms: number) => (ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`);
 
 /** What Claude is told when an approval is denied; a refusal by one of the user's approval rules names the rule. */
 export function denyMessage(rule?: string): string {
