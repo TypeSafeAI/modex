@@ -390,6 +390,20 @@ export interface CompanionStatus {
 export interface ReleaseUpdate { version: string; url: string; }
 
 export interface BridgeCommands {
+  "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
+  "knowledge:choose": { req: undefined; res: import("./knowledge.js").KnowledgeState };
+  "knowledge:install": { req: undefined; res: import("./knowledge.js").KnowledgeState };
+  "knowledge:start": { req: undefined; res: import("./knowledge.js").KnowledgeState };
+  "knowledge:stop": { req: undefined; res: import("./knowledge.js").KnowledgeState };
+  "knowledge:show": { req: { bounds?: BrowserBounds }; res: BrowserSnapshot | null };
+  "knowledge:reload": { req: undefined; res: BrowserSnapshot | null };
+  "knowledge:external": { req: undefined; res: void };
+  "knowledge:copy": { req: { pageId: string }; res: string };
+  "space:export": { req: { pageId: string }; res: string | null };
+  "space:list": { req: undefined; res: import("./space.js").SpacePage[] };
+  "space:create": { req: import("./space.js").CreateSpacePage; res: import("./space.js").SpacePage };
+  "space:save": { req: import("./space.js").SpacePage; res: import("./space.js").SpacePage };
+  "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };

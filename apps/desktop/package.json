@@ -1,7 +1,7 @@
 {
   "name": "@modex/desktop",
   "version": "0.0.8",
-  "description": "Modex desktop \u2014 a Codex-App-style GUI: projects, parallel agent threads, worktrees, inline approvals, and a live Changes panel.",
+  "description": "Modex desktop — a Codex-App-style GUI: projects, parallel agent threads, worktrees, inline approvals, and a live Changes panel.",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -25,9 +25,12 @@
     "build:usage": "vite build --config vite.usage.config.ts"
   },
   "dependencies": {
+    "@create-markdown/core": "2.0.3",
+    "@create-markdown/react": "2.0.3",
     "@modex/core": "0.3.0",
     "node-pty": "1.2.0-beta.15",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -71,7 +74,9 @@
       "extendInfo": {
         "ModexDesktopHostProtocol": 1,
         "NSLocalNetworkUsageDescription": "Let your paired iPhone find and reconnect to Modex on this Mac.",
-        "NSBonjourServices": ["_modex._tcp"]
+        "NSBonjourServices": [
+          "_modex._tcp"
+        ]
       },
       "category": "public.app-category.developer-tools",
       "target": [

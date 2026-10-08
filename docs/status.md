@@ -161,6 +161,25 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
+**Space and local knowledge.** Space adds a section below Home with
+nested pages, favorites, templates, searchable Markdown blocks, autosave, import/export,
+and recoverable trash using `@create-markdown/core` and `@create-markdown/react` 2.0.3.
+Knowledge base embeds a separately installed OpenKnowledge 0.83.2 local companion,
+with folder selection, native-page copying, privacy hiding, and owned shutdown.
+Existing project servers are verified and reused; Disconnect leaves those servers running.
+The embedded editor follows Graphite, Jev, and OpenCoven, including live theme changes,
+editor text and controls, and a matching background while loading or reloading.
+Home panes retain their grid positions and full-view behavior when switching to Space and back.
+Imported lists retain dedented items and keep checkbox edits aligned with their source text.
+It requires Node.js 24+ and Git. Changes remain unreleased; the
+[implementation review](reviews/2026-10-08-space-knowledge.md) records verification
+and integration boundaries.
+
+**Settings polish.** Settings navigation uses a quieter inset tab strip, consistent
+icons and a raised selected state. Coding CLI account labels show the account name and
+sign-in state without exposing OAuth registration identifiers; selection and authentication
+still use the unchanged internal account IDs.
+
 **Web answers and Sources.** Transcript Markdown renders web links in the system browser.
 Trailing citation lists become numbered cards after streaming ends; annotations and additional
 links preserve the full answer. WebSearch shows result links and its summary, while WebFetch

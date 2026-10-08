@@ -211,15 +211,17 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 
 /* Settings keeps section navigation and apply/cancel actions outside the only scrolling region. */
 .settings-modal { display: flex; flex-direction: column; width: min(780px, calc(100vw - 32px)); max-width: calc(100vw - 32px); height: min(780px, calc(100vh - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
-.settings-header { flex: none; padding: 18px 22px 12px; }
-.settings-header h2 { margin: 0 0 5px; font-size: 16px; }
-.settings-header p { margin: 0; max-width: 78ch; color: var(--fg-2); font-size: 12px; }
-.settings-nav { display: flex; flex: none; gap: 4px; overflow-x: auto; padding: 0 18px; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
-.settings-nav-item { flex: none; min-height: 40px; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; padding: 9px 10px 8px; background: transparent; color: var(--fg-2); cursor: pointer; white-space: nowrap; }
+.settings-header { flex: none; padding: 24px 26px 18px; }
+.settings-header h2 { margin: 0 0 6px; font-size: 21px; font-weight: 500; letter-spacing: -.5px; }
+.settings-header p { margin: 0; color: var(--fg-2); font-size: 12px; line-height: 1.5; }
+.settings-nav { display: flex; flex: none; gap: 4px; overflow-x: auto; margin: 0 22px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); scrollbar-width: thin; }
+.settings-nav-item { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 1 0 auto; min-height: 38px; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px; background: transparent; color: var(--fg-2); font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: color 120ms ease-out, background-color 120ms ease-out, box-shadow 120ms ease-out; }
+.settings-nav-item svg { width: 15px; height: 15px; opacity: .7; }
 .settings-nav-item:hover { background: var(--bg-2); color: var(--fg); }
-.settings-nav-item.active { border-bottom-color: var(--accent); color: var(--fg); }
+.settings-nav-item.active { border-color: var(--line); background: var(--bg-elevated); color: var(--fg); box-shadow: 0 1px 3px #00000020, inset 0 1px 0 #ffffff06; }
+.settings-nav-item.active svg { opacity: 1; }
 .settings-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-.settings-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px 22px 18px; scrollbar-gutter: stable; }
+.settings-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 22px 26px; scrollbar-gutter: stable; }
 .settings-section h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--fg-1); }
 .settings-section .field:last-child { margin-bottom: 0; }
 .settings-backends { display: grid; gap: 4px; min-width: 0; margin: 2px 0 12px; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 10px; }
@@ -274,7 +276,7 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 @media (max-width: 560px) {
   .settings-modal { width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100vh - 16px); max-height: calc(100vh - 16px); }
   .settings-header { padding: 14px 15px 10px; }
-  .settings-nav { padding: 0 8px; }
+  .settings-nav { margin-inline: 10px; padding: 4px; }
   .settings-nav-item { padding-inline: 9px; font-size: 12px; }
   .settings-scroll { padding: 13px 15px 16px; }
   .settings-scroll .grid2 { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -364,6 +366,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* Optional panes must not shift main out of the flexible track when unmounted. */
 .sheet > .sidebar { grid-area: 1 / 1; }
 .sheet > .main { grid-area: 1 / 2; }
+/* Keep Home mounted, with direct children for panel layout and workspace full view. */
+.sheet[data-surface="space"] > :is(.sidebar, .main, .workspace, .toast) { display: none; }
 .main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); background-image: radial-gradient(ellipse 75% 40% at 50% -10%, var(--canvas-sheen), transparent); }
 .sidebar + .main { border-left: 1px solid var(--border-pane); }
 

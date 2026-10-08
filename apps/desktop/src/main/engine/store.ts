@@ -1,4 +1,5 @@
 import { normalizeTheme } from "../../shared/theme.js";
+import { SpaceStore } from "./space-store.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -99,10 +100,12 @@ export function newId(): string {
 /** JSON-file persistence for the app shell: projects, threads, settings, and per-thread UI items. */
 export class Store {
   readonly dir: string;
+  readonly space: SpaceStore;
   private state: AppState;
 
   constructor(readonly home: string) {
     this.dir = path.join(home, "app");
+    this.space = new SpaceStore(this.dir);
     fs.mkdirSync(path.join(this.dir, "threads"), { recursive: true });
     this.state = this.read();
   }

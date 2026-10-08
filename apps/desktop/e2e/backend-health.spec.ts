@@ -130,7 +130,7 @@ test("existing system sign-ins are detected without login and refresh when retur
   }
 });
 
-for (const theme of ["jev", "coven"] as const) test(`${theme}: connection cards guide sign-in, cancellation and terminal recovery`, async ({}, testInfo) => {
+for (const theme of ["graphite", "jev", "coven"] as const) test(`${theme}: connection cards guide sign-in, cancellation and terminal recovery`, async ({}, testInfo) => {
   const { home, repo } = seedHome({ theme });
   const { app, page } = await launch(home);
   try {
@@ -142,7 +142,7 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: connection cards 
       let cancelClaude: (() => void) | undefined;
       let accountSignedIn = false;
       const status = (backend: string) => ({ executable: "available", resolvedPath: `/tmp/Val's tools/${backend}`, version: "2.1.288", authentication: "signed-out", access: "unverified", detail: "Sign in to connect your account." });
-      const accountStatus = () => ({ available: true, active: accountSignedIn ? "account-1" : null, signingIn: false, detail: "Model access is unverified until a Codex turn completes.", accounts: accountSignedIn ? [{ id: "account-1", label: "Personal", registration: "Modex", signedIn: true, planEnabled: false }] : [] });
+      const accountStatus = () => ({ available: true, active: accountSignedIn ? "account-1" : null, signingIn: false, detail: "Model access is unverified until a Codex turn completes.", accounts: accountSignedIn ? [{ id: "account-1", label: "Personal", registration: "oauth-registration-private-123", signedIn: true, planEnabled: false }] : [] });
       for (const channel of ["backends:health", "chatgpt:status", "chatgpt:signIn", "claude:login", "claude:cancelLogin"]) ipcMain.removeHandler(channel);
       ipcMain.handle("backends:health", () => { controls.modexFocusHealthCalls++; return { claude: status("claude"), codex: status("codex"), mock: status("mock") }; });
       ipcMain.handle("chatgpt:status", accountStatus);
@@ -173,6 +173,9 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: connection cards 
     await expect(codex.getByText("Identity verified", { exact: true })).toBeVisible();
     await expect(codex.getByText("Plan authorized", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("Active account for new Codex conversations")).toHaveValue("account-1");
+    await expect(codex).not.toContainText("oauth-registration-private-123");
+    await expect(codex).not.toContainText("account-1");
+    await expect(codex.locator("option:checked")).toHaveText("Personal · identity only");
     const beforeFocus = await app.evaluate(() => (globalThis as typeof globalThis & { modexFocusHealthCalls: number }).modexFocusHealthCalls);
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { modexFocusHealthCalls: number }).modexFocusHealthCalls)).toBeGreaterThan(beforeFocus);
