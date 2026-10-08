@@ -41,8 +41,7 @@ final class DemoWorkspaceTests: XCTestCase {
 
         let input = app.descendants(matching: .any)["followup-input"].firstMatch
         XCTAssertTrue(input.waitForExistence(timeout: 10))
-        input.tapWhenReady()
-        input.typeText("Ship it")
+        input.typeTextWhenReady("Ship it", in: app)
         app.buttons["send-followup"].tapWhenReady()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.waitForExistence(timeout: 20), "The demo must answer a follow-up.")
         capture(app, name: "Demo follow-up")
@@ -54,13 +53,11 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Creates a demo thread with scripted replies. Location and provider choices are simulated; nothing runs on a Mac."].exists)
         app.segmentedControls.buttons["Worktree"].tapWhenReady()
         app.segmentedControls.buttons["Claude"].tapWhenReady()
-        newInput.tapWhenReady()
-        newInput.typeText("Review from phone")
+        newInput.typeTextWhenReady("Review from phone", in: app)
         app.buttons["new-thread-commands"].tapWhenReady()
         let search = app.textFields["Find a skill or command"]
         XCTAssertTrue(search.waitForExistence(timeout: 10))
-        search.tapWhenReady()
-        search.typeText("demo-review")
+        search.typeTextWhenReady("demo-review", in: app)
         let skill = app.staticTexts["/demo-review"]
         XCTAssertTrue(skill.waitForExistence(timeout: 10))
         skill.tapWhenReady()

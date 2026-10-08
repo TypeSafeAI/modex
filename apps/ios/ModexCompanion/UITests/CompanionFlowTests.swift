@@ -19,8 +19,7 @@ final class CompanionFlowTests: XCTestCase {
         pair.tapWhenReady()
         let link = app.descendants(matching: .any)["pairing-link-input"].firstMatch
         XCTAssertTrue(link.waitForExistence(timeout: 10))
-        link.tapWhenReady()
-        link.typeText(fixture.link)
+        link.typeTextWhenReady(fixture.link, in: app)
         app.buttons["connect-button"].tapWhenReady()
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -43,13 +42,11 @@ final class CompanionFlowTests: XCTestCase {
         app.buttons["new-thread"].tapWhenReady()
         let newThreadInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
         XCTAssertTrue(newThreadInput.waitForExistence(timeout: 10))
-        newThreadInput.tapWhenReady()
-        newThreadInput.typeText("Start from phone")
+        newThreadInput.typeTextWhenReady("Start from phone", in: app)
         app.buttons["new-thread-commands"].tapWhenReady()
         let commandSearch = app.textFields["Find a skill or command"]
         XCTAssertTrue(commandSearch.waitForExistence(timeout: 10))
-        commandSearch.tapWhenReady()
-        commandSearch.typeText("mobile-check")
+        commandSearch.typeTextWhenReady("mobile-check", in: app)
         let mobileSkill = app.staticTexts["$mobile-check"]
         XCTAssertTrue(mobileSkill.waitForExistence(timeout: 10), "The Mac's project skill should appear for Codex.")
         mobileSkill.tapWhenReady()
@@ -74,8 +71,7 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(confirmation.waitForNonExistence(timeout: 10), "The approval sheet must finish dismissing before focusing the composer.")
 
         let input = app.descendants(matching: .any)["followup-input"].firstMatch
-        input.tapWhenReady()
-        input.typeText("Please summarize the result")
+        input.typeTextWhenReady("Please summarize the result", in: app)
         app.buttons["send-followup"].tapWhenReady()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.waitForExistence(timeout: 20))
         capture(app, name: "Completed follow-up")
@@ -91,8 +87,7 @@ final class CompanionFlowTests: XCTestCase {
             thread.tapWhenReady()
             let recoveryInput = app.descendants(matching: .any)["followup-input"].firstMatch
             XCTAssertTrue(recoveryInput.waitForExistence(timeout: 10))
-            recoveryInput.tapWhenReady()
-            recoveryInput.typeText("Pause for recovery")
+            recoveryInput.typeTextWhenReady("Pause for recovery", in: app)
             app.buttons["send-followup"].tapWhenReady()
             XCTAssertTrue(app.staticTexts["Follow-up received: Pause for recovery"].waitForExistence(timeout: 10))
             app.buttons["Back to threads"].tapWhenReady()
@@ -105,7 +100,13 @@ final class CompanionFlowTests: XCTestCase {
             XCTAssertTrue(app.buttons["scan-pairing-code"].waitForExistence(timeout: 10))
             app.buttons["Done"].tapWhenReady()
             XCTAssertTrue(repair.waitForExistence(timeout: 5), "Cancelling a rescan must keep the saved workspace.")
-            app.buttons["retry-connection"].tapWhenReady()
+            let retry = app.buttons["retry-connection"]
+            retry.tapWhenReady()
+            let retried = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: retry)
+            XCTAssertEqual(XCTWaiter.wait(for: [retried], timeout: 10), .completed, "An offline retry must finish without losing the saved workspace.")
+            XCTAssertTrue(repair.exists)
+            XCTAssertFalse(app.buttons["new-thread"].isEnabled)
+            try resumeMac(fixture)
             XCTAssertTrue(app.staticTexts["Mac connected"].waitForExistence(timeout: 60))
             XCTAssertTrue(app.buttons["new-thread"].isEnabled)
         }
@@ -119,8 +120,7 @@ final class CompanionFlowTests: XCTestCase {
             thread.tapWhenReady()
             let followup = app.descendants(matching: .any)["followup-input"].firstMatch
             XCTAssertTrue(followup.waitForExistence(timeout: 10))
-            followup.tapWhenReady()
-            followup.typeText("Revoke this phone")
+            followup.typeTextWhenReady("Revoke this phone", in: app)
             app.buttons["send-followup"].tapWhenReady()
             let revoked = app.alerts["Connection issue"]
             XCTAssertTrue(revoked.waitForExistence(timeout: 20), "Mac revocation must end the saved pairing.")
@@ -151,5 +151,23 @@ final class CompanionFlowTests: XCTestCase {
         add(attachment)
     }
 
-    private struct Fixture: Decodable { let link: String; let reconnect: Bool? }
+    private func resumeMac(_ fixture: Fixture) throws {
+        let url = try XCTUnwrap(fixture.resumeURL.flatMap(URL.init(string:)), "Run the current test-e2e.sh fixture with explicit outage control.")
+        let resumed = expectation(description: "The Mac fixture has resumed")
+        var failure: Error?
+        var status: Int?
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            failure = error
+            status = (response as? HTTPURLResponse)?.statusCode
+            resumed.fulfill()
+        }.resume()
+        wait(for: [resumed], timeout: 10)
+        XCTAssertNil(failure)
+        XCTAssertEqual(status, 204, "The fixture must resume before the user retries the saved connection.")
+    }
+
+    private struct Fixture: Decodable { let link: String; let reconnect: Bool?; let resumeURL: String? }
 }

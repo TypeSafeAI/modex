@@ -2,6 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
+import http from "node:http";
+import { randomUUID } from "node:crypto";
 import { Store } from "../../../desktop/dist/src/main/engine/store.js";
 import { ThreadRunner } from "../../../desktop/dist/src/main/engine/runner.js";
 import { CompanionServer } from "../../../desktop/dist/src/main/engine/companion.js";
@@ -15,6 +17,7 @@ let closing = false;
 let restartTimer;
 let restartTask;
 let blocker;
+let resumePausedMac;
 const project = store.addProject(repo);
 const emptyProjectPath = path.join(repo, "empty-project");
 fs.mkdirSync(emptyProjectPath);
@@ -56,11 +59,37 @@ const server = new CompanionServer(home, {
 await server.start();
 void runner.send(threadId, "Prepare the change");
 while (runner.status(threadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
-fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect }));
+// The test owns the outage duration: a loaded simulator may still be in the rescan
+// sheet after 25 seconds. Keep the Mac paused until cancellation has been verified.
+const resumePath = `/resume/${randomUUID()}`;
+const control = http.createServer(async (request, response) => {
+  if (request.method !== "POST" || request.url !== resumePath) {
+    response.writeHead(404).end();
+    return;
+  }
+  if (!resumePausedMac) {
+    response.writeHead(409).end();
+    return;
+  }
+  const resume = resumePausedMac;
+  resumePausedMac = undefined;
+  resume();
+  try {
+    await restartTask;
+    response.writeHead(204).end();
+  } catch {
+    response.writeHead(500).end();
+  }
+});
+await new Promise((resolve) => control.listen(0, "127.0.0.1", resolve));
+const resumeURL = `http://127.0.0.1:${control.address().port}${resumePath}`;
+fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect, resumeURL }));
 
 async function pauseMac() {
+  const resumed = new Promise((resolve) => { resumePausedMac = resolve; });
   await server.dispose();
-  await new Promise((resolve) => setTimeout(resolve, 25000));
+  await resumed;
+  resumePausedMac = undefined;
   if (!closing) await server.start();
 }
 
@@ -81,7 +110,9 @@ async function restartMac() {
 async function close() {
   closing = true;
   clearTimeout(restartTimer);
+  resumePausedMac?.();
   await restartTask;
+  await new Promise((resolve) => control.close(resolve));
   await server.stop();
   if (blocker?.listening) await new Promise((resolve) => blocker.close(resolve));
   await runner.dispose();
