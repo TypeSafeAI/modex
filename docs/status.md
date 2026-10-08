@@ -208,6 +208,12 @@ exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes
 changes and is submitted for beta review. Real paired use still requires a new standalone
 desktop release; the published v0.0.8 host predates these endpoints.
 
+**Chat title quality.** The title request now includes a bounded final reply and asks for a
+short action-and-subject title in the user's language. Validation normalizes plain text and
+rejects malformed output; persisted title ownership prevents a retry from replacing a manual
+rename. Electron tests exercise Claude and Codex CLI adapters through naming, relaunch,
+cancellation and fallback.
+
 **Streamer Mode startup privacy.** The privacy cover now stays mounted while the workspace
 loads and if startup fails. Error details remain hidden from the window and accessibility
 tree until you choose **Show workspace**. Electron regression tests cover delayed startup,

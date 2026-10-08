@@ -2,7 +2,7 @@ import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
-import type { ApprovalRequest, Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { cliEnvironment, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
@@ -74,7 +74,7 @@ export class ClaudeBackend implements Backend {
     return args;
   }
 
-  generateTitle(text: string, opts: { model: string }, signal: AbortSignal): Promise<string | null> {
+  generateTitle(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null> {
     return generateTitle(this, opts, text, signal);
   }
 

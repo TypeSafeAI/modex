@@ -1,6 +1,6 @@
 import type { CliExecutable } from "../cli-path.js";
 import { spawn } from "node:child_process";
-import type { Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { CodexBackend } from "./codex.js";
 import { health, installation } from "./health.js";
 import type { ChatGPTAuth } from "../chatgpt-auth.js";
@@ -77,7 +77,7 @@ export class AccountCodexBackend implements Backend {
     if (opts.resume && !opts.account && id !== "cli") return Promise.resolve({ status: "failed", error: "This conversation belongs to Codex CLI authentication. Select CLI authentication to resume it." });
     return this.use(id, (backend) => signal.aborted ? Promise.resolve({ status: "interrupted" as const }) : backend.runTurn(text, opts, sink, signal));
   }
-  generateTitle(text: string, opts: { model: string; account?: string }, signal: AbortSignal): Promise<string | null> {
+  generateTitle(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null> {
     const id = opts.account ?? this.identity();
     return this.use(id, (backend) => generateTitle(backend, opts, text, signal));
   }
