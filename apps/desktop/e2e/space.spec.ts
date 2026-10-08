@@ -100,6 +100,8 @@ test("Space imports Markdown, nests pages, finds content, and exports the curren
     await page.getByRole("button", { name: "Add to favorites" }).click();
     await page.getByRole("button", { name: "Page actions" }).click();
     await page.getByRole("menuitem", { name: "Add subpage" }).click();
+    // Child creation is asynchronous; the previous page title stays visible until selection changes.
+    await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("");
     await page.getByRole("textbox", { name: "Page title" }).fill("Small details");
     await page.getByRole("textbox", { name: "Block 1" }).fill("A searchable constellation.");
     // Immediately switch pages while the save queue owns the child's final edit.
