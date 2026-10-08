@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-07._
+_Last updated 2026-10-08._
 
 ## Shipped
 
@@ -160,6 +160,12 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
   The Mac App Store client leaves updates to the Store; it does not offer GitHub installers.
 
 ## On `main`, not yet released
+
+**Claude background turns.** A successful reply keeps stdin open while background tasks
+run, so follow-up permission prompts can be answered. Task completion, errors, cancellation,
+a 15-second idle window after work drains and a 30-minute cap bound the wait. Termination
+escalates to SIGKILL when Claude ignores SIGTERM. Regression tests cover captured CLI events,
+prompts after the first reply and Stop.
 
 **Workspace welcome and Companion recovery.** The desktop welcome uses responsive
 project and work-mode cards, with **Open Project** as the primary action. Its logo tile
