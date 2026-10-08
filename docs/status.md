@@ -252,6 +252,12 @@ startup errors, and explicit reveal after a relaunch.
 
 ## In flight
 
+- **Modex GitHub identity.** Native WorkOS public-client PKCE, encrypted renewable
+  sessions and a separate Settings account card are implemented on `workos-oauth`.
+  Production is the default; staging is explicitly selected and isolated. No repository
+  integration or model account changes are included. Live production sign-in, refresh,
+  restart and remote sign-out remain release gates. [Design and acceptance](modex-signin.md).
+
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The
