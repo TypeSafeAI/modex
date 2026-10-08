@@ -364,6 +364,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 /* Optional panes must not shift main out of the flexible track when unmounted. */
 .sheet > .sidebar { grid-area: 1 / 1; }
 .sheet > .main { grid-area: 1 / 2; }
+/* Keep Home mounted, with direct children for panel layout and workspace full view. */
+.sheet[data-surface="space"] > :is(.sidebar, .main, .workspace, .toast) { display: none; }
 .main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); background-image: radial-gradient(ellipse 75% 40% at 50% -10%, var(--canvas-sheen), transparent); }
 .sidebar + .main { border-left: 1px solid var(--border-pane); }
 

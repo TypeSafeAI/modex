@@ -23,8 +23,11 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 
 // xterm is only loaded once a terminal is first opened.
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
+const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 
-export function App({ persistPreferences = true }: { persistPreferences?: boolean } = {}) {
+export function App({ persistPreferences = true, spaceEnabled = true }: { persistPreferences?: boolean; spaceEnabled?: boolean } = {}) {
+  const [surface, setSurface] = useState<"chat" | "space">("chat");
+  const [spaceOpened, setSpaceOpened] = useState(false);
   const [state, setState] = useState<AppState | null>(null);
   useLayoutEffect(() => { if (state) applyTheme(state.settings.theme, persistPreferences); }, [state?.settings.theme, persistPreferences]);
   useLayoutEffect(() => () => { if (!persistPreferences) restoreTheme(); }, [persistPreferences]);
@@ -172,6 +175,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
   /** Choosing a thread (sidebar, history) discards any draft: an unsent draft never becomes a thread. */
   const selectThread = useCallback((id: string) => {
+    setSurface("chat");
     setDraft(null);
     setSelected(id);
   }, []);
@@ -391,7 +395,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (showSettings || showCompanion || streamerMode) return;
+      if (showSettings || showCompanion || streamerMode || surface === "space") return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -420,7 +424,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals]);
+  }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals, surface]);
 
   // Focus after React commits the selected thread or newly mounted draft.
   useEffect(() => {
@@ -444,10 +448,10 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
   const workspace = state ? (
     <>
       <TitleBar
-        thread={thread}
+        thread={surface === "chat" ? thread : null}
         onRename={(title) => void updateThread({ title })}
-        canBack={history.canBack}
-        canForward={history.canForward}
+        canBack={surface === "chat" && history.canBack}
+        canForward={surface === "chat" && history.canForward}
         onBack={history.back}
         onForward={history.forward}
         sidebarOpen={sidebarOpen}
@@ -462,8 +466,9 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
-      <div className="sheet" data-testid="sheet">
+      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
+      <div className="sheet" data-testid="sheet" data-surface={surface}>
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView active={surface === "space" && !showSettings && !showCompanion && !streamerMode} sidebarOpen={sidebarOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}
@@ -524,8 +529,8 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
           ) : null}
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
-          visible={showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
-          suspended={showSettings || showCompanion || streamerMode}
+          visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
+          suspended={surface === "space" || showSettings || showCompanion || streamerMode}
           onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
           onHideTerminal={() => closeTerminal(thread.id)} onFocusChat={() => requestAnimationFrame(() => inputRef.current?.focus())}
           terminal={terminals[thread.id] ? (<Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>

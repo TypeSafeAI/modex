@@ -3,23 +3,58 @@ import { allowedBrowserURL, browserURL, type BrowserBounds, type BrowserSnapshot
 
 /** Guest pages have no preload, Node, app storage, permissions or access to Modex's bridge. */
 export class WorkspaceBrowser {
-  private views = new Map<string, { view: WebContentsView; error?: string }>();
+  private views = new Map<string, { view: WebContentsView; error?: string; styled?: boolean; cssKey?: string; styleVersion?: number }>();
   private fullView = false;
-  constructor(private window: BrowserWindow) {}
+  private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
+  constructor(private window: BrowserWindow, private options: { partition?: string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string } } = {}) {}
+  async refreshAppearance(): Promise<void> {
+    await Promise.all([...this.views.keys()].map(id => this.style(id)));
+  }
+  private async style(id: string): Promise<void> {
+    const entry = this.views.get(id);
+    const appearance = this.options.appearance?.();
+    if (!entry || !appearance || entry.view.webContents.isDestroyed()) return;
+    const version = entry.styleVersion = (entry.styleVersion ?? 0) + 1;
+    const contents = entry.view.webContents;
+    entry.view.setBackgroundColor(appearance.background);
+    try {
+      const key = await contents.insertCSS(appearance.css, { cssOrigin: "user" });
+      if (contents.isDestroyed()) return;
+      if (entry.styleVersion !== version) { await contents.removeInsertedCSS(key); return; }
+      const previous = entry.cssKey;
+      entry.cssKey = key;
+      // An isolated world changes presentation only; the guest receives no preload or bridge.
+      await contents.executeJavaScriptInIsolatedWorld(999, [{ code: `(() => {
+        const root = document.documentElement;
+        const dark = () => { root.classList.remove('light'); root.classList.add('dark'); };
+        dark();
+        if (!globalThis.modexThemeObserver) {
+          globalThis.modexThemeObserver = new MutationObserver(() => { if (!root.classList.contains('dark') || root.classList.contains('light')) dark(); });
+          globalThis.modexThemeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
+        }
+      })()` }]);
+      if (previous) await contents.removeInsertedCSS(previous);
+      if (entry.styleVersion !== version || contents.isDestroyed()) return;
+      entry.styled = true;
+      this.show(this.shown.id, this.shown.bounds, this.shown.fullView);
+    } catch { if (!contents.isDestroyed() && entry.styleVersion === version) entry.error = "The knowledge theme could not load. Reload to try again."; }
+  }
   async command(id: string, action: "navigate" | "back" | "forward" | "reload" | "state" | "close", input?: string): Promise<BrowserSnapshot | null> {
     if (typeof id !== "string" || !/^[\w-]{1,100}$/.test(id)) throw new Error("Invalid browser tab.");
     if (action === "close") { this.close(id); return null; }
     let entry = this.views.get(id);
     const url = action === "navigate" ? browserURL(input ?? "") : undefined;
+    const allowed = this.options.allowURL ?? allowedBrowserURL;
+    if (url && !allowed(url)) throw new Error("This address is outside the knowledge base.");
     if (!entry) {
       if (!url) return null;
       if (this.views.size >= 12) throw new Error("Close a browser tab before opening another.");
-      const view = new WebContentsView({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, partition: "modex-workspace-browser", webSecurity: true, allowRunningInsecureContent: false } });
+      const view = new WebContentsView({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, partition: this.options.partition ?? "modex-workspace-browser", webSecurity: true, allowRunningInsecureContent: false } });
       entry = { view };
       this.views.set(id, entry);
       const contents = view.webContents;
       contents.on("before-input-event", (event, input) => {
-        if (input.type !== "keyDown") return;
+        if (input.type !== "keyDown" || this.options.shortcuts === false) return;
         const key = input.key.toLowerCase();
         let shortcut: WorkspaceShortcut | undefined;
         if ((input.meta || input.control) && input.shift && key === "b") shortcut = "new";
@@ -36,14 +71,20 @@ export class WorkspaceBrowser {
       contents.session.setPermissionCheckHandler(() => false);
       // Set once per guest session; remove our listener when all guest views are disposed.
       if (!contents.session.listenerCount("will-download")) contents.session.on("will-download", (event) => event.preventDefault());
-      contents.on("will-navigate", (e, target) => { if (!allowedBrowserURL(target)) e.preventDefault(); });
-      contents.on("will-redirect", (e, target) => { if (!allowedBrowserURL(target)) e.preventDefault(); });
-      contents.on("will-frame-navigate", (e) => { if (!allowedBrowserURL(e.url) && e.url !== "about:blank") e.preventDefault(); });
-      contents.setWindowOpenHandler(({ url }) => { if (allowedBrowserURL(url)) void contents.loadURL(url).catch(() => {}); return { action: "deny" }; });
+      contents.on("will-navigate", (e, target) => { if (!allowed(target)) e.preventDefault(); });
+      contents.on("will-redirect", (e, target) => { if (!allowed(target)) e.preventDefault(); });
+      contents.on("will-frame-navigate", (e) => { if (!allowed(e.url) && e.url !== "about:blank") e.preventDefault(); });
+      contents.setWindowOpenHandler(({ url }) => { if (allowed(url)) void contents.loadURL(url).catch(() => {}); return { action: "deny" }; });
       contents.on("did-fail-load", (_e, code, description, _url, mainFrame) => { if (mainFrame && code !== -3 && entry) entry.error = description; });
       contents.on("did-start-navigation", (_e, _url, _inPlace, mainFrame) => { if (mainFrame && entry) entry.error = undefined; });
+      if (this.options.appearance) {
+        contents.on("did-start-navigation", (_e, _url, inPlace, mainFrame) => {
+          if (mainFrame && !inPlace && entry) { entry.styled = false; entry.styleVersion = (entry.styleVersion ?? 0) + 1; entry.cssKey = undefined; view.setVisible(false); }
+        });
+        contents.on("dom-ready", () => { void this.style(id); });
+      }
       contents.on("render-process-gone", () => { if (entry) entry.error = "This page stopped responding. Reload to try again."; });
-      view.setBackgroundColor("#101010");
+      view.setBackgroundColor(this.options.appearance?.().background ?? "#101010");
       view.setVisible(false);
       this.window.contentView.addChildView(view);
     }
@@ -55,6 +96,7 @@ export class WorkspaceBrowser {
     return { id, url: url ?? contents.getURL(), title: contents.getTitle().slice(0, 200), back: contents.navigationHistory.canGoBack(), forward: contents.navigationHistory.canGoForward(), loading: contents.isLoading(), ...(entry.error ? { error: entry.error } : {}) };
   }
   show(id: string | null, bounds?: BrowserBounds, fullView = false): void {
+    this.shown = { id, bounds, fullView };
     this.fullView = false;
     for (const [key, { view }] of this.views) {
       let visible = key === id && Boolean(bounds);
@@ -70,7 +112,7 @@ export class WorkspaceBrowser {
           visible = w > 0 && h > 0;
         }
       }
-      view.setVisible(visible);
+      view.setVisible(visible && (!this.options.appearance || this.views.get(key)?.styled === true));
       if (visible) this.fullView = fullView;
     }
   }

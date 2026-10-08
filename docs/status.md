@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-07._
+_Last updated 2026-10-08._
 
 ## Shipped
 
@@ -220,6 +220,20 @@ reference palette, a wider compact sidebar, a folder/title header with fixed rig
 actions, and a responsive repository overview linked to the real workspace. New profiles
 default to Graphite; saved Jev/OpenCoven preferences remain intact. Build, typecheck, unit, and UI
 verification are recorded in [the review](reviews/2026-10-07-reference-shell.md); this is not released.
+
+- **Space and local knowledge.** The `space-pr` branch adds Space below Home:
+  nested pages, favorites, templates, searchable Markdown blocks, autosave, import/export,
+  and recoverable trash using `@create-markdown/core` and `@create-markdown/react` 2.0.3.
+  Knowledge base embeds a separately installed OpenKnowledge 0.83.2 local companion,
+  with folder selection, native-page copying, privacy hiding, and owned shutdown.
+  Existing project servers are verified and reused; Disconnect leaves those servers running.
+  The embedded editor follows Graphite, Jev, and OpenCoven, including live theme changes,
+  editor text and controls, and a matching background while loading or reloading.
+  Home panes retain their grid positions and full-view behavior when switching to Space and back.
+  Imported lists retain dedented items and keep checkbox edits aligned with their source text.
+  It requires Node.js 24+ and Git. Changes remain unreleased; the
+  [implementation review](reviews/2026-10-08-space-knowledge.md) records verification
+  and integration boundaries.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's

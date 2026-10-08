@@ -48,6 +48,20 @@ export class StoreDemo {
     this.handlers = {
       "state:get": () => this.state,
       "updates:check": () => null,
+      "knowledge:state": unavailable,
+      "knowledge:choose": unavailable,
+      "knowledge:install": unavailable,
+      "knowledge:start": unavailable,
+      "knowledge:stop": unavailable,
+      "knowledge:show": unavailable,
+      "knowledge:reload": unavailable,
+      "knowledge:external": unavailable,
+      "knowledge:copy": unavailable,
+      "space:export": unavailable,
+      "space:list": () => { throw new Error("Space is available in the full Modex desktop app."); },
+      "space:create": () => { throw new Error("Space is unavailable in the review demo."); },
+      "space:save": () => { throw new Error("Space is unavailable in the review demo."); },
+      "space:trash": () => { throw new Error("Space is unavailable in the review demo."); },
       "project:add": () => {
         const project = { id: this.nextId(), name: "Another demo project", path: "/Demo/Sample", addedAt: stamp() };
         this.state.projects.push(project); return project;
