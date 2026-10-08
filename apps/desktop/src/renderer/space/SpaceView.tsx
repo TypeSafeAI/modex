@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { pageTitle } from "../../shared/space";
 import { importMarkdownPage } from "../../shared/space-markdown";
@@ -30,6 +30,13 @@ export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; activ
   const [creating, setCreating] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
+  const focusCreatedTitle = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!selected || focusCreatedTitle.current !== selected) return;
+    focusCreatedTitle.current = null;
+    titleInput.current?.focus();
+    titleInput.current?.select();
+  }, [selected]);
   const importInput = useRef<HTMLInputElement>(null);
   const page = space.pages.find(p => p.id === selected && !p.trashedAt);
   const live = space.pages.filter(p => !p.trashedAt);
@@ -44,8 +51,8 @@ export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; activ
     setCreating(true);
     await run(async () => {
       const result = await space.create({ title, markdown, parentId });
+      focusCreatedTitle.current = result.id;
       setView("pages"); setQuery(""); open(result.id);
-      requestAnimationFrame(() => { titleInput.current?.focus(); titleInput.current?.select(); });
     });
     setCreating(false);
   };

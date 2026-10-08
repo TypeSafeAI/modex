@@ -201,6 +201,33 @@ test("editing imported Markdown preserves nested content and Enter keeps text af
   } finally { await app.close(); }
 });
 
+test("new-page autofocus preserves typing that has already started", async () => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await tid(page, "rail-space").click();
+    // Hold deferred focus until the user has chosen the content editor.
+    await page.evaluate(() => {
+      const raf = window.requestAnimationFrame;
+      const callbacks: FrameRequestCallback[] = [];
+      window.requestAnimationFrame = callback => { callbacks.push(callback); return callbacks.length; };
+      (window as unknown as { releaseFrames: () => void }).releaseFrames = () => {
+        window.requestAnimationFrame = raf;
+        for (const callback of callbacks.splice(0)) callback(performance.now());
+      };
+    });
+    await page.getByRole("button", { name: "New page", exact: true }).click();
+    const input = page.getByRole("textbox", { name: "Block 1" });
+    await input.fill("Already editing ");
+    await page.evaluate(() => (window as unknown as { releaseFrames: () => void }).releaseFrames());
+    await expect(input).toBeFocused();
+    await page.keyboard.insertText("the content");
+    await expect(input).toHaveValue("Already editing the content");
+    await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("");
+    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(home, "app", "space.json"), "utf8")).pages[0].markdown).toBe("Already editing the content");
+  } finally { await app.close(); }
+});
+
 test("Space continues numbered lists and renders URL images", async () => {
   const { home } = seedHome();
   const { app, page } = await launch(home);

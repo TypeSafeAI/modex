@@ -164,6 +164,7 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 **Space and local knowledge.** Space adds a section below Home with
 nested pages, favorites, templates, searchable Markdown blocks, autosave, import/export,
 and recoverable trash using `@create-markdown/core` and `@create-markdown/react` 2.0.3.
+Creating a page preserves focus once typing starts in its content editor.
 Knowledge base embeds a separately installed OpenKnowledge 0.83.2 local companion,
 with folder selection, native-page copying, privacy hiding, and owned shutdown.
 Existing project servers are verified and reused; Disconnect leaves those servers running.
