@@ -22,6 +22,8 @@ export interface Thread {
   id: string;
   projectId: string;
   title: string;
+  /** Main-owned provenance so automatic naming cannot overwrite a manual rename on retry. */
+  titleSource?: "auto" | "manual";
   createdAt: string;
   updatedAt: string;
   /** Directory the agent works in: the project path or a dedicated worktree. */

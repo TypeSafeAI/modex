@@ -269,12 +269,12 @@ export class ThreadRunner {
     const derivedTitle = text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread";
     // Name the thread after its first completed turn, including a retried first turn that still carries the opening-message title.
     const firstTurn = !l.items.some((item) => item.kind === "user" && item.id !== reuse);
-    const shouldName = firstTurn && (thread.title === "New thread" || (retry && thread.title === derivedTitle));
+    const shouldName = firstTurn && thread.titleSource !== "manual" && (thread.title === "New thread" || (retry && thread.title === derivedTitle));
     l.followUp?.abort.abort();
     l.followUp = undefined;
     if (!retry) {
       this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
-      if (thread.title === "New thread") this.updateThread(threadId, { title: derivedTitle });
+      if (thread.title === "New thread" && thread.titleSource !== "manual") this.updateThread(threadId, { title: derivedTitle }, { automaticTitle: true });
     }
 
     const fallbackTitle = thread.title;
@@ -324,6 +324,7 @@ export class ThreadRunner {
     }
     const backend = this.backends[thread.backend];
     l.backend = thread.backend;
+    const turnStart = l.items.length;
     try {
       const account = thread.backend === "codex" && backend.identity
         ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
@@ -334,7 +335,10 @@ export class ThreadRunner {
         sink,
         abort.signal,
       );
-      if (result.status === "completed" && shouldName && !abort.signal.aborted) this.nameThread(threadId, text, fallbackTitle, backend, thread.model);
+      if (result.status === "completed" && shouldName && !abort.signal.aborted) {
+        const reply = l.items.slice(turnStart).reverse().find((item) => item.kind === "assistant" && item.text.trim());
+        this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
+      }
       if (auto) this.router.noteOutcome(threadId, result.status);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
@@ -397,15 +401,16 @@ export class ThreadRunner {
     this.setStatus(threadId, "error");
   }
 
-  private nameThread(threadId: string, text: string, fallback: string, backend: Backend, model: string): void {
-    if (!backend.generateTitle || this.disposing || this.deleting.has(threadId) || this.o.store.thread(threadId)?.title !== fallback) return;
+  private nameThread(threadId: string, text: string, fallback: string, backend: Backend, model: string, reply?: string): void {
+    const current = this.o.store.thread(threadId);
+    if (!backend.generateTitle || this.disposing || this.deleting.has(threadId) || current?.title !== fallback || current.titleSource === "manual") return;
     const abort = new AbortController();
     this.naming.set(threadId, abort);
     const timer = setTimeout(() => abort.abort(), 30_000);
     const account = this.o.store.thread(threadId)?.codexAccount;
-    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model, account }, abort.signal)).then((title) => {
+    const run = Promise.resolve().then(() => backend.generateTitle!(text, { model, account, reply }, abort.signal)).then((title) => {
       if (title && !abort.signal.aborted && !this.disposing && this.o.store.thread(threadId)?.title === fallback) {
-        this.updateThread(threadId, { title });
+        this.updateThread(threadId, { title }, { automaticTitle: true });
       }
     }).catch(() => { /* Naming is best-effort; keep the opening-message title. */ }).finally(() => {
       clearTimeout(timer);
@@ -457,7 +462,7 @@ export class ThreadRunner {
     resolve(answer);
   }
 
-  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean } = {}): Thread {
+  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto"].includes(key))) as ThreadPatch;
@@ -470,7 +475,8 @@ export class ThreadRunner {
     const current = live ? { ...live } : undefined;
     // Switching backend starts a fresh backend conversation; the transcript stays.
     const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
-    const t = this.o.store.updateThread(threadId, { ...extra, ...patch });
+    const titleSource = patch.title === undefined ? {} : { titleSource: opts.automaticTitle ? "auto" as const : "manual" as const };
+    const t = this.o.store.updateThread(threadId, { ...extra, ...patch, ...titleSource });
     this.o.emit({ threadId, type: "thread", thread: t });
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.

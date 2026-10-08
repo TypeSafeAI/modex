@@ -95,12 +95,19 @@ export interface TurnResult {
   recovery?: string[];
 }
 
+export interface TitleOptions {
+  model: string;
+  account?: string;
+  /** Final assistant reply from the successful first turn, without tool output or reasoning. */
+  reply?: string;
+}
+
 export interface Backend {
   readonly id: BackendId;
   /** Runs one user turn to completion. `signal` aborts/interrupts the turn. */
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult>;
   /** Optional background naming through a separate CLI conversation. */
-  generateTitle?(text: string, opts: { model: string; account?: string }, signal: AbortSignal): Promise<string | null>;
+  generateTitle?(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null>;
   /**
    * Last resort when a stopped turn never confirms: forcibly end the backend's work. Optional;
    * backends whose turns always end on their own (Claude escalates to SIGKILL) omit it.

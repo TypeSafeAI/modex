@@ -455,7 +455,6 @@ private struct NewThreadSheet: View {
             CommandSheet(projectId: projectId, backend: provider == "auto" ? model.snapshot.defaultBackend : provider) { insertion in
                 if provider == "auto" { provider = model.snapshot.defaultBackend }
                 insert(insertion, into: &model.newThreadDraft)
-                showCommands = false
             }
         }
     }
@@ -570,7 +569,10 @@ private struct CommandSheet: View {
                     ScrollView {
                         LazyVStack(spacing: 8) {
                             ForEach(filtered) { command in
-                                Button { onSelect(command.insertion) } label: {
+                                Button {
+                                    onSelect(command.insertion)
+                                    dismiss()
+                                } label: {
                                     HStack(spacing: 13) {
                                         Text(command.insertion.trimmingCharacters(in: .whitespaces))
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced)).foregroundStyle(Palette.accent)
