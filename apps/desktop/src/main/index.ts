@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Store } from "./engine/store.js";
 import { saveSettings } from "./engine/settings-update.js";
 import { ThreadRunner } from "./engine/runner.js";
+import { WorkOSAuth, workosConfig } from "./engine/workos-auth.js";
 import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
 import { AccountCodexBackend } from "./engine/backends/account-codex.js";
 import { ClaudeLogin } from "./engine/claude-login.js";
@@ -96,6 +97,7 @@ const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : elect
 // Settings reads ChatGPT status in packaged e2e too; keep its test home off the OS keychain.
 const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
+const modexAccount = new WorkOSAuth({ home, cipher: chatgptCipher, config: workosConfig(process.env.MODEX_WORKOS_ENV), openBrowser: (url) => shell.openExternal(url) });
 const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
 const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
@@ -285,6 +287,12 @@ handle("approvals:try", (req) => previewApproval(req, {
   jev: () => runner.router.jev(),
 }));
 handle("models:list", ({ backend }) => runner.listModels(backend));
+// Account identity is local desktop authority, never exposed to paired mobile clients.
+handle("modexAccount:status", () => modexAccount.status(), { localOnly: true });
+handle("modexAccount:signIn", async () => { await modexAccount.signIn(); return modexAccount.status(); }, { localOnly: true });
+handle("modexAccount:cancel", () => modexAccount.cancel(), { localOnly: true });
+handle("modexAccount:refresh", () => modexAccount.refresh(), { localOnly: true });
+handle("modexAccount:signOut", async () => { const detail = await modexAccount.signOut(); return { status: modexAccount.status(), detail }; }, { localOnly: true });
 handle("chatgpt:status", () => chatgpt.status());
 handle("chatgpt:signIn", async ({ accountId }) => {
   try {
@@ -510,10 +518,12 @@ app.on("before-quit", (event) => {
     window.close();
     return;
   }
+  modexAccount.cancel();
   chatgpt.cancel();
   claudeLogin.cancel();
   shuttingDown = true;
   void Promise.allSettled([knowledge.dispose(), desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
+    modexAccount.dispose();
     chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {

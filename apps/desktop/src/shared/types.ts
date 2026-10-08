@@ -368,6 +368,15 @@ export interface BackendHealth {
   detail: string;
 }
 
+export interface ModexAccountStatus {
+  available: boolean;
+  environment: "production" | "staging";
+  signingIn: boolean;
+  user: { id: string; email: string } | null;
+  expiresAt: number | null;
+  detail: string;
+}
+
 export interface ChatGPTStatus {
   available: boolean; active: string | null; signingIn: boolean;
   accounts: { id: string; label: string; registration: string; signedIn: boolean; planEnabled: boolean }[];
@@ -426,6 +435,11 @@ export interface BridgeCommands {
   "routing:test": { req: undefined; res: RoutingTest };
   "models:list": { req: { backend: BackendId }; res: { models: ModelInfo[]; error?: string } };
   "backends:health": { req: undefined; res: Record<BackendId, BackendHealth> };
+  "modexAccount:status": { req: undefined; res: ModexAccountStatus };
+  "modexAccount:signIn": { req: undefined; res: ModexAccountStatus };
+  "modexAccount:cancel": { req: undefined; res: void };
+  "modexAccount:refresh": { req: undefined; res: ModexAccountStatus };
+  "modexAccount:signOut": { req: undefined; res: { status: ModexAccountStatus; detail: string } };
   "chatgpt:status": { req: undefined; res: ChatGPTStatus };
   "chatgpt:signIn": { req: { accountId?: string }; res: ChatGPTStatus };
   "chatgpt:cancel": { req: undefined; res: void };

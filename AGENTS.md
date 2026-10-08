@@ -50,6 +50,10 @@ itself driving one of them.
   routing and approval rules; it never runs a turn or sees file contents. Without Jev,
   Auto uses its heuristic and approval rules use only exact matches or ask a human. See
   `docs/auto-routing.md` and `docs/approval-rules.md`.
+- Modex account sign-in may make identity-only requests to WorkOS's public authentication
+  endpoint and open its authorization/logout URLs. Main owns public-client PKCE and
+  OS-encrypted refresh credentials; provider/access tokens are discarded. No prompts,
+  files, inference or repository actions use this connection. See `docs/modex-signin.md`.
 - Installed desktop builds may fetch public GitHub release metadata for update banners.
   The fixed release endpoint receives only application/version headers; no prompts, files
   or account credentials. Development, demos and tests keep this network check disabled.
