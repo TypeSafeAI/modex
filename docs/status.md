@@ -252,17 +252,20 @@ startup errors, and explicit reveal after a relaunch.
 
 ## In flight
 
-- **v0.0.9 candidate.** The rebased Graphite shell and Modex GitHub identity are being
-  prepared in `release-0-0-9`. Publication is held for verified production sign-in,
-  signed/notarized artifact checks, packaged E2E and hosted CI.
+- **v0.0.9 candidate.** Graphite, Settings, Sources, background turns, Pages/Knowledge
+  and Modex GitHub identity are prepared in `release-0-0-9`. Signed/notarized artifact
+  checks, 151 desktop plus 7 site packaged tests, and live production authentication
+  acceptance passed. Publication remains held for hosted CI, protected-main integration,
+  and verification of the hosted release downloads.
   [Release evidence](reviews/2026-10-08-v0.0.9-release-review.md).
 
 - **Modex GitHub identity.** Native WorkOS public-client PKCE, encrypted renewable
   sessions and a separate Settings account card are implemented on `workos-oauth`.
   Production is the default; staging is explicitly selected and isolated. Hosted AuthKit
   handles required email verification before the desktop exchanges the PKCE code. No repository
-  integration or model account changes are included. Live production sign-in, refresh,
-  restart and remote sign-out remain release gates. [Design and acceptance](modex-signin.md).
+  integration or model account changes are included. Live signed production sign-in,
+  repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
+  remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
