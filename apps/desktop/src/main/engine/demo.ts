@@ -10,6 +10,8 @@ export interface DemoOptions {
   home: string;
   /** Repository to demo against (a temp copy is made so nothing real is modified). */
   repoPath: string;
+  /** Bundled script resolved from Electron app.getAppPath(), also valid inside ASAR. */
+  scriptPath: string;
   screenshotDir?: string;
   /** "yes" | "no" — auto-answer the approval so the transcript completes. Unset leaves the card waiting. */
   answer?: string;
@@ -25,16 +27,18 @@ export interface DemoOptions {
 export async function runDemo(o: DemoOptions): Promise<void> {
   const demoRepo = path.join(o.home, "demo-repo");
   copyRepoForDemo(o.repoPath, demoRepo);
-  const script = path.resolve(o.repoPath, "apps", "desktop", "demo", "mock-script.json");
-  o.store.updateSettings({ default_backend: "mock", mock_script: script, default_mode: "chat", routing: { ...o.store.settings.routing, jev_transport: "http" } });
+  o.store.updateSettings({ default_backend: "mock", mock_script: o.scriptPath, default_mode: "chat", routing: { ...o.store.settings.routing, jev_transport: "http" } });
   const project = o.store.addProject(demoRepo);
   // A second, finished thread so the sidebar shows history.
   const earlier = await o.runner.createThread(project.id, { mode: "agent", backend: "mock" });
   o.runner.updateThread(earlier.id, { title: "Explain the approval policy module" });
   // Auto is on for the demo thread so the transcript shows a routing decision (heuristic when no key).
   const thread = await o.runner.createThread(project.id, { mode: "chat", backend: "mock", auto: true });
+  let finished = false;
   const turn = o.runner.send(thread.id, "Add a CONTRIBUTING.md with the three-step workflow (install, test, PR).");
-  await waitFor(() => o.runner.status(thread.id) === "waiting" || o.runner.status(thread.id) === "idle" || o.runner.status(thread.id) === "error");
+  void turn.finally(() => { finished = true; }).catch(() => {});
+  await waitFor(() => o.runner.status(thread.id) === "waiting" || finished);
+  if (finished) await turn;
   await settle();
   await o.capture("01-thread-approval");
   if (o.answer === "yes" || o.answer === "no") {
@@ -69,7 +73,7 @@ function copyRepoForDemo(src: string, dest: string): void {
 async function waitFor(fn: () => boolean, ms = 8000): Promise<void> {
   const start = Date.now();
   while (!fn()) {
-    if (Date.now() - start > ms) return;
+    if (Date.now() - start > ms) throw new Error("Demo turn did not reach approval or completion in time.");
     await new Promise((r) => setTimeout(r, 25));
   }
 }

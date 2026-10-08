@@ -6,7 +6,7 @@ import type { ApprovalGateConfig, ApprovalRule, AppState, BackendId, EffortLevel
 import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, EFFORT_LEVELS } from "../../shared/types.js";
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "jev",
+  theme: "graphite",
   default_backend: "codex",
   default_mode: "agent",
   default_model: { codex: "", claude: "", mock: "mock" },

@@ -1,8 +1,56 @@
+import Combine
 import Foundation
 import XCTest
 @testable import ModexCompanion
 
 @MainActor final class CompanionModelTests: XCTestCase {
+    func testUnchangedPollingDoesNotInvalidateThePresentedWorkspace() async {
+        let (model, client) = fixture()
+        client.createdThread = CompanionThread(id: "same", projectId: "p", title: "Original", backend: "codex", status: "idle", updatedAt: "now")
+        await model.refresh()
+        var publications = 0
+        let subscription = model.objectWillChange.sink { publications += 1 }
+        defer { subscription.cancel() }
+
+        await model.refresh()
+        XCTAssertEqual(publications, 0, "An unchanged poll must not rebuild presented menus or interrupt interaction.")
+
+        client.createdThread = CompanionThread(id: "same", projectId: "p", title: "Updated", backend: "claude", status: "running", updatedAt: "later")
+        await model.refresh()
+        XCTAssertGreaterThan(publications, 0, "Actual workspace changes must still publish.")
+        XCTAssertEqual(model.snapshot.threads.first?.id, "same")
+        XCTAssertEqual(model.snapshot.threads.first?.title, "Updated")
+        XCTAssertEqual(model.snapshot.threads.first?.status, "running")
+    }
+
+    func testRepeatedOfflinePollsStayStableAndTheSameSnapshotCanRecover() async {
+        let (model, client) = fixture()
+        await model.refresh()
+        var publications = 0
+        let subscription = model.objectWillChange.sink { publications += 1 }
+        defer { subscription.cancel() }
+        for attempt in 0..<2 {
+            let pending = Pending<CompanionSnapshot>(requested: expectation(description: "offline poll \(attempt)"))
+            await client.enqueueSnapshot(pending)
+            let refresh = Task { await model.refresh() }
+            await fulfillment(of: [pending.requested], timeout: 2)
+            await pending.resolve(.failure(URLError(.notConnectedToInternet)))
+            await refresh.value
+            XCTAssertFalse(model.connected)
+            XCTAssertNotNil(model.connectionError)
+            if attempt == 0 {
+                XCTAssertGreaterThan(publications, 0)
+                publications = 0
+            } else {
+                XCTAssertEqual(publications, 0, "Repeated identical failures must not rebuild recovery controls.")
+            }
+        }
+        await model.refresh()
+        XCTAssertTrue(model.connected, "The same workspace snapshot must still recover its connection state.")
+        XCTAssertNil(model.connectionError)
+        XCTAssertGreaterThan(publications, 0)
+    }
+
     func testOfflinePairingSurvivesRelaunchAndReconnectsAtANewAddress() async {
         let store = MemoryPairingStore()
         let original = store.pairing!
@@ -18,6 +66,7 @@ import XCTest
         XCTAssertEqual(store.pairing, original)
         XCTAssertEqual(model.pairing, original)
         XCTAssertFalse(model.connected)
+        XCTAssertTrue(model.connectionError?.contains("scan") == true, "Offline recovery must explain how to scan a fresh pairing code.")
 
         let moved = URL(string: "https://192.168.1.23:45123")!
         let restoredDiscovery = FakeDiscovery()
@@ -184,6 +233,28 @@ import XCTest
         client.createdThread = nil
         await model.select("a")
         XCTAssertEqual(model.draft, "Keep my follow-up")
+    }
+
+    func testRescanningTheSameMacPreservesAllDraftsButAnotherMacClearsThem() async throws {
+        for sameMac in [true, false] {
+            let (model, _) = fixture()
+            await model.select("a")
+            model.draft = "Keep thread A"
+            await model.select("b")
+            model.draft = "Keep thread B"
+            model.newThreadDraft = "Keep my new task"
+            let original = try XCTUnwrap(model.pairing)
+            let replacement = Pairing(url: URL(string: "https://192.168.1.24:43210")!, token: String(repeating: "c", count: 64), fingerprint: sameMac ? original.fingerprint : String(repeating: "d", count: 64))
+            let encoded = try JSONEncoder().encode(replacement).base64EncodedString()
+            await model.pair(link: "modex://pair?data=\(encoded)")
+            model.stopPolling()
+            XCTAssertEqual(model.pairing, replacement)
+            XCTAssertEqual(model.newThreadDraft, sameMac ? "Keep my new task" : "")
+            await model.select("b")
+            XCTAssertEqual(model.draft, sameMac ? "Keep thread B" : "")
+            await model.select("a")
+            XCTAssertEqual(model.draft, sameMac ? "Keep thread A" : "")
+        }
     }
 
     func testOldCreationCannotClearANewCreationsBusyState() async throws {

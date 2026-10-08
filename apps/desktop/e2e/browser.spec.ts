@@ -23,8 +23,19 @@ test("browser without preload: add folder, approve a turn, inspect changes, term
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${address.port}`);
     expect(await page.evaluate(() => window.modex)).toBeUndefined();
+    await expect(tid(page, "empty-open-project")).toHaveAccessibleName("Open Project");
+    for (const [width, height] of [[320, 568], [375, 812], [768, 1024], [1024, 768], [1440, 900], [1920, 1080]]) {
+      await page.setViewportSize({ width, height });
+      await expect(tid(page, "empty-open-project")).toBeInViewport({ ratio: 1 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(await tid(page, "empty-state").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`welcome-${width}.png`), animations: "disabled" });
+    }
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await tid(page, "empty-open-project").focus();
+    await expect(tid(page, "empty-open-project")).toBeFocused();
     page.once("dialog", (dialog) => dialog.accept(repo));
-    await tid(page, "empty-open-project").click();
+    await page.keyboard.press("Enter");
     await expect(tid(page, "draft-view")).toBeVisible();
     await expect(tid(page, "model-picker")).toContainText("Scripted mock");
     await tid(page, "composer-input").fill("Add a contributing guide");

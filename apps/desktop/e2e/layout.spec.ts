@@ -46,7 +46,7 @@ test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
-  const { home } = seedHome();
+  const { home } = seedHome({ theme: "jev" });
   ({ app, page } = await launch(home));
   // Content size, not window size: the capture must match the reference pixel for pixel.
   await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]!.setContentSize(s.width, s.height), REFERENCE);
@@ -280,22 +280,20 @@ test.describe("Phase 6 · transcript", () => {
 });
 
 test.describe("Phase 7 · title bar actions", () => {
-  // Reference #8/#9: ⋯ and the panel toggle on a 34 px pitch, ending 6 px inside the main pane's right edge.
-  test("⋯ and the Changes icon sit at the main pane's right edge, with or without the panel", async () => {
+  // Keep the 34 px action rhythm at the window edge when workspace panels open.
+  test("title bar actions stay at the window edge with or without the panel", async () => {
     await changesHidden();
     const check = async (edge: number) => {
       const more = await box(tid(page, "thread-menu-toggle"));
       const toggle = await box(tid(page, "changes-toggle"));
-      expect(Math.abs(toggle.x + toggle.width - (edge - 6))).toBeLessThanOrEqual(1);
+      expect(Math.abs(toggle.x + toggle.width - (edge - 10))).toBeLessThanOrEqual(1);
       expect(Math.abs(toggle.x + toggle.width / 2 - (more.x + more.width / 2) - 34)).toBeLessThanOrEqual(1);
       expect(Math.abs(toggle.y + toggle.height / 2 - 20)).toBeLessThanOrEqual(1);
     };
-    const main = await box(tid(page, "main"));
-    await check(main.x + main.width);
+    await check(REFERENCE.width);
     await page.keyboard.press("Meta+j");
     await expect(tid(page, "changes-panel")).toHaveCount(1);
-    const panel = await box(tid(page, "workspace"));
-    await check(panel.x);
+    await check(REFERENCE.width);
     expect((await box(page.locator('[data-testid="changes-panel"] > header'))).height).toBe(48);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
     await changesHidden();

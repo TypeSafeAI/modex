@@ -161,6 +161,21 @@ CI artifact. [Verification log](https://github.com/TypeSafeAI/modex/releases/dow
 
 ## On `main`, not yet released
 
+**Workspace welcome and Companion recovery.** The desktop welcome uses responsive
+project and work-mode cards, with **Open Project** as the primary action. Its logo tile
+uses the theme's neutral surface; only the logo artwork changes to purple in Coven.
+The iPhone groups threads into project cards, including empty projects. Each project's
+New thread action selects that project, and the composer stays above the keyboard.
+Disconnected workspaces offer **Scan pairing code** and **Try again**. Rescanning the
+same pinned Mac preserves unsent drafts; pairing a different Mac clears them.
+Unchanged polls preserve the current UI instead of rebuilding open menu actions; real
+workspace changes and connection recovery continue to publish immediately.
+[Verification and acceptance limits](reviews/2026-10-07-workspace-polish.md).
+
+**Packaged demo recovery.** Demo startup resolves its script from Electron's bundled app
+path, including ASAR packages. Missing mock scripts open Mock script settings instead of
+suggesting a coding CLI installation.
+
 **Usage dashboard preview.** A standalone React preview now follows
 the TypeSafe UI palette and typography, with overview, activity, models, projects,
 accounts, and coverage views. Collapsible navigation and an oversized Demo Data stamp
@@ -193,7 +208,18 @@ rejects malformed output; persisted title ownership prevents a retry from replac
 rename. Electron tests exercise Claude and Codex CLI adapters through naming, relaunch,
 cancellation and fallback.
 
+**Streamer Mode startup privacy.** The privacy cover now stays mounted while the workspace
+loads and if startup fails. Error details remain hidden from the window and accessibility
+tree until you choose **Show workspace**. Electron regression tests cover delayed startup,
+startup errors, and explicit reveal after a relaunch.
+
 ## In flight
+
+**Reference desktop shell (`reference-shell`).** Graphite adds the neutral October 7
+reference palette, a wider compact sidebar, a folder/title header with fixed right-edge
+actions, and a responsive repository overview linked to the real workspace. New profiles
+default to Graphite; saved Jev/OpenCoven preferences remain intact. Build, typecheck, unit, and UI
+verification are recorded in [the review](reviews/2026-10-07-reference-shell.md); this is not released.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
