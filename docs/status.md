@@ -250,6 +250,15 @@ loads and if startup fails. Error details remain hidden from the window and acce
 tree until you choose **Show workspace**. Electron regression tests cover delayed startup,
 startup errors, and explicit reveal after a relaunch.
 
+**Modex GitHub identity.** Native WorkOS public-client PKCE, encrypted renewable
+sessions and a separate Settings account card landed through #141 on main `d2d6671`.
+Production is the default; staging is explicitly selected and isolated. Hosted AuthKit
+handles required email verification before the desktop exchanges the PKCE code. No repository
+integration or model account changes are included. Live signed production sign-in,
+repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
+remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
+
+
 ## In flight
 
 - **v0.0.9 candidate.** Graphite, Settings, Sources, background turns, Pages/Knowledge
@@ -257,17 +266,10 @@ startup errors, and explicit reveal after a relaunch.
   checks and 152 desktop plus 7 site packaged tests passed on the replacement build with
   the Page focus fix. Fresh complete live production authentication acceptance passed
   on that signed build, including renewal after actual token expiry and confirmed remote
-  session revocation. Publication still requires hosted CI, protected-main integration
-  and verification of hosted release downloads.
+  session revocation. The desktop and authentication changes are on protected main.
+  Publication still requires the release PR checks and merge, the hosted release build,
+  and verification of its downloads.
   [Release evidence](reviews/2026-10-08-v0.0.9-release-review.md).
-
-- **Modex GitHub identity.** Native WorkOS public-client PKCE, encrypted renewable
-  sessions and a separate Settings account card are implemented on `workos-oauth`.
-  Production is the default; staging is explicitly selected and isolated. Hosted AuthKit
-  handles required email verification before the desktop exchanges the PKCE code. No repository
-  integration or model account changes are included. Live signed production sign-in,
-  repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
-  remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
