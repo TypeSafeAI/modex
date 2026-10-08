@@ -14,7 +14,7 @@ trap cleanup EXIT
 
 cd "$repo_dir"
 npm run build -w @modex/desktop
-node "$app_dir/Scripts/fixture.mjs" "$fixture_file" &
+MODEX_IOS_LAN=1 node "$app_dir/Scripts/fixture.mjs" "$fixture_file" &
 fixture_pid=$!
 for _ in {1..100}; do
   if [[ -s "$fixture_file" ]]; then break; fi

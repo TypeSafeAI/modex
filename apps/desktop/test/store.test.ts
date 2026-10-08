@@ -29,8 +29,8 @@ test("migrateSettings accepts the pre-0.3 API-era settings shape", async () => {
   const { migrateSettings } = await import("../src/main/engine/store.js");
   const m = migrateSettings({ provider: "openai", base_url: "https://api.openai.com/v1", api_key_env: "OPENAI_API_KEY", default_model: "gpt-5-codex", default_mode: "chat" });
   assert.equal(m.default_backend, "codex");
-  assert.equal(m.theme, "jev");
-  assert.equal(migrateSettings({ theme: "unknown" }).theme, "jev");
+  assert.equal(m.theme, "graphite");
+  assert.equal(migrateSettings({ theme: "unknown" }).theme, "graphite");
   assert.equal(m.default_mode, "chat");
   assert.deepEqual(m.default_model, { codex: "", claude: "", mock: "mock" });
   assert.equal("provider" in m, false);
@@ -59,4 +59,9 @@ test("approval rules and gate: off by default, malformed rules dropped, gate val
     { id: "b", when: "push", decision: "never", enabled: true },
   ]);
   assert.deepEqual(m.approval_gate, { enabled: true, threshold: 0.8, timeout_ms: 3000 });
+});
+
+test("reference appearance defaults without replacing an explicit theme", () => {
+  assert.equal(migrateSettings({}).theme, "graphite");
+  for (const theme of ["graphite", "jev", "coven"]) assert.equal(migrateSettings({ theme }).theme, theme);
 });

@@ -3,7 +3,7 @@ import { normalizeTheme, type Theme } from "../shared/theme";
 const CACHE_KEY = "modex.theme";
 /** A paint cache only; persisted Settings remain authoritative after state:get. */
 export function restoreTheme(): void {
-  let theme: Theme = "jev";
+  let theme: Theme = "graphite";
   try { theme = normalizeTheme(localStorage.getItem(CACHE_KEY)); } catch { /* Storage may be unavailable. */ }
   applyTheme(theme);
 }

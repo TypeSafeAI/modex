@@ -200,7 +200,11 @@ update notifications; older builds do not contain the banner.
 
 ## Desktop themes
 
-Choose **Jev** or **OpenCoven** in Settings → General → Theme, then Save. Jev keeps the
+Graphite is the default for new profiles: neutral charcoal surfaces, compact thread rows,
+a wider sidebar, and a repository overview on large windows. Select it in Settings →
+General → Theme on an existing profile. Jev and OpenCoven remain available.
+
+Choose **Graphite**, **Jev**, or **OpenCoven** in Settings → General → Theme, then Save. Jev keeps the
 midnight-blue workspace and pink accent; OpenCoven uses Coven Cave's charcoal/black surfaces
 and lavender purple. Your choice survives relaunch and also updates the embedded terminal.
 

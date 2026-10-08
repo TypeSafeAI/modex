@@ -147,3 +147,41 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --duration-fast: 0ms; --duration-base: 0ms; }
 }
+
+/* Neutral reference appearance, sampled from the supplied October 7 desktop capture. */
+:root[data-theme="graphite"] {
+  --bg-window: #1b1b1c;
+  --bg-sidebar: #131315;
+  --bg-main: #0f0f11;
+  --bg-row-hover: #222224;
+  --bg-row-selected: #222224;
+  --bg-composer: #262729;
+  --bg-composer-context: #202022;
+  --bg-user-bubble: #202022;
+  --bg-elevated: #202022;
+  --bg-sunken: #0f0f11;
+  --bg-rail-active: #2b2b2d;
+  --shell-sheen: transparent;
+  --sidebar-sheen: transparent;
+  --canvas-sheen: transparent;
+  --bubble-border: transparent;
+  --border-pane: #202022;
+  --border-rail: #202022;
+  --border-composer: #2b2b2d;
+  --border-strong: #454548;
+  --rule: #29292c;
+  --text-1: #e3e4e6;
+  --text-2: #c4c4c8;
+  --text-3: #929296;
+  --text-4: #76767b;
+  --text-placeholder: #858589;
+  --text-info: #aaaab0;
+  --text-muted: #929296;
+  --accent: #a89bd8;
+  --accent-strong: #e3e4e6;
+  --accent-strong-hover: #ffffff;
+  --accent-ink: #202022;
+  --titlebar-h: 44px;
+  --rail-w: 52px;
+  --sidebar-w: 344px;
+}

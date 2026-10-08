@@ -209,6 +209,12 @@ startup errors, and explicit reveal after a relaunch.
 
 ## In flight
 
+**Reference desktop shell (`reference-shell`).** Graphite adds the neutral October 7
+reference palette, a wider compact sidebar, a folder/title header with fixed right-edge
+actions, and a responsive repository overview linked to the real workspace. New profiles
+default to Graphite; saved Jev/OpenCoven preferences remain intact. Build, typecheck, unit, and UI
+verification are recorded in [the review](reviews/2026-10-07-reference-shell.md); this is not released.
+
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The

@@ -1,3 +1,4 @@
+import { RepositoryOverview } from "./components/RepositoryOverview";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateBanner } from "./components/UpdateBanner";
 import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
@@ -187,7 +188,6 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     setSelected(null);
     setDraftRevision((revision) => revision + 1);
     setDraft({ projectId, worktree, settings: draftDefaults(state) });
-    setTimeout(() => inputRef.current?.focus(), 0);
   };
   // Nothing selected and no draft, but there are projects (first launch, last thread deleted): open a draft.
   useEffect(() => {
@@ -422,10 +422,10 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
     return () => window.removeEventListener("keydown", onKey);
   }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals]);
 
-  // Focus the composer whenever the selected thread changes.
+  // Focus after React commits the selected thread or newly mounted draft.
   useEffect(() => {
     inputRef.current?.focus();
-  }, [selected]);
+  }, [selected, draftRevision, draft?.projectId]);
 
   const newChat = () => {
     const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;
@@ -481,6 +481,7 @@ export function App({ persistPreferences = true }: { persistPreferences?: boolea
         )}
         <main className="main" data-testid="main">
           <UpdateBanner />
+          {thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
           {thread && project ? (
             <ThreadView
               key={thread.id}
