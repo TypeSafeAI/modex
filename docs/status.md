@@ -255,9 +255,9 @@ startup errors, and explicit reveal after a relaunch.
 - **v0.0.9 candidate.** Graphite, Settings, Sources, background turns, Pages/Knowledge
   and Modex GitHub identity are prepared in `release-0-0-9`. Signed/notarized artifact
   checks and 152 desktop plus 7 site packaged tests passed on the replacement build with
-  the Page focus fix. Complete live production authentication acceptance carries forward
-  through exact unchanged authentication code, with independent review and replacement
-  integration tests. Publication still requires hosted CI, protected-main integration
+  the Page focus fix. Fresh complete live production authentication acceptance passed
+  on that signed build, including renewal after actual token expiry and confirmed remote
+  session revocation. Publication still requires hosted CI, protected-main integration
   and verification of hosted release downloads.
   [Release evidence](reviews/2026-10-08-v0.0.9-release-review.md).
 
