@@ -202,6 +202,11 @@ exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes
 changes and is submitted for beta review. Real paired use still requires a new standalone
 desktop release; the published v0.0.8 host predates these endpoints.
 
+**Streamer Mode startup privacy.** The privacy cover now stays mounted while the workspace
+loads and if startup fails. Error details remain hidden from the window and accessibility
+tree until you choose **Show workspace**. Electron regression tests cover delayed startup,
+startup errors, and explicit reveal after a relaunch.
+
 ## In flight
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
