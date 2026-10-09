@@ -11,6 +11,14 @@ extension XCUIElement {
             return
         }
         typeText(text)
+        // XCTest can return while the simulator is still delivering keystrokes.
+        // Do not let the next tap submit a prefix and leave the remainder in the draft.
+        let entered = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value ENDSWITH %@", text),
+            object: self
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: timeout), .completed,
+                       "The field did not finish receiving the typed text.", file: file, line: line)
     }
 
     /// Taps once the element exists, is enabled and can receive the tap.
