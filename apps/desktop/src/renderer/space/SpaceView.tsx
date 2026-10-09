@@ -6,6 +6,8 @@ import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
 import { Menu, MenuItem, MenuSeparator } from "../components/ui/Menu";
+import { PagesMaintenance } from "./PagesMaintenance";
+import { PageHistory } from "./PageHistory";
 import { KnowledgeView } from "./KnowledgeView";
 import { BlockEditor } from "./BlockEditor";
 import { useSpace } from "./useSpace";
@@ -18,8 +20,9 @@ const TEMPLATES = [
   { title: "Meeting notes", description: "Keep the useful parts", icon: "comment" as const, markdown: "## On the agenda\n\n- What should we discuss?\n\n## Decisions\n\nWhat did we agree on?\n\n## Next steps\n\n- [ ] Add an action and an owner" },
 ];
 
-export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; active: boolean }) {
-  const space = useSpace();
+export function SpaceView({ sidebarOpen, active, openPage }: { sidebarOpen: boolean; active: boolean; openPage?: { id: string } }) {
+  const space = useSpace(active);
+  const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("pages");
   const [query, setQuery] = useState("");
@@ -39,6 +42,11 @@ export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; activ
   }, [selected]);
   const importInput = useRef<HTMLInputElement>(null);
   const page = space.pages.find(p => p.id === selected && !p.trashedAt);
+  useEffect(() => {
+    if (selected && space.pages.some(p => p.id === selected && p.trashedAt)) {
+      setSelected(null); setView("trash"); setQuery(""); setNotice("This note is in Trash. Restore it to open it.");
+    }
+  }, [selected, space.pages]);
   const live = space.pages.filter(p => !p.trashedAt);
   const visible = space.pages.filter(p => view === "trash" ? !!p.trashedAt : !p.trashedAt && (view !== "favorites" || p.favorite))
     .filter(p => `${p.title}\n${p.markdown}`.toLowerCase().includes(query.toLowerCase()));
@@ -46,6 +54,7 @@ export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; activ
     try { setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
   const open = (id: string) => { if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); };
+  useEffect(() => { if (openPage) { setView("pages"); setQuery(""); setSelected(openPage.id); setHistory(false); void space.refresh(); } }, [openPage]);
   const create = async (title = "", markdown = "", parentId: string | null = null) => {
     if (creating) return;
     setCreating(true);
@@ -122,6 +131,7 @@ export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; activ
               <MenuItem onClick={pick(() => download(page))}>Export Markdown</MenuItem>
               <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await bridge.invoke("knowledge:copy", { pageId: page.id }); setNotice("Page copied to your knowledge base"); }))}>Copy to knowledge base</MenuItem>
               <MenuItem onClick={pick(() => importInput.current?.click())}>Import Markdown</MenuItem>
+              <MenuItem onClick={pick(() => setHistory(true))}>Version history</MenuItem>
               <MenuItem onClick={pick(() => setWide(!wide))}>{wide ? "Standard width" : "Full width"}</MenuItem>
               <MenuSeparator />
               <MenuItem className="danger" onClick={pick(() => void run(async () => { await space.trash(page.id, true); setSelected(null); setNotice("Page moved to trash"); }))}>Move to trash</MenuItem>
@@ -129,13 +139,15 @@ export function SpaceView({ sidebarOpen, active }: { sidebarOpen: boolean; activ
           </span>
         </> : <button className="btn small space-new" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="plus" size={14} /> Create page</button>}
       </header>
-      {(space.error || actionError) && <div className="space-error" role="alert"><span>{actionError ?? space.error}</span>{space.error && <button className="btn small" onClick={() => void run(space.retry)}>Retry</button>}{actionError && <button className="btn small" onClick={() => setActionError(null)}>Dismiss</button>}</div>}
+      <PagesMaintenance active={active} />
+      {(space.error || actionError) && <div className="space-error" role="alert"><span>{actionError ?? space.error}</span>{space.error && <><button className="btn small" onClick={() => void run(space.retry)}>Retry</button><button className="btn small" onClick={() => void run(space.preserveDrafts)}>Save drafts as copies and reload</button></>}{actionError && <button className="btn small" onClick={() => setActionError(null)}>Dismiss</button>}</div>}
       {notice && <div className="space-notice" role="status">{notice}</div>}
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>
         <article className="space-document">
           <div className="space-page-emblem"><Icon name="file" size={32} /></div>
           <input ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
           <div className="space-document-meta"><span>Private page</span><span>·</span><span>{new Date(page.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>
+          {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} markdown={page.markdown} onChange={markdown => space.edit(page.id, { markdown })} />
           {live.filter(p => p.parentId === page.id).length > 0 && <div className="space-subpages"><span>IN THIS PAGE</span>{live.filter(p => p.parentId === page.id).map(p => <button key={p.id} onClick={() => open(p.id)}><Icon name="file" />{pageTitle(p)}<Icon name="arrow-right" /></button>)}</div>}
           <footer className="space-document-footer"><span>{page.markdown.trim() ? page.markdown.trim().split(/\s+/).length : 0} words</span><button onClick={() => void create("", "", page.id)}><Icon name="plus" size={13} /> Add subpage</button></footer>

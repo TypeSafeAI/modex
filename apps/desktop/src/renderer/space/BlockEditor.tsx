@@ -10,7 +10,12 @@ export function BlockEditor({ markdown, onChange }: { markdown: string; onChange
   const [editing, setEditing] = useState<string | null>(() => markdown ? null : blocks[0]!.id);
   const [choice, setChoice] = useState(0);
   const inputs = useRef(new Map<string, HTMLTextAreaElement>());
-  const commit = (next: EditorBlock[]) => { setBlocks(next); onChange(joinMarkdown(next)); };
+  const source = useRef(markdown);
+  useLayoutEffect(() => {
+    if (markdown === source.current) return;
+    source.current = markdown; setBlocks(splitMarkdown(markdown)); setEditing(null);
+  }, [markdown]);
+  const commit = (next: EditorBlock[]) => { source.current = joinMarkdown(next); setBlocks(next); onChange(source.current); };
   const update = (id: string, source: string) => commit(blocks.map(b => b.id === id ? { ...b, source } : b));
   const focus = (id: string, position?: number) => {
     setEditing(id);

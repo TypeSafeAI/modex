@@ -10,6 +10,7 @@ import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
+import type { PagesChange } from "../src/shared/pages.js";
 import type { Thread, ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { MockProvider, type MockStep } from "@modex/core";
 import { gitRepo, tmpdir, writeScript } from "./helpers.js";
@@ -24,6 +25,155 @@ function harness(steps: MockStep[] = []) {
 }
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
+
+test("runner attaches Pages every real turn, persists receipts and closes failed turns", async () => {
+  const h = harness();
+  let closed = 0;
+  let prepared = 0;
+  const turns: TurnOptions[] = [];
+  const connection = { url: "http://127.0.0.1:4321/mcp/pages", instructions: "Read notes first" };
+  const pages = { prepare: async (thread: Pick<Thread, "id" | "projectId" | "mode" | "plan">, changed: (change: PagesChange) => void) => {
+    prepared++;
+    assert.equal(thread.projectId, project.id);
+    changed({ pageId: "page-1", title: "Decision", summary: "Record verified fix", revision: prepared });
+    return { connection, close: async () => { closed++; } };
+  } };
+  const runner = new ThreadRunner({ ...h, pages, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, opts) => {
+    turns.push(opts);
+    throw new Error("backend failed");
+  } } } });
+  const project = h.store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude" });
+  try {
+    await runner.send(thread.id, "work");
+    await runner.send(thread.id, "try again");
+    assert.equal(prepared, 2);
+    assert.equal(turns.length, 2);
+    assert.ok(turns.every(opts => opts.pages?.url === connection.url && opts.pages.instructions === connection.instructions && opts.cwd === project.path));
+    assert.equal(closed, 2);
+    assert.ok(new Store(h.home).items(thread.id).some(item => item.kind === "notice" && item.text === "Note updated: Record verified fix" && item.pages?.pageId === "page-1"));
+  } finally { await runner.dispose(); }
+});
+
+test("Stop revokes Pages immediately while knowledge setup is stalled", async () => {
+  const h = harness();
+  let release!: () => void;
+  let pagesClosed = 0;
+  let knowledgeClosed = 0;
+  let ran = false;
+  let preparedMode: string | undefined;
+  const connection = { url: "http://127.0.0.1:4321/mcp/pages", instructions: "Read only" };
+  const pages = { prepare: async (turn: Pick<Thread, "mode">) => {
+    preparedMode = turn.mode;
+    return { connection, close: async () => { pagesClosed++; } };
+  } };
+  const runner = new ThreadRunner({ ...h, pages, knowledge: { prepare: async () => {
+    await new Promise<void>(resolve => { release = resolve; });
+    return { connection, close: async () => { knowledgeClosed++; } };
+  } }, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => {
+    ran = true;
+    return { status: "completed" };
+  } } } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { backend: "claude", mode: "chat" });
+  const run = runner.send(thread.id, "read notes");
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    h.store.updateThread(thread.id, { mode: "full-access" });
+    runner.stop(thread.id);
+    assert.equal(preparedMode, "chat", "Pages snapshots turn authority before knowledge awaits");
+    assert.ok(pagesClosed > 0, "Pages authority ends before stalled knowledge setup finishes");
+    release();
+    await run;
+    assert.ok(knowledgeClosed > 0);
+    assert.equal(ran, false);
+  } finally { release?.(); await run; await runner.dispose(); }
+});
+
+test("Auto routing cannot raise the initial Pages or knowledge permission ceiling", async () => {
+  for (const initial of [{ mode: "chat", plan: false }, { mode: "agent", plan: true }] as const) {
+    const h = harness();
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const router = new Router({ home: h.home, policy: () => h.store.settings.routing, transport: null, listModels: async () => {
+      entered();
+      await gate;
+      return { models: [{ id: "haiku", label: "Haiku", efforts: ["low", "medium", "high"] }] };
+    } });
+    const authority: { mode: string; plan: boolean }[] = [];
+    const connection = { url: "http://127.0.0.1:4321/mcp/test", instructions: "Read first" };
+    const prepare = async (turn: Pick<Thread, "mode" | "plan">) => {
+      authority.push({ mode: turn.mode, plan: turn.plan });
+      return { connection, close: async () => {} };
+    };
+    const backend: Backend = { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "completed" }) };
+    const runner = new ThreadRunner({ ...h, router, pages: { prepare }, knowledge: { prepare }, backends: { claude: backend, codex: { ...backend, id: "codex" } } });
+    const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { backend: "claude", auto: true, mode: initial.mode });
+    h.store.updateThread(thread.id, { plan: initial.plan });
+    const run = runner.send(thread.id, "quick: inspect the project");
+    try {
+      await waiting;
+      h.store.updateThread(thread.id, { mode: "full-access", plan: false });
+      release();
+      await run;
+      const expected = { mode: initial.mode === "chat" ? "chat" : "full-access", plan: initial.plan };
+      assert.deepEqual(authority, [expected, expected]);
+    } finally { release(); await run; await runner.dispose(); }
+  }
+});
+
+test("connection setup retains the initial read-only ceiling and observes live reductions", async () => {
+  for (const [initial, next, expected] of [
+    [{ mode: "chat", plan: false }, { mode: "full-access", plan: false }, { mode: "chat", plan: false }],
+    [{ mode: "agent", plan: true }, { mode: "agent", plan: false }, { mode: "agent", plan: true }],
+    [{ mode: "agent", plan: false }, { mode: "chat", plan: true }, { mode: "chat", plan: true }],
+  ] as const) {
+    const h = harness();
+    const connection = { url: "http://127.0.0.1:4321/mcp/test", instructions: "Read first" };
+    let release!: () => void;
+    let authority: { mode: string; plan: boolean } | undefined;
+    const runner = new ThreadRunner({ ...h, pages: { prepare: async () => {
+      await new Promise<void>(resolve => { release = resolve; });
+      return { connection, close: async () => {} };
+    } }, knowledge: { prepare: async turn => {
+      authority = { mode: turn.mode, plan: turn.plan };
+      return { connection, close: async () => {} };
+    } }, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "completed" }) } } });
+    const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { backend: "claude", mode: initial.mode });
+    h.store.updateThread(thread.id, { plan: initial.plan });
+    const run = runner.send(thread.id, "read notes");
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      h.store.updateThread(thread.id, next);
+      release();
+      await run;
+      assert.deepEqual(authority, expected);
+    } finally { release?.(); await run; await runner.dispose(); }
+  }
+});
+
+test("runner attaches knowledge to a real backend turn, persists receipts and closes failed turns", async () => {
+  const h = harness();
+  let closed = 0;
+  const connection = { url: "http://127.0.0.1:4321/mcp/test", instructions: "Read first" };
+  const runner = new ThreadRunner({ ...h, knowledge: { prepare: async (thread, changed) => {
+    assert.equal(thread.projectId, project.id);
+    changed({ folder: "/knowledge", path: "Decision.md", summary: "Record verified fix" });
+    return { connection, close: async () => { closed++; } };
+  } }, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, opts) => {
+    assert.deepEqual(opts.knowledge, connection);
+    assert.equal(opts.cwd, project.path);
+    throw new Error("backend failed");
+  } } } });
+  const project = h.store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude" });
+  try {
+    await runner.send(thread.id, "work");
+    assert.equal(closed, 1);
+    assert.ok(new Store(h.home).items(thread.id).some(item => item.kind === "notice" && item.knowledge?.path === "Decision.md"));
+  } finally { await runner.dispose(); }
+});
 
 test("cold recovery marks unfinished agents unknown without reviving them on the next turn", async () => {
   const h = harness();

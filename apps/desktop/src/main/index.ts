@@ -1,4 +1,6 @@
 import { KnowledgeService } from "./engine/knowledge.js";
+import { PagesAgents } from "./engine/pages-agents.js";
+import { KnowledgeAgents } from "./engine/knowledge-agents.js";
 import { WorkspaceBrowser } from "./workspace-browser.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
@@ -76,6 +78,8 @@ const pathReady = hydratePath(process.env).then(
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 const knowledge = new KnowledgeService(home);
+const knowledgeAgents = new KnowledgeAgents({ knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true });
+const pagesAgents = new PagesAgents({ space: store.space, enabled: id => store.project(id)?.pagesMaintenance === true });
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
@@ -103,7 +107,7 @@ const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url
 const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
-const runner = new ThreadRunner({ home, store, emit, secrets, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
+const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
 const retirer = new TaskRetirer({
   enabled: () => store.settings.auto_retire,
   threads: () => store.snapshot().threads,
@@ -171,6 +175,11 @@ handle("browser:show", ({ id, bounds, fullView }) => workspaceBrowser?.show(id, 
 
 // The companion owns its local server. Only this window can install, select folders, or show it.
 handle("knowledge:state", () => knowledge.snapshot(), { localOnly: true });
+handle("project:pages", ({ projectId, enabled }) => store.setPagesMaintenance(projectId, enabled), { localOnly: true });
+handle("space:history", ({ id }) => store.space.history(id));
+handle("space:revert", ({ id, revision, version }) => store.space.revert(id, revision, version));
+handle("project:knowledge", ({ projectId, enabled }) => store.setKnowledgeMaintenance(projectId, enabled), { localOnly: true });
+handle("knowledge:open", async change => { await pathReady; await shell.openExternal(await knowledgeAgents.preview(change)); }, { localOnly: true });
 handle("knowledge:choose", async () => {
   const result = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"], title: "Choose knowledge folder", buttonLabel: "Use this folder" });
   return result.canceled || !result.filePaths[0] ? knowledge.snapshot() : knowledge.selectFolder(result.filePaths[0]);
@@ -535,7 +544,7 @@ app.on("before-quit", (event) => {
   claudeLogin.cancel();
   shuttingDown = true;
   retirer.stop();
-  void Promise.allSettled([knowledge.dispose(), desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
+  void Promise.allSettled([pagesAgents.dispose(), knowledgeAgents.dispose().then(() => knowledge.dispose()), desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
     modexAccount.dispose();
     chatgpt.dispose();
     const failure = results.find((result) => result.status === "rejected");

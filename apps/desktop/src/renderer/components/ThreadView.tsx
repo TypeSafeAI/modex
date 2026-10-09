@@ -245,12 +245,30 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
       return <ApprovalItem item={item} onAnswer={onAnswer} onPolicy={onPolicy} />;
     case "notice":
       if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
+      if (item.pages) return <div className="notice info" data-testid="item" data-item-kind="notice"><span>{item.text} </span><button className="btn small" aria-label={`Open note ${item.pages.title}`} onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: item.pages!.pageId }))}>{item.pages.title}<Icon name="arrow-right" size={12} /></button></div>;
+      if (item.knowledge) return <KnowledgeReceipt item={item} />;
       return <div className={`notice ${item.level}`} data-testid="item" data-item-kind="notice" data-level={item.level}>{item.text}</div>;
     case "thinking":
       return <ThinkingItem item={item} />;
     case "route":
       return <RouteItem item={item} />;
   }
+}
+
+function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice" }> }) {
+  const [error, setError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const open = async () => {
+    if (!item.knowledge) return;
+    setOpening(true); setError(null);
+    try { await bridge.invoke("knowledge:open", { folder: item.knowledge.folder, path: item.knowledge.path }); }
+    catch (err) { setError((err as Error).message); }
+    finally { setOpening(false); }
+  };
+  return <div className="notice info" data-testid="item" data-item-kind="notice">
+    <span>{item.text} </span><button className="btn small" disabled={opening} onClick={() => void open()} aria-label={`Open knowledge page ${item.knowledge!.path}`}>{item.knowledge!.path}<Icon name="arrow-right" size={12} /></button>
+    {error && <p role="alert">{error}</p>}
+  </div>;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { knowledgeBusy, type KnowledgeState } from "../../shared/knowledge";
+import type { Project } from "../../shared/types";
 import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import "./knowledge.css";
@@ -9,11 +10,27 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
   const [error, setError] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [saving, setSaving] = useState<{ id: string; enabled: boolean } | null>(null);
   const operation = useRef(false);
   const canvas = useRef<HTMLDivElement>(null);
   const busy = working || (state ? knowledgeBusy(state) : false);
   const ready = state?.status === "ready";
   const folderName = state?.folder?.split(/[\\/]/).filter(Boolean).at(-1);
+
+  useEffect(() => {
+    let alive = true;
+    void bridge.invoke("state:get", undefined).then(value => { if (alive) setProjects(value.projects); }).catch(err => { if (alive) setError((err as Error).message); });
+    return () => { alive = false; };
+  }, [active]);
+  const maintain = async (projectId: string, enabled: boolean) => {
+    setSaving({ id: projectId, enabled }); setError(null);
+    try {
+      const updated = await bridge.invoke("project:knowledge", { projectId, enabled });
+      setProjects(current => current.map(p => p.id === projectId ? updated : p));
+    } catch (err) { setError((err as Error).message); }
+    finally { setSaving(null); }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -71,6 +88,12 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
       <span className={`knowledge-status${ready ? " ready" : ""}`} role="status">{state?.status === "installing" ? "Installing…" : state?.status === "starting" ? "Opening…" : state?.status === "stopping" ? "Stopping…" : ready ? (state?.external ? "Connected locally" : "Running locally") : "Local knowledge"}</span>
       {ready && <><button className="btn small" aria-label="Reload knowledge base" onClick={() => void extra("knowledge:reload")}><Icon name="restart" size={14} /></button><button className="btn small" aria-label="Open knowledge base in browser" onClick={() => void extra("knowledge:external")}><Icon name="globe" size={14} /></button><button className="btn small" disabled={busy} title={state?.external ? "Disconnect from this server and leave it running" : "Stop the server started by Modex"} onClick={() => void run("knowledge:stop")}>{state?.external ? "Disconnect" : "Stop"}</button></>}
     </header>
+    <details className="knowledge-maintenance">
+      <summary>Agent maintenance</summary>
+      <p>Agents can search your selected knowledge folder. Enable a project to save verified decisions, fixes, and procedures automatically. Chat and plan mode stay read-only. Changes include a page link and appear in its history.</p>
+      {!projects.length && <p>Add a project in Home to enable automatic maintenance.</p>}
+      {projects.map(project => <label key={project.id}><input type="checkbox" aria-label={`Maintain knowledge for ${project.name}`} checked={saving?.id === project.id ? saving.enabled : project.knowledgeMaintenance === true} disabled={saving !== null} onChange={e => void maintain(project.id, e.target.checked)} /><span>{project.name}</span></label>)}
+    </details>
     {(error || state?.error || viewError) && <div className="space-error" role="alert"><span>{error ?? state?.error ?? viewError}</span>{ready && <button className="btn small" onClick={() => void extra("knowledge:reload")}>Retry</button>}</div>}
     {ready ? <div ref={canvas} className="knowledge-canvas" data-testid="knowledge-canvas" aria-label="Open Knowledge editor" /> : <div className="knowledge-setup">
       <div className="knowledge-intro"><span className="space-eyebrow">SPACE / KNOWLEDGE</span><div className="knowledge-emblem"><Icon name="space" size={34} /></div><h1>Give your knowledge a home.</h1><p>Bring your notes, docs, and decisions together.<br />Explore them with Open Knowledge, right here in Space.</p></div>

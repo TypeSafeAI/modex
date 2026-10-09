@@ -27,6 +27,7 @@
   "dependencies": {
     "@create-markdown/core": "2.0.3",
     "@create-markdown/react": "2.0.3",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@modex/core": "0.3.0",
     "node-pty": "1.2.0-beta.15",
     "qrcode": "^1.5.4",
