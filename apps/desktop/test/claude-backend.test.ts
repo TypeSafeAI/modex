@@ -4,6 +4,14 @@ import { ClaudeBackend, denyMessage, toolTitle } from "../src/main/engine/backen
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 
+test("Claude attaches thread knowledge MCP and maintenance instructions without changing cwd", () => {
+  const knowledge = { url: "http://127.0.0.1:1234/mcp/thread", instructions: "Maintain verified knowledge" };
+  const args = ClaudeBackend.args({ cwd: "/worktree", model: "", plan: false, mode: "agent", knowledge });
+  assert.deepEqual(JSON.parse(args[args.indexOf("--mcp-config") + 1]!), { mcpServers: { modex_knowledge: { type: "http", url: knowledge.url } } });
+  assert.equal(args[args.indexOf("--append-system-prompt") + 1], knowledge.instructions);
+  assert.deepEqual(args.slice(args.indexOf("--allowedTools") + 1), ["search", "read", "write", "edit", "history"].map(name => `mcp__modex_knowledge__${name}`));
+});
+
 test("ClaudeBackend.args maps modes and plan onto claude -p flags", () => {
   const base = { cwd: "/w", model: "sonnet", plan: false } as const;
   assert.deepEqual(ClaudeBackend.args({ ...base, mode: "agent" }).slice(-4), ["--permission-mode", "acceptEdits", "--model", "sonnet"]);

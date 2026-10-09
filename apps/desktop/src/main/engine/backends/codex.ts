@@ -1,4 +1,5 @@
 import { AgentTracker } from "./agents.js";
+import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -244,13 +245,18 @@ export class CodexBackend implements Backend {
       return failed(err, { stage: "start app-server" });
     }
     const pol = CodexBackend.policy(opts);
+    // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
+    const config = { ...THREAD_CONFIG, ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
+      url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
+      tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
+    } } : {}) };
     let threadId = opts.resume;
     try {
       if (threadId && !this.loaded.has(threadId)) {
-        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
         threadId = r.thread.id;
       } else if (!threadId) {
-        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
         threadId = r.thread.id;
       }
     } catch (err) {
@@ -261,9 +267,8 @@ export class CodexBackend implements Backend {
     sink.session(threadId);
 
     const tid = threadId;
-    const input = opts.plan
-      ? `${PLAN_PREFIX}\n\n${text}`
-      : text;
+    const context = opts.knowledge ? `${opts.knowledge.instructions}\n\n${text}` : text;
+    const input = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
     const agents = new AgentTracker(sink);
     const activities = new Set<string>();
     const tools = new Map<string, { started: number; output: string }>();

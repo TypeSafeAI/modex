@@ -1,11 +1,117 @@
 import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { appDir, launch, seedHome, tid } from "./support";
 
 const screenshots = path.join(appDir, ".probes", "space");
+
+test("Knowledge automatic maintenance is opt-in per project and persists across launches", async () => {
+  const { home, repo } = seedHome();
+  const first = await launch(home);
+  try {
+    await tid(first.page, "rail-space").click();
+    await first.page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await first.page.getByText("Agent maintenance", { exact: true }).click();
+    const checkbox = first.page.getByRole("checkbox", { name: `Maintain knowledge for ${path.basename(repo)}` });
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+  } finally { await first.app.close(); }
+  const second = await launch(home);
+  try {
+    await tid(second.page, "rail-space").click();
+    await second.page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await second.page.getByText("Agent maintenance", { exact: true }).click();
+    const checkbox = second.page.getByRole("checkbox", { name: `Maintain knowledge for ${path.basename(repo)}` });
+    await expect(checkbox).toBeChecked();
+    await checkbox.uncheck();
+    await expect(checkbox).not.toBeChecked();
+  } finally { await second.app.close(); }
+});
+
+test("Knowledge maintenance shows a pending toggle and rolls back a failed save", async () => {
+  const { home, repo } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("project:knowledge");
+      ipcMain.handle("project:knowledge", () => new Promise((_resolve, reject) => { (globalThis as any).__rejectKnowledge = () => reject(new Error("Knowledge save failed")); }));
+    });
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await page.getByText("Agent maintenance", { exact: true }).click();
+    const checkbox = page.getByRole("checkbox", { name: `Maintain knowledge for ${path.basename(repo)}` });
+    await checkbox.check();
+    await expect(checkbox).toBeChecked(); await expect(checkbox).toBeDisabled();
+    await app.evaluate(() => (globalThis as any).__rejectKnowledge());
+    await expect(page.getByRole("alert")).toContainText("Knowledge save failed");
+    await expect(checkbox).not.toBeChecked(); await expect(checkbox).toBeEnabled();
+  } finally { await app.close(); }
+});
+
+test("a CLI agent updates real knowledge outside its project and exposes a persistent editor link", async () => {
+  test.skip(process.env.MODEX_TEST_OPEN_KNOWLEDGE !== "1", "Requires the pinned OpenKnowledge companion");
+  const { home, repo } = seedHome({ default_backend: "claude", default_mode: "agent" });
+  const folder = path.join(home, "Knowledge"); fs.mkdirSync(folder);
+  fs.mkdirSync(path.join(home, "integrations"));
+  fs.symlinkSync(process.env.MODEX_OPEN_KNOWLEDGE_RUNTIME ?? path.join(os.homedir(), ".modex/integrations/open-knowledge"), path.join(home, "integrations/open-knowledge"));
+  fs.writeFileSync(path.join(home, "app/knowledge.json"), JSON.stringify({ version: 1, folder: fs.realpathSync(folder) }));
+  const cli = path.join(home, "knowledge-cli.cjs");
+  fs.writeFileSync(cli, `#!${process.execPath}
+if (process.argv.includes('--version')) { console.log('2.1.289 (Claude Code)'); process.exit(0); }
+if (!process.argv.includes('--mcp-config')) { console.log(JSON.stringify({type:'result',result:'Knowledge test',is_error:false})); process.exit(0); }
+const config = JSON.parse(process.argv[process.argv.indexOf('--mcp-config')+1]);
+const url = config.mcpServers.modex_knowledge.url;
+const emit = x => console.log(JSON.stringify(x));
+let id=0;
+const rpc = async (method, params) => {
+ const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:++id,method,params})});
+ const result=await response.json(); if(result.error||result.result?.isError) throw Error(JSON.stringify(result)); return result.result;
+};
+require('node:readline').createInterface({input:process.stdin}).once('line', async () => {
+ try {
+  await rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'claude-fixture',version:'1'}});
+  await rpc('tools/call',{name:'search',arguments:{query:'Verified decision'}});
+  await rpc('tools/call',{name:'write',arguments:{path:'Decision.md',content:'# Verified decision\\n\\nKeep inference in the coding CLIs.\\n',position:'replace',summary:'Record verified CLI architecture'}});
+  emit({type:'assistant',message:{content:[{type:'text',text:'Updated Decision.md.'}]}});
+  emit({type:'result',is_error:false,result:'Updated Decision.md.'}); process.exit(0);
+ } catch(error) {emit({type:'result',is_error:true,result:String(error)});process.exit(1);}
+});
+`, { mode: 0o755 });
+  const stateFile = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  state.projects[0].knowledgeMaintenance = true;
+  state.settings.claude_bin = cli;
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  const { app, page } = await launch(home);
+  try {
+    await app.evaluate(({ shell }) => { (globalThis as any).__knowledgeOpened = []; shell.openExternal = async url => { (globalThis as any).__knowledgeOpened.push(url); }; });
+    await tid(page, "new-chat").click();
+    await tid(page, "composer-input").fill("Save the verified architecture decision");
+    await tid(page, "send").click();
+    const link = page.getByRole("button", { name: "Open knowledge page Decision.md" });
+    await expect(link).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Knowledge updated: Record verified CLI architecture", { exact: false })).toBeVisible();
+    expect(fs.readFileSync(path.join(folder, "Decision.md"), "utf8")).toContain("coding CLIs");
+    expect(fs.existsSync(path.join(repo, "Decision.md"))).toBe(false);
+    await link.click();
+    await expect.poll(() => app.evaluate(() => (globalThis as any).__knowledgeOpened[0])).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/#\/Decision$/);
+    await page.reload();
+    await expect(link).toBeVisible();
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await expect(tid(page, "knowledge-canvas")).toBeVisible();
+    await expect.poll(() => app.context().pages().filter(w => /127\.0\.0\.1/.test(w.url())).length).toBeGreaterThan(0);
+    const editor = app.context().pages().find(w => /127\.0\.0\.1/.test(w.url()))!;
+    await openKnowledgeFile(editor, "Decision");
+    await expect(editor.getByText("Keep inference in the coding CLIs.", { exact: true }).first()).toBeVisible();
+    fs.mkdirSync(screenshots, { recursive: true });
+    await editor.screenshot({ path: path.join(screenshots, "agent-maintained-knowledge.png") });
+  } finally { await app.close(); }
+});
 
 async function openKnowledgeFile(guest: Page, name: string) {
   // OpenKnowledge collapses its file tree below 1024px, including Graphite's wider rail.

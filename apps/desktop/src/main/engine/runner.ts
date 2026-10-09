@@ -12,6 +12,7 @@ import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import type { SecretStore } from "./secrets.js";
 import { describeFailure } from "../../shared/failures.js";
+import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
 
 interface Live {
   abort: AbortController | null;
@@ -29,6 +30,7 @@ interface Live {
 }
 
 export interface RunnerOptions {
+  knowledge?: Pick<KnowledgeAgents, "prepare">;
   home: string;
   store: Store;
   emit: (event: ThreadEvent) => void;
@@ -325,13 +327,23 @@ export class ThreadRunner {
     const backend = this.backends[thread.backend];
     l.backend = thread.backend;
     const turnStart = l.items.length;
+    let knowledge: KnowledgeLease | undefined;
+    const revokeKnowledge = () => { void knowledge?.close().catch(() => {}); };
     try {
+      if (thread.backend !== "mock" && this.o.knowledge) {
+        knowledge = await this.o.knowledge.prepare(thread, change => this.addItem(threadId, {
+          id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
+        }), abort.signal);
+        if (knowledge.warning) sink.notice("warn", knowledge.warning);
+        abort.signal.addEventListener("abort", revokeKnowledge, { once: true });
+        if (abort.signal.aborted) { await knowledge.close(); this.setStatus(threadId, "idle"); return; }
+      }
       const account = thread.backend === "codex" && backend.identity
         ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
       if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
       const result = await backend.runTurn(
         text,
-        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [] },
+        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [], ...(knowledge ? { knowledge: knowledge.connection } : {}) },
         sink,
         abort.signal,
       );
@@ -347,9 +359,16 @@ export class ThreadRunner {
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
-      if (auto) this.router.noteOutcome(threadId, "failed");
-      this.failTurn(threadId, thread, (err as Error).message, { fast, retry });
+      if (abort.signal.aborted) {
+        sink.notice("info", "Stopped.");
+        this.setStatus(threadId, "idle");
+      } else {
+        if (auto) this.router.noteOutcome(threadId, "failed");
+        this.failTurn(threadId, thread, (err as Error).message, { fast, retry });
+      }
     } finally {
+      abort.signal.removeEventListener("abort", revokeKnowledge);
+      try { await knowledge?.close(); } catch (err) { sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`); }
       // A CLI can exit without closing its last streamed items. Save their tail and stop spinners.
       for (const item of l.items) {
         if ((item.kind === "thinking" || item.kind === "tool") && item.status === "running") {

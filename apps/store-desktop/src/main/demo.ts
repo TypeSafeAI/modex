@@ -57,6 +57,8 @@ export class StoreDemo {
       "knowledge:reload": unavailable,
       "knowledge:external": unavailable,
       "knowledge:copy": unavailable,
+      "knowledge:open": unavailable,
+      "project:knowledge": unavailable,
       "space:export": unavailable,
       "space:list": () => { throw new Error("Space is available in the full Modex desktop app."); },
       "space:create": () => { throw new Error("Space is unavailable in the review demo."); },

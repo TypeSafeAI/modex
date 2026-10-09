@@ -1,4 +1,24 @@
 import { test } from "node:test";
+
+test("Codex configures per-thread knowledge on start and fresh resume, including each turn's instructions", async () => {
+  for (const resume of [undefined, "persisted-thread"]) {
+    const proc = new FakeProcess();
+    const { threadId, turnId, seen } = fakeServer(proc);
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+    const knowledge = { url: "http://127.0.0.1:1234/mcp/thread", instructions: "Knowledge maintenance instruction" };
+    try {
+      const run = backend.runTurn("go", { cwd: "/worktree", mode: "agent", plan: false, model: "", resume, knowledge }, collectSink().sink, new AbortController().signal);
+      await proc.waitFor(l => l.includes('"turn/start"'));
+      const opening = seen.find(s => s.method === (resume ? "thread/resume" : "thread/start"));
+      const names = ["search", "read", "write", "edit", "history"];
+      assert.deepEqual((opening?.params.config as Record<string, unknown>)["mcp_servers.modex_knowledge"], { url: knowledge.url, enabled_tools: names, tools: Object.fromEntries(names.map(name => [name, { approval_mode: "approve" }])) });
+      assert.equal(opening?.params.cwd, "/worktree");
+      assert.match(JSON.stringify(seen.find(s => s.method === "turn/start")?.params.input), /Knowledge maintenance instruction/);
+      proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+      assert.equal((await run).status, "completed");
+    } finally { await backend.dispose(); }
+  }
+});
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

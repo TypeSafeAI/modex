@@ -70,6 +70,7 @@ export interface TurnSink {
 }
 
 export interface TurnOptions {
+  knowledge?: import("../../../shared/knowledge.js").KnowledgeConnection;
   cwd: string;
   mode: Mode;
   /** Plan mode: think and propose, never edit. */

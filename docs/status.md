@@ -272,6 +272,15 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
 
 ## In flight
 
+- **Agent knowledge maintenance.** The `knowledge-agents` branch connects Claude and
+  Codex turns to the selected OpenKnowledge folder through a scoped local MCP adapter.
+  Space offers per-project automatic maintenance; chat and plan turns stay read-only.
+  Successful writes carry persisted page links, and OpenKnowledge retains collaborative
+  history and recovery. Locally verified with both installed CLIs, 432 unit tests,
+  156 desktop E2E tests and 7 site E2E tests; awaiting landing, unreleased.
+  See [usage and integration boundaries](knowledge-maintenance.md) and
+  [verification](reviews/2026-10-09-knowledge-agents.md).
+
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The

@@ -3,6 +3,20 @@ import assert from "node:assert/strict";
 import { Store, migrateSettings } from "../src/main/engine/store.js";
 import { tmpdir } from "./helpers.js";
 
+test("knowledge maintenance is opt-in per project and survives restart", () => {
+  const home = tmpdir("knowledge-store-");
+  const store = new Store(home);
+  const a = store.addProject(tmpdir("project-a-"));
+  const b = store.addProject(tmpdir("project-b-"));
+  assert.notEqual(a.knowledgeMaintenance, true);
+  store.setKnowledgeMaintenance(a.id, true);
+  const restarted = new Store(home);
+  assert.equal(restarted.project(a.id)?.knowledgeMaintenance, true);
+  assert.notEqual(restarted.project(b.id)?.knowledgeMaintenance, true);
+  assert.throws(() => restarted.setKnowledgeMaintenance(a.id, "true" as unknown as boolean), /boolean/);
+  assert.throws(() => restarted.setKnowledgeMaintenance("missing", true), /project/);
+});
+
 test("store persists projects, threads, settings and items across instances", () => {
   const home = tmpdir("modex-home-");
   const a = new Store(home);

@@ -8,6 +8,7 @@ import { KNOWLEDGE_VERSION, knowledgeBusy, type KnowledgeState } from "../../sha
 import { pageTitle, type SpacePage } from "../../shared/space.js";
 
 type Options = { runtimeDir?: string; env?: NodeJS.ProcessEnv; startupTimeoutMs?: number };
+export interface KnowledgeTarget { folder: string; content: string; url: string }
 
 /** Owns a separate, pinned Open Knowledge CLI. Never imports or bundles its application code. */
 export class KnowledgeService {
@@ -19,6 +20,7 @@ export class KnowledgeService {
   private operation: Promise<KnowledgeState> | null = null;
   private disposed = false;
   private generation = 0;
+  private agentStarting?: Promise<KnowledgeState>;
   constructor(private readonly home: string, private readonly options: Options = {}) {
     this.runtime = options.runtimeDir ?? path.join(home, "integrations", "open-knowledge");
     this.config = path.join(home, "app", "knowledge.json");
@@ -221,6 +223,22 @@ export class KnowledgeService {
     if (!folder || !fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) throw new Error("Choose an available knowledge folder first.");
     if (fs.realpathSync(folder) !== folder) throw new Error("The knowledge folder changed. Choose it again before continuing.");
     return folder;
+  }
+
+  async agentTarget(): Promise<KnowledgeTarget> {
+    this.selectedFolder();
+    if (!this.snapshot().installed) throw new Error("Install Open Knowledge in Space first.");
+    if (this.operation) await this.operation;
+    if (this.state.status !== "ready") {
+      this.agentStarting ??= this.start().finally(() => { this.agentStarting = undefined; });
+      await this.agentStarting;
+    }
+    return { folder: this.selectedFolder(), content: this.contentFolder(), url: this.state.url! };
+  }
+
+  isAgentTarget(target: KnowledgeTarget): boolean {
+    try { return this.state.status === "ready" && this.state.url === target.url && this.selectedFolder() === target.folder && this.contentFolder() === target.content; }
+    catch { return false; }
   }
 
   private contentFolder(): string {

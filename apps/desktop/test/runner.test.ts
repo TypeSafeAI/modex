@@ -25,6 +25,28 @@ function harness(steps: MockStep[] = []) {
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
 
+test("runner attaches knowledge to a real backend turn, persists receipts and closes failed turns", async () => {
+  const h = harness();
+  let closed = 0;
+  const connection = { url: "http://127.0.0.1:4321/mcp/test", instructions: "Read first" };
+  const runner = new ThreadRunner({ ...h, knowledge: { prepare: async (thread, changed) => {
+    assert.equal(thread.projectId, project.id);
+    changed({ folder: "/knowledge", path: "Decision.md", summary: "Record verified fix" });
+    return { connection, close: async () => { closed++; } };
+  } }, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, opts) => {
+    assert.deepEqual(opts.knowledge, connection);
+    assert.equal(opts.cwd, project.path);
+    throw new Error("backend failed");
+  } } } });
+  const project = h.store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude" });
+  try {
+    await runner.send(thread.id, "work");
+    assert.equal(closed, 1);
+    assert.ok(new Store(h.home).items(thread.id).some(item => item.kind === "notice" && item.knowledge?.path === "Decision.md"));
+  } finally { await runner.dispose(); }
+});
+
 test("cold recovery marks unfinished agents unknown without reviving them on the next turn", async () => {
   const h = harness();
   const runner = new ThreadRunner(h);

@@ -2,6 +2,7 @@ import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
+import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { cliEnvironment, health, installation, probe } from "./health.js";
@@ -71,6 +72,8 @@ export class ClaudeBackend implements Backend {
     if (opts.fast) args.push("--settings", JSON.stringify({ fastMode: true }));
     if (opts.resume) args.push("--resume", opts.resume);
     for (const d of opts.addDirs ?? []) args.push("--add-dir", d);
+    if (opts.knowledge) args.push("--mcp-config", JSON.stringify({ mcpServers: { modex_knowledge: { type: "http", url: opts.knowledge.url } } }), "--append-system-prompt", opts.knowledge.instructions,
+      "--allowedTools", ...KNOWLEDGE_TOOLS.map(name => `mcp__modex_knowledge__${name}`));
     return args;
   }
 

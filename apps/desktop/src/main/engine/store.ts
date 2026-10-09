@@ -171,6 +171,17 @@ export class Store {
     this.write();
   }
 
+  setKnowledgeMaintenance(projectId: string, enabled: boolean): Project {
+    if (typeof enabled !== "boolean") throw new Error("Knowledge maintenance must be a boolean.");
+    const project = this.project(projectId);
+    if (!project) throw new Error("Unknown project.");
+    const updated = { ...project, knowledgeMaintenance: enabled };
+    const projects = this.state.projects.map(p => p.id === projectId ? updated : p);
+    this.write({ ...this.state, projects });
+    this.state.projects = projects;
+    return { ...updated };
+  }
+
   project(projectId: string): Project | undefined {
     return this.state.projects.find((p) => p.id === projectId);
   }

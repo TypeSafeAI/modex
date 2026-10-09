@@ -1,0 +1,105 @@
+{
+  "test": "Actual CLI-backed knowledge acceptance",
+  "startedAt": "2026-10-09T13:47:36.134Z",
+  "finishedAt": "2026-10-09T13:48:16.873Z",
+  "backendInterceptors": false,
+  "inferenceRoute": "Installed CLI backends using existing account authentication",
+  "versions": {
+    "claude": "2.1.289",
+    "codex": "0.162.0"
+  },
+  "isolation": "Disposable app home, knowledge folder, and separate git coding directory",
+  "runs": [
+    {
+      "backend": "claude",
+      "modelRequested": "haiku",
+      "result": {
+        "status": "completed"
+      },
+      "tools": [
+        {
+          "name": "ToolSearch",
+          "title": "ToolSearch",
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "name": "mcp__modex_knowledge__search",
+          "title": "mcp__modex_knowledge__search",
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "name": "mcp__modex_knowledge__write",
+          "title": "mcp__modex_knowledge__write",
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "name": "mcp__modex_knowledge__read",
+          "title": "mcp__modex_knowledge__read",
+          "ok": true,
+          "status": "done"
+        }
+      ],
+      "approvalCount": 0,
+      "noticeCount": 0,
+      "page": "acceptance-claude.md",
+      "marker": "MODEX_KNOWLEDGE_CLI_ACCEPTANCE_CLAUDE_2026_10_09",
+      "markerVerifiedOnDisk": true,
+      "pageSha256": "ef5f9e96350cd29263c6027cb32e447a19138664ab886c3c75dbd7935a73aeb2",
+      "codingDirectoryClean": true,
+      "changes": [
+        {
+          "path": "acceptance-claude.md",
+          "summary": "CLI acceptance verification"
+        }
+      ]
+    },
+    {
+      "backend": "codex",
+      "modelRequested": "CLI default",
+      "result": {
+        "status": "completed"
+      },
+      "tools": [
+        {
+          "name": "mcpToolCall",
+          "title": "modex_knowledge.search",
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "name": "mcpToolCall",
+          "title": "modex_knowledge.write",
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "name": "mcpToolCall",
+          "title": "modex_knowledge.read",
+          "ok": true,
+          "status": "done"
+        }
+      ],
+      "approvalCount": 0,
+      "noticeCount": 0,
+      "page": "acceptance-codex.md",
+      "marker": "MODEX_KNOWLEDGE_CLI_ACCEPTANCE_CODEX_2026_10_09",
+      "markerVerifiedOnDisk": true,
+      "pageSha256": "486cbab4f5fb322af9f8e65df7ffa5f817463b509ffd6b1c1b4018564bb35d8c",
+      "codingDirectoryClean": true,
+      "changes": [
+        {
+          "path": "acceptance-codex.md",
+          "summary": "CLI acceptance verification"
+        }
+      ]
+    }
+  ],
+  "processesDisposed": true,
+  "limitations": [
+    "No browser preview attached; writes verified by MCP readback and disk marker.",
+    "Optional live same-thread readonly denial not exercised in this acceptance run."
+  ]
+}
