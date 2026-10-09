@@ -31,6 +31,14 @@ test.beforeEach(async () => {
 test.afterEach(async () => { await app?.close(); });
 
 test("reference review has a numbered diff and a filterable tree on its right", async ({}, info) => {
+  // Expand the slim default to the reference review width using the panel divider.
+  const divider = (await page.getByRole("separator", { name: "Resize workspace" }).boundingBox())!;
+  const x = divider.x + divider.width / 2;
+  const y = divider.y + divider.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 287, y, { steps: 8 });
+  await page.mouse.up();
   await expect(page.getByRole("tab", { name: "Review", exact: true })).toBeVisible();
   const file = tid(page, "changes-file").filter({ hasText: "interactions.jsonl" });
   await file.getByRole("button", { name: "View diff for .beads/interactions.jsonl", exact: true }).click();
@@ -80,7 +88,7 @@ test("new-tab menu, launcher, full view and Files replace the old panel", async 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1600, 972));
   await page.mouse.move(10, 10);
   await tid(page, "workspace-address").focus();
-  expect((await tid(page, "workspace").boundingBox())!.width).toBe(672);
+  expect((await tid(page, "workspace").boundingBox())!.width).toBe(360);
   await tid(page, "workspace").screenshot({ path: info.outputPath("new-tab.png"), caret: "initial" });
   await tid(page, "workspace-full").click();
   await expect(tid(page, "main")).toBeHidden();

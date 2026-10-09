@@ -1,7 +1,7 @@
 import { THEMES, type Theme } from "../shared/theme.js";
 
 /** Presentation only: these values are owned by Modex, never supplied by guest content. */
-export function knowledgeAppearance(theme: Theme): { background: string; css: string } {
+export function knowledgeAppearance(theme: Theme): { background: string; css: string; script: string } {
   const { background, surface, accent } = THEMES[theme];
   const palette = {
     graphite: { text: "#e3e4e6", muted: "#929296", sidebar: "#131315", border: "#29292c", hover: "#222224" },
@@ -26,7 +26,34 @@ export function knowledgeAppearance(theme: Theme): { background: string; css: st
     "quote-borders": palette.border, captions: palette.muted, code: palette.text,
     "pre-code": palette.text, "pre-bg": palette.sidebar, "th-borders": palette.border, "td-borders": palette.border,
   };
-  return { background, css: `:root, :root.dark { color-scheme: dark !important; ${Object.entries(variables).map(([key, value]) => `--${key}: ${value} !important;`).join(" ")} }
+  return { background, script: KNOWLEDGE_PROPERTIES, css: `:root, :root.dark { color-scheme: dark !important; ${Object.entries(variables).map(([key, value]) => `--${key}: ${value} !important;`).join(" ")} }
     .prose, .tiptap { color: ${palette.text} !important; ${Object.entries(prose).map(([key, value]) => `--tw-prose-${key}: ${value} !important;`).join(" ")} }
+    [data-testid="property-panel"] > [data-slot="collapsible"] > div:first-child { width: 100% !important; }
+    [data-testid="property-panel"] > [data-slot="collapsible"] > div:first-child > button[data-slot="collapsible-trigger"] {
+      flex: 1 !important; justify-content: flex-start !important; min-height: 28px !important;
+      padding: 3px 6px !important; font-size: 11px !important; cursor: pointer;
+    }
+    [data-testid="property-panel"] > [data-slot="collapsible"] > div:first-child > button[data-slot="collapsible-trigger"]:hover { background: ${palette.hover} !important; }
     html, body { background-color: ${background} !important; color: ${palette.text} !important; }` };
 }
+
+/** Use the pinned companion's own disclosure and persistence, leaving document data untouched. */
+const KNOWLEDGE_PROPERTIES = `(() => {
+  if (globalThis.modexPropertiesInitialized) return;
+  globalThis.modexPropertiesInitialized = true;
+  const key = 'ok-properties-collapsed-v1';
+  try { if (localStorage.getItem(key) !== null) return; } catch { return; }
+  const collapse = () => {
+    const button = document.querySelector('[data-testid="property-panel"] > [data-slot="collapsible"] > div:first-child > button[data-slot="collapsible-trigger"]');
+    if (!button) return false;
+    // Recheck in case the user chose a state while the editor was loading.
+    if (localStorage.getItem(key) === null) {
+      if (button.getAttribute('aria-expanded') === 'true') button.click();
+      else localStorage.setItem(key, 'true');
+    }
+    return true;
+  };
+  if (collapse()) return;
+  const observer = new MutationObserver(() => { if (collapse()) observer.disconnect(); });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+})()`;
