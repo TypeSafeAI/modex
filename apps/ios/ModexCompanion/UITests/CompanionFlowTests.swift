@@ -9,6 +9,8 @@ final class CompanionFlowTests: XCTestCase {
               let fixture = try? JSONDecoder().decode(Fixture.self, from: data) else {
             throw XCTSkip("Run Scripts/test-e2e.sh with the paired Mac fixture.")
         }
+        let prompts = answerSystemAlertsDuringActions()
+        defer { removeUIInterruptionMonitor(prompts) }
         let app = XCUIApplication()
         app.launch()
         let pair = app.buttons["pair-button"]
@@ -27,18 +29,18 @@ final class CompanionFlowTests: XCTestCase {
             springboard.buttons["Allow"].tap()
         }
         let thread = app.buttons["thread-abcdef12"]
-        XCTAssertTrue(thread.waitForExistence(timeout: 20), "The paired Mac's thread should appear.")
+        XCTAssertTrue(thread.appears(within: 20), "The paired Mac's thread should appear.")
         capture(app, name: "Paired workspace")
 
         let emptyProject = app.buttons["New thread in empty-project"]
-        if !emptyProject.isHittable { app.swipeUp() }
+        if !emptyProject.isReadyToTap { app.swipeUp() }
         XCTAssertTrue(emptyProject.waitForExistence(timeout: 10), "Projects without threads must remain visible.")
         emptyProject.tapWhenReady()
         let selectedProject = app.buttons["new-thread-project"]
         XCTAssertTrue(selectedProject.waitForExistence(timeout: 10))
         XCTAssertTrue((selectedProject.label + " " + (selectedProject.value as? String ?? "")).contains("empty-project"), "A project's New thread action must preselect that project.")
         app.buttons["Cancel"].tapWhenReady()
-        if !app.buttons["new-thread"].isHittable { app.swipeDown() }
+        if !app.buttons["new-thread"].isReadyToTap { app.swipeDown() }
         app.buttons["new-thread"].tapWhenReady()
         let newThreadInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
         XCTAssertTrue(newThreadInput.waitForExistence(timeout: 10))
@@ -53,35 +55,35 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(commandSearch.waitForNonExistence(timeout: 10), "The skill sheet must finish dismissing before submitting.")
         capture(app, name: "New thread on iPhone")
         app.buttons["create-thread"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Start from phone $mobile-check")).firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Start from phone $mobile-check")).firstMatch.appears(within: 20))
         app.buttons["Back to threads"].tapWhenReady()
 
         app.terminate()
         app.launch()
-        XCTAssertTrue(thread.waitForExistence(timeout: 20), "Pairing must survive relaunch without scanning again.")
+        XCTAssertTrue(thread.appears(within: 20), "Pairing must survive relaunch without scanning again.")
         thread.tapWhenReady()
         let approval = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "approve-")).firstMatch
-        XCTAssertTrue(approval.waitForExistence(timeout: 20), "The pending Mac approval should appear.")
+        XCTAssertTrue(approval.appears(within: 20), "The pending Mac approval should appear.")
         capture(app, name: "Approval on iPhone")
         approval.tapWhenReady()
         let confirmation = app.sheets["Approve this action?"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
         confirmation.buttons["Approve once"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Approved"].appears(within: 20))
         XCTAssertTrue(confirmation.waitForNonExistence(timeout: 10), "The approval sheet must finish dismissing before focusing the composer.")
 
         let input = app.descendants(matching: .any)["followup-input"].firstMatch
         input.typeTextWhenReady("Please summarize the result", in: app)
         app.buttons["send-followup"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.appears(within: 20))
         capture(app, name: "Completed follow-up")
         app.buttons["Back to threads"].tapWhenReady()
         if fixture.reconnect == true {
-            XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].waitForExistence(timeout: 60), "Bonjour must recover the saved pairing when the Mac restarts on a different port.")
+            XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].appears(within: 60), "Bonjour must recover the saved pairing when the Mac restarts on a different port.")
             XCTAssertFalse(pair.exists)
             app.terminate()
             app.launch()
-            XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].waitForExistence(timeout: 20), "The verified new address must survive another relaunch.")
+            XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].appears(within: 20), "The verified new address must survive another relaunch.")
         }
         if fixture.reconnect != true {
             thread.tapWhenReady()
@@ -92,9 +94,9 @@ final class CompanionFlowTests: XCTestCase {
             XCTAssertTrue(app.staticTexts["Follow-up received: Pause for recovery"].waitForExistence(timeout: 10))
             app.buttons["Back to threads"].tapWhenReady()
             let repair = app.buttons["repair-pairing"]
-            XCTAssertTrue(repair.waitForExistence(timeout: 15), "A disconnected workspace must offer pairing recovery without forgetting the Mac.")
+            XCTAssertTrue(repair.appears(within: 30), "A disconnected workspace must offer pairing recovery without forgetting the Mac.")
             XCTAssertFalse(app.buttons["new-thread"].isEnabled)
-            XCTAssertTrue(app.buttons["retry-connection"].isHittable)
+            XCTAssertTrue(app.buttons["retry-connection"].isReadyToTap)
             capture(app, name: "Disconnected workspace recovery")
             repair.tapWhenReady()
             XCTAssertTrue(app.buttons["scan-pairing-code"].waitForExistence(timeout: 10))
@@ -102,12 +104,12 @@ final class CompanionFlowTests: XCTestCase {
             XCTAssertTrue(repair.waitForExistence(timeout: 5), "Cancelling a rescan must keep the saved workspace.")
             let retry = app.buttons["retry-connection"]
             retry.tapWhenReady()
-            let retried = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: retry)
-            XCTAssertEqual(XCTWaiter.wait(for: [retried], timeout: 10), .completed, "An offline retry must finish without losing the saved workspace.")
+            // The retry waits out the phone's 8 s request timeout against the paused Mac before it re-enables.
+            XCTAssertTrue(waitUntil(timeout: 30) { retry.isEnabled }, "An offline retry must finish without losing the saved workspace.")
             XCTAssertTrue(repair.exists)
             XCTAssertFalse(app.buttons["new-thread"].isEnabled)
             try resumeMac(fixture)
-            XCTAssertTrue(app.staticTexts["Mac connected"].waitForExistence(timeout: 60))
+            XCTAssertTrue(app.staticTexts["Mac connected"].appears(within: 60))
             XCTAssertTrue(app.buttons["new-thread"].isEnabled)
         }
         app.buttons["workspace-options"].tapWhenReady()
@@ -123,7 +125,7 @@ final class CompanionFlowTests: XCTestCase {
             followup.typeTextWhenReady("Revoke this phone", in: app)
             app.buttons["send-followup"].tapWhenReady()
             let revoked = app.alerts["Connection issue"]
-            XCTAssertTrue(revoked.waitForExistence(timeout: 20), "Mac revocation must end the saved pairing.")
+            XCTAssertTrue(revoked.appears(within: 20), "Mac revocation must end the saved pairing.")
             XCTAssertTrue(revoked.staticTexts["Access was removed on your Mac. Pair again with a new code from Modex."].exists)
             revoked.buttons["OK"].tapWhenReady()
             XCTAssertTrue(pair.waitForExistence(timeout: 10))
