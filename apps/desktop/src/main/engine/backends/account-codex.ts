@@ -17,6 +17,14 @@ export const planArgs = ["--listen", "stdio://", ...[
   'model_providers.openai_chatgpt_plan.supports_websockets=false',
   'shell_environment_policy.filters.ACCESS_TOKEN="exclude"',
   'shell_environment_policy.set.ACCESS_TOKEN=""',
+  // OpenAI's subscription-sharing endpoint (a ChatGPT plan token on api.openai.com) accepts only
+  // messages, tool calls, reasoning, web searches and compaction items. Codex's multi-agent tools
+  // (`spawn_agent` and friends) add `agent_message` items, which it rejects with
+  // `subscription_sharing_unsupported_capability`; worse, the rejection lands in the parent
+  // thread's history as another `agent_message`, so every later turn on that thread fails too.
+  // Codex CLI's own sign-in talks to a different backend and keeps the feature.
+  "features.multi_agent=false",
+  "features.multi_agent_v2=false",
 ].flatMap((setting) => ["-c", setting])];
 
 /** Separate shared app-server per registration; each lease includes async turn initialization. */

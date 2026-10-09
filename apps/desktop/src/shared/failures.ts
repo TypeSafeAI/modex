@@ -14,6 +14,9 @@ export const LOGIN_COMMANDS: Partial<Record<BackendId, string>> = { codex: "code
 
 /** First match wins, so the more specific families come first. Patterns are the CLIs' own wording. */
 const RULES: { code: FailureCode; test: RegExp }[] = [
+  // OpenAI refusing part of a resumed thread's history over a ChatGPT plan token: nothing about
+  // the next message changes it, so this comes before the families that suggest a retry.
+  { code: "unsupported_history", test: /subscription_sharing_unsupported_capability|subscription sharing currently supports only/i },
   { code: "not_installed", test: /is (?:the )?(?:codex cli|claude code) installed|could not start |\bENOENT\b|not found on PATH|command not found/i },
   {
     code: "auth",
@@ -79,15 +82,20 @@ export function describeFailure(input: FailureInput): TurnFailure {
       hint = "Retry starts it again.";
       fix = { kind: "retry", label: "Restart and retry" };
       break;
+    case "unsupported_history":
+      summary = "The ChatGPT plan connection cannot send part of this conversation's history.";
+      hint = "It accepts only messages, tool calls and reasoning; this thread's Codex history holds a multi-agent item it rejects, so retrying will fail the same way. Start a new thread to continue the work.";
+      fix = { kind: "new-thread", label: "Start a new thread" };
+      break;
     default:
-      summary = missingMockScript ? "The demo script could not be loaded." : firstLine(message);
+      summary = missingMockScript ? "The demo script could not be loaded." : firstLine(apiMessage(message));
       if (missingMockScript) {
         hint = "Choose an existing JSON file in Settings → Mock script, then retry.";
         fix = { kind: "settings", label: "Open Settings" };
       }
       break;
   }
-  const retryable = !/shutting down|being deleted|being removed/i.test(message);
+  const retryable = code !== "unsupported_history" && !/shutting down|being deleted|being removed/i.test(message);
   return {
     code,
     backend: input.backend,
@@ -109,6 +117,21 @@ export function failureReport(f: TurnFailure): string {
   if (f.recovery?.length) lines.push("", "Recovery attempted:", ...f.recovery.map((step) => `  - ${step}`));
   lines.push("", "Details:", JSON.stringify(f.debug, null, 2));
   return lines.join("\n");
+}
+
+/**
+ * Codex sometimes hands over the API's JSON error body verbatim (`{ "error": { "message": … } }`).
+ * Its first line would be `{`, so the summary uses the message inside instead.
+ */
+function apiMessage(text: string): string {
+  if (!text.trimStart().startsWith("{")) return text;
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: unknown }; message?: unknown };
+    const inner = parsed.error?.message ?? parsed.message;
+    return typeof inner === "string" && inner.trim() ? inner : text;
+  } catch {
+    return text;
+  }
 }
 
 function firstLine(text: string): string {
