@@ -59,13 +59,13 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
   const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
   const suggestionKey = JSON.stringify([thread.id, thread.status, thread.plan, thread.mode, thread.auto, items.at(-1)?.id]);
   useEffect(() => {
-    if (thread.status !== "idle" || !items.length) return;
+    if (thread.retired || thread.status !== "idle" || !items.length) return;
     let alive = true;
     void bridge.invoke("thread:followup", { threadId: thread.id }).then((value) => {
       if (alive) setFollowUp({ key: suggestionKey, value });
     }).catch(() => { if (alive) setFollowUp(null); });
     return () => { alive = false; };
-  }, [suggestionKey]);
+  }, [suggestionKey, thread.retired]);
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
   const newestUser = useRef<string | undefined>(undefined);
@@ -145,12 +145,12 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
           <Fragment key={turn.user?.id ?? `pre-${i}`}>
             {turn.user && <Item item={turn.user} onAnswer={onAnswer} onFix={onFix} />}
             {turn.user && (i === lastUser && busy ? <TurnHeader start={turn.user.at} status={thread.status} /> : turn.rest.length > 0 && <TurnHeader start={turn.user.at} end={turnEnd(turn.rest)} />)}
-            {turn.rest.map((item) => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!busy && item.id === retryId ? onRetry : undefined} />)}
+            {turn.rest.map((item) => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />)}
           </Fragment>
         ))}
       </div>
 
-      <Composer
+      {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
         text={text}
         onText={onText}
         busy={busy}
@@ -177,7 +177,7 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
         onSend={onSend}
         onStop={onStop}
         inputRef={inputRef}
-      />
+      />}
     </section>
   );
 }

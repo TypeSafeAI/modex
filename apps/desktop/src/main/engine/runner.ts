@@ -218,7 +218,7 @@ export class ThreadRunner {
       this.stop(threadId);
       await this.o.beforeDeleteThread?.(threadId);
       await l?.run;
-      if (thread?.worktree && removeWorktree) {
+      if (thread?.worktree && !thread.retired && removeWorktree) {
         const project = this.o.store.project(thread.projectId);
         if (project) {
           const script = thread.worktree.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
@@ -238,7 +238,7 @@ export class ThreadRunner {
    * Finishes a task whose pull request merged: removes its worktree and branch and marks the thread
    * retired. The transcript stays, read-only. Callers have already checked that nothing would be lost.
    */
-  async retireThread(threadId: string, pr: { number: number; url: string }): Promise<void> {
+  async retireThread(threadId: string, pr: { number: number; url: string; headSha: string }): Promise<void> {
     const thread = this.o.store.thread(threadId);
     const wt = thread?.worktree;
     if (!thread || !wt || thread.retired) return;
@@ -248,9 +248,12 @@ export class ThreadRunner {
     this.deleting.add(threadId);
     try {
       await this.o.beforeDeleteThread?.(threadId);
+      const state = await gitx.worktreeState(wt.path);
+      const branch = await gitx.currentBranch(wt.path);
+      if (!state.clean || state.head !== pr.headSha || branch !== wt.branch) return;
       const script = wt.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
       if (script) await gitx.projectWorktreeRemove(project.path, script, wt.branch);
-      else await gitx.worktreeRemove(project.path, wt.path);
+      else await gitx.worktreeRemove(project.path, wt.path, false);
       // The project script already drops a landed branch; a Modex-managed one is ours to drop.
       await gitx.branchDelete(project.path, wt.branch).catch(() => {});
       const retired = { at: new Date().toISOString(), reason: "merged" as const, pr: pr.number, url: pr.url };

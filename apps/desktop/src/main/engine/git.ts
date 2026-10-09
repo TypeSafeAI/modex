@@ -245,8 +245,8 @@ export async function worktreeAdd(repo: string, dest: string, branch: string): P
 }
 
 /** Removes a linked worktree (and its uncommitted changes). The branch is kept. */
-export async function worktreeRemove(repo: string, dest: string): Promise<void> {
-  const r = await git(repo, ["worktree", "remove", "--force", dest]);
+export async function worktreeRemove(repo: string, dest: string, force = true): Promise<void> {
+  const r = await git(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dest]);
   if (r.code !== 0 && fs.existsSync(dest)) throw new Error(r.stderr.trim() || "git worktree remove failed");
   await git(repo, ["worktree", "prune"]);
 }

@@ -1,7 +1,7 @@
 import type { PullRequestSummary, Thread, ThreadContext } from "../../shared/types.js";
 
 export type RetireDecision =
-  | { retire: true; pr: { number: number; url: string } }
+  | { retire: true; pr: { number: number; url: string; headSha: string } }
   | { retire: false; reason: "not-a-task" | "retired" | "busy" | "no-pr" | "pr-open" | "pr-closed" | "unverified" | "uncommitted" | "unpushed" };
 
 /**
@@ -21,7 +21,7 @@ export function retireDecision(input: { thread: Thread; busy: boolean; pullReque
   if (!pr.headSha || !input.head) return { retire: false, reason: "unverified" };
   if (!input.clean) return { retire: false, reason: "uncommitted" };
   if (input.head !== pr.headSha) return { retire: false, reason: "unpushed" };
-  return { retire: true, pr: { number: pr.number, url: pr.url } };
+  return { retire: true, pr: { number: pr.number, url: pr.url, headSha: pr.headSha } };
 }
 
 export interface RetirerDeps {
@@ -30,7 +30,7 @@ export interface RetirerDeps {
   busy(threadId: string): boolean;
   context(cwd: string): Promise<ThreadContext>;
   inspect(cwd: string): Promise<{ clean: boolean; head: string | null }>;
-  retire(threadId: string, pr: { number: number; url: string }): Promise<void>;
+  retire(threadId: string, pr: { number: number; url: string; headSha: string }): Promise<void>;
 }
 
 /** Looks at every live worktree task on a timer and retires the ones that finished. Remembers the last PR it saw for each. */
@@ -75,7 +75,8 @@ export class TaskRetirer {
         if (!this.deps.enabled() || pullRequest.state !== "merged") continue;
         const { clean, head } = await this.deps.inspect(thread.cwd);
         // Re-read after the awaits: the user may have sent a message meanwhile.
-        const current = this.deps.threads().find((t) => t.id === thread.id) ?? thread;
+        const current = this.deps.threads().find((t) => t.id === thread.id);
+        if (!current || !this.deps.enabled()) continue;
         const decision = retireDecision({ thread: current, busy: this.deps.busy(thread.id), pullRequest, clean, head });
         if (!decision.retire) continue;
         await this.deps.retire(thread.id, decision.pr);

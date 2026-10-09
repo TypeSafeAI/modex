@@ -18,7 +18,7 @@ const task = (over: Partial<Thread> = {}): Thread => ({ id: "t1", projectId: "p"
 const decide = (over: Partial<Parameters<typeof retireDecision>[0]> = {}) => retireDecision({ thread: task(), busy: false, pullRequest: merged, clean: true, head: SHA, ...over });
 
 test("retire: only an idle task whose merged PR is exactly what the worktree holds", () => {
-  assert.deepEqual(decide(), { retire: true, pr: { number: 12, url: merged.state === "merged" ? merged.url : "" } });
+  assert.deepEqual(decide(), { retire: true, pr: { number: 12, url: merged.state === "merged" ? merged.url : "", headSha: SHA } });
   const why = (over: Parameters<typeof decide>[0]) => { const d = decide(over); return d.retire ? "retire" : d.reason; };
   assert.equal(why({ thread: task({ worktree: undefined }) }), "not-a-task");
   assert.equal(why({ thread: task({ retired: { at: "", reason: "merged", pr: 1, url: "" } }) }), "retired");
@@ -81,13 +81,32 @@ test("retireThread removes the worktree and branch, keeps the transcript, and re
   assert.equal((await gitx.worktreeState(wt.path)).clean, false, "an untracked file counts as work that would be lost");
   fs.rmSync(path.join(wt.path, "scratch.txt"));
 
-  await runner.retireThread(thread.id, { number: 12, url: "https://github.com/o/r/pull/12" });
+  await runner.retireThread(thread.id, { number: 12, url: "https://github.com/o/r/pull/12", headSha: state.head! });
   assert.equal(fs.existsSync(wt.path), false);
   assert.equal(execFileSync("git", ["branch", "--list", wt.branch], { cwd: repo, encoding: "utf8" }).trim(), "");
   const after = store.thread(thread.id)!;
   assert.deepEqual([after.retired?.pr, after.retired?.reason], [12, "merged"]);
   assert.match(runner.items(thread.id).at(-1)!.kind === "notice" ? (runner.items(thread.id).at(-1) as { text: string }).text : "", /Pull request #12 merged/);
   await assert.rejects(runner.send(thread.id, "again"), /pull request #12 merged/);
-  await runner.retireThread(thread.id, { number: 12, url: "" }); // idempotent
+  await runner.retireThread(thread.id, { number: 12, url: "", headSha: state.head! }); // idempotent
+  await gitx.worktreeAdd(repo, wt.path, "replacement");
+  await runner.deleteThread(thread.id, true);
+  assert.equal(fs.existsSync(wt.path), true, "deleting a finished transcript must not remove a replacement checkout");
+  await runner.dispose();
+});
+
+test("retirement preserves work written while terminals are closing", async () => {
+  const home = tmpdir("modex-home-");
+  const store = new Store(home);
+  const repo = gitRepo();
+  const project = store.addProject(repo);
+  const runner = new ThreadRunner({ home, store, emit: () => {},
+    beforeDeleteThread: async (id) => { fs.writeFileSync(path.join(store.thread(id)!.cwd, "late.txt"), "keep me"); },
+  });
+  const thread = await runner.createThread(project.id, { worktree: true });
+  const head = (await gitx.worktreeState(thread.cwd)).head!;
+  await runner.retireThread(thread.id, { number: 12, url: "", ...{ headSha: head } });
+  assert.equal(fs.existsSync(path.join(thread.cwd, "late.txt")), true);
+  assert.equal(store.thread(thread.id)!.retired, undefined);
   await runner.dispose();
 });

@@ -270,16 +270,20 @@ integration or model account changes are included. Live signed production sign-i
 repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
 remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
-## In flight
+## On main, unreleased
 
-- **Approval policy, full skill text, and task retirement** (branch `approvals-yolo-retire`).
-  A thread can be set to **Always allow** or **YOLO** from the composer's access menu, the
-  approval card, or the iPhone; the [approval rules](approval-rules.md#thread-policy-always-allow-and-yolo)
-  page has the exact semantics. The iPhone skill picker now shows each skill's whole description
-  instead of clipped one-liners. A worktree thread whose pull request merged is retired
-  automatically (worktree and branch removed, transcript kept read-only) when nothing in it
-  would be lost; Settings → General turns this off. Not yet exercised against a physical iPhone
-  or a live merged PR; the sweep and removal are covered by unit tests with a real git worktree.
+**Approval policy, full skill text, and task retirement** (#149).
+A thread can be set to **Always allow** or **YOLO** from the composer's access menu, the
+approval card, or the iPhone; the [approval rules](approval-rules.md#thread-policy-always-allow-and-yolo)
+page has the exact semantics. The iPhone skill picker now shows each skill's whole description
+instead of clipped one-liners. A worktree thread whose pull request merged is retired
+automatically (worktree and branch removed, transcript kept read-only) when nothing in it
+would be lost; checkout state is checked again after terminals close, and automatic removal
+refuses new uncommitted changes; Settings → General turns this off. Not yet exercised against a physical iPhone
+or a live merged PR; the sweep and removal are covered by unit tests with a real git worktree.
+
+
+## In flight
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's

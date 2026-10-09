@@ -1,5 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
+import path from "node:path";
 import { currentRow, items, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
@@ -35,8 +36,29 @@ test("Always allow in thread answers the waiting card, shows a chip that turns i
   await tid(page, "access-picker").click();
   await expect(tid(page, "approvals-option").first()).toHaveAttribute("data-policy", "ask");
   await expect(tid(page, "approvals-option").first()).toHaveAttribute("aria-checked", "true");
+  await page.evaluate(() => { window.confirm = () => false; });
+  await page.locator('[data-testid="approvals-option"][data-policy="yolo"]').click();
+  await expect(chip).toHaveCount(0);
+  await tid(page, "access-picker").click();
+  await page.evaluate(() => { window.confirm = () => true; });
   await page.locator('[data-testid="approvals-option"][data-policy="yolo"]').click();
   await expect(chip).toHaveAttribute("data-policy", "yolo");
   const stored = await page.evaluate(() => window.modex!.invoke("state:get", undefined));
   expect(stored.threads[0]!.approvals).toBe("yolo");
+});
+
+test("finished tasks are searchable read-only transcripts", async () => {
+  await app.close();
+  const file = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(file, "utf8"));
+  state.threads[0].retired = { at: new Date().toISOString(), reason: "merged", pr: 12, url: "https://github.com/o/r/pull/12" };
+  state.threads[0].title = "Finished example";
+  fs.writeFileSync(file, JSON.stringify(state));
+  ({ app, page } = await launch(home));
+  await expect(tid(page, "composer-input")).toHaveCount(0);
+  await expect(tid(page, "retired-notice")).toContainText("Pull request #12 merged");
+  await page.getByRole("button", { name: "Search threads" }).click();
+  await page.getByPlaceholder("Search threads").fill("Finished example");
+  await expect(tid(page, "search-empty")).toHaveCount(0);
+  await expect(tid(page, "thread-row")).toContainText("Finished example");
 });

@@ -47,7 +47,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
     const retired = mine.filter((t) => t.retired && (!q || t.title.toLowerCase().includes(q)));
     return { project: p, all, retired, matches: q ? all.filter((t) => t.title.toLowerCase().includes(q)) : all };
   });
-  const noMatches = q && groups.every((g) => g.matches.length === 0);
+  const noMatches = q && groups.every((g) => g.matches.length === 0 && g.retired.length === 0);
 
   return (
     <aside className="sidebar" data-testid="sidebar">
