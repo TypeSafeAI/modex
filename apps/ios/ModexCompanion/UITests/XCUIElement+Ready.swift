@@ -3,7 +3,7 @@ import XCTest
 extension XCUIElement {
     /// A tappable field may still be waiting for its sheet or keyboard to finish presenting.
     /// `typeText` then verifies that this field, rather than another input, has keyboard focus.
-    func typeTextWhenReady(_ text: String, in app: XCUIApplication, timeout: TimeInterval = 10,
+    func typeTextWhenReady(_ text: String, in app: XCUIApplication, timeout: TimeInterval = 30,
                            file: StaticString = #filePath, line: UInt = #line) {
         tapWhenReady(timeout: timeout, file: file, line: line)
         guard app.keyboards.firstMatch.waitForExistence(timeout: timeout) else {
@@ -19,7 +19,8 @@ extension XCUIElement {
     /// element can exist without a hit point, and a plain `tap()` then fails ("Activation point
     /// invalid") or lands on the outgoing screen. On a loaded CI simulator that window is
     /// long enough to make the paired and demo flows fail intermittently.
-    func tapWhenReady(timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
+    /// Accessibility queries also need up to 30 seconds before XCTest times them out.
+    func tapWhenReady(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         let ready = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"),
             object: self
