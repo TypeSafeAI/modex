@@ -1,5 +1,30 @@
 import { test } from "node:test";
 
+test("Codex configures Pages alongside knowledge on start and fresh resume", async () => {
+  for (const resume of [undefined, "persisted-thread"]) {
+    const proc = new FakeProcess();
+    const { threadId, turnId, seen } = fakeServer(proc);
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+    const pages = { url: "http://127.0.0.1:1234/mcp/pages", instructions: "Maintain Space notes" };
+    const knowledge = { url: "http://127.0.0.1:1234/mcp/knowledge", instructions: "Maintain verified knowledge" };
+    try {
+      const opts = { cwd: "/worktree", mode: "agent" as const, plan: false, model: "", resume, pages, knowledge };
+      const run = backend.runTurn("go", opts, collectSink().sink, new AbortController().signal);
+      await proc.waitFor(l => l.includes('"turn/start"'));
+      const opening = seen.find(s => s.method === (resume ? "thread/resume" : "thread/start"));
+      const names = ["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert"];
+      const config = opening?.params.config as Record<string, unknown>;
+      assert.deepEqual(config["mcp_servers.modex_pages"], { url: pages.url, enabled_tools: names, tools: Object.fromEntries(names.map(name => [name, { approval_mode: "approve" }])) });
+      assert.ok(config["mcp_servers.modex_knowledge"]);
+      const input = JSON.stringify(seen.find(s => s.method === "turn/start")?.params.input);
+      assert.match(input, /Maintain Space notes/);
+      assert.match(input, /Maintain verified knowledge/);
+      proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+      assert.equal((await run).status, "completed");
+    } finally { await backend.dispose(); }
+  }
+});
+
 test("Codex configures per-thread knowledge on start and fresh resume, including each turn's instructions", async () => {
   for (const resume of [undefined, "persisted-thread"]) {
     const proc = new FakeProcess();

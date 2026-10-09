@@ -243,6 +243,7 @@ function Item({ item, live, onAnswer, onFix, onRetry }: { item: ThreadItem; live
       return <ApprovalItem item={item} onAnswer={onAnswer} />;
     case "notice":
       if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
+      if (item.pages) return <div className="notice info" data-testid="item" data-item-kind="notice"><span>{item.text} </span><button className="btn small" aria-label={`Open note ${item.pages.title}`} onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: item.pages!.pageId }))}>{item.pages.title}<Icon name="arrow-right" size={12} /></button></div>;
       if (item.knowledge) return <KnowledgeReceipt item={item} />;
       return <div className={`notice ${item.level}`} data-testid="item" data-item-kind="notice" data-level={item.level}>{item.text}</div>;
     case "thinking":

@@ -26,6 +26,12 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) =
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 
 export function App({ persistPreferences = true, spaceEnabled = true }: { persistPreferences?: boolean; spaceEnabled?: boolean } = {}) {
+  const [openPage, setOpenPage] = useState<{ id: string }>();
+  useEffect(() => {
+    const open = (event: Event) => { setOpenPage({ id: (event as CustomEvent<string>).detail }); setSpaceOpened(true); setSurface("space"); };
+    window.addEventListener("modex:open-page", open);
+    return () => window.removeEventListener("modex:open-page", open);
+  }, []);
   const [surface, setSurface] = useState<"chat" | "space">("chat");
   const [spaceOpened, setSpaceOpened] = useState(false);
   const [state, setState] = useState<AppState | null>(null);
@@ -469,7 +475,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
       />
       <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
       <div className="sheet" data-testid="sheet" data-surface={surface}>
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView active={surface === "space" && !showSettings && !showCompanion && !streamerMode} sidebarOpen={sidebarOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion && !streamerMode} sidebarOpen={sidebarOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}

@@ -12,6 +12,7 @@ import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import type { SecretStore } from "./secrets.js";
 import { describeFailure } from "../../shared/failures.js";
+import type { PagesAgents, PagesLease } from "./pages-agents.js";
 import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
 
 interface Live {
@@ -30,6 +31,7 @@ interface Live {
 }
 
 export interface RunnerOptions {
+  pages?: Pick<PagesAgents, "prepare">;
   knowledge?: Pick<KnowledgeAgents, "prepare">;
   home: string;
   store: Store;
@@ -261,11 +263,22 @@ export class ThreadRunner {
 
   /** `reuse` names an existing user item to run again instead of adding one (Retry). */
   private async runTurn(threadId: string, text: string, reuse?: string): Promise<void> {
-    let thread = this.o.store.thread(threadId);
-    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    const savedThread = this.o.store.thread(threadId);
+    if (!savedThread) throw new Error(`unknown thread ${threadId}`);
+    let thread = savedThread;
     const l = this.slot(threadId);
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
+
+    // Keep the initial permission ceiling while observing any live reduction during setup/turns.
+    const initialPlan = thread.plan;
+    const initialMode = thread.mode;
+    const connectionTurn = {
+      id: thread.id,
+      projectId: thread.projectId,
+      get plan() { return initialPlan || thread.plan; },
+      get mode() { return initialMode === "chat" ? "chat" as const : thread.mode; },
+    };
 
     const retry = reuse !== undefined;
     const derivedTitle = text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread";
@@ -328,22 +341,34 @@ export class ThreadRunner {
     l.backend = thread.backend;
     const turnStart = l.items.length;
     let knowledge: KnowledgeLease | undefined;
-    const revokeKnowledge = () => { void knowledge?.close().catch(() => {}); };
+    let pages: PagesLease | undefined;
+    const revokeConnections = () => {
+      void pages?.close().catch(() => {});
+      void knowledge?.close().catch(() => {});
+    };
+    abort.signal.addEventListener("abort", revokeConnections, { once: true });
     try {
+      // Prepare Pages first: snapshot the turn's read-only ceiling before knowledge setup awaits.
+      // Always attach its stable route, including when the project's setting currently disables it.
+      if (thread.backend !== "mock" && this.o.pages) {
+        pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
+          id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
+        }), abort.signal);
+        if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
+      }
       if (thread.backend !== "mock" && this.o.knowledge) {
-        knowledge = await this.o.knowledge.prepare(thread, change => this.addItem(threadId, {
+        knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
           id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
         }), abort.signal);
         if (knowledge.warning) sink.notice("warn", knowledge.warning);
-        abort.signal.addEventListener("abort", revokeKnowledge, { once: true });
-        if (abort.signal.aborted) { await knowledge.close(); this.setStatus(threadId, "idle"); return; }
+        if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
       }
       const account = thread.backend === "codex" && backend.identity
         ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
       if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
       const result = await backend.runTurn(
         text,
-        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [], ...(knowledge ? { knowledge: knowledge.connection } : {}) },
+        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [], ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}) },
         sink,
         abort.signal,
       );
@@ -367,8 +392,11 @@ export class ThreadRunner {
         this.failTurn(threadId, thread, (err as Error).message, { fast, retry });
       }
     } finally {
-      abort.signal.removeEventListener("abort", revokeKnowledge);
-      try { await knowledge?.close(); } catch (err) { sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`); }
+      abort.signal.removeEventListener("abort", revokeConnections);
+      await Promise.all([
+        pages?.close().catch(err => sink.notice("warn", `Pages connection could not close: ${(err as Error).message}`)),
+        knowledge?.close().catch(err => sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`)),
+      ]);
       // A CLI can exit without closing its last streamed items. Save their tail and stop spinners.
       for (const item of l.items) {
         if ((item.kind === "thinking" || item.kind === "tool") && item.status === "running") {

@@ -1,4 +1,5 @@
 import { AgentTracker } from "./agents.js";
+import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
@@ -249,6 +250,9 @@ export class CodexBackend implements Backend {
     const config = { ...THREAD_CONFIG, ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
       tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
+    } } : {}), ...(opts.pages ? { "mcp_servers.modex_pages": {
+      url: opts.pages.url, enabled_tools: [...PAGES_TOOLS],
+      tools: Object.fromEntries(PAGES_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}) };
     let threadId = opts.resume;
     try {
@@ -267,7 +271,7 @@ export class CodexBackend implements Backend {
     sink.session(threadId);
 
     const tid = threadId;
-    const context = opts.knowledge ? `${opts.knowledge.instructions}\n\n${text}` : text;
+    const context = [opts.knowledge?.instructions, opts.pages?.instructions, text].filter(value => value !== undefined).join("\n\n");
     const input = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
     const agents = new AgentTracker(sink);
     const activities = new Set<string>();

@@ -136,10 +136,13 @@ export class KnowledgeAgents {
     if (req.headers.origin || req.headers.host !== `127.0.0.1:${port}`) { res.writeHead(403).end(); return; }
     const route = [...this.routes.values()].find(r => req.url === `/mcp/${r.token}`);
     if (!route || this.disposed) { res.writeHead(404).end(); return; }
+    // Bind authority before reading the request body. A delayed POST must never inherit
+    // a subsequent turn's lease on this stable route.
+    const requestActive = route.active;
     const mcp = new Server({ name: "modex-knowledge", version: "1" }, { capabilities: { tools: {} } });
     mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
     mcp.setRequestHandler(CallToolRequestSchema, async request => {
-      const active = route.active;
+      const active = requestActive;
       const pending = this.call(active, request.params.name, request.params.arguments ?? {}).catch(error => ({ isError: true, content: [{ type: "text" as const, text: (error as Error).message }] }));
       active?.pending.add(pending);
       try { return await pending; } finally { active?.pending.delete(pending); }

@@ -4,6 +4,25 @@ import { ClaudeBackend, denyMessage, toolTitle } from "../src/main/engine/backen
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 
+test("Claude attaches Pages and knowledge together with exact session tool allowlists", () => {
+  const pages = { url: "http://127.0.0.1:1234/mcp/pages", instructions: "Maintain Space notes" };
+  const knowledge = { url: "http://127.0.0.1:1234/mcp/knowledge", instructions: "Maintain verified knowledge" };
+  for (const resume of [undefined, "previous-session"]) {
+    const opts = { cwd: "/worktree", model: "", plan: false, mode: "agent" as const, pages, knowledge, resume };
+    const args = ClaudeBackend.args(opts);
+    assert.equal(args.filter(arg => arg === "--mcp-config").length, 1);
+    assert.deepEqual(JSON.parse(args[args.indexOf("--mcp-config") + 1]!), { mcpServers: {
+      modex_knowledge: { type: "http", url: knowledge.url }, modex_pages: { type: "http", url: pages.url },
+    } });
+    assert.equal(args[args.indexOf("--append-system-prompt") + 1], `${knowledge.instructions}\n\n${pages.instructions}`);
+    assert.deepEqual(args.slice(args.indexOf("--allowedTools") + 1), [
+      ...["search", "read", "write", "edit", "history"].map(name => `mcp__modex_knowledge__${name}`),
+      ...["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert"].map(name => `mcp__modex_pages__${name}`),
+    ]);
+    if (resume) assert.equal(args[args.indexOf("--resume") + 1], resume);
+  }
+});
+
 test("Claude attaches thread knowledge MCP and maintenance instructions without changing cwd", () => {
   const knowledge = { url: "http://127.0.0.1:1234/mcp/thread", instructions: "Maintain verified knowledge" };
   const args = ClaudeBackend.args({ cwd: "/worktree", model: "", plan: false, mode: "agent", knowledge });

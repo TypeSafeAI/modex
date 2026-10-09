@@ -272,6 +272,15 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
 
 ## In flight
 
+- **Agent notes through Pages MCP.** The `knowledge-agents` branch adds Modex's own
+  local Pages server for Claude/Codex: opt-in notes access per project, revision-checked
+  editing and organization, recoverable trash, attributed version history, and native
+  page links in thread receipts. Space refreshes agent edits and preserves conflicting
+  human drafts as recoverable copies. Locally verified with 455 unit, 159 desktop E2E
+  and 7 site E2E tests, plus actual Claude/Codex resumed-session writes.
+  [Usage](pages-maintenance.md) · [Verification](reviews/2026-10-09-pages-agents.md).
+  Awaiting landing; not merged or released.
+
 - **Agent knowledge maintenance.** The `knowledge-agents` branch connects Claude and
   Codex turns to the selected OpenKnowledge folder through a scoped local MCP adapter.
   Space offers per-project automatic maintenance; chat and plan turns stay read-only.

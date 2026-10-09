@@ -70,6 +70,7 @@ export interface TurnSink {
 }
 
 export interface TurnOptions {
+  pages?: import("../../../shared/pages.js").PagesConnection;
   knowledge?: import("../../../shared/knowledge.js").KnowledgeConnection;
   cwd: string;
   mode: Mode;

@@ -3,7 +3,7 @@ import type { CreateSpacePage, SpacePage } from "../../shared/space";
 import { bridge } from "../bridge";
 
 /** Per-page save queue: edits stay local immediately; acknowledgements never replace newer text. */
-export function useSpace() {
+export function useSpace(active = true) {
   const [pages, setPages] = useState<SpacePage[]>([]);
   const current = useRef(pages);
   const [loaded, setLoaded] = useState(false);
@@ -15,10 +15,24 @@ export function useSpace() {
   const inFlight = useRef<Promise<void> | null>(null);
   const publish = (next: SpacePage[]) => { current.current = next; setPages(next); };
   const load = useCallback(async () => {
-    try { const result = await bridge.invoke("space:list", undefined); publish(result); setLoaded(true); setError(null); }
+    try {
+      const result = await bridge.invoke("space:list", undefined);
+      const merged = result.map(remote => {
+        const local = current.current.find(p => p.id === remote.id);
+        return local && (pending.current.has(remote.id) || local.revision > remote.revision) ? local : remote;
+      });
+      for (const local of current.current) if (!merged.some(p => p.id === local.id)) merged.push(local);
+      publish(merged); setLoaded(true); if (!pending.current.size) setError(null);
+    }
     catch (err) { setError((err as Error).message); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!active) return;
+    void load();
+    const timer = setInterval(() => { if (!inFlight.current && !mutating.current) void load(); }, 1500);
+    const unsubscribe = bridge.onEvent(e => { if (e.type === "item" && e.item.kind === "notice" && e.item.pages) void load(); });
+    return () => { clearInterval(timer); unsubscribe(); };
+  }, [load, active]);
 
   const flush = useCallback((): Promise<void> => {
     if (inFlight.current) return inFlight.current;
@@ -76,5 +90,17 @@ export function useSpace() {
       }));
     } finally { mutating.current = false; setBusy(false); }
   };
-  return { pages, loaded, error, saving, busy, edit, create, trash, flush, retry: () => loaded ? flush() : load() };
+  const preserveDrafts = async () => {
+    if (mutating.current) return;
+    mutating.current = true; setBusy(true);
+    try {
+      if (inFlight.current) { try { await inFlight.current; } catch { /* Preserve failed drafts below. */ } }
+      for (const [id, draft] of pending.current) {
+        await bridge.invoke("space:create", { title: `${draft.title || "Untitled page"} (recovered draft)`.slice(0, 200), markdown: draft.markdown });
+        pending.current.delete(id);
+      }
+      await load();
+    } finally { mutating.current = false; setBusy(false); }
+  };
+  return { pages, loaded, error, saving, busy, edit, create, trash, flush, refresh: load, preserveDrafts, retry: () => loaded ? flush() : load() };
 }

@@ -14,6 +14,8 @@ export type RoutingPosture = "economy" | "balanced" | "quality";
 export interface Project {
   /** Opt-in automatic maintenance of the selected knowledge base. */
   knowledgeMaintenance?: boolean;
+  /** Opt-in agent access to local Space notes. */
+  pagesMaintenance?: boolean;
   id: string;
   name: string;
   path: string;
@@ -63,7 +65,7 @@ export type ThreadItem =
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
-  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange }
+  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
   /** An Auto routing decision made before a turn: what was picked and why. */
@@ -404,6 +406,9 @@ export interface ReleaseUpdate { version: string; url: string; }
 export interface BridgeCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
+  "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };
+  "space:history": { req: { id: string }; res: import("./space.js").SpacePageVersion[] };
+  "space:revert": { req: { id: string; revision: number; version: number }; res: import("./space.js").SpacePage };
   "project:knowledge": { req: { projectId: string; enabled: boolean }; res: Project };
   "knowledge:choose": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:install": { req: undefined; res: import("./knowledge.js").KnowledgeState };

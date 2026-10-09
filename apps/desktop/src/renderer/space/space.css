@@ -174,3 +174,13 @@
   .space-surface *, .space-surface *::before, .space-surface *::after { transition: none !important; }
   .space-templates button:active { scale: 1; }
 }
+
+.pages-maintenance { border-bottom: 1px solid var(--border-pane); padding: 12px 24px; color: var(--text-2); font-size: 12px; }
+.pages-maintenance summary { cursor: pointer; }
+.pages-maintenance p { color: var(--text-3); max-width: 70ch; }
+.pages-maintenance label { display: inline-flex; align-items: center; gap: 8px; margin: 6px 20px 6px 0; }
+.pages-history { border: 1px solid var(--border-pane); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.pages-history > div { display: flex; justify-content: space-between; align-items: center; }
+.pages-history details { padding: 10px 0; }
+.pages-history summary { cursor: pointer; font-size: 12px; }
+.pages-history pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; font: 12px var(--font-mono); }

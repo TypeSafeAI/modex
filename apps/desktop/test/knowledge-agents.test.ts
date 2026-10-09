@@ -201,3 +201,29 @@ test("pinned OpenKnowledge persists agent edits, preserves other writers, return
     } finally { await recovery.close(); }
   } finally { await client.close(); await lease.close(); await agents.dispose(); await knowledge.dispose(); fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test("delayed knowledge requests cannot use the next turn's lease", async () => {
+  const f = await fixture(); const first = await f.begin(false, "chat");
+  let next: Awaited<ReturnType<typeof f.begin>> | undefined;
+  try {
+    const data = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "write", arguments: { path: "New.md", content: "Old request", position: "replace", summary: "Create" } } });
+    const server = (f.agents as unknown as { server: http.Server }).server;
+    const received = new Promise<void>(resolve => {
+      const listener = (req: http.IncomingMessage) => {
+        if (req.headers["x-regression"] !== "delayed-turn") return;
+        server.removeListener("request", listener); resolve();
+      };
+      server.on("request", listener);
+    });
+    let request!: http.ClientRequest;
+    const response = new Promise<any>((resolve, reject) => {
+      request = http.request(first.lease.connection.url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "Content-Length": Buffer.byteLength(data), "x-regression": "delayed-turn" } }, res => {
+        let body = ""; res.on("data", chunk => body += chunk); res.on("end", () => resolve(JSON.parse(body)));
+      });
+      request.on("error", reject); request.write(data.slice(0, -1));
+    });
+    await received; await first.lease.close(); next = await f.begin(); request.end(data.slice(-1));
+    assert.equal((await response).result.isError, true);
+    assert.equal(f.calls.length, 0);
+  } finally { await first.client.close(); await first.lease.close(); await next?.client.close(); await next?.lease.close(); await f.clean(); }
+});
