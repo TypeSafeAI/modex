@@ -2,6 +2,7 @@ import { resolveCli } from "./cli-path.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
+import { APPROVAL_POLICIES } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
 import type { ApprovalRequest, Backend, TurnSink } from "./backends/types.js";
@@ -10,6 +11,7 @@ import { CodexBackend } from "./backends/codex.js";
 import { MockBackend } from "./backends/mock.js";
 import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
+import { policyAnswer, policyReceipt } from "./approvals/policy.js";
 import type { SecretStore } from "./secrets.js";
 import { describeFailure } from "../../shared/failures.js";
 
@@ -123,6 +125,7 @@ export class ThreadRunner {
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     if (this.removingProjects.has(thread.projectId)) throw new Error("This project is being removed.");
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+    if (thread.retired) throw new Error(`This task finished: pull request #${thread.retired.pr} merged and its worktree was removed. Start a new thread to continue.`);
   }
 
   /**
@@ -226,6 +229,34 @@ export class ThreadRunner {
       clearTimeout(l?.flushTimer);
       this.o.store.deleteThread(threadId);
       this.live.delete(threadId);
+    } finally {
+      this.deleting.delete(threadId);
+    }
+  }
+
+  /**
+   * Finishes a task whose pull request merged: removes its worktree and branch and marks the thread
+   * retired. The transcript stays, read-only. Callers have already checked that nothing would be lost.
+   */
+  async retireThread(threadId: string, pr: { number: number; url: string }): Promise<void> {
+    const thread = this.o.store.thread(threadId);
+    const wt = thread?.worktree;
+    if (!thread || !wt || thread.retired) return;
+    if (this.deleting.has(threadId) || this.live.get(threadId)?.run) return;
+    const project = this.o.store.project(thread.projectId);
+    if (!project) return;
+    this.deleting.add(threadId);
+    try {
+      await this.o.beforeDeleteThread?.(threadId);
+      const script = wt.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
+      if (script) await gitx.projectWorktreeRemove(project.path, script, wt.branch);
+      else await gitx.worktreeRemove(project.path, wt.path);
+      // The project script already drops a landed branch; a Modex-managed one is ours to drop.
+      await gitx.branchDelete(project.path, wt.branch).catch(() => {});
+      const retired = { at: new Date().toISOString(), reason: "merged" as const, pr: pr.number, url: pr.url };
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Pull request #${pr.number} merged. Modex removed the worktree and branch ${wt.branch}; this thread is now a read-only record.`, at: retired.at });
+      const t = this.o.store.updateThread(threadId, { retired });
+      this.o.emit({ threadId, type: "thread", thread: t });
     } finally {
       this.deleting.delete(threadId);
     }
@@ -465,7 +496,8 @@ export class ThreadRunner {
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
-      ["mode", "model", "title", "backend", "plan", "effort", "auto"].includes(key))) as ThreadPatch;
+      ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals"].includes(key))) as ThreadPatch;
+    if (patch.approvals !== undefined && !APPROVAL_POLICIES.includes(patch.approvals)) delete patch.approvals;
     if (patch.title !== undefined) {
       this.naming.get(threadId)?.abort();
       this.naming.delete(threadId);
@@ -478,6 +510,8 @@ export class ThreadRunner {
     const titleSource = patch.title === undefined ? {} : { titleSource: opts.automaticTitle ? "auto" as const : "manual" as const };
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch, ...titleSource });
     this.o.emit({ threadId, type: "thread", thread: t });
+    // Switching to YOLO also clears what is already waiting; Always allow leaves it, since it cannot tell which of those are escalations.
+    if (patch.approvals === "yolo") for (const id of [...this.slot(threadId).pending.keys()]) this.answer(threadId, id, "yes");
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
     const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");
@@ -535,9 +569,17 @@ export class ThreadRunner {
         const thread = this.o.store.thread(threadId);
         const project = thread ? this.o.store.project(thread.projectId) : undefined;
         const settings = this.o.store.settings;
-        if (!thread || !project || !gateApplies(req.action, settings.approval_rules, settings.approval_gate, project.path)) return askUser();
+        // The thread's Always allow / YOLO setting answers what the rules left to a human.
+        const byPolicy = (decidedBy?: ApprovalReceipt) => {
+          const policy = this.o.store.thread(threadId)?.approvals;
+          if (policyAnswer(policy, req.action, decidedBy) !== "yes") return askUser(decidedBy);
+          if (!active() || l.abort?.signal.aborted) return "no" as const;
+          this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: "yes", decidedBy: policyReceipt(policy!), at: at() });
+          return "yes" as const;
+        };
+        if (!thread || !project || !gateApplies(req.action, settings.approval_rules, settings.approval_gate, project.path)) return Promise.resolve(byPolicy());
         return this.gateApproval(req, { thread, project, settings, active, signal: abort?.signal }).then((r) => {
-          if (r.ask) return askUser(r.decidedBy);
+          if (r.ask) return byPolicy(r.decidedBy);
           if (!active() || l.abort?.signal.aborted) return "no";
           // Answered by a rule: the card lands already answered, and the thread never waits on it.
           if (r.decidedBy) {

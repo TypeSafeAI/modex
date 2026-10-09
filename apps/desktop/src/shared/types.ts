@@ -7,6 +7,14 @@ export type Mode = "chat" | "agent" | "full-access";
 export type BackendId = "claude" | "codex" | "mock";
 export type ThreadStatus = "idle" | "running" | "waiting" | "error";
 export type ApprovalAnswer = "yes" | "no" | "always";
+
+/**
+ * What a thread does with approvals the CLI asks for. `ask` is today's card. `always` answers "yes" to
+ * everything except a request for more sandbox access. `yolo` answers "yes" to everything; only an
+ * explicit "Never" rule still refuses.
+ */
+export type ApprovalPolicy = "ask" | "always" | "yolo";
+export const APPROVAL_POLICIES: ApprovalPolicy[] = ["ask", "always", "yolo"];
 export type EffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export const EFFORT_LEVELS: EffortLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 export type RoutingPosture = "economy" | "balanced" | "quality";
@@ -44,6 +52,10 @@ export interface Thread {
   /** Opaque identity binding; never credentials. Older Codex handles belong to CLI auth. */
   codexAccount?: string;
   status: ThreadStatus;
+  /** Absent = ask. */
+  approvals?: ApprovalPolicy;
+  /** Set when the task finished: its PR merged and Modex removed the worktree and branch. The transcript stays, read-only. */
+  retired?: { at: string; reason: "merged"; pr: number; url: string };
 }
 
 /** A CLI-reported delegated task. Unknown means the stream ended without a final state. */
@@ -122,6 +134,8 @@ export interface Settings {
   approval_rules: ApprovalRule[];
   /** Whether and how the rules answer approvals before they reach a human. */
   approval_gate: ApprovalGateConfig;
+  /** Retire a worktree thread once its pull request merged and nothing in the worktree would be lost. */
+  auto_retire: boolean;
 }
 
 export type RuleDecision = "allow" | "ask" | "never";
@@ -151,11 +165,12 @@ export const DEFAULT_APPROVAL_GATE: ApprovalGateConfig = { enabled: false, thres
 
 /** Why an approval was answered (or asked) by a rule rather than left to the user alone. */
 export interface ApprovalReceipt {
-  source: "rule";
+  /** `policy`: the thread's Always allow / YOLO setting answered it; `ruleId` is then "policy:<policy>". */
+  source: "rule" | "policy";
   ruleId: string;
   when: string;
   decision: RuleDecision;
-  via: "match" | "jev";
+  via: "match" | "jev" | "policy";
   p?: number;
   ms: number;
   /** Jev's probability that the action is destructive, when Jev was asked. */
@@ -266,7 +281,7 @@ export interface RoutingStatus {
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
 }
 
-export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto">>;
+export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals">>;
 
 /** A suggested next message for an idle thread, chosen by Jev or the built-in heuristic from typed facts about the last turn. */
 export interface FollowUp {
@@ -315,7 +330,8 @@ export interface ChangesSnapshot {
 }
 
 export type PullRequestSummary =
-  | { state: "open" | "draft" | "merged" | "closed"; number: number; title: string; url: string }
+  /** `headSha` is the PR's last pushed commit; retirement only proceeds when the worktree is exactly there. */
+  | { state: "open" | "draft" | "merged" | "closed"; number: number; title: string; url: string; headSha?: string }
   | { state: "none" | "no-remote" | "detached" | "disabled" | "unavailable"; detail: string };
 
 /** Live checkout context; never persisted on the thread or inferred from an old worktree name. */

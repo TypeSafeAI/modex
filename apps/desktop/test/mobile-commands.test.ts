@@ -20,13 +20,38 @@ test("mobile commands expose only the selected provider's skills and command syn
   fs.writeFileSync(path.join(cwd, ".claude", "commands", "check.md"), "---\ndescription: Check the current work.\n---\nDo the check.");
   try {
     assert.deepEqual(discoverMobileCommands(home, cwd, "codex"), [
-      { id: "skill:release", title: "release", detail: "Installed skill", insertion: "$release ", kind: "skill" },
-      { id: "skill:verify", title: "verify", detail: "Installed skill", insertion: "$verify ", kind: "skill" },
+      { id: "skill:release", title: "release", detail: "Ship a verified release.", insertion: "$release ", kind: "skill" },
+      { id: "skill:verify", title: "verify", detail: "Verify files in ~/private/repo", insertion: "$verify ", kind: "skill" },
     ]);
     assert.deepEqual(discoverMobileCommands(home, cwd, "claude"), [
       { id: "command:check", title: "check", detail: "Custom command", insertion: "/check ", kind: "command" },
-      { id: "skill:ship", title: "ship", detail: "Installed skill", insertion: "/ship ", kind: "skill" },
+      { id: "skill:ship", title: "ship", detail: "Prepare a release.", insertion: "/ship ", kind: "skill" },
     ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a skill's whole description reaches the phone, folded or quoted, without the places it points at", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "modex-mobile-descriptions-"));
+  const home = path.join(root, "home");
+  const cwd = path.join(root, "repo");
+  const skills = path.join(home, ".claude", "skills");
+  const write = (name: string, body: string) => {
+    fs.mkdirSync(path.join(skills, name), { recursive: true });
+    fs.writeFileSync(path.join(skills, name, "SKILL.md"), body);
+  };
+  const long = "Use when the user asks for a deep review of a change. ".repeat(12).trim();
+  write("folded", `---\nname: folded\ndescription: >\n  First line of the skill\n  and its second line.\n---\n`);
+  write("quoted", `---\nname: quoted\ndescription: "${long}"\n---\n`);
+  write("located", `---\nname: located\ndescription: Reads ${cwd}/docs and ${home}/notes.\n---\n`);
+  write("bare", `---\nname: bare\n---\n`);
+  try {
+    const by = Object.fromEntries(discoverMobileCommands(home, cwd, "claude").map((c) => [c.title, c.detail]));
+    assert.equal(by.folded, "First line of the skill and its second line.");
+    assert.equal(by.quoted, long);
+    assert.equal(by.located, "Reads <project>/docs and ~/notes.");
+    assert.equal(by.bare, "Installed skill");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

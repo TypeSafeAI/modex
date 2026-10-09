@@ -100,5 +100,6 @@ function summarizePulls(value: unknown, baseRepo: string, headRepo: string, bran
   // Prefer the active PR if a branch has been reused; the API sorts each lifecycle by recency.
   const pr = matches.find((item) => item.state === "open") ?? matches[0];
   return pr ? { state: pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : "open", number: pr.number,
-    title: pr.title.slice(0, 512), url: `https://github.com/${baseRepo}/pull/${pr.number}` } : none();
+    title: pr.title.slice(0, 512), url: `https://github.com/${baseRepo}/pull/${pr.number}`,
+    ...(typeof pr.head.sha === "string" && /^[0-9a-f]{40}$/.test(pr.head.sha) ? { headSha: pr.head.sha } : {}) } : none();
 }

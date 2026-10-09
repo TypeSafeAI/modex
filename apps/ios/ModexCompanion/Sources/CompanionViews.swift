@@ -294,7 +294,7 @@ private struct ThreadRow: View {
                 .overlay(Image(systemName: thread.status == "waiting" ? "hand.raised" : "bubble.left.and.text.bubble.right").foregroundStyle(Palette.accent))
             VStack(alignment: .leading, spacing: 5) {
                 Text(thread.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
-                Text("\(thread.backend.capitalized) · \(thread.status == "waiting" ? "Approval needed" : thread.status.capitalized)")
+                Text("\(thread.backend.capitalized) · \(thread.status == "waiting" ? "Approval needed" : thread.status.capitalized)\(taskSummary(thread).map { " · \($0)" } ?? "")")
                     .font(.system(size: 12)).foregroundStyle(thread.status == "waiting" ? Palette.accent : Palette.muted)
             }
             Spacer(minLength: 0)
@@ -306,12 +306,30 @@ private struct ThreadRow: View {
     }
 }
 
+/// "Worktree · PR #12 open", "Finished · PR #12 merged", or nil for a plain checkout.
+private func taskSummary(_ thread: CompanionThread) -> String? {
+    if let merged = thread.retiredPr { return "Finished · PR #\(merged) merged" }
+    guard thread.worktree == true else { return nil }
+    if let pr = thread.pr { return "Worktree · PR #\(pr.number) \(pr.state)" }
+    return "Worktree"
+}
+
+private func policyTitle(_ policy: String) -> String {
+    switch policy {
+    case "always": return "Always allow"
+    case "yolo": return "YOLO"
+    default: return "Ask each time"
+    }
+}
+
 private struct ThreadDetailView: View {
     @EnvironmentObject private var model: CompanionModel
     @Environment(\.dismiss) private var dismiss
     let thread: CompanionThread
     @State private var approvalToConfirm: String?
     @State private var showCommands = false
+    @State private var confirmYolo = false
+    @State private var alwaysToConfirm: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -320,9 +338,21 @@ private struct ThreadDetailView: View {
                     .accessibilityLabel("Back to threads")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(thread.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    Text("\(model.isDemo ? "Demo · " : "")\(thread.backend.capitalized) · \(currentStatus.capitalized)").font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text("\(model.isDemo ? "Demo · " : "")\(thread.backend.capitalized) · \(currentStatus.capitalized)\(taskSummary(current).map { " · \($0)" } ?? "")").font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(2)
                 }
                 Spacer()
+                Menu {
+                    Button { Task { await model.setApprovals("ask") } } label: { Label("Ask each time", systemImage: policy == "ask" ? "checkmark" : "hand.raised") }
+                    Button { Task { await model.setApprovals("always") } } label: { Label("Always allow", systemImage: policy == "always" ? "checkmark" : "checkmark.shield") }
+                    Button(role: .destructive) { confirmYolo = true } label: { Label("YOLO", systemImage: policy == "yolo" ? "checkmark" : "bolt") }
+                } label: {
+                    Text(policyTitle(policy)).font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(policy == "yolo" ? Color.orange : policy == "always" ? Palette.accent : Palette.muted)
+                        .padding(.horizontal, 10).frame(height: 30)
+                        .background(Palette.surface, in: Capsule())
+                }
+                .accessibilityLabel("Approvals: \(policyTitle(policy))")
+                .accessibilityIdentifier("thread-approvals")
                 Circle().fill(currentStatus == "waiting" ? Palette.accent : currentStatus == "running" ? Color.green : Palette.muted).frame(width: 8, height: 8)
             }
             .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 16)
@@ -333,6 +363,7 @@ private struct ThreadDetailView: View {
                         ForEach(model.snapshot.items) { item in
                             ItemView(item: item, busy: model.answeringId == item.id,
                                      approve: { approvalToConfirm = item.id },
+                                     approveAlways: { alwaysToConfirm = item.id },
                                      deny: { Task { await model.answer(itemId: item.id, approve: false) } })
                                 .id(item.id)
                         }
@@ -357,6 +388,14 @@ private struct ThreadDetailView: View {
             Button("Approve once") { if let id = approvalToConfirm { Task { await model.answer(itemId: id, approve: true) } }; approvalToConfirm = nil }
             Button("Cancel", role: .cancel) { approvalToConfirm = nil }
         } message: { Text(model.isDemo ? "This is the demo. Nothing runs on a Mac; your answer is only recorded here." : "The action will run on your Mac in this thread.") }
+        .confirmationDialog("Always allow in this thread?", isPresented: Binding(get: { alwaysToConfirm != nil }, set: { if !$0 { alwaysToConfirm = nil } }), titleVisibility: .visible) {
+            Button("Approve and always allow") { if let id = alwaysToConfirm { Task { await model.approveAlways(itemId: id) } }; alwaysToConfirm = nil }
+            Button("Cancel", role: .cancel) { alwaysToConfirm = nil }
+        } message: { Text("This and every later action in this thread runs on your Mac without asking. Requests for extra sandbox access still ask. Change it any time from the Approvals menu.") }
+        .confirmationDialog("Turn on YOLO for this thread?", isPresented: $confirmYolo, titleVisibility: .visible) {
+            Button("Turn on YOLO", role: .destructive) { Task { await model.setApprovals("yolo") } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Every action in this thread runs on your Mac without asking, including access outside the sandbox. Your Never rules on the Mac still refuse.") }
         .sheet(isPresented: $showCommands) {
             CommandSheet(projectId: thread.projectId, backend: thread.backend) { insertion in
                 insert(insertion, into: &model.draft)
@@ -365,7 +404,9 @@ private struct ThreadDetailView: View {
         }
     }
 
-    private var currentStatus: String { model.snapshot.threads.first(where: { $0.id == thread.id })?.status ?? thread.status }
+    private var current: CompanionThread { model.snapshot.threads.first(where: { $0.id == thread.id }) ?? thread }
+    private var policy: String { current.approvalPolicy }
+    private var currentStatus: String { current.status }
 
     private var composer: some View {
         VStack(spacing: 0) {
@@ -391,7 +432,7 @@ private struct ThreadDetailView: View {
                         .background(Palette.accent, in: RoundedRectangle(cornerRadius: 14))
                         .foregroundStyle(Palette.background)
                 }
-                .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.sending || !model.connected || currentStatus != "idle")
+                .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.sending || !model.connected || currentStatus != "idle" || current.retiredPr != nil)
                 .opacity(currentStatus == "idle" ? 1 : 0.45)
                 .accessibilityLabel("Send follow-up")
                 .accessibilityIdentifier("send-followup")
@@ -573,13 +614,14 @@ private struct CommandSheet: View {
                                     onSelect(command.insertion)
                                     dismiss()
                                 } label: {
-                                    HStack(spacing: 13) {
+                                    VStack(alignment: .leading, spacing: 6) {
                                         Text(command.insertion.trimmingCharacters(in: .whitespaces))
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced)).foregroundStyle(Palette.accent)
-                                            .frame(width: 112, alignment: .leading).lineLimit(1)
-                                        Text(command.detail).font(.system(size: 13)).foregroundStyle(Palette.muted).lineLimit(2)
-                                        Spacer(minLength: 0)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Text(command.detail).font(.system(size: 13)).foregroundStyle(Palette.muted)
+                                            .fixedSize(horizontal: false, vertical: true)
                                     }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(14).background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
                                 }.buttonStyle(.plain)
                             }
@@ -608,6 +650,7 @@ private struct ItemView: View {
     let item: CompanionItem
     let busy: Bool
     let approve: () -> Void
+    var approveAlways: () -> Void = {}
     let deny: () -> Void
 
     var body: some View {
@@ -626,13 +669,16 @@ private struct ItemView: View {
                 Text(item.question ?? "Action requested").font(.system(size: 15, weight: .semibold))
                 if let detail = item.detail, !detail.isEmpty { Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted).textSelection(.enabled) }
                 if let answer = item.answer {
-                    Label(answer == "yes" ? "Approved" : "Denied", systemImage: answer == "yes" ? "checkmark.circle" : "xmark.circle")
+                    Label(answer == "yes" ? approvedText : "Denied", systemImage: answer == "yes" ? "checkmark.circle" : "xmark.circle")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.muted)
                 } else {
                     HStack(spacing: 10) {
                         Button("Deny", action: deny).buttonStyle(ActionButtonStyle(prominent: false)).accessibilityIdentifier("deny-\(item.id)")
                         Button("Approve once", action: approve).buttonStyle(ActionButtonStyle(prominent: true)).accessibilityIdentifier("approve-\(item.id)")
                     }.disabled(busy)
+                    Button("Always allow in this thread", action: approveAlways)
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.accent).disabled(busy)
+                        .accessibilityIdentifier("always-\(item.id)")
                 }
             }
             .padding(17).frame(maxWidth: .infinity, alignment: .leading)
@@ -650,6 +696,15 @@ private struct ItemView: View {
             if let text = item.text, !text.isEmpty {
                 Text(text).font(.system(size: 12)).foregroundStyle(Palette.muted).padding(.horizontal, 10)
             }
+        }
+    }
+
+    private var approvedText: String {
+        switch item.auto {
+        case "yolo": return "Approved automatically · YOLO"
+        case "always": return "Approved automatically · Always allow"
+        case "rule": return "Approved by your rule"
+        default: return "Approved"
         }
     }
 

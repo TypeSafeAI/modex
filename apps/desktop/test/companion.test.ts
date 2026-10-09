@@ -292,3 +292,44 @@ test("paired companion creates a local or worktree thread and starts its first t
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("companion sets a thread's approval policy, and 'Always allow' answers the request after setting it", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-policy-"));
+  const calls: string[] = [];
+  const items: ThreadItem[] = [{ id: "approval-1", kind: "approval", question: "Run it?", at: "now" }, { id: "approval-2", kind: "approval", question: "Ran it", answer: "yes", decidedBy: { source: "policy", ruleId: "policy:yolo", when: "YOLO", decision: "allow", via: "policy", ms: 0 }, at: "now" }];
+  const state = { projects: [{ id: "p1", name: "example", path: "/private/source", addedAt: "now" }], threads: [{ id: "abcdef12", projectId: "p1", title: "Build", backend: "mock", status: "waiting", cwd: "/private/wt", worktree: { path: "/private/wt", branch: "modex-abcdef12" }, approvals: "yolo", mode: "chat", model: "mock", plan: false, createdAt: "now", updatedAt: "now" }], version: 1, settings: {} } as AppState;
+  const server = new CompanionServer(home, {
+    state: () => state, items: () => items, status: () => "waiting", send: async () => ({ ok: true }),
+    answer: (_id, item, value) => { calls.push(`answer:${item}:${value}`); },
+    setApprovals: (_id, policy) => { calls.push(`policy:${policy}`); },
+    pullRequest: () => ({ state: "open", number: 7, title: "private title", url: "https://github.com/o/r/pull/7" }),
+  }, () => ["127.0.0.1"]);
+  try {
+    const pairing = await server.start();
+    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string };
+    const request = (route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req = https.request(`${credentials.url}${route}`, { method, rejectUnauthorized: false, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+        let text = "";
+        res.on("data", (chunk) => { text += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
+      });
+      req.on("error", reject);
+      req.end(body ? JSON.stringify(body) : undefined);
+    });
+    const snapshot = await request("/v1/snapshot?threadId=abcdef12");
+    assert.deepEqual(snapshot.body.threads[0].approvals, "yolo");
+    assert.deepEqual([snapshot.body.threads[0].worktree, snapshot.body.threads[0].pr], [true, { number: 7, state: "open" }]);
+    assert.ok(!JSON.stringify(snapshot.body).includes("private title"), "the phone gets the PR's number and state, not its title");
+    assert.equal(snapshot.body.items[1].auto, "yolo");
+    assert.equal(snapshot.body.items[0].auto, undefined);
+    assert.equal((await request("/v1/threads/abcdef12/policy", "POST", { policy: "sudo" })).status, 400);
+    assert.equal((await request("/v1/threads/abcdef12/policy", "POST", { policy: "always" })).status, 200);
+    assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "no", policy: "always" })).status, 400, "Always allow cannot ride on a denial");
+    assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes", policy: "yolo" })).status, 400, "YOLO is set on its own, never as a side effect of answering");
+    assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes", policy: "always" })).status, 200);
+    assert.deepEqual(calls, ["policy:always", "policy:always", "answer:approval-1:yes"]);
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

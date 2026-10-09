@@ -272,6 +272,15 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
 
 ## In flight
 
+- **Approval policy, full skill text, and task retirement** (branch `approvals-yolo-retire`).
+  A thread can be set to **Always allow** or **YOLO** from the composer's access menu, the
+  approval card, or the iPhone; the [approval rules](approval-rules.md#thread-policy-always-allow-and-yolo)
+  page has the exact semantics. The iPhone skill picker now shows each skill's whole description
+  instead of clipped one-liners. A worktree thread whose pull request merged is retired
+  automatically (worktree and branch removed, transcript kept read-only) when nothing in it
+  would be lost; Settings → General turns this off. Not yet exercised against a physical iPhone
+  or a live merged PR; the sweep and removal are covered by unit tests with a real git worktree.
+
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The

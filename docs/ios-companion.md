@@ -26,6 +26,23 @@ Deny, with an extra confirmation before approval. The Mac certificate and token 
 `~/.modex/companion/` with owner-only permissions, outside the repository and app bundle.
 The server needs the Mac app to be running. There is no relay or internet endpoint.
 
+## Approvals, skills and finished tasks
+
+An approval card offers **Approve once**, **Deny**, and **Always allow in this thread**, each
+confirmed on the phone. The thread's Approvals menu sets Ask each time, Always allow, or YOLO;
+see [thread policy](approval-rules.md#thread-policy-always-allow-and-yolo). Approvals the Mac
+answered itself show how ("Approved automatically · YOLO").
+
+The skill and command picker shows each skill's complete description, wrapped, with the command
+above it. Descriptions are read from the skill's frontmatter on the Mac; the user's home folder
+and the project folder are replaced with `~` and `<project>` before they leave the Mac, and
+skill file paths are never sent.
+
+Threads on a worktree show their pull request number and state ("Worktree · PR #12 open").
+When the PR merges and nothing in the worktree would be lost, the Mac retires the task and the
+phone shows "Finished · PR #12 merged"; the transcript stays but takes no more follow-ups. The
+phone receives the PR number and state only, never its title or link.
+
 ## Persistent connection
 
 Scan once, or use **Copy pairing link** beside the Mac QR code and paste the link into

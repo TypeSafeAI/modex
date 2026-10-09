@@ -30,6 +30,7 @@ export const THREADS_PER_PROJECT = 5;
 export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject, unsent, agents = [] }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [retiredOpen, setRetiredOpen] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
@@ -40,8 +41,11 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
   };
 
   const groups = state.projects.map((p) => {
-    const all = state.threads.filter((t) => t.projectId === p.id);
-    return { project: p, all, matches: q ? all.filter((t) => t.title.toLowerCase().includes(q)) : all };
+    const mine = state.threads.filter((t) => t.projectId === p.id);
+    // Finished tasks (PR merged, worktree removed) leave the working list; they stay reachable below it.
+    const all = mine.filter((t) => !t.retired);
+    const retired = mine.filter((t) => t.retired && (!q || t.title.toLowerCase().includes(q)));
+    return { project: p, all, retired, matches: q ? all.filter((t) => t.title.toLowerCase().includes(q)) : all };
   });
   const noMatches = q && groups.every((g) => g.matches.length === 0);
 
@@ -81,8 +85,8 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
       <nav className="projects" aria-label="Projects">
         {state.projects.length === 0 && <p className="side-hint">No projects yet. Open a folder to start a thread.</p>}
         {noMatches && <p className="side-hint" data-testid="search-empty">No threads match “{query.trim()}”.</p>}
-        {groups.map(({ project: p, all, matches }) => {
-          if (q && matches.length === 0) return null;
+        {groups.map(({ project: p, all, retired, matches }) => {
+          if (q && matches.length === 0 && retired.length === 0) return null;
           const isCollapsed = !q && collapsed[p.id];
           const selectedIndex = matches.findIndex((t) => t.id === selected);
           const showAll = Boolean(q) || expanded[p.id] || selectedIndex >= THREADS_PER_PROJECT;
@@ -116,6 +120,16 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
                       </button>
                     </li>
                   )}
+                  {retired.length > 0 && (
+                    <li>
+                      <button className="side-row show-more" data-testid="retired-toggle" aria-expanded={Boolean(q) || Boolean(retiredOpen[p.id]) || retired.some((t) => t.id === selected)} onClick={() => setRetiredOpen((x) => ({ ...x, [p.id]: !x[p.id] }))}>
+                        <span className="side-row-label">Finished ({retired.length})</span>
+                      </button>
+                    </li>
+                  )}
+                  {(q || retiredOpen[p.id] || retired.some((t) => t.id === selected)) && retired.map((t) => (
+                    <ThreadRow key={t.id} thread={t} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])} onSelect={() => onSelect(t.id)} onDelete={() => onDeleteThread(t)} />
+                  ))}
                 </ul>
               )}
             </section>
@@ -135,7 +149,8 @@ function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
     let active = true;
     let pending = false;
     const refresh = async () => {
-      if (pending || document.visibilityState === "hidden") return;
+      // A finished task has no checkout left to read.
+      if (pending || t.retired || document.visibilityState === "hidden") return;
       pending = true;
       try {
         const result = await bridge.invoke("thread:context", { threadId: t.id });
@@ -149,14 +164,14 @@ function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
     document.addEventListener("visibilitychange", refresh);
     const reconnect = bridge.onReconnect?.(() => { setContext(null); void refresh(); });
     return () => { active = false; clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); reconnect?.(); };
-  }, [t.id, t.cwd, t.status]);
+  }, [t.id, t.cwd, t.status, t.retired]);
 
   const provider = t.backend === "claude" ? "Claude Code" : t.backend === "codex" ? "Codex" : "Mock";
   const model = t.model || "Default model";
   const pr = context?.pullRequest;
-  const prLabel = pr ? pullRequestLabel(pr) : failed ? "PR unavailable" : "Loading…";
+  const prLabel = t.retired ? `#${t.retired.pr} Merged` : pr ? pullRequestLabel(pr) : failed ? "PR unavailable" : "Loading…";
   const prTitle = pr && "number" in pr ? `${prLabel} · ${pr.title}` : pr && "detail" in pr ? pr.detail : "Reading checkout and pull request status";
-  const branch = context ? context.isRepo ? context.branch ?? "Detached HEAD" : "Local folder" : failed ? "Status unavailable" : "Checking branch…";
+  const branch = t.retired ? "Worktree removed" : context ? context.isRepo ? context.branch ?? "Detached HEAD" : "Local folder" : failed ? "Status unavailable" : "Checking branch…";
   return (
     <li className={`side-row thread-row${selected ? " selected" : ""}`} data-testid="thread-row" data-thread-id={t.id} data-status={t.status} aria-current={selected ? "true" : undefined}>
       <button className="thread-main" title={t.title} aria-label={t.title} aria-describedby={`thread-provider-${t.id}`} onClick={onSelect}>
@@ -171,7 +186,9 @@ function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
         <span className="thread-branch" title={`${t.worktree ? "Worktree" : "Checkout"} · ${branch}`}>
           <Icon name="branch" size={11} /><span data-testid="thread-row-branch">{branch}</span>
         </span>
-        {pr && "url" in pr
+        {t.retired
+          ? <a className="thread-pr" data-testid="thread-row-pr" data-state="merged" title="Pull request merged; worktree and branch removed" href={t.retired.url} target="_blank" rel="noreferrer">{prLabel}</a>
+          : pr && "url" in pr
           ? <a className="thread-pr" data-testid="thread-row-pr" data-state={pr.state} title={prTitle} href={pr.url} target="_blank" rel="noreferrer">{prLabel}</a>
           : <span className="thread-pr" data-testid="thread-row-pr" title={prTitle}>{prLabel}</span>}
       </div>

@@ -22,7 +22,7 @@ export class StoreDemo {
     const project = { id: this.nextId(), name: "Modex demo", path: "/Demo/Modex", addedAt: stamp() };
     this.state = {
       version: 1, projects: [project], threads: [],
-      settings: { theme: "jev", default_backend: "claude", default_mode: "chat", default_model: { claude: "demo", codex: "demo", mock: "demo" }, claude_bin: "claude", codex_bin: "codex", routing: structuredClone(DEFAULT_ROUTING), approval_rules: [], approval_gate: { ...DEFAULT_APPROVAL_GATE } },
+      settings: { theme: "jev", default_backend: "claude", default_mode: "chat", default_model: { claude: "demo", codex: "demo", mock: "demo" }, claude_bin: "claude", codex_bin: "codex", routing: structuredClone(DEFAULT_ROUTING), approval_rules: [], approval_gate: { ...DEFAULT_APPROVAL_GATE }, auto_retire: false },
     };
     const launch = this.createThread({ projectId: project.id, backend: "claude" });
     launch.title = "Review launch changes";
