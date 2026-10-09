@@ -19,6 +19,7 @@ _Last updated 2026-10-09._
 | v0.0.7 | 2026-10-05 | #117 | Official pink identity, persistent Companion pairing, update banner, OpenCoven theme, verified CLI discovery, polished connections and full-width website walkthrough. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.7). |
 | v0.0.8 | 2026-10-06 | #126, #127 | Per-thread provider/model, live branch and PR state; tabbed workspace, empty-screen polish and failure recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.8). |
 | v0.0.9 | 2026-10-08 | #137, #139, #144, #141, #142 | Graphite shell, Settings privacy, Pages/Knowledge, Sources, background turns and separate GitHub identity. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.9). |
+| v0.0.10 | 2026-10-09 | #148, #149, #150, #154, #151 | Agent-maintained Knowledge and Pages, compact resizable panels, approval policies, task retirement and shutdown recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.10). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -270,13 +271,15 @@ integration or model account changes are included. Live signed production sign-i
 repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
 remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
-## v0.0.10 release candidate
+## v0.0.10 release
 
-Release preparation is in progress. A reproduced Electron visibility callback race
-now has a targeted fix so quitting just after launch does not open an error dialog.
-The candidate includes the changes below plus
-Codex ChatGPT-plan recovery (#148). Publication remains gated on the protected release
-workflow and independent artifact verification. [Release ledger](reviews/2026-10-09-v0.0.10-release-review.md).
+Published on 2026-10-09 from signed tag `ebcf9f9` at merge `dbbb33e` (#151).
+Protected Release run `37988118995` passed signing, notarization, stapling and all
+164 desktop plus 7 website packaged E2E tests. Independently downloaded DMG and ZIP
+passed checksums, signatures, Gatekeeper, tickets, version and archive checks; their
+app payloads match. [Release ledger](reviews/2026-10-09-v0.0.10-release-review.md).
+The release also includes Codex ChatGPT-plan recovery (#148) and a targeted fix for
+late Electron visibility notifications that could block quitting after window destruction.
 
 - **Slim Knowledge chrome and resizable panels.**
   The entire Knowledge Properties block collapses under a full-width header, defaults closed,
@@ -307,19 +310,19 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   human drafts as recoverable copies. Locally verified with 455 unit, 159 desktop E2E
   and 7 site E2E tests, plus actual Claude/Codex resumed-session writes.
   [Usage](pages-maintenance.md) · [Verification](reviews/2026-10-09-pages-agents.md).
-  Included in the v0.0.10 candidate.
+  Shipped in v0.0.10.
 
 - **Agent knowledge maintenance.** Claude and Codex turns connect to the selected OpenKnowledge folder through a scoped local MCP adapter.
   Space offers per-project automatic maintenance; chat and plan turns stay read-only.
   Successful writes carry persisted page links, and OpenKnowledge retains collaborative
   history and recovery. Locally verified with both installed CLIs, 432 unit tests,
-  156 desktop E2E tests and 7 site E2E tests; unreleased.
+  156 desktop E2E tests and 7 site E2E tests; shipped in v0.0.10.
   See [usage and integration boundaries](knowledge-maintenance.md) and
   [verification](reviews/2026-10-09-knowledge-agents.md).
 
 ## On main, unreleased
 
-The desktop changes above are included in the v0.0.10 candidate; publication is pending.
+No additional desktop changes are unreleased as of the v0.0.10 tag.
 
 ## In flight
 
