@@ -48,3 +48,12 @@ retains both MCP agents and TaskRetirer; shutdown stops retirement before draini
 leases. Independent integration review found no blockers. Fresh workspace build and
 typechecks passed, with 466 unit tests, 161 desktop E2E and 7 site E2E tests, including
 real OpenKnowledge. Logs: `/tmp/modex-landing-{build,unit,types,e2e}.log`.
+
+### Fresh-machine Knowledge acceptance
+
+The agent integration tests now install the pinned OpenKnowledge companion in their
+isolated homes instead of assuming a maintainer has it installed. An empty runtime path
+reproduced the previous failure; the unit test now uses the installer, and the Electron
+test installs through Space before running the agent. Fresh build, 466 unit tests and
+161 desktop plus 7 site E2E tests passed with real OpenKnowledge enabled.
+Logs: `/tmp/modex-hermetic-{build,unit,e2e}.log`.

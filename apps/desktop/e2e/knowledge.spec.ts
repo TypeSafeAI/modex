@@ -1,7 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { appDir, launch, seedHome, tid } from "./support";
@@ -54,10 +53,10 @@ test("Knowledge maintenance shows a pending toggle and rolls back a failed save"
 
 test("a CLI agent updates real knowledge outside its project and exposes a persistent editor link", async () => {
   test.skip(process.env.MODEX_TEST_OPEN_KNOWLEDGE !== "1", "Requires the pinned OpenKnowledge companion");
+  test.setTimeout(240_000);
   const { home, repo } = seedHome({ default_backend: "claude", default_mode: "agent" });
   const folder = path.join(home, "Knowledge"); fs.mkdirSync(folder);
   fs.mkdirSync(path.join(home, "integrations"));
-  fs.symlinkSync(process.env.MODEX_OPEN_KNOWLEDGE_RUNTIME ?? path.join(os.homedir(), ".modex/integrations/open-knowledge"), path.join(home, "integrations/open-knowledge"));
   fs.writeFileSync(path.join(home, "app/knowledge.json"), JSON.stringify({ version: 1, folder: fs.realpathSync(folder) }));
   const cli = path.join(home, "knowledge-cli.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
@@ -88,6 +87,11 @@ require('node:readline').createInterface({input:process.stdin}).once('line', asy
   fs.writeFileSync(stateFile, JSON.stringify(state));
   const { app, page } = await launch(home);
   try {
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await page.getByRole("button", { name: "Install Open Knowledge" }).click();
+    await expect(page.getByRole("button", { name: "Open knowledge base", exact: true })).toBeEnabled({ timeout: 180_000 });
+    await tid(page, "rail-chat").click();
     await app.evaluate(({ shell }) => { (globalThis as any).__knowledgeOpened = []; shell.openExternal = async url => { (globalThis as any).__knowledgeOpened.push(url); }; });
     await tid(page, "new-chat").click();
     await tid(page, "composer-input").fill("Save the verified architecture decision");

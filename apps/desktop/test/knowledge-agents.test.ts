@@ -153,7 +153,8 @@ test("pinned OpenKnowledge persists agent edits, preserves other writers, return
   const folder = path.join(home, "kb"); fs.mkdirSync(folder);
   fs.mkdirSync(path.join(folder, ".ok")); fs.mkdirSync(path.join(folder, "docs"));
   fs.writeFileSync(path.join(folder, ".ok", "config.yml"), "content:\n  dir: docs\nautoSync:\n  default: off\n");
-  const knowledge = new KnowledgeService(home, { runtimeDir: process.env.MODEX_OPEN_KNOWLEDGE_RUNTIME ?? path.join(os.homedir(), ".modex/integrations/open-knowledge") });
+  const knowledge = new KnowledgeService(home, { runtimeDir: process.env.MODEX_OPEN_KNOWLEDGE_RUNTIME });
+  if (!knowledge.snapshot().installed) await knowledge.install();
   await knowledge.selectFolder(folder);
   const agents = new KnowledgeAgents({ knowledge, enabled: () => true });
   const changes: unknown[] = [];
