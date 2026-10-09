@@ -1,12 +1,33 @@
-import { WebContentsView, type BrowserWindow } from "electron";
-import { allowedBrowserURL, browserURL, type BrowserBounds, type BrowserSnapshot, type WorkspaceShortcut } from "../shared/browser.js";
+import { WebContentsView, type BrowserWindow, type WebFrameMain } from "electron";
+import { allowedBrowserURL, browserURL, WORKSPACE_BROWSER_PARTITION, type BrowserBounds, type BrowserSnapshot, type WorkspaceShortcut } from "../shared/browser.js";
+import { fillLoginFields, type LoginFields } from "./engine/browser-credentials.js";
 
-/** Guest pages have no preload, Node, app storage, permissions or access to Modex's bridge. */
+/** Guest pages have no app preload, Node, app storage or access to Modex's bridge. */
 export class WorkspaceBrowser {
-  private views = new Map<string, { view: WebContentsView; error?: string; styled?: boolean; cssKey?: string; styleVersion?: number }>();
+  private views = new Map<string, { view: WebContentsView; navigation: number; error?: string; styled?: boolean; cssKey?: string; styleVersion?: number }>();
   private fullView = false;
   private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
   constructor(private window: BrowserWindow, private options: { partition?: string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string } } = {}) {}
+  ownsFrame(frame: WebFrameMain | null): boolean {
+    if (!frame || frame.isDestroyed()) return false;
+    return [...this.views.values()].some(({ view }) => !view.webContents.isDestroyed() && view.webContents.mainFrame === frame.top);
+  }
+  frameGuard(frame: WebFrameMain): () => boolean {
+    const entry = [...this.views.values()].find(({ view }) => !view.webContents.isDestroyed() && view.webContents.mainFrame === frame.top);
+    const navigation = entry?.navigation, url = frame.url;
+    return () => Boolean(entry && this.ownsFrame(frame) && entry.navigation === navigation && frame.url === url);
+  }
+  credentialTarget(id: string) {
+    const entry = this.views.get(id);
+    if (!entry || entry.view.webContents.isDestroyed()) throw new Error("Open a browser page first.");
+    const contents = entry.view.webContents, navigation = entry.navigation, url = contents.getURL();
+    const isCurrent = () => !contents.isDestroyed() && this.views.get(id) === entry && entry.navigation === navigation && contents.getURL() === url;
+    return { url, isCurrent, fill: async (fields: LoginFields): Promise<boolean> => {
+      if (!isCurrent()) return false;
+      const origin = new URL(url).origin;
+      return contents.executeJavaScriptInIsolatedWorld(1001, [{ code: `(${fillLoginFields.toString()})(${JSON.stringify(origin)},${JSON.stringify(fields)})` }]);
+    } };
+  }
   async refreshAppearance(): Promise<void> {
     await Promise.all([...this.views.keys()].map(id => this.style(id)));
   }
@@ -49,8 +70,8 @@ export class WorkspaceBrowser {
     if (!entry) {
       if (!url) return null;
       if (this.views.size >= 12) throw new Error("Close a browser tab before opening another.");
-      const view = new WebContentsView({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, partition: this.options.partition ?? "modex-workspace-browser", webSecurity: true, allowRunningInsecureContent: false } });
-      entry = { view };
+      const view = new WebContentsView({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, partition: this.options.partition ?? WORKSPACE_BROWSER_PARTITION, webSecurity: true, allowRunningInsecureContent: false } });
+      entry = { view, navigation: 0 };
       this.views.set(id, entry);
       const contents = view.webContents;
       contents.on("before-input-event", (event, input) => {
@@ -76,7 +97,7 @@ export class WorkspaceBrowser {
       contents.on("will-frame-navigate", (e) => { if (!allowed(e.url) && e.url !== "about:blank") e.preventDefault(); });
       contents.setWindowOpenHandler(({ url }) => { if (allowed(url)) void contents.loadURL(url).catch(() => {}); return { action: "deny" }; });
       contents.on("did-fail-load", (_e, code, description, _url, mainFrame) => { if (mainFrame && code !== -3 && entry) entry.error = description; });
-      contents.on("did-start-navigation", (_e, _url, _inPlace, mainFrame) => { if (mainFrame && entry) entry.error = undefined; });
+      contents.on("did-start-navigation", (_e, _url, _inPlace, mainFrame) => { if (mainFrame && entry) { entry.error = undefined; entry.navigation++; } });
       if (this.options.appearance) {
         contents.on("did-start-navigation", (_e, _url, inPlace, mainFrame) => {
           if (mainFrame && !inPlace && entry) { entry.styled = false; entry.styleVersion = (entry.styleVersion ?? 0) + 1; entry.cssKey = undefined; view.setVisible(false); }

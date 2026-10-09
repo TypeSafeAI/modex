@@ -6,6 +6,7 @@ import { ChangesPanel, FileIcon } from "./ChangesPanel";
 import { Icon, type IconName } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
+import { BrowserToolsDialog } from "./BrowserToolsDialog";
 import "../workspace.css";
 
 type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browser"; title: string; browser?: BrowserSnapshot };
@@ -25,6 +26,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   const [toolsMenu, setToolsMenu] = useState(false);
   const [terminalMenu, setTerminalMenu] = useState(false);
   const [pageMenu, setPageMenu] = useState(false);
+  const [browserTools, setBrowserTools] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+  const [browserNotice, setBrowserNotice] = useState("");
   const [address, setAddress] = useState("");
   const addressEdited = useRef(false);
   const addressTab = useRef(active);
@@ -71,6 +75,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     // A loading-page snapshot can arrive while the next URL is being typed.
     if (!addressEdited.current) setAddress(current.browser?.url ?? "");
     setError("");
+    setBrowserNotice("");
     if (current.kind === "new") addressRef.current?.focus();
   }, [active, current.browser?.url]);
   useEffect(() => () => {
@@ -83,7 +88,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   }, [full, visible]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (suspended || e.defaultPrevented) return;
+      if (suspended || browserTools || e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && ["b", "f"].includes(e.key.toLowerCase())) { e.preventDefault(); newTab(e.key.toLowerCase() === "f"); }
       else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "g") { e.preventDefault(); openTool("review"); }
       else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "p") { e.preventDefault(); openTool("files"); }
@@ -109,6 +114,16 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       const snapshot = await bridge.invoke("browser:command", { id, action, url: value });
       if (snapshot) setTabs((prev) => prev.map((t) => t.id === id ? { ...t, kind: "browser", title: snapshot.title || "New tab", browser: snapshot } : t));
     } catch (error) { setError((error as Error).message); }
+  };
+  const browserAction = async (action: "fill" | "external") => {
+    const id = current.id;
+    setPageMenu(false); setError(""); setBrowserNotice("");
+    if (action === "fill") setSigningIn(true);
+    try {
+      if (action === "external") await bridge.invoke("browser:external", { id });
+      else if (await bridge.invoke("browser:fillLogin", { id }) && currentRef.current.id === id) setBrowserNotice("Login filled. Review the fields, then sign in.");
+    } catch (error) { if (currentRef.current.id === id) setError((error as Error).message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "")); }
+    finally { setSigningIn(false); }
   };
   // Poll only the visible page. No page gets the app's preload or IPC authority.
   useEffect(() => {
@@ -174,9 +189,11 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
           <div className="workspace-history"><IconButton icon="arrow-left" label="Go back" size="md" disabled={!current.browser?.back} onClick={() => void browserCommand("back")} /><IconButton icon="arrow-right" label="Go forward" size="md" disabled={!current.browser?.forward} onClick={() => void browserCommand("forward")} /><span className="history-separator" /><IconButton icon="restart" label="Reload page" size="md" disabled={current.kind === "new"} onClick={() => void browserCommand("reload")} /></div>
           <form className="workspace-address-form" onSubmit={(e) => { e.preventDefault(); void browserCommand("navigate", address); }}><input ref={addressRef} data-testid="workspace-address" aria-label="Search or enter a URL" placeholder="Search or enter a URL" value={address} onChange={(e) => { addressEdited.current = true; setAddress(e.target.value); }} spellCheck={false} /></form>
           <IconButton icon="comment" label="Focus chat" className="workspace-circle" size="md" onClick={() => { setFull(false); onFocusChat(); }} />
-          <span className="workspace-menu-anchor"><IconButton ref={pageRef} icon="more" label="Page options" className="workspace-circle" size="md" aria-haspopup="menu" aria-expanded={pageMenu} onClick={() => setPageMenu(!pageMenu)} /><Menu open={pageMenu} anchorRef={pageRef} onClose={() => setPageMenu(false)} label="Page options" placement="bottom-end"><MenuItem disabled={!current.browser?.url} onClick={() => { void bridge.invoke("clipboard:write", { text: current.browser?.url ?? "" }); setPageMenu(false); }}>Copy page URL</MenuItem><MenuItem onClick={() => { closeTab(current); setPageMenu(false); }}>Close tab</MenuItem></Menu></span>
+          <IconButton icon="gear" label="Browser extensions and sign-in" className="workspace-circle" size="md" onClick={() => setBrowserTools(true)} />
+          <span className="workspace-menu-anchor"><IconButton ref={pageRef} icon="more" label="Page options" className="workspace-circle" size="md" aria-haspopup="menu" aria-expanded={pageMenu} onClick={() => setPageMenu(!pageMenu)} /><Menu open={pageMenu} anchorRef={pageRef} onClose={() => setPageMenu(false)} label="Page options" placement="bottom-end"><MenuItem disabled={!current.browser?.url?.startsWith("https:") || signingIn} onClick={() => void browserAction("fill")}>Fill with 1Password</MenuItem><MenuItem disabled={!current.browser?.url} onClick={() => void browserAction("external")}>Open in system browser</MenuItem><MenuItem disabled={!current.browser?.url} onClick={() => { void bridge.invoke("clipboard:write", { text: current.browser?.url ?? "" }); setPageMenu(false); }}>Copy page URL</MenuItem><MenuItem onClick={() => { closeTab(current); setPageMenu(false); }}>Close tab</MenuItem></Menu></span>
         </div>
         {(error || current.browser?.error) && <p className="workspace-error" role="alert">{error || current.browser?.error}</p>}
+        {(signingIn || browserNotice) && <p className="hint pad" role="status">{signingIn ? "Waiting for 1Password…" : browserNotice}</p>}
         {current.kind === "browser" ? <div className="workspace-guest" data-testid="workspace-browser" ref={guestHost}>{current.browser?.loading && <p className="hint pad" role="status">Loading page…</p>}</div> :
           <div className="workspace-start">
             <h2>Tools</h2>
@@ -191,6 +208,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
           </div>}
       </>}
     </div>
+    {visible && browserTools && <BrowserToolsDialog onClose={() => setBrowserTools(false)} />}
   </aside>;
 }
 

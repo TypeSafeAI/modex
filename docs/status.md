@@ -300,6 +300,19 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   See [usage and integration boundaries](knowledge-maintenance.md) and
   [verification](reviews/2026-10-09-knowledge-agents.md).
 
+- **Browser extensions, 1Password filling and Touch ID passkeys.** The workspace browser
+  keeps a persistent session of its own. Its gear installs approved copies of unpacked
+  Manifest V3 extensions limited to page scripts and styles on named HTTPS sites (no
+  background, native messaging or host APIs); tampered copies fail closed on launch.
+  **Page options → Fill with 1Password** lists exact-origin logins through the local
+  1Password CLI, reads one item only after it is chosen, and fills visible login fields
+  without submitting; credentials never reach the renderer, IPC or transcripts. Signed
+  builds enable Electron's Touch ID authenticator with a `keychain-access-groups`
+  entitlement; synced passkeys use **Open in system browser**. Covered by unit tests for
+  package restrictions, approved-copy integrity and cancellation at every credential step,
+  and by Electron e2e tests for extension isolation and filling. Real 1Password unlock and a
+  signed Touch ID sign-in are manual checks for the next release. [Usage](browser-tools.md).
+
 ## In flight
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end

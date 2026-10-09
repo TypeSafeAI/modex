@@ -2,6 +2,7 @@ import { KnowledgeService } from "./engine/knowledge.js";
 import { PagesAgents } from "./engine/pages-agents.js";
 import { KnowledgeAgents } from "./engine/knowledge-agents.js";
 import { WorkspaceBrowser } from "./workspace-browser.js";
+import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
@@ -87,6 +88,7 @@ const updates = new ReleaseChecker({
 });
 let win: BrowserWindow | null = null;
 let workspaceBrowser: WorkspaceBrowser | null = null;
+let browserTools: BrowserTools | null = null;
 let knowledgeBrowser: WorkspaceBrowser | null = null;
 let knowledgeURL: string | null = null;
 let shuttingDown = false;
@@ -172,6 +174,12 @@ handle("browser:command", ({ id, action, url }) => {
   return workspaceBrowser.command(id, action, url);
 }, { localOnly: true });
 handle("browser:show", ({ id, bounds, fullView }) => workspaceBrowser?.show(id, bounds, fullView), { localOnly: true });
+const browserToolsReady = () => { if (!browserTools) throw new Error("Browser tools unavailable."); return browserTools; };
+handle("browser:extensions", () => browserToolsReady().snapshot(), { localOnly: true });
+handle("browser:extensionInstall", () => browserToolsReady().install(), { localOnly: true });
+handle("browser:extensionUpdate", ({ id, action }) => browserToolsReady().update(id, action), { localOnly: true });
+handle("browser:fillLogin", async ({ id }) => { await pathReady; return browserToolsReady().fill(id); }, { localOnly: true });
+handle("browser:external", ({ id }) => browserToolsReady().external(id), { localOnly: true });
 
 // The companion owns its local server. Only this window can install, select folders, or show it.
 handle("knowledge:state", () => knowledge.snapshot(), { localOnly: true });
@@ -494,6 +502,8 @@ app.on("second-instance", (_event, args) => {
 });
 
 app.whenReady().then(async () => {
+  browserTools = new BrowserTools(home, () => win && !win.isDestroyed() && workspaceBrowser ? { window: win, browser: workspaceBrowser } : null);
+  await browserTools.restore();
   win = createWindow();
   if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
   if (!demo && !process.env.MODEX_E2E) void pathReady.then(() => retirer.start());

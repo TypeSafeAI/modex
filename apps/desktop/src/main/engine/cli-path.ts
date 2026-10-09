@@ -4,10 +4,10 @@ import path from "node:path";
 import { probe } from "./backends/health.js";
 import type { BackendHealth } from "../../shared/types.js";
 
-type CodingCli = "claude" | "codex";
+type CodingCli = "claude" | "codex" | "op";
 export type CliExecutable = string | (() => string);
 interface Options { env?: NodeJS.ProcessEnv; timeoutMs?: number }
-const label = (cli: CodingCli) => cli === "claude" ? "Claude Code" : "Codex";
+const label = (cli: CodingCli) => cli === "claude" ? "Claude Code" : cli === "op" ? "1Password" : "Codex";
 
 function executable(file: string): boolean {
   try { return fs.statSync(file).isFile() && (fs.accessSync(file, fs.constants.X_OK), true); }

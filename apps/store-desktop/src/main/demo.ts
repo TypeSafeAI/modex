@@ -137,6 +137,8 @@ export class StoreDemo {
       "terminal:close": ({ threadId, sessionId }) => { this.session(threadId, sessionId); this.terminals.delete(threadId); },
       "browser:command": ({ id, action }) => action === "close" ? null : { id, url: "", title: "Offline demo", back: false, forward: false, loading: false, error: "External pages require a connected workspace. Explore the sample README in Files or Review while offline." },
       "browser:show": () => {},
+      "browser:extensions": () => ({ extensions: [], touchID: false }),
+      "browser:extensionInstall": unavailable, "browser:extensionUpdate": unavailable, "browser:fillLogin": unavailable, "browser:external": unavailable,
       "models:list": () => ({ models: [{ id: "demo", label: "Scripted demo", isDefault: true, description: "No model request is sent." }] }),
       "backends:health": () => ({ claude: health, codex: health, mock: health }),
       "settings:update": patch => { this.state.settings = { ...this.state.settings, ...patch }; return this.state.settings; },
