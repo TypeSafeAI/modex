@@ -25,7 +25,10 @@ a missing credential stops the run rather than falling back to an unsigned build
   the DMG, which Gatekeeper assesses as a download in its own right. The release script signs
   it by hash with a secure timestamp, submits it to `notarytool`, and staples its ticket. The
   first full run, for v0.0.5, found the gap: the verify step refused an unstapled DMG.
-- Entitlements are the two Electron needs, `allow-jit` and `allow-unsigned-executable-memory`.
+- Entitlements are the two Electron needs, `allow-jit` and `allow-unsigned-executable-memory`,
+  the team application group, and `keychain-access-groups` for the workspace browser's Touch ID
+  passkeys (`9LR8Z8UQ9X.ai.typesafe.modex.webauthn`). The app enables passkeys only when the
+  packaged binary's signature carries that group under the expected team.
   **Library validation stays on.** node-pty's `pty.node`, its `spawn-helper` and the compiled
   terminal supervisor are all inside the bundle and electron-builder signs each of them with
   the same identity, so nothing foreign is loaded and `disable-library-validation` is not
