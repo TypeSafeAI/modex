@@ -38,6 +38,8 @@ test("accounts own distinct Codex children, token environments and resume paths"
     assert.equal(f.calls[0]!.env.ACCESS_TOKEN, "SECRET-account-a");
     assert.equal(f.calls[1]!.env.ACCESS_TOKEN, "SECRET-account-b");
     assert.ok(planArgs.every((arg) => f.calls[0]!.args.includes(arg)));
+    // The subscription-sharing endpoint rejects `agent_message` items, so the plan child never offers spawn_agent.
+    for (const flag of ["features.multi_agent=false", "features.multi_agent_v2=false"]) assert.ok(f.calls[0]!.args.includes(flag), flag);
     assert.equal(f.calls[0]!.args.join(" ").includes("SECRET"), false);
     assert.equal(f.calls[0]!.child.killed, false);
     for (let index = 0; index < 2; index++) f.calls[index]!.child.emitLine({ method: "turn/completed", params: { threadId: `thread-${index}`, turn: { id: "turn", status: "completed" } } });

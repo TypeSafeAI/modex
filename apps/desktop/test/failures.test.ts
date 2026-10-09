@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { classifyFailure, describeFailure, failureReport } from "../src/shared/failures.js";
 
 const STALE = "Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.";
+/** Codex hands over OpenAI's JSON error body verbatim when a ChatGPT plan token refuses a resumed thread's `agent_message` items. */
+const SUBSCRIPTION_SHARING = JSON.stringify({ error: {
+  message: "User subscription sharing currently supports only text, image, and file messages, item references, additional tools, compaction summaries, reasoning items, Web Search call items, developer function and custom tool call items, and programmatic tool calling items. Remove unsupported input items or use an API key instead.",
+  type: "invalid_request_error", param: "input", code: "subscription_sharing_unsupported_capability",
+} }, null, 2);
 
 test("classifyFailure reads the CLIs' own wording", () => {
   const cases: [string, string][] = [
@@ -21,8 +26,30 @@ test("classifyFailure reads the CLIs' own wording", () => {
     ["claude exited with code 1", "crashed"],
     ["Codex was force-stopped from another thread. Send again to continue.", "crashed"],
     ["Something nobody has seen before", "unknown"],
+    [SUBSCRIPTION_SHARING, "unsupported_history"],
+    ["The ChatGPT user has reached their Subscription Sharing usage limit.", "rate_limited"],
   ];
   for (const [message, code] of cases) assert.equal(classifyFailure(message), code, message);
+});
+
+test("describeFailure: a ChatGPT plan refusing a thread's history is not retryable and points at a new thread", () => {
+  const f = describeFailure({ backend: "codex", message: SUBSCRIPTION_SHARING, detail: { codexThreadId: "thr-1" } });
+  assert.equal(f.code, "unsupported_history");
+  assert.equal(f.message, SUBSCRIPTION_SHARING);
+  assert.match(f.summary, /ChatGPT plan connection cannot send part of this conversation's history/);
+  assert.match(f.hint ?? "", /multi-agent item.*Start a new thread/s);
+  assert.deepEqual(f.fix, { kind: "new-thread", label: "Start a new thread" });
+  assert.equal(f.retryable, false);
+  assert.ok(failureReport(f).includes("Codex turn failed (unsupported_history)"));
+});
+
+test("describeFailure: an unknown error delivered as an API JSON body summarises the message inside it", () => {
+  const body = JSON.stringify({ error: { message: "The model `gpt-7-nova` does not exist or you do not have access to it.", type: "invalid_request_error", code: "model_not_found" } }, null, 2);
+  const f = describeFailure({ backend: "codex", message: body });
+  assert.equal(f.code, "unknown");
+  assert.equal(f.summary, "The model `gpt-7-nova` does not exist or you do not have access to it.");
+  assert.equal(f.message, body);
+  assert.equal(describeFailure({ backend: "codex", message: "{ not json" }).summary, "{ not json");
 });
 
 test("describeFailure: a stale Codex sign-in gets a plain summary, the login fix, and the CLI's words verbatim", () => {

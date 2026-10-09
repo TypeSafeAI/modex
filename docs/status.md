@@ -356,6 +356,13 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
   not name threads and e2e runs without a key; only the heuristic path is exercised.
+- **ChatGPT-plan Codex threads poisoned by multi-agent items.** Until the fix on `main`
+  (2026-10-09), a Codex 0.160+ child signed in through the app-owned ChatGPT plan could call
+  `spawn_agent`; OpenAI's subscription-sharing endpoint rejects the resulting `agent_message`
+  items (`subscription_sharing_unsupported_capability`) and the rejection itself lands in the
+  parent thread's history, so the thread fails every turn afterwards. Plan children now run
+  with `features.multi_agent` off and the failure card says to start a new thread. Threads
+  poisoned before the fix stay poisoned in Modex; see [chatgpt-signin.md](chatgpt-signin.md).
 
 ## Next
 

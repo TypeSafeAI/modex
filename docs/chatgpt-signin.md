@@ -25,6 +25,19 @@ Credential strings are redacted from protocol text and process-exit diagnostics.
 Codex's shell environment filters exclude ACCESS_TOKEN, with an empty explicit override
 to prevent an inherited user `set` value from carrying the app token into shell tools.
 
+The plan child also runs with Codex's `multi_agent` and `multi_agent_v2` features off.
+OpenAI's subscription-sharing endpoint accepts only messages, item references, reasoning,
+compaction summaries, web-search calls and function/custom tool calls as input; Codex's
+`spawn_agent` family adds `agent_message` items, which it refuses with
+`subscription_sharing_unsupported_capability`. Before this (Modex 0.0.9 with Codex 0.160+),
+a spawned sub-agent failed at once and its failure was recorded in the parent thread as
+another `agent_message`, so every later turn on that thread failed within seconds. Codex
+CLI's own sign-in uses a different backend and keeps multi-agent. A thread whose Codex
+history already carries such an item shows the `unsupported_history` failure card with
+**Start a new thread**; a thread's account binding is fixed at its first turn, so it
+cannot be moved to Codex CLI authentication from the app. (Codex CLI's own `codex resume
+<thread id>` can still open the same rollout with the CLI's credentials.)
+
 There is one shared Codex process **per registration**, plus the original CLI-auth process.
 A turn's lease begins before asynchronous initialization. Resume handles and background
 titles stay with the original identity, including after account selection changes; old
