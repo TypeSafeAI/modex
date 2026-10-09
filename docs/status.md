@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-08._
+_Last updated 2026-10-09._
 
 ## Shipped
 
@@ -329,16 +329,17 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
-- **Unmerged worktrees.** Each needs a reviewed PR or an explicit disposition.
-  - `auth-retry` (uncommitted): retained as recovery data after the reconciled fix merged in #104.
-  - `finish-auth-approvals` (uncommitted approval UI and receipts): reconciled in #107; preserve the original until its lifecycle is resolved.
-  - `approval-receipts` (uncommitted, overlapping `finish-auth-approvals`): preserve until the
-    approval work is reconciled.
-  - `pr-review-browser` (uncommitted): the reconciled browser bridge merged in #105; preserve
-    this original until its lifecycle is resolved.
-  - `status-reviews` (uncommitted docs snapshot): compare with current status before retiring.
-  - `livestream-redaction` (clean local-only commit): superseded by merged #100; preserve the
-    original branch until its lifecycle is explicitly resolved.
+- **Unmerged worktrees.** None from this list awaits a disposition. All six were retired after
+  their work landed, and their uncommitted work or unique commits were saved as patches outside
+  the repository first.
+  - `auth-retry` (2026-10-09): the retry and auth recovery work is on `main` via #104.
+  - `finish-auth-approvals` (2026-10-09): reconciled in #107, with the auth fix in #104. Its
+    remote branch stays because closed PR #68 references it.
+  - `approval-receipts` (2026-10-07): superseded by #107.
+  - `pr-review-browser` (2026-10-07): the browser bridge merged in #105.
+  - `status-reviews` (2026-10-07): its 2026-10-01 docs snapshot was outdated by later status
+    rewrites.
+  - `livestream-redaction` (2026-10-07): superseded by #100.
 
 ## Known rough edges
 
