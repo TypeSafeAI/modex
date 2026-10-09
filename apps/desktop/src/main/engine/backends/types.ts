@@ -36,7 +36,7 @@ export interface ApprovalAction {
   cwd?: string;
   /** Raw tool input. The gate digests this; it is never sent as-is. */
   input?: Record<string, unknown>;
-  /** Sandbox/permission escalation (Codex permissions request, grantRoot). Only a human may approve it. */
+  /** Sandbox/permission escalation (Codex permissions request, grantRoot). Rules and "Always allow" never approve it; only a human or the thread's YOLO policy does. */
   escalation?: boolean;
 }
 

@@ -1,6 +1,6 @@
 import { toolSummary } from "../../shared/tool-summary";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
+import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
@@ -59,13 +59,13 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
   const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
   const suggestionKey = JSON.stringify([thread.id, thread.status, thread.plan, thread.mode, thread.auto, items.at(-1)?.id]);
   useEffect(() => {
-    if (thread.status !== "idle" || !items.length) return;
+    if (thread.retired || thread.status !== "idle" || !items.length) return;
     let alive = true;
     void bridge.invoke("thread:followup", { threadId: thread.id }).then((value) => {
       if (alive) setFollowUp({ key: suggestionKey, value });
     }).catch(() => { if (alive) setFollowUp(null); });
     return () => { alive = false; };
-  }, [suggestionKey]);
+  }, [suggestionKey, thread.retired]);
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
   const newestUser = useRef<string | undefined>(undefined);
@@ -145,18 +145,20 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
           <Fragment key={turn.user?.id ?? `pre-${i}`}>
             {turn.user && <Item item={turn.user} onAnswer={onAnswer} onFix={onFix} />}
             {turn.user && (i === lastUser && busy ? <TurnHeader start={turn.user.at} status={thread.status} /> : turn.rest.length > 0 && <TurnHeader start={turn.user.at} end={turnEnd(turn.rest)} />)}
-            {turn.rest.map((item) => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onFix={onFix} onRetry={!busy && item.id === retryId ? onRetry : undefined} />)}
+            {turn.rest.map((item) => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />)}
           </Fragment>
         ))}
       </div>
 
-      <Composer
+      {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
         text={text}
         onText={onText}
         busy={busy}
         context={{ project: project.name, cwd: thread.cwd, worktree: thread.worktree, branch }}
         backend={thread.backend}
         mode={thread.mode}
+        approvals={thread.approvals ?? "ask"}
+        onApprovals={(approvals) => onUpdate({ approvals })}
         plan={thread.plan}
         model={thread.model}
         effort={thread.effort}
@@ -175,7 +177,7 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
         onSend={onSend}
         onStop={onStop}
         inputRef={inputRef}
-      />
+      />}
     </section>
   );
 }
@@ -231,7 +233,7 @@ function TurnHeader({ start, end, status }: { start: string; end?: number; statu
   );
 }
 
-function Item({ item, live, onAnswer, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onFix: Props["onFix"]; onRetry?: () => void }) {
+function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
       return <div className="msg user" data-testid="item" data-item-kind="user"><div className="bubble" data-testid="item-text">{item.text}</div></div>;
@@ -240,7 +242,7 @@ function Item({ item, live, onAnswer, onFix, onRetry }: { item: ThreadItem; live
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
-      return <ApprovalItem item={item} onAnswer={onAnswer} />;
+      return <ApprovalItem item={item} onAnswer={onAnswer} onPolicy={onPolicy} />;
     case "notice":
       if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
       if (item.pages) return <div className="notice info" data-testid="item" data-item-kind="notice"><span>{item.text} </span><button className="btn small" aria-label={`Open note ${item.pages.title}`} onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: item.pages!.pageId }))}>{item.pages.title}<Icon name="arrow-right" size={12} /></button></div>;
@@ -346,7 +348,7 @@ type ApprovalEntry = Extract<ThreadItem, { kind: "approval" }>;
  * An approval. A rule's allow or refusal is a compact receipt row (the turn never waited on it);
  * anything a human answers is today's card, plus one line saying why when a rule sent it here.
  */
-function ApprovalItem({ item, onAnswer }: { item: ApprovalEntry; onAnswer: Props["onAnswer"] }) {
+function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void }) {
   const r = item.decidedBy;
   if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
   return (
@@ -363,6 +365,8 @@ function ApprovalItem({ item, onAnswer }: { item: ApprovalEntry; onAnswer: Props
         <div className="row">
           <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
           {item.canAlways !== false && <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>}
+          {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); onAnswer(item.id, "yes"); }}>Always allow in thread</button>}
+          {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => { if (window.confirm("YOLO approves every action in this thread without asking, including access outside the sandbox. Your Never rules still refuse.\n\nTurn on YOLO for this thread?")) onPolicy("yolo"); }}>YOLO</button>}
           <button className="btn danger small" onClick={() => onAnswer(item.id, "no")}>Deny</button>
         </div>
       )}
@@ -383,7 +387,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
         <span className="receipt-label" data-testid="approval-receipt">
           {allowed ? <>Allowed: <code>{title}</code></> : <>Refused by rule "{r.when}"</>}
         </span>
-        <span className="receipt-meta" data-testid="receipt-meta">{allowed ? `rule "${r.when}" · ${via}` : <><code>{title}</code> · {via}</>}</span>
+        <span className="receipt-meta" data-testid="receipt-meta">{r.source === "policy" ? r.when : allowed ? `rule "${r.when}" · ${via}` : <><code>{title}</code> · {via}</>}</span>
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
       {open && (
@@ -391,8 +395,10 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
           <div className="receipt-question">{item.question}</div>
           {item.detail && <pre className="detail">{item.detail}</pre>}
           <div className="dim">
-            {allowed ? "Approved once" : "Denied"} by your rule "{r.when}" ({receiptVia(r)}, {r.ms} ms){r.destructive !== undefined ? `; Jev put the chance that it is destructive at ${r.destructive.toFixed(2)}` : ""}.
-            {r.downgraded === "jev-unavailable" ? " Jev was unavailable, so only rules with an exact match could apply." : ""}
+            {r.source === "policy"
+              ? `Approved because this thread is set to "${r.when}".`
+              : <>{allowed ? "Approved once" : "Denied"} by your rule "{r.when}" ({receiptVia(r)}, {r.ms} ms){r.destructive !== undefined ? `; Jev put the chance that it is destructive at ${r.destructive.toFixed(2)}` : ""}.
+                {r.downgraded === "jev-unavailable" ? " Jev was unavailable, so only rules with an exact match could apply." : ""}</>}
           </div>
         </div>
       )}

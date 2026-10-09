@@ -64,6 +64,20 @@ struct CompanionThread: Decodable, Identifiable, Equatable {
     let backend: String
     let status: String
     let updatedAt: String
+    /// "ask", "always" or "yolo": the thread's standing answer to approvals on the Mac.
+    var approvals: String? = nil
+    var worktree: Bool? = nil
+    /// The PR last seen for a worktree task; the Mac sends its number and state only.
+    var pr: PullRequestBadge? = nil
+    /// Set once the Mac finished the task after its PR merged.
+    var retiredPr: Int? = nil
+
+    struct PullRequestBadge: Decodable, Equatable {
+        let number: Int
+        let state: String
+    }
+
+    var approvalPolicy: String { approvals ?? "ask" }
 }
 
 struct CompanionItem: Decodable, Identifiable, Equatable {
@@ -77,6 +91,8 @@ struct CompanionItem: Decodable, Identifiable, Equatable {
     let status: String?
     let level: String?
     let at: String
+    /// For an approval the Mac answered itself: "rule", "always" or "yolo".
+    var auto: String? = nil
 }
 
 struct CompanionSnapshot: Decodable, Equatable {
@@ -120,10 +136,17 @@ protocol CompanionClient {
     func commands(projectId: String, backend: String) async throws -> [CompanionCommand]
     func send(threadId: String, text: String) async throws
     func answer(threadId: String, itemId: String, approve: Bool) async throws
+    /// Sets the thread's standing answer to approvals: "ask", "always" or "yolo".
+    func setApprovals(threadId: String, policy: String) async throws
     func invalidate()
 }
 
-extension CompanionClient { func invalidate() {} }
+extension CompanionClient {
+    func invalidate() {}
+    func setApprovals(threadId: String, policy: String) async throws {
+        throw CompanionError.message("This Mac does not support approval settings. Update Modex on your Mac.")
+    }
+}
 
 final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, CompanionClient {
     let pairing: Pairing
@@ -192,6 +215,11 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
     func answer(threadId: String, itemId: String, approve: Bool) async throws {
         let url = pairing.url.appending(path: "v1/threads/\(threadId)/answer")
         let _: OK = try await request(url, method: "POST", body: ["itemId": itemId, "answer": approve ? "yes" : "no"])
+    }
+
+    func setApprovals(threadId: String, policy: String) async throws {
+        let url = pairing.url.appending(path: "v1/threads/\(threadId)/policy")
+        let _: OK = try await request(url, method: "POST", body: ["policy": policy])
     }
 
     private struct OK: Decodable { let ok: Bool }

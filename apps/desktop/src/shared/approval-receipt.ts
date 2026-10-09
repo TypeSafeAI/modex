@@ -2,6 +2,7 @@ import type { ApprovalReceipt } from "./types.js";
 
 /** How the deciding rule was found to apply: "exact match" or "Jev 0.94". */
 export function receiptVia(r: ApprovalReceipt): string {
+  if (r.via === "policy") return "thread setting";
   return r.via === "match" ? "exact match" : r.p !== undefined ? `Jev ${r.p.toFixed(2)}` : "Jev";
 }
 

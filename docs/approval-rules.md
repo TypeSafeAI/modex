@@ -54,6 +54,25 @@ Claude receives the rule description in a rule-driven refusal, bounded to one li
 denials keep their existing message. Codex receives its normal structured decline; Modex's
 receipt holds the explanation.
 
+## Thread policy: Always allow and YOLO
+
+Each thread also has a standing answer to approvals, separate from the rules above. Set it from
+the access menu in the composer, the **Always allow in thread** and **YOLO** buttons on an
+approval card, or the Approvals menu on the iPhone.
+
+- **Ask each time** (default): every request the CLI makes gets a card.
+- **Always allow**: approves what the CLI asks about in this thread. It still asks before
+  extra sandbox access, when the request cannot be described (no structured action), and when
+  your rules sent it to you on purpose: an **Ask** rule, or a downgrade because the action looked
+  destructive.
+- **YOLO**: approves everything, extra sandbox access included. Switching to YOLO also answers
+  whatever is already waiting. The phone and the Mac both confirm before turning it on.
+
+The policy applies only where the rules left the decision to a person: a **Never** rule still
+refuses in YOLO. YOLO overrides **Ask** rules and downgrades; Always allow does not. It lives on the thread, so it does not carry to new threads or projects.
+Approvals it answers appear as compact receipts ("Always allow in this thread"). This is not the
+CLI's own "Always" for one command, which remains on the card.
+
 ## Data sent to Jev
 
 The gate sends tool/title, scrubbed command text, paths, project name, branch when available,

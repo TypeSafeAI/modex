@@ -372,6 +372,27 @@ import XCTest
         XCTAssertFalse(model.connected)
     }
 
+    func testAlwaysAllowSetsThePolicyBeforeApprovingTheRequest() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        await model.approveAlways(itemId: "approval-a")
+        let calls = await client.calls
+        XCTAssertEqual(calls, ["policy:always", "answer:approval-a"])
+        await model.setApprovals("yolo")
+        let after = await client.calls
+        XCTAssertEqual(after.last, "policy:yolo")
+    }
+
+    func testThreadsDecodeTheirApprovalPolicyAndPullRequestStatus() throws {
+        let json = #"{"id":"abcdef12","projectId":"p","title":"T","backend":"claude","status":"idle","updatedAt":"now","approvals":"yolo","worktree":true,"pr":{"number":7,"state":"merged"},"retiredPr":7}"#
+        let thread = try JSONDecoder().decode(CompanionThread.self, from: Data(json.utf8))
+        XCTAssertEqual(thread.approvalPolicy, "yolo")
+        XCTAssertEqual(thread.pr, CompanionThread.PullRequestBadge(number: 7, state: "merged"))
+        XCTAssertEqual(thread.retiredPr, 7)
+        let old = try JSONDecoder().decode(CompanionThread.self, from: Data(#"{"id":"a","projectId":"p","title":"T","backend":"codex","status":"idle","updatedAt":"now"}"#.utf8))
+        XCTAssertEqual(old.approvalPolicy, "ask", "an older Mac that sends no policy means ask")
+    }
+
     func testDisconnectResetsApprovalAndIgnoresItsLateError() async {
         let (model, client) = fixture()
         await model.select("a")
@@ -428,6 +449,7 @@ private actor ControlledClient: CompanionClient {
     private var answers: [Pending<Void>] = []
     private var commandLists: [Pending<[CompanionCommand]>] = []
     private var creations: [Pending<CompanionThread>] = []
+    private(set) var calls: [String] = []
     nonisolated(unsafe) var createdThread: CompanionThread?
     nonisolated(unsafe) var createdProjectId: String?
     nonisolated(unsafe) var createdText: String?
@@ -449,8 +471,10 @@ private actor ControlledClient: CompanionClient {
         if !sends.isEmpty { try await sends.removeFirst().value() }
     }
     func answer(threadId: String, itemId: String, approve: Bool) async throws {
+        calls.append("answer:\(itemId)")
         if !answers.isEmpty { try await answers.removeFirst().value() }
     }
+    func setApprovals(threadId: String, policy: String) async throws { calls.append("policy:\(policy)") }
     func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread {
         createdProjectId = projectId
         createdText = text

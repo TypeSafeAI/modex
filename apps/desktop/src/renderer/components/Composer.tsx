@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackendId, FollowUp, Mode, ModelInfo } from "../../shared/types";
-import { BACKENDS, MODES } from "../../shared/types";
+import type { ApprovalPolicy, BackendId, FollowUp, Mode, ModelInfo } from "../../shared/types";
+import { APPROVAL_POLICIES, BACKENDS, MODES } from "../../shared/types";
 import { ModelMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
@@ -27,6 +27,9 @@ interface Props {
   context: ComposerContext;
   backend: BackendId;
   mode: Mode;
+  /** The thread's standing answer to approvals; absent in a draft, which has no thread yet. */
+  approvals?: ApprovalPolicy;
+  onApprovals?: (p: ApprovalPolicy) => void;
   plan: boolean;
   model: string;
   effort?: string;
@@ -59,7 +62,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, busy, context, backend, mode, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const submittingRef = useRef(false);
@@ -120,7 +123,12 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
           />
           <div className="composer-bar">
             <PlusMenu busy={busy} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
-            <AccessMenu busy={busy} mode={mode} onMode={onMode} />
+            <AccessMenu busy={busy} mode={mode} onMode={onMode} approvals={approvals} onApprovals={onApprovals} />
+            {approvals !== "ask" && onApprovals && (
+              <button className={`composer-chip ${approvals === "yolo" ? "tone-auto" : "tone-accent"}`} data-testid="approvals-chip" data-policy={approvals} aria-label={`${APPROVAL_LABEL[approvals]} is on. Turn it off`} title="Back to asking before each action" onClick={() => onApprovals("ask")}>
+                {APPROVAL_LABEL[approvals]} <Icon name="close" size={12} />
+              </button>
+            )}
             {plan && (
               <button className="composer-chip tone-accent" data-testid="plan-chip" aria-label="Plan mode is on. Turn it off" disabled={busy} onClick={() => onPlan(false)}>
                 Plan <Icon name="close" size={12} />
@@ -213,7 +221,14 @@ function PlusMenu({ busy, backend, plan, auto, onBackend, onPlan, onAuto }: { bu
 const ACCESS_LABEL: Record<Mode, string> = { chat: "Read only", agent: "Agent", "full-access": "Full access" };
 
 /** The access pill: how much the agent may do without asking (the thread's mode). Orange only for full access. */
-function AccessMenu({ busy, mode, onMode }: { busy: boolean; mode: Mode; onMode: (m: Mode) => void }) {
+const APPROVAL_LABEL: Record<ApprovalPolicy, string> = { ask: "Ask each time", always: "Always allow", yolo: "YOLO" };
+const APPROVAL_HINT: Record<ApprovalPolicy, string> = {
+  ask: "A card for every action the CLI asks about.",
+  always: "Approves what the CLI asks about in this thread, but still asks before extra sandbox access.",
+  yolo: "Approves everything in this thread, extra sandbox access included. Your Never rules still refuse.",
+};
+
+function AccessMenu({ busy, mode, onMode, approvals, onApprovals }: { busy: boolean; mode: Mode; onMode: (m: Mode) => void; approvals: ApprovalPolicy; onApprovals?: (p: ApprovalPolicy) => void }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const info = MODES.find((m) => m.id === mode);
@@ -229,6 +244,16 @@ function AccessMenu({ busy, mode, onMode }: { busy: boolean; mode: Mode; onMode:
             <span className="menu-body">
               <span className="menu-title">{ACCESS_LABEL[m.id]}</span>
               <span className="menu-desc">{m.hint}</span>
+            </span>
+          </MenuItem>
+        ))}
+        {onApprovals && <MenuSeparator />}
+        {onApprovals && <MenuLabel>Approvals</MenuLabel>}
+        {onApprovals && APPROVAL_POLICIES.map((p) => (
+          <MenuItem key={p} checkable selected={p === approvals} data-testid="approvals-option" data-policy={p} onClick={() => { if (p !== "yolo" || window.confirm("YOLO approves every action in this thread without asking, including access outside the sandbox. Your Never rules still refuse.\n\nTurn on YOLO for this thread?")) onApprovals(p); setOpen(false); }}>
+            <span className="menu-body">
+              <span className="menu-title">{APPROVAL_LABEL[p]}</span>
+              <span className="menu-desc">{APPROVAL_HINT[p]}</span>
             </span>
           </MenuItem>
         ))}

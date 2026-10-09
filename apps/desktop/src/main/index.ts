@@ -28,6 +28,7 @@ import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
 import { initialBounds, readWindowState, writeWindowState } from "./engine/window-state.js";
 import { CompanionServer } from "./engine/companion.js";
+import { TaskRetirer } from "./engine/retire.js";
 import { DesktopHost } from "./engine/desktop-host.js";
 import { desktopSystem } from "./engine/desktop-discovery.js";
 import QRCode from "qrcode";
@@ -107,8 +108,18 @@ const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
 const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
+const retirer = new TaskRetirer({
+  enabled: () => store.settings.auto_retire,
+  threads: () => store.snapshot().threads,
+  busy: (id) => runner.status(id) !== "idle",
+  context: (cwd) => threadContexts.read(cwd),
+  inspect: (cwd) => gitx.worktreeState(cwd),
+  retire: (id, pr) => runner.retireThread(id, pr),
+});
 const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
+  pullRequest: (id) => retirer.pullRequest(id),
+  setApprovals: (id, approvals) => { runner.updateThread(id, { approvals }); },
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
   create: async (projectId, options) => { await pathReady; return runner.createThread(projectId, options); },
@@ -485,6 +496,7 @@ app.on("second-instance", (_event, args) => {
 app.whenReady().then(async () => {
   win = createWindow();
   if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
+  if (!demo && !process.env.MODEX_E2E) void pathReady.then(() => retirer.start());
   if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
@@ -531,6 +543,7 @@ app.on("before-quit", (event) => {
   chatgpt.cancel();
   claudeLogin.cancel();
   shuttingDown = true;
+  retirer.stop();
   void Promise.allSettled([pagesAgents.dispose(), knowledgeAgents.dispose().then(() => knowledge.dispose()), desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
     modexAccount.dispose();
     chatgpt.dispose();

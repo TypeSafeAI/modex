@@ -270,25 +270,37 @@ integration or model account changes are included. Live signed production sign-i
 repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
 remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
-## In flight
+## On main, unreleased
 
-- **Agent notes through Pages MCP.** The `knowledge-agents` branch adds Modex's own
+**Approval policy, full skill text, and task retirement** (#149).
+A thread can be set to **Always allow** or **YOLO** from the composer's access menu, the
+approval card, or the iPhone; the [approval rules](approval-rules.md#thread-policy-always-allow-and-yolo)
+page has the exact semantics. The iPhone skill picker now shows each skill's whole description
+instead of clipped one-liners. A worktree thread whose pull request merged is retired
+automatically (worktree and branch removed, transcript kept read-only) when nothing in it
+would be lost; checkout state is checked again after terminals close, and automatic removal
+refuses new uncommitted changes; Settings → General turns this off. Not yet exercised against a physical iPhone
+or a live merged PR; the sweep and removal are covered by unit tests with a real git worktree.
+
+
+- **Agent notes through Pages MCP.** Modex includes its own
   local Pages server for Claude/Codex: opt-in notes access per project, revision-checked
   editing and organization, recoverable trash, attributed version history, and native
   page links in thread receipts. Space refreshes agent edits and preserves conflicting
   human drafts as recoverable copies. Locally verified with 455 unit, 159 desktop E2E
   and 7 site E2E tests, plus actual Claude/Codex resumed-session writes.
   [Usage](pages-maintenance.md) · [Verification](reviews/2026-10-09-pages-agents.md).
-  Awaiting landing; not merged or released.
+  Merged with the agent-maintenance delivery; unreleased.
 
-- **Agent knowledge maintenance.** The `knowledge-agents` branch connects Claude and
-  Codex turns to the selected OpenKnowledge folder through a scoped local MCP adapter.
+- **Agent knowledge maintenance.** Claude and Codex turns connect to the selected OpenKnowledge folder through a scoped local MCP adapter.
   Space offers per-project automatic maintenance; chat and plan turns stay read-only.
   Successful writes carry persisted page links, and OpenKnowledge retains collaborative
   history and recovery. Locally verified with both installed CLIs, 432 unit tests,
-  156 desktop E2E tests and 7 site E2E tests; awaiting landing, unreleased.
+  156 desktop E2E tests and 7 site E2E tests; unreleased.
   See [usage and integration boundaries](knowledge-maintenance.md) and
   [verification](reviews/2026-10-09-knowledge-agents.md).
+
+## In flight
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's

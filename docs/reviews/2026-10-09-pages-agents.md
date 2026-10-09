@@ -40,3 +40,11 @@ On mutation, version-1 Space storage upgrades to version 2 with existing pages p
 as baseline versions. Older builds reject version 2 rather than silently dropping history.
 Human typing checkpoints can skip revision numbers; every explicit agent operation has
 its own snapshot. See [usage and recovery](../pages-maintenance.md).
+
+## Integration with main
+
+Integrated `cc3791b` (thread approvals and task retirement) before landing. Initialization
+retains both MCP agents and TaskRetirer; shutdown stops retirement before draining MCP
+leases. Independent integration review found no blockers. Fresh workspace build and
+typechecks passed, with 466 unit tests, 161 desktop E2E and 7 site E2E tests, including
+real OpenKnowledge. Logs: `/tmp/modex-landing-{build,unit,types,e2e}.log`.
