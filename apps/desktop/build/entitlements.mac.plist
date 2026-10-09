@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
+    <key>keychain-access-groups</key>
+    <array><string>9LR8Z8UQ9X.ai.typesafe.modex.webauthn</string></array>
     <key>com.apple.security.application-groups</key>
     <array><string>9LR8Z8UQ9X.works.jev.modex.desktop</string></array>
     <!--

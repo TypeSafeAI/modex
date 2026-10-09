@@ -1,4 +1,4 @@
-import type { BrowserBounds, BrowserSnapshot, WorkspaceShortcut } from "./browser.js";
+import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 /** Types shared between the Electron main process and the React renderer. */
 
@@ -490,6 +490,11 @@ export interface BridgeCommands {
   "changes:diff": { req: { threadId: string; path: string; original?: string; fullContext?: boolean }; res: string };
   "browser:command": { req: { id: string; action: "navigate" | "back" | "forward" | "reload" | "state" | "close"; url?: string }; res: BrowserSnapshot | null };
   "browser:show": { req: { id: string | null; bounds?: BrowserBounds; fullView?: boolean }; res: void };
+  "browser:extensions": { req: undefined; res: BrowserToolsSnapshot };
+  "browser:extensionInstall": { req: undefined; res: BrowserToolsSnapshot };
+  "browser:extensionUpdate": { req: { id: string; action: "enable" | "disable" | "remove" }; res: BrowserToolsSnapshot };
+  "browser:fillLogin": { req: { id: string }; res: boolean };
+  "browser:external": { req: { id: string }; res: void };
   "files:list": { req: { threadId: string }; res: { paths: string[]; truncated: boolean } };
   "files:read": { req: { threadId: string; path: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
