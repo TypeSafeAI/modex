@@ -22,7 +22,9 @@ function run(text, cwd, complete, key) {
   const naming = path.basename(cwd).startsWith("modex-title-");
   fs.appendFileSync(path.join(home, "title-calls.jsonl"), JSON.stringify({ text, cwd, naming, argv: process.argv.slice(2) }) + "\n");
   if (!naming) return complete("Fixed cookie path handling.", false);
-  fs.writeFileSync(path.join(home, "title-request.json"), JSON.stringify({ text, cwd, argv: process.argv.slice(2) }));
+  const requestFile = path.join(home, "title-request.json");
+  fs.writeFileSync(`${requestFile}.pending`, JSON.stringify({ text, cwd, argv: process.argv.slice(2) }));
+  fs.renameSync(`${requestFile}.pending`, requestFile);
   const timer = setInterval(() => {
     const file = path.join(home, "title-response.json");
     if (!fs.existsSync(file)) return;

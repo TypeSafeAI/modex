@@ -272,7 +272,9 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
 
 ## v0.0.10 release candidate
 
-Release preparation is in progress. The candidate includes the changes below plus
+Release preparation is in progress. A reproduced Electron visibility callback race
+now has a targeted fix so quitting just after launch does not open an error dialog.
+The candidate includes the changes below plus
 Codex ChatGPT-plan recovery (#148). Publication remains gated on the protected release
 workflow and independent artifact verification. [Release ledger](reviews/2026-10-09-v0.0.10-release-review.md).
 
