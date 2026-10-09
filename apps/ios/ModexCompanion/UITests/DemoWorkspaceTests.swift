@@ -4,6 +4,8 @@ import XCTest
 final class DemoWorkspaceTests: XCTestCase {
     func testDemoWorkspaceNeedsNoMac() {
         continueAfterFailure = false
+        let prompts = answerSystemAlertsDuringActions()
+        defer { removeUIInterruptionMonitor(prompts) }
         let app = XCUIApplication()
         app.launch()
         let demo = app.buttons["demo-button"]
@@ -19,7 +21,7 @@ final class DemoWorkspaceTests: XCTestCase {
             }
         }
         XCTAssertTrue(demo.waitForExistence(timeout: 15))
-        if !demo.isHittable { app.swipeUp() }
+        if !demo.isReadyToTap { app.swipeUp() }
         demo.tapWhenReady()
 
         XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10), "The demo must say it is not a paired Mac.")
@@ -43,7 +45,7 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 10))
         input.typeTextWhenReady("Ship it", in: app)
         app.buttons["send-followup"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.waitForExistence(timeout: 20), "The demo must answer a follow-up.")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.appears(within: 20), "The demo must answer a follow-up.")
         capture(app, name: "Demo follow-up")
         app.buttons["Back to threads"].tapWhenReady()
 
@@ -65,7 +67,7 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(newInput.waitForExistence(timeout: 10))
         XCTAssertEqual(newInput.value as? String, "Review from phone /demo-review ")
         app.buttons["create-thread"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Review from phone /demo-review\"")).firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Review from phone /demo-review\"")).firstMatch.appears(within: 20))
         capture(app, name: "Demo thread with a skill")
         app.buttons["Back to threads"].tapWhenReady()
 

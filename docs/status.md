@@ -391,6 +391,22 @@ The desktop changes above are included in the v0.0.10 candidate; publication is 
   180 ms on entry; CI saw 2–3 px of offset on one of two runs of the same commit (PR #35). The
   assertion now polls for the settled bottom edge; other sub-pixel checks in
   `e2e/layout.spec.ts` that follow a transition may need the same.
+- **`iPhone companion` CI flakes, handled 2026-10-09.** The job failed five times in two days on
+  five different lines (#133, #141, #148, and twice on #149's branch). The runner's `.xcresult`
+  bundles showed three causes, none in the app. (1) The tap helper waited on an
+  `XCTNSPredicateExpectation` over `hittable`; XCTest answers that by fetching the element's
+  frame in a nested wait, and when the outer wait timed out it interrupted the fetch, so the
+  element reported a null frame and "Failed to determine hittability" failed the test while
+  the button sat on screen (run 37927792976; one evaluation took 10 s there, snapshots 2–3 s
+  each). (2) `typeText` returned while keystrokes were still in flight, so the next tap sent
+  "Sh" and left "ip it" in the draft, and a tap during a sheet's animation never focused the
+  field. (3) A SpringBoard prompt appeared two minutes into the paired flow; the app stops
+  polling while its scene is inactive, so the state the test waited for never came. The
+  helpers in `apps/ios/ModexCompanion/UITests/XCUIElement+Ready.swift` now poll in plain
+  loops (no evaluation can be interrupted), wait for a settled, finite frame before asking
+  `isHittable`, retry the tap until the field has keyboard focus, wait for the typed value,
+  and answer system prompts during actions and long waits. Timeouts alone (#147) did not
+  remove any of the three.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
