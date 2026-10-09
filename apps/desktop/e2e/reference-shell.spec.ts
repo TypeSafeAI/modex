@@ -9,7 +9,7 @@ test('reference shell keeps title actions reachable and matches the compact neut
     await createThread(page, 'Assess codebase and optimize');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(2177, 1050));
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite');
-    await expect(tid(page, 'sidebar')).toHaveCSS('width', '344px');
+    await expect(tid(page, 'sidebar')).toHaveCSS('width', '240px');
     await expect(tid(page, 'titlebar')).toHaveCSS('height', '44px');
     await expect(tid(page, 'titlebar').locator('.titlebar-folder')).toBeVisible();
     const row = page.locator('.thread-row').first();

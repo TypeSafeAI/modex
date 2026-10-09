@@ -1,13 +1,18 @@
 .space-pages-panel { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .space-pages-panel[hidden] { display: none; }
 .knowledge-main { min-height: 0; }
-.knowledge-maintenance { flex-shrink: 0; padding: 10px 20px; border-bottom: 1px solid var(--rule); font-size: 12px; max-height: 220px; overflow: auto; }
-.knowledge-maintenance summary { cursor: pointer; font-weight: 500; }
-.knowledge-maintenance p { max-width: 760px; color: var(--text-muted); line-height: 1.5; }
+.knowledge-maintenance { flex-shrink: 0; padding: 4px 12px 10px; border-bottom: 1px solid var(--border-pane); font-size: 11px; max-height: 220px; overflow: auto; }
+.knowledge-maintenance[hidden] { display: none; }
+.knowledge-maintenance-toggle { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text-3); font-size: 11px; }
+.knowledge-maintenance-toggle:hover, .knowledge-maintenance-toggle[aria-expanded="true"] { background: var(--bg-row-hover); color: var(--text-1); }
+.knowledge-maintenance-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.knowledge-maintenance p { max-width: 760px; color: var(--text-3); line-height: 1.5; }
 .knowledge-maintenance label { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
 .knowledge-canvas { flex: 1; min-height: 0; margin: 0; }
-.knowledge-topbar { padding: 0 20px; gap: 8px; }
-.knowledge-topbar .btn { display: inline-flex; align-items: center; justify-content: center; }
+.space-topbar.knowledge-topbar { height: 36px; padding: 0 12px; gap: 6px; }
+.knowledge-topbar .space-breadcrumb { gap: 5px; font-size: 11px; }
+.knowledge-topbar .btn { display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 6px; border-color: transparent; background: transparent; font-size: 11px; }
+.knowledge-topbar .btn:hover { background: var(--bg-row-hover); }
 .knowledge-status { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .knowledge-status.ready::before { content: ''; width: 5px; height: 5px; background: var(--accent); border-radius: 50%; }
 .knowledge-setup { flex: 1; overflow: auto; padding: clamp(28px, 5vh, 64px) clamp(24px, 5vw, 76px) 32px; }

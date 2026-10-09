@@ -9,6 +9,7 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
   const [state, setState] = useState<KnowledgeState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [saving, setSaving] = useState<{ id: string; enabled: boolean } | null>(null);
@@ -59,7 +60,7 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     let alive = true;
     const update = async () => {
       const rect = canvas.current?.getBoundingClientRect();
-      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .streamer-shield');
+      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .streamer-shield, [data-panel-resizing="true"]');
       const bounds = active && ready && !overlay && rect && rect.width > 0 && rect.height > 0
         ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : undefined;
       try {
@@ -71,7 +72,7 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     const resize = new ResizeObserver(() => void update());
     if (canvas.current) resize.observe(canvas.current);
     const mutations = new MutationObserver(() => void update());
-    mutations.observe(document.body, { childList: true, subtree: true });
+    mutations.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-panel-resizing"] });
     window.addEventListener("resize", update);
     const timer = setInterval(() => void update(), 1500);
     return () => { alive = false; clearInterval(timer); resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("knowledge:show", {}).catch(() => {}); };
@@ -85,15 +86,17 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     <header className="space-topbar knowledge-topbar">
       <div className="space-breadcrumb"><button onClick={onPages}>Space</button><Icon name="chevron-right" size={12} /><span>Knowledge base</span></div>
       <span className="spacer" />
+      <button className="knowledge-maintenance-toggle" aria-expanded={maintenanceOpen} aria-controls="knowledge-maintenance" onClick={() => setMaintenanceOpen(open => !open)}>
+        <Icon name="chevron-right" size={12} />Agent maintenance
+      </button>
       <span className={`knowledge-status${ready ? " ready" : ""}`} role="status">{state?.status === "installing" ? "Installing…" : state?.status === "starting" ? "Opening…" : state?.status === "stopping" ? "Stopping…" : ready ? (state?.external ? "Connected locally" : "Running locally") : "Local knowledge"}</span>
       {ready && <><button className="btn small" aria-label="Reload knowledge base" onClick={() => void extra("knowledge:reload")}><Icon name="restart" size={14} /></button><button className="btn small" aria-label="Open knowledge base in browser" onClick={() => void extra("knowledge:external")}><Icon name="globe" size={14} /></button><button className="btn small" disabled={busy} title={state?.external ? "Disconnect from this server and leave it running" : "Stop the server started by Modex"} onClick={() => void run("knowledge:stop")}>{state?.external ? "Disconnect" : "Stop"}</button></>}
     </header>
-    <details className="knowledge-maintenance">
-      <summary>Agent maintenance</summary>
+    <section id="knowledge-maintenance" className="knowledge-maintenance" aria-label="Agent maintenance settings" hidden={!maintenanceOpen}>
       <p>Agents can search your selected knowledge folder. Enable a project to save verified decisions, fixes, and procedures automatically. Chat and plan mode stay read-only. Changes include a page link and appear in its history.</p>
       {!projects.length && <p>Add a project in Home to enable automatic maintenance.</p>}
       {projects.map(project => <label key={project.id}><input type="checkbox" aria-label={`Maintain knowledge for ${project.name}`} checked={saving?.id === project.id ? saving.enabled : project.knowledgeMaintenance === true} disabled={saving !== null} onChange={e => void maintain(project.id, e.target.checked)} /><span>{project.name}</span></label>)}
-    </details>
+    </section>
     {(error || state?.error || viewError) && <div className="space-error" role="alert"><span>{error ?? state?.error ?? viewError}</span>{ready && <button className="btn small" onClick={() => void extra("knowledge:reload")}>Retry</button>}</div>}
     {ready ? <div ref={canvas} className="knowledge-canvas" data-testid="knowledge-canvas" aria-label="Open Knowledge editor" /> : <div className="knowledge-setup">
       <div className="knowledge-intro"><span className="space-eyebrow">SPACE / KNOWLEDGE</span><div className="knowledge-emblem"><Icon name="space" size={34} /></div><h1>Give your knowledge a home.</h1><p>Bring your notes, docs, and decisions together.<br />Explore them with Open Knowledge, right here in Space.</p></div>

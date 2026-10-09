@@ -128,7 +128,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   useLayoutEffect(() => {
     const host = guestHost.current;
     const update = () => {
-      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .streamer-shield');
+      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .streamer-shield, [data-panel-resizing="true"]');
       const rect = host?.getBoundingClientRect();
       const show = visible && !suspended && !overlay && current.kind === "browser" && !current.browser?.error && rect;
       void bridge.invoke("browser:show", { id: show ? current.id : null, fullView: full, ...(show ? { bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : {}) }).catch(() => {});
@@ -137,7 +137,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     const resize = new ResizeObserver(update);
     if (host) resize.observe(host);
     const mutations = new MutationObserver(update);
-    mutations.observe(document.body, { childList: true, subtree: true });
+    mutations.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-panel-resizing"] });
     window.addEventListener("resize", update);
     return () => { resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("browser:show", { id: null }).catch(() => {}); };
   }, [current.id, current.kind, current.browser?.error, visible, suspended, full]);

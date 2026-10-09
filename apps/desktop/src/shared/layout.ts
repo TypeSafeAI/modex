@@ -5,6 +5,8 @@
 export type Layout = {
   /** Thread list beside the rail. */
   sidebar: boolean;
+  sidebarWidth?: number;
+  workspaceWidth?: number;
   /** Tabbed workspace on the right of a thread (the key is kept for existing preferences). */
   changes: boolean;
   /** Opaque, fail-closed cover for screen sharing and livestreams. */
@@ -28,9 +30,13 @@ export function loadLayout(storage: Storage): Layout {
     saved = null;
   }
   if (saved && typeof saved === "object") {
-    for (const key of Object.keys(DEFAULT_LAYOUT) as (keyof Layout)[]) {
+    for (const key of Object.keys(DEFAULT_LAYOUT) as ("sidebar" | "changes" | "streamerMode")[]) {
       const v = (saved as Record<string, unknown>)[key];
       if (typeof v === "boolean") layout[key] = v;
+    }
+    for (const key of ["sidebarWidth", "workspaceWidth"] as const) {
+      const value = (saved as Record<string, unknown>)[key];
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) layout[key] = Math.round(value);
     }
   } else if (storage.getItem(LEGACY_SIDEBAR_KEY) === "closed") {
     layout.sidebar = false;

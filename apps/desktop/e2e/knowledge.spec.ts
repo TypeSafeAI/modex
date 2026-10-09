@@ -110,6 +110,10 @@ require('node:readline').createInterface({input:process.stdin}).once('line', asy
     await expect(tid(page, "knowledge-canvas")).toBeVisible();
     await expect.poll(() => app.context().pages().filter(w => /127\.0\.0\.1/.test(w.url())).length).toBeGreaterThan(0);
     const editor = app.context().pages().find(w => /127\.0\.0\.1/.test(w.url()))!;
+    // DOM readiness precedes the native guest becoming visible after theme setup.
+    await expect.poll(() => app.evaluate(({ BrowserWindow, WebContentsView }, url) =>
+      BrowserWindow.getAllWindows()[0]!.contentView.children.some(view =>
+        view instanceof WebContentsView && view.webContents.getURL() === url && view.getVisible()), editor.url())).toBe(true);
     await openKnowledgeFile(editor, "Decision");
     await expect(editor.getByText("Keep inference in the coding CLIs.", { exact: true }).first()).toBeVisible();
     fs.mkdirSync(screenshots, { recursive: true });
@@ -227,7 +231,7 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
   test.skip(process.env.MODEX_TEST_OPEN_KNOWLEDGE !== "1", "Requires Node 24+, Git, and the npm download");
   test.setTimeout(240_000);
   const { home, repo } = seedHome();
-  fs.writeFileSync(path.join(repo, "Welcome.md"), "# Welcome to Modex knowledge\n\nA connected home for our decisions.\n");
+  fs.writeFileSync(path.join(repo, "Welcome.md"), "---\ntype: Character\ntitle: Antilochus\nsources:\n  - id: butler\n    title: The Odyssey\ngenerated:\n  by: openai/codex\n---\n# Welcome to Modex knowledge\n\nA connected home for our decisions.\n");
   const { app, page } = await launch(home);
   let url = "";
   try {
@@ -258,9 +262,36 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     await openKnowledgeFile(guest, "Welcome");
     await expect(guest.getByText("Welcome to Modex knowledge", { exact: true }).first()).toBeVisible();
     expect(await guest.evaluate(() => typeof (window as unknown as { modex: unknown }).modex)).toBe("undefined");
+    const properties = guest.getByTestId("property-panel");
+    const toggle = properties.getByRole("button", { name: /^Properties/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect((await toggle.boundingBox())!.width).toBeGreaterThan((await properties.locator(':scope > [data-slot="collapsible"]').boundingBox())!.width * 0.9);
+    await expect(properties.getByTestId("property-row")).toHaveCount(0);
+    await toggle.focus();
+    await guest.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(properties.getByText("sources", { exact: true })).toBeVisible();
+    await expect(properties.getByText("generated", { exact: true })).toBeVisible();
+    await guest.reload();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await toggle.click();
+    await expect(properties.getByText("sources", { exact: true })).toBeHidden();
+    await expect(properties.getByText("generated", { exact: true })).toBeHidden();
+    await guest.screenshot({ path: path.join(screenshots, "knowledge-properties-collapsed.png") });
+    await guest.reload();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
     const editor = guest.locator('.tiptap[contenteditable="true"]').filter({ hasText: "Welcome to Modex knowledge" });
     await expect(editor).toBeVisible();
     const visibleGuest = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.some(view => view.getVisible()));
+    const divider = (await page.getByRole("separator", { name: "Resize sidebar" }).boundingBox())!;
+    const x = divider.x + divider.width / 2;
+    const y = divider.y + divider.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await expect.poll(visibleGuest).toBe(false);
+    await page.mouse.move(x + 32, y, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(visibleGuest).toBe(true);
     for (const [theme, name, background, foreground] of [["graphite", "Graphite", "rgb(15, 15, 17)", "rgb(227, 228, 230)"], ["jev", "Jev", "rgb(11, 15, 27)", "rgb(248, 243, 250)"], ["coven", "OpenCoven", "rgb(28, 27, 29)", "rgb(250, 250, 250)"]] as const) {
       await tid(page, "open-settings").click();
       await expect.poll(visibleGuest).toBe(false);

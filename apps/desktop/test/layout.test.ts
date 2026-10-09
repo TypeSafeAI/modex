@@ -62,3 +62,12 @@ test("window state: size is clamped to the display and to the minimum", () => {
   assert.deepEqual(initialBounds(huge, [display], min), { x: 0, y: 0, width: 1728, height: 1079 });
   assert.deepEqual(initialBounds({ ...huge, width: 300, height: 200 }, [display], min), { x: 0, y: 0, width: 900, height: 600 });
 });
+
+test("layout: panel widths survive reload and reject invalid saved values", () => {
+  const saved = { ...DEFAULT_LAYOUT, sidebarWidth: 286, workspaceWidth: 418 };
+  const s = memory();
+  saveLayout(s, saved);
+  assert.deepEqual(loadLayout(s), saved);
+  const invalid = loadLayout(memory({ [LAYOUT_KEY]: JSON.stringify({ sidebarWidth: -1, workspaceWidth: "huge" }) }));
+  assert.deepEqual(invalid, DEFAULT_LAYOUT);
+});
