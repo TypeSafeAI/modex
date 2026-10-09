@@ -110,6 +110,10 @@ require('node:readline').createInterface({input:process.stdin}).once('line', asy
     await expect(tid(page, "knowledge-canvas")).toBeVisible();
     await expect.poll(() => app.context().pages().filter(w => /127\.0\.0\.1/.test(w.url())).length).toBeGreaterThan(0);
     const editor = app.context().pages().find(w => /127\.0\.0\.1/.test(w.url()))!;
+    // DOM readiness precedes the native guest becoming visible after theme setup.
+    await expect.poll(() => app.evaluate(({ BrowserWindow, WebContentsView }, url) =>
+      BrowserWindow.getAllWindows()[0]!.contentView.children.some(view =>
+        view instanceof WebContentsView && view.webContents.getURL() === url && view.getVisible()), editor.url())).toBe(true);
     await openKnowledgeFile(editor, "Decision");
     await expect(editor.getByText("Keep inference in the coding CLIs.", { exact: true }).first()).toBeVisible();
     fs.mkdirSync(screenshots, { recursive: true });

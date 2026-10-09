@@ -37,7 +37,10 @@ for (const backend of ["claude", "codex"] as const) test.describe(`${backend} ch
   }
 
   function respond(title: string, fail = false) {
-    fs.writeFileSync(path.join(home, "title-response.json"), JSON.stringify({ title, fail }));
+    const file = path.join(home, "title-response.json");
+    // The fixture polls for this file; publish only complete JSON.
+    fs.writeFileSync(`${file}.pending`, JSON.stringify({ title, fail }));
+    fs.renameSync(`${file}.pending`, file);
   }
 
   test("a completed reply produces a clean sidebar title that survives relaunch without polluting the transcript", async () => {

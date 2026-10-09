@@ -270,7 +270,13 @@ integration or model account changes are included. Live signed production sign-i
 repeat sign-in, restart, renewal after expiry, cancellation, and local plus confirmed
 remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptance](modex-signin.md).
 
-## On main, unreleased
+## v0.0.10 release candidate
+
+Release preparation is in progress. A reproduced Electron visibility callback race
+now has a targeted fix so quitting just after launch does not open an error dialog.
+The candidate includes the changes below plus
+Codex ChatGPT-plan recovery (#148). Publication remains gated on the protected release
+workflow and independent artifact verification. [Release ledger](reviews/2026-10-09-v0.0.10-release-review.md).
 
 - **Slim Knowledge chrome and resizable panels.**
   The entire Knowledge Properties block collapses under a full-width header, defaults closed,
@@ -301,7 +307,7 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   human drafts as recoverable copies. Locally verified with 455 unit, 159 desktop E2E
   and 7 site E2E tests, plus actual Claude/Codex resumed-session writes.
   [Usage](pages-maintenance.md) · [Verification](reviews/2026-10-09-pages-agents.md).
-  Merged with the agent-maintenance delivery; unreleased.
+  Included in the v0.0.10 candidate.
 
 - **Agent knowledge maintenance.** Claude and Codex turns connect to the selected OpenKnowledge folder through a scoped local MCP adapter.
   Space offers per-project automatic maintenance; chat and plan turns stay read-only.
@@ -310,6 +316,10 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   156 desktop E2E tests and 7 site E2E tests; unreleased.
   See [usage and integration boundaries](knowledge-maintenance.md) and
   [verification](reviews/2026-10-09-knowledge-agents.md).
+
+## On main, unreleased
+
+The desktop changes above are included in the v0.0.10 candidate; publication is pending.
 
 ## In flight
 

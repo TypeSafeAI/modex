@@ -383,6 +383,11 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  w.once("closed", () => {
+    // Electron 44's visibility handlers access the native window without checking
+    // destruction. Late macOS notifications must not reopen an error dialog on quit.
+    for (const event of ["show", "hide", "minimize", "maximize", "restore"] as const) w.removeAllListeners(event);
+  });
   const browser = new WorkspaceBrowser(w);
   workspaceBrowser = browser;
   const knowledgeView = new WorkspaceBrowser(w, {
