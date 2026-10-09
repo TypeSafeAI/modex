@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { AddressInfo } from "node:net";
-import type { AppState, ApprovalAnswer, BackendId, Thread, ThreadItem } from "../../shared/types.js";
+import { APPROVAL_POLICIES, type AppState, type ApprovalAnswer, type ApprovalPolicy, type BackendId, type PullRequestSummary, type Thread, type ThreadItem } from "../../shared/types.js";
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
 
@@ -17,6 +17,10 @@ interface CompanionSource {
   create?(projectId: string, options: { worktree: boolean; backend?: BackendId; auto?: boolean }): Promise<Thread>;
   send(threadId: string, text: string): Promise<{ ok: boolean; error?: string }>;
   answer(threadId: string, itemId: string, answer: ApprovalAnswer): void;
+  /** Sets the thread's standing answer to approvals (Always allow / YOLO). */
+  setApprovals?(threadId: string, approvals: ApprovalPolicy): void;
+  /** The pull request last seen for a worktree task, if any. */
+  pullRequest?(threadId: string): PullRequestSummary | undefined;
 }
 
 interface Config { enabled: boolean; token: string; port?: number }
@@ -220,7 +224,7 @@ export class CompanionServer {
       // The phone can then leave that transcript without treating this as a lost connection.
       this.reply(res, 200, {
         projects: state.projects.map((p) => ({ id: p.id, name: p.name })),
-        threads: state.threads.map((t) => mobileThread(t, this.source.status(t.id))),
+        threads: state.threads.map((t) => mobileThread(t, this.source.status(t.id), this.source.pullRequest?.(t.id))),
         items: thread ? this.source.items(thread.id).map(mobileItem) : [],
         defaultBackend: state.settings.default_backend ?? "codex",
         autoByDefault: state.settings.routing?.auto_by_default ?? false,
@@ -255,10 +259,10 @@ export class CompanionServer {
       const result = await this.source.send(thread.id, value.trim());
       if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
       if (!result.ok) { this.reply(res, 409, { error: "The first turn could not start on your Mac." }); return; }
-      this.reply(res, 201, { thread: mobileThread(thread, this.source.status(thread.id)) });
+      this.reply(res, 201, { thread: mobileThread(thread, this.source.status(thread.id), this.source.pullRequest?.(thread.id)) });
       return;
     }
-    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer)$/.exec(url.pathname);
+    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer|policy)$/.exec(url.pathname);
     if (req.method !== "POST" || !match) { this.reply(res, 404, { error: "Not found." }); return; }
     const threadId = match[1]!;
     const action = match[2]!;
@@ -268,6 +272,14 @@ export class CompanionServer {
     catch { this.reply(res, 400, { error: "Invalid request body." }); return; }
     if (!authorized()) { this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." }); return; }
     if (!this.source.state().threads.some((t) => t.id === threadId)) { this.reply(res, 404, { error: "Thread not found." }); return; }
+    if (action === "policy") {
+      const policy = input.policy;
+      if (typeof policy !== "string" || !APPROVAL_POLICIES.includes(policy as ApprovalPolicy)) { this.reply(res, 400, { error: "Choose Ask, Always allow or YOLO." }); return; }
+      if (!this.source.setApprovals) { this.reply(res, 501, { error: "Approval settings are unavailable." }); return; }
+      this.source.setApprovals(threadId, policy as ApprovalPolicy);
+      this.reply(res, 200, { ok: true });
+      return;
+    }
     if (action === "send") {
       const value = input.text;
       if (typeof value !== "string" || !value.trim() || value.length > 20_000) { this.reply(res, 400, { error: "Enter a message under 20,000 characters." }); return; }
@@ -280,21 +292,32 @@ export class CompanionServer {
     const itemId = input.itemId;
     const answer = input.answer;
     if (typeof itemId !== "string" || (answer !== "yes" && answer !== "no")) { this.reply(res, 400, { error: "Choose Approve or Deny." }); return; }
+    // "Always allow in this thread" from the approval card: the standing answer first, then this request.
+    const standing = input.policy;
+    if (standing !== undefined && standing !== "always") { this.reply(res, 400, { error: "Choose Approve once, Always allow or Deny." }); return; }
+    if (standing === "always" && answer !== "yes") { this.reply(res, 400, { error: "Always allow only applies to an approval." }); return; }
     const pending = this.source.items(threadId).some((item) => item.kind === "approval" && item.id === itemId && !item.answer);
     if (!pending || this.source.status(threadId) !== "waiting") { this.reply(res, 409, { error: "This approval is no longer pending." }); return; }
+    if (standing === "always") this.source.setApprovals?.(threadId, "always");
     this.source.answer(threadId, itemId, answer);
     this.reply(res, 200, { ok: true });
   }
 }
 
-function mobileThread(thread: Thread, status: string): Record<string, unknown> {
-  return { id: thread.id, projectId: thread.projectId, title: thread.title, backend: thread.backend, status, updatedAt: thread.updatedAt };
+function mobileThread(thread: Thread, status: string, pr?: PullRequestSummary): Record<string, unknown> {
+  return {
+    id: thread.id, projectId: thread.projectId, title: thread.title, backend: thread.backend, status, updatedAt: thread.updatedAt,
+    approvals: thread.approvals ?? "ask",
+    ...(thread.worktree ? { worktree: true } : {}),
+    ...(thread.retired ? { retiredPr: thread.retired.pr } : {}),
+    ...(pr && "number" in pr ? { pr: { number: pr.number, state: pr.state } } : {}),
+  };
 }
 
 function mobileItem(item: ThreadItem): Record<string, unknown> {
   switch (item.kind) {
     case "user": case "assistant": case "thinking": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
-    case "approval": return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, at: item.at };
+    case "approval": return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, ...(item.decidedBy?.source === "policy" ? { auto: item.decidedBy.ruleId.slice("policy:".length) } : item.decidedBy && item.decidedBy.decision !== "ask" ? { auto: "rule" } : {}), at: item.at };
     case "tool": return { id: item.id, kind: item.kind, title: item.title, status: item.status, ok: item.ok, at: item.at };
     case "route": return { id: item.id, kind: item.kind, text: `${item.backend} · ${item.model || "default"}`, at: item.at };
   }

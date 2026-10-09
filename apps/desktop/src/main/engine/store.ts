@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   routing: { ...DEFAULT_ROUTING },
   approval_rules: [],
   approval_gate: { ...DEFAULT_APPROVAL_GATE },
+  auto_retire: true,
 };
 
 /** Keeps only well-formed rules; a malformed rule is dropped rather than guessed at. */
@@ -90,6 +91,7 @@ export function migrateSettings(raw: unknown): Settings {
     routing: migrateRouting(r.routing),
     approval_rules: migrateApprovalRules(r.approval_rules),
     approval_gate: migrateApprovalGate(r.approval_gate),
+    auto_retire: typeof r.auto_retire === "boolean" ? r.auto_retire : DEFAULT_SETTINGS.auto_retire,
   };
 }
 
@@ -147,6 +149,7 @@ export class Store {
       theme: normalizeTheme(patch.theme ?? this.state.settings.theme),
       ...(patch.routing ? { routing: migrateRouting({ ...this.state.settings.routing, ...patch.routing }) } : {}),
       ...(patch.approval_rules ? { approval_rules: migrateApprovalRules(patch.approval_rules) } : {}),
+      ...(patch.auto_retire !== undefined ? { auto_retire: patch.auto_retire === true } : {}),
       ...(patch.approval_gate ? { approval_gate: migrateApprovalGate({ ...this.state.settings.approval_gate, ...patch.approval_gate }) } : {}),
     };
     this.write({ ...this.state, settings });

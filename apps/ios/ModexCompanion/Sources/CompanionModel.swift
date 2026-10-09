@@ -341,6 +341,38 @@ import SwiftUI
         }
     }
 
+    /// "ask", "always" or "yolo" for the selected thread. The Mac applies it to what is already waiting for "yolo" only.
+    func setApprovals(_ policy: String) async {
+        guard let api, let selectedThreadId else { return }
+        let connection = connectionRevision
+        do {
+            try await api.setApprovals(threadId: selectedThreadId, policy: policy)
+            guard connection == connectionRevision else { return }
+            await refresh()
+        } catch {
+            if connection == connectionRevision, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+        }
+    }
+
+    /// Approve this request and everything else in the thread except extra sandbox access.
+    func approveAlways(itemId: String) async {
+        guard let api, let selectedThreadId, answeringId == nil else { return }
+        let connection = connectionRevision
+        let operation = UUID()
+        answerOperation = operation
+        answeringId = itemId
+        defer { if answerOperation == operation { answeringId = nil; answerOperation = nil } }
+        do {
+            try await api.setApprovals(threadId: selectedThreadId, policy: "always")
+            guard connection == connectionRevision, answerOperation == operation else { return }
+            try await api.answer(threadId: selectedThreadId, itemId: itemId, approve: true)
+            guard connection == connectionRevision, answerOperation == operation else { return }
+            await refresh()
+        } catch {
+            if connection == connectionRevision, answerOperation == operation, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+        }
+    }
+
     private func revokeIfNeeded(_ failure: Error) -> Bool {
         guard case CompanionError.accessRevoked = failure else { return false }
         disconnect()

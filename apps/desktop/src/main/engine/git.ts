@@ -245,8 +245,8 @@ export async function worktreeAdd(repo: string, dest: string, branch: string): P
 }
 
 /** Removes a linked worktree (and its uncommitted changes). The branch is kept. */
-export async function worktreeRemove(repo: string, dest: string): Promise<void> {
-  const r = await git(repo, ["worktree", "remove", "--force", dest]);
+export async function worktreeRemove(repo: string, dest: string, force = true): Promise<void> {
+  const r = await git(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dest]);
   if (r.code !== 0 && fs.existsSync(dest)) throw new Error(r.stderr.trim() || "git worktree remove failed");
   await git(repo, ["worktree", "prune"]);
 }
@@ -286,4 +286,16 @@ export async function projectWorktreeAdd(repo: string, script: string, name: str
 export async function projectWorktreeRemove(repo: string, script: string, name: string): Promise<void> {
   const r = await runScript(repo, script, ["remove", name]);
   if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").slice(-2).join(" ") || `${path.relative(repo, script)} remove ${name} failed`);
+}
+
+/** What retiring a worktree would lose: uncommitted work (tracked or untracked) and where HEAD is. */
+export async function worktreeState(cwd: string): Promise<{ clean: boolean; head: string | null }> {
+  const [st, head] = await Promise.all([git(cwd, ["status", "--porcelain", "--untracked-files=all"]), git(cwd, ["rev-parse", "HEAD"])]);
+  return { clean: st.code === 0 && st.stdout.trim() === "", head: head.code === 0 ? head.stdout.trim() : null };
+}
+
+/** Deletes a local branch whose work is known to have landed (squash merges are never ancestors of the base). */
+export async function branchDelete(repo: string, branch: string): Promise<void> {
+  const r = await git(repo, ["branch", "-D", "--", branch]);
+  if (r.code !== 0 && !/not found/i.test(r.stderr)) throw new Error(r.stderr.trim() || "git branch -D failed");
 }

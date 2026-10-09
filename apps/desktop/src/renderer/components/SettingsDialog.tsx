@@ -318,6 +318,10 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
               {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           </label>
+          <label className="check">
+            <input data-testid="auto-retire" type="checkbox" checked={s.auto_retire} onChange={(e) => set("auto_retire", e.target.checked)} />
+            <span>Finish worktree threads when their pull request merges<small> — removes the worktree and branch once nothing in them would be lost; the transcript stays as a read-only record</small></span>
+          </label>
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <div className="connections-heading">
