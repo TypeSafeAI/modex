@@ -329,7 +329,7 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
-- **Unmerged worktrees.** None from this list awaits a disposition. All six were retired after
+- **Retired worktrees.** None from this list awaits a disposition. All six were retired after
   their work landed, and their uncommitted work or unique commits were saved as patches outside
   the repository first.
   - `auth-retry` (2026-10-09): the retry and auth recovery work is on `main` via #104.
