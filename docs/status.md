@@ -272,6 +272,17 @@ remote sign-out passed; coding CLI accounts were unchanged. [Design and acceptan
 
 ## On main, unreleased
 
+- **Slim Knowledge chrome and resizable panels.**
+  The entire Knowledge Properties block collapses under a full-width header, defaults closed,
+  and retains the companion’s saved choice. Knowledge uses one 36px toolbar with an inline
+  maintenance toggle. Both panel edges support
+  dragging, arrow keys (Shift for larger steps), Home/End, and double-click/Enter to reset.
+  Slim defaults are 240px left and 360px right. Widths persist across launches, are shared
+  with Space, and adapt to keep at least 350px
+  for chat at the minimum window size. Native browser/Knowledge views suspend during dragging.
+  Local validation and the intermittent navigation test are recorded in the
+  [review](reviews/2026-10-09-slim-panels.md).
+
 **Approval policy, full skill text, and task retirement** (#149).
 A thread can be set to **Always allow** or **YOLO** from the composer's access menu, the
 approval card, or the iPhone; the [approval rules](approval-rules.md#thread-policy-always-allow-and-yolo)

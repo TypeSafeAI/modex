@@ -6,7 +6,7 @@ export class WorkspaceBrowser {
   private views = new Map<string, { view: WebContentsView; error?: string; styled?: boolean; cssKey?: string; styleVersion?: number }>();
   private fullView = false;
   private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
-  constructor(private window: BrowserWindow, private options: { partition?: string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string } } = {}) {}
+  constructor(private window: BrowserWindow, private options: { partition?: string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string } } = {}) {}
   async refreshAppearance(): Promise<void> {
     await Promise.all([...this.views.keys()].map(id => this.style(id)));
   }
@@ -33,6 +33,7 @@ export class WorkspaceBrowser {
           globalThis.modexThemeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
         }
       })()` }]);
+      if (appearance.script) await contents.executeJavaScriptInIsolatedWorld(999, [{ code: appearance.script }]);
       if (previous) await contents.removeInsertedCSS(previous);
       if (entry.styleVersion !== version || contents.isDestroyed()) return;
       entry.styled = true;

@@ -14,6 +14,8 @@ import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { Icon } from "./components/ui/Icon";
 import { useSelectionHistory } from "./history";
+import { PanelResizeHandle } from "./components/PanelResizeHandle";
+import { PANEL_WIDTHS, usePanelSizing } from "./panel-sizing";
 import { useLayout } from "./layout";
 import { applyTheme, restoreTheme } from "./theme";
 import { applyItemEvent, type ItemEvent } from "./transcript";
@@ -452,6 +454,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
   };
 
+  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread));
+
   const workspace = state ? (
     <>
       <TitleBar
@@ -474,7 +478,11 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         platform={bridge.platform}
       />
       <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
-      <div className="sheet" data-testid="sheet" data-surface={surface}>
+      <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
+        {sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
+          onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: PANEL_WIDTHS.sidebar.default })} />}
+        {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
+          onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
         {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion && !streamerMode} sidebarOpen={sidebarOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
@@ -565,7 +573,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
 
   // The privacy cover must exist even while startup is pending or has failed.
   return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} data-streamer-mode={streamerMode ? "true" : "false"}>
+    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} style={panels.style} data-streamer-mode={streamerMode ? "true" : "false"}>
       {workspace}
       {streamerMode && (
         <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
