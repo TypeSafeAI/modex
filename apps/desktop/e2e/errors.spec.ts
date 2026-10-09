@@ -126,6 +126,34 @@ test("a usage outage offers a direct model-picker action", async () => {
   await expect(tid(page, "model-option")).toHaveCount(1);
 });
 
+test("a ChatGPT plan refusing the thread's history offers a new thread instead of Retry", async () => {
+  const threadId = await currentRow(page).getAttribute("data-thread-id");
+  await app.evaluate(({ BrowserWindow }, threadId) => BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", {
+    type: "item",
+    threadId,
+    item: {
+      id: "history-fail", kind: "notice", level: "error", text: "The ChatGPT plan connection cannot send part of this conversation's history.", at: new Date().toISOString(),
+      failure: {
+        code: "unsupported_history", backend: "mock",
+        message: '{ "error": { "code": "subscription_sharing_unsupported_capability" } }',
+        summary: "The ChatGPT plan connection cannot send part of this conversation's history.",
+        hint: "Start a new thread to continue the work.",
+        retryable: false,
+        fix: { kind: "new-thread", label: "Start a new thread" },
+        debug: {},
+      },
+    },
+  }), threadId);
+  const history = page.locator('[data-testid="item"][data-failure-code="unsupported_history"]');
+  await expect(tid(history, "failure-retry")).toHaveCount(0);
+  await expect(tid(history, "failure-fix")).toHaveText("Start a new thread");
+  await tid(history, "failure-fix").click();
+  // The fix opens a fresh draft in the same project; the poisoned thread stays in the list untouched.
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await expect(tid(page, "composer-input")).toHaveValue("");
+  await expect(page.locator(`[data-testid="thread-row"][data-thread-id="${threadId}"]`)).toHaveCount(1);
+});
+
 test("early send and retry rejections return errors without adding transcript cards", async () => {
   const t = await page.evaluate(async () => {
     const state = await window.modex!.invoke("state:get", undefined);

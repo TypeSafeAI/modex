@@ -299,9 +299,10 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     const r = await bridge.invoke("thread:retry", { threadId: thread.id });
     if (!r.ok) setError({ message: r.error ?? "retry failed", retry: () => void retry() });
   });
-  /** The failure card's fix: type the sign-in command into the thread's shell (opening it), or open Settings. */
+  /** The failure card's fix: type the sign-in command into the thread's shell (opening it), open Settings, or start over in a new thread. */
   const applyFix = (fix: TurnFix) => {
     if (fix.kind === "settings") { setShowSettings(true); return; }
+    if (fix.kind === "new-thread") { if (thread) openDraft(thread.projectId, Boolean(thread.worktree)); return; }
     if (fix.kind === "models") {
       if (thread && (!models[thread.backend]?.models.length || models[thread.backend]?.error)) retryModels(thread.backend);
       setModelPickerRequest((request) => request + 1);

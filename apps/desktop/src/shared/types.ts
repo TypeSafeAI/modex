@@ -68,14 +68,15 @@ export type ThreadItem =
   | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; reasons: string[]; durationMs: number; at: string };
 
 /** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
-export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unknown";
+export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unsupported_history" | "unknown";
 
-/** An in-app remedy: a sign-in command, model picker, retry, or the Settings dialog. */
+/** An in-app remedy: a sign-in command, model picker, retry, a fresh thread, or the Settings dialog. */
 export type TurnFix =
   | { kind: "login"; label: string; command: string }
   | { kind: "settings"; label: string }
   | { kind: "models"; label: string }
-  | { kind: "retry"; label: string };
+  | { kind: "retry"; label: string }
+  | { kind: "new-thread"; label: string };
 
 /** A turn that did not complete. Rendered as a card with Retry, the fix, and Copy details. */
 export interface TurnFailure {
