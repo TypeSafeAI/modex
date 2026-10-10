@@ -2,6 +2,7 @@ import { RepositoryOverview } from "./components/RepositoryOverview";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateBanner } from "./components/UpdateBanner";
 import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
+import type { Attachment } from "../shared/attachments";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
@@ -60,6 +61,14 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     // A newer edit (including clearing a newer draft) owns this composer now.
     if ((unsentRevision.current.get(key) ?? 0) === revision) setUnsentFor(key, text);
   }, [setUnsentFor]);
+  // Files attached but not yet sent, keyed like `unsent`. Main already holds the bytes (staged on attach).
+  const [pending, setPending] = useState<Record<string, Attachment[]>>({});
+  const setPendingFor = useCallback((key: string, list: Attachment[]) => setPending((m) => {
+    if (list.length) return { ...m, [key]: list };
+    if (!(key in m)) return m;
+    const { [key]: _gone, ...rest } = m;
+    return rest;
+  }), []);
   const loadingItems = useRef(new Map<string, ItemEvent[]>());
   const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
   const changes = changeResult?.threadId === selected ? changeResult.snapshot : null;
@@ -265,11 +274,12 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     if (p) await refresh();
   });
   /** First send from a draft: create the thread with the draft's settings, then send. */
-  const sendDraft = async (text: string): Promise<void> => {
+  const sendDraft = async (text: string, attachments: Attachment[] = []): Promise<void> => {
     if (!draft) return;
     const d = draft;
     const draftKey = `draft:${draftRevision}`;
     setUnsentFor(draftKey, "");
+    setPendingFor(draftKey, []);
     let restoreKey = draftKey;
     let restoreRevision = unsentRevision.current.get(draftKey)!;
     setCreating(true);
@@ -283,24 +293,31 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
       setSelected(t.id);
       restoreKey = t.id;
       restoreRevision = unsentRevision.current.get(t.id) ?? 0;
-      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim() });
+      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim(), ...(attachments.length ? { attachments } : {}) });
       if (!r.ok) setError({ message: r.error ?? "send failed" });
       return r.ok;
     });
     setCreating(false);
-    if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
+    if (sent !== true) {
+      restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
+      if (attachments.length) setPendingFor(restoreKey, attachments);
+    }
   };
-  const send = async (text: string): Promise<void> => {
+  const send = async (text: string, attachments: Attachment[] = []): Promise<void> => {
     if (!thread) return;
     const threadId = thread.id;
     setUnsentFor(threadId, "");
+    setPendingFor(threadId, []);
     const revision = unsentRevision.current.get(threadId)!;
     const sent = await act(async () => {
-      const r = await bridge.invoke("thread:send", { threadId, text: text.trim() });
+      const r = await bridge.invoke("thread:send", { threadId, text: text.trim(), ...(attachments.length ? { attachments } : {}) });
       if (!r.ok) setError({ message: r.error ?? "send failed" });
       return r.ok;
     });
-    if (sent !== true) restoreUnsentIfCurrent(threadId, revision, text);
+    if (sent !== true) {
+      restoreUnsentIfCurrent(threadId, revision, text);
+      if (attachments.length) setPendingFor(threadId, attachments);
+    }
   };
   /** The failure card's Retry: main runs the thread's last message again without adding a second bubble. */
   const retry = () => thread && act(async () => {
@@ -510,6 +527,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
               items={items[thread.id] ?? []}
               text={unsent[thread.id] ?? ""}
               onText={(text) => setUnsentFor(thread.id, text)}
+              attachments={pending[thread.id] ?? []}
+              onAttachments={(list) => setPendingFor(thread.id, list)}
               onSend={send}
               onStop={stop}
               onAnswer={answer}
@@ -538,6 +557,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
               inputRef={inputRef}
               text={unsent[`draft:${draftRevision}`] ?? ""}
               onText={(text) => setUnsentFor(`draft:${draftRevision}`, text)}
+              attachments={pending[`draft:${draftRevision}`] ?? []}
+              onAttachments={(list) => setPendingFor(`draft:${draftRevision}`, list)}
             />
           ) : state.projects.length === 0 ? (
             <EmptyState onAddProject={addProject} />

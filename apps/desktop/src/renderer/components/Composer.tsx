@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApprovalPolicy, BackendId, FollowUp, Mode, ModelInfo } from "../../shared/types";
 import { APPROVAL_POLICIES, BACKENDS, MODES } from "../../shared/types";
+import type { Attachment } from "../../shared/attachments";
+import { LIMITS } from "../../shared/attachments";
+import { hasFiles, stageFiles } from "../attachments";
+import { bridge } from "../bridge";
+import { AttachmentChips } from "./Attachments";
 import { ModelMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
@@ -23,6 +28,9 @@ interface Props {
   /** The unsent text. Owned by App so it survives switching threads (see App's `unsent`). */
   text: string;
   onText: (text: string) => void;
+  /** Files attached but not yet sent. Owned by App like `text`; main already holds the bytes. */
+  attachments: Attachment[];
+  onAttachments: (next: Attachment[]) => void;
   busy: boolean;
   context: ComposerContext;
   backend: BackendId;
@@ -47,7 +55,7 @@ interface Props {
   onModel: (m: string, effort?: string) => void;
   onEffort: (e: string | undefined) => void;
   onAuto: (auto: boolean) => void;
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string, attachments: Attachment[]) => Promise<void>;
   onStop: () => void;
   /** Set by the ⌘⏎ / focus shortcuts in App. */
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -62,7 +70,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, attachments, onAttachments, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const submittingRef = useRef(false);
@@ -74,11 +82,61 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
     el.style.height = `${Math.min(MAX_INPUT, Math.max(MIN_INPUT, el.scrollHeight))}px`;
   }, [text]);
 
+  const canSend = Boolean(text.trim() || attachments.length);
   const submit = () => {
-    if (!text.trim() || busy || submittingRef.current) return;
+    if (!canSend || busy || submittingRef.current) return;
     submittingRef.current = true;
-    void onSend(text).finally(() => { submittingRef.current = false; });
+    void onSend(text, attachments).finally(() => { submittingRef.current = false; });
   };
+
+  // Attachments. Main stages the bytes as soon as a file arrives (drop, paste, picker), so the list
+  // here is just what the message will carry. A drag anywhere in the window is a drop target.
+  const [attachWarning, setAttachWarning] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const latest = useRef({ attachments, onAttachments, busy });
+  latest.current = { attachments, onAttachments, busy };
+  const took = ({ staged, errors }: { staged: Attachment[]; errors: string[] }) => {
+    if (staged.length) latest.current.onAttachments([...latest.current.attachments, ...staged]);
+    setAttachWarning(errors.length ? errors.join(" ") : null);
+  };
+  const attach = async (files: Iterable<File>) => {
+    if (latest.current.busy) return;
+    took(await stageFiles(files, LIMITS.perTurn - latest.current.attachments.length));
+  };
+  const pick = async () => {
+    if (busy) return;
+    took(await bridge.invoke("attachments:pick", undefined));
+  };
+  const remove = (a: Attachment) => {
+    onAttachments(attachments.filter((x) => x.id !== a.id));
+    void bridge.invoke("attachments:discard", { ids: [a.id] }).catch(() => {});
+  };
+  const attachRef = useRef(attach);
+  attachRef.current = attach;
+  useEffect(() => {
+    // Enter/leave fire for every child the drag crosses; the depth count says when it really left the window.
+    let depth = 0;
+    const enter = (e: DragEvent) => { if (!hasFiles(e.dataTransfer)) return; e.preventDefault(); depth++; setDragging(true); };
+    const over = (e: DragEvent) => { if (!hasFiles(e.dataTransfer)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = latest.current.busy ? "none" : "copy"; };
+    const leave = (e: DragEvent) => { if (!hasFiles(e.dataTransfer)) return; depth = Math.max(0, depth - 1); if (!depth) setDragging(false); };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      if (e.dataTransfer?.files.length) void attachRef.current(e.dataTransfer.files);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
 
   // The suggestion is an offer, never a default: it fills the box only on an explicit click, Tab or → while
   // the box is empty, and sending still takes a separate ⏎. Any typed text hides it.
@@ -119,11 +177,21 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
                 submit();
               }
             }}
+            onPaste={(e) => {
+              const files = e.clipboardData?.files;
+              if (files && files.length) {
+                e.preventDefault();
+                void attach(files);
+              }
+            }}
             spellCheck={false}
           />
+          <AttachmentChips attachments={attachments} onRemove={busy ? undefined : remove} testId="composer-attachments" />
           <div className="composer-bar">
             <PlusMenu busy={busy} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
             <AccessMenu busy={busy} mode={mode} onMode={onMode} approvals={approvals} onApprovals={onApprovals} />
+            {/* After the access pill: the reference layout fixes `+` and the pill at x 690 / 708 (e2e/layout.spec.ts). */}
+            <IconButton icon="paperclip" label="Attach files" size="md" className="composer-attach-btn" data-testid="composer-attach" tooltipSide="top" disabled={busy} onClick={() => void pick()} />
             {approvals !== "ask" && onApprovals && (
               <button className={`composer-chip ${approvals === "yolo" ? "tone-auto" : "tone-accent"}`} data-testid="approvals-chip" data-policy={approvals} aria-label={`${APPROVAL_LABEL[approvals]} is on. Turn it off`} title="Back to asking before each action" onClick={() => onApprovals("ask")}>
                 {APPROVAL_LABEL[approvals]} <Icon name="close" size={12} />
@@ -144,10 +212,21 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
             {busy ? (
               <IconButton icon="stop" label="Stop" shortcut="⌘." className="send-btn stop" data-testid="stop" tooltipSide="top" onClick={onStop} />
             ) : (
-              <IconButton icon="arrow-up" label="Send" shortcut="⌘⏎" className="send-btn" data-testid="send" tooltipSide="top" onClick={submit} disabled={!text.trim()} />
+              <IconButton icon="arrow-up" label="Send" shortcut="⌘⏎" className="send-btn" data-testid="send" tooltipSide="top" onClick={submit} disabled={!canSend} />
             )}
           </div>
         </div>
+        {attachWarning && (
+          <div className="composer-warn" role="alert" data-testid="attach-warning">
+            ⚠ {attachWarning}
+            <button type="button" className="btn ghost small" onClick={() => setAttachWarning(null)}>Dismiss</button>
+          </div>
+        )}
+        {dragging && (
+          <div className="drop-overlay" data-testid="drop-overlay" aria-hidden="true">
+            <div className="drop-overlay-card"><Icon name="paperclip" size={18} />{busy ? "Wait for the turn to finish" : "Drop to attach"}</div>
+          </div>
+        )}
         {modelsError && (
           <div className="composer-warn" role="alert" data-testid="models-error">
             ⚠ {modelsError}

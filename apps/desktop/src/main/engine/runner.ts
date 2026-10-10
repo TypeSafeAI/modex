@@ -16,6 +16,9 @@ import type { SecretStore } from "./secrets.js";
 import { describeFailure } from "../../shared/failures.js";
 import type { PagesAgents, PagesLease } from "./pages-agents.js";
 import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
+import { AttachmentStore } from "./attachments.js";
+import { describeAttachments, type Attachment } from "../../shared/attachments.js";
+import type { TurnAttachment } from "./backends/types.js";
 
 interface Live {
   abort: AbortController | null;
@@ -46,6 +49,8 @@ export interface RunnerOptions {
   secrets?: SecretStore;
   /** Stop thread-owned resources before deleting its state or working directory. */
   beforeDeleteThread?: (threadId: string) => Promise<void>;
+  /** Where attached files live; defaults to `<home>/attachments`. */
+  attachments?: AttachmentStore;
 }
 
 /**
@@ -64,8 +69,10 @@ export class ThreadRunner {
   private readonly backends: Record<BackendId, Backend>;
   /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
   readonly router: Router;
+  readonly attachments: AttachmentStore;
 
   constructor(private readonly o: RunnerOptions) {
+    this.attachments = o.attachments ?? new AttachmentStore(path.join(o.home, "attachments"));
     const s = () => o.store.settings;
     const cliSettings = s(); // Explicit override changes take effect after restart; auto paths resolve per launch.
     this.backends = {
@@ -232,6 +239,7 @@ export class ThreadRunner {
       }
       clearTimeout(l?.flushTimer);
       this.o.store.deleteThread(threadId);
+      this.attachments.removeThread(threadId);
       this.live.delete(threadId);
     } finally {
       this.deleting.delete(threadId);
@@ -270,8 +278,8 @@ export class ThreadRunner {
   }
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
-  async send(threadId: string, text: string): Promise<void> {
-    return this.start(threadId, text);
+  async send(threadId: string, text: string, attachments: Attachment[] = []): Promise<void> {
+    return this.start(threadId, text, undefined, attachments);
   }
 
   /**
@@ -282,21 +290,21 @@ export class ThreadRunner {
     this.assertThreadAvailable(threadId);
     const user = [...this.slot(threadId).items].reverse().find((item) => item.kind === "user");
     if (!user || user.kind !== "user") throw new Error("Nothing to retry: this thread has no message yet.");
-    return this.start(threadId, user.text, user.id);
+    return this.start(threadId, user.text, user.id, user.attachments ?? []);
   }
 
-  private async start(threadId: string, text: string, reuse?: string): Promise<void> {
+  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = []): Promise<void> {
     this.assertThreadAvailable(threadId);
     const l = this.slot(threadId);
     if (l.run) throw new Error("This thread is still working. Stop it or wait for it to finish.");
-    const run = this.runTurn(threadId, text, reuse);
+    const run = this.runTurn(threadId, text, reuse, attachments);
     l.run = run;
     try { await run; }
     finally { if (l.run === run) l.run = null; }
   }
 
   /** `reuse` names an existing user item to run again instead of adding one (Retry). */
-  private async runTurn(threadId: string, text: string, reuse?: string): Promise<void> {
+  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = []): Promise<void> {
     const savedThread = this.o.store.thread(threadId);
     if (!savedThread) throw new Error(`unknown thread ${threadId}`);
     let thread = savedThread;
@@ -315,14 +323,16 @@ export class ThreadRunner {
     };
 
     const retry = reuse !== undefined;
-    const derivedTitle = text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread";
+    // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
+    const files = attachments.length ? this.attachments.claim(threadId, attachments) : [];
+    const derivedTitle = (text.replace(/\s+/g, " ").trim() || files.map((f) => f.name).join(", ")).slice(0, 60) || "New thread";
     // Name the thread after its first completed turn, including a retried first turn that still carries the opening-message title.
     const firstTurn = !l.items.some((item) => item.kind === "user" && item.id !== reuse);
     const shouldName = firstTurn && thread.titleSource !== "manual" && (thread.title === "New thread" || (retry && thread.title === derivedTitle));
     l.followUp?.abort.abort();
     l.followUp = undefined;
     if (!retry) {
-      this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
+      this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString(), ...(files.length ? { attachments: files } : {}) });
       if (thread.title === "New thread" && thread.titleSource !== "manual") this.updateThread(threadId, { title: derivedTitle }, { automaticTitle: true });
     }
 
@@ -400,9 +410,15 @@ export class ThreadRunner {
       const account = thread.backend === "codex" && backend.identity
         ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
       if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
+      const turnFiles: TurnAttachment[] = files.map((f) => ({ name: f.name, mime: f.mime, kind: f.kind, path: path.join(this.attachments.root, f.rel) }));
       const result = await backend.runTurn(
-        text,
-        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account, addDirs: thread.worktree ? [] : [], ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}) },
+        describeAttachments(text, turnFiles),
+        {
+          cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account,
+          // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
+          addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
+          ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}),
+        },
         sink,
         abort.signal,
       );

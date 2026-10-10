@@ -322,7 +322,21 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
-No additional desktop changes are unreleased as of the v0.0.10 tag.
+**Attachments.** Files travel with a message: drop them anywhere in the window, paste an image,
+or use the composer's paperclip. Main stages each file under `~/.modex/attachments/staging`
+the moment it arrives (so drop, paste and picker share one path and the thumbnails load over
+the app's own `modex-attachment:` scheme, served only from that root); on send they move into
+`attachments/<thread id>/`, ride on the user item, and are removed with the thread. Images go to
+Claude as base64 content blocks on the stream-json user message and to Codex as `localImage`
+inputs; every other file is named by absolute path in the prompt, with `--add-dir` so Claude can
+read it without a prompt. Limits: 5 MB per image (the API's), 25 MB per file, 20 per message;
+over-limit files are reported and the rest attach. Retry reuses the same files. Unit tests cover
+staging, claiming, root containment and both backends' wire shapes; `e2e/attachments.spec.ts`
+covers paste, drop, picker, over-limit, send and open. The App Store edition reports
+attachments as unavailable, both in its offline demo and while connected to a host, and never
+forwards an `attachments:*` request. Awaiting CI.
+
+**Sonnet 5.5 (#156).** The Claude picker's Sonnet entry names `claude-sonnet-5-5`.
 
 ## In flight
 
