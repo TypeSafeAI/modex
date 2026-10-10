@@ -189,8 +189,9 @@ export function Composer({ text, onText: setText, attachments, onAttachments, bu
           <AttachmentChips attachments={attachments} onRemove={busy ? undefined : remove} testId="composer-attachments" />
           <div className="composer-bar">
             <PlusMenu busy={busy} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
-            <IconButton icon="paperclip" label="Attach files" size="md" className="composer-attach-btn" data-testid="composer-attach" tooltipSide="top" disabled={busy} onClick={() => void pick()} />
             <AccessMenu busy={busy} mode={mode} onMode={onMode} approvals={approvals} onApprovals={onApprovals} />
+            {/* After the access pill: the reference layout fixes `+` and the pill at x 690 / 708 (e2e/layout.spec.ts). */}
+            <IconButton icon="paperclip" label="Attach files" size="md" className="composer-attach-btn" data-testid="composer-attach" tooltipSide="top" disabled={busy} onClick={() => void pick()} />
             {approvals !== "ask" && onApprovals && (
               <button className={`composer-chip ${approvals === "yolo" ? "tone-auto" : "tone-accent"}`} data-testid="approvals-chip" data-policy={approvals} aria-label={`${APPROVAL_LABEL[approvals]} is on. Turn it off`} title="Back to asking before each action" onClick={() => onApprovals("ask")}>
                 {APPROVAL_LABEL[approvals]} <Icon name="close" size={12} />

@@ -245,10 +245,8 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
     case "user":
       return (
         <div className="msg user" data-testid="item" data-item-kind="user">
-          <div className="bubble">
-            {item.text && <div data-testid="item-text">{item.text}</div>}
-            {item.attachments?.length ? <AttachmentChips attachments={item.attachments} onOpen={(a) => void bridge.invoke("attachments:open", { rel: a.rel }).catch(() => {})} /> : null}
-          </div>
+          {item.text && <div className="bubble" data-testid="item-text">{item.text}</div>}
+          {item.attachments?.length ? <AttachmentChips attachments={item.attachments} onOpen={(a) => void bridge.invoke("attachments:open", { rel: a.rel }).catch(() => {})} /> : null}
         </div>
       );
     case "assistant":
