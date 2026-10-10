@@ -84,7 +84,7 @@ const m = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({ id, labe
 
 test("catalogue: known families land on their tier, descriptions hint the rest, ladders sort", () => {
   assert.equal(tierOf(m("haiku")), 0);
-  assert.equal(tierOf(m("claude-sonnet-5")), 1);
+  assert.equal(tierOf(m("claude-sonnet-5-5")), 1);
   assert.equal(tierOf(m("opus")), 2);
   assert.equal(tierOf(m("fable")), 3);
   assert.equal(tierOf(m("gpt-5.5")), 0);
