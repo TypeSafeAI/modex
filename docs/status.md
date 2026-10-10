@@ -433,7 +433,12 @@ return promptly.
   handshake timeout is 120 s. A slow simulator stretched the outage step to 66 s, so the resume
   landed inside that window (green runs finished the step in 10 s). Reproduced locally with the
   real fixture and one half-open connection: no reply in 15 s before the fix, 204 in 6 ms after.
-  `close()` now destroys every accepted socket.
+  `close()` now destroys every accepted socket. The fix's own commit then split its two CI runs:
+  the pull_request run passed the whole paired flow (resume answered in under a second) while
+  the push run (38012518622) failed earlier, at the first follow-up. The phone's log shows one
+  request hitting its 8 s timeout ten seconds before the send tap, no later request failing, and
+  the reply never showing within 20 s. The fixture writes no log, so that run stays unexplained;
+  if it recurs, make `fixture.mjs` log each request with a timestamp before anything else.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
