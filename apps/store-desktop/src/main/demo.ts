@@ -155,6 +155,10 @@ export class StoreDemo {
       "approvals:rules:set": ({ rules }) => { this.state.settings.approval_rules = rules; return rules; },
       "approvals:try": unavailable,
       "shell:openPath": unavailable, "shell:openTerminal": unavailable, "clipboard:write": unavailable,
+      // The demo has no files to stage: the composer shows this instead of a chip.
+      "attachments:stage": () => ({ staged: [], errors: ["Attachments are not available in the offline demo."] }),
+      "attachments:pick": () => ({ staged: [], errors: ["Attachments are not available in the offline demo."] }),
+      "attachments:discard": () => {}, "attachments:open": unavailable,
     };
   }
 

@@ -477,7 +477,8 @@ export class CodexBackend implements Backend {
       signal.addEventListener("abort", onAbort, { once: true });
       this.request<{ turn: { id: string } }>("turn/start", {
         threadId: tid,
-        input: [{ type: "text", text: input, text_elements: [] }],
+        // Images go by path (the app-server reads them); other attached files are named in the text.
+        input: [{ type: "text", text: input, text_elements: [] }, ...(opts.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ type: "localImage", path: a.path }))],
         cwd: opts.cwd,
         approvalPolicy: pol.approvalPolicy,
         sandboxPolicy: pol.sandboxPolicy,

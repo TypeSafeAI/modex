@@ -1,8 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ClaudeBackend, denyMessage, toolTitle } from "../src/main/engine/backends/claude.js";
+import fs from "node:fs";
+import path from "node:path";
+import { ClaudeBackend, denyMessage, toolTitle, userContent } from "../src/main/engine/backends/claude.js";
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
+import { PNG_B64, tmpdir } from "./helpers.js";
+
+test("attached images become base64 blocks on the user message; text and other files stay as text", () => {
+  assert.equal(userContent("hi"), "hi");
+  assert.equal(userContent("hi", [{ name: "a.pdf", mime: "application/pdf", kind: "file", path: "/x/a.pdf" }]), "hi");
+  const png = path.join(tmpdir(), "shot.png");
+  fs.writeFileSync(png, Buffer.from(PNG_B64, "base64"));
+  const shot = { name: "shot.png", mime: "image/png" as const, kind: "image" as const, path: png };
+  assert.deepEqual(userContent("what is this?", [shot, { name: "a.pdf", mime: "application/pdf", kind: "file", path: "/x/a.pdf" }]), [
+    { type: "text", text: "what is this?" },
+    { type: "image", source: { type: "base64", media_type: "image/png", data: PNG_B64 } },
+  ]);
+  // The API rejects an empty text block, so an image-only message carries only the image.
+  assert.deepEqual((userContent("  ", [shot]) as { type: string }[]).map((b) => b.type), ["image"]);
+});
+
+test("ClaudeBackend writes attached images into the stream-json user message", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const png = path.join(tmpdir(), "shot.png");
+  fs.writeFileSync(png, Buffer.from(PNG_B64, "base64"));
+  const run = backend.runTurn("what is this?", { cwd: "/repo", mode: "chat", plan: false, model: "", attachments: [{ name: "shot.png", mime: "image/png", kind: "image", path: png }] }, collectSink().sink, new AbortController().signal);
+  const first = JSON.parse(await proc.waitFor((l) => l.includes('"type":"user"'))) as { message: { content: { type: string; source?: { data: string } }[] } };
+  assert.deepEqual(first.message.content.map((b) => b.type), ["text", "image"]);
+  assert.equal(first.message.content[1]!.source!.data, PNG_B64);
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s" });
+  assert.equal((await run).status, "completed");
+});
 
 test("Claude attaches Pages and knowledge together with exact session tool allowlists", () => {
   const pages = { url: "http://127.0.0.1:1234/mcp/pages", instructions: "Maintain Space notes" };

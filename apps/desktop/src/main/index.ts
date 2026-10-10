@@ -7,7 +7,7 @@ import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +35,8 @@ import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
 import { previewApproval, validateRules } from "./engine/approvals/preview.js";
+import { AttachmentStore } from "./engine/attachments.js";
+import { ATTACHMENT_SCHEME, relFromUrl } from "../shared/attachments.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -54,6 +56,8 @@ const hostPreview = app.isPackaged && (app.getName() === "Modex Host Preview" ||
 const hostPreviewHome = path.join(os.homedir(), "Library", "Application Support", "Modex Host Preview");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? (hostPreview ? hostPreviewHome : path.join(os.homedir(), ".modex"));
 fs.mkdirSync(home, { recursive: true });
+// Attachment thumbnails load from main over this scheme; registration must precede app ready.
+protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true } }]);
 // The scripted demo and screenshots must never discover a real Jev key or call the network.
 if (demo) {
   process.env.TYPESAFE_API_KEY = "";
@@ -107,7 +111,9 @@ const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url
 const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
-const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
+const attachments = new AttachmentStore(path.join(home, "attachments"));
+attachments.sweepStaging();
+const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id) });
 const retirer = new TaskRetirer({
   enabled: () => store.settings.auto_retire,
   threads: () => store.snapshot().threads,
@@ -267,7 +273,24 @@ async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: bo
   accepting = false;
   return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
 }
-handle("thread:send", ({ threadId, text }) => startTurn(threadId, runner.send(threadId, text)));
+handle("thread:send", ({ threadId, text, attachments: files }) => startTurn(threadId, runner.send(threadId, text, files ?? [])));
+handle("attachments:stage", ({ files }) => attachments.stage(files));
+handle("attachments:pick", async (req) => {
+  let paths = req?.paths;
+  if (!paths) {
+    const r = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], title: "Attach files", buttonLabel: "Attach" });
+    if (r.canceled) return { staged: [], errors: [] };
+    paths = r.filePaths;
+  }
+  return attachments.stage(paths.map((p) => ({ name: path.basename(p), path: p })));
+}, { localOnly: true });
+handle("attachments:discard", ({ ids }) => { attachments.discard(ids); });
+handle("attachments:open", async ({ rel }) => {
+  const abs = attachments.resolve(rel);
+  if (!abs) throw new Error("That attachment is no longer on disk.");
+  const err = await shell.openPath(abs);
+  if (err) throw new Error(err);
+});
 handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
@@ -499,6 +522,12 @@ app.on("second-instance", (_event, args) => {
 });
 
 app.whenReady().then(async () => {
+  // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
+  protocol.handle(ATTACHMENT_SCHEME, (request) => {
+    const rel = relFromUrl(request.url);
+    const abs = rel ? attachments.resolve(rel) : null;
+    return abs ? net.fetch(pathToFileURL(abs).href) : new Response("Not found", { status: 404 });
+  });
   win = createWindow();
   if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
   if (!demo && !process.env.MODEX_E2E) void pathReady.then(() => retirer.start());
