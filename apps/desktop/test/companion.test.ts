@@ -86,6 +86,33 @@ for (const shutdown of ["stop", "dispose"] as const) {
   });
 }
 
+test("dispose does not wait for a connection that never finished its TLS handshake", { timeout: 5000 }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-half-open-"));
+  const server = new CompanionServer(home, {
+    state: () => ({ version: 1, projects: [], threads: [], settings: DEFAULT_SETTINGS }),
+    items: () => [], status: () => "idle", send: async () => ({ ok: true }), answer: () => {},
+  }, () => ["127.0.0.1"]);
+  let socket: net.Socket | undefined;
+  try {
+    const pairing = await server.start();
+    // A phone that opened the TCP connection but has not sent its ClientHello yet. Node's
+    // closeAllConnections() only knows sockets that finished TLS; left alone, this one holds the
+    // server's close() until the handshake timeout (120 s), and with it the paused fixture's resume.
+    socket = net.connect(pairing.port!, "127.0.0.1");
+    await new Promise<void>((resolve, reject) => { socket!.once("connect", resolve); socket!.once("error", reject); });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const closed = new Promise<void>((resolve) => socket!.once("close", () => resolve()));
+    const started = Date.now();
+    await server.dispose();
+    await closed;
+    assert.ok(Date.now() - started < 2000, `dispose waited ${Date.now() - started} ms on a half-open connection`);
+  } finally {
+    socket?.destroy();
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 for (const revoke of ["resetAccess", "stop"] as const) {
   for (const action of ["send", "answer"] as const) {
     test(`${revoke} rejects an authenticated ${action} whose body is still arriving`, { timeout: 5000 }, async () => {
