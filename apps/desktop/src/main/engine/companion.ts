@@ -5,7 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { APPROVAL_POLICIES, type AppState, type ApprovalAnswer, type ApprovalPolicy, type BackendId, type PullRequestSummary, type Thread, type ThreadItem } from "../../shared/types.js";
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
@@ -38,6 +38,8 @@ export class CompanionServer {
   private monitor?: ReturnType<typeof setInterval>;
   private unpublish?: () => void;
   private reconnecting: Promise<void> | null = null;
+  /** Every accepted socket per server, including those still in the TLS handshake. */
+  private readonly connections = new WeakMap<https.Server, Set<Socket>>();
   private readonly dir: string;
 
   constructor(home: string, private readonly source: CompanionSource, private readonly addresses = localAddresses, private readonly publish: CompanionPublisher = publishCompanion) {
@@ -100,6 +102,9 @@ export class CompanionServer {
     const server = https.createServer({ key, cert, minVersion: "TLSv1.2" }, (req, res) => {
       void this.handle(server, req, res).catch(() => this.reply(res, 500, { error: "Your Mac could not complete the request." }));
     });
+    const sockets = new Set<Socket>();
+    server.on("connection", (socket: Socket) => { sockets.add(socket); socket.once("close", () => { sockets.delete(socket); }); });
+    this.connections.set(server, sockets);
     const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(port, host, () => { server.off("error", reject); resolve(); });
@@ -173,8 +178,12 @@ export class CompanionServer {
   private close(server: https.Server): Promise<void> {
     return new Promise((resolve) => {
       server.close(() => resolve());
-      // A partial upload must not keep access open or prevent the Mac app from quitting.
+      // A partial upload must not keep access open or prevent the Mac app from quitting. Nor may a
+      // phone that opened a connection but never finished its TLS handshake: closeAllConnections()
+      // only knows sockets that completed TLS, and close() would otherwise wait out Node's 120 s
+      // handshake timeout (CI run 37983100896 lost the paused iPhone fixture's resume to that wait).
       server.closeAllConnections();
+      for (const socket of this.connections.get(server) ?? []) socket.destroy();
     });
   }
 
