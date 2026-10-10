@@ -35,6 +35,13 @@ jobs:
           console.log(`MODEX_IOS_DESTINATION=platform=iOS Simulator,id=${phone.udid}`);
           console.log(`MODEX_IOS_DERIVED_DATA=${process.env.RUNNER_TEMP}/modex-ios-tests`);
           JS
+      - name: Use the on-screen keyboard in the simulator
+        # With a hardware keyboard connected the simulator hides the software keyboard, so
+        # `app.keyboards` stays empty after a field takes focus (see typeTextWhenReady). Set before
+        # the first xcodebuild boots the simulator; CI only, so local Simulator settings are untouched.
+        run: |
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+          defaults read com.apple.iphonesimulator ConnectHardwareKeyboard
       - name: Native unit tests
         working-directory: apps/ios/ModexCompanion
         run: |
