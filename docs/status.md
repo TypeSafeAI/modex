@@ -425,7 +425,9 @@ not been exercised. [Recovery evidence](reviews/2026-10-11-permission-response.m
   loops (no evaluation can be interrupted), wait for a settled, finite frame before asking
   `isHittable`, retry the tap until the field has keyboard focus, wait for the typed value,
   and answer system prompts during actions and long waits. Timeouts alone (#147) did not
-  remove any of the three.
+  remove any of the three. The CI job also turns off the simulator's hardware keyboard before
+  the first boot, so the software keyboard appears and the helper's fallback focus check
+  (`app.keyboards`) can see it; local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
