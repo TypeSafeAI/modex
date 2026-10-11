@@ -324,7 +324,8 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 - **Space editor selection.** Adding a block and applying formatting focus the committed
   textarea before the next user edit. A deferred focus callback can no longer collapse
-  a newer selection and turn a replacement such as `Second` into `/Second`.
+  a newer selection and turn a replacement such as `Second` into `/Second`. Toolbar
+  Code insertion places the caret inside the fences, ready for typing.
   [Regression evidence](reviews/2026-10-11-space-focus.md).
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
 - **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
@@ -344,6 +345,15 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   never finished. Before, `close()` waited for Node's 120 s handshake timeout on such a socket;
   the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
   holds a half-open connection and requires `dispose()` to return promptly.
+
+- **Chats and Space reference layout.** Graphite uses a 280 px default sidebar and
+  fixed 30 px chat rows. Hover or press Right Arrow on a chat to inspect its project,
+  model, branch, and PR without moving the list. Space has compact navigation, a page
+  toolbar, an insert menu, local comments with per-page drafts, and a floating view of
+  the current CLI chat. Share copies or exports Markdown; Sites and Images filter
+  pages containing those references. Visualize prepares a chat prompt for review
+  before sending. Comments stay in the local Space store and do not alter page
+  revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
 
 ## In flight
 

@@ -5,7 +5,9 @@ import { IconButton } from "../components/ui/IconButton";
 import { BLOCK_COMMANDS, safeBlocks } from "./markdown";
 import { joinMarkdown, splitMarkdown, toggleChecklist, type EditorBlock } from "../../shared/space-markdown";
 
-export function BlockEditor({ markdown, onChange }: { markdown: string; onChange: (value: string) => void }) {
+const commandCaret = (source: string) => source.startsWith("```") ? 4 : undefined;
+
+export function BlockEditor({ markdown, onChange, insertRequest }: { markdown: string; onChange: (value: string) => void; insertRequest?: { source: string; nonce: number } }) {
   const [blocks, setBlocks] = useState(() => splitMarkdown(markdown));
   const [editing, setEditing] = useState<string | null>(() => markdown ? null : blocks[0]!.id);
   const [choice, setChoice] = useState(0);
@@ -34,10 +36,10 @@ export function BlockEditor({ markdown, onChange }: { markdown: string; onChange
     pendingFocus.current = { id, start, end };
     setEditing(id);
   };
-  const insert = (index: number, source = "") => {
+  const insert = (index: number, source = "", position?: number) => {
     const next = { id: crypto.randomUUID(), source };
     commit([...blocks.slice(0, index + 1), next, ...blocks.slice(index + 1)]);
-    focus(next.id);
+    focus(next.id, position);
   };
   const remove = (index: number) => {
     if (blocks.length === 1) { update(blocks[0]!.id, ""); focus(blocks[0]!.id); return; }
@@ -59,9 +61,15 @@ export function BlockEditor({ markdown, onChange }: { markdown: string; onChange
     update(editing, value.slice(0, start) + marker + value.slice(start, end) + marker + value.slice(end));
     focus(editing, start + marker.length, end + marker.length);
   };
-  const applyCommand = (id: string, source: string) => { update(id, source); setChoice(0); focus(id, source.startsWith("```") ? 4 : undefined); };
+  const applyCommand = (id: string, source: string) => { update(id, source); setChoice(0); focus(id, commandCaret(source)); };
+  const inserted = useRef(insertRequest?.nonce);
+  useLayoutEffect(() => {
+    if (!insertRequest || inserted.current === insertRequest.nonce) return;
+    inserted.current = insertRequest.nonce;
+    insert(blocks.length - 1, insertRequest.source, commandCaret(insertRequest.source));
+  }, [insertRequest]);
 
-  return <section className="space-editor" aria-label="Page content">
+  return <section className={`space-editor${editing ? " is-editing" : ""}`} aria-label="Page content">
     <div className="space-format-bar" role="toolbar" aria-label="Text formatting">
       <button aria-label="Bold" disabled={!editing} onMouseDown={e => e.preventDefault()} onClick={() => format("**")}><strong>B</strong></button>
       <button aria-label="Italic" disabled={!editing} onMouseDown={e => e.preventDefault()} onClick={() => format("*")}><em>I</em></button>
@@ -169,7 +177,7 @@ function BlockPreview({ source, label, onEdit, onChange }: { source: string; lab
   // The package renderer does not expose link attributes. Apply the app's external-link contract.
   useLayoutEffect(() => { ref.current?.querySelectorAll("a").forEach(link => { link.target = "_blank"; link.rel = "noopener noreferrer"; }); }, [blocks]);
   return <div ref={ref} className="space-block-preview" tabIndex={0} aria-label={label}
-    onClick={event => { if (!(event.target as HTMLElement).closest("a, input, button")) onEdit(); }}
+    onClick={event => { if (!(event.target as HTMLElement).closest("a, input, button") && !window.getSelection()?.toString()) onEdit(); }}
     onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); onEdit(); } }}>
     {blocks.length ? <BlockRenderer blocks={blocks} customRenderers={renderers} /> : <p className="space-placeholder">Type / for blocks, or just start writing…</p>}
   </div>;

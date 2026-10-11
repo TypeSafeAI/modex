@@ -82,6 +82,29 @@ test("Space formatting restores the selection before the next user edit", async 
   } finally { await app.close(); }
 });
 
+test("Space toolbar inserts code with the caret inside the fence", async () => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await tid(page, "rail-space").click();
+    await page.getByLabel("Import Markdown file").setInputFiles({ name: "toolbar.md", mimeType: "text/markdown", buffer: Buffer.from("First\n") });
+    await page.getByRole("button", { name: "Insert", exact: true }).click();
+    await holdAppFrames(page);
+    await page.getByRole("menuitem", { name: /Code/ }).click();
+    const block = page.getByRole("textbox", { name: "Block 2", exact: true });
+    await expect(block).toBeFocused();
+    expect(await block.evaluate((input: HTMLTextAreaElement) => [input.selectionStart, input.selectionEnd])).toEqual([4, 4]);
+    await page.keyboard.insertText("console.log('saved');");
+    await expect(block).toHaveValue("```\nconsole.log('saved');\n```");
+    await page.keyboard.press("ControlOrMeta+a");
+    await releaseAppFrames(page);
+    await page.keyboard.insertText("Replaced code");
+    await expect(block).toHaveValue("Replaced code");
+    await page.getByRole("textbox", { name: "Page title" }).click();
+    await expect.poll(() => page.evaluate(() => window.modex.invoke("space:list", undefined).then(pages => pages.find(p => p.title === "toolbar")?.markdown))).toBe("First\n\nReplaced code");
+  } finally { await app.close(); }
+});
+
 test("Space preserves dedented imported tasks and checks only the selected task", async () => {
   const { home } = seedHome();
   const { app, page } = await launch(home);
@@ -150,6 +173,7 @@ test("Space imports Markdown, nests pages, finds content, and exports the curren
     // Immediately switch pages while the save queue owns the child's final edit.
     await page.getByRole("button", { name: "Open The next chapter", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("The next chapter");
+    await page.getByRole("button", { name: "Search pages", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search pages" }).fill("constellation");
     await page.getByRole("button", { name: "Open Small details", exact: true }).click();
     await expect(page.getByText("A searchable constellation.", { exact: true })).toBeVisible();
