@@ -12,7 +12,13 @@ and Debian (`modex`). macOS release-signing rules remain unchanged.
 The Native platform builds workflow tests CLI arguments and Windows process ownership,
 then builds candidate installers. Artifacts expire after three days. A manifest records
 SHA-256 hashes, sizes, source commit/run identity, and installer acceptance as pending.
-No native builds or installer acceptance have run at this checkpoint.
+The first hosted run compiled the Windows helper with MSVC and passed twelve CLI and
+process-ownership checks. Its interactive PTY case failed while observing resize, then
+left the test runner alive. The fixture now writes to the console so Node can observe
+Windows resize events, and teardown closes the PTY even after an assertion failure.
+Native re-verification is pending. Linux GCC rejected unchecked terminal receipt writes;
+the helper now handles partial writes, interruption and errors. No installers were built
+in that run. See [the initial native run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
 
 Before release, collect native evidence for installed startup, packaged Electron addon
 and helper loading, CLI arguments and account/login launches, PTY input/resize/Ctrl-C,
@@ -29,6 +35,12 @@ backend and preserve existing files when storage is unavailable.
 Local verification for the isolated platform change: full monorepo build, 480 passing
 tests, desktop typecheck, configuration validation and workflow lint. Eleven tests are
 skipped: ten require Windows and one is the existing opt-in live Knowledge test. Strict
-Windows cross-compilation passes; it does not establish MSVC or Windows execution.
+Windows cross-compilation passes; the hosted results above provide the limited native
+evidence gathered so far.
 The Codex process-cleanup fixture also now waits for a valid PID; a deliberately delayed
 PID write reproduces the earlier false process-survival assertion before the fix.
+
+The packaged-demo test now uses the test process PATH instead of reading the user's
+login profile. A controlled nine-second login shell reproduced its eight-second
+approval timeout; the same test passes with profile lookup disabled through the existing
+test seam. Production demo deadlines are unchanged.

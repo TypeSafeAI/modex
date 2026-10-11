@@ -9,7 +9,15 @@ import { ThreadRunner } from "../src/main/engine/runner.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 
-test("demo runs from a packaged app without a source checkout", async () => {
+test("demo runs from a packaged app without a source checkout", async t => {
+  // Exercise the bundled script with the test process's PATH, not the user's
+  // login profile (whose lookup can exceed the demo's approval deadline).
+  const previous = process.env.MODEX_NO_LOGIN_PATH;
+  process.env.MODEX_NO_LOGIN_PATH = "1";
+  t.after(() => {
+    if (previous === undefined) delete process.env.MODEX_NO_LOGIN_PATH;
+    else process.env.MODEX_NO_LOGIN_PATH = previous;
+  });
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "modex-packaged-demo-"));
   const repoPath = path.join(root, "Contents", "Resources", "app.asar");
   const scriptPath = path.join(repoPath, "demo", "mock-script.json");

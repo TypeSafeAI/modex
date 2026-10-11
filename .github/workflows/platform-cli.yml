@@ -54,6 +54,7 @@ jobs:
           MODEX_EXPECTED_PLATFORM: ${{ matrix.platform }}
         run: node -e "if (process.platform !== process.env.MODEX_EXPECTED_PLATFORM) throw new Error('Wrong native platform')"
       - name: Exercise native CLI argv and npm launchers
+        timeout-minutes: 5
         run: node --test --test-reporter=tap apps/desktop/dist/test/cli-launch.test.js apps/desktop/dist/test/cli-supervisor.test.js apps/desktop/dist/test/terminal-windows.test.js > native-cli.tap
       - name: Preserve CLI acceptance evidence
         if: always()

@@ -451,7 +451,9 @@ Roughly in the order they earn their place; none is scheduled.
    in development. Windows installers are unsigned by Val's choice; macOS release signing
    remains required. Windows CLI and terminal job supervision, PATH/npm launcher support,
    portable build steps and Linux credential-backend refusal are implemented in the platform
-   branch. Native build and acceptance jobs are drafted, not yet run. Installed startup,
+   branch (#173). The first native run compiled on Windows and passed twelve CLI/process
+   checks; the interactive resize test failed. Linux compilation exposed unchecked receipt
+   writes. Follow-up fixes await native verification; no installers were produced. Installed startup,
    packaged ABI, CLI/PTY behavior, native credential storage, manual upgrade and uninstall
    acceptance remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is

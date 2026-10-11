@@ -71,14 +71,24 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
   const pty = spawnTerminal("powershell.exe", ["-NoLogo", "-NoProfile", "-NoExit", "-Command", `& ${quote(process.execPath)} ${quote(interactive)} ${quote(directory)}`], { cwd: directory, cols: 80, rows: 24, env: { ...process.env } });
   let output = "";
-  pty.onData(data => { output += data; });
-  t.after(() => { if (output) t.diagnostic(output); fallback(directory); });
-  await until(() => pty.pid > 0, "interactive supervisor starts");
-  fs.writeFileSync(path.join(directory, "supervisor.pid"), String(pty.pid));
   const dimensions = () => {
     try { return JSON.parse(fs.readFileSync(path.join(directory, "dimensions.json"), "utf8")); }
     catch { return {}; } // The live fixture can be midway through its next write.
   };
+  pty.onData(data => { output += data; });
+  t.after(async () => {
+    if (output) t.diagnostic(output);
+    t.diagnostic(`Last terminal dimensions: ${JSON.stringify(dimensions())}`);
+    try { await stopTerminalProcess(pty); }
+    catch (error) { t.diagnostic(`Terminal teardown: ${String(error)}`); }
+    finally {
+      // Release node-pty's ConPTY handles even when an earlier assertion failed.
+      // Acceptance above/below still requires the supervisor's cleanup receipt.
+      try { pty.kill(); } finally { fallback(directory); }
+    }
+  });
+  await until(() => pty.pid > 0, "interactive supervisor starts");
+  fs.writeFileSync(path.join(directory, "supervisor.pid"), String(pty.pid));
   await until(() => dimensions().columns === 80, "initial terminal size");
   assert.equal(dimensions().stdin, true);
   assert.equal(dimensions().stdout, true);
