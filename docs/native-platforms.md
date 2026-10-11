@@ -62,7 +62,11 @@ data. Downloaded Windows/Linux evidence archives match GitHub's artifact digests
 tested merge tree matches the platform commit. The harness explicitly selected libsecret
 with one keyring process across app restarts. Automatic backend selection, keyring/session
 restart persistence and KWallet remain separate checks. Extracted AppImage execution does
-not establish FUSE startup.
+not establish FUSE startup. A follow-up harness is prepared to restart the owned keyring,
+read the same credential with automatic selection under a declared GNOME environment,
+and launch the actual AppImage executable. It requires a FUSE mount for the packaged
+ASAR and verifies that mount is released after graceful close. Hosted execution of these
+additional checks is pending; a full graphical login session remains outside that evidence.
 
 A hosted-only manual-upgrade harness is prepared. It builds a synthetic `0.0.0` baseline
 and the current version from the same source into separate directories, verifies both
@@ -73,7 +77,10 @@ and are never published. This establishes distinct-version package replacement, 
 historical schema migration. The first hosted attempt used invalid `default_mode: plan`,
 which the store correctly normalizes to `agent` on reload. The fixture now saves valid
 `chat`, checks the returned and on-disk value before replacement, and requires that value
-after restart. Upgrade acceptance remains pending. Persisted composer draft acceptance
+after restart. The [Windows upgrade run](https://github.com/TypeSafeAI/modex/actions/runs/38139835694)
+passed NSIS `0.0.0` → `0.0.10`, saved thread titles/settings and unchanged DPAPI ciphertext,
+then restart and uninstall retention. Its evidence archive matches GitHub's digest.
+Linux upgrade acceptance remains pending. Persisted composer draft acceptance
 belongs to the separate updater integration.
 
 Before release, collect native evidence for installed startup, packaged Electron addon

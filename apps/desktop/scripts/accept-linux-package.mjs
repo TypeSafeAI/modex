@@ -41,6 +41,7 @@ const keyringData = path.join(root, "keyring-data");
 const keyringControl = path.join(root, "keyring-control");
 for (const directory of [keyringData, keyringControl]) fs.mkdirSync(directory, { mode: 0o700 });
 const keyringEnv = { ...process.env, XDG_DATA_HOME: keyringData, GNOME_KEYRING_CONTROL: keyringControl };
+const keyringPassword = randomUUID();
 let encryptedHash;
 let keyring;
 let keyringFailure;
@@ -106,7 +107,8 @@ async function startKeyring() {
     "--object-path", "/org/freedesktop/DBus", "--method", "org.freedesktop.DBus.NameHasOwner",
     "org.freedesktop.secrets"], { encoding: "utf8", timeout: 5000 }).trim();
   assert.equal(owner(), "(false,)", "Refusing an existing Secret Service");
-  const log = fs.openSync(path.join(evidence, "keyring.log"), "w", 0o600);
+  keyringFailure = undefined;
+  const log = fs.openSync(path.join(evidence, "keyring.log"), "a", 0o600);
   try {
     keyring = spawn("gnome-keyring-daemon", ["--foreground", "--unlock", "--components=secrets", `--control-directory=${keyringControl}`],
       { env: keyringEnv, stdio: ["pipe", log, log] });
@@ -114,7 +116,7 @@ async function startKeyring() {
   keyring.on("error", error => { keyringFailure = error; });
   keyring.stdin.on("error", error => { keyringFailure = error; });
   // A nonempty random password protects the test keyring; never log or persist it.
-  keyring.stdin.end(randomUUID());
+  keyring.stdin.end(keyringPassword);
   await until(() => {
     if (keyringFailure) throw keyringFailure;
     assert.equal(keyring.exitCode, null, "Owned keyring exited during startup");
@@ -136,12 +138,17 @@ async function stopKeyring() {
 }
 
 async function launch(executablePath, kind, credentialAction, expectedVersion) {
+  const automaticKeyring = kind === "debian-keyring-restart-auto";
+  const mountedAppImage = kind === "appimage-fuse";
+  if (mountedAppImage) assert.ok(!process.env.APPIMAGE_EXTRACT_AND_RUN, "FUSE acceptance refuses extraction fallback");
   const app = await electron.launch({ executablePath, timeout: 30000,
-    args: [`--password-store=${credentialAction === "refuse" ? "basic" : "gnome-libsecret"}`],
+    args: automaticKeyring ? [] : [`--password-store=${credentialAction === "refuse" ? "basic" : "gnome-libsecret"}`],
     env: { ...keyringEnv, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", SHELL: "/bin/bash",
+      ...(automaticKeyring ? { XDG_CURRENT_DESKTOP: "GNOME", DESKTOP_SESSION: "gnome" } : {}),
       TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(root, "no-jev-config") } });
   openApps.add(app.process());
   let launchFailure;
+  let fuseMount;
   try {
     const page = await app.firstWindow({ timeout: 30000 });
     await page.waitForLoadState("domcontentloaded");
@@ -159,6 +166,12 @@ async function launch(executablePath, kind, credentialAction, expectedVersion) {
     assert.equal(identity.platform, "linux");
     assert.equal(identity.arch, "x64");
     assert.ok(identity.appPath.endsWith("/resources/app.asar"), "Launch must load packaged ASAR");
+    if (mountedAppImage) {
+      fuseMount = JSON.parse(execFileSync("findmnt", ["--json", "--target", identity.appPath, "--output", "FSTYPE,TARGET"],
+        { encoding: "utf8", timeout: 5000 })).filesystems[0];
+      assert.match(fuseMount.fstype, /^fuse(?:\.|$)/, "AppImage must run from an actual FUSE mount");
+      assert.ok(path.isAbsolute(fuseMount.target));
+    }
     assert.equal(identity.storageBackend, credentialAction === "refuse" ? "basic_text" : "gnome_libsecret");
     const stored = await app.evaluate(({ app, safeStorage }, { home, freshHome, value, action }) => {
       const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
@@ -219,11 +232,21 @@ async function launch(executablePath, kind, credentialAction, expectedVersion) {
     await until(async () => (await invoke("terminal:open", { threadId: thread.id, cols: 80, rows: 24 })).output.includes(token), "packaged terminal output");
     await invoke("terminal:close", { threadId: thread.id, sessionId: terminal.sessionId });
     await page.screenshot({ path: path.join(evidence, `${kind}.png`) });
-    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, threadTitle, credentialAction });
+    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, threadTitle, credentialAction,
+      storageSelection: automaticKeyring ? "automatic with declared GNOME desktop" : "explicit password-store", ...(fuseMount ? { fuseMount } : {}) });
   } catch (error) { launchFailure = error; }
   finally {
     try { await closeApp(app); }
     catch (error) { launchFailure = launchFailure ? new AggregateError([launchFailure, error], "Launch acceptance and close failed") : error; }
+    try {
+      if (fuseMount) await until(() => {
+        const mounted = spawnSync("findmnt", ["--mountpoint", fuseMount.target], { timeout: 5000, stdio: "ignore" });
+        assert.ok(!mounted.error);
+        assert.ok(mounted.status === 0 || mounted.status === 1);
+        return mounted.status === 1;
+      }, "owned AppImage FUSE mount released");
+    }
+    catch (error) { launchFailure = launchFailure ? new AggregateError([launchFailure, error], "Launch acceptance and FUSE cleanup failed") : error; }
   }
   if (launchFailure) throw launchFailure;
 }
@@ -241,6 +264,11 @@ try {
   await launch(installedBinary, "debian-upgraded", "read", manifest.version);
   await launch(installedBinary, "debian-restart", "read", manifest.version);
   await launch(installedBinary, "debian-basic-refusal", "refuse", manifest.version);
+  const firstKeyringPid = keyring.pid;
+  await stopKeyring();
+  await startKeyring();
+  await launch(installedBinary, "debian-keyring-restart-auto", "read", manifest.version);
+  result.keyringRestart = { beforePid: firstKeyringPid, afterPid: keyring.pid, evidence: "encrypted credential read after owned keyring restart using declared GNOME selection" };
   const portable = path.join(root, "portable");
   for (const [kind, candidate] of [["appimage-baseline", baseline], ["appimage-upgraded", { manifest, artifacts }]]) {
     const extracted = path.join(root, kind);
@@ -253,7 +281,8 @@ try {
     fs.renameSync(path.join(extracted, "squashfs-root"), portable);
     await launch(path.join(portable, "AppRun"), kind, "read", candidate.manifest.version);
   }
-  result.upgrade = { from: baseline.manifest.version, to: manifest.version, evidence: "Debian and extracted AppImage replacement retained threads, setting and unchanged encrypted credential", limitation: "same source with distinct package versions; historical schema migration and FUSE startup untested" };
+  await launch(artifacts.get(".AppImage"), "appimage-fuse", "read", manifest.version);
+  result.upgrade = { from: baseline.manifest.version, to: manifest.version, evidence: "Debian and extracted AppImage replacement retained threads, setting and unchanged encrypted credential", limitation: "same source with distinct package versions; historical schema migration untested" };
   result.credentials = "production SecretStore libsecret encryption persisted across restart and package formats; basic_text refused new/overwrite writes and preserved ciphertext";
 } catch (error) { failure = error; }
 finally {
