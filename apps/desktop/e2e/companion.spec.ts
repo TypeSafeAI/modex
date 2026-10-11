@@ -25,6 +25,15 @@ test("the Mac pairs an iPhone with a QR code and can revoke access", async () =>
     await page.getByRole("button", { name: "Turn off" }).click();
     await expect(tid(page, "companion-qr")).toHaveCount(0);
     expect((await page.evaluate(() => window.modex.invoke("companion:status", undefined))).enabled).toBe(false);
+    await page.getByRole("button", { name: "Close companion pairing" }).click();
+    await tid(page, "streamer-mode-toggle").click();
+    await tid(page, "open-companion").click();
+    await tid(page, "companion-start").click();
+    await expect(page.getByText("Pairing code hidden while streaming", { exact: true })).toBeVisible();
+    await expect(tid(page, "companion-qr")).toHaveCount(0);
+    const streaming = await page.evaluate(() => window.modex.invoke("companion:status", undefined));
+    await tid(page, "companion-copy-link").click();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(streaming.pairingUri);
   } finally {
     await app.close();
     fs.rmSync(home, { recursive: true, force: true });

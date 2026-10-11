@@ -1,3 +1,4 @@
+import { SecretOption, SecretInput } from "../streamer";
 import {
   useEffect,
   useLayoutEffect,
@@ -788,18 +789,18 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                     }));
                   }}
                 >
-                  <option value="all">All time</option>
+                  <SecretOption value="all">All time</SecretOption>
                   {months.map((month) => (
-                    <option key={month} value={month}>
+                    <SecretOption key={month} value={month}>
                       {dateLabel(month + "-01", {
                         day: undefined,
                         year: "numeric",
                       })}
-                    </option>
+                    </SecretOption>
                   ))}
-                  <option value="custom">
+                  <SecretOption value="custom">
                     Custom range{period === "custom" ? " · applied" : "…"}
-                  </option>
+                  </SecretOption>
                 </select>
               </label>
               <label className="select-control">
@@ -815,13 +816,13 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                     }))
                   }
                 >
-                  <option value="all">All tools</option>
+                  <SecretOption value="all">All tools</SecretOption>
                   {[...new Set(events.map((event) => event.tool))]
                     .sort()
                     .map((tool) => (
-                      <option key={tool} value={tool}>
+                      <SecretOption key={tool} value={tool}>
                         {toolName(tool)}
-                      </option>
+                      </SecretOption>
                     ))}
                 </select>
               </label>
@@ -1120,7 +1121,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             <div className="results-toolbar">
               <label className="search">
                 <Icon name="search" />
-                <input
+                <SecretInput
                   aria-label="Search usage"
                   placeholder="Search models, tools, or projects…"
                   value={query}
@@ -1642,7 +1643,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             </p>
             <label>
               Start date
-              <input
+              <SecretInput
                 type="date"
                 name="since"
                 required
@@ -1651,7 +1652,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             </label>
             <label>
               End date
-              <input
+              <SecretInput
                 type="date"
                 name="until"
                 required

@@ -126,9 +126,13 @@ async function openKnowledgeFile(guest: Page, name: string) {
   const navigation = guest.getByRole("group", { name: "Workspace navigation" });
   await expect(navigation).toBeVisible();
   const showFiles = navigation.getByRole("button", { name: /^Show Files/ });
-  if (await showFiles.count()) await showFiles.click();
   const file = guest.getByText(name, { exact: true }).first();
-  await expect(file).toBeInViewport();
+  // The guest's first native bounds can cross OpenKnowledge's responsive breakpoint between
+  // lookup and click, replacing Show Files with Hide Files. Retry the visible-file outcome.
+  await expect(async () => {
+    if (await showFiles.isVisible()) await showFiles.click({ timeout: 1_000 });
+    await expect(file).toBeInViewport({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   await file.click();
 }
 
@@ -258,6 +262,10 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     await guest.waitForLoadState("domcontentloaded");
     url = new URL(guest.url()).origin;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, guestURL) =>
+      BrowserWindow.getAllWindows()[0]!.contentView.children.some(view =>
+        "webContents" in view && (view as import("electron").WebContentsView).webContents.getURL().startsWith(guestURL) && view.getVisible()),
+    url)).toBe(true);
     await expect(guest.getByText("Welcome", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
     await openKnowledgeFile(guest, "Welcome");
     await expect(guest.getByText("Welcome to Modex knowledge", { exact: true }).first()).toBeVisible();
@@ -336,7 +344,28 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     await expect.poll(visibleGuest).toBe(true);
     await page.getByRole("button", { name: /Streamer Mode/ }).click();
     await expect.poll(visibleGuest).toBe(false);
-    await tid(page, "streamer-mode-disable").click();
+    await expect(tid(page, "streamer-knowledge-cover")).toBeVisible();
+    await expect(tid(page, "space")).toBeVisible();
+    await tid(page, "streamer-mode-toggle").click();
+    await expect.poll(visibleGuest).toBe(true);
+    await page.locator(".knowledge-topbar").getByRole("button", { name: "Space", exact: true }).click();
+    await expect.poll(visibleGuest).toBe(false);
+    await page.getByRole("button", { name: "Open chat", exact: true }).click();
+    await tid(page, "composer-input").fill("Keep chat above Knowledge");
+    await page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await expect(tid(page, "knowledge-canvas")).toBeVisible();
+    await expect(tid(page, "space-chat")).toBeVisible();
+    await expect.poll(visibleGuest).toBe(false);
+    await tid(page, "composer-input").click();
+    await expect(tid(page, "composer-input")).toBeFocused();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.insertText("Keep chat above Knowledge while editing");
+    await expect(tid(page, "composer-input")).toHaveValue("Keep chat above Knowledge while editing");
+    await page.getByRole("button", { name: "Minimize chat" }).click();
+    await expect.poll(visibleGuest).toBe(true);
+    await tid(page, "rail-chat").click();
+    await expect(tid(page, "composer-input")).toHaveValue("Keep chat above Knowledge while editing");
+    await tid(page, "rail-space").click();
     await expect.poll(visibleGuest).toBe(true);
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByRole("button", { name: "Open knowledge base", exact: true })).toBeVisible();

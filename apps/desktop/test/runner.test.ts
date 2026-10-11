@@ -13,7 +13,7 @@ import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/eng
 import type { PagesChange } from "../src/shared/pages.js";
 import type { Thread, ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { MockProvider, type MockStep } from "@modex/core";
-import { gitRepo, tmpdir, writeScript } from "./helpers.js";
+import { PNG_B64, gitRepo, tmpdir, writeScript } from "./helpers.js";
 
 function harness(steps: MockStep[] = []) {
   const home = tmpdir("modex-home-");
@@ -25,6 +25,84 @@ function harness(steps: MockStep[] = []) {
 }
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
+
+test("attachments move into the thread's folder, ride on the user item, and reach the backend by path", async () => {
+  const h = harness();
+  const turns: { text: string; opts: TurnOptions }[] = [];
+  const runner = new ThreadRunner({ ...h, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async (text, opts) => {
+    turns.push({ text, opts });
+    return { status: "completed" };
+  } } } });
+  const project = h.store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude" });
+  try {
+    const src = tmpdir("modex-src-");
+    fs.writeFileSync(path.join(src, "notes.txt"), "hello");
+    const { staged, errors } = runner.attachments.stage([{ name: "notes.txt", path: path.join(src, "notes.txt") }, { name: "dot.png", mime: "image/png", data: PNG_B64 }]);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(staged.map((a) => [a.kind, a.rel.startsWith("staging/")]), [["file", true], ["image", true]]);
+    await runner.send(thread.id, "look", staged);
+    const user = new Store(h.home).items(thread.id).find((i) => i.kind === "user");
+    assert.ok(user?.kind === "user" && user.attachments?.length === 2, "the user item carries both attachments");
+    for (const a of user.attachments!) {
+      assert.ok(a.rel.startsWith(`${thread.id}/`), a.rel);
+      assert.ok(fs.existsSync(path.join(h.home, "attachments", a.rel)));
+    }
+    assert.equal(fs.readdirSync(path.join(h.home, "attachments", "staging")).length, 0);
+    const [turn] = turns;
+    assert.match(turn!.text, new RegExp(`^look\\n\\nAttached file \\(read as needed\\):\\n- ${path.join(h.home, "attachments", thread.id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/[\\w-]+-notes\\.txt$`));
+    assert.deepEqual(turn!.opts.attachments?.map((a) => a.kind), ["file", "image"]);
+    assert.deepEqual(turn!.opts.addDirs, [path.join(h.home, "attachments", thread.id)]);
+    // Retry runs the same message with the same files, now from the thread's folder.
+    await runner.retry(thread.id);
+    assert.equal(turns.length, 2);
+    assert.deepEqual(turns[1]!.opts.attachments, turns[0]!.opts.attachments);
+    assert.equal(new Store(h.home).items(thread.id).filter((i) => i.kind === "user").length, 1);
+    await runner.deleteThread(thread.id);
+    assert.ok(!fs.existsSync(path.join(h.home, "attachments", thread.id)), "deleting the thread removes its files");
+  } finally { await runner.dispose(); }
+});
+
+for (const replacement of ["symlink", "missing"] as const) {
+  test(`runner refuses an attachment made ${replacement} during turn setup before dispatch`, async () => {
+    const h = harness();
+    let calls = 0;
+    const outside = path.join(tmpdir(), "secret.txt");
+    fs.writeFileSync(outside, "not an attachment");
+    const pages = { prepare: async () => {
+      const item = h.store.items(thread.id).find(item => item.kind === "user");
+      assert.ok(item?.kind === "user" && item.attachments?.length);
+      const claimed = path.join(runner.attachments.root, item.attachments[0]!.rel);
+      fs.unlinkSync(claimed);
+      if (replacement === "symlink") fs.symlinkSync(outside, claimed);
+      return { connection: { url: "http://127.0.0.1:4321/mcp/pages", instructions: "" }, close: async () => {} };
+    } };
+    const runner = new ThreadRunner({ ...h, pages, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => {
+      calls++;
+      return { status: "completed" };
+    } } } });
+    const thread = await runner.createThread(h.store.addProject(gitRepo()).id, { backend: "claude" });
+    try {
+      const { staged } = runner.attachments.stage([{ name: "notes.txt", data: "YQ==" }]);
+      await runner.send(thread.id, "read this", staged);
+      assert.equal(calls, 0, "invalid paths must never reach the backend");
+      assert.ok(h.store.items(thread.id).some(item => item.kind === "notice" && item.level === "error" && /attachment.*notes\.txt.*(missing|changed|unavailable)/i.test(item.text)));
+      assert.equal(fs.readFileSync(outside, "utf8"), "not an attachment");
+    } finally { await runner.dispose(); }
+  });
+}
+
+test("an image-only message is titled after its file", async () => {
+  const h = harness();
+  const runner = new ThreadRunner({ ...h, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "completed" }) } } });
+  const project = h.store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude" });
+  try {
+    const { staged } = runner.attachments.stage([{ name: "screenshot.png", mime: "image/png", data: PNG_B64 }]);
+    await runner.send(thread.id, "", staged);
+    assert.equal(h.store.thread(thread.id)!.title, "screenshot.png");
+  } finally { await runner.dispose(); }
+});
 
 test("runner attaches Pages every real turn, persists receipts and closes failed turns", async () => {
   const h = harness();
@@ -1162,4 +1240,38 @@ test("approval gate: stopping while Jev is deciding answers 'no' and adds no car
   await done;
   assert.deepEqual(answers, ["no"]);
   assert.equal(runner.items(thread.id).some((i) => i.kind === "approval"), false);
+});
+
+for (const value of [null, {}, "", { length: 0 }, Array(21).fill({})]) {
+  test(`runner rejects malformed or excessive attachments before transcript and dispatch: ${JSON.stringify(value)}`, async () => {
+    const h = harness();
+    let calls = 0;
+    const runner = new ThreadRunner({ ...h, backends: { claude: { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => {
+      calls++;
+      return { status: "completed" };
+    } } } });
+    const project = h.store.addProject(gitRepo());
+    const thread = await runner.createThread(project.id, { backend: "claude" });
+    try {
+      await assert.rejects(runner.send(thread.id, "invalid", value as never), Array.isArray(value) ? /20/ : /attachment/i);
+      assert.equal(calls, 0);
+      assert.equal(h.store.items(thread.id).filter(i => i.kind === "user").length, 0);
+    } finally { await runner.dispose(); }
+  });
+}
+
+test("retry does not normalize malformed persisted attachment metadata to an empty list", async () => {
+  const h = harness();
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try { await runner.send(thread.id, "original"); }
+  finally { await runner.dispose(); }
+  const items = h.store.items(thread.id);
+  const user = items.find(item => item.kind === "user");
+  assert.ok(user?.kind === "user");
+  user.attachments = null as never;
+  h.store.saveItems(thread.id, items);
+  const fresh = new ThreadRunner(h);
+  try { await assert.rejects(fresh.retry(thread.id), /attachment/i); }
+  finally { await fresh.dispose(); }
 });

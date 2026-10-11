@@ -77,6 +77,26 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
   return { seen, threadId, turnId };
 }
 
+test("Codex receives attached images as localImage inputs after the text; other files ride in the text", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId, seen } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  try {
+    const attachments = [
+      { name: "shot.png", mime: "image/png", kind: "image" as const, path: "/tmp/att/shot.png" },
+      { name: "notes.pdf", mime: "application/pdf", kind: "file" as const, path: "/tmp/att/notes.pdf" },
+    ];
+    const run = backend.runTurn("what is this?", { cwd: "/w", mode: "agent", plan: false, model: "", attachments }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(l => l.includes('"turn/start"'));
+    const input = seen.find(s => s.method === "turn/start")?.params.input as { type: string; text?: string; path?: string }[];
+    assert.equal(input[0]!.type, "text");
+    assert.match(input[0]!.text!, /what is this\?/);
+    assert.deepEqual(input.slice(1), [{ type: "localImage", path: "/tmp/att/shot.png" }]);
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    assert.equal((await run).status, "completed");
+  } finally { await backend.dispose(); }
+});
+
 test("CodexBackend.policy maps modes to approval + sandbox policies", () => {
   const base = { cwd: "/w", model: "", plan: false } as const;
   assert.deepEqual(CodexBackend.policy({ ...base, mode: "chat" }).approvalPolicy, "untrusted");

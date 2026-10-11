@@ -2,12 +2,26 @@ import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
-import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { cliEnvironment, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
+
+/**
+ * The stream-json user message content: plain text, or text plus base64 image blocks when images
+ * are attached. Other files are already named by path in the text. Exported for tests.
+ */
+export function userContent(text: string, attachments: TurnAttachment[] = []): string | Record<string, unknown>[] {
+  const images = attachments.filter((a) => a.kind === "image");
+  if (!images.length) return text;
+  return [
+    ...(text.trim() ? [{ type: "text", text }] : []),
+    ...images.map((a) => ({ type: "image", source: { type: "base64", media_type: a.mime, data: fs.readFileSync(a.path).toString("base64") } })),
+  ];
+}
 
 /**
  * Drives the Claude Code CLI (`claude -p`) over its stream-json protocol:
@@ -227,7 +241,7 @@ export class ClaudeBackend implements Backend {
         finish(code === 0 ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
       });
 
-      write({ type: "user", message: { role: "user", content: text } });
+      write({ type: "user", message: { role: "user", content: userContent(text, opts.attachments) } });
     });
   }
 

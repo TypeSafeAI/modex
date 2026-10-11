@@ -7,7 +7,7 @@ import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +35,10 @@ import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
 import { describeFailure } from "../shared/failures.js";
 import { previewApproval, validateRules } from "./engine/approvals/preview.js";
+import { registerAttachmentCommands } from "./attachment-commands.js";
+import { AttachmentStore } from "./engine/attachments.js";
+import { LIMITS } from "../shared/attachments.js";
+import { ATTACHMENT_SCHEME, relFromUrl } from "../shared/attachments.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -54,6 +58,8 @@ const hostPreview = app.isPackaged && (app.getName() === "Modex Host Preview" ||
 const hostPreviewHome = path.join(os.homedir(), "Library", "Application Support", "Modex Host Preview");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? (hostPreview ? hostPreviewHome : path.join(os.homedir(), ".modex"));
 fs.mkdirSync(home, { recursive: true });
+// Attachment thumbnails load from main over this scheme; registration must precede app ready.
+protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true } }]);
 // The scripted demo and screenshots must never discover a real Jev key or call the network.
 if (demo) {
   process.env.TYPESAFE_API_KEY = "";
@@ -107,7 +113,9 @@ const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url
 const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
-const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, beforeDeleteThread: (id) => terminals.close(id) });
+const attachments = new AttachmentStore(path.join(home, "attachments"));
+attachments.sweepStaging();
+const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id) });
 const retirer = new TaskRetirer({
   enabled: () => store.settings.auto_retire,
   threads: () => store.snapshot().threads,
@@ -224,6 +232,9 @@ handle("space:export", async ({ pageId }) => {
   return result.filePath;
 }, { localOnly: true });
 handle("space:list", () => store.space.list());
+handle("space:comments", ({ pageId }) => store.space.comments(pageId));
+handle("space:comment:add", ({ pageId, text, quote }) => store.space.addComment(pageId, text, quote));
+handle("space:comment:delete", ({ pageId, id }) => store.space.deleteComment(pageId, id));
 handle("space:create", (input) => store.space.create(input));
 handle("space:save", (page) => store.space.save(page));
 handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
@@ -267,7 +278,22 @@ async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: bo
   accepting = false;
   return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
 }
-handle("thread:send", ({ threadId, text }) => startTurn(threadId, runner.send(threadId, text)));
+handle("thread:send", ({ threadId, text, attachments: files }) => startTurn(threadId, runner.send(threadId, text, files)));
+registerAttachmentCommands(handle, attachments, { bytesOnly: false, reveal: (abs) => shell.showItemInFolder(abs) });
+handle("attachments:pick", async (req) => {
+  // Explicit renderer paths keep the strict whole-request guard. Only the native dialog's
+  // trusted selection is trimmed to the slots the composer reserved before opening it.
+  if (req?.paths !== undefined) return attachments.stagePaths(req.paths, req.remaining);
+  const remaining = req?.remaining === undefined ? LIMITS.perTurn : req.remaining;
+  if (typeof remaining !== "number" || !Number.isInteger(remaining) || remaining < 0 || remaining > LIMITS.perTurn) {
+    return attachments.stagePaths([], remaining);
+  }
+  const r = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], title: "Attach files", buttonLabel: "Attach" });
+  if (r.canceled) return { staged: [], errors: [] };
+  const result = attachments.stagePaths(r.filePaths.slice(0, remaining), remaining);
+  if (r.filePaths.length > remaining) result.errors.push(`Up to ${LIMITS.perTurn} attachments per message; ${r.filePaths.length - remaining} left out.`);
+  return result;
+}, { localOnly: true });
 handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
@@ -499,6 +525,12 @@ app.on("second-instance", (_event, args) => {
 });
 
 app.whenReady().then(async () => {
+  // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
+  protocol.handle(ATTACHMENT_SCHEME, (request) => {
+    const rel = relFromUrl(request.url);
+    const image = rel ? attachments.readImage(rel) : null;
+    return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } }) : new Response("Not found", { status: 404 });
+  });
   win = createWindow();
   if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
   if (!demo && !process.env.MODEX_E2E) void pathReady.then(() => retirer.start());

@@ -1,3 +1,4 @@
+import { SecretInput, useStreamerMode } from "../streamer";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ChangesSnapshot, Thread } from "../../shared/types";
 import type { BrowserSnapshot } from "../../shared/browser";
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function Workspace({ thread, changes, onRefresh, onRevert, visible, onShow, onHide, suspended, terminal, onOpenTerminal, onHideTerminal, onFocusChat }: Props) {
+  const streamerMode = useStreamerMode();
   const [tabs, setTabs] = useState<Tab[]>(() => [makeTab(), { id: "review", kind: "review", title: "Review" }]);
   const [active, setActive] = useState(terminal ? "terminal" : "review");
   const [full, setFull] = useState(false);
@@ -128,9 +130,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   useLayoutEffect(() => {
     const host = guestHost.current;
     const update = () => {
-      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .streamer-shield, [data-panel-resizing="true"]');
+      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], [data-panel-resizing="true"]');
       const rect = host?.getBoundingClientRect();
-      const show = visible && !suspended && !overlay && current.kind === "browser" && !current.browser?.error && rect;
+      const show = visible && !suspended && !streamerMode && !overlay && current.kind === "browser" && !current.browser?.error && rect;
       void bridge.invoke("browser:show", { id: show ? current.id : null, fullView: full, ...(show ? { bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : {}) }).catch(() => {});
     };
     update();
@@ -140,7 +142,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     mutations.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-panel-resizing"] });
     window.addEventListener("resize", update);
     return () => { resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("browser:show", { id: null }).catch(() => {}); };
-  }, [current.id, current.kind, current.browser?.error, visible, suspended, full]);
+  }, [current.id, current.kind, current.browser?.error, visible, suspended, full, streamerMode]);
   const browserPage = current.kind === "new" || current.kind === "browser";
   return <aside ref={container} className="workspace" data-testid="workspace" hidden={!visible} aria-label="Workspace" data-full-view={full} data-page-kind={current.kind}>
     <header className="workspace-tabbar">
@@ -172,12 +174,12 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       {browserPage && <>
         <div className="workspace-navigation">
           <div className="workspace-history"><IconButton icon="arrow-left" label="Go back" size="md" disabled={!current.browser?.back} onClick={() => void browserCommand("back")} /><IconButton icon="arrow-right" label="Go forward" size="md" disabled={!current.browser?.forward} onClick={() => void browserCommand("forward")} /><span className="history-separator" /><IconButton icon="restart" label="Reload page" size="md" disabled={current.kind === "new"} onClick={() => void browserCommand("reload")} /></div>
-          <form className="workspace-address-form" onSubmit={(e) => { e.preventDefault(); void browserCommand("navigate", address); }}><input ref={addressRef} data-testid="workspace-address" aria-label="Search or enter a URL" placeholder="Search or enter a URL" value={address} onChange={(e) => { addressEdited.current = true; setAddress(e.target.value); }} spellCheck={false} /></form>
+          <form className="workspace-address-form" onSubmit={(e) => { e.preventDefault(); void browserCommand("navigate", address); }}><SecretInput ref={addressRef} data-testid="workspace-address" aria-label="Search or enter a URL" placeholder="Search or enter a URL" value={address} onChange={(e) => { addressEdited.current = true; setAddress(e.target.value); }} spellCheck={false} /></form>
           <IconButton icon="comment" label="Focus chat" className="workspace-circle" size="md" onClick={() => { setFull(false); onFocusChat(); }} />
           <span className="workspace-menu-anchor"><IconButton ref={pageRef} icon="more" label="Page options" className="workspace-circle" size="md" aria-haspopup="menu" aria-expanded={pageMenu} onClick={() => setPageMenu(!pageMenu)} /><Menu open={pageMenu} anchorRef={pageRef} onClose={() => setPageMenu(false)} label="Page options" placement="bottom-end"><MenuItem disabled={!current.browser?.url} onClick={() => { void bridge.invoke("clipboard:write", { text: current.browser?.url ?? "" }); setPageMenu(false); }}>Copy page URL</MenuItem><MenuItem onClick={() => { closeTab(current); setPageMenu(false); }}>Close tab</MenuItem></Menu></span>
         </div>
         {(error || current.browser?.error) && <p className="workspace-error" role="alert">{error || current.browser?.error}</p>}
-        {current.kind === "browser" ? <div className="workspace-guest" data-testid="workspace-browser" ref={guestHost}>{current.browser?.loading && <p className="hint pad" role="status">Loading page…</p>}</div> :
+        {current.kind === "browser" ? <div className="workspace-guest" data-testid="workspace-browser" ref={guestHost}>{streamerMode && <p className="streamer-guest-cover" data-testid="streamer-browser-cover">Browser content is covered while Streamer Mode is on.</p>}{!streamerMode && current.browser?.loading && <p className="hint pad" role="status">Loading page…</p>}</div> :
           <div className="workspace-start">
             <h2>Tools</h2>
             <div className="workspace-tools">
@@ -219,7 +221,7 @@ function FilesPanel({ thread }: { thread: Thread }) {
     {error && <p className="workspace-error" role="alert">{error}</p>}
     <div className="review-body">
       <div className="review-diff"><div className="review-file-heading">{selected || "Select a file"}</div>{selected && (!result ? <p className="hint pad">Loading file…</p> : result.error ? <p className="workspace-error" role="alert">{result.error}</p> : <pre className="workspace-file-content" data-testid="workspace-file-content">{result.text.split("\n").map((line, i) => <div key={i}><span className="line-number">{i + 1}</span><code>{line || " "}</code></div>)}</pre>)}</div>
-      <aside className="review-tree"><label className="review-filter"><Icon name="search" size={13} /><input autoFocus aria-label="Find a file" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
+      <aside className="review-tree"><label className="review-filter"><Icon name="search" size={13} /><SecretInput autoFocus aria-label="Find a file" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
         {!listing && !error && <p className="hint pad">Loading files…</p>}{listing && !paths.length && <p className="hint pad">No matching files.</p>}
         {paths.map((p) => <button key={p} className={`review-file-select workspace-file${selected === p ? " selected" : ""}`} aria-label={`Open ${p}`} title={p} onClick={() => setSelected(p)}><FileIcon path={p} /><span>{p}</span></button>)}
         {listing?.truncated && <p className="hint pad">Showing the first 5,000 files.</p>}

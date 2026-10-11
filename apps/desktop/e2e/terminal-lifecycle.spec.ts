@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { launch, seedHome, tid } from "./support";
+import { resizeWindow, launch, seedHome, tid } from "./support";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 function alive(pid: number): boolean {
@@ -25,7 +25,7 @@ test("terminal fills its workspace after a window resize", async () => {
     await tid(page, "terminal-toggle").click();
     await expect(tid(page, "terminal-panel")).toBeVisible();
     for (const [width, height] of [[1380, 880], [900, 600]]) {
-      await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]!.setContentSize(size.width, size.height), { width, height });
+      await resizeWindow(app, page, width!, height!);
       await expect.poll(async () => {
         return tid(page, "terminal-panel").evaluate((panel) => Math.abs(panel.getBoundingClientRect().height - panel.parentElement!.clientHeight));
       }).toBeLessThanOrEqual(1);
