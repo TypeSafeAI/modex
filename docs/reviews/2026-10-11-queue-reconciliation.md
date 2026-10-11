@@ -9,7 +9,7 @@ in `.worktrees/queue-composer-audit`.
 
 | Item | Reviewed head | Current disposition and next gate |
 | --- | --- | --- |
-| [#158](https://github.com/TypeSafeAI/modex/pull/158) | `00d2d6b` | Code review passed. Land the half-open TLS shutdown fix after current-base macOS CI passes. |
+| [#158](https://github.com/TypeSafeAI/modex/pull/158) | `00d2d6b` | Reconciled with the CI prerequisite. Build and 469 unit tests passed (1 skipped), including half-open TLS shutdown; current-head hosted checks remain the landing gate. |
 | [#160](https://github.com/TypeSafeAI/modex/pull/160) | `b57ace2` | Code review passed. Both iPhone jobs logged hardware keyboard `0` and passed. Preserve its status paragraph alongside #158. |
 | [#161](https://github.com/TypeSafeAI/modex/pull/161) | `a2ced31` | Documentation review passed. Clarifies the Jev CLI is unofficial. Required macOS CI is mixed; PR title and description now describe the actual one-word change and the CI gate. |
 | [#157](https://github.com/TypeSafeAI/modex/pull/157), [#159](https://github.com/TypeSafeAI/modex/issues/159) | `5d79f2e` | Changes required for copying/send coordination, failed-send draft merging, storage boundaries and transactional claiming, main-process limits, development commands, and composer sizing. Live Claude/Codex acceptance remains open. |
@@ -93,7 +93,9 @@ commits and a successful `unit + e2e (macOS)` check against current main, with n
 
 ## Resume
 
-Finish the CI synchronization verification and land that prerequisite. Integrate #158,
-#160, and #161 serially, preserving both overlapping status explanations. Then complete
+PR #167 publishes the CI prerequisite. #158 is reconciled on top of that exact head,
+with a passing build and 469 unit tests (1 skipped); independent integration review found
+no lost changes. Land #167 then #158 after their required current-head hosted checks pass.
+Integrate #160 and #161 serially, preserving both overlapping status explanations. Then complete
 #157/#159 and #152 with targeted regressions and live acceptance receipts. Do not retire
 this session's worktree while unlanded work or the local goal ledger remains there.
