@@ -379,9 +379,10 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   listing text are prepared locally. Current-account signed candidates passed running-host
   discovery, real Codex and Claude turns, native code comparison/denial, and credential persistence
   after relaunch using an isolated runtime keychain name. Store Stop ended a real Claude
-  background task. Native launch into a fresh user profile, reconnect draft retention
-  and revocation still need acceptance; the final native run ended after host exit 137
-  during shared resource pressure, with the exit's cause undetermined.
+  background task. A later bounded native run passed host-restart reconnect with the same
+  Store process and unsent draft, matching-code approval, and revocation with credential
+  removal. All disposable grants were revoked and test apps stopped. Fresh-user setup,
+  installed-host auto-launch and sleep/wake remain unaccepted.
   [Signed acceptance evidence and limits](reviews/2026-10-11-store-signed-acceptance.md).
   Beta approval covers the October 6 builds; production
   approval and acceptance of this branch's changes remain open.
