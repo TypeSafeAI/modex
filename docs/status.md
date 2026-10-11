@@ -384,9 +384,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   sites, or digests. The selected guest and matching approved extensions can read filled
   fields; credentials are not returned through Modex app-bridge IPC or stored in the app
   renderer, transcripts, or errors.
-  Final integrated verification passed SPEC/QUALITY, build, all-workspace typecheck,
-  **700 unit tests (zero skips), 221 desktop E2E tests, and seven site tests**, with real
-  OpenKnowledge enabled. A controlled real 1Password CLI 2.39.0 check on that unchanged
+  Browser integration passed SPEC/QUALITY, **221 desktop E2E tests and seven site tests**.
+  A later iPhone-only confirmation-helper repair passed **16 native tests**, fresh build,
+  all-workspace typecheck, and **700 unit tests (zero skips)** with real OpenKnowledge
+  enabled. Desktop/product source, all 424 build artifacts, and 13 live-check hashes remain
+  unchanged, carrying forward the desktop/site and live evidence. A controlled real
+  1Password CLI 2.39.0 check on that unchanged
   development build passed actual native selection, no-submit filling, scoped leak checks,
   and exact temporary Login cleanup. Normal signed-app unlock/cancellation, public TLS,
   real-site compatibility, and fresh biometric acceptance remain release gates. Device

@@ -1,7 +1,154 @@
 import Foundation
 import XCTest
 
+// Confirm this alert's action, with at most one guarded retry inside the original readiness budget.
+// Individual XCTest queries can overrun that deadline; no new tap starts after observing its expiry.
+private func completeForgetConfirmation(timeout: TimeInterval = 30,
+                                        now: () -> Date = { Date() },
+                                        poll: () -> Void = { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2)) },
+                                        isPresented: () -> Bool,
+                                        prepare: (TimeInterval) -> Bool,
+                                        isReady: () -> Bool,
+                                        tap: () -> Void) -> Bool {
+    let deadline = now().addingTimeInterval(timeout)
+    guard isPresented() else { return false }
+    for attempt in 0..<2 {
+        let remaining = deadline.timeIntervalSince(now())
+        guard remaining > 0 else { return false }
+        let prepared = prepare(remaining)
+        let ready = prepared && isReady()
+        if !isPresented() { return attempt > 0 }
+        guard ready, now() < deadline else { return false }
+        tap()
+        if !isPresented() { return true }
+    }
+    while now() < deadline {
+        poll()
+        if !isPresented() { return true }
+    }
+    return false
+}
+
 final class CompanionFlowTests: XCTestCase {
+    func testForgetConfirmationRecoversAnIgnoredFirstTap() {
+        let probe = ForgetConfirmationProbe()
+        probe.dismissAfterTap = 2
+        probe.preparationCost = 4
+        XCTAssertTrue(probe.complete())
+        XCTAssertEqual(probe.taps, 2)
+        XCTAssertEqual(probe.preparationBudgets, [30, 26], "A retry shares the original deadline.")
+    }
+
+    func testForgetConfirmationStopsAfterImmediateDismissal() {
+        let probe = ForgetConfirmationProbe()
+        XCTAssertTrue(probe.complete())
+        XCTAssertEqual(probe.taps, 1)
+        XCTAssertEqual(probe.preparationBudgets, [30])
+    }
+
+    func testForgetConfirmationRejectsPersistentDialogAfterTwoTaps() {
+        let probe = ForgetConfirmationProbe()
+        probe.dismissAfterTap = nil
+        XCTAssertFalse(probe.complete())
+        XCTAssertEqual(probe.taps, 2)
+    }
+
+    func testForgetConfirmationRejectsInitiallyAbsentAlert() {
+        let probe = ForgetConfirmationProbe()
+        probe.presented = false
+        XCTAssertFalse(probe.complete())
+        XCTAssertEqual(probe.taps, 0)
+        XCTAssertTrue(probe.preparationBudgets.isEmpty)
+    }
+
+    func testForgetConfirmationRejectsUnavailableButton() {
+        let probe = ForgetConfirmationProbe()
+        probe.preparationSucceeds = false
+        XCTAssertFalse(probe.complete())
+        XCTAssertEqual(probe.taps, 0)
+    }
+
+    func testForgetConfirmationRechecksButtonBeforeActing() {
+        let probe = ForgetConfirmationProbe()
+        probe.ready = false
+        XCTAssertFalse(probe.complete())
+        XCTAssertEqual(probe.taps, 0)
+    }
+
+    func testForgetConfirmationRejectsReadinessBeyondDeadline() {
+        let probe = ForgetConfirmationProbe()
+        probe.preparationCost = 31
+        XCTAssertFalse(probe.complete())
+        XCTAssertEqual(probe.taps, 0)
+    }
+
+    func testForgetConfirmationDoesNotRetryAfterSlowObservation() {
+        let probe = ForgetConfirmationProbe()
+        probe.dismissAfterTap = nil
+        probe.postTapObservationCost = 31
+        XCTAssertFalse(probe.complete())
+        XCTAssertEqual(probe.taps, 1)
+    }
+
+    func testForgetConfirmationAcceptsDismissalDuringRetryPreparation() {
+        let probe = ForgetConfirmationProbe()
+        probe.dismissAfterTap = nil
+        probe.dismissDuringRetryPreparation = true
+        XCTAssertTrue(probe.complete())
+        XCTAssertEqual(probe.taps, 1)
+    }
+
+    func testForgetConfirmationObservesDelayedDismissalAfterSecondTap() {
+        let probe = ForgetConfirmationProbe()
+        probe.dismissAfterTap = nil
+        probe.dismissOnSecondTapObservation = 2
+        XCTAssertTrue(probe.complete())
+        XCTAssertEqual(probe.taps, 2)
+    }
+
+    private final class ForgetConfirmationProbe {
+        var presented = true
+        var ready = true
+        var preparationSucceeds = true
+        var dismissAfterTap: Int? = 1
+        var preparationCost: TimeInterval = 0
+        var postTapObservationCost: TimeInterval = 0
+        var dismissDuringRetryPreparation = false
+        var dismissOnSecondTapObservation: Int?
+        private(set) var taps = 0
+        private(set) var preparationBudgets: [TimeInterval] = []
+        private var clock: TimeInterval = 0
+        private var secondTapObservations = 0
+
+        func complete() -> Bool {
+            completeForgetConfirmation(
+                now: { Date(timeIntervalSinceReferenceDate: self.clock) },
+                poll: { self.clock += 0.2 },
+                isPresented: {
+                    if self.taps > 0 { self.clock += self.postTapObservationCost }
+                    if self.taps == 2 {
+                        self.secondTapObservations += 1
+                        if self.secondTapObservations == self.dismissOnSecondTapObservation { self.presented = false }
+                    }
+                    return self.presented
+                },
+                prepare: { remaining in
+                    self.preparationBudgets.append(remaining)
+                    self.clock += self.preparationCost
+                    if self.taps > 0 && self.dismissDuringRetryPreparation {
+                        self.presented = false
+                        return false
+                    }
+                    return self.preparationSucceeds
+                },
+                isReady: { self.ready },
+                tap: {
+                    self.taps += 1
+                    if self.taps == self.dismissAfterTap { self.presented = false }
+                })
+        }
+    }
+
     func testPairApproveAndFollowUpThroughTheMac() throws {
         continueAfterFailure = false
         guard let file = Bundle(for: Self.self).url(forResource: "LocalPairing", withExtension: "json"),
@@ -143,7 +290,18 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(options.waitForExistence(timeout: 10))
         options.tapWhenReady()
         app.buttons["Forget paired Mac…"].tapWhenReady()
-        app.alerts["Forget this Mac?"].buttons["Forget Mac"].tapWhenReady()
+        let confirmation = app.alerts["Forget this Mac?"]
+        let forget = confirmation.buttons["Forget Mac"]
+        var initiated = false
+        XCTAssertTrue(completeForgetConfirmation(
+            isPresented: { confirmation.exists },
+            prepare: { remaining in
+                if !initiated { return forget.waitUntilReady(timeout: remaining) }
+                // Dismissal after our first tap is success, not a missing-button readiness failure.
+                return waitUntil(timeout: remaining) { !confirmation.exists || forget.isReadyToTap }
+            },
+            isReady: { forget.isReadyToTap },
+            tap: { initiated = true; forget.tap() }), "The Forget Mac confirmation must finish before waiting for pairing.")
     }
 
     private func capture(_ app: XCUIApplication, name: String) {

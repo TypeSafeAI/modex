@@ -1,11 +1,13 @@
 # Browser credential acceptance
 
-The final integrated browser, UI, Space, Streamer Mode, attachment, and CI harness
-changes passed independent review and all local automated gates. A renewed controlled
-real 1Password fill also passed on that same development build. Normal signed-app
-acceptance and device Touch ID enablement remain separate release gates.
+The integrated browser, UI, Space, Streamer Mode, and attachment changes passed independent
+review, build, unit, typecheck, and desktop/site E2E gates. A renewed controlled real
+1Password fill also passed on that development build. The later iPhone-only confirmation
+test repair below has fresh native/build/unit/typecheck evidence; browser runtime and
+build bytes are unchanged. Normal signed-app acceptance and device Touch ID enablement
+remain separate release gates.
 
-## Final integrated verification
+## Verified browser integration
 
 Frozen tree `55d5e5e797a2df22ce1ef6ed9e98a4390d8ff0bf` passed SPEC and QUALITY
 re-review with no remaining findings, including closure of the fixture-cleanup P2 below.
@@ -17,7 +19,7 @@ native tests. Fresh verification then passed on the unchanged tree:
 - `npm run typecheck`: all workspaces passed.
 - `MODEX_TEST_OPEN_KNOWLEDGE=1 npm run test:e2e`: **221 desktop tests passed in
   11.3 minutes; 7 site tests passed in 15.2 seconds**, exit 0, with no retries.
-- All **461 source/document files** stayed unchanged throughout. All **424 build
+- All **461 files in that frozen tree** stayed unchanged throughout. All **424 build
   artifacts** matched between the build/unit and full-E2E boundaries. Owned native and
   compute processes exited, and the site port was clear before the live check.
 
@@ -26,8 +28,56 @@ retained in `apps/desktop/.probes/browser-final-gates-20261011-133748/` in the b
 worktree. Preexisting test results were moved aside before launch and are not counted
 as evidence for this run. The full patch SHA256 was
 `d73db7b39de8d6863c6d3ddc71945f5c35e1ea74a6d1a1ccfa1fd110ddd44622`.
-The subsequent reconciliation changes only the three browser evidence/usage documents;
-runtime, tests, and build artifacts remain identical to the verified and live-tested build.
+Three browser evidence/usage documents were then reconciled before signed branch publication
+`e3096b37e4ba7d394d4476c728516bd9a04482ea`. The later iPhone test repair changes
+`CompanionFlowTests.swift` and two evidence documents. Its desktop/product sources,
+all 424 build artifacts, and all 13 live-check source/build controls match these earlier
+receipts exactly. The 221 desktop/seven site tests and live fill are carried-forward
+evidence for unchanged browser code, not reruns on the later iPhone-only source tree.
+
+## iPhone confirmation follow-up
+
+On signed head `e3096b37e4ba7d394d4476c728516bd9a04482ea`, both macOS jobs and the
+push iPhone job passed. The pull-request iPhone job failed its final ten-second check
+that forgetting the Mac returns to pairing. The retained accessibility snapshot still
+shows the exact Forget confirmation above the paired dashboard. The synthesized tap
+coordinates target its Forget button correctly. A notification banner appeared earlier,
+but why the final tap had no effect is unproven. The product's disconnect action clears
+pairing synchronously; no product change was made and no hosted job was blindly rerun.
+
+The test now confirms completion of that specific alert action with at most two taps
+inside the original 30-second readiness budget. Initial alert absence fails closed.
+After an initiated tap, dismissal is success, including dismissal during retry readiness.
+Retry readiness does not record an XCTest failure if the action already dismissed the
+alert. Each new tap requires the exact alert, a ready scoped button, and remaining time;
+the second tap receives a bounded completion observation. Persistent alerts and missing
+or unready buttons fail closed. Individual XCTest queries can overrun the deadline, so
+this bounds attempts and deadline checks rather than guaranteeing wall-clock duration.
+Generic UI helpers, the Cancel assertions, and the final ten-second pairing assertion
+remain unchanged.
+
+- The one-tap extraction produced **five failing and three passing deterministic
+  controls**. The first repair passed all eight. A subsequent source review added
+  delayed-dismissal coverage: both new controls failed before the correction, then
+  **all ten passed**. Injected observations and clock advancement exercise these policies
+  without real-time sleeps; they do not reproduce the hosted simulator's unknown cause.
+- One complete owned-fixture run passed **16 native tests, zero failures or skips**, in
+  **150.537 seconds**. This includes all ten controls, the original paired workflow
+  (80.266 seconds), and the five demo tests. The actual full-run `.xcresult` was copied
+  from the path printed by `test-without-building`; it is separate from the focused bundles.
+- Fresh `npm run build && npm test` passed **700 unit tests, zero failures or skips**,
+  with `MODEX_TEST_OPEN_KNOWLEDGE=1`; all-workspace typecheck passed. Source stayed frozen
+  during these gates, and all 424 build artifact hashes remained unchanged.
+- The owned fixture and native/compute processes exited, its pairing resource was removed,
+  the owned simulator was shut down, and site ports were clear. No desktop full-suite or
+  live 1Password replay was needed for this iPhone-only test change; all 13 live-check
+  hashes, including the shared Streamer matcher, still match.
+
+RED/GREEN sources, logs, result bundles, command receipts, and process/hash proof are in
+`apps/desktop/.probes/browser-forget-confirmation/` in the browser worktree. The hosted
+failure remains in `apps/desktop/.probes/queue-audit/pr152-final-iphone-failure/` in the
+coordinator worktree. Independent review and current-head delivery results for this
+follow-up are recorded separately on PR #152.
 
 ## Earlier combined implementation evidence
 
