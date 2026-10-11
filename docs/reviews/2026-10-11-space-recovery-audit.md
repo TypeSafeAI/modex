@@ -52,6 +52,20 @@ historical records do not establish current-main health or human keyboard-only
 and VoiceOver acceptance. Electron download delays and short Node/TMPDIR paths
 documented in the `space-pr` review are historical setup context, not product fixes.
 
+## Integration preflight
+
+The first audit CI exposed a separate editor focus race: a deferred callback could
+collapse a newer selection and save `/Second` instead of `Second`. The fix and native
+regressions landed separately in [PR #170](https://github.com/TypeSafeAI/modex/pull/170).
+This was a current application bug, not a missing patch from the historical snapshots.
+
+The documentation branch's integrated build, workspace typecheck, and 475 unit tests
+passed, with one optional OpenKnowledge skip. Its application and package trees
+exactly match the verified Streamer candidate `08fa5f2`, whose separate full run
+passed 175 desktop tests with real Knowledge enabled and seven site tests. That
+runtime evidence was reused by exact tree equality; the full UI suite was not rerun
+in this documentation worktree.
+
 ## Evidence locations
 
 On the recovery machine, paths below are relative to the primary checkout unless

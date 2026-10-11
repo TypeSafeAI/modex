@@ -436,6 +436,9 @@ export interface BridgeCommands {
   "knowledge:copy": { req: { pageId: string }; res: string };
   "space:export": { req: { pageId: string }; res: string | null };
   "space:list": { req: undefined; res: import("./space.js").SpacePage[] };
+  "space:comments": { req: { pageId: string }; res: import("./space.js").SpaceComment[] };
+  "space:comment:add": { req: { pageId: string; text: string; quote: string }; res: import("./space.js").SpaceComment };
+  "space:comment:delete": { req: { pageId: string; id: string }; res: void };
   "space:create": { req: import("./space.js").CreateSpacePage; res: import("./space.js").SpacePage };
   "space:save": { req: import("./space.js").SpacePage; res: import("./space.js").SpacePage };
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };

@@ -4,6 +4,13 @@
  * shell and composer phases draw from one vocabulary; nothing here stands for a feature Modex lacks.
  */
 const PATHS = {
+  "folder-open": "M2 6V4a1 1 0 0 1 1-1h3l1.5 1.5H12a1 1 0 0 1 1 1V6M2 6.5h12l-2 6H3z",
+  page: "M4 2.5h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM6 6h4M6 9h3",
+  image: "M3 2.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM2 10l3-3 7 6M10 5h.01",
+  library: "M2 3h3v10H2zM6.5 3h3v10h-3zM10.5 3.5l2.5-.5 2 9.5-2.5.5z",
+  history: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM8 4.5V8l-2 2",
+  bell: "M3 11h10l-1.5-2V6a3.5 3.5 0 0 0-7 0v3zM6.5 13h3",
+  minus: "M4 8h8",
   space: "M5 2h7a1 1 0 0 1 1 1v8M3 4h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4.5 7h3M4.5 9.5h2",
   star: "M8 1.8l1.85 3.75 4.15.6-3 2.93.71 4.13L8 11.26l-3.71 1.95L5 9.08 2 6.15l4.15-.6z",
   trash: "M2.5 4h11M6 4V2.5h4V4M4 4l.5 9.5h7L12 4M6.5 6.5v4.5M9.5 6.5v4.5",

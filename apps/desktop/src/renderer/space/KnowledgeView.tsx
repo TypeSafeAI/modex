@@ -1,3 +1,4 @@
+import { SecretInput, useStreamerMode } from "../streamer";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { knowledgeBusy, type KnowledgeState } from "../../shared/knowledge";
 import type { Project } from "../../shared/types";
@@ -6,6 +7,7 @@ import { Icon } from "../components/ui/Icon";
 import "./knowledge.css";
 
 export function KnowledgeView({ active, onPages }: { active: boolean; onPages: () => void }) {
+  const streamerMode = useStreamerMode();
   const [state, setState] = useState<KnowledgeState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
@@ -60,8 +62,8 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     let alive = true;
     const update = async () => {
       const rect = canvas.current?.getBoundingClientRect();
-      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .streamer-shield, [data-panel-resizing="true"]');
-      const bounds = active && ready && !overlay && rect && rect.width > 0 && rect.height > 0
+      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], [data-panel-resizing="true"]');
+      const bounds = active && ready && !streamerMode && !overlay && rect && rect.width > 0 && rect.height > 0
         ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : undefined;
       try {
         const result = await bridge.invoke("knowledge:show", { bounds });
@@ -76,7 +78,7 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     window.addEventListener("resize", update);
     const timer = setInterval(() => void update(), 1500);
     return () => { alive = false; clearInterval(timer); resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("knowledge:show", {}).catch(() => {}); };
-  }, [active, ready, state?.url]);
+  }, [active, ready, state?.url, streamerMode]);
 
   const extra = async (channel: "knowledge:external" | "knowledge:reload") => {
     try { setError(null); setViewError(null); await bridge.invoke(channel, undefined); }
@@ -95,10 +97,10 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     <section id="knowledge-maintenance" className="knowledge-maintenance" aria-label="Agent maintenance settings" hidden={!maintenanceOpen}>
       <p>Agents can search your selected knowledge folder. Enable a project to save verified decisions, fixes, and procedures automatically. Chat and plan mode stay read-only. Changes include a page link and appear in its history.</p>
       {!projects.length && <p>Add a project in Home to enable automatic maintenance.</p>}
-      {projects.map(project => <label key={project.id}><input type="checkbox" aria-label={`Maintain knowledge for ${project.name}`} checked={saving?.id === project.id ? saving.enabled : project.knowledgeMaintenance === true} disabled={saving !== null} onChange={e => void maintain(project.id, e.target.checked)} /><span>{project.name}</span></label>)}
+      {projects.map(project => <label key={project.id}><SecretInput type="checkbox" aria-label={`Maintain knowledge for ${project.name}`} checked={saving?.id === project.id ? saving.enabled : project.knowledgeMaintenance === true} disabled={saving !== null} onChange={e => void maintain(project.id, e.target.checked)} /><span>{project.name}</span></label>)}
     </section>
     {(error || state?.error || viewError) && <div className="space-error" role="alert"><span>{error ?? state?.error ?? viewError}</span>{ready && <button className="btn small" onClick={() => void extra("knowledge:reload")}>Retry</button>}</div>}
-    {ready ? <div ref={canvas} className="knowledge-canvas" data-testid="knowledge-canvas" aria-label="Open Knowledge editor" /> : <div className="knowledge-setup">
+    {ready ? <div ref={canvas} className="knowledge-canvas" data-testid="knowledge-canvas" aria-label="Open Knowledge editor">{streamerMode && <p className="streamer-guest-cover" data-testid="streamer-knowledge-cover">Knowledge content is covered while Streamer Mode is on.</p>}</div> : <div className="knowledge-setup">
       <div className="knowledge-intro"><span className="space-eyebrow">SPACE / KNOWLEDGE</span><div className="knowledge-emblem"><Icon name="space" size={34} /></div><h1>Give your knowledge a home.</h1><p>Bring your notes, docs, and decisions together.<br />Explore them with Open Knowledge, right here in Space.</p></div>
       <section className="knowledge-folder" aria-label="Knowledge folder">
         <div className="knowledge-folder-icon"><Icon name="folder" size={23} /></div>

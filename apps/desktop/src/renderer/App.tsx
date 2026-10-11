@@ -1,3 +1,5 @@
+import { StreamerMode, useStreamerRedaction } from "./streamer";
+import { redactSecrets } from "../shared/streamer-secrets";
 import { RepositoryOverview } from "./components/RepositoryOverview";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -13,6 +15,7 @@ import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { Icon } from "./components/ui/Icon";
+import { IconButton } from "./components/ui/IconButton";
 import { useSelectionHistory } from "./history";
 import { PanelResizeHandle } from "./components/PanelResizeHandle";
 import { PANEL_WIDTHS, usePanelSizing } from "./panel-sizing";
@@ -36,6 +39,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   }, []);
   const [surface, setSurface] = useState<"chat" | "space">("chat");
   const [spaceOpened, setSpaceOpened] = useState(false);
+  const [spaceChatOpen, setSpaceChatOpen] = useState(false);
   const [state, setState] = useState<AppState | null>(null);
   useLayoutEffect(() => { if (state) applyTheme(state.settings.theme, persistPreferences); }, [state?.settings.theme, persistPreferences]);
   useLayoutEffect(() => () => { if (!persistPreferences) restoreTheme(); }, [persistPreferences]);
@@ -78,6 +82,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   const showChanges = layout.changes;
   const sidebarOpen = layout.sidebar;
   const streamerMode = layout.streamerMode;
+  useStreamerRedaction(streamerMode);
+  const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
   const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
   // The toast: what failed and, when the action can simply be run again, how.
@@ -319,6 +325,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     if (fix.kind === "retry") { void retry(); return; }
     if (!thread) return;
     const id = thread.id;
+    setSurface("chat");
     setLayout({ changes: true });
     setTerminalCommands((m) => ({ ...m, [id]: { text: fix.command, nonce: ++commandNonce.current } }));
     setTerminals((m) => ({ ...m, [id]: true }));
@@ -334,11 +341,11 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     inputRef.current?.focus();
   };
   const toggleTerminal = (threadId: string) => {
-    if (terminals[threadId] && showChanges) closeTerminal(threadId);
-    else { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [threadId]: true })); }
+    if (surface === "chat" && terminals[threadId] && showChanges) closeTerminal(threadId);
+    else { setSurface("chat"); setLayout({ changes: true }); setTerminals((m) => ({ ...m, [threadId]: true })); }
   };
   const deleteThread = (t: Thread) => act(async () => {
-    const removeWorktree = t.worktree ? window.confirm(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`) : true;
+    const removeWorktree = t.worktree ? window.confirm(privateLabel(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`)) : true;
     if (t.worktree && !removeWorktree) return;
     const s = await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree });
     setState(s);
@@ -383,7 +390,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     }
   });
   const revert = (path: string) => thread && act(async () => {
-    if (!window.confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
+    if (!window.confirm(privateLabel(`Discard changes to ${path}? This cannot be undone.`))) return;
     await bridge.invoke("changes:revert", { threadId: thread.id, path });
     await loadChanges(thread.id);
   });
@@ -404,7 +411,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (showSettings || showCompanion || streamerMode || surface === "space") return;
+      if (showSettings || showCompanion || (surface === "space" && !(eventTargetInSpaceChat(e)))) return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -425,7 +432,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         void stop();
       } else if (e.key.toLowerCase() === "j") {
         e.preventDefault();
-        setShowChanges((v) => !v);
+        if (surface === "space") { setSurface("chat"); setLayout({ changes: true }); }
+        else setShowChanges((v) => !v);
       } else if (e.key === "Enter" && (thread || draft) && document.activeElement !== inputRef.current) {
         e.preventDefault();
         inputRef.current?.focus();
@@ -454,7 +462,15 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
   };
 
-  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread));
+  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
+  const openSpaceChat = (prompt?: string) => {
+    setSpaceChatOpen(true);
+    if (prompt) {
+      const key = thread?.id ?? `draft:${draftRevision}`;
+      setUnsentFor(key, [unsent[key], prompt].filter(Boolean).join("\n\n"));
+    }
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   const workspace = state ? (
     <>
@@ -477,13 +493,13 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
+      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
       <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
         {sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
-          onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: PANEL_WIDTHS.sidebar.default })} />}
+          onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion && !streamerMode} sidebarOpen={sidebarOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}
@@ -499,9 +515,10 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
             agents={activeAgents}
           />
         )}
-        <main className="main" data-testid="main">
-          <UpdateBanner />
-          {thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
+        <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
+          {surface === "space" && spaceChatOpen && <header className="space-chat-header"><IconButton icon="minus" label="Minimize chat" size="md" onClick={() => { setSpaceChatOpen(false); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".space-chat-launcher")?.focus()); }} /><span>{thread?.title ?? "New chat"}</span><IconButton icon="expand" label="Open chat in Home" size="md" onClick={() => setSurface("chat")} /></header>}
+          {surface === "chat" && <UpdateBanner />}
+          {surface === "chat" && thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
           {thread && project ? (
             <ThreadView
               key={thread.id}
@@ -545,7 +562,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
           visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
-          suspended={surface === "space" || showSettings || showCompanion || streamerMode}
+          suspended={surface === "space" || showSettings || showCompanion}
           onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
           onHideTerminal={() => closeTerminal(thread.id)} onFocusChat={() => requestAnimationFrame(() => inputRef.current?.focus())}
           terminal={terminals[thread.id] ? (<Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
@@ -571,18 +588,16 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;
 
-  // The privacy cover must exist even while startup is pending or has failed.
   return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} style={panels.style} data-streamer-mode={streamerMode ? "true" : "false"}>
-      {workspace}
-      {streamerMode && (
-        <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
-          <Icon name="privacy" size={28} />
-          <h1>Streamer Mode</h1>
-          <p>Private workspace content is hidden.</p>
-          <button autoFocus className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Show workspace</button>
-        </section>
-      )}
-    </div>
+    <StreamerMode.Provider value={streamerMode}>
+      <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} style={panels.style} data-streamer-mode={streamerMode ? "true" : "false"}>
+        {workspace}
+        {!state && streamerMode && <button className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Turn off Streamer Mode</button>}
+      </div>
+    </StreamerMode.Provider>
   );
+}
+
+function eventTargetInSpaceChat(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && Boolean(event.target.closest(".space-chat"));
 }

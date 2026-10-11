@@ -1,3 +1,4 @@
+import { SecretInput, SecretTextarea } from "../streamer";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BlockRenderer, InlineContent } from "@create-markdown/react";
 import type { Block } from "@create-markdown/core";
@@ -5,31 +6,41 @@ import { IconButton } from "../components/ui/IconButton";
 import { BLOCK_COMMANDS, safeBlocks } from "./markdown";
 import { joinMarkdown, splitMarkdown, toggleChecklist, type EditorBlock } from "../../shared/space-markdown";
 
-export function BlockEditor({ markdown, onChange }: { markdown: string; onChange: (value: string) => void }) {
+const commandCaret = (source: string) => source.startsWith("```") ? 4 : undefined;
+
+export function BlockEditor({ markdown, onChange, insertRequest }: { markdown: string; onChange: (value: string) => void; insertRequest?: { source: string; nonce: number } }) {
   const [blocks, setBlocks] = useState(() => splitMarkdown(markdown));
   const [editing, setEditing] = useState<string | null>(() => markdown ? null : blocks[0]!.id);
   const [choice, setChoice] = useState(0);
   const inputs = useRef(new Map<string, HTMLTextAreaElement>());
+  const pendingFocus = useRef<{ id: string; start?: number; end?: number } | null>(null);
   const source = useRef(markdown);
   useLayoutEffect(() => {
     if (markdown === source.current) return;
+    pendingFocus.current = null;
     source.current = markdown; setBlocks(splitMarkdown(markdown)); setEditing(null);
   }, [markdown]);
+  // Apply selection with the textarea commit, before a later user edit can supersede it.
+  useLayoutEffect(() => {
+    const request = pendingFocus.current;
+    pendingFocus.current = null;
+    if (!request || request.id !== editing) return;
+    const input = inputs.current.get(request.id);
+    if (!input) return;
+    const start = request.start ?? input.value.length;
+    input.focus();
+    input.setSelectionRange(start, request.end ?? start);
+  });
   const commit = (next: EditorBlock[]) => { source.current = joinMarkdown(next); setBlocks(next); onChange(source.current); };
   const update = (id: string, source: string) => commit(blocks.map(b => b.id === id ? { ...b, source } : b));
-  const focus = (id: string, position?: number) => {
+  const focus = (id: string, start?: number, end?: number) => {
+    pendingFocus.current = { id, start, end };
     setEditing(id);
-    requestAnimationFrame(() => {
-      const input = inputs.current.get(id);
-      input?.focus();
-      const at = position ?? input?.value.length ?? 0;
-      input?.setSelectionRange(at, at);
-    });
   };
-  const insert = (index: number, source = "") => {
+  const insert = (index: number, source = "", position?: number) => {
     const next = { id: crypto.randomUUID(), source };
     commit([...blocks.slice(0, index + 1), next, ...blocks.slice(index + 1)]);
-    focus(next.id);
+    focus(next.id, position);
   };
   const remove = (index: number) => {
     if (blocks.length === 1) { update(blocks[0]!.id, ""); focus(blocks[0]!.id); return; }
@@ -49,11 +60,17 @@ export function BlockEditor({ markdown, onChange }: { markdown: string; onChange
     if (!input || !editing) return;
     const { selectionStart: start, selectionEnd: end, value } = input;
     update(editing, value.slice(0, start) + marker + value.slice(start, end) + marker + value.slice(end));
-    requestAnimationFrame(() => { input.focus(); input.setSelectionRange(start + marker.length, end + marker.length); });
+    focus(editing, start + marker.length, end + marker.length);
   };
-  const applyCommand = (id: string, source: string) => { update(id, source); setChoice(0); focus(id, source.startsWith("```") ? 4 : undefined); };
+  const applyCommand = (id: string, source: string) => { update(id, source); setChoice(0); focus(id, commandCaret(source)); };
+  const inserted = useRef(insertRequest?.nonce);
+  useLayoutEffect(() => {
+    if (!insertRequest || inserted.current === insertRequest.nonce) return;
+    inserted.current = insertRequest.nonce;
+    insert(blocks.length - 1, insertRequest.source, commandCaret(insertRequest.source));
+  }, [insertRequest]);
 
-  return <section className="space-editor" aria-label="Page content">
+  return <section className={`space-editor${editing ? " is-editing" : ""}`} aria-label="Page content">
     <div className="space-format-bar" role="toolbar" aria-label="Text formatting">
       <button aria-label="Bold" disabled={!editing} onMouseDown={e => e.preventDefault()} onClick={() => format("**")}><strong>B</strong></button>
       <button aria-label="Italic" disabled={!editing} onMouseDown={e => e.preventDefault()} onClick={() => format("*")}><em>I</em></button>
@@ -139,7 +156,7 @@ function BlockInput({ value, label, inputRef, ...events }: {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => { if (ref.current) { ref.current.style.height = "0px"; ref.current.style.height = `${ref.current.scrollHeight}px`; } }, [value]);
   const heading = value.match(/^(#{1,3}) /)?.[1]?.length;
-  return <textarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} spellCheck={!value.startsWith("```")} />;
+  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} spellCheck={!value.startsWith("```")} />;
 }
 
 function BlockPreview({ source, label, onEdit, onChange }: { source: string; label: string; onEdit: () => void; onChange: (value: string) => void }) {
@@ -154,14 +171,14 @@ function BlockPreview({ source, label, onEdit, onChange }: { source: string; lab
   const renderers: NonNullable<React.ComponentProps<typeof BlockRenderer>["customRenderers"]> = {
     bulletList: ({ block }) => list(block),
     numberedList: ({ block }) => list(block),
-    checkList: ({ block }) => <><label className="space-check"><input type="checkbox" checked={block.props.checked} onChange={e => onChange(toggleChecklist(source, checklists.indexOf(block), e.target.checked))} /><span><InlineContent spans={block.content} /></span></label><BlockRenderer blocks={block.children} customRenderers={renderers} /></>,
+    checkList: ({ block }) => <><label className="space-check"><SecretInput type="checkbox" checked={block.props.checked} onChange={e => onChange(toggleChecklist(source, checklists.indexOf(block), e.target.checked))} /><span><InlineContent spans={block.content} /></span></label><BlockRenderer blocks={block.children} customRenderers={renderers} /></>,
     callout: ({ block }) => <aside className="space-callout"><InlineContent spans={block.content} /></aside>,
   };
   const ref = useRef<HTMLDivElement>(null);
   // The package renderer does not expose link attributes. Apply the app's external-link contract.
   useLayoutEffect(() => { ref.current?.querySelectorAll("a").forEach(link => { link.target = "_blank"; link.rel = "noopener noreferrer"; }); }, [blocks]);
   return <div ref={ref} className="space-block-preview" tabIndex={0} aria-label={label}
-    onClick={event => { if (!(event.target as HTMLElement).closest("a, input, button")) onEdit(); }}
+    onClick={event => { if (!(event.target as HTMLElement).closest("a, input, button") && !window.getSelection()?.toString()) onEdit(); }}
     onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); onEdit(); } }}>
     {blocks.length ? <BlockRenderer blocks={blocks} customRenderers={renderers} /> : <p className="space-placeholder">Type / for blocks, or just start writing…</p>}
   </div>;

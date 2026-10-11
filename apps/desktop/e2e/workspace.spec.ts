@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { createThread, launch, seedHome, tid } from "./support";
+import { resizeWindow, createThread, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -25,7 +25,7 @@ test.beforeEach(async () => {
   await expect(tid(page, "draft-view")).toBeVisible();
   await createThread(page, "Review the right workspace");
   // Apply reference geometry after startup/thread setup: macOS can restore initial bounds on show.
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1540, 1097));
+  await resizeWindow(app, page, 1540, 1097);
   await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width: 1540, height: 1097 });
 });
 test.afterEach(async () => { await app?.close(); });
@@ -85,7 +85,7 @@ test("new-tab menu, launcher, full view and Files replace the old panel", async 
   // Keep the active new tab; the inactive initial tab reveals its close action on hover.
   await page.getByRole("tab", { name: "New tab", exact: true }).first().hover();
   await page.getByRole("button", { name: "Close New tab tab", exact: true }).first().click();
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1600, 972));
+  await resizeWindow(app, page, 1600, 972);
   await page.mouse.move(10, 10);
   await tid(page, "workspace-address").focus();
   expect((await tid(page, "workspace").boundingBox())!.width).toBe(360);
@@ -209,7 +209,9 @@ test("superseded navigation, overlays, guest shortcuts and window destruction pr
     await expect.poll(guestVisible).toBe(true);
     await tid(page, "streamer-mode-toggle").click();
     await expect.poll(guestVisible).toBe(false);
-    await tid(page, "streamer-mode-disable").click();
+    await expect(tid(page, "streamer-browser-cover")).toBeVisible();
+    await expect(tid(page, "composer-input")).toBeVisible();
+    await tid(page, "streamer-mode-toggle").click();
     await expect.poll(guestVisible).toBe(true);
     await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().includes("/fast"))!.sendInputEvent({ type: "keyDown", keyCode: "L", modifiers: ["meta"] }));
     await expect(tid(page, "workspace-address")).toBeFocused();
