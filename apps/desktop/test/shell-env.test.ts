@@ -70,3 +70,36 @@ test("hydratePath leaves PATH untouched when MODEX_NO_LOGIN_PATH opts out", asyn
   const r = await hydratePath(env, { shell: fakeShell({ ilc: "/should/not/appear" }) });
   assert.deepEqual([r.via, env.PATH], ["disabled", "/usr/bin:/bin"]);
 });
+
+test("Windows hydration preserves inherited paths without running a Unix shell or adding Unix directories", async () => {
+  const inherited = String.raw`C:\Program Files\nodejs;C:\Users\Val\AppData\Roaming\npm`;
+  const env: NodeJS.ProcessEnv = { Path: inherited, SHELL: "/bin/bash", USERPROFILE: String.raw`C:\Users\Val` };
+  let calls = 0;
+  const execFileImpl = (() => { calls++; throw new Error("Windows must not probe a Unix login shell"); }) as NonNullable<Parameters<typeof readLoginPath>[0]>["execFileImpl"];
+  const result = await hydratePath(env, { platform: "win32", execFileImpl });
+  assert.deepEqual(result, { path: inherited, via: "inherited", merged: inherited });
+  assert.equal(env.PATH, inherited);
+  assert.equal(Object.hasOwn(env, "Path"), false, "child environments have only one case-insensitive PATH key");
+  assert.equal(calls, 0);
+});
+
+test("Windows hydration handles duplicate PATH casing deterministically and preserves opt-out environments", async () => {
+  const env: NodeJS.ProcessEnv = { Path: "second", PATH: "first", path: "third" };
+  assert.equal((await hydratePath(env, { platform: "win32" })).merged, "first");
+  assert.deepEqual(env, { PATH: "first" });
+  const disabled = { Path: "original", MODEX_NO_LOGIN_PATH: "1" };
+  assert.deepEqual(await hydratePath(disabled, { platform: "win32" }), { path: null, via: "disabled", merged: "original" });
+  assert.deepEqual(disabled, { Path: "original", MODEX_NO_LOGIN_PATH: "1" });
+});
+
+test("login shell defaults are native to Unix platforms and still respect an explicit shell", async () => {
+  const shells: string[] = [];
+  const execFileImpl: NonNullable<Parameters<typeof readLoginPath>[0]>["execFileImpl"] = (file, _args, _opts, callback) => {
+    shells.push(file);
+    callback(null, "__MODEX_PATH_START__/usr/bin:/bin__MODEX_PATH_END__");
+  };
+  await readLoginPath({ platform: "linux", env: {}, execFileImpl });
+  await readLoginPath({ platform: "darwin", env: {}, execFileImpl });
+  await readLoginPath({ platform: "linux", env: { SHELL: "/bin/bash" }, execFileImpl });
+  assert.deepEqual(shells, ["/bin/sh", "/bin/zsh", "/bin/bash"]);
+});

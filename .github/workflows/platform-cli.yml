@@ -1,0 +1,83 @@
+name: Native platform builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/platform-cli.yml
+      - apps/desktop/**
+      - docs/branding/modex-icon.png
+      - scripts/prepare-desktop-system.mjs
+      - packages/core/**
+      - package.json
+      - package-lock.json
+      - tsconfig.base.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    name: CLI and installers (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            package: dist:windows
+          - os: ubuntu-latest
+            platform: linux
+            package: dist:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Configure Windows native compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: npm ci
+      - run: npm run build -w @modex/core
+      - run: npm run build:main -w @modex/desktop
+      - name: Verify native runner
+        env:
+          MODEX_EXPECTED_PLATFORM: ${{ matrix.platform }}
+        run: node -e "if (process.platform !== process.env.MODEX_EXPECTED_PLATFORM) throw new Error('Wrong native platform')"
+      - name: Exercise native CLI argv and npm launchers
+        run: node --test --test-reporter=tap apps/desktop/dist/test/cli-launch.test.js apps/desktop/dist/test/cli-supervisor.test.js apps/desktop/dist/test/terminal-windows.test.js > native-cli.tap
+      - name: Preserve CLI acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-cli-${{ matrix.platform }}
+          path: native-cli.tap
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Build native installers (no publication)
+        env:
+          CSC_LINK: ""
+          WIN_CSC_LINK: ""
+        run: npm run ${{ matrix.package }} -w @modex/desktop
+      - name: Record installer checksums and acceptance status
+        run: node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }}
+      - name: Preserve candidate installers (acceptance still required)
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-installers-${{ matrix.platform }}
+          path: |
+            apps/desktop/release/native-${{ matrix.platform }}/Modex-*.exe
+            apps/desktop/release/native-${{ matrix.platform }}/Modex-*.AppImage
+            apps/desktop/release/native-${{ matrix.platform }}/Modex-*.deb
+            apps/desktop/release/native-${{ matrix.platform }}/native-packages.json
+          if-no-files-found: error
+          retention-days: 3

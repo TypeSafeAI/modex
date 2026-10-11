@@ -2,10 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
-import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import type { IPty, IPtyForkOptions } from "node-pty";
 
 const require = createRequire(import.meta.url);
@@ -14,9 +13,9 @@ const controls = new WeakMap<Pty, () => Promise<void>>();
 
 export function spawnTerminal(shell: string, args: string[], options: IPtyForkOptions): IPty {
   const native = require("node-pty") as typeof import("node-pty");
-  if (process.platform === "win32") return native.spawn(shell, args, options);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mx-"));
-  const socketPath = path.join(dir, "control");
+  const windows = process.platform === "win32";
+  const socketPath = windows ? `\\\\.\\pipe\\modex-terminal-${randomUUID()}` : path.join(dir, "control");
   let socket: net.Socket | undefined;
   let requested = false;
   let clean = false;
@@ -43,9 +42,10 @@ export function spawnTerminal(shell: string, args: string[], options: IPtyForkOp
   server.on("error", fail);
   server.listen(socketPath);
   // Native executables need a real file outside Electron's virtual ASAR filesystem.
-  const supervisor = fileURLToPath(new URL("./terminal-supervisor", import.meta.url)).replace(/app\.asar\//, "app.asar.unpacked/");
+  const supervisor = fileURLToPath(new URL(windows ? "./cli-supervisor.exe" : "./terminal-supervisor", import.meta.url)).replace(/app\.asar[\\/]/, "app.asar.unpacked/");
   let pty: IPty;
-  try { pty = native.spawn(supervisor, [socketPath, shell, ...args], options); }
+  const launchArgs = windows ? ["--terminal", String(process.pid), socketPath, shell, ...args] : [socketPath, shell, ...args];
+  try { pty = native.spawn(supervisor, launchArgs, options); }
   catch (error) { server.close(); fs.rmSync(dir, { recursive: true, force: true }); throw error; }
   const exited = new Promise<void>((resolve) => {
     const subscription = pty.onExit(() => {
@@ -66,7 +66,7 @@ export function spawnTerminal(shell: string, args: string[], options: IPtyForkOp
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([complete, new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Terminal commands did not stop; the working directory has been preserved.")), 5000);
+        timer = setTimeout(() => reject(new Error("Terminal commands did not stop; the working directory has been preserved.")), windows ? 7000 : 5000);
       })]);
     } finally { clearTimeout(timer); }
   });
@@ -76,6 +76,5 @@ export function spawnTerminal(shell: string, args: string[], options: IPtyForkOp
 export async function stopTerminalProcess(pty: Pty): Promise<void> {
   const close = controls.get(pty);
   if (close) return close();
-  if (process.platform !== "win32") throw new Error("Terminal has no cleanup supervisor.");
-  await promisify(execFile)("taskkill", ["/pid", String(pty.pid), "/T", "/F"], { timeout: 5000 });
+  throw new Error("Terminal has no cleanup supervisor.");
 }

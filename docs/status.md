@@ -447,8 +447,13 @@ Roughly in the order they earn their place; none is scheduled.
 
 1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
 2. **Image attachments** in the composer (both CLIs accept them).
-3. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
-   the platform-specific pieces to audit first.
+3. **Windows and Linux installers.** Native x64 NSIS, AppImage and Debian candidates are
+   in development. Windows installers are unsigned by Val's choice; macOS release signing
+   remains required. Windows CLI and terminal job supervision, PATH/npm launcher support,
+   portable build steps and Linux credential-backend refusal are implemented in the platform
+   branch. Native build and acceptance jobs are drafted, not yet run. Installed startup,
+   packaged ABI, CLI/PTY behavior, native credential storage, manual upgrade and uninstall
+   acceptance remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

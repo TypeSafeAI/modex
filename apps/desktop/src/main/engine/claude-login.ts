@@ -1,5 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { cliEnvironment, probe } from "./backends/health.js";
+import type { ChildProcess } from "node:child_process";
+import { cliEnvironment, cliSpawn, probe } from "./backends/health.js";
 import type { ClaudeLoginResult } from "../../shared/types.js";
 
 /** Claude owns browser authorization and credential persistence; Modex never parses tokens. */
@@ -7,7 +7,7 @@ export class ClaudeLogin {
   private child: ChildProcess | null = null;
   private running = false;
   private cancelCurrent: (() => void) | null = null;
-  constructor(private readonly spawnImpl = spawn, private readonly timeoutMs = 300_000) {}
+  constructor(private readonly spawnImpl = cliSpawn, private readonly timeoutMs = 300_000) {}
 
   cancel(): void { this.cancelCurrent?.(); }
 

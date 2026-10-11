@@ -46,6 +46,8 @@ static int disappeared(pid_t pid) {
   int mib[] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
   if (sysctl(mib, 4, &info, &size, NULL, 0) == 0 && size == sizeof(info) && info.kp_proc.p_stat == SZOMB)
     return observed_zombie(pid, (unsigned long long)info.kp_proc.p_starttime.tv_sec * 1000000 + info.kp_proc.p_starttime.tv_usec);
+#else
+  (void)pid;
 #endif
   return 2;
 }
