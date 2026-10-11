@@ -6,7 +6,7 @@ import { TerminalManager, isTrustedTerminalSender } from "../src/main/engine/ter
 import type { TerminalEvent } from "../src/shared/types.js";
 import { tmpdir } from "./helpers.js";
 
-function harness(shellOverride?: { file: string; args: string[] }, stop: ConstructorParameters<typeof TerminalManager>[5] = async (pty) => { pty.kill(); }) {
+function harness(shellOverride?: { file: string; args: string[] }, stop: ConstructorParameters<typeof TerminalManager>[5] = async (pty) => { pty.kill(); }, env: NodeJS.ProcessEnv = { SHELL: "/bin/bash", PATH: "/bin", ELECTRON_RUN_AS_NODE: "1" }) {
   const cwd = tmpdir("terminal");
   const events: TerminalEvent[] = [];
   const processes: (EventEmitter & { writes: string[]; sizes: number[][]; kills: number })[] = [];
@@ -26,7 +26,7 @@ function harness(shellOverride?: { file: string; args: string[] }, stop: Constru
       onData: (fn) => { emitter.on("data", fn); return { dispose: () => { emitter.off("data", fn); } }; },
       onExit: (fn) => { emitter.on("exit", fn); return { dispose: () => { emitter.off("exit", fn); } }; },
     };
-  }, { SHELL: "/bin/bash", PATH: "/bin", ELECTRON_RUN_AS_NODE: "1" }, shellOverride, stop);
+  }, env, shellOverride, stop);
   return { manager, events, processes, calls, cwd };
 }
 
@@ -140,3 +140,22 @@ test("a failed terminal stop can be retried without forgetting the live session"
   assert.equal(processes[0]!.kills, 1);
   await manager.dispose();
 });
+
+for (const spelling of ["COMSPEC", "ComSpec", "comspec"]) {
+  test(`Windows terminal respects inherited ${spelling} spelling`, async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    let state: ReturnType<typeof harness> | undefined;
+    try {
+      // Synchronous selection only; restore the process descriptor before any
+      // asynchronous cleanup. Each test file runs in its own Node process.
+      Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+      state = harness(undefined, undefined, { [spelling]: "C:\\Windows\\System32\\cmd.exe", SHELL: "/wrong/unix/shell" });
+      state.manager.open("one", 80, 24);
+      assert.equal(state.calls[0]!.shell, "C:\\Windows\\System32\\cmd.exe");
+      assert.deepEqual(state.calls[0]!.args, []);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+      await state?.manager.dispose();
+    }
+  });
+}

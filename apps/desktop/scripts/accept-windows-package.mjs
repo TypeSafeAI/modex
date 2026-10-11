@@ -99,8 +99,8 @@ const dataMarkers = defaultData.map(directory => {
   return file;
 });
 const result = { schema: 1, sourceSha: manifest.sourceSha, runId: manifest.runId,
-  platform: process.platform, arch: process.arch, terminalShell: commandShell, launches: [], uninstall: "pending",
-  installerAcceptance: "pending", credentials: "pending", remaining: ["distinct-version upgrade", "default Windows shell selection", "complete CLI/account acceptance"] };
+  platform: process.platform, arch: process.arch, terminalShell: commandShell, terminalEnvironmentKey: "ComSpec", launches: [], uninstall: "pending",
+  installerAcceptance: "pending", credentials: "pending", remaining: ["distinct-version upgrade", "complete CLI/account acceptance"] };
 let installAttempted = false;
 const installedBinary = path.join(install, "Modex.exe");
 const uninstaller = path.join(install, "Uninstall Modex.exe");
@@ -144,7 +144,7 @@ async function closeApp(app) {
 
 async function launch(executablePath, kind, credentialAction) {
   const app = await electron.launch({ executablePath, timeout: 30000,
-    env: { ...launchEnv, COMSPEC: commandShell, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1",
+    env: { ...launchEnv, ComSpec: commandShell, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1",
       TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(root, "no-jev-config") } });
   openApps.add(app.process());
   let launchFailure;

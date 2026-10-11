@@ -457,8 +457,10 @@ Roughly in the order they earn their place; none is scheduled.
    candidate with a verified download hash. Linux terminal cleanup passed seven native
    tests (two platform/shell skips). Hosted Debian and extracted AppImage startup,
    packaged terminal input/output/cleanup, graceful close and Debian uninstall with
-   retained data passed. The Windows installed-app/DPAPI/uninstall harness is prepared
-   but has not run. Complete CLI/account and native credential acceptance, manual upgrades
+   retained data passed. Hosted Windows NSIS install, packaged startup/terminal, DPAPI
+   persistence across restart and uninstall retaining data also passed. Windows default
+   shell lookup now respects `ComSpec` casing, with regression tests passing and packaged
+   verification pending. Complete CLI/account and Linux encrypted credential acceptance, manual upgrades
    and remaining installer lifecycle checks remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).

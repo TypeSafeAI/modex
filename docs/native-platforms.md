@@ -25,14 +25,19 @@ preserving exit status across output EOF ordering. Windows builds rebuild the ad
 pinned Electron headers; build and runtime guards reject unpatched prebuild fallback.
 Resize acceptance reads a fresh child OS sample instead of cached stdout fields.
 
-A hosted-only Windows installed acceptance harness is prepared but has not run. It verifies
-the candidate before NSIS installation, launches the real installed app twice, exercises
-its packaged terminal with an explicit cmd.exe selection, and checks production SecretStore encryption with DPAPI across restart.
-It runs the real NSIS uninstaller and checks application/registry removal, retained threads
-and probe ciphertext, and markers in default app-data directories. Forced process cleanup
-fails acceptance. Existing installations and local/self-hosted execution are refused. Default Windows shell
-selection is a separate gap: the cloned environment currently looks up only uppercase
-`COMSPEC`, so ordinary `ComSpec` casing can select the PowerShell fallback.
+The [Windows installed acceptance run](https://github.com/TypeSafeAI/modex/actions/runs/38138212616)
+passed verified NSIS installation, two launches of the real packaged app, terminal
+input/output/cleanup with explicit cmd.exe selection, and production SecretStore DPAPI
+encryption read across restart without changing ciphertext. The real NSIS uninstaller
+removed the application and registration while preserving recorded threads, probe
+ciphertext, default app-data markers and unrelated data. The downloaded evidence archive
+matches GitHub's artifact digest. Forced process cleanup fails acceptance; existing
+installations and local/self-hosted execution are refused.
+
+Default Windows shell selection now treats environment names case-insensitively.
+Regressions reproduce and fix the incorrect PowerShell fallback for `ComSpec`/`comspec`.
+The next installed smoke supplies ordinary `ComSpec` to exercise this fix in packaged
+Electron; the completed run above used uppercase `COMSPEC`.
 
 Linux GCC rejected unchecked terminal receipt writes in the
 [initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
@@ -63,7 +68,7 @@ Custom batch launchers are refused; recognized plain npm Node wrappers launch th
 Node entrypoint with unchanged arguments. Linux credentials require an encrypted storage
 backend and preserve existing files when storage is unavailable.
 
-Local verification for the isolated platform change: full monorepo build, 486 passing
+Local verification for the isolated platform change: full monorepo build, 489 passing
 tests, desktop typecheck, configuration validation and workflow lint. Twelve tests are
 skipped: eleven require Windows and one is the existing opt-in live Knowledge test. Strict
 Windows cross-compilation passes; the hosted results above provide the limited native
