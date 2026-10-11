@@ -1,12 +1,101 @@
-import { WebContentsView, type BrowserWindow } from "electron";
-import { allowedBrowserURL, browserURL, type BrowserBounds, type BrowserSnapshot, type WorkspaceShortcut } from "../shared/browser.js";
+import { WebContentsView, type BrowserWindow, type WebFrameMain } from "electron";
+import { allowedBrowserURL, browserURL, WORKSPACE_BROWSER_PARTITION, type BrowserBounds, type BrowserSnapshot, type WorkspaceShortcut } from "../shared/browser.js";
+import { randomUUID } from "node:crypto";
+import { disposeLoginRequest, fillLoginFields, fillLoginRequest, prepareLoginRequest, type LoginFields } from "./engine/browser-credentials.js";
 
-/** Guest pages have no preload, Node, app storage, permissions or access to Modex's bridge. */
+interface BrowserEntry {
+  view: WebContentsView;
+  navigation: number;
+  frameNavigations: Map<number, { generation: number; users: number }>;
+  error?: string; styled?: boolean; cssKey?: string; styleVersion?: number;
+}
+
+/** Guest pages have no app preload, Node, app storage or access to Modex's bridge. */
 export class WorkspaceBrowser {
-  private views = new Map<string, { view: WebContentsView; error?: string; styled?: boolean; cssKey?: string; styleVersion?: number }>();
+  private views = new Map<string, BrowserEntry>();
   private fullView = false;
   private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
   constructor(private window: BrowserWindow, private options: { partition?: string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string } } = {}) {}
+  ownsFrame(frame: WebFrameMain | null): boolean {
+    try { return Boolean(frame && !frame.isDestroyed() && [...this.views.values()].some(({ view }) => !view.webContents.isDestroyed() && view.webContents.mainFrame === frame.top)); }
+    catch { return false; }
+  }
+  frameGuard(frame: WebFrameMain): (() => boolean) & { dispose(): void } {
+    const snapshots: { frame: WebFrameMain; parent: WebFrameMain | null; id: number; url: string; record: { generation: number; users: number }; generation: number }[] = [];
+    let entry: BrowserEntry | undefined, disposed = false;
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      for (const { id, record } of snapshots) if (--record.users === 0 && entry?.frameNavigations.get(id) === record) entry.frameNavigations.delete(id);
+    };
+    try {
+      if (!this.ownsFrame(frame)) throw new Error();
+      entry = [...this.views.values()].find(({ view }) => view.webContents.mainFrame === frame.top);
+      if (!entry) throw new Error();
+      for (let current: WebFrameMain | null = frame; current;) {
+        const id = current.frameTreeNodeId;
+        if (current.isDestroyed() || !Number.isInteger(id) || id < 0 || snapshots.some(snapshot => snapshot.id === id)) throw new Error();
+        // Native getters may throw after renderer loss. Capture them before registering
+        // ownership so a partial snapshot cannot strand a navigation-tracking record.
+        const parent: WebFrameMain | null = current.parent, url = current.url;
+        let record = entry.frameNavigations.get(id);
+        if (!record) { record = { generation: 0, users: 0 }; entry.frameNavigations.set(id, record); }
+        record.users++;
+        snapshots.push({ frame: current, parent, id, url, record, generation: record.generation });
+        current = parent;
+      }
+      if (snapshots.at(-1)?.frame !== entry.view.webContents.mainFrame) throw new Error();
+    } catch { dispose(); }
+    return Object.assign(() => {
+      try {
+        if (!disposed && entry && [...this.views.values()].includes(entry) && this.ownsFrame(frame) && snapshots.every(snapshot =>
+          !snapshot.frame.isDestroyed() && snapshot.frame.parent === snapshot.parent && snapshot.frame.frameTreeNodeId === snapshot.id && snapshot.frame.url === snapshot.url && entry!.frameNavigations.get(snapshot.id) === snapshot.record && snapshot.record.generation === snapshot.generation)) return true;
+      } catch { /* Frame access can throw after renderer loss. Cancel permanently. */ }
+      dispose();
+      return false;
+    }, { dispose });
+  }
+  tabURL(id: string): string {
+    const entry = this.views.get(id);
+    if (!entry || entry.view.webContents.isDestroyed()) throw new Error("Open a browser page first.");
+    return entry.view.webContents.getURL();
+  }
+  async credentialTarget(id: string) {
+    const entry = this.views.get(id);
+    if (!entry || entry.view.webContents.isDestroyed()) throw new Error("Open a browser page first.");
+    const contents = entry.view.webContents, frame = contents.mainFrame, navigation = entry.navigation, url = contents.getURL();
+    let disposed = false;
+    const token = randomUUID();
+    const isCurrent = () => {
+      try { return !disposed && !contents.isDestroyed() && !frame.isDestroyed() && !contents.isLoadingMainFrame() && this.views.get(id) === entry && contents.mainFrame === frame && entry.navigation === navigation && contents.getURL() === url; }
+      catch { return false; }
+    };
+    const dispose = () => {
+      if (disposed) return;
+      const current = isCurrent();
+      disposed = true;
+      if (!current) return; // Navigation/pagehide already revokes the old document's token.
+      // Cleanup must not hold the fill lock if navigation races this dispatch. The token
+      // is all this best-effort script carries; delayed cleanup cannot revoke a new request.
+      try { void contents.executeJavaScriptInIsolatedWorld(1001, [{ code: `(${disposeLoginRequest.toString()})(${JSON.stringify(token)})` }]).catch(() => {}); }
+      catch { /* Never expose raw execution errors or script source. */ }
+    };
+    if (!isCurrent()) throw new Error("The page is loading or changed. Try again after it finishes.");
+    try {
+      const prepared = await contents.executeJavaScriptInIsolatedWorld(1001, [{ code: `(${prepareLoginRequest.toString()})(${JSON.stringify(token)},${JSON.stringify(url)})` }]);
+      if (!prepared || !isCurrent()) throw new Error();
+    } catch {
+      dispose();
+      throw new Error("The page changed. Select a login again on the current page.");
+    }
+    return { url, isCurrent, dispose, fill: async (fields: LoginFields): Promise<boolean> => {
+      if (!isCurrent()) return false;
+      try {
+        const filled = await contents.executeJavaScriptInIsolatedWorld(1001, [{ code: `(${fillLoginRequest.toString()})(${JSON.stringify(token)},${JSON.stringify(url)},${JSON.stringify(fields)},${fillLoginFields.toString()})` }]);
+        return filled === true && isCurrent();
+      } catch { return false; }
+    } };
+  }
   async refreshAppearance(): Promise<void> {
     await Promise.all([...this.views.keys()].map(id => this.style(id)));
   }
@@ -50,8 +139,8 @@ export class WorkspaceBrowser {
     if (!entry) {
       if (!url) return null;
       if (this.views.size >= 12) throw new Error("Close a browser tab before opening another.");
-      const view = new WebContentsView({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, partition: this.options.partition ?? "modex-workspace-browser", webSecurity: true, allowRunningInsecureContent: false } });
-      entry = { view };
+      const view = new WebContentsView({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, partition: this.options.partition ?? WORKSPACE_BROWSER_PARTITION, webSecurity: true, allowRunningInsecureContent: false } });
+      entry = { view, navigation: 0, frameNavigations: new Map() };
       this.views.set(id, entry);
       const contents = view.webContents;
       contents.on("before-input-event", (event, input) => {
@@ -77,14 +166,28 @@ export class WorkspaceBrowser {
       contents.on("will-frame-navigate", (e) => { if (!allowed(e.url) && e.url !== "about:blank") e.preventDefault(); });
       contents.setWindowOpenHandler(({ url }) => { if (allowed(url)) void contents.loadURL(url).catch(() => {}); return { action: "deny" }; });
       contents.on("did-fail-load", (_e, code, description, _url, mainFrame) => { if (mainFrame && code !== -3 && entry) entry.error = description; });
-      contents.on("did-start-navigation", (_e, _url, _inPlace, mainFrame) => { if (mainFrame && entry) entry.error = undefined; });
+      contents.on("did-start-navigation", details => {
+        if (!entry) return;
+        if (details.isMainFrame) { entry.error = undefined; entry.navigation++; }
+        try {
+          const frame = details.frame;
+          if (!frame || frame.isDestroyed() || !Number.isInteger(frame.frameTreeNodeId) || frame.frameTreeNodeId < 0) throw new Error();
+          const tracked = entry.frameNavigations.get(frame.frameTreeNodeId);
+          if (tracked) tracked.generation++;
+        } catch {
+          // Unknown navigation details cannot prove that an active request is unrelated.
+          entry.navigation++;
+          entry.frameNavigations.clear();
+        }
+      });
       if (this.options.appearance) {
         contents.on("did-start-navigation", (_e, _url, inPlace, mainFrame) => {
           if (mainFrame && !inPlace && entry) { entry.styled = false; entry.styleVersion = (entry.styleVersion ?? 0) + 1; entry.cssKey = undefined; view.setVisible(false); }
         });
         contents.on("dom-ready", () => { void this.style(id); });
       }
-      contents.on("render-process-gone", () => { if (entry) entry.error = "This page stopped responding. Reload to try again."; });
+      contents.on("render-process-gone", () => { if (entry) { entry.navigation++; entry.frameNavigations.clear(); entry.error = "This page stopped responding. Reload to try again."; } });
+      contents.on("destroyed", () => { entry?.frameNavigations.clear(); });
       view.setBackgroundColor(this.options.appearance?.().background ?? "#101010");
       view.setVisible(false);
       this.window.contentView.addChildView(view);
@@ -120,6 +223,7 @@ export class WorkspaceBrowser {
   close(id: string): void {
     const entry = this.views.get(id);
     if (!entry) return;
+    entry.frameNavigations.clear();
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(entry.view);
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
     this.views.delete(id);

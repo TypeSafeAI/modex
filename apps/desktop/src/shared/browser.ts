@@ -18,4 +18,8 @@ export function allowedBrowserURL(value: string): boolean {
 export interface BrowserSnapshot { id: string; url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string }
 export interface BrowserBounds { x: number; y: number; width: number; height: number }
 
+export const WORKSPACE_BROWSER_PARTITION = "persist:modex-workspace-browser";
+export interface BrowserExtension { id: string; name: string; version: string; sites: string[]; enabled: boolean; error?: string }
+export interface BrowserToolsSnapshot { extensions: BrowserExtension[]; touchID: boolean; error?: string }
+
 export type WorkspaceShortcut = "new" | "full" | "files" | "review" | "address" | "terminal" | "hide" | "escape";

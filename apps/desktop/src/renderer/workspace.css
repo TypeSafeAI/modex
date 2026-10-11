@@ -173,3 +173,13 @@
 .review-file-heading > span[title] { max-width: 100px; }
 .review-file-heading .file-code-icon { width: 22px; }
 .workspace .review-actions button[aria-label="Highlight changes"][aria-pressed="true"] { color: var(--ok); }
+.browser-tools-modal { width: min(620px, calc(100vw - 48px)); max-height: calc(100vh - 64px); overflow-y: auto; padding: 24px; }
+.browser-tools-modal > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.browser-tools-modal h2 { font-size: 18px; margin: 0; }
+.browser-tools-modal h3 { font-size: 14px; margin: 0 0 8px; }
+.browser-tools-modal > section { margin-top: 24px; }
+.browser-tools-modal p { font-size: 13px; line-height: 1.6; }
+.browser-tools-modal a { color: inherit; text-decoration: underline; }
+.browser-extension { padding: 12px 0; border-top: 1px solid var(--border); }
+.browser-extension-sites { overflow-wrap: anywhere; }
+.browser-extension-actions { display: flex; gap: 8px; margin-bottom: 8px; }
