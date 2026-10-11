@@ -322,6 +322,15 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Minimal right workspace.** Review opens with a compact toolbar and keeps selection,
+  filters, display options and scroll position when switching tools or hiding the rail.
+  Files sit above full-width code at narrow widths and beside it when expanded. Pointer
+  and keyboard resizing remain available; tab closure restores focus without changing
+  an inactive tab's selection. Large totals fit the 280 px minimum width, with exact
+  counts in tooltips. Integrated verification passed 834 unit tests (12 Windows-only
+  skips), all 245 desktop and seven site E2E tests with real OpenKnowledge enabled and
+  no E2E skips. [Review and acceptance limits](reviews/2026-10-11-minimal-right-rail.md).
+
 - **Companion on multiple networks.** One HTTPS listener and credential-free Bonjour
   advertisement per supported private IPv4 address; pairing offers a code/link for each
   active network. DHCP changes remove only affected listeners, preserving other connections
