@@ -99,9 +99,12 @@ native-executable wrapper used by Claude Code, launching its `.exe` directly thr
 owned supervisor. Added coverage rejects modified wrappers and preserves argument values.
 The hosted harness now prepares pinned Codex `0.162.1` and Claude Code `2.1.296` in a fresh
 runner-owned prefix and checks discovery, identity and version through the installed app's
-production launcher. Local wrapper regressions pass; hosted execution of the new real-CLI probes is pending.
-They run only `--version`, with isolated profiles, and do not establish account or inference
-acceptance. Linux credentials require an encrypted storage
+production launcher. The [installed CLI acceptance run](https://github.com/TypeSafeAI/modex/actions/runs/38141701049)
+passed on both platforms: production discovery and identity checks returned the exact pinned
+versions. All sixteen Windows CLI/PTY tests passed, including exact arguments through a native
+npm executable wrapper. Both installed evidence archive digests and the tested merge tree were
+verified. These probes run only `--version`, with isolated profiles, and do not establish
+account or inference acceptance. Linux credentials require an encrypted storage
 backend and preserve existing files when storage is unavailable.
 
 Local verification for the isolated platform change: full monorepo build, 494 passing
@@ -116,3 +119,10 @@ The packaged-demo test now uses the test process PATH instead of reading the use
 login profile. A controlled nine-second login shell reproduced its eight-second
 approval timeout; the same test passes with profile lookup disabled through the existing
 test seam. Production demo deadlines are unchanged.
+
+A KWallet5 follow-up harness is prepared for the disposable Linux runner. It creates a real
+wallet through KWallet's PAM key handoff using a random in-memory key, then exercises the
+installed app's production SecretStore across app and daemon restarts, including automatic
+selection under declared KDE5. It checks the exact owned daemon PID, flushes the wallet before
+shutdown, and preserves credential ciphertext. Hosted execution is pending. This does not
+represent a full graphical/PAM login session or KWallet6 acceptance.

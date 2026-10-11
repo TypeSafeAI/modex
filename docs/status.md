@@ -466,7 +466,8 @@ Roughly in the order they earn their place; none is scheduled.
    under a declared GNOME environment, and actual AppImage FUSE startup/cleanup passed in
    [native acceptance](https://github.com/TypeSafeAI/modex/actions/runs/38140210846).
    Standard native-executable npm wrapper support passes local regressions. Installed
-   Codex/Claude identity probes are prepared; hosted results are pending. Complete CLI/account acceptance, remaining
+   Codex/Claude identity probes passed in both installed apps, and all sixteen Windows
+   CLI/PTY checks passed. KWallet5 restart coverage is prepared; its hosted results are pending. Complete CLI/account acceptance, remaining
    keyring variants and final installer lifecycle checks remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).

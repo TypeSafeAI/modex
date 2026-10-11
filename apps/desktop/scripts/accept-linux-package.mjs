@@ -7,6 +7,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { readNativePackages } from "./read-native-packages.mjs";
 import { acceptInstalledClis } from "./accept-installed-clis.mjs";
+import { acceptLinuxKwallet } from "./accept-linux-kwallet.mjs";
 
 // This script installs/removes a system package. It must never run on a developer host.
 assert.equal(process.platform, "linux", "Hosted Linux acceptance only");
@@ -284,6 +285,10 @@ try {
     await launch(path.join(portable, "AppRun"), kind, "read", candidate.manifest.version);
   }
   await launch(artifacts.get(".AppImage"), "appimage-fuse", "read", manifest.version);
+  await stopKeyring();
+  result.kwallet = await acceptLinuxKwallet({ electron, executablePath: installedBinary, version: manifest.version,
+    root, home, evidence, closeApp, openApps });
+  result.remaining = ["KWallet6 and full graphical login session acceptance", "complete CLI/account acceptance"];
   result.upgrade = { from: baseline.manifest.version, to: manifest.version, evidence: "Debian and extracted AppImage replacement retained threads, setting and unchanged encrypted credential", limitation: "same source with distinct package versions; historical schema migration untested" };
   result.credentials = "production SecretStore libsecret encryption persisted across restart and package formats; basic_text refused new/overwrite writes and preserved ciphertext";
 } catch (error) { failure = error; }

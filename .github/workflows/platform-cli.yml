@@ -112,7 +112,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libgbm1 libasound2t64 dbus gnome-keyring libsecret-1-0 libglib2.0-bin libfuse2t64
+          sudo apt-get install -y xvfb libgbm1 libasound2t64 dbus gnome-keyring libsecret-1-0 libglib2.0-bin libfuse2t64 libkf5wallet-bin
           sudo modprobe fuse
           test -c /dev/fuse
           if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
