@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { CreateSpacePage, SpacePage, SpaceChangeContext, SpacePageVersion } from "../../shared/space.js";
+import type { CreateSpacePage, SpacePage, SpaceChangeContext, SpacePageVersion, SpaceComment } from "../../shared/space.js";
 
-interface SpaceDocument { version: 2; pages: SpacePage[]; history: SpacePageVersion[]; }
+interface SpaceDocument { version: 2; pages: SpacePage[]; history: SpacePageVersion[]; comments?: SpaceComment[]; }
 
 /** Read before every mutation, validate before writing, and atomically replace the local document file. */
 export class SpaceStore {
@@ -12,6 +12,27 @@ export class SpaceStore {
   constructor(private readonly dir: string) { this.file = path.join(dir, "space.json"); }
 
   list(): SpacePage[] { return this.read().pages; }
+
+  comments(pageId: string): SpaceComment[] {
+    const data = this.read();
+    this.find(data.pages, pageId);
+    return (data.comments ?? []).filter(comment => comment.pageId === pageId);
+  }
+
+  addComment(pageId: string, text: string, quote: string): SpaceComment {
+    const data = this.read();
+    if (this.find(data.pages, pageId).trashedAt) throw new Error("Restore this page before commenting on it.");
+    const comment: SpaceComment = { id: randomUUID(), pageId, text: typeof text === "string" ? text.trim() : text, quote, createdAt: new Date().toISOString() };
+    validateComment(comment);
+    this.write({ ...data, comments: [...(data.comments ?? []), comment] });
+    return comment;
+  }
+
+  deleteComment(pageId: string, id: string): void {
+    const data = this.read();
+    this.find(data.pages, pageId);
+    this.write({ ...data, comments: (data.comments ?? []).filter(comment => comment.pageId !== pageId || comment.id !== id) });
+  }
 
   /** Versions are returned oldest first; legacy pages expose their preserved baseline. */
   history(id: string): SpacePageVersion[] {
@@ -31,6 +52,7 @@ export class SpaceStore {
         return { version: 2, pages: data.pages, history: data.pages.map((page: SpacePage) => ({ page, actor: "unknown", summary: "Existing page before version history" })) };
       }
       validateHistory(data);
+      validateComments(data);
       return data;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 2, pages: [], history: [] };
@@ -142,6 +164,7 @@ export class SpaceStore {
   private write(data: SpaceDocument): void {
     for (const page of data.pages) validate(page);
     validateHistory(data);
+    validateComments(data);
     fs.mkdirSync(this.dir, { recursive: true });
     const temporary = `${this.file}.${randomUUID()}.tmp`;
     try {
@@ -149,6 +172,25 @@ export class SpaceStore {
       try { fs.writeFileSync(fd, JSON.stringify(data)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(temporary, this.file);
     } finally { fs.rmSync(temporary, { force: true }); }
+  }
+}
+
+function validateComment(comment: SpaceComment): void {
+  if (!comment || typeof comment.id !== "string" || !/^[a-z0-9-]{1,64}$/i.test(comment.id) || typeof comment.pageId !== "string" ||
+      typeof comment.text !== "string" || !comment.text.trim() || comment.text.length > 10_000 ||
+      typeof comment.quote !== "string" || comment.quote.length > 2_000 || typeof comment.createdAt !== "string" || !Number.isFinite(Date.parse(comment.createdAt))) {
+    throw new Error("A comment needs text (up to 10,000 characters) and a valid page reference.");
+  }
+}
+
+function validateComments(data: SpaceDocument): void {
+  if (data.comments === undefined) return;
+  if (!Array.isArray(data.comments)) throw new Error("Invalid saved comments.");
+  const ids = new Set<string>();
+  for (const comment of data.comments) {
+    validateComment(comment);
+    if (ids.has(comment.id) || !data.pages.some(page => page.id === comment.pageId)) throw new Error("Invalid saved comment reference.");
+    ids.add(comment.id);
   }
 }
 

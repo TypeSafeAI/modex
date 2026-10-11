@@ -4,6 +4,9 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { MockStep } from "@modex/core";
 
+/** A 1×1 PNG, base64: the smallest real image for attachment tests. */
+export const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 export function tmpdir(prefix = "modex-desktop-"): string {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }

@@ -69,7 +69,17 @@ export interface TurnSink {
   session(handle: string): void;
 }
 
+/** A file attached to the turn, already on disk under Modex's attachments folder. */
+export interface TurnAttachment {
+  name: string;
+  mime: string;
+  kind: "image" | "file";
+  path: string;
+}
+
 export interface TurnOptions {
+  /** Images travel inline (base64 or local path); the prompt text already names the other files by path. */
+  attachments?: TurnAttachment[];
   pages?: import("../../../shared/pages.js").PagesConnection;
   knowledge?: import("../../../shared/knowledge.js").KnowledgeConnection;
   cwd: string;

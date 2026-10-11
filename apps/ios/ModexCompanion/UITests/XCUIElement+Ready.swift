@@ -21,6 +21,19 @@ func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
     }
 }
 
+/// Observes typed text and retains the terminal value used by the failure diagnostic.
+func observeTypedText(_ text: String, timeout: TimeInterval,
+                      readValue: () -> String?) -> (matches: Bool, value: String?) {
+    var observed: String?
+    let matches = waitUntil(timeout: timeout) {
+        observed = readValue()
+        return observed?.hasSuffix(text) == true
+    }
+    if matches { return (true, observed) }
+    observed = readValue()
+    return (observed?.hasSuffix(text) == true, observed)
+}
+
 /// Answers a prompt SpringBoard has put over the app, if there is one: Allow for a permission, else the
 /// first button that only closes it. Returns whether a prompt was answered.
 ///
@@ -112,8 +125,9 @@ extension XCUIElement {
             }
         } while true
         typeText(text)
-        guard waitUntil(timeout: max(1, deadline.timeIntervalSinceNow), { (value as? String)?.hasSuffix(text) == true }) else {
-            XCTFail("The field did not finish receiving the typed text; it holds \((value as? String).map { "\"\($0)\"" } ?? "nothing").", file: file, line: line)
+        let observation = observeTypedText(text, timeout: max(1, deadline.timeIntervalSinceNow)) { value as? String }
+        guard observation.matches else {
+            XCTFail("The field did not finish receiving the typed text; it holds \(observation.value.map { "\"\($0)\"" } ?? "nothing").", file: file, line: line)
             return
         }
     }

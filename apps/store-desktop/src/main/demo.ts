@@ -1,3 +1,4 @@
+import { DEMO_ATTACHMENTS_UNAVAILABLE } from "./attachments.js";
 import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, type AppState, type BridgeCommands, type RoutingStatus, type TerminalEvent, type TerminalSnapshot, type Thread, type ThreadEvent, type ThreadItem } from "../../../desktop/src/shared/types.js";
 
 type Handlers = { [K in keyof BridgeCommands]: (request: BridgeCommands[K]["req"]) => BridgeCommands[K]["res"] };
@@ -64,6 +65,9 @@ export class StoreDemo {
       "space:revert": unavailable,
       "space:export": unavailable,
       "space:list": () => { throw new Error("Space is available in the full Modex desktop app."); },
+      "space:comments": () => { throw new Error("Space is unavailable in the review demo."); },
+      "space:comment:add": () => { throw new Error("Space is unavailable in the review demo."); },
+      "space:comment:delete": () => { throw new Error("Space is unavailable in the review demo."); },
       "space:create": () => { throw new Error("Space is unavailable in the review demo."); },
       "space:save": () => { throw new Error("Space is unavailable in the review demo."); },
       "space:trash": () => { throw new Error("Space is unavailable in the review demo."); },
@@ -135,8 +139,14 @@ export class StoreDemo {
       },
       "terminal:resize": ({ threadId, sessionId }) => { this.session(threadId, sessionId); },
       "terminal:close": ({ threadId, sessionId }) => { this.session(threadId, sessionId); this.terminals.delete(threadId); },
+      "canvas:open": () => { throw new Error("Canvas is unavailable in the offline demo."); },
+      "canvas:state": () => { throw new Error("Canvas is unavailable in the offline demo."); },
+      "canvas:show": () => {},
+      "canvas:close": () => {},
       "browser:command": ({ id, action }) => action === "close" ? null : { id, url: "", title: "Offline demo", back: false, forward: false, loading: false, error: "External pages require a connected workspace. Explore the sample README in Files or Review while offline." },
       "browser:show": () => {},
+      "browser:extensions": () => ({ extensions: [], touchID: false }),
+      "browser:extensionInstall": unavailable, "browser:extensionUpdate": unavailable, "browser:fillLogin": unavailable, "browser:external": unavailable,
       "models:list": () => ({ models: [{ id: "demo", label: "Scripted demo", isDefault: true, description: "No model request is sent." }] }),
       "backends:health": () => ({ claude: health, codex: health, mock: health }),
       "settings:update": patch => { this.state.settings = { ...this.state.settings, ...patch }; return this.state.settings; },
@@ -155,6 +165,10 @@ export class StoreDemo {
       "approvals:rules:set": ({ rules }) => { this.state.settings.approval_rules = rules; return rules; },
       "approvals:try": unavailable,
       "shell:openPath": unavailable, "shell:openTerminal": unavailable, "clipboard:write": unavailable,
+      // The demo has no files to stage: the composer shows this instead of a chip.
+      "attachments:stage": () => ({ staged: [], errors: [DEMO_ATTACHMENTS_UNAVAILABLE] }),
+      "attachments:pick": () => ({ staged: [], errors: [DEMO_ATTACHMENTS_UNAVAILABLE] }),
+      "attachments:discard": () => {}, "attachments:open": unavailable,
     };
   }
 

@@ -11,6 +11,8 @@ export interface SpacePage {
   revision: number;
 }
 export interface SpaceChangeContext { actor: string; summary: string; }
+/** Personal comments, stored with the local Space; no remote sharing is implied. */
+export interface SpaceComment { id: string; pageId: string; text: string; quote: string; createdAt: string; }
 export interface SpacePageVersion extends SpaceChangeContext { page: SpacePage; /** Start of a coalesced human typing checkpoint. */ checkpointAt?: string; }
 
 export type CreateSpacePage = { title?: string; parentId?: string | null; markdown?: string };

@@ -47,7 +47,7 @@ modex/
   ceiling, daily premium-turn budget, confidence floor). Every turn gets a one-line receipt
   explaining the pick; picking a model by hand teaches Auto your preference for that kind of
   task. The key is pasted into Settings (kept in the OS keychain, never in a build) or
-  shared with the [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
+  shared with the unofficial [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
   directly when it is installed. The coding turn itself still runs only through the
   CLIs. See [docs/auto-routing.md](docs/auto-routing.md).
 - **Settings you can verify.** Separate sections keep general defaults, coding CLIs,
@@ -91,9 +91,15 @@ modex/
   A second failure shows the card with both attempts recorded. Early send/retry rejections
   (for example, a busy thread) return to the caller without adding transcript items.
 - **Tabbed workspace.** Review working-tree changes with numbered diffs, a filterable file
-  tree, and confirmed per-file discard. Open Files, Terminal, or browser tabs beside the chat;
+  tree, and confirmed per-file discard. Open Files, Terminal, Canvas, or browser tabs beside the chat;
   use Shift + Command + B for a new tab or Shift + Command + F for full view. Escape exits
   full view. Files previews stay inside the project; browser pages use isolated desktop views.
+  [Canvas](docs/canvas.md) previews local HTML, SVG and Markdown with automatic refresh.
+  The browser's gear opens extensions and sign-in: approved Manifest V3 page scripts for
+  named HTTPS sites, **Fill with 1Password** through the local 1Password CLI (exact-origin
+  logins, filled without submitting), and **Open in system browser** for passkeys.
+  Device Touch ID passkeys are disabled pending provisioning and signed acceptance;
+  a signed binary alone does not authorize the protected keychain group. See [docs/browser-tools.md](docs/browser-tools.md).
 - **Embedded terminal.** Open a shell in a workspace tab with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.
@@ -106,11 +112,16 @@ modex/
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
   starts empty. If a send fails, the message returns to its composer without replacing text
   you typed while the send was pending.
-- **Streamer Mode.** Turn it on from the rail before sharing the window. Modex covers the full
-  window with an opaque privacy screen, hiding chats, thread and project names, terminals,
-  diffs, settings, notifications, and paths while work continues underneath. The cover stays
-  on across relaunches, including loading and startup errors, and reveals the workspace
-  only when you choose **Show workspace**.
+- **Streamer Mode.** Toggle it from the rail to mask recognized credentials while keeping
+  chats, terminals, settings, and Space usable. Text matching covers credential labels,
+  common token prefixes, authorization headers, URL passwords, and private-key blocks.
+  An editable field containing a match masks its whole value; typing, undo, formatting,
+  clipboard, saved files, and CLI requests retain the originals. Comment excerpts are
+  masked in full, including public quotes, because selections can lose a secret's label.
+  Embedded Browser and Knowledge panes are covered, and pairing QR codes are hidden.
+  The setting survives relaunch, including startup errors. This is visual masking:
+  arbitrary unlabeled secrets, image contents, raw clipboard text, and accessibility
+  text are not sanitized.
 - **Threads name themselves.** A new thread takes its first message as its title right away.
   After that first turn completes, the same CLI is asked, in a separate throwaway chat
   conversation that never touches the transcript, for a short title based on the request and

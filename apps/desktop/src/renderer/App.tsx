@@ -1,7 +1,12 @@
+import { StreamerMode, useStreamerRedaction } from "./streamer";
+import { redactSecrets } from "../shared/streamer-secrets";
 import { RepositoryOverview } from "./components/RepositoryOverview";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UpdateBanner } from "./components/UpdateBanner";
 import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
+import { LIMITS } from "../shared/attachments";
+import { ComposerAttachments, type AttachmentActions } from "./composer-attachments";
+import { stageFiles, pickFiles } from "./attachments";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
@@ -13,6 +18,7 @@ import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { Icon } from "./components/ui/Icon";
+import { IconButton } from "./components/ui/IconButton";
 import { useSelectionHistory } from "./history";
 import { PanelResizeHandle } from "./components/PanelResizeHandle";
 import { PANEL_WIDTHS, usePanelSizing } from "./panel-sizing";
@@ -36,6 +42,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   }, []);
   const [surface, setSurface] = useState<"chat" | "space">("chat");
   const [spaceOpened, setSpaceOpened] = useState(false);
+  const [spaceChatOpen, setSpaceChatOpen] = useState(false);
   const [state, setState] = useState<AppState | null>(null);
   useLayoutEffect(() => { if (state) applyTheme(state.settings.theme, persistPreferences); }, [state?.settings.theme, persistPreferences]);
   useLayoutEffect(() => () => { if (!persistPreferences) restoreTheme(); }, [persistPreferences]);
@@ -43,11 +50,13 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
-  // Unsent composer text by thread id (or `draft:<revision>` for a new chat). Switching threads keeps it;
+  // Unsent text by thread id (or `draft:<revision>:<projectId>` for a new chat). Switching threads keeps it;
   // sending, deleting the thread or starting another new chat clears it. Renderer-only: it is not saved.
   const [unsent, setUnsent] = useState<Record<string, string>>({});
   const unsentRevision = useRef(new Map<string, number>());
+  const unsentRef = useRef<Record<string, string>>({});
   const setUnsentFor = useCallback((key: string, text: string) => {
+    unsentRef.current[key] = text;
     unsentRevision.current.set(key, (unsentRevision.current.get(key) ?? 0) + 1);
     setUnsent((m) => {
       if (text) return { ...m, [key]: text };
@@ -60,6 +69,35 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     // A newer edit (including clearing a newer draft) owns this composer now.
     if ((unsentRevision.current.get(key) ?? 0) === revision) setUnsentFor(key, text);
   }, [setUnsentFor]);
+  // App owns asynchronous attachment work so switching/unmounting cannot reset its reservations.
+  const [, redrawAttachments] = useState(0);
+  const [attachmentDrafts] = useState(() => new ComposerAttachments(
+    () => redrawAttachments(n => n + 1),
+    async (files) => { await bridge.invoke("attachments:discard", { ids: files.map(f => f.id) }); },
+  ));
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const attachmentActions = (key: string): AttachmentActions => {
+    const unavailable = () => {
+      const t = stateRef.current?.threads.find(t => t.id === key);
+      if (key.startsWith("draft:") && attachmentDrafts.get(key).sending) return true;
+      return Boolean(t && (t.retired || t.status === "running" || t.status === "waiting"));
+    };
+    return {
+      ...attachmentDrafts.get(key),
+      onFiles: async (files) => {
+        if (unavailable()) return;
+        const list = Array.from(files);
+        await attachmentDrafts.stage(key, list.length, room => stageFiles(list, room));
+      },
+      onPick: async () => {
+        if (unavailable()) return;
+        await attachmentDrafts.stage(key, LIMITS.perTurn, remaining => pickFiles(remaining));
+      },
+      onRemove: id => { if (!unavailable()) attachmentDrafts.remove(key, id); },
+      onDismissWarning: () => attachmentDrafts.dismissWarning(key),
+    };
+  };
   const loadingItems = useRef(new Map<string, ItemEvent[]>());
   const [changeResult, setChangeResult] = useState<{ threadId: string; snapshot: ChangesSnapshot } | null>(null);
   const changes = changeResult?.threadId === selected ? changeResult.snapshot : null;
@@ -78,6 +116,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   const showChanges = layout.changes;
   const sidebarOpen = layout.sidebar;
   const streamerMode = layout.streamerMode;
+  useStreamerRedaction(streamerMode);
+  const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
   const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
   // The toast: what failed and, when the action can simply be run again, how.
@@ -87,7 +127,28 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // A new chat is a draft (renderer-only) until its first send creates the thread.
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [creating, setCreating] = useState(false);
+  const draftKey = `draft:${draftRevision}:${draft?.projectId ?? ""}`;
+  const creating = Boolean(draft) && attachmentDrafts.get(draftKey).sending;
+  const activeDraftKey = draft ? draftKey : null;
+  const activeDraftKeyRef = useRef(activeDraftKey);
+  activeDraftKeyRef.current = activeDraftKey;
+  // The project picker navigates drafts within one New chat revision. Keep their input and
+  // in-flight operations until that whole revision is closed or replaced by another New chat.
+  const previousDraft = useRef<{ revision: number; keys: Set<string> } | null>(null);
+  useEffect(() => {
+    const currentRevision = activeDraftKey ? draftRevision : null;
+    if (previousDraft.current && previousDraft.current.revision !== currentRevision) {
+      for (const key of previousDraft.current.keys) attachmentDrafts.retire(key);
+      previousDraft.current = null;
+    }
+    if (activeDraftKey) {
+      previousDraft.current ??= { revision: draftRevision, keys: new Set() };
+      previousDraft.current.keys.add(activeDraftKey);
+    }
+  }, [activeDraftKey, draftRevision, attachmentDrafts]);
+  useEffect(() => {
+    for (const t of state?.threads ?? []) if (t.retired) attachmentDrafts.retire(t.id);
+  }, [state?.threads, attachmentDrafts]);
   // A thread just created from a draft has no history to load, and reloading it could overwrite
   // the first streamed items; the selection effect skips its one load.
   const justCreated = useRef<string | null>(null);
@@ -205,7 +266,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   useEffect(() => {
     if (!state || selected || creating) return;
     if (draft && !state.projects.some((p) => p.id === draft.projectId)) setDraft(null);
-    else if (!draft && state.projects[0]) setDraft({ projectId: state.projects[0].id, worktree: false, settings: draftDefaults(state) });
+    else if (!draft && state.projects[0]) { setDraftRevision(revision => revision + 1); setDraft({ projectId: state.projects[0].id, worktree: false, settings: draftDefaults(state) }); }
   }, [state, selected, draft, creating]);
 
   // Model catalogue per backend, fetched lazily from the CLIs (Codex: live `model/list`).
@@ -242,12 +303,12 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   }, [thread?.id, thread?.backend, thread?.model, models]);
   const project = useMemo(() => (thread ? state?.projects.find((p) => p.id === thread.projectId) ?? null : null), [state, thread]);
 
-  const act = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
+  const act = async <T,>(fn: () => Promise<T>, { retry = true }: { retry?: boolean } = {}): Promise<T | undefined> => {
     try {
       setError(null);
       return await fn();
     } catch (err) {
-      setError({ message: (err as Error).message, retry: () => void act(fn) });
+      setError({ message: (err as Error).message, ...(retry ? { retry: () => void act(fn) } : {}) });
       return undefined;
     }
   };
@@ -264,42 +325,54 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     const p = await bridge.invoke("project:add", folder ? { path: folder } : undefined);
     if (p) await refresh();
   });
+  // Send/create retries belong to the restored composer: replaying only an inner act() closure
+  // would bypass its capacity and duplicate-send reservations.
   /** First send from a draft: create the thread with the draft's settings, then send. */
   const sendDraft = async (text: string): Promise<void> => {
     if (!draft) return;
     const d = draft;
-    const draftKey = `draft:${draftRevision}`;
+    const attachments = attachmentDrafts.beginSend(draftKey);
+    if (attachments === null) return;
     setUnsentFor(draftKey, "");
     let restoreKey = draftKey;
     let restoreRevision = unsentRevision.current.get(draftKey)!;
-    setCreating(true);
     const sent = await act(async () => {
       const s = d.settings;
       const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
       if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
       await refresh();
-      justCreated.current = t.id;
-      setDraft(null);
-      setSelected(t.id);
+      // Transfer ownership with selection, including edits made while thread creation was pending.
+      attachmentDrafts.move(draftKey, t.id);
       restoreKey = t.id;
+      const draftWasEdited = unsentRevision.current.get(draftKey) !== restoreRevision;
       restoreRevision = unsentRevision.current.get(t.id) ?? 0;
-      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim() });
+      if (draftWasEdited) setUnsentFor(t.id, unsentRef.current[draftKey] ?? "");
+      setUnsentFor(draftKey, "");
+      if (activeDraftKeyRef.current === draftKey) {
+        justCreated.current = t.id;
+        setDraft(null);
+        setSelected(t.id);
+      }
+      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim(), ...(attachments.length ? { attachments } : {}) });
       if (!r.ok) setError({ message: r.error ?? "send failed" });
       return r.ok;
-    });
-    setCreating(false);
+    }, { retry: false });
+    attachmentDrafts.finishSend(restoreKey, sent === true);
     if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
   };
   const send = async (text: string): Promise<void> => {
-    if (!thread) return;
+    if (!thread || thread.retired || thread.status === "running" || thread.status === "waiting") return;
     const threadId = thread.id;
+    const attachments = attachmentDrafts.beginSend(threadId);
+    if (attachments === null) return;
     setUnsentFor(threadId, "");
     const revision = unsentRevision.current.get(threadId)!;
     const sent = await act(async () => {
-      const r = await bridge.invoke("thread:send", { threadId, text: text.trim() });
+      const r = await bridge.invoke("thread:send", { threadId, text: text.trim(), ...(attachments.length ? { attachments } : {}) });
       if (!r.ok) setError({ message: r.error ?? "send failed" });
       return r.ok;
-    });
+    }, { retry: false });
+    attachmentDrafts.finishSend(threadId, sent === true);
     if (sent !== true) restoreUnsentIfCurrent(threadId, revision, text);
   };
   /** The failure card's Retry: main runs the thread's last message again without adding a second bubble. */
@@ -319,6 +392,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     if (fix.kind === "retry") { void retry(); return; }
     if (!thread) return;
     const id = thread.id;
+    setSurface("chat");
     setLayout({ changes: true });
     setTerminalCommands((m) => ({ ...m, [id]: { text: fix.command, nonce: ++commandNonce.current } }));
     setTerminals((m) => ({ ...m, [id]: true }));
@@ -334,17 +408,18 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     inputRef.current?.focus();
   };
   const toggleTerminal = (threadId: string) => {
-    if (terminals[threadId] && showChanges) closeTerminal(threadId);
-    else { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [threadId]: true })); }
+    if (surface === "chat" && terminals[threadId] && showChanges) closeTerminal(threadId);
+    else { setSurface("chat"); setLayout({ changes: true }); setTerminals((m) => ({ ...m, [threadId]: true })); }
   };
   const deleteThread = (t: Thread) => act(async () => {
-    const removeWorktree = t.worktree ? window.confirm(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`) : true;
+    const removeWorktree = t.worktree ? window.confirm(privateLabel(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`)) : true;
     if (t.worktree && !removeWorktree) return;
     const s = await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree });
     setState(s);
     loadingItems.current.delete(t.id);
     setItems((m) => { const next = { ...m }; delete next[t.id]; return next; });
     setUnsentFor(t.id, "");
+    attachmentDrafts.retire(t.id);
     setTerminals((m) => {
       if (!(t.id in m)) return m;
       const { [t.id]: _gone, ...rest } = m;
@@ -361,6 +436,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     for (const t of removedThreads) {
       loadingItems.current.delete(t.id);
       setUnsentFor(t.id, "");
+      attachmentDrafts.retire(t.id);
     }
     const removedIds = new Set(removedThreads.map((t) => t.id));
     setItems((m) => {
@@ -374,16 +450,16 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
       return next;
     });
     setChangeResult((c) => (c && removedIds.has(c.threadId) ? null : c));
-    if (draft?.projectId === projectId) {
-      setUnsentFor(`draft:${draftRevision}`, "");
-      setDraft(null);
-    }
+    const removedDraftKey = `draft:${draftRevision}:${projectId}`;
+    setUnsentFor(removedDraftKey, "");
+    attachmentDrafts.retire(removedDraftKey);
+    if (draft?.projectId === projectId) setDraft(null);
     if (thread?.projectId === projectId || (selected && removedIds.has(selected))) {
       setSelected(s.threads[0]?.id ?? null);
     }
   });
   const revert = (path: string) => thread && act(async () => {
-    if (!window.confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
+    if (!window.confirm(privateLabel(`Discard changes to ${path}? This cannot be undone.`))) return;
     await bridge.invoke("changes:revert", { threadId: thread.id, path });
     await loadChanges(thread.id);
   });
@@ -404,7 +480,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (showSettings || showCompanion || streamerMode || surface === "space") return;
+      if (showSettings || showCompanion || (surface === "space" && !(eventTargetInSpaceChat(e)))) return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -425,7 +501,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         void stop();
       } else if (e.key.toLowerCase() === "j") {
         e.preventDefault();
-        setShowChanges((v) => !v);
+        if (surface === "space") { setSurface("chat"); setLayout({ changes: true }); }
+        else setShowChanges((v) => !v);
       } else if (e.key === "Enter" && (thread || draft) && document.activeElement !== inputRef.current) {
         e.preventDefault();
         inputRef.current?.focus();
@@ -454,7 +531,15 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
   };
 
-  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread));
+  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
+  const openSpaceChat = (prompt?: string) => {
+    setSpaceChatOpen(true);
+    if (prompt) {
+      const key = thread?.id ?? draftKey;
+      setUnsentFor(key, [unsent[key], prompt].filter(Boolean).join("\n\n"));
+    }
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   const workspace = state ? (
     <>
@@ -477,13 +562,13 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         onDelete={deleteThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} onEnableStreamerMode={() => setLayout({ streamerMode: true })} />
+      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
       <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
         {sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
-          onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: PANEL_WIDTHS.sidebar.default })} />}
+          onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion && !streamerMode} sidebarOpen={sidebarOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}
@@ -499,9 +584,10 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
             agents={activeAgents}
           />
         )}
-        <main className="main" data-testid="main">
-          <UpdateBanner />
-          {thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
+        <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
+          {surface === "space" && spaceChatOpen && <header className="space-chat-header"><IconButton icon="minus" label="Minimize chat" size="md" onClick={() => { setSpaceChatOpen(false); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".space-chat-launcher")?.focus()); }} /><span>{thread?.title ?? "New chat"}</span><IconButton icon="expand" label="Open chat in Home" size="md" onClick={() => setSurface("chat")} /></header>}
+          {surface === "chat" && <UpdateBanner />}
+          {surface === "chat" && thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
           {thread && project ? (
             <ThreadView
               key={thread.id}
@@ -510,6 +596,8 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
               items={items[thread.id] ?? []}
               text={unsent[thread.id] ?? ""}
               onText={(text) => setUnsentFor(thread.id, text)}
+              attachments={attachmentDrafts.get(thread.id).attachments}
+              attachmentActions={attachmentActions(thread.id)}
               onSend={send}
               onStop={stop}
               onAnswer={answer}
@@ -536,8 +624,10 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
               onChange={setDraft}
               onSend={sendDraft}
               inputRef={inputRef}
-              text={unsent[`draft:${draftRevision}`] ?? ""}
-              onText={(text) => setUnsentFor(`draft:${draftRevision}`, text)}
+              text={unsent[draftKey] ?? ""}
+              onText={(text) => setUnsentFor(draftKey, text)}
+              attachments={attachmentDrafts.get(draftKey).attachments}
+              attachmentActions={attachmentActions(draftKey)}
             />
           ) : state.projects.length === 0 ? (
             <EmptyState onAddProject={addProject} />
@@ -545,7 +635,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
           visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
-          suspended={surface === "space" || showSettings || showCompanion || streamerMode}
+          suspended={surface === "space" || showSettings || showCompanion}
           onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
           onHideTerminal={() => closeTerminal(thread.id)} onFocusChat={() => requestAnimationFrame(() => inputRef.current?.focus())}
           terminal={terminals[thread.id] ? (<Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
@@ -571,18 +661,16 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;
 
-  // The privacy cover must exist even while startup is pending or has failed.
   return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} style={panels.style} data-streamer-mode={streamerMode ? "true" : "false"}>
-      {workspace}
-      {streamerMode && (
-        <section className="streamer-shield" data-testid="streamer-shield" aria-label="Streamer Mode is on">
-          <Icon name="privacy" size={28} />
-          <h1>Streamer Mode</h1>
-          <p>Private workspace content is hidden.</p>
-          <button autoFocus className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Show workspace</button>
-        </section>
-      )}
-    </div>
+    <StreamerMode.Provider value={streamerMode}>
+      <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} style={panels.style} data-streamer-mode={streamerMode ? "true" : "false"}>
+        {workspace}
+        {!state && streamerMode && <button className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Turn off Streamer Mode</button>}
+      </div>
+    </StreamerMode.Provider>
   );
+}
+
+function eventTargetInSpaceChat(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && Boolean(event.target.closest(".space-chat"));
 }

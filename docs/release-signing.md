@@ -25,7 +25,23 @@ a missing credential stops the run rather than falling back to an unsigned build
   the DMG, which Gatekeeper assesses as a download in its own right. The release script signs
   it by hash with a secure timestamp, submits it to `notarytool`, and staples its ticket. The
   first full run, for v0.0.5, found the gap: the verify step refused an unstapled DMG.
-- Entitlements are the two Electron needs, `allow-jit` and `allow-unsigned-executable-memory`.
+- Entitlements are the two Electron needs, `allow-jit` and `allow-unsigned-executable-memory`,
+  and the team application group. Device Touch ID passkeys are disabled, and the default
+  artifact must not carry `9LR8Z8UQ9X.ai.typesafe.modex.webauthn`. The release verifier
+  rejects that deferred keychain group. A codesign entitlement string or signed binary
+  alone does not authorize a restricted keychain group.
+  Enabling it requires a separate patch that stages a valid standalone Developer ID
+  provisioning profile, checks its app/team/group/expiry and signer authorization, embeds
+  it at `Contents/embedded.provisionprofile` before signing, and verifies the signed artifact.
+  The current Store profile is unsuitable. See Apple's
+  [provisioning profile rules](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles).
+  Real signed WebAuthn create/get, restart/reuse, chooser cancellation, and session isolation
+  on a supported physical Mac remain enablement gates. `MODEX_E2E=1` and fake `op` tests
+  do not prove biometric acceptance or real 1Password unlock. A controlled development-build
+  check through the real CLI passed no-submit filling and scoped leak checks; see the
+  [acceptance report](reviews/2026-10-11-browser-credential-acceptance.md). Normal signed-app
+  unlock and cancellation remain release gates in the
+  [browser acceptance steps](browser-tools.md#acceptance-still-required).
   **Library validation stays on.** node-pty's `pty.node`, its `spawn-helper` and the compiled
   terminal supervisor are all inside the bundle and electron-builder signs each of them with
   the same identity, so nothing foreign is loaded and `disable-library-validation` is not

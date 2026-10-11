@@ -205,14 +205,15 @@ test.describe("Phase 3 · shell", () => {
 });
 
 test.describe("Phase 4 · composer", () => {
-  // Reference #1: box 736×98 at x 668–1403, y 931–1028; strip 38 px, inset 13 px; send a 34 px circle in the corner.
+  // Reference #1: box 960×109; controls retain their insets; strip 38 px, inset 13 px; send a 34 px circle in the corner.
   const near = (got: number, want: number, tol = 1) => expect(Math.abs(got - want), `${got} vs ${want}`).toBeLessThanOrEqual(tol);
 
-  test("box is 736×98, centred in the main pane, 16 px off the bottom", async () => {
+  test("box is 960×109, centred in the main pane, 16 px off the bottom", async () => {
     await changesHidden();
     const c = await box(tid(page, "composer-box"));
-    near(c.x, 668); near(c.y, 931); near(c.width, 736); near(c.height, 98);
+    near(c.width, 960); near(c.height, 109);
     const m = await box(tid(page, "main"));
+    near(c.y + c.height, m.y + m.height - 16);
     near(c.x + c.width / 2, m.x + 1 + (m.width - 1) / 2);
     expect(await css(tid(page, "composer-box"), "background-color")).toBe("rgb(29, 36, 53)");
     expect(await css(tid(page, "composer-box"), "border-top-color")).toBe("rgb(66, 70, 94)");
@@ -227,12 +228,12 @@ test.describe("Phase 4 · composer", () => {
     expect(await css(tid(page, "composer-context"), "font-size")).toBe("13px");
   });
 
-  test("control row: + at x 690, access pill after it, round send in the corner", async () => {
+  test("control row: + and access keep their insets, round send in the corner", async () => {
     const c = await box(tid(page, "composer-box"));
     const plus = await box(tid(page, "composer-plus"));
-    near(plus.x + plus.width / 2, 690); near(plus.y + plus.height / 2, 1007);
+    near(plus.x + plus.width / 2, c.x + 22); near(plus.y + plus.height / 2, c.y + c.height - 22);
     const access = await box(tid(page, "access-picker"));
-    near(access.x, 708);
+    near(access.x, c.x + 40);
     expect(await css(tid(page, "access-picker"), "font-size")).toBe("13px");
     const send = await box(tid(page, "send"));
     expect([send.width, send.height]).toEqual([34, 34]);
@@ -339,7 +340,7 @@ test.describe("Phase 5 · draft", () => {
     const b = await box(h);
     const m = await box(tid(page, "main"));
     expect(Math.abs(b.x + b.width / 2 - (m.x + 1 + (m.width - 1) / 2))).toBeLessThanOrEqual(2);
-    // Reference ink centre y 493; with a 34 px line box the box centre sits 4 px above the ink centre.
-    expect(Math.abs(b.y + b.height / 2 - 489)).toBeLessThanOrEqual(2);
+    // The 11 px taller resting composer shifts the centred draft hero up by 5.5 px.
+    expect(Math.abs(b.y + b.height / 2 - 483.5)).toBeLessThanOrEqual(2);
   });
 });

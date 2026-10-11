@@ -7,6 +7,7 @@ import { DesktopClient, type DesktopCredentials } from "../../../desktop/src/mai
 import { desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
 import { WorkspaceBrowser } from "../../../desktop/src/main/workspace-browser.js";
 import type { BridgeCommands } from "../../../desktop/src/shared/types.js";
+import { connectedInvoke } from "./attachments.js";
 import { StoreDemo } from "./demo.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -117,6 +118,10 @@ app.whenReady().then(() => {
     trusted(event);
     if (!request || typeof request.channel !== "string" || request.channel.length > 80) throw new Error("Invalid workspace action.");
     if (demo && request.channel !== "clipboard:write") return demo.invoke(request.channel, request.payload);
+    if (request.channel.startsWith("canvas:")) {
+      if (request.channel === "canvas:show" || request.channel === "canvas:close") return;
+      throw new Error("Canvas previews are available in the full desktop app. Store preview support is not available yet.");
+    }
     if (request.channel === "browser:command") {
       const payload = request.payload as BridgeCommands["browser:command"]["req"];
       if (payload.action !== "close" && client.status().state !== "connected") throw new Error("Connect to your Mac to use the workspace browser.");
@@ -133,7 +138,7 @@ app.whenReady().then(() => {
       if (typeof payload?.text !== "string") throw new Error("Invalid clipboard text.");
       clipboard.writeText(payload.text.slice(0, 200_000)); return;
     }
-    return client.invoke(request.channel, request.payload);
+    return connectedInvoke(request.channel, request.payload, (channel, payload) => client.invoke(channel, payload));
   });
   function createWindow(): void {
     nativeTheme.themeSource = "dark";

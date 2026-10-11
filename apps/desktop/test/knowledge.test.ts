@@ -34,9 +34,13 @@ async function existingServer(options: { exitCode?: number; ready?: boolean; ui?
   const service = new KnowledgeService(fixture.home, { runtimeDir: runtime, startupTimeoutMs: 1000, env: { ...process.env, FORCE_COLOR: "1" } });
   await service.selectFolder(fixture.folder);
   return { ...fixture, service, url, async dispose() {
-    await service.dispose();
-    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-    fixture.clean();
+    try { await service.dispose(); }
+    finally {
+      // Report a failed process cleanup without leaving this fixture's listener alive forever.
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      fixture.clean();
+    }
   } };
 }
 
