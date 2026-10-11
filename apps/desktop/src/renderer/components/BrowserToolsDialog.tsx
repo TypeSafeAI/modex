@@ -17,6 +17,7 @@ export function BrowserToolsDialog({ onClose }: { onClose(): void }) {
     dialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
     void bridge.invoke("browser:extensions", undefined).then(value => { if (live) setState(value); }, () => { if (live) setError("Browser tools are available in the Modex desktop app."); });
     const key = (event: KeyboardEvent) => {
+      if (dialog.current?.closest("[inert]")) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!pending.current) close.current(); }
       if (event.key !== "Tab") return;
       const controls = [...(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]') ?? [])];

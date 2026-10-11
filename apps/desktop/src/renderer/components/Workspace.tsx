@@ -101,10 +101,13 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     return () => window.removeEventListener("keydown", key);
   });
   useEffect(() => bridge.onWorkspaceShortcut?.((shortcut) => {
-    if (suspended) return;
+    if (suspended || browserTools) return;
     if (shortcut === "new" || shortcut === "full") newTab(shortcut === "full");
     else if (shortcut === "files" || shortcut === "review" || shortcut === "terminal") openTool(shortcut);
-    else if (shortcut === "address") { addressRef.current?.focus(); addressRef.current?.select(); }
+    else if (shortcut === "address") {
+      if (!["new", "browser"].includes(current.kind)) newTab(full);
+      else { onShow(); requestAnimationFrame(() => { addressRef.current?.focus(); addressRef.current?.select(); }); }
+    }
     else if (shortcut === "hide") onHide();
     else if (shortcut === "escape") setFull(false);
   }));

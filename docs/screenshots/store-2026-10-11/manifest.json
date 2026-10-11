@@ -1,0 +1,238 @@
+{
+  "captured_at": "2026-10-11T06:30:25.057Z",
+  "source_baseline": "6c00c52d372adc0f94c6dd667bcf97b671363248",
+  "branch": "companion-readiness",
+  "source_worktree_patch": {
+    "file": "capture-source.patch",
+    "sha256": "0572abc46e1cb14e30bea5f6654d8997ab912bb742ace5bc43c880490dfd371d",
+    "scope": [
+      "apps/store-desktop",
+      "apps/desktop/src",
+      "packages/core",
+      "package.json",
+      "package-lock.json"
+    ],
+    "format": "Zero-context unified diff; apply with git apply --unidiff-zero."
+  },
+  "source_status_at_completion": [
+    "M apps/desktop/src/main/engine/companion-discovery.ts",
+    " M apps/desktop/src/main/engine/companion.ts",
+    " M apps/desktop/src/main/index.ts",
+    " M apps/desktop/src/renderer/components/CompanionDialog.tsx",
+    " M apps/desktop/src/renderer/styles.css",
+    " M apps/desktop/src/shared/types.ts"
+  ],
+  "application": {
+    "workspace": "@modex/store-desktop",
+    "version": "0.0.8",
+    "launch": "source-built Electron app; not signed MAS/TestFlight",
+    "runtime": "44.4.5"
+  },
+  "operating_system": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "release": "25.6.0",
+    "product_version": "26.7.1"
+  },
+  "capture": {
+    "tool": "standalone Playwright Electron, no test runner",
+    "command": "node apps/desktop/.probes/capture-store-listing.mjs",
+    "script_sha256": "f207a80306379bfe71d148d5f8d39286234cf986a478559b48e0ca067c13c129",
+    "scale": "css",
+    "pixel_dimensions": [
+      1440,
+      900
+    ],
+    "theme": "jev",
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "devicePixelRatio": 2
+    },
+    "layout": "Workspace widened to 520px by five Shift-Left presses; sidebar widened to 264px by three Right presses on the renderer resize handles.",
+    "image_edits": false
+  },
+  "fixture": {
+    "name": "built-in StoreDemo",
+    "mode": "offline in-memory simulated content",
+    "isolated_profile": true,
+    "MODEX_E2E": true,
+    "host_connection": false,
+    "live_coding_cli": false,
+    "real_file_changes": false,
+    "terminal_process": false,
+    "credentials_created": false
+  },
+  "limitations": [
+    "Source UI evidence only; not a signed sandbox or TestFlight installation receipt.",
+    "All provider replies, approval actions, and sample files are simulated.",
+    "Images exclude native titlebar controls outside the webContents capture.",
+    "Do not advertise attachments, Space/Knowledge, Modex account sign-in, or real CLI acceptance from these images."
+  ],
+  "rendered_errors": [],
+  "built_artifacts_unchanged_during_capture": true,
+  "built_artifacts": [
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/engine/desktop-client.js",
+      "sha256": "34dec5314af4c573d22282bb62bc2c669426d9383d12e18902791cd8cfef49f2"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/engine/desktop-client.js.map",
+      "sha256": "6b3ba2870b9f06184e591c5dae01426c34768ebc66fb1102ea744130f2cc720c"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/engine/desktop-discovery.js",
+      "sha256": "543c131589dd7a8e4b3f5e733094deb6ed8ead71adce64a90a6749f15d64cd2d"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/engine/desktop-discovery.js.map",
+      "sha256": "c19806ee49de2b4d8d61addf782dc9975584e41279e7f1ac02e2766abad1e860"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/engine/desktop-system",
+      "sha256": "99be47f59059beeef14c49119073ef65785600abdd9e155b81dd847663d7e179"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/workspace-browser.js",
+      "sha256": "eecbc08087f93875b511e34b28f0faee3cf4db54d5a70b03f0cec80f376c5c19"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/main/workspace-browser.js.map",
+      "sha256": "b998680db658f6def1c72dcc8f136b79ea1513f5b1c24b7efdc1ab86921bf954"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/browser.js",
+      "sha256": "169ff293fc6020a734f7fe17148cc46aaaedf40ff146b6e16cb6823974dbac16"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/browser.js.map",
+      "sha256": "2f1423c4e70a9950d8081d5c410243b6b998407476540ac298288db2497f3840"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/desktop-protocol.js",
+      "sha256": "5a1ee2d94a9f6be1411d94eb97d2e886ccfd436776f85bc447089188531c167c"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/desktop-protocol.js.map",
+      "sha256": "e15f51c9388e20e869bc4b4e87bb5167e11be9e1112ee9329fe2f7f0dd4eda7b"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/knowledge.js",
+      "sha256": "adf2dec55a5430188395d9aef752c5a242490cfcb4990d1338ea23389e844731"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/knowledge.js.map",
+      "sha256": "602d6218830b9b680b3ff1c369f08074a1baf2702305c0bbae646a9bcd0ce098"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/pages.js",
+      "sha256": "560aec1b72f34e2693d03667c8d08bbc437b11bcbb13707395ac1c8a1d416ac6"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/pages.js.map",
+      "sha256": "042310d77a7a6cdf8313ebf4b4334efe233a6ee8f84b59913b26355120cbd3c1"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/space.js",
+      "sha256": "60b85adcbd6bf735f6d06b01098fbc184457d2e6013a41eba98ed48eebd5b6ab"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/space.js.map",
+      "sha256": "99a4a64ad430348c116b5d1900c49c02fe35248e461b4cb4a514bf17793fd7e1"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/theme.js",
+      "sha256": "cf18eac8ece574d4138092776ff1b863a0f6148ab7369b1c697d4f5ebf665246"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/theme.js.map",
+      "sha256": "1ca3935d9d48b26c03dac4efab1599cd0b5df3ec1014c889bd01cba43e5778bd"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/types.js",
+      "sha256": "209c8664ad10781326cdadf2192178fed8bb72a3ce0cea91cca39fae2b56d6a9"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/desktop/src/shared/types.js.map",
+      "sha256": "5e969799806863f0bc5820d29c726e7d765fb55d7ec75ccc37e6dca4c3a959c3"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/store-desktop/src/main/demo.js",
+      "sha256": "d3dbad88a1fb6c44bf60dd4bebc5d687a45c45d6bcfc56ff0564bfe8c94297e2"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/store-desktop/src/main/demo.js.map",
+      "sha256": "fc7d336bd46753044b96978c5dbc26c7a6c27cf473f6ec00fb12225fdf291047"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/store-desktop/src/main/index.js",
+      "sha256": "58d431d6b46fe6b914577a73077b896fb7e20e072c660e7c6f6fcb9a4ad09e3c"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/store-desktop/src/main/index.js.map",
+      "sha256": "781ef97cf333bb343d8ef2afa4a048e0ef1df5e98c82bf5abee8193f689af8fd"
+    },
+    {
+      "path": "apps/store-desktop/dist/apps/store-desktop/src/main/preload.cjs",
+      "sha256": "cac0ff51df9f5ce1c6ae24ab641f305c805b587956ff9c8b6df5bec72b7d9000"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/SpaceView-CsEccduW.js",
+      "sha256": "5c58ecb2d6544c1b9a0ad738b01de9ffe0b7726c8d8cda5ee3b5f848b6e762cc"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/SpaceView-D4OVkD28.css",
+      "sha256": "8922f5ad9d010b7d9a8c9d186cd8750b34cc44c3f3cba368c7df2fc3f7846382"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/TerminalPanel-BmfB5bmM.css",
+      "sha256": "358cbfef3a93b66acbb83c8c5504d9a83070ac6e39095813e8d9326f28b44bb5"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/TerminalPanel-h-GGZGqF.js",
+      "sha256": "ad55ac415e3d0a039d45504a615e0c0a94ba03b3ad6dd145e6c1e7518abb2abc"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/index-CblXq5RL.js",
+      "sha256": "6f2b037de81d6085036fe7d86700e8d383f0d46e1085df2069a57cff4e73fb82"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/index-G_r09Bev.css",
+      "sha256": "037cdcf986936ccc42aca97ab947c46b50897c3a15b5cd406261159f5afffc14"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/assets/modex-mark-DNmRLW2u.png",
+      "sha256": "33d722b48bca967cb26267b8ebc817dc3b006a21814527ef76a176489228fe22"
+    },
+    {
+      "path": "apps/store-desktop/dist/renderer/index.html",
+      "sha256": "73913e163ce55d60dc3ab3fcb9f5bbf0e58864fa13d77aabb225b6182a0cb2ae"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "01-offline-approval.png",
+      "description": "Offline demo pending README approval with sample file open.",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2ab572f0cdb829edaa4c4168e073d42ff90bb8f83c1c92cde67ed8624815abc5",
+      "captured_at": "2026-10-11T06:30:28.617Z"
+    },
+    {
+      "file": "02-offline-review.png",
+      "description": "Offline demo approved sample README diff; no real files changed.",
+      "width": 1440,
+      "height": 900,
+      "sha256": "0f1dd1fd718c6bc2750474a308941392a19ee20324ea402348b2f80ca55dfcfd",
+      "captured_at": "2026-10-11T06:30:28.800Z"
+    },
+    {
+      "file": "03-offline-follow-up.png",
+      "description": "Offline demo follow-up and scripted response beside the sample diff.",
+      "width": 1440,
+      "height": 900,
+      "sha256": "8b9fa3de2f3615713b47b808dc90ec0b92cc7bb47db2523a47fe744b49dbde16",
+      "captured_at": "2026-10-11T06:30:29.791Z"
+    }
+  ]
+}

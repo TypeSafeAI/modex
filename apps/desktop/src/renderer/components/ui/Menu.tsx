@@ -43,11 +43,13 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSele
     initial?.focus({ preventScroll: false });
 
     const onDown = (e: PointerEvent) => {
+      if (ref.current?.closest("[inert]")) return;
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchorRef.current?.contains(t)) return;
       close.current("outside");
     };
     const onKey = (e: KeyboardEvent) => {
+      if (ref.current?.closest("[inert]")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();

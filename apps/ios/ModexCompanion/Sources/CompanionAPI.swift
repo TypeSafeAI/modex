@@ -132,6 +132,7 @@ struct CompanionCommand: Decodable, Identifiable, Equatable {
 
 protocol CompanionClient {
     func snapshot(threadId: String?) async throws -> CompanionSnapshot
+    func pairingSnapshot() async throws -> CompanionSnapshot
     func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread
     func commands(projectId: String, backend: String) async throws -> [CompanionCommand]
     func send(threadId: String, text: String) async throws
@@ -143,6 +144,7 @@ protocol CompanionClient {
 
 extension CompanionClient {
     func invalidate() {}
+    func pairingSnapshot() async throws -> CompanionSnapshot { try await snapshot(threadId: nil) }
     func setApprovals(threadId: String, policy: String) async throws {
         throw CompanionError.message("This Mac does not support approval settings. Update Modex on your Mac.")
     }
@@ -192,6 +194,16 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
         return try await request(components.url!, method: "GET", body: nil)
     }
 
+    func pairingSnapshot() async throws -> CompanionSnapshot {
+        // Keep the first request alive while iOS asks for Local Network permission.
+        // Recovery and actions keep the ordinary session's short failure cadence.
+        let configuration = session.configuration
+        configuration.waitsForConnectivity = true
+        let pairingSession = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        defer { pairingSession.invalidateAndCancel() }
+        return try await request(pairing.url.appending(path: "v1/snapshot"), method: "GET", body: nil, using: pairingSession)
+    }
+
     func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread {
         let url = pairing.url.appending(path: "v1/threads")
         var body: [String: Any] = ["projectId": projectId, "text": text, "worktree": worktree, "auto": provider == "auto"]
@@ -227,7 +239,7 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
     private struct CommandList: Decodable { let commands: [CompanionCommand] }
     private struct Failure: Decodable { let error: String }
 
-    private func request<T: Decodable>(_ url: URL, method: String, body: [String: Any]?, timeout: TimeInterval = 8) async throws -> T {
+    private func request<T: Decodable>(_ url: URL, method: String, body: [String: Any]?, timeout: TimeInterval = 8, using requestSession: URLSession? = nil) async throws -> T {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
         request.httpMethod = method
@@ -237,7 +249,7 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await (requestSession ?? session).data(for: request)
         guard let response = response as? HTTPURLResponse else { throw CompanionError.message("No response from your Mac.") }
         if response.statusCode == 401 || response.statusCode == 403 { throw CompanionError.accessRevoked }
         guard (200..<300).contains(response.statusCode) else {

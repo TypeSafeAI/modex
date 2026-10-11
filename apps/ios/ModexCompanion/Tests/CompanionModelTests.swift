@@ -127,6 +127,107 @@ import XCTest
         XCTAssertEqual(store.pairing, original, "A failed discovery candidate must not prevent recovery at the saved address.")
     }
 
+    func testDiscoveryTriesEachAddressAndAlternatesTheSavedEndpoint() async {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let endpoints = (1...3).map { URL(string: "https://192.168.1.\($0):45123")! }
+        let clients = Dictionary(uniqueKeysWithValues: ([original.url] + endpoints).map { ($0, ControlledClient()) })
+        clients.values.forEach { $0.snapshotFailure = URLError(.notConnectedToInternet) }
+        clients[endpoints[0]]!.snapshotFailure = URLError(.serverCertificateUntrusted)
+        clients[endpoints[1]]!.snapshotFailure = nil
+        let discovery = FakeDiscovery()
+        discovery.endpoints = endpoints
+        var candidates: [Pairing] = []
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: {
+            candidates.append($0)
+            return clients[$0.url]!
+        })
+        model.startPolling()
+        model.stopPolling()
+
+        await model.refresh()
+        XCTAssertFalse(model.connected)
+        XCTAssertEqual(store.pairing, original, "The untrusted first address must not replace saved trust.")
+        let firstRequests = await clients[endpoints[0]]!.snapshotRequests
+        XCTAssertEqual(firstRequests, 1)
+        await model.refresh()
+        let savedRequests = await clients[original.url]!.snapshotRequests
+        XCTAssertEqual(savedRequests, 1, "Retry the saved address between advertised candidates.")
+        await model.refresh()
+        XCTAssertTrue(model.connected, "A later unreachable advertisement must not hide a reachable address.")
+        XCTAssertEqual(store.pairing?.url, endpoints[1])
+        XCTAssertTrue(candidates.allSatisfy { $0.token == original.token && $0.fingerprint == original.fingerprint })
+    }
+
+    func testDiscoveryKeepsABoundedFairRotationDespiteDuplicateAdvertisements() async {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let endpoints = (1...20).map { URL(string: "https://192.168.1.\($0):45123")! }
+        let clients = Dictionary(uniqueKeysWithValues: ([original.url] + endpoints).map { ($0, ControlledClient()) })
+        clients.values.forEach { $0.snapshotFailure = URLError(.notConnectedToInternet) }
+        let discovery = FakeDiscovery()
+        discovery.endpoints = endpoints + Array(repeating: endpoints.last!, count: 20)
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { clients[$0.url]! })
+        model.startPolling()
+        model.stopPolling()
+
+        for _ in 0..<64 { await model.refresh() }
+
+        let savedRequests = await clients[original.url]!.snapshotRequests
+        XCTAssertEqual(savedRequests, 32, "Advertisements must not starve the saved endpoint.")
+        for (index, endpoint) in endpoints.enumerated() {
+            let requests = await clients[endpoint]!.snapshotRequests
+            XCTAssertEqual(requests, index < 4 ? 0 : 2, "Retain 16 addresses and visit each once per rotation; duplicates must not bias the order.")
+        }
+        XCTAssertEqual(store.pairing, original)
+    }
+
+    func testAdvertisementsDoNotCancelAnInFlightRecovery() async {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let moved = URL(string: "https://192.168.1.23:45123")!
+        let client = ControlledClient()
+        client.snapshotFailure = URLError(.notConnectedToInternet)
+        let pending = Pending<CompanionSnapshot>(requested: expectation(description: "recovery request"))
+        await client.enqueueSnapshot(pending)
+        let discovery = FakeDiscovery()
+        discovery.endpoint = moved
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { _ in client })
+        let recovered = expectation(description: "original request completes recovery")
+        let subscription = model.$connected.filter { $0 }.prefix(1).sink { _ in recovered.fulfill() }
+        defer { model.stopPolling(); subscription.cancel() }
+        model.startPolling()
+        await fulfillment(of: [pending.requested], timeout: 2)
+        for _ in 0..<3 { discovery.emit(moved) }
+        discovery.emit(URL(string: "https://192.168.1.24:45123")!)
+        await pending.resolve(.success(makeSnapshot(nil)))
+        await fulfillment(of: [recovered], timeout: 1)
+
+        XCTAssertTrue(model.connected)
+        XCTAssertEqual(store.pairing, Pairing(url: moved, token: original.token, fingerprint: original.fingerprint))
+        let requests = await client.snapshotRequests
+        XCTAssertEqual(requests, 1, "Discovery must not start overlapping refreshes.")
+    }
+
+    func testRevocationAtADiscoveredAddressClearsAllRecoveryCandidates() async {
+        let store = MemoryPairingStore()
+        let client = ControlledClient()
+        client.snapshotFailure = CompanionError.accessRevoked
+        let discovery = FakeDiscovery()
+        discovery.endpoints = [URL(string: "https://192.168.1.23:45123")!, URL(string: "https://192.168.1.24:45123")!]
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { _ in client })
+        model.startPolling()
+        model.stopPolling()
+        await model.refresh()
+        await model.refresh()
+        XCTAssertNil(model.pairing)
+        XCTAssertNil(store.pairing)
+        XCTAssertFalse(model.connected)
+        XCTAssertTrue(discovery.stopped)
+        let requests = await client.snapshotRequests
+        XCTAssertEqual(requests, 1, "Revoked trust must not try another candidate.")
+    }
+
     func testThreadSelectionClearsOldItemsAndRejectsAnOlderRefresh() async {
         let (model, client) = fixture()
         await model.select("a")
@@ -352,6 +453,34 @@ import XCTest
         XCTAssertNil(model.error)
     }
 
+    func testInitialPairingUsesPermissionAwareSnapshotWhileRecoveryDoesNot() async throws {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let link = try JSONEncoder().encode(original).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let moved = URL(string: "https://192.168.1.24:43210")!
+        let discovery = FakeDiscovery()
+        discovery.endpoint = moved
+        let savedClient = ControlledClient()
+        let recoveredClient = ControlledClient()
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { $0.url == moved ? recoveredClient : savedClient })
+        await model.pair(link: "modex://pair?data=\(link)")
+        model.stopPolling()
+        savedClient.snapshotFailure = URLError(.cannotConnectToHost)
+        await model.refresh()
+        await model.refresh()
+
+        let pairingRequests = await savedClient.pairingSnapshotRequests
+        let recoveryPairingRequests = await recoveredClient.pairingSnapshotRequests
+        let recoveryRequests = await recoveredClient.snapshotRequests
+        XCTAssertEqual(pairingRequests, 1)
+        XCTAssertEqual(recoveryPairingRequests, 0, "Bonjour recovery must not wait for first-use permission again.")
+        XCTAssertGreaterThan(recoveryRequests, 0)
+        XCTAssertEqual(store.pairing?.url, moved)
+        XCTAssertTrue(model.connected)
+    }
+
     func testDisconnectRejectsAnUnfinishedPairingAttempt() async throws {
         let store = MemoryPairingStore()
         let candidate = try JSONEncoder().encode(store.pairing!).base64EncodedString()
@@ -363,7 +492,7 @@ import XCTest
         let pending = Pending<CompanionSnapshot>(requested: expectation(description: "pair"))
         await client.enqueueSnapshot(pending)
         let pairing = Task { await model.pair(link: "modex://pair?data=\(candidate)") }
-        await fulfillment(of: [pending.requested], timeout: 2)
+        await fulfillment(of: [pending.requested], timeout: 10)
         model.disconnect()
         await pending.resolve(.success(makeSnapshot(nil)))
         await pairing.value
@@ -407,6 +536,73 @@ import XCTest
         XCTAssertNil(model.error)
     }
 
+    func testPendingRetainsTheFirstResultBeforeARequest() async {
+        let results: [Result<Int, Error>] = [.success(42), .failure(PendingFixtureFailure.expected)]
+        for result in results {
+            await assertPendingResult(result, beforeRequest: true)
+        }
+    }
+
+    func testPendingRetainsTheFirstResultAfterARequest() async {
+        let results: [Result<Int, Error>] = [.success(42), .failure(PendingFixtureFailure.expected)]
+        for result in results {
+            await assertPendingResult(result, beforeRequest: false)
+        }
+    }
+
+    func testPendingDoesNotSuspendAReaderCancelledBeforeRegistration() async {
+        let pending = Pending<Int>(requested: expectation(description: "cancelled reader requested"))
+        let completed = expectation(description: "cancelled reader completed")
+        var received: Result<Int, Error>?
+        let reader = Task {
+            do { received = .success(try await pending.value()) }
+            catch { received = .failure(error) }
+            completed.fulfill()
+        }
+        // This MainActor task cannot begin until the test yields below.
+        reader.cancel()
+        await fulfillment(of: [pending.requested], timeout: 2)
+        // Release the old helper too: a failing regression must not leave its reader suspended.
+        await pending.resolve(.success(99))
+        await fulfillment(of: [completed], timeout: 2)
+        guard case .failure(let error)? = received else {
+            XCTFail("A reader cancelled before registration must finish with cancellation.")
+            return
+        }
+        XCTAssertTrue(error is CancellationError)
+    }
+
+    private func assertPendingResult(_ first: Result<Int, Error>, beforeRequest: Bool) async {
+        let pending = Pending<Int>(requested: expectation(description: "reader requested"))
+        let completed = expectation(description: "reader completed")
+        var received: Result<Int, Error>?
+        if beforeRequest {
+            await pending.resolve(first)
+            await pending.resolve(.success(-1))
+        }
+        let reader = Task {
+            do { received = .success(try await pending.value()) }
+            catch { received = .failure(error) }
+            completed.fulfill()
+        }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        if !beforeRequest { await pending.resolve(first) }
+        // Original RED: early 42 is lost, so this cleanup settlement produces 99.
+        await pending.resolve(.success(99))
+        // Bound teardown if registration failed: no unbounded await of reader.value.
+        reader.cancel()
+        await pending.resolve(.failure(CancellationError()))
+        await fulfillment(of: [completed], timeout: 2)
+        switch (first, received) {
+        case (.success(let expected), .success(let actual)?):
+            XCTAssertEqual(actual, expected)
+        case (.failure, .failure(let error)?):
+            XCTAssertTrue(error is PendingFixtureFailure, "Preserve the original error, not teardown cancellation.")
+        default:
+            XCTFail("The reader must receive its first settlement.")
+        }
+    }
+
     private func fixture() -> (CompanionModel, ControlledClient) {
         let client = ControlledClient()
         return (CompanionModel(store: MemoryPairingStore(), discovery: FakeDiscovery(), makeClient: { _ in client }), client)
@@ -415,12 +611,17 @@ import XCTest
 
 @MainActor private final class FakeDiscovery: CompanionDiscovery {
     var endpoint: URL?
+    var endpoints: [URL] = []
     var stopped = false
+    private var found: ((URL) -> Void)?
     func start(fingerprint: String, found: @escaping (URL) -> Void) {
         stopped = false
+        self.found = found
         if let endpoint { found(endpoint) }
+        endpoints.forEach(found)
     }
-    func stop() { stopped = true }
+    func emit(_ endpoint: URL) { found?(endpoint) }
+    func stop() { stopped = true; found = nil }
 }
 
 private final class MemoryPairingStore: PairingStorage {
@@ -430,17 +631,32 @@ private final class MemoryPairingStore: PairingStorage {
     func clear() { pairing = nil }
 }
 
+private enum PendingFixtureFailure: Error { case expected }
+
 private actor Pending<Value> {
     nonisolated let requested: XCTestExpectation
     private var continuation: CheckedContinuation<Value, Error>?
+    private var firstResult: Result<Value, Error>?
     init(requested: XCTestExpectation) { self.requested = requested }
     func value() async throws -> Value {
         try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
+            if let firstResult {
+                continuation.resume(with: firstResult)
+            } else if Task.isCancelled {
+                // A timed-out test can cancel a reader before this actor receives it.
+                continuation.resume(throwing: CancellationError())
+            } else {
+                self.continuation = continuation
+            }
             requested.fulfill()
         }
     }
-    func resolve(_ result: Result<Value, Error>) { continuation?.resume(with: result); continuation = nil }
+    func resolve(_ result: Result<Value, Error>) {
+        guard firstResult == nil else { return }
+        firstResult = result
+        continuation?.resume(with: result)
+        continuation = nil
+    }
 }
 
 private actor ControlledClient: CompanionClient {
@@ -450,6 +666,9 @@ private actor ControlledClient: CompanionClient {
     private var commandLists: [Pending<[CompanionCommand]>] = []
     private var creations: [Pending<CompanionThread>] = []
     private(set) var calls: [String] = []
+    private(set) var snapshotRequests = 0
+    private(set) var pairingSnapshotRequests = 0
+    nonisolated(unsafe) var snapshotFailure: Error?
     nonisolated(unsafe) var createdThread: CompanionThread?
     nonisolated(unsafe) var createdProjectId: String?
     nonisolated(unsafe) var createdText: String?
@@ -460,8 +679,14 @@ private actor ControlledClient: CompanionClient {
     func enqueueAnswer(_ pending: Pending<Void>) { answers.append(pending) }
     func enqueueCommands(_ pending: Pending<[CompanionCommand]>) { commandLists.append(pending) }
     func enqueueCreation(_ pending: Pending<CompanionThread>) { creations.append(pending) }
+    func pairingSnapshot() async throws -> CompanionSnapshot {
+        pairingSnapshotRequests += 1
+        return try await snapshot(threadId: nil)
+    }
     func snapshot(threadId: String?) async throws -> CompanionSnapshot {
+        snapshotRequests += 1
         if !snapshots.isEmpty { return try await snapshots.removeFirst().value() }
+        if let snapshotFailure { throw snapshotFailure }
         if let createdThread {
             return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: [createdThread], items: [])
         }

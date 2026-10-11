@@ -322,6 +322,18 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Companion on multiple networks.** One HTTPS listener and credential-free Bonjour
+  advertisement per supported private IPv4 address; pairing offers a code/link for each
+  active network. DHCP changes remove only affected listeners, preserving other connections
+  and the saved certificate/token. Updated iPhone clients rotate through discovered endpoints
+  and the saved endpoint. Shutdown also closes connections still in the TLS handshake.
+  Initial iPhone pairing has its own connectivity-waiting request; recovery keeps ordinary
+  request behavior. All 41 native unit tests passed after a regression repair to the
+  asynchronous test fixture; the earlier paired physical flow also passed. A final fresh-install
+  permission prompt was not observed, so first-use consent remains unaccepted. Physical
+  secondary-LAN acceptance remains open: this Mac currently has one supported LAN.
+  [Implementation and acceptance ledger](reviews/2026-10-11-companion-apple-readiness.md).
+
 - **Composer attachments.** Desktop and browser-development drafts accept files from Attach files,
   drag/drop, and image paste, with removable chips, copy errors, and attachment-only send.
   Drafts stay with their thread or project through switches and failed sends. Main keeps
@@ -425,13 +437,48 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   sandbox and standalone-app rules require an architecture and review gate. The
   [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
   end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
-  command is documented. Mac Store 0.0.8 and Companion 0.1.0 (5) passed processing and
-  are `WAITING_FOR_REVIEW` as of 2026-10-06 23:51 UTC. Both beta review records contain
+  command is documented. The authenticated October 11 readback confirms approved beta
+  reviews for Mac Store 0.0.8 and Companion 0.1.0 (5): the Mac is `BETA_APPROVED`,
+  and Companion is in external `IN_BETA_TESTING`. Both latest builds are assigned to
+  internal and public-link-enabled external groups. [Current Apple receipt](reviews/2026-10-11-apple-status.md).
+  The [current parity matrix and listing packet](reviews/2026-10-11-store-readiness.md)
+  records implemented host discovery/launch, signed/live acceptance gaps, and Store exclusions. Both beta review records contain
   offline demo instructions, and both reviewer replies are posted; the iOS reply includes
   the reusable QR. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
   records build IDs and verification. The production Mac draft is 0.0.8 with its build
   and review notes selected, but still needs screenshots, description, keywords, and
-  support URL. Apple acceptance of demo access and the Store architecture remains pending.
+  support URL, privacy-policy URL, and copyright. Three source-built Store screenshots and
+  listing text are prepared locally. Current-account signed candidates passed running-host
+  discovery, real Codex and Claude turns, native code comparison/denial, and credential persistence
+  after relaunch using an isolated runtime keychain name. Store Stop ended a real Claude
+  background task. A later bounded native run passed host-restart reconnect with the same
+  Store process and unsent draft, matching-code approval, and revocation with credential
+  removal. All disposable grants were revoked and test apps stopped. Fresh-user setup,
+  installed-host auto-launch and sleep/wake remain unaccepted.
+  Sandboxed lookup could not read the Documents fixture; an unchanged copy in Applications
+  passed exact-host selection from both original and relocated Store apps. A later Open
+  action launched the isolated Preview, and the user confirmed clicking Allow; native
+  revocation removed that grant. The intended Cancel observation was missed. This also
+  exposed a regular-host activation gap: App Sandbox discards launch arguments, while the
+  Preview starts its service automatically. A URL activation handoff is implemented with
+  an additive signed capability check; focused startup, capability and authorization tests
+  pass. The main `312a138` integration passed build/typecheck, 488 unit tests plus one
+  expected skip, and 177 desktop plus seven site UI tests. The signed sandbox helper then
+  launched regular Modex through that URL without flags and reused the same process,
+  port, and certificate with zero grants. This used an explicit candidate path; the full
+  welcome Open sequence remains unaccepted. The subsequent GUI Connect acquired a grant
+  before native confirmation capture, so its Cancel check stopped. That grant was revoked
+  and complete credential/process/profile cleanup passed; attribution is awaiting Val's
+  response. The temporary applications were unregistered and moved back into private
+  artifacts. The `a2f6130` rebase combines the Companion and Store recovery changes.
+  Browser-tools recovery now preserves keyboard access to connection controls, and native
+  Workspace commands pause while browser tools are open. Both regressions failed before
+  the guards and passed afterward. The rebased candidate passed build/typecheck, all
+  726 unit tests without skips, and 228 desktop plus seven site UI tests with OpenKnowledge
+  enabled. Protected landing and the remaining native acceptance gates stay open.
+  [Signed acceptance evidence and limits](reviews/2026-10-11-store-signed-acceptance.md).
+  Beta approval covers the October 6 builds; production
+  approval and acceptance of this branch's changes remain open.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
@@ -445,8 +492,7 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   tests, and the paired simulator flow passed; iPhone tests now also run in CI.
   The signed build 2 distribution IPA also passed strict signature and ZIP verification.
   On 2026-10-05, build 2 passed Apple validation and upload, reached `VALID`, and entered
-  `IN_BETA_TESTING` in the existing Internal group with one tester. Physical iPhone
-  installation and acceptance remain open. The source plist records the system-encryption
+  `IN_BETA_TESTING` in the existing Internal group with one tester. The source plist records the system-encryption
   exemption. Build 3 adds the official Modex icon and in-app branding; all 10 native tests
   and paired simulator flow passed. On 2026-10-05 its signed IPA passed validation and
   upload, reached `VALID`, and entered `IN_BETA_TESTING` in the same Internal group.
@@ -457,6 +503,11 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   On 2026-10-06, build 5 combined the offline demo and #128 creation/skills flows,
   passed processing, and entered internal testing and external `WAITING_FOR_REVIEW`.
   Its updated notes and posted QR reply address the earlier review-access rejection.
+  October 11 readback confirms build 5's beta review is approved and external testing is
+  active. Two isolated signed-development physical iPhone flows passed pairing persistence,
+  reconnect/revocation, persistent approvals, complete skill descriptions, and retirement
+  against a real merged PR. First-use permission diagnosis and final TestFlight candidate
+  acceptance remain open. [Physical evidence](reviews/2026-10-11-iphone-acceptance.md).
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 
@@ -565,6 +616,15 @@ Roughly in the order they earn their place; none is scheduled.
 
 
 ## Local Mac Store development preview (unreleased)
+
+Store recovery now pauses on certificate identity/date/hostname failures and incompatible
+host protocols while retaining saved access and the mounted draft. Explicit retry rechecks
+the saved pin and stream without replaying commands. Discovery refreshes installed-host
+availability and retries failed group-directory lookup. The Store owns unavailable Modex
+account responses and a native Workspace menu through the existing shortcut pipeline.
+See the [recovery verification](reviews/2026-10-11-store-recovery.md) and
+[Store readiness audit](reviews/2026-10-11-store-readiness.md) for evidence and remaining gates.
+
 
 PR #119 adds a dedicated opt-in loopback host and a sandboxed Electron MAS client that
 reuses the desktop renderer. Val approved integrating this development preview. Transport

@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../../../desktop/src/renderer/App";
+import type { DesktopConnectionStatus } from "../../../desktop/src/shared/desktop-protocol";
 import { restoreTheme } from "../../../desktop/src/renderer/theme";
 import mark from "../../../desktop/src/renderer/assets/modex-mark.png";
 import "../../../desktop/src/renderer/tokens.css";
 import "../../../desktop/src/renderer/styles.css";
 import "./store.css";
 
-type Status = { state: "unpaired" | "authorizing" | "connecting" | "connected" | "offline" | "demo"; detail: string; confirmationCode?: string; workspaceId?: string };
+type Status = (DesktopConnectionStatus | { state: "demo"; detail: string }) & { workspaceId?: string };
 type Discovery = { available: boolean; installed: boolean; detail: string };
 declare global {
   interface Window {
@@ -16,6 +17,7 @@ declare global {
       discover(): Promise<Discovery>;
       connect(): Promise<void>;
       pair(uri: string): Promise<void>;
+      retry(): Promise<void>;
       disconnect(): Promise<void>;
       demo(action: "start" | "reset" | "leave"): Promise<void>;
       onStatus(cb: (status: Status) => void): () => void;
@@ -63,6 +65,12 @@ function StoreShell() {
     catch (error) { setError((error as Error).message); }
     finally { setBusy(false); }
   }
+  async function retry() {
+    setBusy(true); setError("");
+    try { await window.modexHost.retry(); }
+    catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }
   async function connect() {
     setBusy(true); setError("");
     try { await window.modexHost.connect(); }
@@ -77,14 +85,14 @@ function StoreShell() {
         <button disabled={busy} onClick={() => void demo("leave")}>Leave demo</button>
         {error && <span role="alert">{error}</span>}
       </section>}
-      <App key={status.workspaceId ?? "host"} persistPreferences={!inDemo} spaceEnabled={false} />
+      <App key={status.workspaceId ?? "host"} persistPreferences={!inDemo} spaceEnabled={false} suspended={!connected} />
     </div>}
     {!connected && <main className="host-connection" aria-labelledby="host-title">
       <div className="host-titlebar" />
       <section className="host-card">
         <div className="host-brand"><img src={mark} alt="" /><span>Modex</span><span className="host-preview">Store preview</span></div>
         <p className="host-eyebrow">YOUR WORKSPACE. YOUR MAC.</p>
-        <h1 id="host-title">{status.state === "offline" ? "Your work is still here." : "Make yourself at home."}</h1>
+        <h1 id="host-title">{status.state === "recovery" ? status.reason === "identity" ? "Check your host identity." : "Update your host connection." : status.state === "offline" ? "Your work is still here." : "Make yourself at home."}</h1>
         <p className="host-description" role="status">{status.detail}</p>
         {status.state === "unpaired" ? <>
           <button className="host-demo" disabled={busy} onClick={() => void demo("start")}>Explore a demo workspace<span aria-hidden="true">↗</span></button>
@@ -101,6 +109,10 @@ function StoreShell() {
           </form>
           </details>
           <p className="host-footnote">Pair once. Your connection stays saved until you or the host removes access.</p>
+        </> : status.state === "recovery" ? <>
+          <button className="host-connect" disabled={busy} onClick={() => void retry()}>Retry saved connection</button>
+          <p className="host-footnote">Retry checks the saved host identity and reconnects. It does not send your draft or repeat any action.</p>
+          <button className="host-forget" disabled={busy} onClick={() => void window.modexHost.disconnect().catch((error: Error) => setError(error.message))}>Forget access and reconnect</button>
         </> : <>
           {status.state === "authorizing" && <div className="host-code" aria-label="Connection confirmation code">{status.confirmationCode}</div>}
           <div className="host-wait"><span />{status.state === "authorizing" ? "Waiting for your host's approval" : status.state === "offline" ? "Reconnecting automatically" : "Connecting securely"}</div>

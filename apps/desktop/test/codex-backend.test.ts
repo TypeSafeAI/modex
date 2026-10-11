@@ -540,11 +540,18 @@ test("disposing Codex terminates commands owned by its app-server", { skip: proc
   let server: ChildProcess | undefined;
   let workerPid: number | undefined;
   const backend = new CodexBackend("fixture", ((_bin: string, _args: string[], options: SpawnOptions) => server = spawn(process.execPath, ["-e", script], options)) as unknown as typeof spawn);
-  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const alive = (pid: number) => {
+    assert.ok(Number.isSafeInteger(pid) && pid > 1, "expected a fixture process ID");
+    try { process.kill(pid, 0); return true; } catch { return false; }
+  };
   try {
     await backend.listModels();
-    for (let i = 0; i < 100 && !fs.existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 20));
-    workerPid = Number(fs.readFileSync(pidFile, "utf8"));
+    for (let i = 0; i < 100; i++) {
+      const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
+      if (Number.isSafeInteger(pid) && pid > 1) { workerPid = pid; break; }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.ok(workerPid, "fixture did not publish a process ID");
     await backend.dispose();
     for (let i = 0; i < 100 && alive(workerPid); i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(alive(workerPid), false, "owned command survived backend disposal");

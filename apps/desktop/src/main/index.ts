@@ -31,6 +31,7 @@ import { initialBounds, readWindowState, writeWindowState } from "./engine/windo
 import { CompanionServer } from "./engine/companion.js";
 import { TaskRetirer } from "./engine/retire.js";
 import { DesktopHost } from "./engine/desktop-host.js";
+import { createDesktopHostActivation } from "./engine/desktop-host-activation.js";
 import { desktopSystem } from "./engine/desktop-discovery.js";
 import QRCode from "qrcode";
 import type { BackendId, BridgeCommands, CompanionStatus, ThreadEvent } from "../shared/types.js";
@@ -101,6 +102,16 @@ let shuttingDown = false;
 let shutdownComplete = false;
 let checkingWindowClose = false;
 let desktopHost: DesktopHost | undefined;
+const desktopHostActivation = createDesktopHostActivation({
+  available: () => !demo && !shuttingDown && !checkingWindowClose,
+  start: startDesktopHost,
+  onError: (error) => console.error("[modex] desktop host activation failed:", error),
+});
+// macOS can deliver this event before ready. Register synchronously, then wait until
+// normal window initialization completes. App Sandbox does not forward launch arguments.
+app.on("open-url", (event, url) => {
+  if (desktopHostActivation.open(url)) event.preventDefault();
+});
 const emit = (event: ThreadEvent): void => {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
   desktopHost?.broadcast("thread", event);
@@ -136,10 +147,13 @@ const companion = new CompanionServer(home, {
   send: async (id, text) => { await pathReady; return startTurn(id, runner.send(id, text)); },
   answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
 });
-const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => ({
-  ...status,
-  ...(status.pairingUri ? { qrDataUrl: await QRCode.toDataURL(status.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }) } : {}),
-});
+const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => {
+  const endpoints = await Promise.all((status.endpoints ?? []).map(async (endpoint) => ({
+    ...endpoint,
+    qrDataUrl: await QRCode.toDataURL(endpoint.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }),
+  })));
+  return { ...status, ...(endpoints.length ? { endpoints, qrDataUrl: endpoints[0]!.qrDataUrl } : {}) };
+};
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
@@ -543,6 +557,7 @@ app.whenReady().then(async () => {
   });
   win = createWindow();
   if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
+  desktopHostActivation.ready();
   if (!demo && !process.env.MODEX_E2E) void pathReady.then(() => retirer.start());
   if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
