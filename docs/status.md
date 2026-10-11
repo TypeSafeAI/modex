@@ -322,6 +322,14 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Usable Streamer Mode.** Recognized credentials are masked at display surfaces while
+  the workspace stays usable. Editable fields containing a match mask the whole field
+  but retain original native values, clipboard, undo, formatting, persistence, and CLI
+  payloads. Terminal redaction paints the original buffer without replaying it through
+  a second parser. Only embedded Browser/Knowledge content is covered; pairing QR codes
+  are hidden. This supersedes the v0.0.9 full-window cover described above. Matching is
+  heuristic, and raw clipboard/accessibility text and arbitrary image content remain
+  original. See the [recovery evidence](reviews/2026-10-11-streamer-recovery.md).
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
 - **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
   to settle at the requested size. The real OpenKnowledge test retries file visibility when

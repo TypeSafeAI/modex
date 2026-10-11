@@ -1,3 +1,4 @@
+import { SecretInput } from "../streamer";
 import { BrandMark } from "./BrandMark";
 import { ActiveAgents, type ActiveAgent } from "./ActiveAgents";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -59,7 +60,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
       {searching && (
         <div className="sidebar-search">
           <Icon name="search" size={14} />
-          <input
+          <SecretInput
             autoFocus
             data-testid="thread-search"
             aria-label="Search threads"

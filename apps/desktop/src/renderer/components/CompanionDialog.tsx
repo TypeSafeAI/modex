@@ -1,9 +1,11 @@
+import { useStreamerMode } from "../streamer";
 import { useEffect, useRef, useState } from "react";
 import type { CompanionStatus } from "../../shared/types";
 import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
 
 export function CompanionDialog({ onClose }: { onClose: () => void }) {
+  const streamerMode = useStreamerMode();
   const [status, setStatus] = useState<CompanionStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +73,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
         <p className="companion-intro">Review live threads, send a follow-up, and answer approvals while your Mac runs the coding work.</p>
         {status?.enabled && status.qrDataUrl ? (
           <div className="companion-pairing">
-            <div className="companion-qr"><img src={status.qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" /></div>
+            <div className="companion-qr">{streamerMode ? <p>Pairing code hidden while streaming</p> : <img src={status.qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" />}</div>
             <p>Open Modex on your iPhone and scan this code.</p>
             <button className="btn" data-testid="companion-copy-link" disabled={busy || !status.pairingUri} onClick={() => void copyLink()}>{copiedLink === status.pairingUri ? "Copied pairing link" : "Copy pairing link"}</button>
             <span role="status" className="sr-only">{copiedLink === status.pairingUri ? "Pairing link copied to clipboard" : ""}</span>

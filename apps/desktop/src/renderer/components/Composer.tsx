@@ -1,3 +1,4 @@
+import { SecretTextarea } from "../streamer";
 import { useEffect, useRef, useState } from "react";
 import type { ApprovalPolicy, BackendId, FollowUp, Mode, ModelInfo } from "../../shared/types";
 import { APPROVAL_POLICIES, BACKENDS, MODES } from "../../shared/types";
@@ -100,7 +101,7 @@ export function Composer({ text, onText: setText, busy, context, backend, mode, 
               <Kbd>⇥</Kbd>
             </button>
           )}
-          <textarea
+          <SecretTextarea
             ref={ta}
             data-testid="composer-input"
             aria-label="Message"

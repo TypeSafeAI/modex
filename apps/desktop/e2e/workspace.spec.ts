@@ -209,7 +209,9 @@ test("superseded navigation, overlays, guest shortcuts and window destruction pr
     await expect.poll(guestVisible).toBe(true);
     await tid(page, "streamer-mode-toggle").click();
     await expect.poll(guestVisible).toBe(false);
-    await tid(page, "streamer-mode-disable").click();
+    await expect(tid(page, "streamer-browser-cover")).toBeVisible();
+    await expect(tid(page, "composer-input")).toBeVisible();
+    await tid(page, "streamer-mode-toggle").click();
     await expect.poll(guestVisible).toBe(true);
     await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().includes("/fast"))!.sendInputEvent({ type: "keyDown", keyCode: "L", modifiers: ["meta"] }));
     await expect(tid(page, "workspace-address")).toBeFocused();

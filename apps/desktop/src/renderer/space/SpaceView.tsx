@@ -1,3 +1,4 @@
+import { SecretInput } from "../streamer";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { pageTitle } from "../../shared/space";
@@ -96,7 +97,7 @@ export function SpaceView({ sidebarOpen, active, openPage }: { sidebarOpen: bool
     {sidebarOpen && <aside className="space-sidebar" aria-label="Space pages">
       <div className="space-sidebar-title"><span className="space-mark"><Icon name="space" size={20} /></span><strong>Space</strong><span className="spacer" /><IconButton icon="plus" label="New page" size="md" disabled={!space.loaded || creating} onClick={() => void create()} /></div>
       <p className="space-sidebar-caption">Your ideas, kept together.</p>
-      <label className="space-search"><Icon name="search" /><input type="search" aria-label="Search pages" placeholder="Search your pages" value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} /></label>
+      <label className="space-search"><Icon name="search" /><SecretInput type="search" aria-label="Search pages" placeholder="Search your pages" value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} /></label>
       <nav className="space-views" aria-label="Page collections">
         <button aria-label="All pages" aria-current={view === "pages" ? "page" : undefined} onClick={() => selectView("pages")}><Icon name="space" />All pages<span>{live.length}</span></button>
         <button aria-label="Favorites" aria-current={view === "favorites" ? "page" : undefined} onClick={() => selectView("favorites")}><Icon name="star" />Favorites<span>{live.filter(p => p.favorite).length || ""}</span></button>
@@ -145,7 +146,7 @@ export function SpaceView({ sidebarOpen, active, openPage }: { sidebarOpen: bool
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>
         <article className="space-document">
           <div className="space-page-emblem"><Icon name="file" size={32} /></div>
-          <input ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
+          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
           <div className="space-document-meta"><span>Private page</span><span>·</span><span>{new Date(page.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} markdown={page.markdown} onChange={markdown => space.edit(page.id, { markdown })} />
@@ -164,7 +165,7 @@ export function SpaceView({ sidebarOpen, active, openPage }: { sidebarOpen: bool
     </main>
     </div>
     {view === "knowledge" && <KnowledgeView active={active} onPages={() => selectView("pages")} />}
-    <input ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
+    <SecretInput ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
       const file = event.target.files?.[0]; event.target.value = "";
       if (!file) return;
       void run(async () => {

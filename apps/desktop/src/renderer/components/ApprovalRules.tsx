@@ -1,3 +1,4 @@
+import { SecretOption, SecretInput } from "../streamer";
 import { useEffect, useState } from "react";
 import type { ApprovalPreview, ApprovalRule, Mode, Project, RoutingStatus, RuleDecision } from "../../shared/types";
 import { bridge } from "../bridge";
@@ -46,17 +47,17 @@ export function ApprovalRules({ rules, projects, currentProjectId, gateEnabled, 
     <p className="hint" data-testid="approval-jev-status">{routing === null ? "Checking Jev availability…" : routing.live ? "Language rules use the saved Jev configuration. Save transport changes before trying them." : "Jev unavailable: language-only rules are inactive. Exact-match rules can still apply when the gate is enabled."}</p>
     {rules.map((rule, i) => <fieldset className="approval-rule" key={rule.id} data-testid="approval-rule">
       <legend>Rule {i + 1}</legend>
-      <label className="field"><span>When the agent wants to</span><input value={rule.when} maxLength={500} onChange={(e) => update(rule.id, { when: e.target.value })} placeholder="run the test suite" /></label>
+      <label className="field"><span>When the agent wants to</span><SecretInput value={rule.when} maxLength={500} onChange={(e) => update(rule.id, { when: e.target.value })} placeholder="run the test suite" /></label>
       <div className="grid2">
-        <label className="field"><span>Decision</span><select value={rule.decision} onChange={(e) => update(rule.id, { decision: e.target.value as RuleDecision })}><option value="allow">Allow once</option><option value="ask">Ask me</option><option value="never">Never allow</option></select></label>
+        <label className="field"><span>Decision</span><select value={rule.decision} onChange={(e) => update(rule.id, { decision: e.target.value as RuleDecision })}><SecretOption value="allow">Allow once</SecretOption><SecretOption value="ask">Ask me</SecretOption><SecretOption value="never">Never allow</SecretOption></select></label>
         <label className="field"><span>Scope</span><select value={rule.project ?? ""} onChange={(e) => update(rule.id, { project: e.target.value || undefined })}>
-          <option value="">All projects</option>
-          {projects.map((p) => <option key={p.id} value={p.path}>{p.name}</option>)}
-          {rule.project && !projects.some((p) => p.path === rule.project) && <option value={rule.project}>{rule.project} (project not open)</option>}
+          <SecretOption value="">All projects</SecretOption>
+          {projects.map((p) => <SecretOption key={p.id} value={p.path}>{p.name}</SecretOption>)}
+          {rule.project && !projects.some((p) => p.path === rule.project) && <SecretOption value={rule.project}>{rule.project} (project not open)</SecretOption>}
         </select></label>
       </div>
-      <label className="field"><span>Exact match (optional)</span><input value={rule.match ?? ""} maxLength={500} onChange={(e) => update(rule.id, { match: e.target.value || undefined })} placeholder="Bash: npm test*" spellCheck={false} /><small>Tool name, colon, then a case-sensitive pattern. * matches any text. Claude uses Bash; Codex uses command.</small></label>
-      <div className="row"><label className="check"><input type="checkbox" checked={rule.enabled} onChange={(e) => update(rule.id, { enabled: e.target.checked })} /><span>Enabled</span></label>
+      <label className="field"><span>Exact match (optional)</span><SecretInput value={rule.match ?? ""} maxLength={500} onChange={(e) => update(rule.id, { match: e.target.value || undefined })} placeholder="Bash: npm test*" spellCheck={false} /><small>Tool name, colon, then a case-sensitive pattern. * matches any text. Claude uses Bash; Codex uses command.</small></label>
+      <div className="row"><label className="check"><SecretInput type="checkbox" checked={rule.enabled} onChange={(e) => update(rule.id, { enabled: e.target.checked })} /><span>Enabled</span></label>
         <span className="spacer" />
         {rule.enabled && !rule.match?.trim() && routing && !routing.live && <span className="warn" data-testid="rule-inactive">Inactive without Jev</span>}
         <button type="button" className="btn small danger" aria-label={`Delete rule ${i + 1}`} onClick={() => onChange(rules.filter((r) => r.id !== rule.id))}>Delete</button>
@@ -67,13 +68,13 @@ export function ApprovalRules({ rules, projects, currentProjectId, gateEnabled, 
     <h4>Try it</h4>
     <p className="hint">Preview the rules above without saving them or running the action. This may ask the configured Jev judge about the sample.</p>
     <div className="grid2">
-      <label className="field"><span>Preview project</span><select value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-      <label className="field"><span>Preview backend</span><select value={backend} onChange={(e) => { const b = e.target.value as typeof backend; setBackend(b); setTool(b === "claude" ? "Bash" : "command"); }}><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
-      <label className="field"><span>Tool</span><input value={tool} onChange={(e) => setTool(e.target.value)} /></label>
-      <label className="field"><span>Preview mode</span><select value={mode} onChange={(e) => setMode(e.target.value as Mode)}><option value="chat">Chat</option><option value="agent">Agent</option><option value="full-access">Full access</option></select></label>
+      <label className="field"><span>Preview project</span><select value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <SecretOption key={p.id} value={p.id}>{p.name}</SecretOption>)}</select></label>
+      <label className="field"><span>Preview backend</span><select value={backend} onChange={(e) => { const b = e.target.value as typeof backend; setBackend(b); setTool(b === "claude" ? "Bash" : "command"); }}><SecretOption value="claude">Claude</SecretOption><SecretOption value="codex">Codex</SecretOption></select></label>
+      <label className="field"><span>Tool</span><SecretInput value={tool} onChange={(e) => setTool(e.target.value)} /></label>
+      <label className="field"><span>Preview mode</span><select value={mode} onChange={(e) => setMode(e.target.value as Mode)}><SecretOption value="chat">Chat</SecretOption><SecretOption value="agent">Agent</SecretOption><SecretOption value="full-access">Full access</SecretOption></select></label>
     </div>
-    <label className="field"><span>Sample action</span><input value={title} maxLength={2000} onChange={(e) => setTitle(e.target.value)} placeholder="npm test" /></label>
-    <label className="check"><input type="checkbox" checked={escalation} onChange={(e) => setEscalation(e.target.checked)} /><span>Requests additional sandbox permissions</span></label>
+    <label className="field"><span>Sample action</span><SecretInput value={title} maxLength={2000} onChange={(e) => setTitle(e.target.value)} placeholder="npm test" /></label>
+    <label className="check"><SecretInput type="checkbox" checked={escalation} onChange={(e) => setEscalation(e.target.checked)} /><span>Requests additional sandbox permissions</span></label>
     <button type="button" className="btn small" disabled={!projectId || !tool.trim() || !title.trim() || shown?.pending} onClick={() => void run()}>{shown?.pending ? "Checking…" : "Try it"}</button>
     <div aria-live="polite" aria-atomic="true">
       {shown?.error && <p className="warn" role="alert">{shown.error}</p>}

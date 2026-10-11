@@ -1,3 +1,4 @@
+import { SecretInput, SecretTextarea } from "../streamer";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BlockRenderer, InlineContent } from "@create-markdown/react";
 import type { Block } from "@create-markdown/core";
@@ -139,7 +140,7 @@ function BlockInput({ value, label, inputRef, ...events }: {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => { if (ref.current) { ref.current.style.height = "0px"; ref.current.style.height = `${ref.current.scrollHeight}px`; } }, [value]);
   const heading = value.match(/^(#{1,3}) /)?.[1]?.length;
-  return <textarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} spellCheck={!value.startsWith("```")} />;
+  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} spellCheck={!value.startsWith("```")} />;
 }
 
 function BlockPreview({ source, label, onEdit, onChange }: { source: string; label: string; onEdit: () => void; onChange: (value: string) => void }) {
@@ -154,7 +155,7 @@ function BlockPreview({ source, label, onEdit, onChange }: { source: string; lab
   const renderers: NonNullable<React.ComponentProps<typeof BlockRenderer>["customRenderers"]> = {
     bulletList: ({ block }) => list(block),
     numberedList: ({ block }) => list(block),
-    checkList: ({ block }) => <><label className="space-check"><input type="checkbox" checked={block.props.checked} onChange={e => onChange(toggleChecklist(source, checklists.indexOf(block), e.target.checked))} /><span><InlineContent spans={block.content} /></span></label><BlockRenderer blocks={block.children} customRenderers={renderers} /></>,
+    checkList: ({ block }) => <><label className="space-check"><SecretInput type="checkbox" checked={block.props.checked} onChange={e => onChange(toggleChecklist(source, checklists.indexOf(block), e.target.checked))} /><span><InlineContent spans={block.content} /></span></label><BlockRenderer blocks={block.children} customRenderers={renderers} /></>,
     callout: ({ block }) => <aside className="space-callout"><InlineContent spans={block.content} /></aside>,
   };
   const ref = useRef<HTMLDivElement>(null);
