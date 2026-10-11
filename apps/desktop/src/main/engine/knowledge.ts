@@ -86,16 +86,20 @@ export class KnowledgeService {
 
   private async run(file: string, args: string[], cwd: string, timeoutMs = 30_000): Promise<string> {
     const child = this.spawn(file, args, cwd);
-    let output = "";
+    let output = "", stdout = "";
     const collect = (chunk: Buffer) => { output = (output + chunk.toString()).slice(-6000); };
-    child.stdout?.on("data", collect); child.stderr?.on("data", collect);
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout = (stdout + chunk.toString()).slice(-6000);
+      collect(chunk);
+    });
+    child.stderr?.on("data", collect);
     const timer = setTimeout(() => this.signal(child, "SIGKILL"), timeoutMs);
     try {
       await new Promise<void>((resolve, reject) => {
         child.once("error", reject);
         child.once("close", code => code === 0 ? resolve() : reject(new Error(output.trim() || "Open Knowledge stopped before the operation finished. Retry to continue.")));
       });
-      return output;
+      return stdout;
     } finally { clearTimeout(timer); }
   }
 

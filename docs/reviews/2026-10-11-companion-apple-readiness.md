@@ -233,3 +233,58 @@ The complete desktop gate took 569.741 seconds. Its owned processes exited and p
 3100/5187 were clear. These checks establish the combined source's local automated
 results; they do not close the physical, signed fresh-user or Apple publication gates
 listed above. Protected merge and hosted checks remain delivery steps.
+
+
+## Verified integration with main `edf52fc`
+
+Published head `86d42ad939cc164817774858c3779f9ced948ac4` and the earlier recovery
+refs were preserved before integrating frozen #173 head `e18f1c1`. The three
+conflict resolutions retain the stricter owned-PID fixture validation, both Store
+account-command handling and Canvas rejection, and both documentation streams.
+Independent coordinator and renderer/Store reviews found no remaining findings.
+Unmerged #174, #176 and #177 work was not absorbed.
+
+The prospective candidate tree was `a89d01e17dae5b58c8426e9fba128c3846f98b75`.
+After #173 merged as `edf52fc7241e8f2ad7375870a25e19d80e04a464`, its tree exactly
+matched the frozen upstream. Only after the desktop gate and process cleanup did
+this session replace its own uncommitted prospective merge with the actual-main
+merge. The whole candidate tree and all 525 tracked file hashes remained identical;
+published #166 history was not rewritten.
+
+- `npm ci`, `npm run build` and all workspace typechecks passed.
+- `npm test` with `MODEX_TEST_OPEN_KNOWLEDGE=1`: 834 passed, zero failed, 12 native
+  Windows npm/CLI/PTY cases skipped on macOS. Those skips are not Windows acceptance.
+- `npm run test:e2e` with OpenKnowledge enabled: all 241 desktop and seven site tests
+  passed, including the real Knowledge install/edit/privacy/shutdown case. No skips.
+- Fresh isolated iPhone 16 Pro / iOS 26.5 native gate: all 41 unit and 28 paired/demo
+  UI tests passed with zero failures or skips. The paired flow took 82.163 seconds.
+  Both xcresult summaries identify disposable device
+  `B6D1811F-DA53-4E72-9351-D4DFFD718641`.
+
+The desktop gate completed in 602.952 seconds and the native gate in 264.015 seconds.
+All 525 tracked hashes stayed fixed through both gates and actual-main reconciliation.
+This section and `docs/status.md` are the only subsequent verification-record edits.
+Owned wrapper, fixture and test processes exited; ports 3100/5187 were clear. The
+owned simulator is shut down and retained, the pairing fixture was removed by its
+harness, and the UI xcresult was copied with all 114 file hashes verified. The shared
+runtime slot was explicitly released.
+
+Private local evidence is retained under `.codex/rebase-verification/prospective-e18/`
+(desktop gate, source freeze, conflict review and actual-main equivalence) and
+`.codex/rebase-verification/actual-edf-native/` (native logs, both xcresults/summaries,
+verified copy and cleanup release). Recovery refs begin
+`refs/codex/companion-readiness/20261011T213537Z/`.
+
+Three earlier upstream CI failures remain separate evidence: #175's optional push
+run did not show `pairing-link-input` after tapping Pair (job `114571241637`, artifact
+`11715456419`); an earlier #173 run exhausted the keyboard-focus helper's deadline
+at `new-thread-input`; and #173's optional PR run could not find a ready **Forget
+paired Mac…** button (job `114578262026`, artifact `11717276427`). They did not
+reproduce in this fresh local flow. Their causes and any common relationship remain
+undetermined; no new fix for those failures is claimed.
+
+Fresh exact-head hosted checks and protected PR #166 landing remain delivery steps.
+The second physical LAN, first-use consent, fresh macOS user, complete signed welcome
+Open/Cancel path, sleep/wake, migration and other Store acceptance limits above remain
+open. No Apple metadata, submission, build or release was changed. Preserve this
+worktree and its evidence until delivery and a separate guarded retirement review.

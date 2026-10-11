@@ -118,7 +118,19 @@ export const testCipher: Cipher = {
 };
 
 /** Wraps Electron's safeStorage (only valid after `app.whenReady()`). */
-export function electronCipher(safeStorage: { isEncryptionAvailable(): boolean; encryptString(s: string): Buffer; decryptString(b: Buffer): string }, platform = process.platform): Cipher {
+export function electronCipher(safeStorage: { isEncryptionAvailable(): boolean; getSelectedStorageBackend?(): string; encryptString(s: string): Buffer; decryptString(b: Buffer): string }, platform = process.platform): Cipher {
   const name = platform === "darwin" ? "macOS Keychain" : platform === "win32" ? "Windows DPAPI" : "OS keyring";
-  return { name, available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) };
+  const available = () => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) return false;
+      // Linux basic_text uses a hardcoded password, not a user-owned keyring.
+      // Unknown or pre-ready backends must not silently become credential stores.
+      return platform !== "linux" || ["gnome_libsecret", "kwallet", "kwallet5", "kwallet6"].includes(safeStorage.getSelectedStorageBackend?.() ?? "");
+    } catch { return false; }
+  };
+  const requireAvailable = () => { if (!available()) throw new Error(`${name} encryption is unavailable on this machine.`); };
+  return { name, available,
+    encrypt: (s) => { requireAvailable(); return safeStorage.encryptString(s); },
+    decrypt: (b) => { requireAvailable(); return safeStorage.decryptString(b); },
+  };
 }

@@ -6,7 +6,7 @@ import type { BackendHealth } from "../../shared/types.js";
 
 type CodingCli = "claude" | "codex" | "op";
 export type CliExecutable = string | (() => string);
-interface Options { env?: NodeJS.ProcessEnv; timeoutMs?: number }
+interface Options { env?: NodeJS.ProcessEnv; timeoutMs?: number; platform?: NodeJS.Platform }
 const label = (cli: CodingCli) => cli === "claude" ? "Claude Code" : cli === "op" ? "1Password" : "Codex";
 
 function executable(file: string): boolean {
@@ -15,7 +15,40 @@ function executable(file: string): boolean {
 }
 
 /** Search only install locations, never project directories or shell aliases/functions. */
-function directories(env: NodeJS.ProcessEnv): string[] {
+function windowsVariable(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const key = Object.keys(env).sort().find(key => key.toUpperCase() === name);
+  return key ? env[key] : undefined;
+}
+
+function absolute(file: string, platform: NodeJS.Platform): boolean {
+  if (platform !== "win32") return path.isAbsolute(file);
+  // A leading slash alone uses the current drive; C:foo uses its current directory.
+  return /^[A-Za-z]:[\\/]/.test(file) || /^[\\/]{2}[^\\/]+[\\/][^\\/]+/.test(file);
+}
+
+function windowsNames(file: string, env: NodeJS.ProcessEnv): string[] {
+  const supported = new Set([".exe", ".com", ".cmd"]);
+  const extension = path.win32.extname(file).toLowerCase();
+  if (extension) return supported.has(extension) ? [file] : [];
+  const extensions = (windowsVariable(env, "PATHEXT") || ".COM;.EXE;.BAT;.CMD").split(";").map(ext => ext.trim().toLowerCase()).filter(ext => supported.has(ext));
+  return [...new Set(extensions)].map(ext => file + ext);
+}
+
+function directories(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+  if (platform === "win32") {
+    const fromPath = (windowsVariable(env, "PATH") ?? "").split(";").map(dir => dir.replace(/^"(.*)"$/, "$1")).filter(dir => absolute(dir, platform));
+    const home = windowsVariable(env, "USERPROFILE") ?? os.homedir();
+    const appData = windowsVariable(env, "APPDATA");
+    const candidates = env.MODEX_NO_LOGIN_PATH ? fromPath : [...fromPath,
+      ...[".local/bin", ".claude/local", ".volta/bin", ".bun/bin"].map(dir => path.win32.join(home, dir)),
+      ...(appData ? [path.win32.join(appData, "npm")] : []),
+      windowsVariable(env, "NVM_HOME") ?? "", windowsVariable(env, "NVM_SYMLINK") ?? ""];
+    const seen = new Set<string>();
+    return candidates.filter(dir => {
+      if (!absolute(dir, platform) || seen.has(dir.toLowerCase())) return false;
+      seen.add(dir.toLowerCase()); return true;
+    });
+  }
   const home = env.HOME ?? os.homedir();
   const fromPath = (env.PATH ?? "").split(path.delimiter).filter((dir) => path.isAbsolute(dir));
   if (env.MODEX_NO_LOGIN_PATH) return fromPath;
@@ -32,12 +65,17 @@ function directories(env: NodeJS.ProcessEnv): string[] {
 /** Resolves afresh for each launch; a saved override is one executable, never a shell command. */
 export function resolveCli(cli: CodingCli, setting: string, options: Options = {}): string {
   const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const paths = platform === "win32" ? path.win32 : path;
   const value = setting.trim();
   const automatic = !value || value === cli;
-  const expanded = value.startsWith("~/") ? path.join(env.HOME ?? os.homedir(), value.slice(2)) : value;
-  const candidates = automatic ? directories(env).map((dir) => path.join(dir, cli))
-    : path.isAbsolute(expanded) ? [expanded]
-    : /^[A-Za-z0-9._+-]+$/.test(value) ? directories(env).map((dir) => path.join(dir, value)) : [];
+  const home = (platform === "win32" ? windowsVariable(env, "USERPROFILE") : env.HOME) ?? os.homedir();
+  const expanded = value.startsWith("~/") || (platform === "win32" && value.startsWith("~\\")) ? paths.join(home, value.slice(2)) : value;
+  const names = (file: string) => platform === "win32" ? windowsNames(file, env) : [file];
+  const search = (name: string) => directories(env, platform).flatMap(dir => names(name).map(file => paths.join(dir, file)));
+  const candidates = automatic ? search(cli)
+    : absolute(expanded, platform) ? names(expanded)
+    : /^[A-Za-z0-9._+-]+$/.test(value) ? search(value) : [];
   const found = candidates.find(executable);
   if (found) return found;
   const message = automatic ? `${label(cli)} CLI not found. Install it or choose an executable in Settings.`

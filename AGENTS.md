@@ -19,6 +19,16 @@ itself driving one of them.
   `fix-scroll`, `ci-macos`). `.worktrees/` is git-ignored.
 - Two sessions must not share a worktree or a branch. If you find commits you did not make
   on your branch, stop and reconcile before pushing.
+- `new` claims ownership. Before resuming a legacy or released worktree, run
+  `scripts/worktree.sh claim <name> --owner <session>` and then `check`.
+  Claims never expire by age. When finished, save evidence outside the worktree, end its
+  session, and run `scripts/worktree.sh release <branch> --expect-head <full-SHA>`.
+  Only the owner may release its work. Unknown, active, dirty, and uncertain work stays.
+- Use the [pruning procedure](docs/worktree-hygiene.md). `remove` and the daily installed
+  job require fresh merge proof and a verified recovery bundle before deleting local work.
+  Do not bypass this with force removal, branch force-deletion, or manual directory deletion.
+  `scripts/worktree.sh audit` reports eligibility; `schedule status` reports the local job.
+  Remote refs and recovery archives are never pruned automatically.
 - Modex's own worktree threads (`⑂`) honour this convention: when a project ships
   `scripts/worktree.sh`, Modex calls `new modex-<thread id>` / `remove …` on it, so threads on
   this repo land in `.worktrees/` like any other session. Projects without the script get a

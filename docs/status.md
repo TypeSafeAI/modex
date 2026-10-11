@@ -334,6 +334,37 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   secondary-LAN acceptance remains open: this Mac currently has one supported LAN.
   [Implementation and acceptance ledger](reviews/2026-10-11-companion-apple-readiness.md).
 
+- **Windows and Linux installer candidates** (#173). The source supports x64 Windows
+  NSIS and Linux AppImage/Debian packages, portable CLI/PTY supervision, and OS-encrypted
+  credential storage. Candidate Actions artifacts have native install/restart/uninstall
+  evidence; public release publication remains pending. Windows installers are unsigned,
+  and Windows/Linux updates remain manual. [Native verification and limits](native-platforms.md).
+
+- **Knowledge CLI diagnostics.** Connecting to an existing local editor parses successful
+  status JSON from stdout, so a warning on stderr cannot corrupt the response. Failed
+  commands still report bounded stdout/stderr diagnostics, and malformed stdout still
+  fails verification. The reload privacy test waits for the intercepted navigation and
+  its new document and editor before removing the network handler.
+
+- **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
+  fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
+  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  and remote branches. Desktop retirement respects project-script retention. Maintenance
+  regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
+  and [verification](reviews/2026-10-11-worktree-hygiene.md).
+
+**Canvas previews.** The workspace launcher adds an interactive Canvas for checkout HTML,
+SVG and Markdown. Local document/asset changes refresh the isolated preview; full view,
+manual reload and deletion recovery are supported. Each guest has a temporary session,
+no app bridge or Node access, bounded root-confined resource reads and no network access.
+The Store edition and development browser bridge report Canvas unavailable.
+Streamer Mode covers the preview without resetting it or blocking the workspace; filename
+labels are masked while selected paths remain original. Late reload responses cannot
+overwrite state after the selection changes.
+Integration passed 703 unit tests, all workspace typechecks, 233 desktop E2E tests and
+seven site tests, with real OpenKnowledge enabled and no skips.
+[Usage and limits](canvas.md). Roadmap acceptance and release evidence remain tracked in
+[the execution ledger](reviews/2026-10-11-desktop-roadmap-audit.md).
 - **Composer attachments.** Desktop and browser-development drafts accept files from Attach files,
   drag/drop, and image paste, with removable chips, copy errors, and attachment-only send.
   Drafts stay with their thread or project through switches and failed sends. Main keeps
@@ -470,12 +501,17 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   before native confirmation capture, so its Cancel check stopped. That grant was revoked
   and complete credential/process/profile cleanup passed; attribution is awaiting Val's
   response. The temporary applications were unregistered and moved back into private
-  artifacts. The `a2f6130` rebase combines the Companion and Store recovery changes.
-  Browser-tools recovery now preserves keyboard access to connection controls, and native
+  artifacts. The `edf52fc` main integration retains the Companion and Store recovery
+  changes alongside Canvas, native platform support, Knowledge and worktree maintenance.
+  Browser-tools recovery preserves keyboard access to connection controls, and native
   Workspace commands pause while browser tools are open. Both regressions failed before
-  the guards and passed afterward. The rebased candidate passed build/typecheck, all
-  726 unit tests without skips, and 228 desktop plus seven site UI tests with OpenKnowledge
-  enabled. Protected landing and the remaining native acceptance gates stay open.
+  the guards and passed afterward. Fresh build/typecheck passed, with 834 unit passes and
+  12 native Windows cases skipped on macOS, plus all 241 desktop and seven site UI tests
+  with OpenKnowledge enabled. An isolated iPhone simulator passed all 41 native unit and
+  28 UI tests with zero skips. The complete tested source matched the actual-main
+  integration; subsequent changes only record this verification. Earlier upstream iPhone
+  CI action failures remain separately recorded and undiagnosed. Fresh hosted checks,
+  protected landing and the remaining native acceptance gates stay open.
   [Signed acceptance evidence and limits](reviews/2026-10-11-store-signed-acceptance.md).
   Beta approval covers the October 6 builds; production
   approval and acceptance of this branch's changes remain open.
@@ -601,8 +637,11 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 Roughly in the order they earn their place; none is scheduled.
 
 1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
-2. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
-   the platform-specific pieces to audit first.
+2. **Publish Windows and Linux installers.** Extend the protected release pipeline, which
+   currently uploads macOS artifacts, to verify and publish the exact tagged native
+   installers. Candidate Actions artifacts are not releases. Provider-account acceptance,
+   KWallet6/full graphical sessions, and historical schema migration remain unproven;
+   see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
 3. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

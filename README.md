@@ -91,9 +91,10 @@ modex/
   A second failure shows the card with both attempts recorded. Early send/retry rejections
   (for example, a busy thread) return to the caller without adding transcript items.
 - **Tabbed workspace.** Review working-tree changes with numbered diffs, a filterable file
-  tree, and confirmed per-file discard. Open Files, Terminal, or browser tabs beside the chat;
+  tree, and confirmed per-file discard. Open Files, Terminal, Canvas, or browser tabs beside the chat;
   use Shift + Command + B for a new tab or Shift + Command + F for full view. Escape exits
   full view. Files previews stay inside the project; browser pages use isolated desktop views.
+  [Canvas](docs/canvas.md) previews local HTML, SVG and Markdown with automatic refresh.
   The browser's gear opens extensions and sign-in: approved Manifest V3 page scripts for
   named HTTPS sites, **Fill with 1Password** through the local 1Password CLI (exact-origin
   logins, filled without submitting), and **Open in system browser** for passkeys.

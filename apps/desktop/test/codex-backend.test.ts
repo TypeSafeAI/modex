@@ -535,7 +535,8 @@ test("force-stop with no server running is a no-op", async () => {
 test("disposing Codex terminates commands owned by its app-server", { skip: process.platform === "win32" }, async () => {
   const dir = tmpdir("codex-dispose-");
   const pidFile = path.join(dir, "worker.pid");
-  const worker = `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  // A PID file exists before its contents are written; deliberately exercise that gap.
+  const worker = `const fs=require('node:fs'); const fd=fs.openSync(${JSON.stringify(pidFile)}, 'w'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,150); fs.writeSync(fd,String(process.pid)); fs.closeSync(fd); setInterval(() => {}, 1000);`;
   const script = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(worker)}], {stdio:'ignore'}); require('node:readline').createInterface({input:process.stdin}).on('line', line => { const m=JSON.parse(line); if(m.id) process.stdout.write(JSON.stringify({id:m.id,result:m.method==='model/list'?{data:[]}:{}})+'\\n'); });`;
   let server: ChildProcess | undefined;
   let workerPid: number | undefined;
@@ -547,14 +548,14 @@ test("disposing Codex terminates commands owned by its app-server", { skip: proc
   try {
     await backend.listModels();
     for (let i = 0; i < 100; i++) {
-      const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
-      if (Number.isSafeInteger(pid) && pid > 1) { workerPid = pid; break; }
+      const candidate = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
+      if (Number.isSafeInteger(candidate) && candidate > 1) { workerPid = candidate; break; }
       await new Promise((r) => setTimeout(r, 20));
     }
-    assert.ok(workerPid, "fixture did not publish a process ID");
+    assert.ok(workerPid && workerPid > 1, "fixture did not publish a valid owned PID");
     await backend.dispose();
     for (let i = 0; i < 100 && alive(workerPid); i++) await new Promise((r) => setTimeout(r, 20));
-    assert.equal(alive(workerPid), false, "owned command survived backend disposal");
+    assert.equal(alive(workerPid), false, `owned command ${workerPid} survived backend disposal`);
   } finally {
     // The worker can exit between the check and the kill; only a vanished PID is tolerated.
     if (workerPid && alive(workerPid)) try { process.kill(workerPid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }

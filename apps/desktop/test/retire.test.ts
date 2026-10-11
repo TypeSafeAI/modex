@@ -110,3 +110,38 @@ test("retirement preserves work written while terminals are closing", async () =
   assert.equal(store.thread(thread.id)!.retired, undefined);
   await runner.dispose();
 });
+
+for (const missing of [false, true]) {
+  test(`project cleanup owns branch retention${missing ? " and cannot fall back when its script disappears" : ""}`, async () => {
+    const home = tmpdir("modex-home-");
+    const store = new Store(home);
+    const runner = new ThreadRunner({ home, store, emit: () => {} });
+    const repo = gitRepo();
+    fs.mkdirSync(path.join(repo, "scripts"));
+    const script = path.join(repo, "scripts/worktree.sh");
+    fs.writeFileSync(script, `#!/usr/bin/env bash
+set -e
+root="$(git rev-parse --show-toplevel)"
+case "$1" in
+  new) git worktree add -q -b "$2" "$root/.worktrees/$2" HEAD; echo "$root/.worktrees/$2";;
+  remove) git worktree remove "$root/.worktrees/$2";;
+esac
+`);
+    const project = store.addProject(repo);
+    const thread = await runner.createThread(project.id, { worktree: true });
+    const head = (await gitx.worktreeState(thread.cwd)).head!;
+    if (missing) {
+      fs.unlinkSync(script);
+      await assert.rejects(runner.retireThread(thread.id, { number: 12, url: "", headSha: head }), /script.*missing/i);
+      await assert.rejects(runner.deleteThread(thread.id, true), /script.*missing/i);
+      assert.ok(fs.existsSync(thread.cwd));
+      assert.equal(store.thread(thread.id)!.retired, undefined);
+    } else {
+      await runner.retireThread(thread.id, { number: 12, url: "", headSha: head });
+      assert.equal(fs.existsSync(thread.cwd), false);
+      assert.equal(store.thread(thread.id)!.retired?.pr, 12);
+    }
+    assert.equal(execFileSync("git", ["rev-parse", `refs/heads/${thread.worktree!.branch}`], { cwd: repo, encoding: "utf8" }).trim(), head, "the runner must not override the script's retained branch");
+    await runner.dispose();
+  });
+}
