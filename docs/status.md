@@ -329,6 +329,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   login-profile PATH probing, which could outlast its approval deadline. Exact capture
   geometry and real editor assertions remain required.
   [Failure evidence and verification](reviews/2026-10-11-queue-reconciliation.md).
+- **Codex additional permissions.** Permission approvals return the requested profile and
+  an explicit turn scope, matching the installed Codex 0.162.1 app-server contract.
+  Deny and unexpected answers grant nothing; malformed or unsupported profiles are denied
+  without prompting. The approval detail includes the complete profile. Validation covers
+  wire responses and the installed protocol schema; a model-generated live approval has
+  not been exercised. [Recovery evidence](reviews/2026-10-11-permission-response.md).
 
 ## In flight
 

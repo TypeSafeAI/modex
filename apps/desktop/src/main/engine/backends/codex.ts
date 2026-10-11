@@ -1,3 +1,4 @@
+import { requestedPermissions } from "./codex-permissions.js";
 import { AgentTracker } from "./agents.js";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
@@ -529,8 +530,14 @@ export class CodexBackend implements Backend {
       });
       this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/permissions/requestApproval") {
-      const answer = await sink.approval({ question: "Codex is asking for additional permissions.", detail: JSON.stringify(p, null, 2).slice(0, 1500), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true } });
-      this.respond(msg.id, { decision: answer === "no" ? "decline" : "accept" });
+      const permissions = requestedPermissions(p.permissions);
+      if (!permissions) {
+        sink.notice("warn", "Codex requested malformed or unsupported permissions; no permissions were granted.");
+        this.respond(msg.id, { permissions: {}, scope: "turn" });
+        return;
+      }
+      const answer = await sink.approval({ question: "Allow these additional permissions for this turn?", detail: JSON.stringify({ ...p, permissions }, null, 2), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true } });
+      this.respond(msg.id, { permissions: answer === "yes" ? permissions : {}, scope: "turn" });
     } else {
       sink.notice("warn", `Codex asked for ${msg.method}, which Modex does not support yet; declined.`);
       this.send({ id: msg.id, error: { code: -32601, message: `unsupported by modex: ${msg.method}` } });

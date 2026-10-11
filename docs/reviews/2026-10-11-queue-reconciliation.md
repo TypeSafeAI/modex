@@ -82,8 +82,11 @@ commits and a successful `unit + e2e (macOS)` check against current main, with n
   Knowledge retry, isolated demo fixture, or additional content-size callers.
 - `MODEX_TEST_OPEN_KNOWLEDGE=1 npm run test:e2e` passed: 166 desktop tests in
   8.5 minutes and 7 site tests in 15.9 seconds. This run was based on `6c00c52`.
-  #162 landed as `4945b33` during verification; integrate it and verify the combined
-  result before pushing. Hosted checks remain required before landing.
+  #162 landed as `4945b33` during verification. After integrating it, fresh build,
+  unit tests (468 passed, 1 skipped), and typecheck passed. The combined full E2E
+  run passed 166 desktop tests in 16.0 minutes and 7 site tests in 16.6 seconds.
+  Independent review confirmed the integration preserved both changes. Hosted
+  checks remain required before landing.
 - Read-only environment inventory found the `claude`, `codex`, and `op` executables,
   1Password.app, and Developer ID signing identities. This does not prove a successful
   provider turn, unlocked vault, authorized provisioning profile, or Touch ID interaction.
