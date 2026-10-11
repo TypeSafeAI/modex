@@ -114,3 +114,15 @@ jobs:
           path: native-installed-linux
           if-no-files-found: warn
           retention-days: 7
+      - name: Exercise installed Windows app and DPAPI persistence
+        if: runner.os == 'Windows'
+        timeout-minutes: 7
+        run: node apps/desktop/scripts/accept-windows-package.mjs
+      - name: Preserve Windows installed-app evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-installed-win32
+          path: native-installed-win32
+          if-no-files-found: warn
+          retention-days: 7

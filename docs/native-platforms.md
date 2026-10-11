@@ -12,21 +12,27 @@ and Debian (`modex`). macOS release-signing rules remain unchanged.
 The Native platform builds workflow tests CLI arguments and Windows process ownership,
 then builds candidate installers. Artifacts expire after three days. A manifest records
 SHA-256 hashes, sizes, source commit/run identity, and installer acceptance as pending.
-The first hosted run compiled the Windows helper with MSVC and passed twelve CLI and
-process-ownership checks. Its interactive PTY case failed while observing resize, then
-left the test runner alive. Adding cursor-moving console writes did not repair that
-observation.
-The [second native run](https://github.com/TypeSafeAI/modex/actions/runs/38134994369)
-still failed the Windows resize observation (80×24 after requesting 96×32) and timed out
-with the worker alive. The [third run](https://github.com/TypeSafeAI/modex/actions/runs/38135685702)
-confirmed the OS console reached 96×32 while Node retained cached 80×24 fields. Three
-worker MessagePorts remained after teardown. A version/hash-checked node-pty patch now
-closes the owned console on natural exit, destroys the input socket and disposes the
-output worker. Windows builds must rebuild the addon against the pinned Electron headers;
-build and runtime guards reject fallback to an unpatched prebuild. Native regression
-coverage repeats natural/close/supervisor-failure cleanup and requires the owner to exit
-without forced termination. The resize assertion now uses the fresh child OS sample.
-These fixes still require native verification.
+The [Windows cleanup run](https://github.com/TypeSafeAI/modex/actions/runs/38137332864)
+passed all fourteen native checks: CLI arguments/npm launchers, owned descendant cleanup,
+PTY input/OS resize/Ctrl-C, and six repeated shutdown cycles. The fixture owner exited
+naturally with zero output workers and owned consoles; pipe handles returned to baseline.
+It produced `Modex-0.0.10-windows-x64.exe` (116,976,509 bytes), whose downloaded SHA-256
+matches the manifest and whose PE certificate directory is empty, confirming it is unsigned.
+
+Earlier runs exposed a node-pty leak and stale Node stdout dimensions. A version/hash-checked
+patch now closes the owned console, destroys input and disposes the output worker while
+preserving exit status across output EOF ordering. Windows builds rebuild the addon against
+pinned Electron headers; build and runtime guards reject unpatched prebuild fallback.
+Resize acceptance reads a fresh child OS sample instead of cached stdout fields.
+
+A hosted-only Windows installed acceptance harness is prepared but has not run. It verifies
+the candidate before NSIS installation, launches the real installed app twice, exercises
+its packaged terminal with an explicit cmd.exe selection, and checks production SecretStore encryption with DPAPI across restart.
+It runs the real NSIS uninstaller and checks application/registry removal, retained threads
+and probe ciphertext, and markers in default app-data directories. Forced process cleanup
+fails acceptance. Existing installations and local/self-hosted execution are refused. Default Windows shell
+selection is a separate gap: the cloned environment currently looks up only uppercase
+`COMSPEC`, so ordinary `ComSpec` casing can select the PowerShell fallback.
 
 Linux GCC rejected unchecked terminal receipt writes in the
 [initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
