@@ -61,6 +61,24 @@ paired iPhone suite. The required full build and 703 unit tests subsequently pas
 zero skips; all 470 tracked hashes stayed unchanged during the gate. Fresh hosted
 verification remains required before landing.
 
+
+At `27efcc8`, both macOS jobs passed 234 desktop and seven site tests, and the PR iPhone
+job passed all 27 UI cases. The push iPhone job passed its 33 native units and 26 UI cases
+but failed before the exit helper: the workspace menu was absent after “Back to threads.”
+The recording's last frame retained the thread detail 0.864 seconds after the Back event;
+it ended before the later failed query, so it is not a failure-time screenshot. The cause
+of the ineffective transition remains unknown.
+
+Demo Back navigation now uses the same private bounded completion helper and requires the
+actual dashboard with the Back control absent. A native regression deliberately ignores
+its first Back action; the one-tap baseline failed at the intended dashboard assertion.
+The reviewed wrapper then passed all 17 DemoWorkspace tests on an isolated iPhone 16 Pro /
+iOS 26.5 simulator, with zero skips. This controlled failure proves completion handling,
+not the cause of the hosted event. Application code and shared UI helpers are unchanged;
+all original demo exit, deep-link, relaunch and negative completion controls remain.
+The required full build and 703 unit tests passed with zero skips; all 470 tracked hashes
+remained unchanged during that gate. New-head full hosted acceptance remains required.
+
 ### Initial implementation evidence
 
 The workspace already had guest browser tabs and bounded source-file reads, but no Canvas.

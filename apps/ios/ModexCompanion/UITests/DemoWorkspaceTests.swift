@@ -1,12 +1,12 @@
 import XCTest
 
-// A menu tap can leave the native menu open on a loaded simulator. Require the real
-// welcome screen; a dismissed menu alone does not prove that leaving the demo worked.
-private func completeDemoExit(timeout: TimeInterval = 30,
+// Demo navigation and menu actions require their actual destination before continuing.
+// At most one retry is allowed while the original action remains present and ready.
+private func completeDemoAction(timeout: TimeInterval = 30,
                               now: () -> Date = { Date() },
                               poll: () -> Void = { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2)) },
                               isPresented: () -> Bool,
-                              isWelcome: () -> Bool,
+                              isComplete: () -> Bool,
                               prepare: (TimeInterval) -> Bool,
                               isReady: () -> Bool,
                               tap: () -> Void) -> Bool {
@@ -16,25 +16,47 @@ private func completeDemoExit(timeout: TimeInterval = 30,
         let remaining = deadline.timeIntervalSince(now())
         guard remaining > 0 else { return false }
         let prepared = prepare(remaining)
-        if isWelcome() { return attempt > 0 }
+        if isComplete() { return attempt > 0 }
         if !isPresented() {
             guard attempt > 0 else { return false }
             break
         }
         guard prepared, isReady(), now() < deadline else { return false }
         tap()
-        if isWelcome() { return true }
+        if isComplete() { return true }
         if !isPresented() { break }
     }
     while now() < deadline {
         poll()
-        if isWelcome() { return true }
+        if isComplete() { return true }
     }
     return false
 }
 
 /// Runs without a Mac or fixture: the path App Review follows from the welcome screen.
 final class DemoWorkspaceTests: XCTestCase {
+
+    func testDemoBackNavigationRecoversAnIgnoredFirstTap() {
+        continueAfterFailure = false
+        let prompts = answerSystemAlertsDuringActions()
+        defer { removeUIInterruptionMonitor(prompts) }
+        let app = XCUIApplication()
+        app.launch()
+        defer { app.terminate() }
+        app.open(URL(string: "modex://demo")!)
+        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10))
+        app.buttons["thread-demo-launch"].tapWhenReady()
+        XCTAssertTrue(app.buttons["Back to threads"].waitForExistence(timeout: 10))
+        var attempts = 0
+        XCTAssertTrue(backToDemoThreads(app) { back in
+            attempts += 1
+            // Deterministically reproduce a synthesized action with no navigation.
+            if attempts > 1 { back.tap() }
+        }, "An ignored first Back action must recover to the actual dashboard.")
+        XCTAssertEqual(attempts, 2)
+        XCTAssertTrue(app.buttons["workspace-options"].isReadyToTap)
+        XCTAssertFalse(app.buttons["Back to threads"].exists)
+    }
 
     func testDemoExitRetriesAnIgnoredTapWhileTheMenuRemains() {
         let probe = DemoExitProbe()
@@ -131,11 +153,11 @@ final class DemoWorkspaceTests: XCTestCase {
         private(set) var taps = 0
         private var clock: TimeInterval = 0
         func complete() -> Bool {
-            completeDemoExit(
+            completeDemoAction(
                 now: { Date(timeIntervalSinceReferenceDate: self.clock) },
                 poll: { self.clock += 0.2; if self.welcomeOnPoll { self.welcome = true } },
                 isPresented: { self.presented },
-                isWelcome: {
+                isComplete: {
                     if self.taps > 0 { self.clock += self.observationCost }
                     return self.welcome
                 },
@@ -246,7 +268,7 @@ final class DemoWorkspaceTests: XCTestCase {
         app.buttons["send-followup"].tapWhenReady()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.appears(within: 20), "The demo must answer a follow-up.")
         capture(app, name: "Demo follow-up")
-        app.buttons["Back to threads"].tapWhenReady()
+        XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["new-thread"].tapWhenReady()
         let newInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
@@ -268,7 +290,7 @@ final class DemoWorkspaceTests: XCTestCase {
         app.buttons["create-thread"].tapWhenReady()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Review from phone /demo-review\"")).firstMatch.appears(within: 20))
         capture(app, name: "Demo thread with a skill")
-        app.buttons["Back to threads"].tapWhenReady()
+        XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["workspace-options"].tapWhenReady()
         app.buttons["Reset demo workspace"].tapWhenReady()
@@ -277,7 +299,7 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(approval.waitForExistence(timeout: 10), "Reset must restore the pending approval.")
         app.buttons["deny-launch-approval"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["Denied"].waitForExistence(timeout: 10))
-        app.buttons["Back to threads"].tapWhenReady()
+        XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["workspace-options"].tapWhenReady()
         XCTAssertTrue(app.buttons["Pair with your Mac…"].waitForExistence(timeout: 5), "Pairing must stay reachable from the demo.")
@@ -285,9 +307,9 @@ final class DemoWorkspaceTests: XCTestCase {
         let welcome = app.buttons["pair-button"]
         let menuPresented = { app.buttons["Pair with your Mac…"].exists && leave.exists }
         var initiated = false
-        XCTAssertTrue(completeDemoExit(
+        XCTAssertTrue(completeDemoAction(
             isPresented: menuPresented,
-            isWelcome: { welcome.exists },
+            isComplete: { welcome.exists },
             prepare: { remaining in
                 if !initiated { return leave.waitUntilReady(timeout: remaining) }
                 return waitUntil(timeout: remaining) { welcome.exists || !menuPresented() || leave.isReadyToTap }
@@ -301,6 +323,26 @@ final class DemoWorkspaceTests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(demo.waitForExistence(timeout: 10), "Demo access must not save a pairing on relaunch.")
+    }
+
+    private func backToDemoThreads(_ app: XCUIApplication, timeout: TimeInterval = 30,
+                                   tap: ((XCUIElement) -> Void)? = nil) -> Bool {
+        let back = app.buttons["Back to threads"]
+        let dashboard = { app.staticTexts["demo-status"].exists && app.buttons["workspace-options"].isReadyToTap && !back.exists }
+        var initiated = false
+        return completeDemoAction(
+            timeout: timeout,
+            isPresented: { back.exists },
+            isComplete: dashboard,
+            prepare: { remaining in
+                if !initiated { return back.waitUntilReady(timeout: remaining) }
+                return waitUntil(timeout: remaining) { dashboard() || !back.exists || back.isReadyToTap }
+            },
+            isReady: { back.isReadyToTap },
+            tap: {
+                initiated = true
+                if let tap { tap(back) } else { back.tap() }
+            })
     }
 
     private func capture(_ app: XCUIApplication, name: String) {
