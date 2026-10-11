@@ -344,6 +344,15 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
   holds a half-open connection and requires `dispose()` to return promptly.
 
+- **Chats and Space reference layout.** Graphite uses a 280 px default sidebar and
+  fixed 30 px chat rows. Hover or press Right Arrow on a chat to inspect its project,
+  model, branch, and PR without moving the list. Space has compact navigation, a page
+  toolbar, an insert menu, local comments with per-page drafts, and a floating view of
+  the current CLI chat. Share copies or exports Markdown; Sites and Images filter
+  pages containing those references. Visualize prepares a chat prompt for review
+  before sending. Comments stay in the local Space store and do not alter page
+  revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
+
 ## In flight
 
 - **Open PR queue and composer #159.** #157 needs attachment draft/copy recovery, storage and limit enforcement,

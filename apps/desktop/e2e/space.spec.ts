@@ -107,6 +107,7 @@ test("Space imports Markdown, nests pages, finds content, and exports the curren
     // Immediately switch pages while the save queue owns the child's final edit.
     await page.getByRole("button", { name: "Open The next chapter", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("The next chapter");
+    await page.getByRole("button", { name: "Search pages", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search pages" }).fill("constellation");
     await page.getByRole("button", { name: "Open Small details", exact: true }).click();
     await expect(page.getByText("A searchable constellation.", { exact: true })).toBeVisible();
