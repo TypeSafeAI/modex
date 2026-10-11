@@ -7,6 +7,7 @@ import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
+import { ThreadDetails, useThreadDetails } from "./ThreadDetails";
 
 interface Props {
   state: AppState;
@@ -34,6 +35,8 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
   const [retiredOpen, setRetiredOpen] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  const [projectsOpen, setProjectsOpen] = useState(true);
+  const [activeOnly, setActiveOnly] = useState(false);
   const q = query.trim().toLowerCase();
 
   const closeSearch = () => {
@@ -42,7 +45,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
   };
 
   const groups = state.projects.map((p) => {
-    const mine = state.threads.filter((t) => t.projectId === p.id);
+    const mine = state.threads.filter((t) => t.projectId === p.id && (!activeOnly || t.status === "running" || t.status === "waiting"));
     // Finished tasks (PR merged, worktree removed) leave the working list; they stay reachable below it.
     const all = mine.filter((t) => !t.retired);
     const retired = mine.filter((t) => t.retired && (!q || t.title.toLowerCase().includes(q)));
@@ -55,6 +58,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
       <header className="sidebar-head">
         <h1 className="sidebar-title" data-testid="sidebar-title"><BrandMark />Modex</h1>
         <span className="spacer" />
+        <IconButton icon="bell" label="Show active chats" size="md" aria-pressed={activeOnly} onClick={() => setActiveOnly(value => !value)} />
         <IconButton icon="search" label="Search threads" size="md" data-testid="search-toggle" aria-pressed={searching} onClick={() => (searching ? closeSearch() : setSearching(true))} />
       </header>
       {searching && (
@@ -76,18 +80,20 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
         <Icon name="compose" className="side-row-icon" />
         <span className="side-row-label">New chat</span>
       </button>
+      <button className={`side-row active-chats${activeOnly ? " selected" : ""}`} aria-pressed={activeOnly} onClick={() => setActiveOnly(value => !value)}><span className="personal-dot" /><span>Active work</span></button>
 
       <ActiveAgents agents={agents} onSelect={onSelect} />
       <div className="section-label">
-        <span>Projects</span>
+        <button className="projects-toggle" aria-expanded={projectsOpen} onClick={() => setProjectsOpen(value => !value)}>Projects<Icon name={projectsOpen ? "chevron-down" : "chevron-right"} size={12} /></button>
         <span className="spacer" />
         <IconButton icon="plus" label="Open project…" data-testid="add-project" onClick={onAddProject} />
       </div>
-      <nav className="projects" aria-label="Projects">
+      <nav className="projects" aria-label="Projects" hidden={!projectsOpen}>
+        {activeOnly && groups.every(group => !group.matches.length) && <p className="side-hint">No active chats.</p>}
         {state.projects.length === 0 && <p className="side-hint">No projects yet. Open a folder to start a thread.</p>}
         {noMatches && <p className="side-hint" data-testid="search-empty">No threads match “{query.trim()}”.</p>}
         {groups.map(({ project: p, all, retired, matches }) => {
-          if (q && matches.length === 0 && retired.length === 0) return null;
+          if ((q || activeOnly) && matches.length === 0 && retired.length === 0) return null;
           const isCollapsed = !q && collapsed[p.id];
           const selectedIndex = matches.findIndex((t) => t.id === selected);
           const showAll = Boolean(q) || expanded[p.id] || selectedIndex >= THREADS_PER_PROJECT;
@@ -97,7 +103,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
             <section key={p.id} className="project" data-testid="project" data-project-id={p.id}>
               <div className={`side-row project-row${p.id === draftProjectId ? " selected" : ""}`} title={p.path} data-draft={p.id === draftProjectId ? "true" : undefined}>
                 <button className="project-toggle" data-testid="project-toggle" aria-expanded={!isCollapsed} onClick={() => setCollapsed((c) => ({ ...c, [p.id]: !c[p.id] }))}>
-                  <Icon name="folder" className="side-row-icon" />
+                  <Icon name="folder-open" className="side-row-icon" />
                   <span className="side-row-label" data-testid="project-name">{p.name}</span>
                 </button>
                 {isCollapsed && busy && <span className="row-status running" title="A thread in this project is working" />}
@@ -112,7 +118,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
               {!isCollapsed && (
                 <ul className="threads">
                   {all.length === 0 && <li className="side-hint small">No threads</li>}
-                  {visible.map((t) => <ThreadRow key={t.id} thread={t} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])}
+                  {visible.map((t) => <ThreadRow key={t.id} thread={t} projectName={p.name} compact={state.settings.theme === "graphite"} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])}
                     onSelect={() => onSelect(t.id)} onDelete={() => onDeleteThread(t)} />)}
                   {!q && matches.length > THREADS_PER_PROJECT && selectedIndex < THREADS_PER_PROJECT && (
                     <li>
@@ -129,7 +135,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
                     </li>
                   )}
                   {(q || retiredOpen[p.id] || retired.some((t) => t.id === selected)) && retired.map((t) => (
-                    <ThreadRow key={t.id} thread={t} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])} onSelect={() => onSelect(t.id)} onDelete={() => onDeleteThread(t)} />
+                    <ThreadRow key={t.id} thread={t} projectName={p.name} compact={state.settings.theme === "graphite"} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])} onSelect={() => onSelect(t.id)} onDelete={() => onDeleteThread(t)} />
                   ))}
                 </ul>
               )}
@@ -141,9 +147,10 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
   );
 }
 
-function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
-  thread: Thread; selected: boolean; unsent: boolean; onSelect: () => void; onDelete: () => void;
+function ThreadRow({ thread: t, projectName, compact, selected, unsent, onSelect, onDelete }: {
+  thread: Thread; projectName: string; compact: boolean; selected: boolean; unsent: boolean; onSelect: () => void; onDelete: () => void;
 }) {
+  const card = useThreadDetails(compact);
   const [context, setContext] = useState<ThreadContext | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -174,8 +181,8 @@ function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
   const prTitle = pr && "number" in pr ? `${prLabel} · ${pr.title}` : pr && "detail" in pr ? pr.detail : "Reading checkout and pull request status";
   const branch = t.retired ? "Worktree removed" : context ? context.isRepo ? context.branch ?? "Detached HEAD" : "Local folder" : failed ? "Status unavailable" : "Checking branch…";
   return (
-    <li className={`side-row thread-row${selected ? " selected" : ""}`} data-testid="thread-row" data-thread-id={t.id} data-status={t.status} aria-current={selected ? "true" : undefined}>
-      <button className="thread-main" title={t.title} aria-label={t.title} aria-describedby={`thread-provider-${t.id}`} onClick={onSelect}>
+    <li ref={card.anchor} onPointerEnter={() => card.show()} onPointerLeave={card.leave} onFocus={event => { if (event.target.matches(":focus-visible")) card.show(true); }} onBlur={card.leave} onPointerDown={card.close} className={`side-row thread-row${selected ? " selected" : ""}`} data-testid="thread-row" data-thread-id={t.id} data-status={t.status} aria-current={selected ? "true" : undefined}>
+      <button className="thread-main" title={compact ? undefined : t.title} aria-label={t.title} aria-describedby={`thread-provider-${t.id}`} aria-controls={card.position ? card.id : undefined} aria-keyshortcuts={compact ? "ArrowRight" : undefined} onKeyDown={event => { if (compact && event.key === "ArrowRight") { event.preventDefault(); card.show(true, true); } }} onClick={onSelect}>
         <span className="side-row-label" data-testid="thread-row-title">{t.title}</span>
         <span id={`thread-provider-${t.id}`} className="thread-provider-line" title={`${t.auto ? "Auto · " : ""}${provider} · ${model}${t.effort ? ` · ${t.effort}` : ""}`}>
           <span data-testid="thread-row-provider">{provider}</span>
@@ -203,6 +210,10 @@ function ThreadRow({ thread: t, selected, unsent, onSelect, onDelete }: {
           <MenuItem data-testid="thread-delete" className="danger" onClick={onDelete}>Delete thread</MenuItem>
         </RowMenu>
       </span>
+      <ThreadDetails card={card} title={t.title} project={projectName} updatedAt={t.updatedAt}>
+        <span>{t.auto ? "Auto · " : ""}{provider} · {model}</span><span>{branch}</span>
+        {t.retired ? <a href={t.retired.url} target="_blank" rel="noreferrer">{prLabel}</a> : pr && "url" in pr ? <a href={pr.url} target="_blank" rel="noreferrer">{prLabel}</a> : <span>{prLabel}</span>}
+      </ThreadDetails>
     </li>
   );
 }

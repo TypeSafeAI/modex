@@ -13,6 +13,12 @@ Copy/cut handlers preserve selected raw text and native undo. Display attributes
 native option labels are formatted separately; operational URLs and option values
 remain unchanged.
 
+Comment inputs use the same original-value masking. Quoted comment excerpts are
+masked in full, including public quotes: a selection can omit the credential label
+that identified a secret. Dedicated display markers add highlight ranges without
+changing selected text, drafts, clipboard contents, or saved comments. Identical
+unlabeled text outside comment excerpts still follows ordinary heuristic matching.
+
 The terminal keeps one xterm instance. Its parser, buffer, selection, replies, modes,
 and input own the original bytes. Redaction maps buffer cells to painted text,
 including wide-character wrap padding, concealed Unicode cells, and multiline keys
@@ -29,10 +35,11 @@ released full-window cover. The source worktree and its patch archive remain int
   A bounded subprocess regression checks large public output with repeated credential
   keywords and decoration. Review probes process eight roughly 240 KB adversarial
   inputs in 2.8–8.8 ms, preserving public text.
-- Seven focused Electron tests passed: native editing, original copy/cut, undo/redo,
+- Electron checks passed: native editing, original copy/cut, undo/redo,
   paste, IME composition through CDP, send/relaunch persistence, dynamic text,
   numbered file previews, display attributes, broken-image fallback text, native
-  select values, Space formatting/persistence, startup errors, and pairing QR/copy.
+  select values, Space formatting/persistence, comment drafts and quoted fragments,
+  startup errors, and pairing QR/copy.
 - The terminal test verifies actual parser replies, bracketed paste, application
   cursor mode, original selection/clipboard, wrapped credentials, offscreen PEM
   context, and YAML with adjacent public text preserved.
@@ -41,14 +48,15 @@ released full-window cover. The source worktree and its patch archive remain int
   visible Unicode, literal separators, YAML, and an offscreen PEM header.
 - Inspected Electron screenshots show masking for selected text, native selects,
   wrapped terminal output, multiline terminal secrets, and image fallback text.
-- Full build and workspace typecheck passed. Unit verification passed 473 tests,
-  with one optional OpenKnowledge skip. The integrated desktop run passed 168 of 169
-  tests; the remaining real-Knowledge installation failed with npm `ENOSPC` during
+- Final combined build and workspace typecheck passed. Unit verification passed 475
+  tests, with one optional OpenKnowledge skip. All 175 desktop E2E tests passed with
+  real Knowledge enabled, and all seven site E2E tests passed.
+- An earlier integration run passed 168 of 169 desktop tests; the remaining
+  real-Knowledge installation failed with npm `ENOSPC` during
   a shared disk-space incident. After reclaiming completed test dependencies, that
-  unchanged case passed on its focused rerun. All seven site E2E tests passed.
+  unchanged case passed on its focused rerun. Its failed run remains retained.
   The earlier native resize mismatch (647 requested, 468 observed) is covered by the
-  shared readiness fix in #167. The verified source is unchanged after aligning its
-  identical base tree with #167's squash commit.
+  shared readiness fix in #167.
 
 Review found and corrected multiline terminal context, line-number gutters, native
 select painting, Unicode cell mapping, stale display-attribute restoration, and
@@ -69,3 +77,19 @@ no live model-generated coding turn is claimed by this review.
 Local evidence is retained under `~/.codex/recovery/modex-20261011/`, including the
 independent review, runnable xterm probe, its JSON results, and verification logs.
 Screenshots are in the recovery worktree's `apps/desktop/.probes/` directory.
+
+## UI integration verification
+
+The final UI candidate `fd242f2` adds comment inputs, selected excerpts, and floating
+chat. Integration preserves Space selection/caret fixes and the native Knowledge
+guest gate while chat is open. Two Electron regressions first reproduced an unmasked
+comment input (`none` instead of `disc`) and an unmasked value-only quote selected
+from `API_KEY=**abcdef**`. With the input wrapper and quote ranges applied, both
+passed in 5.6 seconds. They verify full quote coverage, original clipboard and saved
+text, retained comment drafts, mode toggles, and identical public text outside the
+excerpt remaining visible. Failure traces and hashes are retained under
+`streamer-comments-red-results` in the recovery evidence directory.
+
+Final combined build, unit, typecheck, full native/site checks, and independent source
+review passed. Review confirmed original values, refs, callbacks, and clipboard
+behavior remain intact, and the native Knowledge chat gate composes with Streamer Mode.

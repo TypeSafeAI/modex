@@ -138,6 +138,78 @@ test("Space edits and formats the original Markdown while streaming", async () =
   await title.click();
   await expect.poll(() => page.evaluate(() => window.modex.invoke("space:list", undefined).then(pages => pages.find(p => p.title === "Password notes")?.markdown))).toBe("API_KEY=**abcdef**");
   await expect.poll(highlighted).toContain("abcdef");
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  const comment = page.getByRole("textbox", { name: "Comment", exact: true });
+  await comment.fill("TOKEN=comment-secret");
+  await expect(comment).toHaveValue("TOKEN=comment-secret");
+  await expect(comment).toHaveCSS("-webkit-text-security", "disc");
+  await comment.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(6, input.value.length));
+  await page.keyboard.press("Meta+c");
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("comment-secret");
+  await page.getByRole("button", { name: "Close comments", exact: true }).click();
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await expect(comment).toHaveValue("TOKEN=comment-secret");
+  await expect(comment).toHaveCSS("-webkit-text-security", "disc");
+  await page.getByRole("button", { name: "Post comment", exact: true }).click();
+  await expect.poll(highlighted).toContain("comment-secret");
+  await expect.poll(() => page.evaluate(async () => {
+    const note = (await window.modex.invoke("space:list", undefined)).find(note => note.title === "Password notes")!;
+    return (await window.modex.invoke("space:comments", { pageId: note.id })).map(comment => comment.text);
+  })).toEqual(["TOKEN=comment-secret"]);
+});
+
+test("Space comment quotes mask selected fragments while keeping original text", async () => {
+  await tid(page, "streamer-mode-toggle").click();
+  await tid(page, "rail-space").click();
+  await page.getByRole("button", { name: "New page", exact: true }).click();
+  const title = page.getByRole("textbox", { name: "Page title" });
+  await title.fill("Quoted notes");
+  await page.getByRole("textbox", { name: "Block 1", exact: true }).fill("API_KEY=**abcdef**");
+  await title.click();
+  // Select only the value: the quoted fragment no longer contains a credential label.
+  await page.getByLabel("Edit block 1", { exact: true }).locator("strong").evaluate(element => {
+    const range = document.createRange(); range.selectNodeContents(element);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(range);
+    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  const quote = page.getByRole("complementary", { name: "Comments" }).locator("blockquote");
+  await expect(quote).toHaveText("abcdef");
+  const fullyMasked = () => quote.evaluate(element => {
+    const text = element.firstChild!;
+    return Array.from(CSS.highlights.get("modex-streamer") ?? []).some(range =>
+      range instanceof Range && range.comparePoint(text, 0) === 0 && range.comparePoint(text, text.textContent!.length) === 0);
+  });
+  await expect.poll(fullyMasked).toBe(true);
+  await page.evaluate(() => {
+    const publicText = document.createElement("p"); publicText.id = "public-quote-twin"; publicText.textContent = "abcdef";
+    document.querySelector(".app")!.append(publicText);
+  });
+  const publicMasked = () => page.locator("#public-quote-twin").evaluate(element =>
+    Array.from(CSS.highlights.get("modex-streamer") ?? []).some(range => range instanceof Range && range.intersectsNode(element.firstChild!)));
+  await expect.poll(publicMasked).toBe(false);
+  await quote.click();
+  await quote.evaluate(element => {
+    const range = document.createRange(); range.selectNodeContents(element);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(range);
+  });
+  await page.keyboard.press("Meta+c");
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("abcdef");
+  await page.getByRole("textbox", { name: "Comment", exact: true }).fill("Public comment");
+  await page.getByRole("button", { name: "Post comment", exact: true }).click();
+  await expect.poll(() => page.evaluate(async () => {
+    const note = (await window.modex.invoke("space:list", undefined)).find(note => note.title === "Quoted notes")!;
+    return (await window.modex.invoke("space:comments", { pageId: note.id })).map(({ text, quote }) => ({ text, quote }));
+  })).toEqual([{ text: "Public comment", quote: "abcdef" }]);
+  await expect.poll(fullyMasked).toBe(true);
+  await expect.poll(publicMasked).toBe(false);
+  await tid(page, "streamer-mode-toggle").click();
+  await expect.poll(fullyMasked).toBe(false);
+  await expect(quote).toHaveText("abcdef");
+  await tid(page, "streamer-mode-toggle").click();
+  await expect.poll(fullyMasked).toBe(true);
 });
 
 test("terminal keeps parser replies, bracketed paste and application cursor mode while masking wrapped output", async () => {

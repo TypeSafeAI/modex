@@ -759,7 +759,11 @@ test("accessibility: information text meets AA contrast, keyboard focus is visib
 
   // Truncated titles and shortcut-bearing rows explain themselves on hover.
   const rowTitle = await tid(currentRow(page), "thread-row-title").innerText();
-  await expect(currentRow(page).getByRole("button").first()).toHaveAttribute("title", rowTitle);
+  await expect(currentRow(page).getByRole("button").first()).toHaveAccessibleName(rowTitle);
+  await currentRow(page).getByRole("button").first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("dialog", { name: "Chat details" })).toContainText(rowTitle);
+  await page.keyboard.press("Escape");
   await expect(tid(page, "new-chat")).toHaveAttribute("title", /⌘N/);
 
   // Spinners and the thinking shimmer stop when the OS asks for reduced motion.

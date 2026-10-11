@@ -154,6 +154,13 @@ export function useStreamerRedaction(enabled: boolean): void {
       };
       visit(root);
       const ranges = domRanges(segments, secretRanges(text));
+      // Selected excerpts can lose the credential label that identified a secret.
+      // Mask the whole quoted fragment while retaining its original DOM and value.
+      for (const quote of root.querySelectorAll("[data-streamer-quote]")) {
+        const range = document.createRange();
+        range.selectNodeContents(quote);
+        ranges.push(range);
+      }
       for (const [host, terminal] of terminals) if (host.isConnected) ranges.push(...terminalRanges(host, terminal));
       CSS.highlights.set("modex-streamer", new Highlight(...ranges));
       for (const element of root.querySelectorAll(displayAttributes.map(name => `[${name}]`).join(","))) {

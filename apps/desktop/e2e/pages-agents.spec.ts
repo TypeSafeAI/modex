@@ -8,7 +8,8 @@ test("Pages notes access persists; open notes refresh and recover historical rev
   const first = await launch(home);
   try {
     await tid(first.page, "rail-space").click();
-    await first.page.getByText("Agent notes", { exact: true }).click();
+    await first.page.getByRole("button", { name: "Space options" }).click();
+    await first.page.getByRole("menuitem", { name: "Agent notes", exact: true }).click();
     const toggle = first.page.getByRole("checkbox", { name: `Manage notes for ${path.basename(repo)}` });
     await expect(toggle).not.toBeChecked(); await toggle.check(); await expect(toggle).toBeChecked();
     await tid(first.page, "rail-chat").click();
@@ -34,7 +35,8 @@ test("Pages notes access persists; open notes refresh and recover historical rev
   const second = await launch(home);
   try {
     await tid(second.page, "rail-space").click();
-    await second.page.getByText("Agent notes", { exact: true }).click();
+    await second.page.getByRole("button", { name: "Space options" }).click();
+    await second.page.getByRole("menuitem", { name: "Agent notes", exact: true }).click();
     await expect(second.page.getByRole("checkbox", { name: `Manage notes for ${path.basename(repo)}` })).toBeChecked();
     await second.page.getByRole("button", { name: "Open Agent note", exact: true }).click();
     await expect(second.page.getByText("Original human text", { exact: true })).toBeVisible();
