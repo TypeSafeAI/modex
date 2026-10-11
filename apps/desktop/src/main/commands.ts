@@ -82,6 +82,10 @@ export function registerCommands(handle: RegisterCommand, {
     const p = store.project(projectId);
     return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
   });
+  handle("canvas:open", () => { throw new Error("Canvas previews require the desktop app."); });
+  handle("canvas:state", () => { throw new Error("Canvas previews require the desktop app."); });
+  handle("canvas:show", () => {});
+  handle("canvas:close", () => {});
   handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
   handle("thread:context", ({ threadId }) => threadContexts.read(cwdFor(threadId)));
   handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));

@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-09._
+_Last updated 2026-10-11._
 
 ## Shipped
 
@@ -322,7 +322,13 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
-No additional desktop changes are unreleased as of the v0.0.10 tag.
+**Canvas previews.** The workspace launcher adds an interactive Canvas for checkout HTML,
+SVG and Markdown. Local document/asset changes refresh the isolated preview; full view,
+manual reload and deletion recovery are supported. Each guest has a temporary session,
+no app bridge or Node access, bounded root-confined resource reads and no network access.
+The Store edition and development browser bridge report Canvas unavailable.
+[Usage and limits](canvas.md). Roadmap acceptance and release evidence remain tracked in
+[the execution ledger](reviews/2026-10-11-desktop-roadmap-audit.md).
 
 ## In flight
 

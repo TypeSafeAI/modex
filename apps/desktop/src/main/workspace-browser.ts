@@ -6,7 +6,7 @@ export class WorkspaceBrowser {
   private views = new Map<string, { view: WebContentsView; error?: string; styled?: boolean; cssKey?: string; styleVersion?: number }>();
   private fullView = false;
   private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
-  constructor(private window: BrowserWindow, private options: { partition?: string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string } } = {}) {}
+  constructor(private window: BrowserWindow, private options: { partition?: string; resolveURL?: (input: string) => string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string } } = {}) {}
   async refreshAppearance(): Promise<void> {
     await Promise.all([...this.views.keys()].map(id => this.style(id)));
   }
@@ -44,7 +44,7 @@ export class WorkspaceBrowser {
     if (typeof id !== "string" || !/^[\w-]{1,100}$/.test(id)) throw new Error("Invalid browser tab.");
     if (action === "close") { this.close(id); return null; }
     let entry = this.views.get(id);
-    const url = action === "navigate" ? browserURL(input ?? "") : undefined;
+    const url = action === "navigate" ? (this.options.resolveURL ?? browserURL)(input ?? "") : undefined;
     const allowed = this.options.allowURL ?? allowedBrowserURL;
     if (url && !allowed(url)) throw new Error("This address is outside the knowledge base.");
     if (!entry) {

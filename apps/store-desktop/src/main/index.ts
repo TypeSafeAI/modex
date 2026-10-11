@@ -117,6 +117,10 @@ app.whenReady().then(() => {
     trusted(event);
     if (!request || typeof request.channel !== "string" || request.channel.length > 80) throw new Error("Invalid workspace action.");
     if (demo && request.channel !== "clipboard:write") return demo.invoke(request.channel, request.payload);
+    if (request.channel.startsWith("canvas:")) {
+      if (request.channel === "canvas:show" || request.channel === "canvas:close") return;
+      throw new Error("Canvas previews are available in the full desktop app. Store preview support is not available yet.");
+    }
     if (request.channel === "browser:command") {
       const payload = request.payload as BridgeCommands["browser:command"]["req"];
       if (payload.action !== "close" && client.status().state !== "connected") throw new Error("Connect to your Mac to use the workspace browser.");

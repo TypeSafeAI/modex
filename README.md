@@ -91,9 +91,10 @@ modex/
   A second failure shows the card with both attempts recorded. Early send/retry rejections
   (for example, a busy thread) return to the caller without adding transcript items.
 - **Tabbed workspace.** Review working-tree changes with numbered diffs, a filterable file
-  tree, and confirmed per-file discard. Open Files, Terminal, or browser tabs beside the chat;
+  tree, and confirmed per-file discard. Open Files, Terminal, Canvas, or browser tabs beside the chat;
   use Shift + Command + B for a new tab or Shift + Command + F for full view. Escape exits
   full view. Files previews stay inside the project; browser pages use isolated desktop views.
+  [Canvas](docs/canvas.md) previews local HTML, SVG and Markdown with automatic refresh.
 - **Embedded terminal.** Open a shell in a workspace tab with the title-bar terminal
   button or Control + backtick. Hiding the panel keeps its shell running. Close, Restart,
   thread deletion, project removal, and app quit stop its jobs before completing.

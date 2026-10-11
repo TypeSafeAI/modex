@@ -173,3 +173,9 @@
 .review-file-heading > span[title] { max-width: 100px; }
 .review-file-heading .file-code-icon { width: 22px; }
 .workspace .review-actions button[aria-label="Highlight changes"][aria-pressed="true"] { color: var(--ok); }
+
+.workspace-canvas { display: flex; flex: 1; min-height: 0; flex-direction: column; position: relative; }
+.workspace-canvas[hidden] { display: none; }
+.canvas-toolbar select { flex: 1; min-width: 0; max-width: 100%; color: var(--text-1); background: var(--workspace-raised); border: 1px solid var(--workspace-border); border-radius: 5px; padding: 4px; font: inherit; }
+.canvas-toolbar select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.canvas-loading { position: absolute; top: 45px; left: 12px; }

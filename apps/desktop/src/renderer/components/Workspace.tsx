@@ -1,3 +1,4 @@
+import { CanvasPanel } from "./CanvasPanel";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ChangesSnapshot, Thread } from "../../shared/types";
 import type { BrowserSnapshot } from "../../shared/browser";
@@ -8,9 +9,9 @@ import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
 import "../workspace.css";
 
-type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browser"; title: string; browser?: BrowserSnapshot };
+type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browser" | "canvas"; title: string; browser?: BrowserSnapshot };
 const makeTab = (): Tab => ({ id: crypto.randomUUID(), kind: "new", title: "New tab" });
-const tabIcon = (kind: Tab["kind"]): IconName => kind === "review" ? "review" : kind === "files" ? "folder" : kind === "terminal" ? "terminal-box" : "globe";
+const tabIcon = (kind: Tab["kind"]): IconName => kind === "canvas" ? "grid" : kind === "review" ? "review" : kind === "files" ? "folder" : kind === "terminal" ? "terminal-box" : "globe";
 interface Props {
   thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void;
   visible: boolean; onShow: () => void; onHide: () => void; suspended: boolean;
@@ -46,9 +47,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     setTabs((prev) => [...prev, tab]); setActive(tab.id); setFull(fullView); setAddMenu(false); setError(""); onShow();
     requestAnimationFrame(() => addressRef.current?.focus());
   }, [onShow, onHideTerminal]);
-  const openTool = (kind: "review" | "files" | "terminal") => {
+  const openTool = (kind: "review" | "files" | "terminal" | "canvas") => {
     const existing = tabs.find((tab) => tab.kind === kind);
-    const tab: Tab = existing ?? { id: kind, kind, title: kind === "review" ? "Review" : kind === "files" ? "Files" : "Terminal" };
+    const tab: Tab = existing ?? { id: kind === "canvas" ? crypto.randomUUID() : kind, kind, title: kind === "canvas" ? "Canvas" : kind === "review" ? "Review" : kind === "files" ? "Files" : "Terminal" };
     if (!existing) setTabs((prev) => [...prev, tab]);
     activate(tab); onShow(); setToolsMenu(false);
   };
@@ -166,6 +167,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       <IconButton icon="tabs" label="Hide workspace" size="md" className="workspace-hide" onClick={onHide} />
     </header>
     <div className="workspace-pane" id={`workspace-pane-${thread.id}`} role="tabpanel" aria-label={current.title}>
+      {tabs.filter(tab => tab.kind === "canvas").map(tab => <CanvasPanel key={tab.id} id={tab.id} thread={thread} visible={visible && current.id === tab.id} suspended={suspended} full={full} />)}
       {visible && current.kind === "review" && <ChangesPanel thread={thread} changes={changes} onRefresh={onRefresh} onRevert={onRevert} />}
       {visible && current.kind === "files" && <FilesPanel key={thread.id} thread={thread} />}
       {visible && current.kind === "terminal" && terminal}
@@ -183,6 +185,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
             <div className="workspace-tools">
               <button onClick={() => openTool("review")}><Icon name="review" size={16} /><span>Review</span><kbd>⌃⇧G</kbd></button>
               <span className="workspace-menu-anchor workspace-terminal-tool"><button onClick={() => openTool("terminal")}><Icon name="terminal-box" size={16} /><span>Terminal</span><kbd>⌃`</kbd></button><IconButton ref={terminalRef} icon="more" label="Terminal options" aria-haspopup="menu" aria-expanded={terminalMenu} onClick={() => setTerminalMenu(!terminalMenu)} /><Menu open={terminalMenu} anchorRef={terminalRef} onClose={() => setTerminalMenu(false)} label="Terminal options" placement="bottom-end"><MenuItem onClick={() => { setTerminalMenu(false); openTool("terminal"); }}>Open terminal</MenuItem><MenuItem onClick={() => { setTerminalMenu(false); void bridge.invoke("shell:openTerminal", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open external terminal</MenuItem></Menu></span>
+              <button onClick={() => openTool("canvas")}><Icon name="grid" size={16} /><span>Canvas</span></button>
               <button onClick={() => openTool("files")}><Icon name="files" size={16} /><span>Files</span><kbd>⌘P</kbd></button>
               <span className="workspace-menu-anchor"><button ref={toolsRef} aria-haspopup="menu" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><Icon name="grid" size={16} /><span>More tools...</span><Icon name="chevron-down" size={17} /></button><Menu open={toolsMenu} anchorRef={toolsRef} onClose={() => setToolsMenu(false)} label="More tools" placement="bottom-end"><MenuItem onClick={() => { setToolsMenu(false); void bridge.invoke("shell:openPath", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open project folder</MenuItem><MenuItem onClick={() => { setToolsMenu(false); void bridge.invoke("shell:openTerminal", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open external terminal</MenuItem></Menu></span>
             </div>
