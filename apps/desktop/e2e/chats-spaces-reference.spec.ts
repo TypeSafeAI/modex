@@ -109,3 +109,47 @@ test("Space toolbar, comments and floating chat preserve the open page", async (
     await page.screenshot({ path: path.join(appDir, ".probes/chats-spaces/space-narrow.png") });
   } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
 });
+
+test("chat page links clear the previous selection without losing that page's comment draft", async () => {
+  const { home, repo } = seedHome({ theme: "graphite" });
+  const file = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(file, "utf8"));
+  const at = new Date().toISOString();
+  state.threads = [{ id: "page-links", projectId: "p1", title: "Page links", createdAt: at, updatedAt: at, cwd: repo, backend: "mock", model: "mock", mode: "chat", plan: false, status: "idle" }];
+  fs.writeFileSync(file, JSON.stringify(state));
+  const { app, page } = await launch(home);
+  try {
+    await tid(page, "thread-row").first().locator(".thread-main").click();
+    const next = await page.evaluate(async () => {
+      await (window as any).modex.invoke("space:create", { title: "Page A", markdown: "Quote only from page A" });
+      return (window as any).modex.invoke("space:create", { title: "Page B", markdown: "Different page content" });
+    });
+    await app.evaluate(({ BrowserWindow }, next) => BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", {
+      type: "item", threadId: "page-links",
+      item: { id: "page-b-link", kind: "notice", level: "info", text: "Updated page", at: new Date().toISOString(), pages: { pageId: next.id, title: next.title, summary: "Updated page", revision: next.revision } },
+    }), next);
+    await expect(page.getByRole("button", { name: "Open note Page B", exact: true })).toBeVisible();
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Open Page A", exact: true }).click();
+    await page.getByText("Quote only from page A", { exact: true }).evaluate(element => {
+      const range = document.createRange(); range.selectNodeContents(element);
+      const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+      element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await page.getByRole("button", { name: "Comments", exact: true }).click();
+    await page.getByRole("button", { name: "Comment on selection", exact: true }).click();
+    await page.getByRole("textbox", { name: "Comment", exact: true }).fill("Keep the draft for A");
+    await expect(page.getByRole("complementary", { name: "Comments" }).locator("blockquote")).toHaveText("Quote only from page A");
+    await tid(page, "rail-chat").click();
+    await page.getByRole("button", { name: "Open note Page B", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Page title" })).toHaveCount(1);
+    await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("Page B");
+    await page.getByRole("button", { name: "Add comment", exact: true }).click();
+    await page.getByRole("textbox", { name: "Comment", exact: true }).fill("Comment only on B");
+    await page.getByRole("button", { name: "Post comment", exact: true }).click();
+    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(home, "app/space.json"), "utf8")).comments?.find((comment: { pageId: string }) => comment.pageId === next.id)?.quote).toBe("");
+    await page.getByRole("button", { name: "Open Page A", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("Keep the draft for A");
+    await expect(page.getByRole("complementary", { name: "Comments" }).locator("blockquote")).toHaveText("Quote only from page A");
+  } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
+});

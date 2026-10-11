@@ -70,7 +70,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     try { setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
   const open = (id: string) => { if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
-  useEffect(() => { if (openPage) { setView("pages"); setQuery(""); setSelected(openPage.id); setHistory(false); void space.refresh(); } }, [openPage]);
+  useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
   const create = async (title = "", markdown = "", parentId: string | null = null) => {
     if (creating) return;
     setCreating(true);
@@ -196,7 +196,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
           {view === "trash" && <button className="btn small" aria-label={`Restore ${pageTitle(p)}`} onClick={() => void run(() => space.trash(p.id, false))}>Restore</button>}
         </div>)}</div> : <div className="space-list-empty"><Icon name={view === "trash" ? "trash" : "file"} size={26} /><p>{query ? "No pages found. Try another word." : view === "favorites" ? "Add a page to favorites with the star in its toolbar." : view === "trash" ? "No deleted pages." : "Start a page. See where it takes you."}</p></div>}
       </div>}
-      {page && commentsOpen && <PageComments key={page.id} pageId={page.id} quote={quote} draft={commentDrafts[page.id]} onDraft={draft => setCommentDrafts(current => { const next = { ...current }; if (draft) next[page.id] = draft; else delete next[page.id]; return next; })} onClose={closeComments} />}
+      {page && commentsOpen && <PageComments key={`comments:${page.id}`} pageId={page.id} quote={quote} draft={commentDrafts[page.id]} onDraft={draft => setCommentDrafts(current => { const next = { ...current }; if (draft) next[page.id] = draft; else delete next[page.id]; return next; })} onClose={closeComments} />}
       </div>
       {onOpenChat && !chatOpen && !(page && commentsOpen) && <button className="space-chat-launcher" aria-label="Open chat" onClick={() => ask()}><Icon name="comment" size={18} /><span>Ask anything</span><Icon name="plus" size={18} /></button>}
     </main>

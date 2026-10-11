@@ -23,7 +23,9 @@ Visualize prepares a prompt in the existing chat for review before sending.
 - Chat hover details and Right Arrow/Escape navigation preserve row positions and
   focus. Transcript/composer scrolling does not dismiss the card.
 - Comments persist locally, preserve drafts per page, and reject invalid writes.
-  They do not create or overwrite page revisions.
+  They do not create or overwrite page revisions. Opening a note from chat clears
+  the previous page's selection while retaining its quoted draft. Page changes
+  replace the document and comments panel without leaving an old document mounted.
 - Floating chat retains the mounted composer and draft. Workspace shortcuts return
   to the main chat, and global dialogs remain above the floating view.
 - The insert menu, page navigation, history, sharing, and editing use existing
@@ -47,6 +49,16 @@ geometry is unchanged.
   blockers.
 
 After integrating the companion shutdown fix from main, build and units passed
-again, along with all 12 companion, reference UI, and Space E2E cases. The prior full
-168-case run and successful PR CI cover the reference UI; final CI repeats the
-combined tree before protected-main landing.
+again, along with all 12 companion, reference UI, and Space E2E cases.
+
+A further native regression reproduced two page-link defects: duplicate document
+nodes from shared sibling keys, and a comment on page B retaining page A's selected
+quote. The fixes give comments a distinct key and use the shared page-opening reset.
+The regression now verifies one document, an empty persisted quote on B, and A's
+retained quoted draft. It and the Space reference case passed; the unchanged chat
+hover case timed out after its screenshot and passed its single focused rerun.
+All three reference cases passed across that sweep and rerun. Renderer build and
+workspace typecheck passed. Final CI repeats the combined tree before landing.
+
+Editor focus corrections, including placing the Code insert caret inside its
+fences, remain in the separate [Space focus PR #170](https://github.com/TypeSafeAI/modex/pull/170).
