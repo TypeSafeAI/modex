@@ -322,6 +322,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Knowledge CLI diagnostics.** Connecting to an existing local editor parses successful
+  status JSON from stdout, so a warning on stderr cannot corrupt the response. Failed
+  commands still report bounded stdout/stderr diagnostics, and malformed stdout still
+  fails verification. The reload privacy test waits for the intercepted navigation and
+  its new document and editor before removing the network handler.
+
 - **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
   fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
   The shared command supports a daily macOS user job and keeps unknown legacy worktrees
