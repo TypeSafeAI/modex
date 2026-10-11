@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { readNativePackages } from "./read-native-packages.mjs";
 
 // This script installs/removes a system package. It must never run on a developer host.
 assert.equal(process.platform, "linux", "Hosted Linux acceptance only");
@@ -17,27 +18,12 @@ assert.ok(process.env.DBUS_SESSION_BUS_ADDRESS, "Run inside a fresh dbus-run-ses
 
 const { _electron: electron } = await import("@playwright/test");
 const candidates = fileURLToPath(new URL("../release/native-linux/", import.meta.url));
-const manifest = JSON.parse(fs.readFileSync(path.join(candidates, "native-packages.json"), "utf8"));
-assert.equal(manifest.platform, "linux");
-assert.equal(manifest.arch, process.arch);
-assert.equal(manifest.sourceSha, process.env.GITHUB_SHA);
-assert.equal(manifest.runId, process.env.GITHUB_RUN_ID);
-assert.equal(manifest.installerAcceptance, "pending");
-const artifacts = new Map();
-for (const artifact of manifest.artifacts) {
-  assert.equal(path.basename(artifact.name), artifact.name);
-  const file = path.join(candidates, artifact.name);
-  assert.ok(fs.lstatSync(file).isFile());
-  assert.equal(fs.statSync(file).size, artifact.bytes);
-  const hash = createHash("sha256");
-  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
-  assert.equal(hash.digest("hex"), artifact.sha256);
-  const extension = path.extname(file);
-  assert.ok(!artifacts.has(extension), "Duplicate package type");
-  artifacts.set(extension, file);
-}
-assert.equal(artifacts.size, 2);
-assert.ok(artifacts.has(".deb") && artifacts.has(".AppImage"));
+const version = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+assert.notEqual(version, "0.0.0", "Upgrade needs distinct package versions");
+const expected = { platform: "linux", arch: process.arch, sourceSha: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID };
+const { manifest, artifacts } = await readNativePackages(candidates, { ...expected, version, baseline: false });
+const baseline = await readNativePackages(fileURLToPath(new URL("../release/native-linux-baseline/", import.meta.url)),
+  { ...expected, version: "0.0.0", baseline: true });
 const existing = spawnSync("dpkg-query", ["-W", "-f=${Status}", "modex"], { encoding: "utf8" });
 assert.ok(!existing.error);
 assert.ok(existing.status === 1 || existing.status === 0 && !existing.stdout.includes("installed"), "Refusing to replace an existing Modex installation");
@@ -71,7 +57,7 @@ const marker = randomUUID();
 fs.writeFileSync(sentinel, marker);
 const result = { schema: 1, sourceSha: manifest.sourceSha, runId: manifest.runId,
   platform: process.platform, arch: process.arch, launches: [], uninstall: "pending",
-  installerAcceptance: "pending", credentials: "pending", remaining: ["KWallet credential persistence", "distinct-version upgrade", "complete CLI/account acceptance"] };
+  installerAcceptance: "pending", credentials: "pending", remaining: ["KWallet credential persistence", "complete CLI/account acceptance"] };
 let installAttempted = false;
 let installedBinary;
 let failure;
@@ -149,7 +135,7 @@ async function stopKeyring() {
   }
 }
 
-async function launch(executablePath, kind, credentialAction) {
+async function launch(executablePath, kind, credentialAction, expectedVersion) {
   const app = await electron.launch({ executablePath, timeout: 30000,
     args: [`--password-store=${credentialAction === "refuse" ? "basic" : "gnome-libsecret"}`],
     env: { ...keyringEnv, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", SHELL: "/bin/bash",
@@ -169,6 +155,7 @@ async function launch(executablePath, kind, credentialAction) {
       encryptionAvailable: safeStorage.isEncryptionAvailable(),
     }));
     assert.equal(identity.packaged, true);
+    assert.equal(identity.version, expectedVersion, "Installed package version");
     assert.equal(identity.platform, "linux");
     assert.equal(identity.arch, "x64");
     assert.ok(identity.appPath.endsWith("/resources/app.asar"), "Launch must load packaged ASAR");
@@ -204,9 +191,18 @@ async function launch(executablePath, kind, credentialAction) {
     if (credentialAction === "write") encryptedHash = currentHash;
     else assert.equal(currentHash, encryptedHash, "Read/refusal must preserve existing ciphertext");
     const invoke = (channel, payload) => page.evaluate(({ channel, payload }) => window.modex.invoke(channel, payload), { channel, payload });
+    const before = await invoke("state:get");
+    for (const previous of result.launches) {
+      const retained = before.threads.find(thread => thread.id === previous.threadId);
+      assert.equal(retained?.title, previous.threadTitle, "Saved thread title survived restart/upgrade");
+    }
+    if (result.launches.length) assert.equal(before.settings.default_mode, "plan", "Saved setting survived restart/upgrade");
+    else await invoke("settings:update", { default_mode: "plan" });
     const added = await invoke("project:add", { path: project });
     assert.ok(added?.id);
     const thread = await invoke("thread:create", { projectId: added.id, backend: "mock", auto: false });
+    const threadTitle = `Native acceptance ${kind}`;
+    await invoke("thread:update", { threadId: thread.id, patch: { title: threadTitle } });
     const terminal = await invoke("terminal:open", { threadId: thread.id, cols: 80, rows: 24 });
     const receipt = path.join(project, `${kind}.receipt`);
     const suffix = randomUUID();
@@ -218,7 +214,7 @@ async function launch(executablePath, kind, credentialAction) {
     await until(async () => (await invoke("terminal:open", { threadId: thread.id, cols: 80, rows: 24 })).output.includes(token), "packaged terminal output");
     await invoke("terminal:close", { threadId: thread.id, sessionId: terminal.sessionId });
     await page.screenshot({ path: path.join(evidence, `${kind}.png`) });
-    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, credentialAction });
+    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, threadTitle, credentialAction });
   } catch (error) { launchFailure = error; }
   finally {
     try { await closeApp(app); }
@@ -229,19 +225,30 @@ async function launch(executablePath, kind, credentialAction) {
 try {
   await startKeyring();
   installAttempted = true;
-  command("sudo", ["apt-get", "install", "-y", artifacts.get(".deb")]);
+  command("sudo", ["apt-get", "install", "-y", baseline.artifacts.get(".deb")]);
   const files = execFileSync("dpkg-query", ["-L", "modex"], { encoding: "utf8" }).trim().split("\n");
   const binaries = files.filter(file => file.startsWith("/opt/") && file.endsWith("/modex") && fs.statSync(file).isFile());
   assert.equal(binaries.length, 1, "One installed executable required");
   installedBinary = binaries[0];
-  await launch(installedBinary, "debian", "write");
-  await launch(installedBinary, "debian-restart", "read");
-  await launch(installedBinary, "debian-basic-refusal", "refuse");
-  const extracted = path.join(root, "appimage");
-  fs.mkdirSync(extracted);
-  fs.chmodSync(artifacts.get(".AppImage"), 0o755);
-  command(artifacts.get(".AppImage"), ["--appimage-extract"], { cwd: extracted, stdio: "ignore" });
-  await launch(path.join(extracted, "squashfs-root", "AppRun"), "appimage-extracted", "read");
+  await launch(installedBinary, "debian-baseline", "write", baseline.manifest.version);
+  assert.equal(openApps.size, 0);
+  command("sudo", ["apt-get", "install", "-y", artifacts.get(".deb")]);
+  await launch(installedBinary, "debian-upgraded", "read", manifest.version);
+  await launch(installedBinary, "debian-restart", "read", manifest.version);
+  await launch(installedBinary, "debian-basic-refusal", "refuse", manifest.version);
+  const portable = path.join(root, "portable");
+  for (const [kind, candidate] of [["appimage-baseline", baseline], ["appimage-upgraded", { manifest, artifacts }]]) {
+    const extracted = path.join(root, kind);
+    fs.mkdirSync(extracted);
+    fs.chmodSync(candidate.artifacts.get(".AppImage"), 0o755);
+    command(candidate.artifacts.get(".AppImage"), ["--appimage-extract"], { cwd: extracted, stdio: "ignore" });
+    // Manually replace only our owned, stopped portable application directory.
+    assert.equal(openApps.size, 0);
+    fs.rmSync(portable, { recursive: true, force: true });
+    fs.renameSync(path.join(extracted, "squashfs-root"), portable);
+    await launch(path.join(portable, "AppRun"), kind, "read", candidate.manifest.version);
+  }
+  result.upgrade = { from: baseline.manifest.version, to: manifest.version, evidence: "Debian and extracted AppImage replacement retained threads, setting and unchanged encrypted credential", limitation: "same source with distinct package versions; historical schema migration and FUSE startup untested" };
   result.credentials = "production SecretStore libsecret encryption persisted across restart and package formats; basic_text refused new/overwrite writes and preserved ciphertext";
 } catch (error) { failure = error; }
 finally {

@@ -11,7 +11,7 @@
     "build:main": "node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && node scripts/copy-main-assets.mjs",
     "build:renderer": "vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs",
+    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs test/native-packages.test.mjs",
     "start": "electron .",
     "predev": "npm run build -w @modex/core && npm run build:main",
     "dev": "vite",

@@ -34,14 +34,13 @@ ciphertext, default app-data markers and unrelated data. The downloaded evidence
 matches GitHub's artifact digest. Forced process cleanup fails acceptance; existing
 installations and local/self-hosted execution are refused.
 
-Default Windows shell selection now treats environment names case-insensitively.
+Default Windows shell selection treats environment names case-insensitively.
 Regressions reproduce and fix the incorrect PowerShell fallback for `ComSpec`/`comspec`.
-The next installed smoke supplies ordinary `ComSpec` to exercise this fix in packaged
-Electron; the completed run above used uppercase `COMSPEC`. The first follow-up
-run stopped before packaging: Ctrl-C reached the test child, but the subsequent shell
-command timed out. The fixture now waits for child exit and a unique PowerShell prompt
-before sending that command; a delayed child exit exercises this handoff. Native
-verification of that change and the packaged mixed-case check remain pending.
+The [follow-up native run](https://github.com/TypeSafeAI/modex/actions/runs/38138984311)
+passed installed terminal use with ordinary `ComSpec`, DPAPI restart and uninstall.
+All fourteen Windows CLI/PTY checks passed. The Ctrl-C fixture now waits for child exit
+and a unique PowerShell prompt before sending the next command; a delayed child exit
+exercises the distinction between signal delivery and shell readiness.
 
 Linux GCC rejected unchecked terminal receipt writes in the
 [initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
@@ -54,17 +53,25 @@ then passed for Debian and extracted AppImage: verified hashes, packaged Electro
 and ASAR startup, real terminal input/output/cleanup, graceful app close, and Debian
 uninstall preserving recorded threads and unrelated data. Screenshots and runtime
 identity are retained in the `native-installed-linux` artifact. The runner reported
-`basic_text` with encryption unavailable. The next harness revision starts an owned
-GNOME Secret Service in a fresh D-Bus session and tests real libsecret encryption across
-restart and package formats. A separate `basic_text` launch must refuse new and overwrite
-writes, return no plaintext and preserve existing ciphertext. This revision is prepared;
-its hosted execution remains pending, as does KWallet acceptance. It explicitly selects
-libsecret with one keyring process across app restarts; automatic backend selection and
-keyring/session restart persistence are separate checks.
-Extracted AppImage execution does not establish FUSE startup. Encrypted credential persistence,
-distinct-version upgrades and full CLI/account acceptance remain required. The harness
-refuses local and self-hosted execution and fails acceptance if app shutdown needs forced
-termination.
+`basic_text` with encryption unavailable. The
+[credential acceptance run](https://github.com/TypeSafeAI/modex/actions/runs/38138984311)
+then passed real libsecret encryption across app restart and Debian/extracted AppImage,
+plus `basic_text` refusal of new and overwrite writes with existing ciphertext preserved.
+The probe file retained mode `0600`; uninstall retained threads, ciphertext and unrelated
+data. Downloaded Windows/Linux evidence archives match GitHub's artifact digests, and the
+tested merge tree matches the platform commit. The harness explicitly selected libsecret
+with one keyring process across app restarts. Automatic backend selection, keyring/session
+restart persistence and KWallet remain separate checks. Extracted AppImage execution does
+not establish FUSE startup.
+
+A hosted-only manual-upgrade harness is prepared. It builds a synthetic `0.0.0` baseline
+and the current version from the same source into separate directories, verifies both
+manifests, installs the baseline, and replaces it through NSIS/Debian or an extracted
+AppImage directory. Runtime versions, saved thread titles/settings, unchanged encrypted
+credentials and uninstall retention are asserted. Baselines are short-lived CI artifacts
+and are never published. This establishes distinct-version package replacement, not
+historical schema migration; execution is pending. Persisted composer draft acceptance
+belongs to the separate updater integration.
 
 Before release, collect native evidence for installed startup, packaged Electron addon
 and helper loading, CLI arguments and account/login launches, PTY input/resize/Ctrl-C,
@@ -78,7 +85,7 @@ Custom batch launchers are refused; recognized plain npm Node wrappers launch th
 Node entrypoint with unchanged arguments. Linux credentials require an encrypted storage
 backend and preserve existing files when storage is unavailable.
 
-Local verification for the isolated platform change: full monorepo build, 489 passing
+Local verification for the isolated platform change: full monorepo build, 493 passing
 tests, desktop typecheck, configuration validation and workflow lint. Twelve tests are
 skipped: eleven require Windows and one is the existing opt-in live Knowledge test. Strict
 Windows cross-compilation passes; the hosted results above provide the limited native

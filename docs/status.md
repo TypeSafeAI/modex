@@ -459,11 +459,11 @@ Roughly in the order they earn their place; none is scheduled.
    packaged terminal input/output/cleanup, graceful close and Debian uninstall with
    retained data passed. Hosted Windows NSIS install, packaged startup/terminal, DPAPI
    persistence across restart and uninstall retaining data also passed. Windows default
-   shell lookup now respects `ComSpec` casing, with regression tests passing and packaged
-   verification pending. A hosted Linux libsecret/restart and basic-text refusal harness
-   is prepared; its execution is pending. Complete CLI/account and Linux encrypted
-   credential acceptance, manual upgrades
-   and remaining installer lifecycle checks remain required. Windows/Linux updates remain manual.
+   shell lookup respects `ComSpec` casing, verified in the installed app. Linux libsecret
+   encryption across app restart/package formats and basic-text refusal retaining
+   ciphertext passed. A distinct-version manual-upgrade harness is prepared but unrun.
+   Complete CLI/account acceptance, remaining keyring variants and installer lifecycle
+   checks remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

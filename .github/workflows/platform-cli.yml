@@ -80,9 +80,23 @@ jobs:
         env:
           CSC_LINK: ""
           WIN_CSC_LINK: ""
+          MODEX_NATIVE_UPGRADE_ACCEPTANCE: "1"
         run: npm run ${{ matrix.package }} -w @modex/desktop
       - name: Record installer checksums and acceptance status
-        run: node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }}
+        run: |
+          node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }}
+          node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }} --baseline
+      - name: Preserve synthetic upgrade baselines (never release)
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-upgrade-baseline-${{ matrix.platform }}
+          path: |
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/Modex-*.exe
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/Modex-*.AppImage
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/Modex-*.deb
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/native-packages.json
+          if-no-files-found: error
+          retention-days: 1
       - name: Preserve candidate installers (acceptance still required)
         uses: actions/upload-artifact@v5
         with:

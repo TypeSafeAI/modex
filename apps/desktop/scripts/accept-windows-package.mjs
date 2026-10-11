@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { readNativePackages } from "./read-native-packages.mjs";
 
 // This script installs/removes a system package. It must never run on a developer host.
 assert.equal(process.platform, "win32", "Hosted Windows acceptance only");
@@ -20,27 +21,12 @@ assert.equal(path.basename(commandShell).toLowerCase(), "cmd.exe", "This smoke r
 const launchEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "COMSPEC"));
 const { _electron: electron } = await import("@playwright/test");
 const candidates = fileURLToPath(new URL("../release/native-win32/", import.meta.url));
-const manifest = JSON.parse(fs.readFileSync(path.join(candidates, "native-packages.json"), "utf8"));
-assert.equal(manifest.platform, "win32");
-assert.equal(manifest.arch, process.arch);
-assert.equal(manifest.sourceSha, process.env.GITHUB_SHA);
-assert.equal(manifest.runId, process.env.GITHUB_RUN_ID);
-assert.equal(manifest.installerAcceptance, "pending");
-const artifacts = new Map();
-for (const artifact of manifest.artifacts) {
-  assert.equal(path.basename(artifact.name), artifact.name);
-  const file = path.join(candidates, artifact.name);
-  assert.ok(fs.lstatSync(file).isFile());
-  assert.equal(fs.statSync(file).size, artifact.bytes);
-  const hash = createHash("sha256");
-  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
-  assert.equal(hash.digest("hex"), artifact.sha256);
-  const extension = path.extname(file);
-  assert.ok(!artifacts.has(extension), "Duplicate package type");
-  artifacts.set(extension, file);
-}
-assert.equal(artifacts.size, 1);
-assert.ok(artifacts.has(".exe"));
+const version = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+assert.notEqual(version, "0.0.0", "Upgrade needs distinct package versions");
+const expected = { platform: "win32", arch: process.arch, sourceSha: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID };
+const { manifest, artifacts } = await readNativePackages(candidates, { ...expected, version, baseline: false });
+const baseline = await readNativePackages(fileURLToPath(new URL("../release/native-win32-baseline/", import.meta.url)),
+  { ...expected, version: "0.0.0", baseline: true });
 // Fail before touching a registered installation, including a machine-wide one.
 const registryScript = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -100,7 +86,7 @@ const dataMarkers = defaultData.map(directory => {
 });
 const result = { schema: 1, sourceSha: manifest.sourceSha, runId: manifest.runId,
   platform: process.platform, arch: process.arch, terminalShell: commandShell, terminalEnvironmentKey: "ComSpec", launches: [], uninstall: "pending",
-  installerAcceptance: "pending", credentials: "pending", remaining: ["distinct-version upgrade", "complete CLI/account acceptance"] };
+  installerAcceptance: "pending", credentials: "pending", remaining: ["complete CLI/account acceptance"] };
 let installAttempted = false;
 const installedBinary = path.join(install, "Modex.exe");
 const uninstaller = path.join(install, "Uninstall Modex.exe");
@@ -142,7 +128,7 @@ async function closeApp(app) {
   }
 }
 
-async function launch(executablePath, kind, credentialAction) {
+async function launch(executablePath, kind, credentialAction, expectedVersion) {
   const app = await electron.launch({ executablePath, timeout: 30000,
     env: { ...launchEnv, ComSpec: commandShell, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1",
       TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(root, "no-jev-config") } });
@@ -161,6 +147,7 @@ async function launch(executablePath, kind, credentialAction) {
       encryptionAvailable: safeStorage.isEncryptionAvailable(),
     }));
     assert.equal(identity.packaged, true);
+    assert.equal(identity.version, expectedVersion, "Installed package version");
     assert.equal(identity.platform, "win32");
     assert.equal(identity.arch, "x64");
     assert.equal(identity.appPath, path.join(install, "resources", "app.asar"));
@@ -181,9 +168,18 @@ async function launch(executablePath, kind, credentialAction) {
     if (credentialAction === "write") encryptedHash = currentHash;
     else assert.equal(currentHash, encryptedHash, "Restart must read existing ciphertext unchanged");
     const invoke = (channel, payload) => page.evaluate(({ channel, payload }) => window.modex.invoke(channel, payload), { channel, payload });
+    const before = await invoke("state:get");
+    for (const previous of result.launches) {
+      const retained = before.threads.find(thread => thread.id === previous.threadId);
+      assert.equal(retained?.title, previous.threadTitle, "Saved thread title survived restart/upgrade");
+    }
+    if (result.launches.length) assert.equal(before.settings.default_mode, "plan", "Saved setting survived restart/upgrade");
+    else await invoke("settings:update", { default_mode: "plan" });
     const added = await invoke("project:add", { path: project });
     assert.ok(added?.id);
     const thread = await invoke("thread:create", { projectId: added.id, backend: "mock", auto: false });
+    const threadTitle = `Native acceptance ${kind}`;
+    await invoke("thread:update", { threadId: thread.id, patch: { title: threadTitle } });
     const terminal = await invoke("terminal:open", { threadId: thread.id, cols: 80, rows: 24 });
     const receipt = path.join(project, `${kind}.receipt`);
     const suffix = randomUUID();
@@ -195,7 +191,7 @@ async function launch(executablePath, kind, credentialAction) {
     await until(async () => (await invoke("terminal:open", { threadId: thread.id, cols: 80, rows: 24 })).output.includes(token), "packaged terminal output");
     await invoke("terminal:close", { threadId: thread.id, sessionId: terminal.sessionId });
     await page.screenshot({ path: path.join(evidence, `${kind}.png`) });
-    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, credentialAction });
+    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, threadTitle, credentialAction });
   } catch (error) { launchFailure = error; }
   finally {
     try { await closeApp(app); }
@@ -205,15 +201,23 @@ async function launch(executablePath, kind, credentialAction) {
 }
 try {
   installAttempted = true;
-  command(artifacts.get(".exe"), ["/S", "/currentuser", `/D=${install}`], { windowsVerbatimArguments: true });
+  command(baseline.artifacts.get(".exe"), ["/S", "/currentuser", `/D=${install}`], { windowsVerbatimArguments: true });
   assert.ok(fs.statSync(installedBinary).isFile());
   assert.ok(fs.statSync(uninstaller).isFile());
   const registered = registrations();
   assert.equal(registered.length, 1);
   assert.match(registered[0].PSPath, /HKEY_CURRENT_USER/i, "Per-user installation required");
   assert.ok(registered[0].UninstallString.toLowerCase().startsWith(`"${uninstaller.toLowerCase()}"`), "Registered uninstaller must belong to this installation");
-  await launch(installedBinary, "nsis-first", "write");
-  await launch(installedBinary, "nsis-restart", "read");
+  await launch(installedBinary, "nsis-baseline", "write", baseline.manifest.version);
+  assert.equal(openApps.size, 0);
+  command(artifacts.get(".exe"), ["/S", "/currentuser", `/D=${install}`], { windowsVerbatimArguments: true });
+  const upgraded = registrations();
+  assert.equal(upgraded.length, 1, "Upgrade must retain one registration");
+  assert.match(upgraded[0].PSPath, /HKEY_CURRENT_USER/i);
+  assert.ok(upgraded[0].UninstallString.toLowerCase().startsWith(`"${uninstaller.toLowerCase()}"`));
+  await launch(installedBinary, "nsis-upgraded", "read", manifest.version);
+  await launch(installedBinary, "nsis-restart", "read", manifest.version);
+  result.upgrade = { from: baseline.manifest.version, to: manifest.version, evidence: "NSIS replacement retained threads, setting and unchanged encrypted credential", limitation: "same source with distinct package versions; historical schema migration untested" };
   result.credentials = "production SecretStore encrypted with DPAPI; read across app restart without changing ciphertext";
 } catch (error) { failure = error; }
 finally {
