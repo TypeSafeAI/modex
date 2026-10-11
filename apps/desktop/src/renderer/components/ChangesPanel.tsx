@@ -6,10 +6,11 @@ import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
 
-interface Props { thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void }
+interface Props { visible: boolean; thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void }
+const compactCount = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 
 /** Review occupies a workspace tab; the diff and its file tree scroll independently. */
-export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
+export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: Props) {
   const [selection, setSelection] = useState<string | null>(null);
   const file = changes?.files.some((entry) => entry.path === selection) ? selection : changes?.files[0]?.path ?? null;
   const entry = changes?.files.find((entry) => entry.path === file);
@@ -21,11 +22,11 @@ export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
   const [highlight, setHighlight] = useState(true);
   const [wrap, setWrap] = useState(true);
   const [menu, setMenu] = useState(false);
-  const [branchMenu, setBranchMenu] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
-  const branchRef = useRef<HTMLButtonElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
+  const closeOptions = () => { setMenu(false); menuRef.current?.focus(); };
   useEffect(() => { setExpanded(false); }, [file]);
+  useEffect(() => { if (!visible) setMenu(false); }, [visible]);
   useEffect(() => {
     if (!file) return;
     let live = true;
@@ -44,32 +45,28 @@ export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
   }
   return <section className="review-panel" data-testid="changes-panel" aria-label="Review changes">
     <header className="review-toolbar">
-      <span className="workspace-menu-anchor">
-        <button className="review-branch" ref={branchRef} aria-haspopup="menu" aria-expanded={branchMenu} onClick={() => setBranchMenu(!branchMenu)}>Branch <Icon name="chevron-down" size={12} /></button>
-        <Menu open={branchMenu} anchorRef={branchRef} onClose={() => setBranchMenu(false)} label="Review scope" placement="bottom-start">
-          <MenuItem checkable selected onClick={() => setBranchMenu(false)}>Working tree against HEAD</MenuItem>
-        </Menu>
+      <span className="review-summary" title={`${changes?.branch ?? "Working tree"} · Changes against HEAD`}>
+        <Icon name="review" size={14} /><span>{changes?.branch ?? "Working tree"}</span>
       </span>
-      <span className="stat add">+{totals.a}</span><span className="stat del">-{totals.d}</span>
+      <span className="stat add" title={`${totals.a} additions`}>+{compactCount.format(totals.a)}</span><span className="stat del" title={`${totals.d} deletions`}>-{compactCount.format(totals.d)}</span>
+      <span className="review-count">{changes?.files.length ?? 0} {(changes?.files.length ?? 0) === 1 ? "file" : "files"}</span>
       <span className="spacer" />
       <div className="review-actions">
+        <IconButton icon="search" label="Filter changed files" onClick={() => { setTree(true); requestAnimationFrame(() => filterRef.current?.focus()); }} />
+        <IconButton icon="restart" label="Refresh changes" data-testid="changes-refresh" onClick={onRefresh} />
+        <IconButton icon="folder" label="Show file tree" className={tree ? "on" : ""} aria-pressed={tree} onClick={() => setTree(!tree)} />
         <span className="workspace-menu-anchor">
           <IconButton ref={menuRef} icon="more" label="Review options" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)} />
           <Menu open={menu} anchorRef={menuRef} onClose={() => setMenu(false)} label="Review options" placement="bottom-end">
-            <MenuItem toggle selected={expanded} onClick={() => { setExpanded(!expanded); setMenu(false); }}>Show all unchanged lines</MenuItem>
-            <MenuItem disabled={!file} onClick={() => { setMenu(false); if (file) void bridge.invoke("clipboard:write", { text: file }); }}>Copy file path</MenuItem>
-            <MenuItem disabled={!file} className="danger" onClick={() => { setMenu(false); if (file) onRevert(file); }}>Discard changes to file</MenuItem>
+            <MenuItem toggle selected={wrap} onClick={() => { setWrap(!wrap); closeOptions(); }}>Wrap lines</MenuItem>
+            <MenuItem toggle selected={highlight} onClick={() => { setHighlight(!highlight); closeOptions(); }}>Highlight changes</MenuItem>
+            <MenuItem toggle selected={expanded} onClick={() => { setExpanded(!expanded); closeOptions(); }}>Show all unchanged lines</MenuItem>
+            <MenuItem disabled={!file} onClick={() => { closeOptions(); if (file) void bridge.invoke("clipboard:write", { text: file }); }}>Copy file path</MenuItem>
+            <MenuItem disabled={!file} className="danger" onClick={() => { closeOptions(); if (file) onRevert(file); }}>Discard changes to file</MenuItem>
           </Menu>
         </span>
-        <IconButton icon="search" label="Filter changed files" onClick={() => { setTree(true); requestAnimationFrame(() => filterRef.current?.focus()); }} />
-        <IconButton icon="restart" label="Refresh changes" data-testid="changes-refresh" onClick={onRefresh} />
-        <IconButton icon="wrap" label="Wrap lines" aria-pressed={wrap} onClick={() => setWrap(!wrap)} />
-        <IconButton icon="fold" label="Show all unchanged lines" aria-pressed={expanded} onClick={() => setExpanded(!expanded)} />
-        <IconButton icon="diff-color" label="Highlight changes" aria-pressed={highlight} onClick={() => setHighlight(!highlight)} />
-        <IconButton icon="folder" label="Show file tree" className={tree ? "on" : ""} aria-pressed={tree} onClick={() => setTree(!tree)} />
       </div>
     </header>
-    <div className="review-base"><span>{changes?.branch ?? "Working tree"}</span><Icon name="arrow-right" size={13} /><span>HEAD</span><Icon name="chevron-down" size={12} /></div>
     {!changes ? <p className="hint pad" role="status">Loading…</p> : !changes.isRepo ? <p className="hint pad">Not a git repository — changes can't be tracked here.</p> : !changes.files.length ? <p className="hint pad">Working tree clean.</p> :
       <div className={`review-body${tree ? "" : " tree-hidden"}`}>
         <div className="review-diff" data-testid="changes-diff">

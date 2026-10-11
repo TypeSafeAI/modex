@@ -22,7 +22,7 @@ interface Props {
 
 export function Workspace({ thread, changes, onRefresh, onRevert, visible, onShow, onHide, suspended, terminal, onOpenTerminal, onHideTerminal, onFocusChat }: Props) {
   const streamerMode = useStreamerMode();
-  const [tabs, setTabs] = useState<Tab[]>(() => [makeTab(), { id: "review", kind: "review", title: "Review" }]);
+  const [tabs, setTabs] = useState<Tab[]>(() => [{ id: "review", kind: "review", title: "Review" }]);
   const [active, setActive] = useState(terminal ? "terminal" : "review");
   const [full, setFull] = useState(false);
   const [addMenu, setAddMenu] = useState(false);
@@ -64,7 +64,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     const next = tabs.filter((t) => t.id !== tab.id);
     if (!next.length) next.push(makeTab());
     setTabs(next);
-    if (active === tab.id) activate(next[Math.max(0, tabs.indexOf(tab) - 1)] ?? next[0]!);
+    const nextActive = active === tab.id ? next[Math.max(0, tabs.indexOf(tab) - 1)] ?? next[0]! : current;
+    if (active === tab.id) activate(nextActive);
+    requestAnimationFrame(() => document.getElementById(`workspace-tab-${nextActive.id}`)?.focus());
     if (tab.kind === "terminal") onHideTerminal();
   };
   useEffect(() => {
@@ -167,7 +169,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     <header className="workspace-tabbar">
       <div className="workspace-tabs" role="tablist" aria-label="Workspace tabs">
         {tabs.map((tab) => <div key={tab.id} className={`workspace-tab${tab.id === current.id ? " selected" : ""}`}>
-          <button role="tab" aria-selected={tab.id === current.id} aria-controls={`workspace-pane-${thread.id}`} tabIndex={tab.id === current.id ? 0 : -1} onClick={() => activate(tab)} onKeyDown={(e) => {
+          <button role="tab" aria-selected={tab.id === current.id} id={`workspace-tab-${tab.id}`} aria-controls={`workspace-pane-${thread.id}`} tabIndex={tab.id === current.id ? 0 : -1} onClick={() => activate(tab)} onKeyDown={(e) => {
             const at = tabs.indexOf(tab);
             const next = e.key === "ArrowRight" ? tabs[(at + 1) % tabs.length] : e.key === "ArrowLeft" ? tabs[(at + tabs.length - 1) % tabs.length] : e.key === "Home" ? tabs[0] : e.key === "End" ? tabs.at(-1) : undefined;
             if (next) { e.preventDefault(); activate(next); const buttons = container.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]'); buttons?.[tabs.indexOf(next)]?.focus(); }
@@ -186,9 +188,11 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       <IconButton icon="expand" label={full ? "Exit full view" : "Full view"} data-testid="workspace-full" aria-pressed={full} size="md" onClick={() => setFull(!full)} />
       <IconButton icon="tabs" label="Hide workspace" size="md" className="workspace-hide" onClick={onHide} />
     </header>
-    <div className="workspace-pane" id={`workspace-pane-${thread.id}`} role="tabpanel" aria-label={current.title}>
+    <div className="workspace-pane" id={`workspace-pane-${thread.id}`} role="tabpanel" aria-labelledby={`workspace-tab-${current.id}`}>
       {tabs.filter(tab => tab.kind === "canvas").map(tab => <CanvasPanel key={tab.id} id={tab.id} thread={thread} visible={visible && current.id === tab.id} suspended={suspended} full={full} />)}
-      {visible && current.kind === "review" && <ChangesPanel thread={thread} changes={changes} onRefresh={onRefresh} onRevert={onRevert} />}
+      {tabs.some((tab) => tab.kind === "review") && <div className="workspace-tool-pane" hidden={!visible || current.kind !== "review"}>
+        <ChangesPanel visible={visible && current.kind === "review"} thread={thread} changes={changes} onRefresh={onRefresh} onRevert={onRevert} />
+      </div>}
       {visible && current.kind === "files" && <FilesPanel key={thread.id} thread={thread} />}
       {visible && current.kind === "terminal" && terminal}
       {browserPage && <>
@@ -211,8 +215,6 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
               <button onClick={() => openTool("files")}><Icon name="files" size={16} /><span>Files</span><kbd>⌘P</kbd></button>
               <span className="workspace-menu-anchor"><button ref={toolsRef} aria-haspopup="menu" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><Icon name="grid" size={16} /><span>More tools...</span><Icon name="chevron-down" size={17} /></button><Menu open={toolsMenu} anchorRef={toolsRef} onClose={() => setToolsMenu(false)} label="More tools" placement="bottom-end"><MenuItem onClick={() => { setToolsMenu(false); void bridge.invoke("shell:openPath", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open project folder</MenuItem><MenuItem onClick={() => { setToolsMenu(false); void bridge.invoke("shell:openTerminal", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open external terminal</MenuItem></Menu></span>
             </div>
-            <h2 className="workspace-suggested-title">Suggested</h2>
-            <button className="workspace-suggestion" onClick={() => void browserCommand("navigate", "https://workspace.google.com/gmail/")}><span className="google-mark" aria-hidden="true">G</span><span>Gmail: Secure, AI-Powered Email for Everyone | Google Workspace</span></button>
           </div>}
       </>}
     </div>

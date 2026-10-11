@@ -23,12 +23,12 @@ const bounds = (a: ElectronApplication) => a.evaluate(({ BrowserWindow }) => Bro
 test("closed panels and the window's size and position survive a relaunch", async () => {
   await expect(tid(page, "sidebar")).toBeVisible();
   await createThread(page, "Layout check");
-  await expect(tid(page, "changes-panel")).toHaveCount(1);
+  await expect(tid(page, "changes-panel")).toBeVisible();
 
   // Hide both panels and move/resize the window (small enough for a CI runner's display).
   await tid(page, "changes-toggle").click();
   await tid(page, "sidebar-toggle").click();
-  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toBeHidden();
   await expect(tid(page, "sidebar")).toHaveCount(0);
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setBounds({ x: 40, y: 60, width: 960, height: 620 }));
   const before = await bounds(app);
@@ -38,7 +38,7 @@ test("closed panels and the window's size and position survive a relaunch", asyn
   ({ app, page } = await launch(home));
   await expect(tid(page, "thread-view")).toBeVisible();
   await expect(tid(page, "sidebar")).toHaveCount(0);
-  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toBeHidden();
   await expect(tid(page, "changes-toggle")).toHaveAttribute("aria-pressed", "false");
   expect(await bounds(app)).toEqual(before);
 
@@ -49,7 +49,7 @@ test("closed panels and the window's size and position survive a relaunch", asyn
   ({ app, page } = await launch(home));
   await expect(tid(page, "thread-view")).toBeVisible();
   await expect(tid(page, "sidebar")).toBeVisible();
-  await expect(tid(page, "changes-panel")).toHaveCount(1);
+  await expect(tid(page, "changes-panel")).toBeVisible();
 });
 
 test("a maximized window reopens maximized, and un-maximizes to its saved size", async () => {
