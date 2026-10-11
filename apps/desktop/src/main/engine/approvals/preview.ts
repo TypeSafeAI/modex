@@ -52,5 +52,6 @@ export async function previewApproval(raw: unknown, ctx: Context): Promise<Appro
   const result = await decide({ backend: req.backend, tool, title, cwd: project.path, escalation: req.escalation,
     ...(tool === "Bash" || tool === "command" ? { input: { command: title.replace(/^\$ /, "") } } : {}),
   }, { rules, config: { ...ctx.config, enabled: true }, project: { root: project.path, name: project.name }, mode: req.mode, transport, model });
-  return { ...result, ...(setupError ? { jevError: setupError, downgraded: result.downgraded ?? "jev-unavailable" } : {}), gateEnabled: ctx.config.enabled, jevAvailable: transport !== null };
+  // A judge that failed to resolve is reported by name rather than as "not configured".
+  return { ...result, ...(setupError ? { jevError: setupError } : {}), gateEnabled: ctx.config.enabled, jevAvailable: transport !== null };
 }

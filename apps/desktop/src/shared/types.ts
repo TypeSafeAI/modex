@@ -169,6 +169,13 @@ export interface ApprovalGateConfig {
 /** Off until the Settings UI ships; turning it on is a separate change. */
 export const DEFAULT_APPROVAL_GATE: ApprovalGateConfig = { enabled: false, threshold: 0.8, timeout_ms: 3000 };
 
+/**
+ * Why a rule's allow became an ask: the action asks for more sandbox access (`escalation`), Jev
+ * finds it destructive (`destructive`), the command chains or redirects commands (`compound`), or
+ * the digest clipped text Jev needed to judge it (`incomplete`).
+ */
+export type ApprovalDowngrade = "destructive" | "escalation" | "compound" | "incomplete";
+
 /** Why an approval was answered (or asked) by a rule rather than left to the user alone. */
 export interface ApprovalReceipt {
   /** `policy`: the thread's Always allow / YOLO setting answered it; `ruleId` is then "policy:<policy>". */
@@ -181,7 +188,10 @@ export interface ApprovalReceipt {
   ms: number;
   /** Jev's probability that the action is destructive, when Jev was asked. */
   destructive?: number;
-  downgraded?: "destructive" | "escalation" | "jev-unavailable";
+  /** `jev-unavailable` appears only on receipts written before `jevNotConsulted` existed. */
+  downgraded?: ApprovalDowngrade | "jev-unavailable";
+  /** The gate needed Jev (language rules, or the destructive check on an allow) but could not consult it. */
+  jevNotConsulted?: true;
 }
 
 /** A dry run against the rule draft. No action is executed or recorded. */
@@ -202,7 +212,8 @@ export interface ApprovalPreview {
   p?: number;
   ms: number;
   destructive?: number;
-  downgraded?: ApprovalReceipt["downgraded"];
+  downgraded?: ApprovalDowngrade;
+  jevNotConsulted?: true;
   jevError?: string;
   gateEnabled: boolean;
   jevAvailable: boolean;

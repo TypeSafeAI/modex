@@ -46,6 +46,14 @@ the chance it is destructive at 0.5 or higher. An allow is always one approval, 
 session-wide “Always”. If Jev is missing, times out, or returns invalid answers, only exact
 matches can decide; otherwise Modex asks you. Stopping a pending judgment refuses it.
 
+An allow covers one command. A command line that chains, pipes, redirects or substitutes
+commands (`;`, `&&`, `||`, `|`, `&`, a backtick, `$(`, `<`, `>`, or a line break) asks
+instead. The check does not parse shell quoting, so `grep "a|b"` asks too. A command longer
+than the 500 characters Jev is shown also asks, because Jev judged only part of it. Always
+allow does not override either. When Jev was needed but is not configured or did not answer,
+the receipt says Jev was not consulted. For exact matches, prefer the pair `npm test` and
+`npm test *` over `npm test*`, which also matches `npm testify`.
+
 Automatic allows and refusals leave compact, expandable transcript receipts. Expand one to
 see the request, rule, source, timing and safety context. An ask keeps the normal approval
 card and explains the rule or downgrade that sent it to you. Old cards still render normally.

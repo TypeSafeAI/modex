@@ -496,6 +496,8 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
+  A follow-up makes an allow ask when the command chains or redirects commands or is longer
+  than the text Jev sees, and makes receipts say when Jev was not consulted.
 - **Retired worktrees.** None from this list awaits a disposition. All six were retired after
   their work landed, and their uncommitted work or unique commits were saved as patches outside
   the repository first.
