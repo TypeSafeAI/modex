@@ -56,6 +56,9 @@
   "build": {
     "appId": "ai.typesafe.modex",
     "productName": "Modex",
+    "protocols": [
+      { "name": "Modex Desktop Host", "schemes": ["modex-host"] }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -79,6 +82,7 @@
     "mac": {
       "extendInfo": {
         "ModexDesktopHostProtocol": 1,
+        "ModexDesktopHostLaunchProtocol": 1,
         "NSLocalNetworkUsageDescription": "Let your paired iPhone find and reconnect to Modex on this Mac.",
         "NSBonjourServices": [
           "_modex._tcp"

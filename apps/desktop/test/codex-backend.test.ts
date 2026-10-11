@@ -541,7 +541,10 @@ test("disposing Codex terminates commands owned by its app-server", { skip: proc
   let server: ChildProcess | undefined;
   let workerPid: number | undefined;
   const backend = new CodexBackend("fixture", ((_bin: string, _args: string[], options: SpawnOptions) => server = spawn(process.execPath, ["-e", script], options)) as unknown as typeof spawn);
-  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const alive = (pid: number) => {
+    assert.ok(Number.isSafeInteger(pid) && pid > 1, "expected a fixture process ID");
+    try { process.kill(pid, 0); return true; } catch { return false; }
+  };
   try {
     await backend.listModels();
     for (let i = 0; i < 100; i++) {

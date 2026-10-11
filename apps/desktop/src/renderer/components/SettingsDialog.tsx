@@ -47,6 +47,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]')).filter((el) => el.getClientRects().length > 0 && !el.closest("[inert]"));
     (controls()[0] ?? dialog).focus();
     const onKey = (event: KeyboardEvent) => {
+      if (dialog.closest("[inert]")) return;
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

@@ -41,3 +41,20 @@ export async function discoverDesktops(directory: string): Promise<DiscoveredDes
   }));
   return results.filter((host): host is DiscoveredDesktop => !!host);
 }
+
+/** Cache a resolved group path only; installations and running records can change while open. */
+export function createDesktopDiscovery(source: {
+  directory(): Promise<string | undefined>;
+  installed(): Promise<string | undefined>;
+  running(directory: string): Promise<DiscoveredDesktop[]>;
+}) {
+  let directory: string | undefined;
+  const running = async () => {
+    directory ??= await source.directory().catch(() => undefined);
+    return directory ? source.running(directory) : [];
+  };
+  return { running, async check() {
+    const [hosts, installed] = await Promise.all([running(), source.installed().catch(() => undefined)]);
+    return { hosts, installed };
+  } };
+}
