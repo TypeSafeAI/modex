@@ -144,9 +144,10 @@ manifest and installed-app result identities/hashes, and publication of those ex
 accepted installers. Synthetic baseline packages must never be release assets. Windows
 remains unsigned and Windows/Linux updates manual. No platform release has been published.
 
-The reconciled candidate on main `42223e2d` passed a fresh dependency install, full
+The candidate reconciled against main `42223e2d` passed a fresh dependency install, full
 monorepo build, all workspace typechecks, 805 unit tests (12 Windows-native skips on
 macOS), 234 desktop E2E tests and seven site E2E tests. Real Knowledge coverage was
 enabled. All 506 tracked files stayed unchanged through the gate. Independent review
-confirmed the current Canvas, browser, attachment and macOS packaging behavior was
-preserved. Fresh hosted acceptance on this integrated source is still required.
+confirmed current Canvas, browser and attachment source and macOS packaging
+configuration were retained. Fresh hosted acceptance on this integrated source is
+still required.
