@@ -67,18 +67,24 @@ browser and stays separate from Modex. The native account chooser remains availa
 supported browser authentication flows. Navigating the initiating frame or any ancestor
 permanently cancels its pending selection; navigation in an unrelated sibling does not.
 
+Streamer Mode masks recognized secrets in Modex's native login, passkey-account, and
+extension-approval dialog labels. Each dialog uses the current mode when it is presented;
+unreadable mode state keeps those labels masked. Selections, filled credentials, installed
+extension bytes, and site permissions stay unchanged.
+
 ## Acceptance still required
 
 Automated tests use controlled HTTPS pages and a fake `op` executable. They cover fill and
 cancellation behavior, extension isolation, and absence of credentials from the app DOM and
 saved state. They do not prove real 1Password unlock or human biometric acceptance.
 
-A controlled development-build check through the installed 1Password CLI 2.39.0 passed
-native Login selection, production filling without submission, scoped leak checks, and
-cleanup of the temporary Login. It used an intercepted HTTPS origin and did not observe a
-fresh biometric gesture. A renewed check after UI integration stopped before Modex launch
-because the CLI could not connect to 1Password; fixture creation and cleanup remain
-unconfirmed. The credential source and emitted code still match the earlier passed check.
+A controlled check of the final integrated development build through installed
+1Password CLI 2.39.0 passed actual native Login selection, production filling without
+submission, scoped leak checks, and exact temporary Login cleanup. Source and build
+hashes remained unchanged from the verified build, including BrowserTools and its shared
+Streamer matcher. The check used intercepted HTTPS and did not establish public TLS,
+real-site compatibility, normal signed-app behavior, live cancellation, or a fresh
+biometric gesture.
 See the [acceptance report](reviews/2026-10-11-browser-credential-acceptance.md) for the exact
 evidence and limits.
 

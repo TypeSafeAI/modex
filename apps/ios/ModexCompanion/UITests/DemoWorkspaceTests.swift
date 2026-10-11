@@ -2,6 +2,51 @@ import XCTest
 
 /// Runs without a Mac or fixture: the path App Review follows from the welcome screen.
 final class DemoWorkspaceTests: XCTestCase {
+    // An exhausted observation budget reproduces a slow accessibility read without sleeps or UI.
+    func testTypedObservationAcceptsTerminalMatch() {
+        var reads = 0
+        let result = observeTypedText("Review from phone", timeout: 0) {
+            reads += 1
+            return reads == 1 ? "Review" : "Review from phone"
+        }
+        XCTAssertTrue(result.matches)
+        XCTAssertEqual(result.value, "Review from phone")
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testTypedObservationRejectsTerminalMismatch() {
+        var reads = 0
+        let result = observeTypedText("Review from phone", timeout: 0) {
+            reads += 1
+            return reads == 1 ? "Review" : "Still incomplete"
+        }
+        XCTAssertFalse(result.matches)
+        XCTAssertEqual(result.value, "Still incomplete")
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testTypedObservationRejectsMissingValue() {
+        var reads = 0
+        let result = observeTypedText("Review from phone", timeout: 0) {
+            reads += 1
+            return nil
+        }
+        XCTAssertFalse(result.matches)
+        XCTAssertNil(result.value)
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testTypedObservationAcceptsImmediateMatchOnce() {
+        var reads = 0
+        let result = observeTypedText("Review from phone", timeout: 0) {
+            reads += 1
+            return "Review from phone"
+        }
+        XCTAssertTrue(result.matches)
+        XCTAssertEqual(result.value, "Review from phone")
+        XCTAssertEqual(reads, 1)
+    }
+
     func testDemoWorkspaceNeedsNoMac() {
         continueAfterFailure = false
         let prompts = answerSystemAlertsDuringActions()

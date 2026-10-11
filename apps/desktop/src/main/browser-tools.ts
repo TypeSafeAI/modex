@@ -1,9 +1,10 @@
-import { dialog, session, shell, type BrowserWindow } from "electron";
+import { dialog, session, shell, type BrowserWindow, type MessageBoxOptions } from "electron";
 import path from "node:path";
 import { BrowserExtensions, inspectExtension } from "./engine/browser-extensions.js";
 import { fillFrom1Password, read1Password } from "./engine/browser-credentials.js";
 import { allowedBrowserURL, WORKSPACE_BROWSER_PARTITION, type BrowserToolsSnapshot } from "../shared/browser.js";
 import type { WorkspaceBrowser } from "./workspace-browser.js";
+import { redactSecrets } from "../shared/streamer-secrets.js";
 
 export class BrowserTools {
   private extensions: BrowserExtensions;
@@ -24,11 +25,11 @@ export class BrowserTools {
           if (!allowedBrowserURL(url) || !details.accounts.length || details.accounts.length > 12) return;
           isCurrent = owner.browser.frameGuard(frame);
           const accounts = [...details.accounts];
-          const result = await dialog.showMessageBox(owner.window, {
+          const result = await this.showMessageBox(owner.window, {
             type: "question", title: "Sign in with a passkey", message: `Choose an account for ${details.relyingPartyId}`,
             detail: `Requested by ${new URL(url).origin}`,
             buttons: ["Cancel", ...accounts.map(account => (account.displayName || account.name || "Saved account").slice(0, 100))], defaultId: 0, cancelId: 0, noLink: true,
-          });
+          }, isCurrent);
           if (!owner.window.isDestroyed() && isCurrent()) selected = accounts[result.response - 1]?.credentialId;
         } catch { /* Native frame access and closing the window can both cancel setup. */ }
         finally {
@@ -37,6 +38,31 @@ export class BrowserTools {
         }
       })();
     });
+  }
+  private async showMessageBox(window: BrowserWindow, options: MessageBoxOptions, isCurrent = () => true) {
+    let mask = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const contents = window.webContents;
+      if (!window.isDestroyed() && !contents.isDestroyed() && !contents.isLoadingMainFrame()) {
+        const frame = contents.mainFrame;
+        // Read only the trusted app's current display state, never a guest or request flag.
+        const mode = await Promise.race([
+          frame.executeJavaScript('document.querySelector(".app")?.getAttribute("data-streamer-mode")'),
+          new Promise(resolve => { timer = setTimeout(() => resolve(undefined), 250); }),
+        ]);
+        if (!window.isDestroyed() && !contents.isDestroyed() && !contents.isLoadingMainFrame()
+          && contents.mainFrame === frame && !frame.isDestroyed()) mask = mode !== "false";
+      }
+    } catch { /* Unavailable app state keeps native labels masked. */ }
+    finally { if (timer !== undefined) clearTimeout(timer); }
+    if (window.isDestroyed()) throw new Error("Browser unavailable.");
+    if (!isCurrent()) throw new Error("The page changed. Select an account again on the current page.");
+    return dialog.showMessageBox(window, mask ? {
+      ...options, message: redactSecrets(options.message),
+      ...(options.detail === undefined ? {} : { detail: redactSecrets(options.detail) }),
+      ...(options.buttons === undefined ? {} : { buttons: options.buttons.map(redactSecrets) }),
+    } : options);
   }
   async restore(): Promise<void> {
     try { await this.extensions.restore(); }
@@ -53,7 +79,7 @@ export class BrowserTools {
       const picked = await dialog.showOpenDialog(owner.window, { title: "Add a custom browser extension", buttonLabel: "Review extension", properties: ["openDirectory"] });
       if (picked.canceled || !picked.filePaths[0]) return this.snapshot();
       const candidate = await inspectExtension(picked.filePaths[0]);
-      const answer = await dialog.showMessageBox(owner.window, {
+      const answer = await this.showMessageBox(owner.window, {
         type: "question", title: "Add browser extension", message: `Add ${candidate.name} ${candidate.version}?`,
         detail: `This extension can read and change page data, including login fields, on:\n\n${candidate.sites.join("\n")}\n\nIt runs only in the workspace browser. Install only code you trust.`,
         buttons: ["Cancel", "Add extension"], defaultId: 0, cancelId: 0, noLink: true,
@@ -78,11 +104,11 @@ export class BrowserTools {
     try {
       target = await owner.browser.credentialTarget(id);
       return await fillFrom1Password(target, { read: read1Password, choose: async (logins, origin) => {
-        const result = await dialog.showMessageBox(owner.window, {
+        const result = await this.showMessageBox(owner.window, {
           type: "question", title: "Fill with 1Password", message: `Choose a login for ${origin}`,
           detail: "Fill this page's login fields without submitting the form.",
           buttons: ["Cancel", ...logins.map(login => login.title)], defaultId: 0, cancelId: 0, noLink: true,
-        });
+        }, () => target!.isCurrent());
         return result.response === 0 ? undefined : result.response - 1;
       } });
     } finally {

@@ -373,32 +373,26 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
   holds a half-open connection and requires `dispose()` to return promptly.
 - **Browser extensions and document-bound 1Password filling.** The workspace browser
-  keeps a persistent session of its own. Its gear installs approved copies of unpacked
-  Manifest V3 extensions limited to page scripts and styles on named HTTPS sites (no
-  background, native messaging or host APIs); tampered copies fail closed on launch.
-  **Page options → Fill with 1Password** lists exact-origin logins through the local
-  1Password CLI, reads one item only after it is chosen, and fills visible login fields
-  without submitting. The selected guest receives the fields; matching approved extensions
-  can read them. Credentials are not returned through Modex app-bridge IPC or stored in the
-  app renderer, transcripts, or error messages. A request is prepared before vault reads
-  and consumed in one synchronous isolated-world fill;
-  loading, replaced, cached, and navigated documents fail closed. Frame and ancestor
-  navigation permanently cancels native passkey selections, while sibling navigation does
-  not. Device Touch ID stays disabled and its restricted keychain group is absent from
-  default artifacts; signed binaries alone do not authorize it. Passkeys use **Open in
-  system browser**. Controlled HTTPS/fake-CLI regressions cover document cancellation,
-  package restrictions, approved-copy integrity, chooser callbacks, and extension isolation.
-  Combined integration passed build, typecheck, 670 unit tests (one optional skip),
-  213 desktop E2E tests, seven site tests, and whole SPEC/QUALITY review. The actual #157
-  squash has the exact tested candidate tree. A controlled development-build check through
-  the real 1Password CLI 2.39.0 passed no-submit filling, scoped leak checks, and exact
-  temporary Login cleanup. All ten credential source/build hashes still match that pass.
-  A renewed check stopped before Modex launch because the 1Password desktop connection
-  timed out; its fixture creation result is uncertain and cleanup is not confirmed. Restore
-  that connection before exact fixture lookup/cleanup and renewed integrated acceptance.
-  Normal signed-app unlock and cancellation remain release gates; no fresh biometric
-  gesture was observed. Device Touch ID needs a separate provisioned enabling patch and
-  real signed create/get acceptance.
+  installs approved copies of restricted Manifest V3 page scripts/styles in its own
+  persistent session; tampered copies fail closed. **Page options → Fill with 1Password**
+  lists exact-origin Logins through the local CLI, reads only the selected item, and fills
+  visible top-frame fields without submitting. Requests are bound to the initiating
+  document; loading, navigation, replacement, cache entry, and closure cancel them.
+  Native passkey selection tracks the initiating frame and ancestors, while sibling
+  navigation stays independent. Streamer Mode masks recognized secrets in native
+  login/passkey/extension labels without changing selections, credentials, package bytes,
+  sites, or digests. The selected guest and matching approved extensions can read filled
+  fields; credentials are not returned through Modex app-bridge IPC or stored in the app
+  renderer, transcripts, or errors.
+  Final integrated verification passed SPEC/QUALITY, build, all-workspace typecheck,
+  **700 unit tests (zero skips), 221 desktop E2E tests, and seven site tests**, with real
+  OpenKnowledge enabled. A controlled real 1Password CLI 2.39.0 check on that unchanged
+  development build passed actual native selection, no-submit filling, scoped leak checks,
+  and exact temporary Login cleanup. Normal signed-app unlock/cancellation, public TLS,
+  real-site compatibility, and fresh biometric acceptance remain release gates. Device
+  Touch ID stays disabled and its restricted keychain group is absent from default
+  artifacts; enablement needs a separate provisioned patch and real signed create/get
+  acceptance. Passkeys can use **Open in system browser**.
   [Acceptance evidence](reviews/2026-10-11-browser-credential-acceptance.md) and
   [usage and gates](browser-tools.md).
 

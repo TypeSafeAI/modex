@@ -5,6 +5,14 @@ import { createThread, launch, resizeWindow, seedHome, tid } from "./support";
 
 const chips = (page: Page) => tid(tid(page, "composer-attachments"), "attachment-chip");
 async function drop(page: Page, names: string[]) {
+  await expect(tid(page, "composer-input")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([], "ready.md", { type: "text/plain" }));
+    const event = new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }), { message: "Composer must accept file drags before dropping files" }).toBe(true);
   await page.evaluate(names => {
     const dt = new DataTransfer();
     for (const name of names) dt.items.add(new File([`bytes:${name}`], name, { type: "text/plain" }));
@@ -39,6 +47,53 @@ async function switchProject(page: Page, projectId: string) {
   await page.locator(`[data-testid="draft-project-option"][data-project-id="${projectId}"]`).click();
   await expect(tid(page, "draft-view")).toHaveAttribute("data-project-id", projectId);
 }
+
+test("drop waits for startup state and stages its file exactly once", async ({}, testInfo) => {
+  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const staging = path.join(home, "attachments", "staging");
+  const stagedFiles = () => fs.existsSync(staging) ? fs.readdirSync(staging) : [];
+  let dropping: Promise<void> | undefined;
+  try {
+    await expect(tid(page, "composer-input")).toBeVisible();
+    await hold(app, "state:get");
+    await app.evaluate(({ ipcMain }) => {
+      const ipc = ipcMain as typeof ipcMain & { _invokeHandlers: Map<string, (...args: unknown[]) => unknown> };
+      const original = ipc._invokeHandlers.get("attachments:stage")!;
+      let calls = 0;
+      Object.assign(globalThis, { attachmentStageCalls: () => calls });
+      ipcMain.removeHandler("attachments:stage");
+      ipcMain.handle("attachments:stage", (...args) => { calls++; return original(...args); });
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect.poll(() => pending(app)).toBe(1);
+    await expect(tid(page, "composer-input")).toHaveCount(0);
+    await page.evaluate(() => {
+      let drops = 0;
+      window.addEventListener("drop", () => { drops++; });
+      Object.assign(window, { attachmentDropCount: () => drops });
+    });
+    const dropCount = () => page.evaluate(() => (window as unknown as { attachmentDropCount: () => number }).attachmentDropCount());
+    const stageCalls = () => app.evaluate(() => (globalThis as unknown as { attachmentStageCalls: () => number }).attachmentStageCalls());
+    dropping = drop(page, ["startup.md"]);
+    void dropping.catch(() => {}); // Cleanup can close the page while the helper is still waiting.
+    // This renderer round trip runs after the old helper's raw drop, with state still held.
+    const beforeRelease = { drops: await dropCount(), stageCalls: await stageCalls(), files: stagedFiles() };
+    await testInfo.attach("held-startup-state", { body: JSON.stringify(beforeRelease), contentType: "application/json" });
+    await release(app);
+    await dropping;
+    await expect(chips(page)).toHaveCount(1);
+    await expect(chips(page).first()).toContainText("startup.md");
+    expect(beforeRelease).toEqual({ drops: 0, stageCalls: 0, files: [] });
+    expect(await dropCount()).toBe(1);
+    expect(await stageCalls()).toBe(1);
+    expect(stagedFiles()).toHaveLength(1);
+    expect(fs.readFileSync(path.join(staging, stagedFiles()[0]!), "utf8")).toBe("bytes:startup.md");
+  } finally {
+    await app.close();
+    await dropping?.catch(() => {});
+    fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
 
 test("Space visualization appends to the active project's attachment draft", async () => {
   const { home, repo } = seedHome({ theme: "graphite" }); addSecondProject(home);
