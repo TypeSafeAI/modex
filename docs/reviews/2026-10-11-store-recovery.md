@@ -74,11 +74,14 @@ Escape, and Enter; human keyboard-only and VoiceOver acceptance remain unverifie
 
 The [signed current-account receipt](2026-10-11-store-signed-acceptance.md) records passed real
 Codex and Claude turns, Store Stop ending a real Claude task, and saved-access relaunch of
-the unchanged signed candidate with an isolated runtime keychain name. This does not prove
+the unchanged signed candidate with an isolated runtime keychain name. The bounded follow-up
+kept the same Store process and exact unsent draft through host restart, verified native
+revocation and saved-credential removal, then observed matching codes, Allow, and reconnection.
+All disposable host grants were revoked afterward. These current-account checks do not prove
 installed-app credential migration or fresh-user setup.
 
-Signed reconnect with a retained draft, revocation, fresh-user setup, native installed-host
-auto-launch, and sleep/wake remain open. No fresh macOS account was available for this run.
+Fresh-user setup, native installed-host auto-launch, and sleep/wake remain open. No fresh
+macOS account was available for this run.
 Apple distribution and the complete Store parity matrix remain separate gates. Attachments
 remain excluded from Store; this change does not alter PR #157 or perform Apple writes,
 submission, release, or installed-app mutation.
