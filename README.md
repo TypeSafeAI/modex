@@ -47,7 +47,7 @@ modex/
   ceiling, daily premium-turn budget, confidence floor). Every turn gets a one-line receipt
   explaining the pick; picking a model by hand teaches Auto your preference for that kind of
   task. The key is pasted into Settings (kept in the OS keychain, never in a build) or
-  shared with the [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
+  shared with the unofficial [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
   directly when it is installed. The coding turn itself still runs only through the
   CLIs. See [docs/auto-routing.md](docs/auto-routing.md).
 - **Settings you can verify.** Separate sections keep general defaults, coding CLIs,
