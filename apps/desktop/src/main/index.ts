@@ -1,3 +1,5 @@
+import { WorkspaceCanvas } from "./workspace-canvas.js";
+import { CANVAS_SCHEME } from "../shared/canvas.js";
 import { KnowledgeService } from "./engine/knowledge.js";
 import { PagesAgents } from "./engine/pages-agents.js";
 import { KnowledgeAgents } from "./engine/knowledge-agents.js";
@@ -7,7 +9,7 @@ import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, safeStorage, screen, Menu, MenuItem, protocol } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -86,6 +88,8 @@ const updates = new ReleaseChecker({
   enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
 });
 let win: BrowserWindow | null = null;
+protocol.registerSchemesAsPrivileged([{ scheme: CANVAS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+let workspaceCanvas: WorkspaceCanvas | null = null;
 let workspaceBrowser: WorkspaceBrowser | null = null;
 let knowledgeBrowser: WorkspaceBrowser | null = null;
 let knowledgeURL: string | null = null;
@@ -166,6 +170,17 @@ const terminals = new TerminalManager(
   // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
 );
+
+handle("canvas:open", ({ id, threadId, path }) => {
+  if (!workspaceCanvas) throw new Error("Canvas unavailable.");
+  return workspaceCanvas.open(id, cwdFor(threadId), path);
+}, { localOnly: true });
+handle("canvas:state", ({ id, reload }) => {
+  if (!workspaceCanvas) throw new Error("Canvas unavailable.");
+  return workspaceCanvas.state(id, reload);
+}, { localOnly: true });
+handle("canvas:show", ({ id, bounds, fullView }) => workspaceCanvas?.show(id, bounds, fullView), { localOnly: true });
+handle("canvas:close", ({ id }) => workspaceCanvas?.close(id), { localOnly: true });
 
 handle("browser:command", ({ id, action, url }) => {
   if (!workspaceBrowser) throw new Error("Browser unavailable.");
@@ -388,6 +403,10 @@ function createWindow(): BrowserWindow {
     // destruction. Late macOS notifications must not reopen an error dialog on quit.
     for (const event of ["show", "hide", "minimize", "maximize", "restore"] as const) w.removeAllListeners(event);
   });
+  let canvas = new WorkspaceCanvas(w);
+  workspaceCanvas = canvas;
+  w.webContents.on("did-start-navigation", () => { canvas.dispose(); canvas = new WorkspaceCanvas(w); workspaceCanvas = canvas; });
+  w.on("closed", () => { canvas.dispose(); if (workspaceCanvas === canvas) workspaceCanvas = null; });
   const browser = new WorkspaceBrowser(w);
   workspaceBrowser = browser;
   const knowledgeView = new WorkspaceBrowser(w, {

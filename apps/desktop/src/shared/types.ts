@@ -1,3 +1,4 @@
+import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 /** Types shared between the Electron main process and the React renderer. */
@@ -488,6 +489,10 @@ export interface BridgeCommands {
   "terminal:close": { req: { threadId: string; sessionId: string }; res: void };
   "changes:status": { req: { threadId: string }; res: ChangesSnapshot };
   "changes:diff": { req: { threadId: string; path: string; original?: string; fullContext?: boolean }; res: string };
+  "canvas:open": { req: { id: string; threadId: string; path: string }; res: CanvasSnapshot };
+  "canvas:state": { req: { id: string; reload?: boolean }; res: CanvasSnapshot };
+  "canvas:show": { req: { id: string | null; bounds?: BrowserBounds; fullView?: boolean }; res: void };
+  "canvas:close": { req: { id: string }; res: void };
   "browser:command": { req: { id: string; action: "navigate" | "back" | "forward" | "reload" | "state" | "close"; url?: string }; res: BrowserSnapshot | null };
   "browser:show": { req: { id: string | null; bounds?: BrowserBounds; fullView?: boolean }; res: void };
   "files:list": { req: { threadId: string }; res: { paths: string[]; truncated: boolean } };
