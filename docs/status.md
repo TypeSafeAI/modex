@@ -571,19 +571,21 @@ Roughly in the order they earn their place; none is scheduled.
 1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
 2. **Windows and Linux installers.** Native x64 NSIS, AppImage and Debian candidates are
    implemented in #173. Windows installers remain unsigned by Val's choice; macOS signing
-   remains required, and Windows/Linux updates remain manual. The isolated platform source
-   at `8352566` passed [native acceptance](https://github.com/TypeSafeAI/modex/actions/runs/38147564357):
-   sixteen Windows CLI/PTY checks, three NSIS launches, eight Linux package launches and
-   three KWallet5 launches. These cover owned process cleanup, packaged startup/terminal,
-   DPAPI/libsecret/KWallet5 retention, package replacement and uninstall retention. Actual
-   AppImage FUSE mounting and owned keyring-daemon restart passed. Installed Codex/Claude
-   probes verify discovery and versions only; provider-account behavior, KWallet6/full
-   graphical login coverage and final integrated-tree acceptance remain outstanding.
-   Synthetic upgrades use the same source at two versions and do not prove historical
-   schema migration. Candidate Actions artifacts are not releases: the current release
-   workflow uploads only macOS artifacts. The reconciled source passed fresh build/typecheck,
-   805 unit tests (12 Windows-native skips), 234 desktop and seven site E2E tests; fresh
-   hosted acceptance remains required. See [native-platforms.md](native-platforms.md).
+   remains required, and Windows/Linux updates remain manual. The integrated candidate
+   at `23ac60b` passed [native acceptance](https://github.com/TypeSafeAI/modex/actions/runs/38166464728):
+   sixteen Windows CLI/PTY checks, six process-cleanup cycles, three NSIS launches, eight
+   Linux package launches and three KWallet5 launches. Evidence archives and the tested
+   merge tree were verified against that exact head. These cover packaged startup/terminal,
+   DPAPI/libsecret/KWallet5 retention, AppImage FUSE mounting, owned keyring-daemon restart,
+   package replacement and uninstall retention. Installed Codex/Claude probes establish
+   discovery and versions only; provider-account behavior and KWallet6/full graphical login
+   remain unproven. Synthetic same-source upgrades do not prove historical schema migration.
+   Candidate Actions artifacts are not releases: the release workflow uploads only macOS
+   artifacts. The integrated candidate passed 234 desktop and seven site E2E tests. A later
+   iPhone test setup correction now resets saved pairing before opening the demo; a native
+   failing/passing reproduction and all 33 native unit plus 28 UI tests passed. Fresh
+   build/typecheck and 805 unit tests (12 Windows-native skips) passed after that correction;
+   hosted acceptance of the follow-up remains required. See [native-platforms.md](native-platforms.md).
 3. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

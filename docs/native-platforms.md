@@ -149,5 +149,21 @@ monorepo build, all workspace typechecks, 805 unit tests (12 Windows-native skip
 macOS), 234 desktop E2E tests and seven site E2E tests. Real Knowledge coverage was
 enabled. All 506 tracked files stayed unchanged through the gate. Independent review
 confirmed current Canvas, browser and attachment source and macOS packaging
-configuration were retained. Fresh hosted acceptance on this integrated source is
-still required.
+configuration were retained.
+
+Fresh [native acceptance at `23ac60b`](https://github.com/TypeSafeAI/modex/actions/runs/38166464728)
+passed both platforms. Sixteen Windows CLI/PTY tests and six cleanup cycles passed, along
+with three NSIS launches, eight Linux package launches and three KWallet5 launches.
+Five downloaded evidence archives matched GitHub digests. Both installed reports and
+checkout logs identify test merge `705622af`, whose tree equals head `23ac60b` and whose
+parents are that head and main `42223e2d`. The hosted harness checked installer hashes;
+the independent local audit downloaded evidence archives, not the full installer archives.
+
+One push iPhone run on that head failed with a keyboard/gesture stall, then a demo setup
+failure caused by the saved pairing it left behind; the other iPhone run passed. A narrow
+follow-up now resets to welcome before both demo entry paths. On a disposable simulator,
+the original Back test failed with a real saved pairing and the corrected test passed;
+all 33 native unit and 28 UI tests then passed without skips. The follow-up also passed
+build, typecheck and 805 unit tests (12 Windows-native skips). This fixes test setup and
+does not claim to fix the earlier keyboard stall. Fresh hosted gates for the follow-up
+remain required before merging.
