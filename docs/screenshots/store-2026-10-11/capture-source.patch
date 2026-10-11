@@ -1,0 +1,263 @@
+diff --git a/apps/desktop/src/main/engine/companion-discovery.ts b/apps/desktop/src/main/engine/companion-discovery.ts
+index 0ef2227..2a1443f 100644
+--- a/apps/desktop/src/main/engine/companion-discovery.ts
++++ b/apps/desktop/src/main/engine/companion-discovery.ts
+@@ -9 +9 @@ export const publishCompanion: CompanionPublisher = ({ host, port, fingerprint }
+-  const child = spawn("/usr/bin/dns-sd", ["-R", `Modex-${fingerprint.slice(0, 16)}`, "_modex._tcp", "local.", String(port),
++  const child = spawn("/usr/bin/dns-sd", ["-R", `Modex-${fingerprint.slice(0, 16)}-${host.replaceAll(".", "-")}`, "_modex._tcp", "local.", String(port),
+diff --git a/apps/desktop/src/main/engine/companion.ts b/apps/desktop/src/main/engine/companion.ts
+index 9c78e46..ed13b08 100644
+--- a/apps/desktop/src/main/engine/companion.ts
++++ b/apps/desktop/src/main/engine/companion.ts
+@@ -8 +8 @@ import { execFileSync } from "node:child_process";
+-import type { AddressInfo } from "node:net";
++import type { AddressInfo, Socket } from "node:net";
+@@ -27 +27,3 @@ interface Config { enabled: boolean; token: string; port?: number }
+-export interface CompanionStatus { enabled: boolean; addresses: string[]; port?: number; pairingUri?: string }
++export interface CompanionEndpoint { address: string; port: number; pairingUri: string }
++export interface CompanionStatus { enabled: boolean; addresses: string[]; port?: number; pairingUri?: string; endpoints?: CompanionEndpoint[] }
++interface Listener { server: https.Server; port: number; unpublish: () => void }
+@@ -31 +33,3 @@ export class CompanionServer {
+-  private server: https.Server | null = null;
++  private readonly listeners = new Map<string, Listener>();
++  private readonly connections = new WeakMap<https.Server, Set<Socket>>();
++  private stopping: Promise<void> | null = null;
+@@ -34,2 +37,0 @@ export class CompanionServer {
+-  private port = 0;
+-  private host = "";
+@@ -39,2 +40,0 @@ export class CompanionServer {
+-  private unpublish?: () => void;
+-  private reconnecting: Promise<void> | null = null;
+@@ -85,0 +86,4 @@ export class CompanionServer {
++    if (this.stopping) {
++      const generation = this.generation;
++      return this.stopping.then(() => generation === this.generation ? this.start() : this.status());
++    }
+@@ -87 +90,0 @@ export class CompanionServer {
+-    if (this.server) return Promise.resolve(this.status());
+@@ -89 +92 @@ export class CompanionServer {
+-    const starting = this.listen(++this.generation).finally(() => {
++    const starting = this.reconcile(this.generation).finally(() => {
+@@ -96,3 +99,39 @@ export class CompanionServer {
+-  private async listen(generation: number): Promise<CompanionStatus> {
+-    const host = this.addresses()[0];
+-    if (!host) throw new Error("Connect your Mac to a local network before turning on the iPhone companion.");
++  private async reconcile(generation: number): Promise<CompanionStatus> {
++    const addresses = [...new Set(this.addresses())];
++    // Revoke only removed endpoints before closing them. Other interfaces keep their sockets.
++    const removed: Promise<void>[] = [];
++    for (const [host, listener] of this.listeners) {
++      if (addresses.includes(host)) continue;
++      this.listeners.delete(host);
++      listener.unpublish();
++      removed.push(this.close(listener.server));
++    }
++    await Promise.all(removed);
++    if (generation !== this.generation) return this.status();
++    let failure: unknown;
++    for (const host of addresses) {
++      if (generation !== this.generation) return this.status();
++      if (this.listeners.has(host)) continue;
++      try {
++        const listener = await this.listen(host);
++        // DHCP, Turn off or quit can win while bind is pending. Never publish that socket.
++        if (generation !== this.generation || !this.addresses().includes(host)) {
++          await this.close(listener.server);
++          continue;
++        }
++        this.listeners.set(host, listener);
++        listener.unpublish = this.publish({ host, port: listener.port, fingerprint: this.fingerprint });
++      } catch (error) { failure = error; }
++    }
++    if (generation !== this.generation) return this.status();
++    const first = this.listeners.values().next().value;
++    if (!first) throw failure ?? new Error("Connect your Mac to a local network before turning on the iPhone companion.");
++    if (!this.config.enabled || this.config.port !== first.port) {
++      this.config.enabled = true;
++      this.config.port = first.port;
++      this.save();
++    }
++    return this.status();
++  }
++
++  private async listen(host: string): Promise<Listener> {
+@@ -103,4 +142,8 @@ export class CompanionServer {
+-    const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
+-        server.once("error", reject);
+-        server.listen(port, host, () => { server.off("error", reject); resolve(); });
+-      });
++    // Include pre-TLS sockets: closeAllConnections alone can wait 120s for a handshake.
++    const sockets = new Set<Socket>();
++    server.on("connection", (socket: Socket) => { sockets.add(socket); socket.once("close", () => sockets.delete(socket)); });
++    this.connections.set(server, sockets);
++    const bind = (port: number): Promise<void> => new Promise((resolve, reject) => {
++      server.once("error", reject);
++      server.listen(port, host, () => { server.off("error", reject); resolve(); });
++    });
+@@ -108,7 +151,8 @@ export class CompanionServer {
+-      await listen(this.config.port ?? 0);
+-    } catch (err) {
+-      if (!this.config.port || (err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
+-      // A different process can claim the old port while Modex is closed.
+-      await listen(0);
+-    }
+-    if (generation !== this.generation) {
++      try { await bind(this.config.port ?? 0); }
++      catch (error) {
++        if (!this.config.port || (error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
++        // An occupied port on this interface must not disturb another active listener.
++        await bind(0);
++      }
++      return { server, port: (server.address() as AddressInfo).port, unpublish: () => {} };
++    } catch (error) {
+@@ -116 +160 @@ export class CompanionServer {
+-      return this.status();
++      throw error;
+@@ -118,8 +161,0 @@ export class CompanionServer {
+-    this.server = server;
+-    this.host = host;
+-    this.port = (server.address() as AddressInfo).port;
+-    this.config.enabled = true;
+-    this.config.port = this.port;
+-    this.save();
+-    this.unpublish = this.publish({ host, port: this.port, fingerprint: this.fingerprint });
+-    return this.status();
+@@ -128,20 +164,6 @@ export class CompanionServer {
+-  /** Rebind after Wi-Fi changes or a launch without a network; keep the same trust and token. */
+-  refreshNetwork(): Promise<void> {
+-    if (this.reconnecting) return this.reconnecting;
+-    const reconnecting = (async () => {
+-      if (!this.config.enabled || !this.monitor || this.starting) return;
+-      const host = this.addresses()[0] ?? "";
+-      if (this.server && this.host !== host) {
+-        const server = this.server;
+-        this.server = null;
+-        this.generation += 1;
+-        this.host = "";
+-        this.port = 0;
+-        this.unpublish?.();
+-        this.unpublish = undefined;
+-        await this.close(server);
+-      }
+-      if (this.config.enabled && this.monitor && !this.server && host) await this.start();
+-    })().finally(() => { if (this.reconnecting === reconnecting) this.reconnecting = null; });
+-    this.reconnecting = reconnecting;
+-    return reconnecting;
++  /** Reconcile supported interfaces after DHCP changes or an offline launch. Trust is unchanged. */
++  async refreshNetwork(): Promise<void> {
++    if (!this.config.enabled || !this.monitor) return;
++    // Losing every interface is a recoverable outage; the monitor retries on return.
++    try { await this.start(); }
++    catch (error) { if (this.addresses().length) throw error; }
+@@ -157 +179 @@ export class CompanionServer {
+-  async dispose(): Promise<void> {
++  dispose(): Promise<void> {
+@@ -160,2 +181,0 @@ export class CompanionServer {
+-    this.unpublish?.();
+-    this.unpublish = undefined;
+@@ -162,0 +183 @@ export class CompanionServer {
++    if (this.stopping) return this.stopping;
+@@ -165,6 +186,8 @@ export class CompanionServer {
+-    const server = this.server;
+-    this.server = null;
+-    this.port = 0;
+-    this.host = "";
+-    if (server) await this.close(server);
+-    await starting?.catch(() => {});
++    const listeners = [...this.listeners.values()];
++    this.listeners.clear();
++    const stopping = Promise.all([
++      ...listeners.map((listener) => { listener.unpublish(); return this.close(listener.server); }),
++      starting?.catch(() => {}),
++    ]).then(() => {}).finally(() => { if (this.stopping === stopping) this.stopping = null; });
++    this.stopping = stopping;
++    return stopping;
+@@ -176 +198,0 @@ export class CompanionServer {
+-      // A partial upload must not keep access open or prevent the Mac app from quitting.
+@@ -177,0 +200 @@ export class CompanionServer {
++      for (const socket of this.connections.get(server) ?? []) socket.destroy();
+@@ -188,4 +211,9 @@ export class CompanionServer {
+-    const addresses = this.addresses();
+-    if (!this.server) return { enabled: this.config.enabled, addresses };
+-    const data = Buffer.from(JSON.stringify({ url: `https://${this.host}:${this.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
+-    return { enabled: true, addresses, port: this.port, pairingUri: `modex://pair?data=${data}` };
++    const addresses = [...new Set(this.addresses())];
++    const endpoints = addresses.flatMap((address) => {
++      const listener = this.listeners.get(address);
++      if (!listener) return [];
++      const data = Buffer.from(JSON.stringify({ url: `https://${address}:${listener.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
++      return [{ address, port: listener.port, pairingUri: `modex://pair?data=${data}` }];
++    });
++    const first = endpoints[0];
++    return { enabled: this.config.enabled, addresses, ...(first ? { port: first.port, pairingUri: first.pairingUri, endpoints } : {}) };
+@@ -213 +241 @@ export class CompanionServer {
+-    const authorized = () => server === this.server && !!supplied && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token));
++    const authorized = () => [...this.listeners.values()].some((listener) => listener.server === server) && !!supplied && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token));
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index b47c68d..646bf3c 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -129,4 +129,7 @@ const companion = new CompanionServer(home, {
+-const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => ({
+-  ...status,
+-  ...(status.pairingUri ? { qrDataUrl: await QRCode.toDataURL(status.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }) } : {}),
+-});
++const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => {
++  const endpoints = await Promise.all((status.endpoints ?? []).map(async (endpoint) => ({
++    ...endpoint,
++    qrDataUrl: await QRCode.toDataURL(endpoint.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }),
++  })));
++  return { ...status, ...(endpoints.length ? { endpoints, qrDataUrl: endpoints[0]!.qrDataUrl } : {}) };
++};
+diff --git a/apps/desktop/src/renderer/components/CompanionDialog.tsx b/apps/desktop/src/renderer/components/CompanionDialog.tsx
+index caad448..007fbb3 100644
+--- a/apps/desktop/src/renderer/components/CompanionDialog.tsx
++++ b/apps/desktop/src/renderer/components/CompanionDialog.tsx
+@@ -8,0 +9 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
++  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+@@ -10,0 +12,5 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
++  const endpoint = status?.endpoints?.find((candidate) => candidate.address === selectedAddress) ?? status?.endpoints?.[0];
++  // Older hosts provide only one code. New hosts offer one code for each live listener.
++  const pairingUri = endpoint?.pairingUri ?? status?.pairingUri;
++  const qrDataUrl = endpoint?.qrDataUrl ?? status?.qrDataUrl;
++  const address = endpoint?.address ?? status?.addresses[0];
+@@ -36 +42 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
+-      const controls = [...(dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
++      const controls = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), select:not(:disabled)") ?? [])];
+@@ -55 +61 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
+-    const link = status?.pairingUri;
++    const link = pairingUri;
+@@ -72 +78 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
+-        {status?.enabled && status.qrDataUrl ? (
++        {status?.enabled && qrDataUrl ? (
+@@ -74 +80,8 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
+-            <div className="companion-qr"><img src={status.qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" /></div>
++            <div className="companion-qr"><img src={qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" /></div>
++            {(status.endpoints?.length ?? 0) > 1 && <label className="companion-network">
++              Mac network
++              <select aria-label="Mac network" value={address} disabled={busy} onChange={(event) => setSelectedAddress(event.target.value)}>
++                {status.endpoints!.map((candidate) => <option key={candidate.address} value={candidate.address}>{candidate.address}</option>)}
++              </select>
++              <span>Choose the address on your iPhone’s network.</span>
++            </label>}
+@@ -76,3 +89,3 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
+-            <button className="btn" data-testid="companion-copy-link" disabled={busy || !status.pairingUri} onClick={() => void copyLink()}>{copiedLink === status.pairingUri ? "Copied pairing link" : "Copy pairing link"}</button>
+-            <span role="status" className="sr-only">{copiedLink === status.pairingUri ? "Pairing link copied to clipboard" : ""}</span>
+-            <span className="companion-address">Mac on {status.addresses[0]} · local network</span>
++            <button className="btn" data-testid="companion-copy-link" disabled={busy || !pairingUri} onClick={() => void copyLink()}>{copiedLink === pairingUri ? "Copied pairing link" : "Copy pairing link"}</button>
++            <span role="status" className="sr-only">{copiedLink === pairingUri ? "Pairing link copied to clipboard" : ""}</span>
++            <span className="companion-address">Mac on {address} · local network</span>
+diff --git a/apps/desktop/src/renderer/styles.css b/apps/desktop/src/renderer/styles.css
+index 0fb7fba..676cda2 100644
+--- a/apps/desktop/src/renderer/styles.css
++++ b/apps/desktop/src/renderer/styles.css
+@@ -157,0 +158,3 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
++.companion-network { display: grid; gap: 6px; margin-top: 12px; font-size: 12px; }
++.companion-network select { width: 100%; padding: 6px 10px; }
++.companion-network span { color: var(--text-3); }
+diff --git a/apps/desktop/src/shared/types.ts b/apps/desktop/src/shared/types.ts
+index e2bc942..99fd285 100644
+--- a/apps/desktop/src/shared/types.ts
++++ b/apps/desktop/src/shared/types.ts
+@@ -417,0 +418 @@ export interface CompanionStatus {
++  endpoints?: Array<{ address: string; port: number; pairingUri: string; qrDataUrl?: string }>;

@@ -22,9 +22,8 @@ import SwiftUI
     private let store: any PairingStorage
     private let makeClient: (Pairing) -> any CompanionClient
     private let discovery: any CompanionDiscovery
-    private var discoveredURL: URL?
+    private var discoveredURLs: [URL] = []
     private var retrySavedEndpoint = false
-    private var discoveryTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var drafts: [String: String] = [:]
     private var connectionRevision = 0
@@ -52,13 +51,11 @@ import SwiftUI
         if let pairing {
             connected = false
             discovery.start(fingerprint: pairing.fingerprint) { [weak self] url in
-                guard let self, Pairing.validEndpoint(url) else { return }
-                if self.discoveredURL != url { self.retrySavedEndpoint = false }
-                self.discoveredURL = url
-                if !self.connected {
-                    self.discoveryTask?.cancel()
-                    self.discoveryTask = Task { await self.refresh() }
-                }
+                guard let self, Pairing.validEndpoint(url), !self.discoveredURLs.contains(url) else { return }
+                self.discoveredURLs.append(url)
+                // Bound untrusted advertisements while allowing newer addresses to enter recovery.
+                if self.discoveredURLs.count > 16 { self.discoveredURLs.removeFirst() }
+                // Polling owns retries; discovery must not cancel or supersede an in-flight request.
             }
         }
         pollTask = Task {
@@ -72,8 +69,6 @@ import SwiftUI
     func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
-        discoveryTask?.cancel()
-        discoveryTask = nil
         discovery.stop()
     }
 
@@ -112,7 +107,7 @@ import SwiftUI
             api?.invalidate()
             api = client
             adopted = true
-            discoveredURL = nil
+            discoveredURLs = []
             snapshot = first
             if !recoveringSameMac {
                 selectedThreadId = nil
@@ -149,7 +144,7 @@ import SwiftUI
         api?.invalidate()
         api = client
         isDemo = true
-        discoveredURL = nil
+        discoveredURLs = []
         snapshot = first
         selectedThreadId = nil
         draft = ""
@@ -171,7 +166,7 @@ import SwiftUI
         isDemo = false
         api?.invalidate()
         api = nil
-        discoveredURL = nil
+        discoveredURLs = []
         connected = false
         selectedThreadId = nil
         draft = ""
@@ -209,9 +204,18 @@ import SwiftUI
 
     func refresh() async {
         guard let api, !Task.isCancelled else { return }
-        let candidate = pairing.flatMap { pairing in
-            !connected && !retrySavedEndpoint && discoveredURL != nil && discoveredURL != pairing.url
-                ? Pairing(url: discoveredURL!, token: pairing.token, fingerprint: pairing.fingerprint) : nil
+        let candidate = pairing.flatMap { pairing -> Pairing? in
+            guard !connected else { return nil }
+            if retrySavedEndpoint {
+                retrySavedEndpoint = false
+                return nil
+            }
+            guard let index = discoveredURLs.firstIndex(where: { $0 != pairing.url }) else { return nil }
+            let url = discoveredURLs.remove(at: index)
+            discoveredURLs.append(url)
+            // Alternate the saved address with a fair rotation of advertised candidates.
+            retrySavedEndpoint = true
+            return Pairing(url: url, token: pairing.token, fingerprint: pairing.fingerprint)
         }
         let client = candidate.map(makeClient) ?? api
         var adopted = false
@@ -248,8 +252,6 @@ import SwiftUI
                   threadId == selectedThreadId, !Task.isCancelled else { return }
             if revokeIfNeeded(error) { return }
             if connected { connected = false }
-            // An untrusted/stale advertisement must not starve the saved address forever.
-            retrySavedEndpoint = candidate != nil
             let message = "Keep Modex open on your Mac and use the same network. Still disconnected? Open iPhone companion on your Mac and scan its pairing code again."
             if connectionError != message { connectionError = message }
         }

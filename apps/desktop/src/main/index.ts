@@ -126,10 +126,13 @@ const companion = new CompanionServer(home, {
   send: async (id, text) => { await pathReady; return startTurn(id, runner.send(id, text)); },
   answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
 });
-const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => ({
-  ...status,
-  ...(status.pairingUri ? { qrDataUrl: await QRCode.toDataURL(status.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }) } : {}),
-});
+const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => {
+  const endpoints = await Promise.all((status.endpoints ?? []).map(async (endpoint) => ({
+    ...endpoint,
+    qrDataUrl: await QRCode.toDataURL(endpoint.pairingUri, { width: 360, margin: 2, color: { dark: "#17191d", light: "#ffffff" } }),
+  })));
+  return { ...status, ...(endpoints.length ? { endpoints, qrDataUrl: endpoints[0]!.qrDataUrl } : {}) };
+};
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */

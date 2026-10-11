@@ -4,7 +4,11 @@ Requested on 2026-10-05: the full desktop experience through the Mac App Store a
 TestFlight, with the same official identity. Val selected investigation of a sandboxed
 Store front end with a separately installed, signed Mac host.
 
-**Status: Mac Store 0.0.8 passed processing and is `WAITING_FOR_REVIEW` as of 2026-10-06 23:51 UTC.**
+**Verified Apple status (2026-10-11 06:42 UTC): Mac Store 0.0.8 has an approved beta review and is `BETA_APPROVED`.**
+The [authenticated Apple receipt](reviews/2026-10-11-apple-status.md) records the current
+build, group assignments, and production listing gaps. No Apple fields were changed.
+The [current parity matrix and listing packet](reviews/2026-10-11-store-readiness.md) separates
+implemented discovery/launch from signed, real-CLI, and fresh-user acceptance still required.
 The live record is **Modex Mac App Store**, app ID `6819549715`, bundle
 `works.jev.modex.desktop`. Beta review notes and a reviewer reply explain offline demo
 access. The production 0.0.8 draft has this build and review notes selected, but remains
@@ -102,8 +106,8 @@ npm run dist:mas:validate -w @modex/store-desktop
 npm run dist:mas:upload -w @modex/store-desktop
 ```
 
-The current machine has the application distribution certificate but no matching Mac Store
-profile or installer identity, and App Store Connect credentials are not active in the CLI. That
-is why this repository change prepares and verifies the release path without claiming that a
-TestFlight build has been accepted. After upload, App Store Connect processing, TestFlight
-enablement, a fresh-user install/launch and App Review still need live Apple-side evidence.
+The initial release-path implementation lacked a matching Mac Store profile and installer
+identity. The October 6 delivery receipt supersedes that earlier setup limitation and records
+a processed package. Current Apple review, macOS TestFlight installation, a fresh-user
+install/launch, and full real-CLI acceptance still need live evidence. Read the current
+readiness matrix before treating an older build or distribution receipt as final acceptance.

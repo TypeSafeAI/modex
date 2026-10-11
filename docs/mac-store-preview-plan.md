@@ -111,7 +111,16 @@ mutation during detection. Full regression and updated signed-preview evidence f
 
 ### Local host detection follow-up
 
-- [ ] Discover compatible running hosts through the macOS application group, with pinned loopback TLS and no credentials in discovery records.
-- [ ] Find and open a compatible, same-team signed installed host when needed.
-- [ ] Request one native host confirmation directly from the client, then reuse the existing encrypted saved connection and revocation flow.
+- [x] Implement discovery of compatible running hosts through the macOS application group, with pinned loopback TLS and no credentials in discovery records.
+- [x] Implement finding and opening a compatible, same-team signed installed host when needed.
+- [x] Implement requesting one native host confirmation directly from the client, then reuse the existing encrypted saved connection and revocation flow.
 - [ ] Keep manual connection links as recovery; verify denial, cancellation, origin boundaries, discovery and reconnection.
+
+## Current acceptance audit, October 11
+
+Discovery, installed-host signature/protocol checks, consented launch, and native confirmation
+are implemented. The checked items above describe implementation, not new signed acceptance.
+The [current parity matrix and listing packet](reviews/2026-10-11-store-readiness.md) records
+real-CLI/fresh-user gaps, recovery fixes still needed, and the attachment PR's explicit Store
+limitations. The [current Apple receipt](reviews/2026-10-11-apple-status.md) confirms
+the October 6 Mac build's beta approval; current-source signed acceptance remains open.

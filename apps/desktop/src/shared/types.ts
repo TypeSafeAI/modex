@@ -415,6 +415,7 @@ export interface CompanionStatus {
   port?: number;
   pairingUri?: string;
   qrDataUrl?: string;
+  endpoints?: Array<{ address: string; port: number; pairingUri: string; qrDataUrl?: string }>;
 }
 
 export interface ReleaseUpdate { version: string; url: string; }

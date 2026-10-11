@@ -11,7 +11,9 @@ Claude and Codex coding turns continue to run through their CLIs on the Mac.
 ## Pairing and access
 
 1. In the Mac app, open **iPhone companion** in the rail and select **Turn on companion**.
-2. In Modex on iPhone, select **Pair with your Mac** and scan the code. The code holds the
+2. If the Mac has more than one network, choose the address on your iPhone's network in
+   **Mac network**. Each active address has its own QR code and copied link.
+   In Modex on iPhone, select **Pair with your Mac** and scan that code. The code holds the
    Mac's local HTTPS address, a 256-bit bearer secret, and the server certificate's SHA-256
    fingerprint. The app pins that certificate and keeps the pairing in this device's Keychain.
 3. **Turn off** stops the listener. **Forget paired phones** rotates the secret, so previously
@@ -52,7 +54,12 @@ phone. The iPhone keeps the pairing in its Keychain across relaunches and update
 With Mac v0.0.7 and Companion build 4, the Mac advertises a credential-free Bonjour service.
 The iPhone finds its saved Mac after an address/port change and verifies the original pinned
 certificate before adopting a new address. The Mac also recovers after an offline launch
-or network change. Temporary outages preserve the saved pairing and retry automatically;
+or network change. It binds a separate listener to each supported private IPv4 address;
+public, CGNAT, link-local, internal and IPv6 addresses are excluded. Adding or removing a
+network leaves connections on unaffected addresses open. Each listener advertises its own
+credential-free Bonjour endpoint, including its actual port if the preferred port was occupied.
+Updated iPhone clients rotate through discovered addresses, alternating with the saved endpoint,
+so an unreachable address cannot indefinitely hide a reachable second network. Temporary outages preserve the saved pairing and retry automatically;
 returning to the foreground resumes discovery and refreshes the connection.
 
 **Turn off** pauses the Mac listener; turning it back on permits the same pairing.

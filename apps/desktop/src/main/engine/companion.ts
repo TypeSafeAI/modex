@@ -5,7 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { APPROVAL_POLICIES, type AppState, type ApprovalAnswer, type ApprovalPolicy, type BackendId, type PullRequestSummary, type Thread, type ThreadItem } from "../../shared/types.js";
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
@@ -24,20 +24,20 @@ interface CompanionSource {
 }
 
 interface Config { enabled: boolean; token: string; port?: number }
-export interface CompanionStatus { enabled: boolean; addresses: string[]; port?: number; pairingUri?: string }
+export interface CompanionEndpoint { address: string; port: number; pairingUri: string }
+export interface CompanionStatus { enabled: boolean; addresses: string[]; port?: number; pairingUri?: string; endpoints?: CompanionEndpoint[] }
+interface Listener { server: https.Server; port: number; unpublish: () => void }
 
 /** A deliberately small, paired LAN API. Coding turns still run in the Mac's CLI-backed runner. */
 export class CompanionServer {
-  private server: https.Server | null = null;
+  private readonly listeners = new Map<string, Listener>();
+  private readonly connections = new WeakMap<https.Server, Set<Socket>>();
+  private stopping: Promise<void> | null = null;
   private starting: Promise<CompanionStatus> | null = null;
   private generation = 0;
-  private port = 0;
-  private host = "";
   private config: Config;
   private fingerprint = "";
   private monitor?: ReturnType<typeof setInterval>;
-  private unpublish?: () => void;
-  private reconnecting: Promise<void> | null = null;
   private readonly dir: string;
 
   constructor(home: string, private readonly source: CompanionSource, private readonly addresses = localAddresses, private readonly publish: CompanionPublisher = publishCompanion) {
@@ -83,68 +83,90 @@ export class CompanionServer {
   }
 
   start(): Promise<CompanionStatus> {
+    if (this.stopping) {
+      const generation = this.generation;
+      return this.stopping.then(() => generation === this.generation ? this.start() : this.status());
+    }
     this.monitor ??= setInterval(() => { void this.refreshNetwork().catch(() => {}); }, 2500).unref();
-    if (this.server) return Promise.resolve(this.status());
     if (this.starting) return this.starting;
-    const starting = this.listen(++this.generation).finally(() => {
+    const starting = this.reconcile(this.generation).finally(() => {
       if (this.starting === starting) this.starting = null;
     });
     this.starting = starting;
     return starting;
   }
 
-  private async listen(generation: number): Promise<CompanionStatus> {
-    const host = this.addresses()[0];
-    if (!host) throw new Error("Connect your Mac to a local network before turning on the iPhone companion.");
+  private async reconcile(generation: number): Promise<CompanionStatus> {
+    const addresses = [...new Set(this.addresses())];
+    // Revoke only removed endpoints before closing them. Other interfaces keep their sockets.
+    const removed: Promise<void>[] = [];
+    for (const [host, listener] of this.listeners) {
+      if (addresses.includes(host)) continue;
+      this.listeners.delete(host);
+      listener.unpublish();
+      removed.push(this.close(listener.server));
+    }
+    await Promise.all(removed);
+    if (generation !== this.generation) return this.status();
+    let failure: unknown;
+    for (const host of addresses) {
+      if (generation !== this.generation) return this.status();
+      if (this.listeners.has(host)) continue;
+      try {
+        const listener = await this.listen(host);
+        // DHCP, Turn off or quit can win while bind is pending. Never publish that socket.
+        if (generation !== this.generation || !this.addresses().includes(host)) {
+          await this.close(listener.server);
+          continue;
+        }
+        this.listeners.set(host, listener);
+        listener.unpublish = this.publish({ host, port: listener.port, fingerprint: this.fingerprint });
+      } catch (error) { failure = error; }
+    }
+    if (generation !== this.generation) return this.status();
+    const first = this.listeners.values().next().value;
+    if (!first) throw failure ?? new Error("Connect your Mac to a local network before turning on the iPhone companion.");
+    if (!this.config.enabled || this.config.port !== first.port) {
+      this.config.enabled = true;
+      this.config.port = first.port;
+      this.save();
+    }
+    return this.status();
+  }
+
+  private async listen(host: string): Promise<Listener> {
     const { key, cert } = this.certificate();
     const server = https.createServer({ key, cert, minVersion: "TLSv1.2" }, (req, res) => {
       void this.handle(server, req, res).catch(() => this.reply(res, 500, { error: "Your Mac could not complete the request." }));
     });
-    const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, host, () => { server.off("error", reject); resolve(); });
-      });
+    // Include pre-TLS sockets: closeAllConnections alone can wait 120s for a handshake.
+    const sockets = new Set<Socket>();
+    server.on("connection", (socket: Socket) => { sockets.add(socket); socket.once("close", () => sockets.delete(socket)); });
+    this.connections.set(server, sockets);
+    const bind = (port: number): Promise<void> => new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, host, () => { server.off("error", reject); resolve(); });
+    });
     try {
-      await listen(this.config.port ?? 0);
-    } catch (err) {
-      if (!this.config.port || (err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
-      // A different process can claim the old port while Modex is closed.
-      await listen(0);
-    }
-    if (generation !== this.generation) {
+      try { await bind(this.config.port ?? 0); }
+      catch (error) {
+        if (!this.config.port || (error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
+        // An occupied port on this interface must not disturb another active listener.
+        await bind(0);
+      }
+      return { server, port: (server.address() as AddressInfo).port, unpublish: () => {} };
+    } catch (error) {
       await this.close(server);
-      return this.status();
+      throw error;
     }
-    this.server = server;
-    this.host = host;
-    this.port = (server.address() as AddressInfo).port;
-    this.config.enabled = true;
-    this.config.port = this.port;
-    this.save();
-    this.unpublish = this.publish({ host, port: this.port, fingerprint: this.fingerprint });
-    return this.status();
   }
 
-  /** Rebind after Wi-Fi changes or a launch without a network; keep the same trust and token. */
-  refreshNetwork(): Promise<void> {
-    if (this.reconnecting) return this.reconnecting;
-    const reconnecting = (async () => {
-      if (!this.config.enabled || !this.monitor || this.starting) return;
-      const host = this.addresses()[0] ?? "";
-      if (this.server && this.host !== host) {
-        const server = this.server;
-        this.server = null;
-        this.generation += 1;
-        this.host = "";
-        this.port = 0;
-        this.unpublish?.();
-        this.unpublish = undefined;
-        await this.close(server);
-      }
-      if (this.config.enabled && this.monitor && !this.server && host) await this.start();
-    })().finally(() => { if (this.reconnecting === reconnecting) this.reconnecting = null; });
-    this.reconnecting = reconnecting;
-    return reconnecting;
+  /** Reconcile supported interfaces after DHCP changes or an offline launch. Trust is unchanged. */
+  async refreshNetwork(): Promise<void> {
+    if (!this.config.enabled || !this.monitor) return;
+    // Losing every interface is a recoverable outage; the monitor retries on return.
+    try { await this.start(); }
+    catch (error) { if (this.addresses().length) throw error; }
   }
 
   async stop(): Promise<CompanionStatus> {
@@ -154,27 +176,28 @@ export class CompanionServer {
     return this.status();
   }
 
-  async dispose(): Promise<void> {
+  dispose(): Promise<void> {
     clearInterval(this.monitor);
     this.monitor = undefined;
-    this.unpublish?.();
-    this.unpublish = undefined;
     this.generation += 1;
+    if (this.stopping) return this.stopping;
     const starting = this.starting;
     this.starting = null;
-    const server = this.server;
-    this.server = null;
-    this.port = 0;
-    this.host = "";
-    if (server) await this.close(server);
-    await starting?.catch(() => {});
+    const listeners = [...this.listeners.values()];
+    this.listeners.clear();
+    const stopping = Promise.all([
+      ...listeners.map((listener) => { listener.unpublish(); return this.close(listener.server); }),
+      starting?.catch(() => {}),
+    ]).then(() => {}).finally(() => { if (this.stopping === stopping) this.stopping = null; });
+    this.stopping = stopping;
+    return stopping;
   }
 
   private close(server: https.Server): Promise<void> {
     return new Promise((resolve) => {
       server.close(() => resolve());
-      // A partial upload must not keep access open or prevent the Mac app from quitting.
       server.closeAllConnections();
+      for (const socket of this.connections.get(server) ?? []) socket.destroy();
     });
   }
 
@@ -185,10 +208,15 @@ export class CompanionServer {
   }
 
   status(): CompanionStatus {
-    const addresses = this.addresses();
-    if (!this.server) return { enabled: this.config.enabled, addresses };
-    const data = Buffer.from(JSON.stringify({ url: `https://${this.host}:${this.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
-    return { enabled: true, addresses, port: this.port, pairingUri: `modex://pair?data=${data}` };
+    const addresses = [...new Set(this.addresses())];
+    const endpoints = addresses.flatMap((address) => {
+      const listener = this.listeners.get(address);
+      if (!listener) return [];
+      const data = Buffer.from(JSON.stringify({ url: `https://${address}:${listener.port}`, token: this.config.token, fingerprint: this.fingerprint })).toString("base64url");
+      return [{ address, port: listener.port, pairingUri: `modex://pair?data=${data}` }];
+    });
+    const first = endpoints[0];
+    return { enabled: this.config.enabled, addresses, ...(first ? { port: first.port, pairingUri: first.pairingUri, endpoints } : {}) };
   }
 
   private reply(res: ServerResponse, code: number, body: unknown): void {
@@ -210,7 +238,7 @@ export class CompanionServer {
 
   private async handle(server: https.Server, req: IncomingMessage, res: ServerResponse): Promise<void> {
     const supplied = /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization ?? "")?.[1];
-    const authorized = () => server === this.server && !!supplied && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token));
+    const authorized = () => [...this.listeners.values()].some((listener) => listener.server === server) && !!supplied && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(this.config.token));
     if (!authorized()) {
       this.reply(res, 401, { error: "Pair this phone again in Modex on your Mac." });
       return;

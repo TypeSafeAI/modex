@@ -155,6 +155,9 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .companion-qr { padding: 9px; border-radius: 12px; background: white; box-shadow: 0 9px 26px rgba(0,0,0,.18); }
 .companion-qr img { display: block; width: 226px; height: 226px; image-rendering: pixelated; }
 .companion-pairing p { font-size: 13px; margin: 16px 0 4px; }
+.companion-network { display: grid; gap: 6px; margin-top: 12px; font-size: 12px; }
+.companion-network select { width: 100%; padding: 6px 10px; }
+.companion-network span { color: var(--text-3); }
 .companion-address { color: var(--text-3); font-size: 11px; }
 .companion-idle { gap: 9px; padding: 44px 22px; color: var(--text-3); }
 .companion-idle strong { color: var(--text-1); font-size: 14px; }

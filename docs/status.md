@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-09._
+_Last updated 2026-10-11._
 
 ## Shipped
 
@@ -322,7 +322,13 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
-No additional desktop changes are unreleased as of the v0.0.10 tag.
+- **Companion on multiple networks.** One HTTPS listener and credential-free Bonjour
+  advertisement per supported private IPv4 address; pairing offers a code/link for each
+  active network. DHCP changes remove only affected listeners, preserving other connections
+  and the saved certificate/token. Updated iPhone clients rotate through discovered endpoints
+  and the saved endpoint. Shutdown also closes connections still in the TLS handshake.
+  Physical secondary-LAN acceptance remains open: this Mac currently has one supported LAN.
+  [Implementation and acceptance ledger](reviews/2026-10-11-companion-apple-readiness.md).
 
 ## In flight
 
@@ -331,13 +337,19 @@ No additional desktop changes are unreleased as of the v0.0.10 tag.
   sandbox and standalone-app rules require an architecture and review gate. The
   [investigation and parity matrix](mac-app-store.md) records the proposed ownership and
   end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
-  command is documented. Mac Store 0.0.8 and Companion 0.1.0 (5) passed processing and
-  are `WAITING_FOR_REVIEW` as of 2026-10-06 23:51 UTC. Both beta review records contain
+  command is documented. The authenticated October 11 readback confirms approved beta
+  reviews for Mac Store 0.0.8 and Companion 0.1.0 (5): the Mac is `BETA_APPROVED`,
+  and Companion is in external `IN_BETA_TESTING`. Both latest builds are assigned to
+  internal and public-link-enabled external groups. [Current Apple receipt](reviews/2026-10-11-apple-status.md).
+  The [current parity matrix and listing packet](reviews/2026-10-11-store-readiness.md)
+  records implemented host discovery/launch, signed/live acceptance gaps, and Store exclusions. Both beta review records contain
   offline demo instructions, and both reviewer replies are posted; the iOS reply includes
   the reusable QR. The [review access ledger](reviews/2026-10-06-review-demo-access.md)
   records build IDs and verification. The production Mac draft is 0.0.8 with its build
   and review notes selected, but still needs screenshots, description, keywords, and
-  support URL. Apple acceptance of demo access and the Store architecture remains pending.
+  support URL, privacy-policy URL, and copyright. Three source-built Store screenshots and
+  listing text are prepared locally. Beta approval covers the October 6 builds; production
+  approval and acceptance of this branch's changes remain open.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
@@ -351,8 +363,7 @@ No additional desktop changes are unreleased as of the v0.0.10 tag.
   tests, and the paired simulator flow passed; iPhone tests now also run in CI.
   The signed build 2 distribution IPA also passed strict signature and ZIP verification.
   On 2026-10-05, build 2 passed Apple validation and upload, reached `VALID`, and entered
-  `IN_BETA_TESTING` in the existing Internal group with one tester. Physical iPhone
-  installation and acceptance remain open. The source plist records the system-encryption
+  `IN_BETA_TESTING` in the existing Internal group with one tester. The source plist records the system-encryption
   exemption. Build 3 adds the official Modex icon and in-app branding; all 10 native tests
   and paired simulator flow passed. On 2026-10-05 its signed IPA passed validation and
   upload, reached `VALID`, and entered `IN_BETA_TESTING` in the same Internal group.
@@ -363,6 +374,11 @@ No additional desktop changes are unreleased as of the v0.0.10 tag.
   On 2026-10-06, build 5 combined the offline demo and #128 creation/skills flows,
   passed processing, and entered internal testing and external `WAITING_FOR_REVIEW`.
   Its updated notes and posted QR reply address the earlier review-access rejection.
+  October 11 readback confirms build 5's beta review is approved and external testing is
+  active. Two isolated signed-development physical iPhone flows passed pairing persistence,
+  reconnect/revocation, persistent approvals, complete skill descriptions, and retirement
+  against a real merged PR. First-use permission diagnosis and final TestFlight candidate
+  acceptance remain open. [Physical evidence](reviews/2026-10-11-iphone-acceptance.md).
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
 
