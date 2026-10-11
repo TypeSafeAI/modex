@@ -322,6 +322,7 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Jev documentation.** The README identifies the optional Jev CLI as unofficial.
 - **iPhone CI keyboard.** The hosted simulator disables its hardware keyboard before first
   boot and verifies the preference, so the software keyboard can confirm input focus.
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
@@ -345,8 +346,7 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## In flight
 
-- **Open PR queue and composer #159.** #161 (unofficial CLI wording) passed code review
-  and awaits protected landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
+- **Open PR queue and composer #159.** #157 needs attachment draft/copy recovery, storage and limit enforcement,
   development commands, the 960px by 109px composer, and live Claude/Codex image/file
   acceptance. Store attachments remain unavailable. #152 needs credential-navigation
   and signing fixes; real 1Password and signed Touch ID acceptance remain release gates.
