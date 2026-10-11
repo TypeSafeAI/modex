@@ -68,7 +68,7 @@ receipts render as before. Receipts persist with the transcript.
 
 Claude receives `(rule: …)` in the denial message only when a never rule refused that exact
 request. Human denials retain their existing message. Rule descriptions in the denial are
-single-line and bounded. Codex retains its protocol's structured decline answer; receipts
+single-line and bounded. Codex retains its protocol-specific denial response; receipts
 explain the rule in Modex rather than adding unsupported RPC fields.
 
 ## Validation and release sequence

@@ -555,8 +555,8 @@ test("CodexBackend: approvals carry a structured action; a rule's 'yes' is accep
   assert.equal(await decision(1), "accept");
   proc.emitLine({ id: 2, method: "item/fileChange/requestApproval", params: { threadId, turnId, itemId: "f2", grantRoot: "/etc" } });
   assert.equal(await decision(2), "accept");
-  proc.emitLine({ id: 3, method: "item/permissions/requestApproval", params: { threadId, turnId, itemId: "p1", permissions: { network: true } } });
-  assert.equal(await decision(3), "accept");
+  proc.emitLine({ id: 3, method: "item/permissions/requestApproval", params: { threadId, turnId, itemId: "p1", permissions: { network: { enabled: true } } } });
+  assert.deepEqual(JSON.parse(await proc.waitFor((l) => l.startsWith('{"id":3,"result"'))).result, { permissions: { network: { enabled: true } }, scope: "turn" });
   proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
   await run;
 
@@ -624,4 +624,83 @@ test("an aborted stale-auth failure does not restart or retry", async () => {
   assert.equal(calls.length, 1);
   assert.equal(seen.filter((s) => s.method === "turn/start").length, 1);
   await backend.dispose();
+});
+
+// Permission grants have a distinct response contract (Codex app-server 0.162.1).
+test("CodexBackend: permission grants are explicit, turn-scoped, and fully displayed", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const permissions = { network: { enabled: true }, fileSystem: {
+    read: Array.from({ length: 80 }, (_, i) => `/workspace/long-path-${i}`),
+    write: ["/workspace/output"],
+    entries: [
+      { access: "read", path: { type: "path", path: "/workspace/source" } },
+      { access: "write", path: { type: "glob_pattern", pattern: "/workspace/output/**" } },
+      ...["root", "minimal", "project_roots", "tmpdir", "slash_tmp"].map((kind) => ({ access: "deny", path: { type: "special", value: { kind } } })),
+    ], globScanMaxDepth: 2,
+  } };
+  const { sink, requests } = collectSink(["yes", "no", "always", "yes", "yes"]);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, sink, new AbortController().signal);
+  try {
+    await proc.waitFor((l) => l.includes('"turn/start"'));
+    for (const [i, answer] of ["yes", "no", "always"].entries()) {
+      const id = `permission-${i}`;
+      proc.emitLine({ id, method: "item/permissions/requestApproval", params: { threadId, turnId, itemId: "p1", cwd: "/repo", startedAtMs: 1, permissions } });
+      const wire = JSON.parse(await proc.waitFor((l) => JSON.parse(l).id === id));
+      assert.deepEqual(wire, { id, result: { permissions: answer === "yes" ? permissions : {}, scope: "turn" } });
+      assert.equal(requests[i]!.canAlways, false);
+      assert.deepEqual(JSON.parse(requests[i]!.detail!).permissions, permissions, "all requested grants must be inspectable");
+      assert.equal(requests[i]!.action?.escalation, true);
+    }
+    // Empty and nullable profiles are valid, but cannot add a grant.
+    for (const [i, profile] of [{}, { network: null, fileSystem: { entries: null, read: null, write: null, globScanMaxDepth: null } }].entries()) {
+      const id = `empty-${i}`;
+      proc.emitLine({ id, method: "item/permissions/requestApproval", params: { threadId, turnId, itemId: "p2", permissions: profile } });
+      const wire = JSON.parse(await proc.waitFor((l) => JSON.parse(l).id === id));
+      assert.deepEqual(wire.result, { permissions: profile, scope: "turn" });
+    }
+  } finally {
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
+    await run;
+    await backend.dispose();
+  }
+});
+
+test("CodexBackend: malformed or unsupported permission profiles grant nothing without prompting", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, requests, events } = collectSink(Array(40).fill("yes"));
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, sink, new AbortController().signal);
+  const invalid: unknown[] = [undefined, null, [], "all", { network: true }, { network: { enabled: "yes" } },
+    { network: { enabled: true, hosts: ["example.com"] } }, { futurePermission: true },
+    { fileSystem: true }, { fileSystem: { read: "/*" } }, { fileSystem: { write: [1] } },
+    { fileSystem: { futurePermission: true } }, { fileSystem: { globScanMaxDepth: 0 } },
+    { fileSystem: { globScanMaxDepth: 1.5 } }, { fileSystem: { entries: {} } },
+    ...[null, {}, { access: ["read"], path: { type: "path", path: "/repo" } },
+      { access: "read", path: { type: "special", value: { kind: ["root"] } } }, { access: "execute", path: { type: "path", path: "/repo" } },
+      { access: "read", path: { type: "path" } }, { access: "read", path: { type: "glob_pattern", pattern: 1 } },
+      { access: "read", path: { type: "special", value: { kind: "unknown", path: "/repo" } } },
+      { access: "read", path: { type: "special", value: { kind: "root", extra: true } } },
+      { access: "read", path: { type: "special", value: { kind: "project_roots", subpath: 1 } } },
+      { access: "read", path: { type: "future" } },
+      { access: "read", path: { type: "path", path: "/repo", extra: true } },
+    ].map((entry) => ({ fileSystem: { entries: [entry] } })),
+  ];
+  try {
+    await proc.waitFor((l) => l.includes('"turn/start"'));
+    for (const [i, permissions] of invalid.entries()) {
+      const id = `invalid-${i}`;
+      proc.emitLine({ id, method: "item/permissions/requestApproval", params: { threadId, turnId, itemId: "p1", permissions } });
+      const wire = JSON.parse(await proc.waitFor((l) => JSON.parse(l).id === id));
+      assert.deepEqual(wire, { id, result: { permissions: {}, scope: "turn" } }, JSON.stringify(permissions));
+    }
+    assert.equal(requests.length, 0, "unsupported grants must never reach the approval button");
+    assert.equal(events.filter((e) => e.startsWith("notice:warn:")).length, invalid.length);
+  } finally {
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
+    await run;
+    await backend.dispose();
+  }
 });

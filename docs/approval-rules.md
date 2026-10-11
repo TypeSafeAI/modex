@@ -54,7 +54,7 @@ see the request, rule, source, timing and safety context. An ask keeps the norma
 card and explains the rule or downgrade that sent it to you. Old cards still render normally.
 
 Claude receives the rule description in a rule-driven refusal, bounded to one line. Human
-denials keep their existing message. Codex receives its normal structured decline; Modex's
+denials keep their existing message. Codex receives its protocol-specific denial; Modex's
 receipt holds the explanation.
 
 ## Thread policy: Always allow and YOLO

@@ -13,6 +13,11 @@ merged approval PR #107, and closed provider issues #78/#79. Open PRs #152, #157
 and #161 were inventoried with reviews and checks; none owns these approval/provider changes.
 Other sessions' dirty worktrees were preserved. This session owns `approval-provider-gates`.
 
+Before landing, main advanced to `4945b33` through PR #162. This branch incorporated its
+Codex additional-permission response fix. That request already supplied `escalation: true`;
+the fix changes its response profile and turn scope, not command-action normalization or
+the approval judge. The recorded evaluation and native command-metadata gaps still apply.
+
 Environment: macOS arm64, Node `24.18.1`, Electron `44.4.5`, Jev CLI `0.2.1`.
 The remote `v0.0.5` annotated tag exists at `a0bd08431f0240160d80c97a8a315f0ac6d124ee`.
 No release tag or unrelated merge is needed for this task.
@@ -108,7 +113,7 @@ to force an approval result. Commit a harmless fixture seed before making a work
 | Exact allow, Jev unavailable | One actual request gets one yes; never session-wide Always; receipt survives reload | Pending |
 | Language allow with live Jev | Safe request matches; expandable receipt shows rule, source, probability, timing | Pending |
 | Ambiguous and no-match request | Normal card; Deny reaches CLI and leaves fixture unchanged | Pending |
-| Never rule | Actual tool denied; file unchanged; persisted refusal; Claude bounded rule reason, Codex structured decline | Pending |
+| Never rule | Actual tool denied; file unchanged; persisted refusal; Claude bounded rule reason, Codex protocol-specific denial | Pending |
 | Escalating/destructive allow | Actual native request becomes Ask; metadata and visible reason agree | Pending |
 | Project B and project A worktree | A-only rule cannot decide B; A worktree retains A scope; backend enforces out-of-root/symlink writes | Pending |
 | Jev unavailable/error and Stop while pending | Exact fallback only; unmatched language asks; Stop refuses without late approval | Pending |
@@ -120,13 +125,23 @@ specification's live evaluation gates pass, the release decision remains no-go.
 
 ## Verification and handoff
 
-Local `npm run build`, `npm test`, and `npm run typecheck` passed. Unit results: 15 core,
+Before incorporating PR #162, local `npm run build`, `npm test`, and `npm run typecheck` passed. Unit results: 15 core,
 431 desktop passed with one skipped, one browser bridge, 10 site, and nine Store tests.
 The full desktop e2e attempt hit a 90-second timeout in
 `release.spec.ts: quitting waits for the CLI to stop and flushes the final transcript`.
-The approval rules and thread-policy e2e checks passed. This is not a full e2e pass;
-the delivery PR records final counts and exact-head hosted CI separately. The failure is
-an enablement gap, and this patch changes research scripts and documentation, not production UI.
+The full local result was 160 passed, three skipped, and one failed. The approval rules and
+thread-policy e2e checks passed. A fresh focused app-quit rerun passed without code changes,
+and a separate local site run passed all seven tests. Both hosted macOS runs on `ca3aaf1`
+passed all 164 desktop/browser and seven site tests. These later passes do not erase the
+local failure. [PR #163](https://github.com/TypeSafeAI/modex/pull/163) records final validation
+after the base update, including the duplicate push iPhone timeout and passing PR iPhone run.
+This patch changes research scripts and documentation, not production UI.
+
+After incorporating PR #162, build and typecheck passed. The first unit run timed out in
+the unchanged packaged-demo test; its focused rerun passed, followed by the full unit command:
+15 core, 433 desktop with one skipped, one browser bridge, 10 site, and nine Store tests.
+The offline approval evaluation again passed all 11 checks. The original failure and reruns
+are retained in the delivery evidence; the passing rerun does not explain the timeout's cause.
 
 Next actions are bounded: fix the approval metadata/judgment failures and native escalation
 normalization before requesting human gate-on acceptance; satisfy the provider-specific
