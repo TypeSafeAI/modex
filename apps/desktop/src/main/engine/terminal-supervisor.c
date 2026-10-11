@@ -21,6 +21,17 @@
 #include <dirent.h>
 #endif
 
+static int send_status(int control, const char *message, size_t length) {
+  while (length) {
+    ssize_t sent = write(control, message, length);
+    if (sent < 0 && errno == EINTR) continue;
+    if (sent <= 0) return -1;
+    message += sent;
+    length -= (size_t)sent;
+  }
+  return 0;
+}
+
 static volatile sig_atomic_t stopping = 0;
 static void request_stop(int sig) { stopping = sig; }
 
@@ -46,6 +57,8 @@ static int disappeared(pid_t pid) {
   int mib[] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
   if (sysctl(mib, 4, &info, &size, NULL, 0) == 0 && size == sizeof(info) && info.kp_proc.p_stat == SZOMB)
     return observed_zombie(pid, (unsigned long long)info.kp_proc.p_starttime.tv_sec * 1000000 + info.kp_proc.p_starttime.tv_usec);
+#else
+  (void)pid;
 #endif
   return 2;
 }
@@ -165,7 +178,7 @@ int main(int argc, char **argv) {
     _exit(127);
   }
   if (shell < 0 && !stopping) perror("modex: fork shell");
-  (void)write(control, "READY\n", 6);
+  if (send_status(control, "READY\n", 6) < 0) stopping = SIGTERM;
   int status = 125 << 8;
   while (shell > 0 && !stopping) {
     pid_t result = waitpid(shell, &status, WNOHANG);
@@ -189,7 +202,7 @@ int main(int argc, char **argv) {
     // On failure keep the session alive. The app can time out and safely retry.
     usleep(20000);
   }
-  (void)write(control, "CLEAN\n", 6);
+  if (send_status(control, "CLEAN\n", 6) < 0) exit_code = 125;
   close(control);
   return exit_code;
 }

@@ -1,14 +1,23 @@
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { cliSpawn } from "../cli-launch.js";
 import type { BackendHealth } from "../../../shared/types.js";
 
+export { cliSpawn };
+
 /** Keep an nvm CLI's adjacent Node runtime reachable even when a shell profile failed. */
-export function cliEnvironment(bin: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return path.isAbsolute(bin) ? { ...env, PATH: [path.dirname(bin), env.PATH].filter(Boolean).join(path.delimiter) } : env;
+export function cliEnvironment(bin: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  const paths = platform === "win32" ? path.win32 : path;
+  if (!paths.isAbsolute(bin)) return env;
+  const result = { ...env };
+  const key = platform === "win32" ? Object.keys(env).sort().find(key => key.toUpperCase() === "PATH") : "PATH";
+  const inherited = key ? env[key] : undefined;
+  if (platform === "win32") for (const name of Object.keys(result)) if (name.toUpperCase() === "PATH") delete result[name];
+  result.PATH = [paths.dirname(bin), inherited].filter(Boolean).join(paths.delimiter);
+  return result;
 }
 
 /** A bounded, non-inference CLI probe. Raw output never crosses IPC. */
-export function probe(bin: string, args: string[], spawnImpl = spawn, timeoutMs = 5000, env: NodeJS.ProcessEnv = process.env): Promise<{ code: number | null; output: string; failure?: "missing" | "timeout" | "failed" }> {
+export function probe(bin: string, args: string[], spawnImpl = cliSpawn, timeoutMs = 5000, env: NodeJS.ProcessEnv = process.env): Promise<{ code: number | null; output: string; failure?: "missing" | "timeout" | "failed" }> {
   return new Promise((resolve) => {
     let done = false;
     let output = "";
@@ -38,7 +47,7 @@ export function health(authentication: BackendHealth["authentication"], detail: 
   return { executable, authentication, access: "unverified", detail, ...(version ? { version } : {}) };
 }
 
-export async function installation(bin: string, spawnImpl = spawn): Promise<{ version?: string; unavailable?: BackendHealth }> {
+export async function installation(bin: string, spawnImpl = cliSpawn): Promise<{ version?: string; unavailable?: BackendHealth }> {
   const result = await probe(bin, ["--version"], spawnImpl);
   if (!result.failure && result.code === 0) {
     // Only a bounded version token leaves main; never return arbitrary CLI output to the renderer.

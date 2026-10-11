@@ -43,6 +43,7 @@ final class DemoWorkspaceTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         defer { app.terminate() }
+        returnToWelcome(app)
         app.open(URL(string: "modex://demo")!)
         XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10))
         app.buttons["thread-demo-launch"].tapWhenReady()
@@ -229,19 +230,8 @@ final class DemoWorkspaceTests: XCTestCase {
         defer { removeUIInterruptionMonitor(prompts) }
         let app = XCUIApplication()
         app.launch()
+        returnToWelcome(app)
         let demo = app.buttons["demo-button"]
-        if !demo.waitForExistence(timeout: 5) {
-            let options = app.buttons["workspace-options"]
-            XCTAssertTrue(options.waitForExistence(timeout: 10))
-            options.tapWhenReady()
-            if app.buttons["Leave demo workspace"].waitForExistence(timeout: 2) {
-                app.buttons["Leave demo workspace"].tapWhenReady()
-            } else {
-                app.buttons["Forget paired Mac…"].tapWhenReady()
-                app.alerts["Forget this Mac?"].buttons["Forget Mac"].tapWhenReady()
-            }
-        }
-        XCTAssertTrue(demo.waitForExistence(timeout: 15))
         if !demo.isReadyToTap { app.swipeUp() }
         demo.tapWhenReady()
 
@@ -323,6 +313,24 @@ final class DemoWorkspaceTests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(demo.waitForExistence(timeout: 10), "Demo access must not save a pairing on relaunch.")
+    }
+
+    // A preceding failed paired test can leave credentials behind. Reach welcome explicitly
+    // before either demo entry path; the product correctly refuses demo URLs while paired.
+    private func returnToWelcome(_ app: XCUIApplication) {
+        let demo = app.buttons["demo-button"]
+        if !demo.waitForExistence(timeout: 5) {
+            let options = app.buttons["workspace-options"]
+            XCTAssertTrue(options.waitForExistence(timeout: 10))
+            options.tapWhenReady()
+            if app.buttons["Leave demo workspace"].waitForExistence(timeout: 2) {
+                app.buttons["Leave demo workspace"].tapWhenReady()
+            } else {
+                app.buttons["Forget paired Mac…"].tapWhenReady()
+                app.alerts["Forget this Mac?"].buttons["Forget Mac"].tapWhenReady()
+            }
+        }
+        XCTAssertTrue(demo.waitForExistence(timeout: 15))
     }
 
     private func backToDemoThreads(_ app: XCUIApplication, timeout: TimeInterval = 30,

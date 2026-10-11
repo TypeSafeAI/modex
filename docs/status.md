@@ -322,6 +322,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Windows and Linux installer candidates** (#173). The source supports x64 Windows
+  NSIS and Linux AppImage/Debian packages, portable CLI/PTY supervision, and OS-encrypted
+  credential storage. Candidate Actions artifacts have native install/restart/uninstall
+  evidence; public release publication remains pending. Windows installers are unsigned,
+  and Windows/Linux updates remain manual. [Native verification and limits](native-platforms.md).
+
 - **Knowledge CLI diagnostics.** Connecting to an existing local editor parses successful
   status JSON from stdout, so a warning on stderr cannot corrupt the response. Failed
   commands still report bounded stdout/stderr diagnostics, and malformed stdout still
@@ -575,8 +581,11 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 Roughly in the order they earn their place; none is scheduled.
 
 1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
-2. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
-   the platform-specific pieces to audit first.
+2. **Publish Windows and Linux installers.** Extend the protected release pipeline, which
+   currently uploads macOS artifacts, to verify and publish the exact tagged native
+   installers. Candidate Actions artifacts are not releases. Provider-account acceptance,
+   KWallet6/full graphical sessions, and historical schema migration remain unproven;
+   see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
 3. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

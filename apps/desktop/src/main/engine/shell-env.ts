@@ -18,6 +18,7 @@ const END = "__MODEX_PATH_END__";
 type ExecFileLike = (file: string, args: string[], opts: { env: NodeJS.ProcessEnv; timeout: number; encoding: "utf8" }, cb: (err: Error | null, stdout: string) => void) => unknown;
 
 export interface LoginPathOptions {
+  platform?: NodeJS.Platform;
   shell?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
@@ -27,7 +28,14 @@ export interface LoginPathOptions {
 export interface LoginPathResult {
   path: string | null;
   /** Which invocation produced it, for diagnostics. */
-  via: "-ilc" | "-lc" | "none" | "disabled";
+  via: "-ilc" | "-lc" | "none" | "disabled" | "inherited";
+}
+
+function inheritedPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
+  // Match Node's child-process selection when a Windows environment contains
+  // multiple spellings of the case-insensitive key.
+  const key = platform === "win32" ? Object.keys(env).sort().find((key) => key.toUpperCase() === "PATH") : "PATH";
+  return key ? env[key] ?? "" : "";
 }
 
 /** Extracts the PATH printed between the sentinels; null when absent or empty. */
@@ -51,9 +59,13 @@ function run(flag: "-ilc" | "-lc", o: Required<Pick<LoginPathOptions, "shell" | 
 
 export async function readLoginPath(opts: LoginPathOptions = {}): Promise<LoginPathResult> {
   const env = opts.env ?? process.env;
+  const platform = opts.platform ?? process.platform;
   if (env.MODEX_NO_LOGIN_PATH) return { path: null, via: "disabled" };
+  // Windows inherits its user/system PATH; Unix login flags do not apply even
+  // when Git Bash happens to set SHELL in the parent environment.
+  if (platform === "win32") return { path: inheritedPath(env, platform), via: "inherited" };
   const o = {
-    shell: opts.shell ?? env.SHELL ?? "/bin/zsh",
+    shell: opts.shell ?? env.SHELL ?? (platform === "darwin" ? "/bin/zsh" : "/bin/sh"),
     timeoutMs: opts.timeoutMs ?? 10_000,
     // TERM=dumb keeps prompt themes quiet; the child never gets a tty.
     env: { ...env, TERM: "dumb" },
@@ -94,7 +106,14 @@ export function fallbackDirs(home = os.homedir()): string {
 export async function hydratePath(env: NodeJS.ProcessEnv = process.env, opts: Omit<LoginPathOptions, "env"> = {}): Promise<LoginPathResult & { merged: string }> {
   const r = await readLoginPath({ ...opts, env });
   // Opting out means the process PATH is used exactly as given — no fallbacks either.
-  if (r.via === "disabled") return { ...r, merged: env.PATH ?? "" };
+  if (r.via === "disabled") return { ...r, merged: inheritedPath(env, opts.platform ?? process.platform) };
+  if (r.via === "inherited") {
+    // Downstream CLI discovery uses PATH. Remove alternate spellings so Node
+    // cannot pass a stale Path value to a child instead of the canonical one.
+    for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH") delete env[key];
+    env.PATH = r.path ?? "";
+    return { ...r, merged: env.PATH };
+  }
   const merged = mergePaths(r.path, env.PATH, fallbackDirs(env.HOME ?? os.homedir()));
   env.PATH = merged;
   return { ...r, merged };

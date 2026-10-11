@@ -46,3 +46,51 @@ test("electronCipher wraps safeStorage and names the platform store", () => {
   assert.equal(mac.decrypt(mac.encrypt("abc")), "abc");
   assert.deepEqual(calls, ["enc:abc", "dec"]);
 });
+
+test("Linux secrets require a known encrypted OS keyring and never rewrite existing secrets on fallback", () => {
+  let backend = "basic_text";
+  let encryptions = 0;
+  let decryptions = 0;
+  const cipher = electronCipher({
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => backend,
+    encryptString: value => { encryptions++; return testCipher.encrypt(value); },
+    decryptString: value => { decryptions++; return testCipher.decrypt(value); },
+  }, "linux");
+  const home = tmpdir("modex-linux-keyring-");
+  const store = new SecretStore(home, cipher);
+  assert.equal(store.available(), false);
+  assert.throws(() => store.set("typesafe_api_key", "private"), /encryption is unavailable/);
+  assert.equal(fs.existsSync(store.file), false);
+  assert.throws(() => cipher.encrypt("private"), /keyring.*unavailable/i);
+  assert.throws(() => cipher.decrypt(Buffer.from("private")), /keyring.*unavailable/i);
+  assert.deepEqual([encryptions, decryptions], [0, 0]);
+  for (const encrypted of ["gnome_libsecret", "kwallet", "kwallet5", "kwallet6"]) {
+    backend = encrypted;
+    assert.equal(store.available(), true);
+    store.set("typesafe_api_key", "retained-private-key");
+    assert.equal(store.get("typesafe_api_key"), "retained-private-key");
+  }
+  const saved = fs.readFileSync(store.file);
+  for (const unavailable of ["basic_text", "unknown", "", "unrecognized_backend"]) {
+    backend = unavailable;
+    const before = [encryptions, decryptions];
+    assert.equal(store.available(), false);
+    assert.equal(store.get("typesafe_api_key"), null);
+    assert.throws(() => store.set("typesafe_api_key", "replacement"), /encryption is unavailable/);
+    assert.deepEqual([encryptions, decryptions], before);
+    assert.deepEqual(fs.readFileSync(store.file), saved);
+  }
+});
+
+test("Linux keyring discovery fails closed when absent or throwing, while Mac and Windows do not query it", () => {
+  const base = { isEncryptionAvailable: () => true, encryptString: testCipher.encrypt, decryptString: testCipher.decrypt };
+  assert.equal(electronCipher(base, "linux").available(), false);
+  const throwing = { ...base, getSelectedStorageBackend: () => { throw new Error("not ready"); } };
+  assert.equal(electronCipher(throwing, "linux").available(), false);
+  for (const platform of ["darwin", "win32"] as const) {
+    const cipher = electronCipher(throwing, platform);
+    assert.equal(cipher.available(), true);
+    assert.equal(cipher.decrypt(cipher.encrypt("secret")), "secret");
+  }
+});
