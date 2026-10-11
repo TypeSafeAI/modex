@@ -8,6 +8,13 @@ let page: Page;
 let home: string;
 let repo: string;
 const highlighted = () => page.evaluate(() => Array.from(CSS.highlights.get("modex-streamer") ?? [], range => range.toString()).join(""));
+const quoteFullyHighlighted = (element: Element) => {
+  const text = element.firstChild;
+  if (!text?.isConnected) return false;
+  return Array.from(CSS.highlights.get("modex-streamer") ?? []).some(range =>
+    range instanceof Range && range.startContainer.getRootNode() === text.getRootNode()
+      && range.comparePoint(text, 0) === 0 && range.comparePoint(text, text.textContent!.length) === 0);
+};
 
 test.beforeEach(async () => {
   ({ home, repo } = seedHome());
@@ -159,6 +166,29 @@ test("Space edits and formats the original Markdown while streaming", async () =
   })).toEqual(["TOKEN=comment-secret"]);
 });
 
+test("quote highlight observations ignore ranges from a detached tree without accepting partial coverage", async () => {
+  await page.evaluate(() => {
+    const quote = document.createElement("blockquote");
+    quote.id = "quote-range-fixture"; quote.textContent = "abcdef";
+    document.querySelector(".app")!.append(quote);
+    const detached = document.createElement("span"); detached.textContent = "old quote";
+    const stale = document.createRange(); stale.selectNodeContents(detached);
+    const partial = document.createRange(); partial.setStart(quote.firstChild!, 0); partial.setEnd(quote.firstChild!, 3);
+    CSS.highlights.set("modex-streamer", new Highlight(stale, partial));
+  });
+  const quote = page.locator("#quote-range-fixture");
+  expect(await quote.evaluate(quoteFullyHighlighted)).toBe(false);
+  await quote.evaluate(element => {
+    const complete = document.createRange(); complete.selectNodeContents(element);
+    CSS.highlights.get("modex-streamer")!.add(complete);
+  });
+  expect(await quote.evaluate(quoteFullyHighlighted)).toBe(true);
+  const previousQuote = await quote.elementHandle();
+  await quote.evaluate(element => element.remove());
+  expect(await previousQuote!.evaluate(quoteFullyHighlighted)).toBe(false);
+  await previousQuote!.dispose();
+});
+
 test("Space comment quotes mask selected fragments while keeping original text", async () => {
   await tid(page, "streamer-mode-toggle").click();
   await tid(page, "rail-space").click();
@@ -177,11 +207,7 @@ test("Space comment quotes mask selected fragments while keeping original text",
   await page.getByRole("button", { name: "Add comment", exact: true }).click();
   const quote = page.getByRole("complementary", { name: "Comments" }).locator("blockquote");
   await expect(quote).toHaveText("abcdef");
-  const fullyMasked = () => quote.evaluate(element => {
-    const text = element.firstChild!;
-    return Array.from(CSS.highlights.get("modex-streamer") ?? []).some(range =>
-      range instanceof Range && range.comparePoint(text, 0) === 0 && range.comparePoint(text, text.textContent!.length) === 0);
-  });
+  const fullyMasked = () => quote.evaluate(quoteFullyHighlighted);
   await expect.poll(fullyMasked).toBe(true);
   await page.evaluate(() => {
     const publicText = document.createElement("p"); publicText.id = "public-quote-twin"; publicText.textContent = "abcdef";

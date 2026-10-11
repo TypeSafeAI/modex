@@ -322,6 +322,18 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+**Canvas previews.** The workspace launcher adds an interactive Canvas for checkout HTML,
+SVG and Markdown. Local document/asset changes refresh the isolated preview; full view,
+manual reload and deletion recovery are supported. Each guest has a temporary session,
+no app bridge or Node access, bounded root-confined resource reads and no network access.
+The Store edition and development browser bridge report Canvas unavailable.
+Streamer Mode covers the preview without resetting it or blocking the workspace; filename
+labels are masked while selected paths remain original. Late reload responses cannot
+overwrite state after the selection changes.
+Integration passed 703 unit tests, all workspace typechecks, 233 desktop E2E tests and
+seven site tests, with real OpenKnowledge enabled and no skips.
+[Usage and limits](canvas.md). Roadmap acceptance and release evidence remain tracked in
+[the execution ledger](reviews/2026-10-11-desktop-roadmap-audit.md).
 - **Composer attachments.** Desktop and browser-development drafts accept files from Attach files,
   drag/drop, and image paste, with removable chips, copy errors, and attachment-only send.
   Drafts stay with their thread or project through switches and failed sends. Main keeps
