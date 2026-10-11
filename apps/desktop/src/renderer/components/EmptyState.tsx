@@ -28,7 +28,7 @@ export function EmptyState({ onAddProject }: Props) {
             <span>Open Project</span>
             <span className="empty-cta-arrow" aria-hidden="true">↗</span>
           </button>
-          <p className="empty-note">Choose a folder on this Mac to get started.</p>
+          <p className="empty-note">Choose a folder on this computer to get started.</p>
         </section>
         <section className="empty-workflows" aria-labelledby="empty-modes-heading">
           <h2 id="empty-modes-heading">Choose how you work</h2>

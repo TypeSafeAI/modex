@@ -95,7 +95,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
             </>
           ) : <button className="btn primary" data-testid="companion-start" disabled={busy || !status} onClick={() => void act("companion:start")}>Turn on companion</button>}
         </div>
-        <p className="companion-note">Pair once on the same network. Your iPhone remembers this Mac and reconnects automatically. Keep this code and link private. Turn off pauses access; Forget paired phones permanently revokes the old code and link.</p>
+        <p className="companion-note">Pair once on the same network. Your iPhone remembers this computer and reconnects automatically. Keep this code and link private. Turn off pauses access; Forget paired phones permanently revokes the old code and link.</p>
       </section>
     </div>
   );

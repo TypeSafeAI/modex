@@ -1,0 +1,102 @@
+{
+  "version": "1.2.0-beta.15",
+  "files": [
+    {
+      "file": "lib/windowsPtyAgent.js",
+      "beforeSha256": "4f503c377b11cbd113e1f32b3932fdc35e8132b0e647f4c6b70dc84224127c53",
+      "afterSha256": "cfb4ace95980c2574c8472050e9d9565d8c200ecdf7fd64b3296a75477ca8bb1",
+      "replacements": [
+        {
+          "before": "        this._inSocket.readable = false;\n        this._outSocket.readable = false;\n        this._outSocket.destroy();\n    };\n    return WindowsPtyAgent;",
+          "after": "        this._inSocket.readable = false;\n        this._outSocket.readable = false;\n        this._inSocket.destroy();\n        this._outSocket.destroy();\n        this._conoutSocketWorker.dispose();\n    };\n    return WindowsPtyAgent;"
+        },
+        {
+          "before": "        this._onError = new eventEmitter2_1.EventEmitter2();",
+          "after": "        this._onError = new eventEmitter2_1.EventEmitter2();\n        this._onProcessExit = new eventEmitter2_1.EventEmitter2();"
+        },
+        {
+          "before": "        this._inSocket.setEncoding('utf8');",
+          "after": "        this._inSocket.setEncoding('utf8');\n        // Closing ConPTY can break input before the native exit callback arrives.\n        this._inSocket.on('error', function (error) {\n            _this._inSocket.destroy();\n            if (error.code !== 'EPIPE' && error.code !== 'ECONNRESET' && error.code !== 'ERR_STREAM_DESTROYED') {\n                _this._onError.fire(error);\n            }\n        });"
+        },
+        {
+          "before": "    Object.defineProperty(WindowsPtyAgent.prototype, \"onError\", {",
+          "after": "    Object.defineProperty(WindowsPtyAgent.prototype, \"onProcessExit\", {\n        get: function () { return this._onProcessExit.event; }\n    });\n    Object.defineProperty(WindowsPtyAgent.prototype, \"onError\", {"
+        },
+        {
+          "before": "    WindowsPtyAgent.prototype._$onProcessExit = function (exitCode) {\n        var _this = this;\n        this._exitCode = exitCode;",
+          "after": "    WindowsPtyAgent.prototype._$onProcessExit = function (exitCode) {\n        var _this = this;\n        this._exitCode = exitCode;\n        this._inSocket.destroy();\n        this._onProcessExit.fire(exitCode);"
+        }
+      ]
+    },
+    {
+      "file": "src/win/conpty.cc",
+      "beforeSha256": "800d10d36e888ade40cdb63382a87ae05df208620717d237407ff622d5aaa9d4",
+      "afterSha256": "18816243c9c4de8f5bb61f87b04b46dc3d84659807a87c7784c8ae31ca0ee9e2",
+      "replacements": [
+        {
+          "before": "  HPCON hpc;\n\n  HANDLE hShell",
+          "after": "  HPCON hpc;\n  PFNCLOSEPSEUDOCONSOLE closeConsole;\n\n  HANDLE hShell"
+        },
+        {
+          "before": "  pty_baton(int _id, HANDLE _hIn, HANDLE _hOut, HPCON _hpc) : id(_id), hIn(_hIn), hOut(_hOut), hpc(_hpc) {};",
+          "after": "  pty_baton(int _id, HANDLE _hIn, HANDLE _hOut, HPCON _hpc, PFNCLOSEPSEUDOCONSOLE _close)\n      : id(_id), hIn(_hIn), hOut(_hOut), hpc(_hpc), closeConsole(_close) {};"
+        },
+        {
+          "before": "static std::atomic<int> ptyCounter{0};",
+          "after": "static std::atomic<int> ptyCounter{0};\n// Modex patch: count ownership until ClosePseudoConsole has returned.\nstatic std::atomic<int> modexOwnedConsoles{0};\nstatic void CloseOwnedConsole(HPCON hpc, PFNCLOSEPSEUDOCONSOLE closeConsole) {\n  if (hpc != nullptr) {\n    closeConsole(hpc);\n    --modexOwnedConsoles;\n  }\n}\n// Explicit kill must keep the event loop/output consumer running while Windows\n// drains the console. The async work keeps the runtime alive until close returns.\nclass CloseConsoleWorker : public Napi::AsyncWorker {\n public:\n  CloseConsoleWorker(Napi::Env env, HPCON hpc, PFNCLOSEPSEUDOCONSOLE closeConsole)\n      : Napi::AsyncWorker(env), hpc_(hpc), close_(closeConsole) {}\n  void Execute() override { CloseOwnedConsole(hpc_, close_); }\n private:\n  HPCON hpc_;\n  PFNCLOSEPSEUDOCONSOLE close_;\n};"
+        },
+        {
+          "before": "    WaitForSingleObject(baton->hShell, INFINITE);\n    {",
+          "after": "    WaitForSingleObject(baton->hShell, INFINITE);\n    HPCON ownedConsole = nullptr;\n    PFNCLOSEPSEUDOCONSOLE closeConsole = nullptr;\n    {"
+        },
+        {
+          "before": "      CloseHandle(baton->hShell);\n      const int id",
+          "after": "      CloseHandle(baton->hShell);\n      // Transfer ownership before erasing the baton; concurrent kill takes the\n      // same mutex and can never close this handle a second time.\n      ownedConsole = baton->hpc;\n      closeConsole = baton->closeConsole;\n      baton->hpc = nullptr;\n      const int id"
+        },
+        {
+          "before": "    auto status = tsfn.BlockingCall(exit_event, callback);",
+          "after": "    // This waiter, not the JS consumer or the global mutex, may block while\n    // older Windows versions drain final console output.\n    CloseOwnedConsole(ownedConsole, closeConsole);\n    auto status = tsfn.BlockingCall(exit_event, callback);"
+        },
+        {
+          "before": "  HANDLE hIn, hOut;\n  HPCON hpc;\n  HRESULT hr = CreateNamedPipesAndPseudoConsole",
+          "after": "  HANDLE library = LoadConptyDll(info, useConptyDll);\n  PFNCLOSEPSEUDOCONSOLE closeConsole = library == nullptr ? nullptr :\n      reinterpret_cast<PFNCLOSEPSEUDOCONSOLE>(GetProcAddress(\n          static_cast<HMODULE>(library), useConptyDll ? \"ConptyClosePseudoConsole\" : \"ClosePseudoConsole\"));\n  if (closeConsole == nullptr) throw errorWithCode(info, \"Cannot resolve console cleanup\");\n  HANDLE hIn, hOut;\n  HPCON hpc;\n  HRESULT hr = CreateNamedPipesAndPseudoConsole"
+        },
+        {
+          "before": "          std::make_unique<pty_baton>(ptyId, hIn, hOut, hpc));",
+          "after": "          std::make_unique<pty_baton>(ptyId, hIn, hOut, hpc, closeConsole));\n      ++modexOwnedConsoles;"
+        },
+        {
+          "before": "  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);\n  pty_baton* handle = get_pty_baton(lock, id);\n\n  if (handle != nullptr) {\n    HANDLE hLibrary = LoadConptyDll(info, useConptyDll);\n    bool fLoadedDll = hLibrary != nullptr;\n    if (fLoadedDll)\n    {\n      PFNCLOSEPSEUDOCONSOLE const pfnClosePseudoConsole = (PFNCLOSEPSEUDOCONSOLE)GetProcAddress(\n        (HMODULE)hLibrary,\n        useConptyDll ? \"ConptyClosePseudoConsole\" : \"ClosePseudoConsole\");\n      if (pfnClosePseudoConsole)\n      {\n        pfnClosePseudoConsole(handle->hpc);\n      }\n    }\n    // Defensive: if PtyConnect was never called (or failed before closing the\n    // pipe handles), release the named pipe server handles here.\n    if (handle->hIn != nullptr) {\n      CloseHandle(handle->hIn);\n      handle->hIn = nullptr;\n    }\n    if (handle->hOut != nullptr) {\n      CloseHandle(handle->hOut);\n      handle->hOut = nullptr;\n    }\n    if (useConptyDll && handle->hShell != nullptr) {\n      TerminateProcess(handle->hShell, 1);\n    }\n  }\n",
+          "after": "  HPCON ownedConsole = nullptr;\n  PFNCLOSEPSEUDOCONSOLE closeConsole = nullptr;\n  {\n    std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);\n    pty_baton* handle = get_pty_baton(lock, id);\n    if (handle != nullptr) {\n      ownedConsole = handle->hpc;\n      closeConsole = handle->closeConsole;\n      handle->hpc = nullptr;\n      if (handle->hIn != nullptr) {\n        CloseHandle(handle->hIn);\n        handle->hIn = nullptr;\n      }\n      if (handle->hOut != nullptr) {\n        CloseHandle(handle->hOut);\n        handle->hOut = nullptr;\n      }\n      if (useConptyDll && handle->hShell != nullptr) TerminateProcess(handle->hShell, 1);\n    }\n  }\n  if (ownedConsole != nullptr) {\n    (new CloseConsoleWorker(env, ownedConsole, closeConsole))->Queue();\n  }\n"
+        },
+        {
+          "before": "  exports.Set(\"kill\", Napi::Function::New(env, PtyKill));",
+          "after": "  exports.Set(\"kill\", Napi::Function::New(env, PtyKill));\n  exports.Set(\"modexCleanupPatch\", Napi::Number::New(env, 1));\n  exports.Set(\"modexActiveConsoles\", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {\n    return Napi::Number::New(info.Env(), modexOwnedConsoles.load());\n  }));"
+        }
+      ]
+    },
+    {
+      "file": "lib/windowsTerminal.js",
+      "beforeSha256": "b05d53d49cf9f422c2836029676ac2829f59cc14f5bbbbfaafa08382ff044267",
+      "replacements": [
+        {
+          "before": "        _this._socket = _this._agent.outSocket;",
+          "after": "        _this._socket = _this._agent.outSocket;\n        // Listen before readiness too: failed startup never emits ready_datapipe.\n        _this._socket.on('close', function () {\n            _this._outputClosed = true;\n            _this._emitExitWhenReady();\n        });\n        _this._agent.onProcessExit(function () { _this._emitExitWhenReady(); });"
+        },
+        {
+          "before": "            _this._close();\n            _this.emit('exit', _this._agent.exitCode);",
+          "after": "            _this._emitExitWhenReady();"
+        },
+        {
+          "before": "            // Cleanup after the socket is closed.\n            _this._socket.on('close', function () {\n                _this.emit('exit', _this._agent.exitCode);\n                _this._close();\n            });",
+          "after": ""
+        },
+        {
+          "before": "    WindowsTerminal.prototype._doWrite = function (data) {\n        this._agent.inSocket.write(data);\n    };",
+          "after": "    WindowsTerminal.prototype._doWrite = function (data) {\n        if (this._agent.exitCode === undefined && !this._agent.inSocket.destroyed) {\n            this._agent.inSocket.write(data);\n        }\n    };\n    WindowsTerminal.prototype._emitExitWhenReady = function () {\n        if (this._exitPublished || !this._outputClosed || this._agent.exitCode === undefined) return;\n        this._exitPublished = true;\n        this._close();\n        this.emit('exit', this._agent.exitCode);\n    };"
+        }
+      ],
+      "afterSha256": "20dd994b8405c2a19aee6ea83ef305a60d665a12f2bfbdfddd29c56bdb753dba"
+    }
+  ]
+}

@@ -1,8 +1,7 @@
 import type { CliExecutable } from "../cli-path.js";
-import { spawn } from "node:child_process";
 import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { CodexBackend } from "./codex.js";
-import { health, installation } from "./health.js";
+import { cliSpawn, health, installation } from "./health.js";
 import type { ChatGPTAuth } from "../chatgpt-auth.js";
 import { generateTitle } from "../titles.js";
 
@@ -36,7 +35,7 @@ export class AccountCodexBackend implements Backend {
   private readonly cli: CodexBackend;
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
-  constructor(private readonly auth: Pick<ChatGPTAuth, "identity" | "grant" | "status">, private readonly executable: CliExecutable = "codex", private readonly spawnImpl = spawn) {
+  constructor(private readonly auth: Pick<ChatGPTAuth, "identity" | "grant" | "status">, private readonly executable: CliExecutable = "codex", private readonly spawnImpl = cliSpawn) {
     this.cli = new CodexBackend(executable, spawnImpl);
   }
   identity(): string { return this.auth.identity(); }

@@ -1,13 +1,13 @@
 import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
-import { cliEnvironment, health, installation, probe } from "./health.js";
+import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
 
 /**
@@ -35,7 +35,7 @@ export class ClaudeBackend implements Backend {
 
   constructor(
     private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
-    private readonly spawnImpl = spawn,
+    private readonly spawnImpl = cliSpawn,
     /** How long a turn waits on background work; tests shorten these. */
     private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {},
   ) {}

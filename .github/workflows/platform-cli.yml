@@ -1,0 +1,147 @@
+name: Native platform builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/platform-cli.yml
+      - apps/desktop/**
+      - docs/branding/modex-icon.png
+      - scripts/prepare-desktop-system.mjs
+      - packages/core/**
+      - package.json
+      - package-lock.json
+      - tsconfig.base.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    name: CLI and installers (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            package: dist:windows
+          - os: ubuntu-latest
+            platform: linux
+            package: dist:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Configure Windows native compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: npm ci
+      - run: npm run build -w @modex/core
+      - run: npm run build:main -w @modex/desktop
+      - name: Verify native runner
+        env:
+          MODEX_EXPECTED_PLATFORM: ${{ matrix.platform }}
+        run: node -e "if (process.platform !== process.env.MODEX_EXPECTED_PLATFORM) throw new Error('Wrong native platform')"
+      - name: Exercise native CLI argv and npm launchers
+        timeout-minutes: 5
+        run: node --test --test-reporter=tap apps/desktop/dist/test/cli-launch.test.js apps/desktop/dist/test/cli-supervisor.test.js apps/desktop/dist/test/terminal-windows.test.js > native-cli.tap
+      - name: Preserve CLI acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-cli-${{ matrix.platform }}
+          path: native-cli.tap
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Exercise Linux terminal cleanup and job control
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: node --test --test-reporter=tap apps/desktop/dist/test/terminal-cleanup.test.js > native-terminal.tap
+      - name: Preserve Linux terminal evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-terminal-linux
+          path: native-terminal.tap
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Build native installers (no publication)
+        env:
+          CSC_LINK: ""
+          WIN_CSC_LINK: ""
+          MODEX_NATIVE_UPGRADE_ACCEPTANCE: "1"
+        run: npm run ${{ matrix.package }} -w @modex/desktop
+      - name: Record installer checksums and acceptance status
+        run: |
+          node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }}
+          node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }} --baseline
+      - name: Preserve synthetic upgrade baselines (never release)
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-upgrade-baseline-${{ matrix.platform }}
+          path: |
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/Modex-*.exe
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/Modex-*.AppImage
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/Modex-*.deb
+            apps/desktop/release/native-${{ matrix.platform }}-baseline/native-packages.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve candidate installers (acceptance still required)
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-installers-${{ matrix.platform }}
+          path: |
+            apps/desktop/release/native-${{ matrix.platform }}/Modex-*.exe
+            apps/desktop/release/native-${{ matrix.platform }}/Modex-*.AppImage
+            apps/desktop/release/native-${{ matrix.platform }}/Modex-*.deb
+            apps/desktop/release/native-${{ matrix.platform }}/native-packages.json
+          if-no-files-found: error
+          retention-days: 3
+      - name: Prepare Linux installed-app host
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgbm1 libasound2t64 dbus gnome-keyring libsecret-1-0 libglib2.0-bin libfuse2t64 libkf5wallet-bin
+          sudo modprobe fuse
+          test -c /dev/fuse
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - name: Install pinned CLI tools for packaged identity probes
+        timeout-minutes: 4
+        run: npm run prepare:native-clis -w @modex/desktop
+      - name: Exercise installed Debian and extracted AppImage
+        if: runner.os == 'Linux'
+        timeout-minutes: 7
+        run: dbus-run-session -- xvfb-run -a node apps/desktop/scripts/accept-linux-package.mjs
+      - name: Preserve Linux installed-app evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-installed-linux
+          path: native-installed-linux
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Exercise installed Windows app and DPAPI persistence
+        if: runner.os == 'Windows'
+        timeout-minutes: 7
+        run: node apps/desktop/scripts/accept-windows-package.mjs
+      - name: Preserve Windows installed-app evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-installed-win32
+          path: native-installed-win32
+          if-no-files-found: warn
+          retention-days: 7
