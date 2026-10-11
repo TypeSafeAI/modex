@@ -30,6 +30,19 @@ leaving polling callbacks pending. Imperative script errors remain failures, and
 is verified by enumerating native guests. Controlled guest replacement reproduced the
 old helper hang; the exact trigger of the earlier hosted failure remains unproven.
 
+At integration head `0ed2274`, pull-request CI passed all 233 desktop and seven site tests.
+The duplicate push run passed 232 desktop tests but failed the existing Space quote-mask
+observation after comment submission: `Range.comparePoint` rejected a node from another
+DOM tree. The trace showed initial masking, public-text exclusion, raw clipboard and
+comment persistence passing before that sample; it did not identify which node detached.
+A deterministic detached-range regression reproduced the same exception. The test helper
+now ignores disconnected quote nodes and ranges from other roots while still requiring
+both quote endpoints to be covered. Partial coverage remains false; complete coverage
+is true. All eight Streamer tests passed after this test-only repair. The full build and
+703 unit tests then passed with zero skips; all 470 tracked file hashes remained unchanged
+during that gate. Production source is unchanged; fresh hosted verification is required
+for the follow-up head.
+
 ### Initial implementation evidence
 
 The workspace already had guest browser tabs and bounded source-file reads, but no Canvas.
