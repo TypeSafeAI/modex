@@ -6,7 +6,9 @@ let freshSize;
 fs.writeFileSync(path.join(directory, "interactive.pid"), String(process.pid));
 process.on("SIGINT", () => {
   fs.writeFileSync(path.join(directory, "interrupted"), "yes");
-  process.exit(23);
+  // Keep signal receipt distinct from exit so the owner must wait for the shell
+  // to regain its prompt before issuing the next command.
+  setTimeout(() => process.exit(23), 250);
 });
 process.stdin.on("data", input => {
   if (String(input).includes("modex-input")) fs.writeFileSync(path.join(directory, "input"), "received");

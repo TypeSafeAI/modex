@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,7 @@ assert.equal(process.env.RUNNER_ENVIRONMENT, "github-hosted", "Disposable hosted
 assert.ok(process.env.RUNNER_TEMP && path.isAbsolute(process.env.RUNNER_TEMP), "Runner temporary directory required");
 assert.match(process.env.GITHUB_SHA ?? "", /^[0-9a-f]{40}$/);
 assert.ok(!process.env.MODEX_E2E, "Real packaged runtime required");
+assert.ok(process.env.DBUS_SESSION_BUS_ADDRESS, "Run inside a fresh dbus-run-session");
 
 const { _electron: electron } = await import("@playwright/test");
 const candidates = fileURLToPath(new URL("../release/native-linux/", import.meta.url));
@@ -46,6 +47,17 @@ const evidence = path.resolve("native-installed-linux");
 fs.mkdirSync(evidence, { recursive: true });
 const home = path.join(root, "home");
 const project = path.join(root, "project");
+const credentialHome = path.join(root, "credential-probe");
+const credentialFile = path.join(credentialHome, "app", "secrets.json");
+const freshCredentialHome = path.join(root, "refused-credential-probe");
+const credential = `modex-acceptance-${randomUUID()}`;
+const keyringData = path.join(root, "keyring-data");
+const keyringControl = path.join(root, "keyring-control");
+for (const directory of [keyringData, keyringControl]) fs.mkdirSync(directory, { mode: 0o700 });
+const keyringEnv = { ...process.env, XDG_DATA_HOME: keyringData, GNOME_KEYRING_CONTROL: keyringControl };
+let encryptedHash;
+let keyring;
+let keyringFailure;
 fs.mkdirSync(path.join(home, "app"), { recursive: true });
 fs.mkdirSync(project);
 fs.writeFileSync(path.join(project, "package.json"), '{"name":"native-acceptance","private":true}\n');
@@ -59,7 +71,7 @@ const marker = randomUUID();
 fs.writeFileSync(sentinel, marker);
 const result = { schema: 1, sourceSha: manifest.sourceSha, runId: manifest.runId,
   platform: process.platform, arch: process.arch, launches: [], uninstall: "pending",
-  installerAcceptance: "pending", remaining: ["encrypted credential persistence", "distinct-version upgrade", "complete CLI/account acceptance"] };
+  installerAcceptance: "pending", credentials: "pending", remaining: ["KWallet credential persistence", "distinct-version upgrade", "complete CLI/account acceptance"] };
 let installAttempted = false;
 let installedBinary;
 let failure;
@@ -101,9 +113,46 @@ async function closeApp(app) {
   }
 }
 
-async function launch(executablePath, kind) {
+async function startKeyring() {
+  // NameHasOwner does not activate another service. Refuse an existing keyring
+  // even on the disposable host; only the foreground child below belongs to us.
+  const owner = () => execFileSync("gdbus", ["call", "--session", "--dest", "org.freedesktop.DBus",
+    "--object-path", "/org/freedesktop/DBus", "--method", "org.freedesktop.DBus.NameHasOwner",
+    "org.freedesktop.secrets"], { encoding: "utf8", timeout: 5000 }).trim();
+  assert.equal(owner(), "(false,)", "Refusing an existing Secret Service");
+  const log = fs.openSync(path.join(evidence, "keyring.log"), "w", 0o600);
+  try {
+    keyring = spawn("gnome-keyring-daemon", ["--foreground", "--unlock", "--components=secrets", `--control-directory=${keyringControl}`],
+      { env: keyringEnv, stdio: ["pipe", log, log] });
+  } finally { fs.closeSync(log); }
+  keyring.on("error", error => { keyringFailure = error; });
+  keyring.stdin.on("error", error => { keyringFailure = error; });
+  // A nonempty random password protects the test keyring; never log or persist it.
+  keyring.stdin.end(randomUUID());
+  await until(() => {
+    if (keyringFailure) throw keyringFailure;
+    assert.equal(keyring.exitCode, null, "Owned keyring exited during startup");
+    assert.equal(keyring.signalCode, null, "Owned keyring stopped during startup");
+    return owner() === "(true,)";
+  }, "owned Secret Service startup");
+}
+
+async function stopKeyring() {
+  if (!keyring?.pid || keyring.exitCode !== null || keyring.signalCode !== null) return;
+  const closed = once(keyring, "close");
+  keyring.kill("SIGTERM");
+  try { await bounded(closed, 5000, "Owned keyring did not close"); }
+  catch (error) {
+    keyring.kill("SIGKILL");
+    await bounded(closed, 5000, "Owned keyring survived termination");
+    throw error;
+  }
+}
+
+async function launch(executablePath, kind, credentialAction) {
   const app = await electron.launch({ executablePath, timeout: 30000,
-    env: { ...process.env, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", SHELL: "/bin/bash",
+    args: [`--password-store=${credentialAction === "refuse" ? "basic" : "gnome-libsecret"}`],
+    env: { ...keyringEnv, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", SHELL: "/bin/bash",
       TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(root, "no-jev-config") } });
   openApps.add(app.process());
   let launchFailure;
@@ -123,6 +172,37 @@ async function launch(executablePath, kind) {
     assert.equal(identity.platform, "linux");
     assert.equal(identity.arch, "x64");
     assert.ok(identity.appPath.endsWith("/resources/app.asar"), "Launch must load packaged ASAR");
+    assert.equal(identity.storageBackend, credentialAction === "refuse" ? "basic_text" : "gnome_libsecret");
+    const stored = await app.evaluate(({ app, safeStorage }, { home, freshHome, value, action }) => {
+      const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
+      const { SecretStore, electronCipher } = require("./dist/src/main/engine/secrets.js");
+      const store = new SecretStore(home, electronCipher(safeStorage));
+      if (action === "refuse") {
+        const fresh = new SecretStore(freshHome, electronCipher(safeStorage));
+        const attempt = target => {
+          try { target.set("typesafe_api_key", value); return false; }
+          catch (error) { return String(error).includes("encryption is unavailable"); }
+        };
+        return { available: store.available(), retained: store.has("typesafe_api_key"), value: store.get("typesafe_api_key"),
+          refusedExisting: attempt(store), refusedNew: attempt(fresh) };
+      }
+      if (action === "write") store.set("typesafe_api_key", value);
+      return { available: store.available(), backend: store.backend, matches: store.get("typesafe_api_key") === value };
+    }, { home: credentialHome, freshHome: freshCredentialHome, value: credential, action: credentialAction });
+    if (credentialAction === "refuse") {
+      assert.deepEqual(stored, { available: false, retained: true, value: null, refusedExisting: true, refusedNew: true });
+      assert.ok(!fs.existsSync(path.join(freshCredentialHome, "app", "secrets.json")), "Refusal must not create a credential file");
+    } else {
+      assert.equal(identity.encryptionAvailable, true, "Real encrypted keyring required");
+      assert.deepEqual(stored, { available: true, backend: "OS keyring", matches: true });
+    }
+    const encrypted = fs.readFileSync(credentialFile);
+    const entry = JSON.parse(encrypted.toString()).entries.typesafe_api_key;
+    assert.ok(!encrypted.includes(credential) && !Buffer.from(entry.enc, "base64").includes(credential));
+    assert.equal(fs.statSync(credentialFile).mode & 0o777, 0o600);
+    const currentHash = createHash("sha256").update(encrypted).digest("hex");
+    if (credentialAction === "write") encryptedHash = currentHash;
+    else assert.equal(currentHash, encryptedHash, "Read/refusal must preserve existing ciphertext");
     const invoke = (channel, payload) => page.evaluate(({ channel, payload }) => window.modex.invoke(channel, payload), { channel, payload });
     const added = await invoke("project:add", { path: project });
     assert.ok(added?.id);
@@ -138,7 +218,7 @@ async function launch(executablePath, kind) {
     await until(async () => (await invoke("terminal:open", { threadId: thread.id, cols: 80, rows: 24 })).output.includes(token), "packaged terminal output");
     await invoke("terminal:close", { threadId: thread.id, sessionId: terminal.sessionId });
     await page.screenshot({ path: path.join(evidence, `${kind}.png`) });
-    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id });
+    result.launches.push({ kind, ...identity, terminal: "input/output/cleanup receipt passed", threadId: thread.id, credentialAction });
   } catch (error) { launchFailure = error; }
   finally {
     try { await closeApp(app); }
@@ -147,18 +227,22 @@ async function launch(executablePath, kind) {
   if (launchFailure) throw launchFailure;
 }
 try {
+  await startKeyring();
   installAttempted = true;
   command("sudo", ["apt-get", "install", "-y", artifacts.get(".deb")]);
   const files = execFileSync("dpkg-query", ["-L", "modex"], { encoding: "utf8" }).trim().split("\n");
   const binaries = files.filter(file => file.startsWith("/opt/") && file.endsWith("/modex") && fs.statSync(file).isFile());
   assert.equal(binaries.length, 1, "One installed executable required");
   installedBinary = binaries[0];
-  await launch(installedBinary, "debian");
+  await launch(installedBinary, "debian", "write");
+  await launch(installedBinary, "debian-restart", "read");
+  await launch(installedBinary, "debian-basic-refusal", "refuse");
   const extracted = path.join(root, "appimage");
   fs.mkdirSync(extracted);
   fs.chmodSync(artifacts.get(".AppImage"), 0o755);
   command(artifacts.get(".AppImage"), ["--appimage-extract"], { cwd: extracted, stdio: "ignore" });
-  await launch(path.join(extracted, "squashfs-root", "AppRun"), "appimage-extracted");
+  await launch(path.join(extracted, "squashfs-root", "AppRun"), "appimage-extracted", "read");
+  result.credentials = "production SecretStore libsecret encryption persisted across restart and package formats; basic_text refused new/overwrite writes and preserved ciphertext";
 } catch (error) { failure = error; }
 finally {
   try {
@@ -167,11 +251,14 @@ finally {
       command("sudo", ["dpkg", "--remove", "modex"]);
       if (installedBinary) assert.ok(!fs.existsSync(installedBinary), "Debian executable survived uninstall");
       assert.equal(fs.readFileSync(sentinel, "utf8"), marker);
+      if (encryptedHash) assert.equal(createHash("sha256").update(fs.readFileSync(credentialFile)).digest("hex"), encryptedHash);
       const state = JSON.parse(fs.readFileSync(path.join(home, "app", "state.json"), "utf8"));
       for (const launch of result.launches) assert.ok(state.threads.some(thread => thread.id === launch.threadId));
-      result.uninstall = "package removed; recorded threads and unrelated data retained";
+      result.uninstall = "package removed; recorded threads, probe ciphertext and unrelated data retained";
     }
   } catch (error) { failure = failure ? new AggregateError([failure, error], "Acceptance and cleanup failed") : error; }
+  try { await stopKeyring(); }
+  catch (error) { failure = failure ? new AggregateError([failure, error], "Acceptance and keyring cleanup failed") : error; }
   result.error = failure ? String(failure) : undefined;
   fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify(result, null, 2) + "\n");
 }

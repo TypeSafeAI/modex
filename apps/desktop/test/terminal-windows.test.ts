@@ -77,7 +77,8 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "modex-pty-input-"));
   const interactive = fileURLToPath(new URL("../../test/fixtures/terminal-interactive.mjs", import.meta.url));
   const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
-  const pty = spawnTerminal("powershell.exe", ["-NoLogo", "-NoProfile", "-NoExit", "-Command", `& ${quote(process.execPath)} ${quote(interactive)} ${quote(directory)}`], { cwd: directory, cols: 80, rows: 24, env: { ...process.env } });
+  const prompt = "MODEX_INTERACTIVE_PROMPT> ";
+  const pty = spawnTerminal("powershell.exe", ["-NoLogo", "-NoProfile", "-NoExit", "-Command", `function prompt { ${quote(prompt)} }; & ${quote(process.execPath)} ${quote(interactive)} ${quote(directory)}`], { cwd: directory, cols: 80, rows: 24, env: { ...process.env } });
   let output = "";
   const dimensions = () => {
     try { return JSON.parse(fs.readFileSync(path.join(directory, "dimensions.json"), "utf8")); }
@@ -107,6 +108,9 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   await until(() => dimensions().freshSize?.[0] === 96 && dimensions().freshSize?.[1] === 32, "OS resize reaches child");
   pty.write("\x03");
   await until(() => fs.existsSync(path.join(directory, "interrupted")), "Ctrl-C reaches foreground command");
+  // Signal delivery is not process exit or shell readiness. PowerShell may still
+  // discard queued input while unwinding the interrupted foreground command.
+  await until(() => gone(Number(fs.readFileSync(path.join(directory, "interactive.pid"), "utf8"))) && output.includes(prompt), "shell regains its prompt after foreground exit");
   pty.write("Write-Output ('SHELL_'+'READY')\r");
   await until(() => output.includes("SHELL_READY"), "shell remains interactive after Ctrl-C");
   pty.write("exit\r");

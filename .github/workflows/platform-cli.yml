@@ -98,14 +98,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libgbm1 libasound2t64
+          sudo apt-get install -y xvfb libgbm1 libasound2t64 dbus gnome-keyring libsecret-1-0 libglib2.0-bin
           if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
       - name: Exercise installed Debian and extracted AppImage
         if: runner.os == 'Linux'
         timeout-minutes: 5
-        run: xvfb-run -a node apps/desktop/scripts/accept-linux-package.mjs
+        run: dbus-run-session -- xvfb-run -a node apps/desktop/scripts/accept-linux-package.mjs
       - name: Preserve Linux installed-app evidence
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v5

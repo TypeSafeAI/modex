@@ -37,7 +37,11 @@ installations and local/self-hosted execution are refused.
 Default Windows shell selection now treats environment names case-insensitively.
 Regressions reproduce and fix the incorrect PowerShell fallback for `ComSpec`/`comspec`.
 The next installed smoke supplies ordinary `ComSpec` to exercise this fix in packaged
-Electron; the completed run above used uppercase `COMSPEC`.
+Electron; the completed run above used uppercase `COMSPEC`. The first follow-up
+run stopped before packaging: Ctrl-C reached the test child, but the subsequent shell
+command timed out. The fixture now waits for child exit and a unique PowerShell prompt
+before sending that command; a delayed child exit exercises this handoff. Native
+verification of that change and the packaged mixed-case check remain pending.
 
 Linux GCC rejected unchecked terminal receipt writes in the
 [initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
@@ -50,7 +54,13 @@ then passed for Debian and extracted AppImage: verified hashes, packaged Electro
 and ASAR startup, real terminal input/output/cleanup, graceful app close, and Debian
 uninstall preserving recorded threads and unrelated data. Screenshots and runtime
 identity are retained in the `native-installed-linux` artifact. The runner reported
-`basic_text` with encryption unavailable; encrypted credential acceptance remains open.
+`basic_text` with encryption unavailable. The next harness revision starts an owned
+GNOME Secret Service in a fresh D-Bus session and tests real libsecret encryption across
+restart and package formats. A separate `basic_text` launch must refuse new and overwrite
+writes, return no plaintext and preserve existing ciphertext. This revision is prepared;
+its hosted execution remains pending, as does KWallet acceptance. It explicitly selects
+libsecret with one keyring process across app restarts; automatic backend selection and
+keyring/session restart persistence are separate checks.
 Extracted AppImage execution does not establish FUSE startup. Encrypted credential persistence,
 distinct-version upgrades and full CLI/account acceptance remain required. The harness
 refuses local and self-hosted execution and fails acceptance if app shutdown needs forced
