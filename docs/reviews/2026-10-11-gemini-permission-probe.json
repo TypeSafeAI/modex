@@ -1,0 +1,26 @@
+{
+  "provider": "gemini",
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.18.1",
+  "at": "2026-10-11T06:24:10.807Z",
+  "args": [
+    "--acp"
+  ],
+  "promptSent": false,
+  "authenticateSent": false,
+  "steps": [],
+  "version": "0.63.0",
+  "error": {
+    "code": null,
+    "message": "initialize: timeout after 15000ms"
+  },
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "shutdown": {
+    "forced": false,
+    "closeObserved": true
+  }
+}

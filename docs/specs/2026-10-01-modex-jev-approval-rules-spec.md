@@ -28,10 +28,15 @@ rules, prioritizing project rules and then newest rules, plus the destructive-ac
 A probability at or above the configured threshold applies; precedence is never, then ask,
 then allow. A deterministic allow also receives the destructive check when Jev is available.
 An allow becomes ask if destructive probability is at least 0.5 or the action requests a
-sandbox/permission escalation. No rule can override these downgrades.
+sandbox/permission escalation. No rule can override these downgrades. This describes the rule
+gate's result; the existing thread policy runs afterward. Always allow preserves explicit Ask
+rules and downgrades; YOLO can answer them. Neither policy overrides Never. When no rule
+applies, Always allow may answer a described, non-escalating action. See
+[thread policy](../approval-rules.md#thread-policy-always-allow-and-yolo).
 
 A missing judge, timeout, malformed response, or transport failure leaves only deterministic
-matches in effect. Without an applicable match, ask the user. Aborting a pending decision
+matches in effect. Without an applicable match, the rule gate returns Ask; the thread policy
+applies as described above. Aborting a pending decision
 returns no. An automatic allow is always a single yes, never an always/session permission.
 
 ## Settings and Try it (part 2)
@@ -75,8 +80,36 @@ never receipts, ask/downgrade cards, and isolation across projects. Fake Jev tra
 cover destructive/escalation downgrade, timeout, invalid answers and abort; this is offline
 coverage, not proof of live judge quality.
 
-Part 2 now follows v0.0.6 and is excluded from its replacement tag. Keep
+Historical part 2 release sequence: part 2 follows v0.0.6 and is excluded from its replacement
+tag. The original instruction was to keep
 `DEFAULT_APPROVAL_GATE.enabled` false until validation is complete
 and the remote v0.0.5 tag exists. Reconcile the Settings integration with PR #51/current main
 before landing. Do not create a release tag or merge unrelated work to satisfy this prerequisite.
-Document exact validation and the tag check in the PR/review evidence before enabling the gate.
+The current enablement requirements follow below; the readiness record retains the tag check.
+
+## Current acceptance decision (2026-10-11)
+
+The [readiness record](../reviews/2026-10-11-approval-provider-readiness.md) reconciles this
+specification with main `6c00c52` and PR #107. The remote `v0.0.5` tag exists; PR #51 and
+the Settings integration are already on main. Those historical prerequisites no longer
+explain the disabled gate. Current blockers are false-positive judgments, incomplete action
+metadata, and missing human acceptance with real backend approval requests.
+
+Before a separate enablement PR can change `DEFAULT_APPROVAL_GATE.enabled`:
+
+1. Resolve the quoted-command and clipped-command false allows and verify an expanded,
+   predeclared corpus with at least three live repeats per judge case. Require no unexpected
+   allows, refusals, safety misses, or transport failures. Retain failed attempts as evidence;
+   do not change expectations to fit observed results.
+2. Prove native Claude/Codex escalation metadata reaches the gate, including command requests.
+   An injected `escalation: true` preview only tests the gate after normalization.
+3. Complete every human acceptance row in the readiness record with the current macOS build,
+   both supported CLIs, fixture files, persisted receipts, and named reviewer/date evidence.
+4. Pass build, typecheck, unit tests, and the full macOS Electron e2e suite on the candidate.
+   Review exact-head CI and failures separately from live or human acceptance.
+
+Known limits: project scope compares the originating project's root; it does not inspect
+every target path or resolve symlinks. The backend sandbox owns file boundaries. Commands
+are clipped to 500 characters and titles to 200 before judgment, without a truncation
+downgrade. Exact-match globs inspect the full title but do not parse compound commands.
+These limits must not be represented as semantic or filesystem enforcement.

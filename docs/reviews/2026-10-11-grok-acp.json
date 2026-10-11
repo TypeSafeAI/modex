@@ -1,0 +1,103 @@
+{
+  "provider": "grok",
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.18.1",
+  "at": "2026-10-11T06:21:04.163Z",
+  "args": [
+    "--no-auto-update",
+    "agent",
+    "--no-leader",
+    "stdio"
+  ],
+  "promptSent": true,
+  "authenticateSent": true,
+  "steps": [
+    {
+      "method": "initialize",
+      "protocolVersion": 1,
+      "capabilities": {
+        "loadSession": true,
+        "promptCapabilities": {
+          "image": false,
+          "audio": false,
+          "embeddedContext": true
+        },
+        "mcpCapabilities": {
+          "http": true,
+          "sse": true
+        },
+        "sessionCapabilities": {
+          "list": {},
+          "resume": {},
+          "close": {}
+        },
+        "auth": {},
+        "_meta": {
+          "x.ai/fs_notify": true,
+          "x.ai/hooks": {
+            "blockingEvents": [
+              "pre_tool_use",
+              "stop",
+              "subagent_stop"
+            ],
+            "decisions": [
+              "deny",
+              "block"
+            ],
+            "stopSignals": [
+              "continue",
+              "stopReason",
+              "additionalContext"
+            ]
+          },
+          "x.ai/capabilities": {
+            "toolOverrides": {
+              "x_keyword_search": true,
+              "x_semantic_search": true,
+              "x_user_search": false,
+              "x_thread_fetch": false
+            }
+          }
+        }
+      },
+      "authMethods": [
+        {
+          "id": "cached_token",
+          "name": "cached_token"
+        },
+        {
+          "id": "grok.com",
+          "name": "Grok"
+        }
+      ]
+    },
+    {
+      "method": "authenticate",
+      "methodId": "cached_token",
+      "accepted": true,
+      "modelAccessTested": false
+    },
+    {
+      "method": "session/new",
+      "created": true,
+      "configOptions": []
+    },
+    {
+      "method": "session/set_mode",
+      "modeId": "plan",
+      "advertised": false,
+      "accepted": true,
+      "enforcementTested": false
+    }
+  ],
+  "version": "grok 1.0.46 (2765805b9442)",
+  "error": {
+    "code": null,
+    "message": "session/prompt: timeout after 15000ms"
+  },
+  "exit": {
+    "code": 143,
+    "signal": null
+  }
+}
