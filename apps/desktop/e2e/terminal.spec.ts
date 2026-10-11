@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createThread, launch, seedHome, tid } from "./support";
+import { resizeWindow, createThread, launch, seedHome, tid } from "./support";
 
 /**
  * The embedded terminal: a real PTY per thread (main process, engine/terminal.ts) shown in the right
@@ -22,7 +22,7 @@ let repo: string;
 test.beforeAll(async () => {
   ({ home, repo } = seedHome());
   ({ app, page } = await launch(home));
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
+  await resizeWindow(app, page, 1380, 880);
   await expect(tid(page, "sidebar")).toBeVisible();
 });
 
@@ -133,10 +133,10 @@ test("making the panel taller gives the shell more rows", async () => {
     return Number((await screenText()).match(new RegExp(`${marker}=(\\d+) \\d+`))![1]);
   };
   const before = await rows("BEFORE");
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 1000));
+  await resizeWindow(app, page, 1380, 1000);
   await tid(page, "terminal-screen").click();
   await expect.poll(() => rows("AFTER"), { timeout: 10_000 }).toBeGreaterThan(before);
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
+  await resizeWindow(app, page, 1380, 880);
 });
 
 test("exit shows the code, Restart starts a fresh shell, and Close ends it", async () => {

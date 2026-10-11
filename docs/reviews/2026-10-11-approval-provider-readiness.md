@@ -143,6 +143,14 @@ the unchanged packaged-demo test; its focused rerun passed, followed by the full
 The offline approval evaluation again passed all 11 checks. The original failure and reruns
 are retained in the delivery evidence; the passing rerun does not explain the timeout's cause.
 
+Combined verification with the CI prerequisite from PR #167 (`e75fed0`) passed build,
+typecheck, 468 passing unit tests with one skipped, and the full 166-test desktop suite with
+real OpenKnowledge plus all seven site tests. The prerequisite changes test readiness and
+documentation; production approval code and the published evaluation artifacts are unchanged.
+Independent integration review found no issues. These passes establish the test result for
+that combination; they do not satisfy the pending human acceptance or override the six
+recorded unsafe allows.
+
 Next actions are bounded: fix the approval metadata/judgment failures and native escalation
 normalization before requesting human gate-on acceptance; satisfy the provider-specific
 missing capabilities before writing an enabled backend. Keep all three production entry
