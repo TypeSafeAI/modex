@@ -322,6 +322,11 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Space editor selection.** Adding a block and applying formatting focus the committed
+  textarea before the next user edit. A deferred focus callback can no longer collapse
+  a newer selection and turn a replacement such as `Second` into `/Second`. Toolbar
+  Code insertion places the caret inside the fences, ready for typing.
+  [Regression evidence](reviews/2026-10-11-space-focus.md).
 - **Jev documentation.** The README identifies the optional Jev CLI as unofficial.
 - **iPhone CI keyboard.** The hosted simulator disables its hardware keyboard before first
   boot and verifies the preference, so the software keyboard can confirm input focus.
