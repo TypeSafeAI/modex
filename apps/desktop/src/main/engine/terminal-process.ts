@@ -12,6 +12,10 @@ type Pty = Pick<IPty, "pid" | "kill" | "onExit">;
 const controls = new WeakMap<Pty, () => Promise<void>>();
 
 export function spawnTerminal(shell: string, args: string[], options: IPtyForkOptions): IPty {
+  if (process.platform === "win32") {
+    const addon = require("node-pty/lib/utils.js").loadNativeModule("conpty").module;
+    if (addon.modexCleanupPatch !== 1) throw new Error("Patched Windows terminal addon required; rebuild Modex.");
+  }
   const native = require("node-pty") as typeof import("node-pty");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mx-"));
   const windows = process.platform === "win32";

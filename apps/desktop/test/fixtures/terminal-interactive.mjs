@@ -19,7 +19,7 @@ setInterval(() => {
   process.stdout.write("modex-size\r");
   if (!freshSize && fs.existsSync(path.join(directory, "inspect-size"))) {
     // A new public TTY stream queries the OS once, independently of stdout's
-    // cached resize-event fields. Diagnostic only; it does not change stdout.
+    // cached resize-event fields. It does not mutate stdout or its event state.
     const sample = new WriteStream(1);
     freshSize = sample.getWindowSize();
     sample.unref();

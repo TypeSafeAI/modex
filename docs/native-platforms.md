@@ -14,14 +14,19 @@ then builds candidate installers. Artifacts expire after three days. A manifest 
 SHA-256 hashes, sizes, source commit/run identity, and installer acceptance as pending.
 The first hosted run compiled the Windows helper with MSVC and passed twelve CLI and
 process-ownership checks. Its interactive PTY case failed while observing resize, then
-left the test runner alive. The fixture now writes to the console so Node can observe
-Windows resize events, and teardown closes the PTY even after an assertion failure.
+left the test runner alive. Adding cursor-moving console writes did not repair that
+observation.
 The [second native run](https://github.com/TypeSafeAI/modex/actions/runs/38134994369)
 still failed the Windows resize observation (80×24 after requesting 96×32) and timed out
 with the worker alive. The [third run](https://github.com/TypeSafeAI/modex/actions/runs/38135685702)
 confirmed the OS console reached 96×32 while Node retained cached 80×24 fields. Three
-worker MessagePorts remained after teardown. The resize observation and node-pty resource
-cleanup still need correction and native verification.
+worker MessagePorts remained after teardown. A version/hash-checked node-pty patch now
+closes the owned console on natural exit, destroys the input socket and disposes the
+output worker. Windows builds must rebuild the addon against the pinned Electron headers;
+build and runtime guards reject fallback to an unpatched prebuild. Native regression
+coverage repeats natural/close/supervisor-failure cleanup and requires the owner to exit
+without forced termination. The resize assertion now uses the fresh child OS sample.
+These fixes still require native verification.
 
 Linux GCC rejected unchecked terminal receipt writes in the
 [initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
@@ -29,15 +34,13 @@ After the helper handled partial writes, interruption and errors, the second run
 and produced AppImage and Debian candidates. Downloaded sizes and SHA-256 hashes match
 their manifest, whose source is the PR merge of Canvas `05efc984` and platform `3de10de5`.
 The third run also passed seven Linux terminal cleanup/job-control tests; two require
-unavailable zsh or macOS. Installed startup, native credentials and installer lifecycle
-acceptance are still pending.
-
-The workflow now includes a hosted-only installed smoke harness, not yet executed. It
-verifies candidate hashes before installing Debian, launches the installed binary and
-extracted AppImage with an isolated Modex data directory, checks packaged ASAR identity
-and real terminal input/output/cleanup, then removes Debian and checks retained app data.
-It records screenshots, runtime identity and the actual credential backend. Extracted
-AppImage execution does not establish FUSE startup. Encrypted credential persistence,
+unavailable zsh or macOS. The [installed smoke run](https://github.com/TypeSafeAI/modex/actions/runs/38136494798)
+then passed for Debian and extracted AppImage: verified hashes, packaged Electron 44.4.5
+and ASAR startup, real terminal input/output/cleanup, graceful app close, and Debian
+uninstall preserving recorded threads and unrelated data. Screenshots and runtime
+identity are retained in the `native-installed-linux` artifact. The runner reported
+`basic_text` with encryption unavailable; encrypted credential acceptance remains open.
+Extracted AppImage execution does not establish FUSE startup. Encrypted credential persistence,
 distinct-version upgrades and full CLI/account acceptance remain required. The harness
 refuses local and self-hosted execution and fails acceptance if app shutdown needs forced
 termination.
@@ -54,9 +57,9 @@ Custom batch launchers are refused; recognized plain npm Node wrappers launch th
 Node entrypoint with unchanged arguments. Linux credentials require an encrypted storage
 backend and preserve existing files when storage is unavailable.
 
-Local verification for the isolated platform change: full monorepo build, 480 passing
-tests, desktop typecheck, configuration validation and workflow lint. Eleven tests are
-skipped: ten require Windows and one is the existing opt-in live Knowledge test. Strict
+Local verification for the isolated platform change: full monorepo build, 486 passing
+tests, desktop typecheck, configuration validation and workflow lint. Twelve tests are
+skipped: eleven require Windows and one is the existing opt-in live Knowledge test. Strict
 Windows cross-compilation passes; the hosted results above provide the limited native
 evidence gathered so far.
 The Codex process-cleanup fixture also now waits for a valid PID; a deliberately delayed

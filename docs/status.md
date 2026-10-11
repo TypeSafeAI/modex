@@ -454,10 +454,11 @@ Roughly in the order they earn their place; none is scheduled.
    branch (#173). Linux now builds AppImage and Debian candidates with independently checked
    manifest hashes. Windows compiles and passes twelve CLI/process checks, but interactive
    resize observation and worker shutdown remain unresolved. Linux terminal cleanup passed
-   seven native tests (two platform/shell skips); a hosted installed-package smoke harness
-   is prepared but has not run. Installed startup,
-   packaged ABI, CLI/PTY behavior, native credential storage, manual upgrade and uninstall
-   acceptance remain required. Windows/Linux updates remain manual.
+   seven native tests (two platform/shell skips). Hosted Debian and extracted AppImage
+   startup, packaged terminal input/output/cleanup, graceful close and Debian uninstall
+   with retained data passed. Windows cleanup fixes still need native verification;
+   complete CLI/PTY and native credential acceptance, manual upgrades and remaining
+   installer lifecycle checks remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

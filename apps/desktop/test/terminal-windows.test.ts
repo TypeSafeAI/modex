@@ -4,14 +4,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { createRequire } from "node:module";
 import { spawnTerminal, stopTerminalProcess } from "../src/main/engine/terminal-process.js";
 
 const fixture = fileURLToPath(new URL("../../test/fixtures/cli-process-tree.mjs", import.meta.url));
 const cleanup = fileURLToPath(new URL("../../test/fixtures/cleanup-cli-tree.ps1", import.meta.url));
 after(async () => {
   if (process.platform !== "win32") return;
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  const addon = createRequire(import.meta.url)("node-pty/lib/utils.js").loadNativeModule("conpty").module;
+  await until(() => !process.getActiveResourcesInfo().includes("MessagePort") && addon.modexActiveConsoles() === 0, "PTY workers and owned consoles released");
   console.error("Windows PTY resources after cleanup:", JSON.stringify(process.getActiveResourcesInfo()));
 });
 async function until(check: () => boolean, label: string) {
@@ -86,11 +89,7 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
     t.diagnostic(`Last terminal dimensions: ${JSON.stringify(dimensions())}`);
     try { await stopTerminalProcess(pty); }
     catch (error) { t.diagnostic(`Terminal teardown: ${String(error)}`); }
-    finally {
-      // Release node-pty's ConPTY handles even when an earlier assertion failed.
-      // Acceptance above/below still requires the supervisor's cleanup receipt.
-      try { pty.kill(); } finally { fallback(directory); }
-    }
+    finally { fallback(directory); }
   });
   await until(() => pty.pid > 0, "interactive supervisor starts");
   fs.writeFileSync(path.join(directory, "supervisor.pid"), String(pty.pid));
@@ -100,11 +99,12 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   pty.write("modex-input\r");
   await until(() => fs.existsSync(path.join(directory, "input")), "terminal input reaches child");
   pty.resize(96, 32);
-  // Capture an independent OS-size sample after the resize request has had time
-  // to reach ConPTY, while retaining the normal resize-event assertion below.
+  // Node's stdout columns/rows remain cached on this Windows runner even when
+  // ConPTY resized successfully. Query a fresh public TTY stream in the child
+  // to test actual OS dimensions, independently of Node's SIGWINCH caching.
   await new Promise(resolve => setTimeout(resolve, 1000));
   fs.writeFileSync(path.join(directory, "inspect-size"), "requested");
-  await until(() => dimensions().columns === 96 && dimensions().rows === 32, "resize reaches child");
+  await until(() => dimensions().freshSize?.[0] === 96 && dimensions().freshSize?.[1] === 32, "OS resize reaches child");
   pty.write("\x03");
   await until(() => fs.existsSync(path.join(directory, "interrupted")), "Ctrl-C reaches foreground command");
   pty.write("Write-Output ('SHELL_'+'READY')\r");
@@ -112,4 +112,18 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   pty.write("exit\r");
   await stopTerminalProcess(pty);
   await until(() => gone(Number(fs.readFileSync(path.join(directory, "interactive.pid"), "utf8"))), "interactive fixture exits");
+});
+
+// No process.exit or post-exit PTY kill in this fixture: leaked native handles or
+// workers prevent natural process exit and fail the bounded parent invocation.
+test("native Windows PTY repeated cleanup releases resources and lets its owner exit", { skip: process.platform !== "win32", timeout: 60000 }, async t => {
+  const fixture = fileURLToPath(new URL("../../test/fixtures/terminal-resources.mjs", import.meta.url));
+  const terminal = new URL("../src/main/engine/terminal-process.js", import.meta.url).href;
+  const { stdout } = await promisify(execFile)(process.execPath, [fixture, terminal], { timeout: 55000, windowsHide: true });
+  const result = JSON.parse(stdout.trim());
+  assert.equal(result.cycles, 6);
+  assert.equal(result.ownedConsoles, 0);
+  assert.equal(result.messagePorts, result.baseline.messagePorts);
+  assert.ok(result.pipeWraps <= result.baseline.pipeWraps);
+  t.diagnostic(stdout.trim());
 });
