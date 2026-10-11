@@ -66,7 +66,7 @@ fs.mkdirSync(path.join(home, "app"), { recursive: true });
 fs.mkdirSync(project);
 fs.writeFileSync(path.join(project, "package.json"), '{"name":"native-acceptance","private":true}\n');
 fs.writeFileSync(path.join(home, "app", "state.json"), JSON.stringify({ version: 1, projects: [], threads: [], settings: {
-  default_backend: "mock", default_mode: "chat", default_model: { mock: "mock", claude: "", codex: "" },
+  default_backend: "mock", default_mode: "agent", default_model: { mock: "mock", claude: "", codex: "" },
   claude_bin: path.join(root, "absent-claude"), codex_bin: path.join(root, "absent-codex"),
   routing: { jev_transport: "http" },
 } }));
@@ -173,8 +173,13 @@ async function launch(executablePath, kind, credentialAction, expectedVersion) {
       const retained = before.threads.find(thread => thread.id === previous.threadId);
       assert.equal(retained?.title, previous.threadTitle, "Saved thread title survived restart/upgrade");
     }
-    if (result.launches.length) assert.equal(before.settings.default_mode, "plan", "Saved setting survived restart/upgrade");
-    else await invoke("settings:update", { default_mode: "plan" });
+    if (result.launches.length) assert.equal(before.settings.default_mode, "chat", "Saved setting survived restart/upgrade");
+    else {
+      assert.equal(before.settings.default_mode, "agent");
+      const saved = await invoke("settings:update", { default_mode: "chat" });
+      assert.equal(saved.default_mode, "chat");
+      assert.equal(JSON.parse(fs.readFileSync(path.join(home, "app", "state.json"), "utf8")).settings.default_mode, "chat");
+    }
     const added = await invoke("project:add", { path: project });
     assert.ok(added?.id);
     const thread = await invoke("thread:create", { projectId: added.id, backend: "mock", auto: false });

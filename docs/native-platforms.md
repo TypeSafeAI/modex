@@ -70,7 +70,10 @@ manifests, installs the baseline, and replaces it through NSIS/Debian or an extr
 AppImage directory. Runtime versions, saved thread titles/settings, unchanged encrypted
 credentials and uninstall retention are asserted. Baselines are short-lived CI artifacts
 and are never published. This establishes distinct-version package replacement, not
-historical schema migration; execution is pending. Persisted composer draft acceptance
+historical schema migration. The first hosted attempt used invalid `default_mode: plan`,
+which the store correctly normalizes to `agent` on reload. The fixture now saves valid
+`chat`, checks the returned and on-disk value before replacement, and requires that value
+after restart. Upgrade acceptance remains pending. Persisted composer draft acceptance
 belongs to the separate updater integration.
 
 Before release, collect native evidence for installed startup, packaged Electron addon

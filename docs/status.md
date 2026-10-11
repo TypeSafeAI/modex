@@ -461,7 +461,7 @@ Roughly in the order they earn their place; none is scheduled.
    persistence across restart and uninstall retaining data also passed. Windows default
    shell lookup respects `ComSpec` casing, verified in the installed app. Linux libsecret
    encryption across app restart/package formats and basic-text refusal retaining
-   ciphertext passed. A distinct-version manual-upgrade harness is prepared but unrun.
+   ciphertext passed. Distinct-version manual-upgrade acceptance is pending after correcting an invalid fixture setting.
    Complete CLI/account acceptance, remaining keyring variants and installer lifecycle
    checks remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
