@@ -370,6 +370,15 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## In flight
 
+- **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
+  no remaining product or test patch beyond #144, #150, and #154. The
+  [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
+  comparison results and corrects historical runs left marked in progress.
+  Dirty source trees and probe artifacts remain preserved. The recovered
+  [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md)
+  is a historical proposal: native identity-only sign-in shipped separately in
+  #141. Repository authorization still needs a dedicated GitHub App owner and
+  hosted service destination before implementation and live acceptance.
 - **Open PR queue and composer #159.** #157 needs attachment draft/copy recovery, storage and limit enforcement,
   development commands, the 960px by 109px composer, and live Claude/Codex image/file
   acceptance. Store attachments remain unavailable. #152 needs credential-navigation
