@@ -1,5 +1,60 @@
 # Grok Build feasibility (#79)
 
+## Current decision, 2026-10-11
+
+**Defer the backend.** Grok `1.0.46 (2765805b9442)` on Darwin arm64/Node `24.18.1`
+accepted ACP protocol 1, cached authentication, session creation, and an empty-session load
+in the [capability probe](reviews/2026-10-11-grok-capabilities.json).
+The installed version advertises both `cached_token` and `grok.com`, superseding the older
+Windows auth-method discrepancy below. `session/set_mode` accepted `plan`, although no
+available modes or mode config options were advertised.
+
+The first synthetic text prompt failed to complete within the probe's 15-second bound after
+successful cached authentication. The owned `--no-leader` process was terminated and reported
+exit 143. [Wire summary](reviews/2026-10-11-grok-acp.json). No model-access, active cancellation,
+completed-conversation resume, or approval claim follows from that timeout. It is a bounded
+local failure, not proof that the account lacks entitlement or the protocol lacks those methods.
+
+There is also a documented permission mismatch: Grok's
+[plan mode](https://docs.x.ai/build/features/plan-mode) restricts edit tools but lets shell/MCP
+calls follow their separate permissions; shell redirection can still write, and subagents are
+not covered by the parent's edit restriction. Its
+[sandbox](https://docs.x.ai/build/features/sandbox) documents child-network enforcement as a
+no-op on macOS for `read-only`/`strict`, with in-process web tools outside that control.
+Native plan plus that sandbox cannot by itself establish Modex's complete read-only contract.
+An adapter needs enforceable gates covering shell, MCP, subagents, and outside-root access.
+
+| Gate | Current evidence | Decision |
+| --- | --- | --- |
+| Authentication | Advertised `cached_token` accepted | Cached login works; first model turn timed out; billing/source/expiry remain unknown |
+| Read-only enforcement | Unadvertised `plan` accepted; documented shell/MCP and macOS network limits | Not accepted; mode success is not enforcement |
+| Approvals | Client rejects all requests; no live permission request completed | Deny/allow-once/always behavior unproven |
+| Cancellation | Owned process shutdown only | Not active-turn cancellation acceptance |
+| Resume | Empty session reloaded in same process | Not completed-turn/restart/account-boundary acceptance |
+| macOS | Version, initialization, cached auth, session RPCs succeed | Partial compatibility; no complete coding acceptance |
+
+Reproduce without a shared leader or automatic approval:
+
+```sh
+grok --no-auto-update --version
+node apps/desktop/scripts/probe-provider-acp.mjs grok
+MODEX_ACP_LIVE=1 node apps/desktop/scripts/probe-provider-acp.mjs grok
+```
+
+The final command opts into two bounded synthetic text prompts and can consume model usage.
+The script stops at the first failed RPC; it does not retry or switch to API-key billing.
+It strips the caller's `XAI_API_KEY`, negotiates advertised auth methods, never reads CLI
+credential files, and rejects all permission/file/terminal requests. Cached CLI configuration
+can still determine the effective source. The CLI may retain the synthetic session it created.
+
+Next action: resolve the text-turn timeout against the installed CLI, then prove mandatory
+read-only policy across every execution path and run real permission/cancel/resume fixtures.
+Keep this exact failure and the documented macOS limits visible; do not enable a backend by
+assuming a successful `session/set_mode` response closes those gates. No direct API or
+app-owned OAuth implementation is part of this track.
+
+## Historical Windows research (2026-10-03)
+
 Reviewed 2026-10-03 against Modex main e2c2fbc and Grok CLI 0.2.118
 (stable, build 1e1687c1cf) on Windows.
 

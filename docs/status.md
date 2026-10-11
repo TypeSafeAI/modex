@@ -367,9 +367,12 @@ No additional desktop changes are unreleased as of the v0.0.10 tag.
   records the pairing and release path.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
-  [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
-  installed-version initialization probes. Neither is enabled. Read-only permission,
-  authentication and macOS acceptance evidence remain gates for future implementation.
+  [Grok](grok-feasibility.md) are explicitly deferred after the 2026-10-11 macOS refresh.
+  Gemini 0.63.0 completed a text turn, resume, and cancellation, but the negative permission
+  probe timed out during initialization. Grok 1.0.46 accepted cached auth and session RPCs,
+  then its text turn timed out; native plan/sandbox also has documented permission limits.
+  Neither provider is enabled. Both decisions include reproducible probes and distinguish
+  observed failures from unverified capabilities; coding execution remains CLI-only.
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
@@ -378,8 +381,11 @@ No additional desktop changes are unreleased as of the v0.0.10 tag.
   The gate remains off: saved rules can be previewed but do not decide live approvals.
   Reconciliation with the merged companion passed build, typecheck, 15 core and 248 desktop
   tests plus the browser bridge test, and all 94 desktop e2e checks. This integration follows
-  v0.0.6. Three live Jev preview examples passed on 2026-10-05; human acceptance and
-  broader judge evaluation remain open before enabling the gate. The
+  v0.0.6. The [2026-10-11 readiness review](reviews/2026-10-11-approval-provider-readiness.md)
+  expanded evaluation to 62 checks: 56 expected results and six false allows (quoted test
+  names and truncated destructive suffixes, three repeats each). Human acceptance is prepared
+  but not performed; native escalation normalization also needs proof. The gate stays off.
+  The
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.

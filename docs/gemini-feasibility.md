@@ -1,5 +1,73 @@
 # Gemini CLI feasibility (#78)
 
+## Current decision, 2026-10-11
+
+**Defer the backend.** macOS ACP, a real text turn, resume, and cancellation now have live
+evidence. Permission enforcement and account-source reporting still do not meet the release
+contract. This is an acceptance deferral, not a claim that Gemini cannot support an adapter.
+
+Gemini was absent from this Mac's PATH (`spawnSync gemini ENOENT`). An isolated npm install
+of `@google/gemini-cli@0.63.0` under `apps/desktop/.probes/` supplied a pinned candidate without
+changing the global CLI. On Darwin arm64/Node `24.18.1`, protocol 1 advertised `default`,
+`autoEdit`, `yolo`, and `plan`; setting `plan` succeeded. The existing CLI-owned account
+completed a synthetic `ACP_PROBE_OK` response without tools, reloaded the nonempty session,
+and returned `stopReason: cancelled` for an interrupted second prompt.
+[Wire summary](reviews/2026-10-11-gemini-acp.json).
+
+No browser login, credential import, or direct inference API was used. API-key/Vertex
+environment selectors were removed from the child environment. Cached configuration can
+still affect credential precedence; successful inference does not establish which account,
+subscription, or billing source was used. This CLI has no dedicated structured auth-status
+command in its installed help. Do not show verified subscription/account status from this probe.
+
+The [follow-up permission probe](reviews/2026-10-11-gemini-permission-probe.json)
+failed at `initialize: timeout after 15000ms` before any
+permission request or negative write test. The owned process exited on SIGTERM. The earlier
+successful session required bounded SIGKILL escalation at shutdown. The failure establishes
+a local acceptance gap, not an inherent protocol limitation or an authentication failure.
+An [empty session reload](reviews/2026-10-11-gemini-empty-session.json) also returned
+`-32603 Internal error`; nonempty resume succeeded,
+so the empty-session error is not evidence that general resume is unsupported.
+
+| Gate | Current evidence | Decision |
+| --- | --- | --- |
+| Authentication/model access | Existing CLI account completed a text turn | Model access works; identity/source/expiry/switching remain unverified |
+| Read-only enforcement | `plan` advertised/accepted; negative permission run timed out before initialization | Blocked; no observed denied edit, shell, MCP, symlink, or outside-root attempt |
+| Approvals | Probe rejects every client permission/tool request, but successful smoke turn made none | Allow-once/deny/always round trip not accepted |
+| Cancellation | Interrupted prompt returned `cancelled` | Passed for this sample only |
+| Resume | Reload after text turn succeeded | Same-process, same-account sample; cross-process/account ownership still open |
+| macOS | Real protocol and model calls on arm64 | Native transport demonstrated; permission and cleanup acceptance incomplete |
+
+Native plan mode is policy-driven. Google's [plan guide](https://geminicli.com/docs/cli/plan-mode/)
+allows custom policy overrides, and the [policy engine](https://geminicli.com/docs/reference/policy-engine/)
+applies rules without a mode restriction in every mode. The default
+[macOS sandbox](https://geminicli.com/docs/cli/sandbox/) allows workspace writes.
+Consequently, mapping Modex chat to `plan` alone does not prove an immutable read-only boundary
+under inherited CLI policies. A candidate adapter needs controlled policy and filesystem,
+shell, MCP, and canonical-root tests before selection is enabled.
+
+Reproduce from the worktree root:
+
+```sh
+npm install --prefix apps/desktop/.probes/gemini-0.63.0 --no-audit --no-fund @google/gemini-cli@0.63.0
+node apps/desktop/scripts/probe-provider-acp.mjs gemini apps/desktop/.probes/gemini-0.63.0/node_modules/.bin/gemini
+MODEX_ACP_LIVE=1 MODEX_ACP_PERMISSIONS=1 node apps/desktop/scripts/probe-provider-acp.mjs gemini apps/desktop/.probes/gemini-0.63.0/node_modules/.bin/gemini
+```
+
+Without `MODEX_ACP_LIVE`, no prompt is sent. Live mode spends bounded model usage; permissions
+mode additionally asks for writes only inside its disposable fixture, denies every incoming
+permission request, and records whether a fixture file appeared. No request is approved.
+Review `error`, `toolUpdates`, `rejectedRequests`, and `fileCreated`; a missing write with no
+attempted tool does not prove enforcement. The CLI may retain its own synthetic session history.
+
+Next action: run the negative permission probe under a controlled CLI policy and resolve the
+initialization timeout if it recurs; then verify canonical roots/symlinks, MCP, restart-resume,
+and account-source transitions. Do not retry account/model calls merely to turn this record green.
+The additional-provider authorization covers gated implementation, but no backend has passed
+all gates, so the production provider set remains unchanged.
+
+## Historical Windows research (2026-10-03)
+
 Reviewed 2026-10-03 against Modex main e2c2fbc and installed Gemini CLI 0.58.0.
 
 **Decision: conditional go for a CLI-owned ACP backend; no-go for enabling it today.**

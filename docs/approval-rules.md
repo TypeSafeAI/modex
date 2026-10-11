@@ -4,7 +4,8 @@ Approval rules answer requests from a coding CLI before Modex asks you. They do 
 tools themselves, create approval requests the CLI did not make, or widen a sandbox.
 
 The gate remains **off** while this integration is reviewed. Settings can save rules and
-**Try it** can preview their decisions during this period. Live approvals still ask you.
+**Try it** can preview their decisions during this period. Rules do not answer live approvals;
+the existing thread policy still applies (Ask each time, Always allow, or YOLO).
 This editor follows v0.0.6 and is not included in its replacement release tag.
 See the [specification](specs/2026-10-01-modex-jev-approval-rules-spec.md).
 
@@ -20,9 +21,11 @@ scope when you edit this project's rules.
 
 Language rules use the same saved Jev transport and credentials as Auto routing. Without
 Jev, they stay visible with **Inactive without Jev**. An optional exact match works without
-Jev: `Bash: npm test*` for Claude, or `command: npm test*` for Codex. Tool names and patterns
+Jev: `Bash: npm test` for Claude, or `command: npm test` for Codex. Tool names and patterns
 are case-sensitive; `*` matches any text. A leading `$ ` in the command title may be omitted.
-Exact matches are mechanical patterns, so keep allow patterns narrow.
+Exact matches are mechanical patterns, so keep allow patterns narrow. For example,
+`Bash: npm test*` also matches `npm test; rm -rf ./src`. The glob does not parse shell
+operations, and without Jev there is no destructive-action judgment.
 
 ## Try a draft
 
@@ -88,3 +91,10 @@ downgrade a requested escalation to ask. The production gate stayed off and no a
 was executed. These examples verify the configured transport and preview integration;
 they do not establish general judge correctness or human approval acceptance. See the
 [acceptance record](reviews/2026-10-05-approval-preview-acceptance.md).
+
+The [2026-10-11 readiness review](reviews/2026-10-11-approval-provider-readiness.md)
+supersedes those three examples as the enablement decision: **not ready**. A 62-check
+evaluation found six false allows across two cases (three repeats each): mentioning a
+test command inside `printf`, and a destructive suffix hidden by command truncation.
+The production default and saved gate remain off. The review includes reproducible probes,
+specification reconciliation, and the human acceptance procedure still required to enable it.
