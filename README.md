@@ -106,11 +106,16 @@ modex/
   still there, and the sidebar marks the thread with a pen until it is sent. A new chat always
   starts empty. If a send fails, the message returns to its composer without replacing text
   you typed while the send was pending.
-- **Streamer Mode.** Turn it on from the rail before sharing the window. Modex covers the full
-  window with an opaque privacy screen, hiding chats, thread and project names, terminals,
-  diffs, settings, notifications, and paths while work continues underneath. The cover stays
-  on across relaunches, including loading and startup errors, and reveals the workspace
-  only when you choose **Show workspace**.
+- **Streamer Mode.** Toggle it from the rail to mask recognized credentials while keeping
+  chats, terminals, settings, and Space usable. Text matching covers credential labels,
+  common token prefixes, authorization headers, URL passwords, and private-key blocks.
+  An editable field containing a match masks its whole value; typing, undo, formatting,
+  clipboard, saved files, and CLI requests retain the originals. Comment excerpts are
+  masked in full, including public quotes, because selections can lose a secret's label.
+  Embedded Browser and Knowledge panes are covered, and pairing QR codes are hidden.
+  The setting survives relaunch, including startup errors. This is visual masking:
+  arbitrary unlabeled secrets, image contents, raw clipboard text, and accessibility
+  text are not sanitized.
 - **Threads name themselves.** A new thread takes its first message as its title right away.
   After that first turn completes, the same CLI is asked, in a separate throwaway chat
   conversation that never touches the transcript, for a short title based on the request and

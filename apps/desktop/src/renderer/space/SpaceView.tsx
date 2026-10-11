@@ -1,3 +1,4 @@
+import { SecretInput } from "../streamer";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { pageTitle } from "../../shared/space";
@@ -115,7 +116,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     {sidebarOpen && <aside className="space-sidebar" aria-label="Space pages">
       <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}>Import Markdown</MenuItem></Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
       <button className="space-new-page" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="review" />New page</button>
-      {searching && <label className="space-search"><Icon name="search" /><input autoFocus type="search" aria-label="Search pages" placeholder="Search pages" value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} /></label>}
+      {searching && <label className="space-search"><Icon name="search" /><SecretInput autoFocus type="search" aria-label="Search pages" placeholder="Search pages" value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} /></label>}
       <nav className="space-views" aria-label="Page collections">
         <button aria-label="All pages" aria-current={!page && view === "all" ? "page" : undefined} onClick={() => selectView("all")}><Icon name="library" />All</button>
         <button aria-current={!page && view === "pages" ? "page" : undefined} onClick={() => selectView("pages")}><Icon name="page" />Pages</button>
@@ -182,7 +183,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
       <div className="space-page-body">
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>
         <article className="space-document" onMouseUp={() => { const selection = window.getSelection(); if (selection?.toString().trim()) setQuote(selection.toString().slice(0, 2000)); }} onSelect={event => { if (event.target instanceof HTMLTextAreaElement) setQuote(event.target.value.slice(event.target.selectionStart, event.target.selectionEnd).slice(0, 2000)); }}>
-          <input ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
+          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} markdown={page.markdown} insertRequest={insertRequest} onChange={markdown => space.edit(page.id, { markdown })} />
           {live.filter(p => p.parentId === page.id).length > 0 && <div className="space-subpages"><span>IN THIS PAGE</span>{live.filter(p => p.parentId === page.id).map(p => <button key={p.id} onClick={() => open(p.id)}><Icon name="file" />{pageTitle(p)}<Icon name="arrow-right" /></button>)}</div>}
@@ -202,7 +203,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     </main>
     </div>
     {view === "knowledge" && <KnowledgeView active={active && !chatOpen} onPages={() => selectView("pages")} />}
-    <input ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
+    <SecretInput ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
       const file = event.target.files?.[0]; event.target.value = "";
       if (!file) return;
       void run(async () => {

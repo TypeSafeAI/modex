@@ -344,7 +344,9 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     await expect.poll(visibleGuest).toBe(true);
     await page.getByRole("button", { name: /Streamer Mode/ }).click();
     await expect.poll(visibleGuest).toBe(false);
-    await tid(page, "streamer-mode-disable").click();
+    await expect(tid(page, "streamer-knowledge-cover")).toBeVisible();
+    await expect(tid(page, "space")).toBeVisible();
+    await tid(page, "streamer-mode-toggle").click();
     await expect.poll(visibleGuest).toBe(true);
     await page.locator(".knowledge-topbar").getByRole("button", { name: "Space", exact: true }).click();
     await expect.poll(visibleGuest).toBe(false);

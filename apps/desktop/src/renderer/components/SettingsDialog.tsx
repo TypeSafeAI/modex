@@ -1,3 +1,4 @@
+import { SecretOption, SecretInput } from "../streamer";
 import { ModexAccount } from "./ModexAccount";
 import { ThemePicker } from "./ThemePicker";
 import { useEffect, useRef, useState } from "react";
@@ -152,8 +153,8 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     const list = r?.models ?? [];
     return (
       <select value={list.some((m) => m.id === s.default_model[b]) ? s.default_model[b] : ""} onChange={(e) => set("default_model", { ...s.default_model, [b]: e.target.value })} disabled={!list.length}>
-        <option value="">{r?.error ? "CLI unavailable" : list.length ? "CLI default" : "Loading…"}</option>
-        {list.map((m) => <option key={m.id} value={m.id}>{m.label}{m.isDefault ? " · default" : ""}</option>)}
+        <SecretOption value="">{r?.error ? "CLI unavailable" : list.length ? "CLI default" : "Loading…"}</SecretOption>
+        {list.map((m) => <SecretOption key={m.id} value={m.id}>{m.label}{m.isDefault ? " · default" : ""}</SecretOption>)}
       </select>
     );
   };
@@ -308,18 +309,18 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <label className="field">
             <span>Default backend for new threads</span>
             <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>
-              {BACKENDS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-              <option value="mock">Mock (offline demo)</option>
+              {BACKENDS.map((b) => <SecretOption key={b.id} value={b.id}>{b.label}</SecretOption>)}
+              <SecretOption value="mock">Mock (offline demo)</SecretOption>
             </select>
           </label>
           <label className="field">
             <span>Default mode for new threads</span>
             <select value={s.default_mode} onChange={(e) => set("default_mode", e.target.value as Mode)}>
-              {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {MODES.map((m) => <SecretOption key={m.id} value={m.id}>{m.label}</SecretOption>)}
             </select>
           </label>
           <label className="check">
-            <input data-testid="auto-retire" type="checkbox" checked={s.auto_retire} onChange={(e) => set("auto_retire", e.target.checked)} />
+            <SecretInput data-testid="auto-retire" type="checkbox" checked={s.auto_retire} onChange={(e) => set("auto_retire", e.target.checked)} />
             <span>Finish worktree threads when their pull request merges<small> — removes the worktree and branch once nothing in them would be lost; the transcript stays as a read-only record</small></span>
           </label>
         </section>}
@@ -344,8 +345,8 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <p className="connection-feedback" role="status">{chatgptDetail || (chatgptFailed ? "Account check unavailable. Refresh to retry, or use terminal login below." : chatgpt?.detail || "Checking protected credential storage…")}</p>
             <label className="field connection-account"><span>Active account for new Codex conversations</span>
               <select disabled={chatgptBusy || !chatgpt?.available} value={chatgpt?.active ?? ""} onChange={(event) => { const id = event.target.value || null; void accountAction(async () => { setChatgpt(await bridge.invoke("chatgpt:select", { accountId: id })); setChatgptDetail("Account selected for new conversations."); }); }}>
-                <option value="">Existing Codex CLI authentication</option>
-                {chatgpt?.accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.signedIn ? account.planEnabled ? "plan authorized" : "identity only" : "signed out"}</option>)}
+                <SecretOption value="">Existing Codex CLI authentication</SecretOption>
+                {chatgpt?.accounts.map((account) => <SecretOption key={account.id} value={account.id}>{account.label} · {account.signedIn ? account.planEnabled ? "plan authorized" : "identity only" : "signed out"}</SecretOption>)}
               </select>
               <small>Existing conversations keep their original account.</small>
             </label>
@@ -386,13 +387,13 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         <div className="grid2">
           <label className="field">
             <span>Claude executable</span>
-            <input value={s.claude_bin === "claude" ? "" : s.claude_bin} placeholder="Automatic discovery" onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
+            <SecretInput value={s.claude_bin === "claude" ? "" : s.claude_bin} placeholder="Automatic discovery" onChange={(e) => set("claude_bin", e.target.value)} spellCheck={false} />
             {s.claude_bin !== settings.claude_bin && <small className="warn">Override changed · verified when you save</small>}
             {health?.claude.resolvedPath && <small className="connection-path">Using: {health.claude.resolvedPath}</small>}
           </label>
           <label className="field">
             <span>Codex executable</span>
-            <input value={s.codex_bin === "codex" ? "" : s.codex_bin} placeholder="Automatic discovery" onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
+            <SecretInput value={s.codex_bin === "codex" ? "" : s.codex_bin} placeholder="Automatic discovery" onChange={(e) => set("codex_bin", e.target.value)} spellCheck={false} />
             {s.codex_bin !== settings.codex_bin && <small className="warn">Override changed · verified when you save</small>}
             {health?.codex.resolvedPath && <small className="connection-path">Using: {health.codex.resolvedPath}</small>}
           </label>
@@ -430,7 +431,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         <div className="key-row" data-testid="jev-key">
           <label className="field grow">
             <span>Jev API key {routing?.secrets.present ? <em className="ok">· saved in {routing.secrets.backend}{routing.keySource === "modex" && routing.keyLast4 ? ` (****${routing.keyLast4})` : ""}</em> : null}</span>
-            <input type="password" autoComplete="off" value={keyDraft} placeholder={routing?.secrets.present ? "Saved — paste a new key to replace it" : "sk-… or op://Vault/Item/field"} onChange={(e) => setKeyDraft(e.target.value)} disabled={keyBusy || routing?.secrets.available === false} spellCheck={false} />
+            <SecretInput type="password" autoComplete="off" value={keyDraft} placeholder={routing?.secrets.present ? "Saved — paste a new key to replace it" : "sk-… or op://Vault/Item/field"} onChange={(e) => setKeyDraft(e.target.value)} disabled={keyBusy || routing?.secrets.available === false} spellCheck={false} />
             <small className={routing?.secrets.available === false ? "warn" : ""}>
               {routing?.secrets.available === false
                 ? `${routing.secrets.backend} encryption is unavailable here — use TYPESAFE_API_KEY or \`jev config set apiKey …\` instead.`
@@ -455,53 +456,53 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <label className="field">
             <span>Judge transport</span>
             <select value={r.jev_transport} onChange={(e) => setR("jev_transport", e.target.value as RoutingPolicy["jev_transport"])}>
-              <option value="auto">Auto — jev CLI when installed, else HTTPS</option>
-              <option value="cli">Always the jev CLI</option>
-              <option value="http">Always Modex's HTTPS call</option>
+              <SecretOption value="auto">Auto — jev CLI when installed, else HTTPS</SecretOption>
+              <SecretOption value="cli">Always the jev CLI</SecretOption>
+              <SecretOption value="http">Always Modex's HTTPS call</SecretOption>
             </select>
           </label>
           <label className="field">
             <span>jev executable</span>
-            <input value={r.jev_bin} onChange={(e) => setR("jev_bin", e.target.value)} spellCheck={false} />
+            <SecretInput value={r.jev_bin} onChange={(e) => setR("jev_bin", e.target.value)} spellCheck={false} />
             <small>{judgeDraftDirty ? "Draft transport or executable has not been checked. Save or revert before testing." : routingError ? "Saved transport status is unavailable; use Test judge to retry." : settings.routing.jev_transport === "http" ? "The jev CLI is not used or checked in HTTP-only mode." : routing?.transport.kind === "cli" ? `found: ${routing.transport.bin} ${routing.transport.version ?? ""}` : settings.routing.jev_transport === "auto" && routing?.transport.kind === "http" ? "Auto selected HTTPS; the jev CLI was not selected." : routing?.detail ? `CLI unavailable: ${routing.detail}` : "Checking the saved transport…"}</small>
           </label>
         </div>
         <label className="check">
-          <input type="checkbox" checked={r.auto_by_default} onChange={(e) => setR("auto_by_default", e.target.checked)} />
+          <SecretInput type="checkbox" checked={r.auto_by_default} onChange={(e) => setR("auto_by_default", e.target.checked)} />
           <span>New threads start with Auto on</span>
         </label>
         <div className="grid2">
           <label className="field">
             <span>Posture</span>
             <select data-testid="routing-posture" value={r.posture} onChange={(e) => setR("posture", e.target.value as RoutingPolicy["posture"])}>
-              <option value="economy">Economy — one tier down</option>
-              <option value="balanced">Balanced</option>
-              <option value="quality">Quality — one tier up</option>
+              <SecretOption value="economy">Economy — one tier down</SecretOption>
+              <SecretOption value="balanced">Balanced</SecretOption>
+              <SecretOption value="quality">Quality — one tier up</SecretOption>
             </select>
           </label>
           <label className="field">
             <span>Reasoning effort ceiling</span>
             <select value={r.max_effort} onChange={(e) => setR("max_effort", e.target.value as EffortLevel)}>
-              {EFFORT_LEVELS.map((e) => <option key={e} value={e}>{e}</option>)}
+              {EFFORT_LEVELS.map((e) => <SecretOption key={e} value={e}>{e}</SecretOption>)}
             </select>
           </label>
         </div>
         <div className="grid2">
           <label className="field">
             <span>Minimum judge confidence (below it, Auto keeps your model)</span>
-            <input type="number" min={0} max={1} step={0.05} value={r.min_confidence} onChange={(e) => setR("min_confidence", Math.max(0, Math.min(1, Number(e.target.value) || 0)))} />
+            <SecretInput type="number" min={0} max={1} step={0.05} value={r.min_confidence} onChange={(e) => setR("min_confidence", Math.max(0, Math.min(1, Number(e.target.value) || 0)))} />
           </label>
           <label className="field">
             <span>Premium turns per day (top tier / xhigh+; blank = unlimited)</span>
-            <input type="number" min={0} step={1} value={r.premium_turns_per_day ?? ""} placeholder="unlimited" onChange={(e) => setR("premium_turns_per_day", e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
+            <SecretInput type="number" min={0} step={1} value={r.premium_turns_per_day ?? ""} placeholder="unlimited" onChange={(e) => setR("premium_turns_per_day", e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
           </label>
         </div>
         <label className="check">
-          <input type="checkbox" checked={r.allow_fast} onChange={(e) => setR("allow_fast", e.target.checked)} />
+          <SecretInput type="checkbox" checked={r.allow_fast} onChange={(e) => setR("allow_fast", e.target.checked)} />
           <span>Allow fast mode for light, speed-sensitive turns</span>
         </label>
         <label className="check">
-          <input type="checkbox" checked={r.allow_backend_switch} onChange={(e) => setR("allow_backend_switch", e.target.checked)} />
+          <SecretInput type="checkbox" checked={r.allow_backend_switch} onChange={(e) => setR("allow_backend_switch", e.target.checked)} />
           <span>Allow Auto to switch between Codex and Claude when a thread has no session to lose</span>
         </label>
         </section>}
@@ -509,14 +510,14 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <h3 id="settings-advanced-title">Advanced routing and demo</h3>
           <label className="field">
             <span>Jev judge model</span>
-            <input data-testid="jev-model" type="text" value={r.jev_model} onChange={(e) => { setR("jev_model", e.target.value); setModelError(e.target.value.trim() ? null : "Enter a Jev model id before saving."); }} onBlur={() => setR("jev_model", r.jev_model.trim())} aria-invalid={!jevModel || !!modelError} aria-describedby="jev-model-help" spellCheck={false} />
+            <SecretInput data-testid="jev-model" type="text" value={r.jev_model} onChange={(e) => { setR("jev_model", e.target.value); setModelError(e.target.value.trim() ? null : "Enter a Jev model id before saving."); }} onBlur={() => setR("jev_model", r.jev_model.trim())} aria-invalid={!jevModel || !!modelError} aria-describedby="jev-model-help" spellCheck={false} />
             <small id="jev-model-help">Model id used for future Auto routing decisions. Default: <code>jev-latest</code>. Existing threads keep their current backend, model, and CLI session.</small>
             {modelError && <small className="warn" role="alert">{modelError}</small>}
           </label>
           <fieldset className="settings-backends">
             <legend>Allowed coding backends when Auto can switch</legend>
             {(["codex", "claude"] as const).map((backend) => <label className="check" key={backend}>
-              <input type="checkbox" checked={r.allow_backends.includes(backend)} onChange={(e) => toggleBackend(backend, e.target.checked)} />
+              <SecretInput type="checkbox" checked={r.allow_backends.includes(backend)} onChange={(e) => toggleBackend(backend, e.target.checked)} />
               <span>{backend === "codex" ? "Codex" : "Claude"}</span>
             </label>)}
             <small>{r.allow_backends.some((backend) => backend === "codex" || backend === "claude")
@@ -531,14 +532,14 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <fieldset className="settings-backends settings-demo-backend">
             <legend>Routing compatibility</legend>
             <label className="check">
-              <input data-testid="allow-mock-routing" type="checkbox" checked={r.allow_backends.includes("mock")} onChange={(e) => toggleLegacyMock(e.target.checked)} />
+              <SecretInput data-testid="allow-mock-routing" type="checkbox" checked={r.allow_backends.includes("mock")} onChange={(e) => toggleLegacyMock(e.target.checked)} />
               <span>Allow Mock for offline demo routing</span>
             </label>
             <small>Mock is the offline scripted backend, not a coding CLI. Existing Mock allowlist entries stay enabled until you turn this off.</small>
           </fieldset>
           <label className="field">
             <span>Mock script</span>
-            <input value={s.mock_script ?? ""} onChange={(e) => set("mock_script", e.target.value)} placeholder="/path/to/mock-script.json" spellCheck={false} />
+            <SecretInput value={s.mock_script ?? ""} onChange={(e) => set("mock_script", e.target.value)} placeholder="/path/to/mock-script.json" spellCheck={false} />
             <small>Used only by the Mock backend for scripted offline demos and tests.</small>
           </label>
         </section>}

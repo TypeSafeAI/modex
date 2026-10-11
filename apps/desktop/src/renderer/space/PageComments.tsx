@@ -3,6 +3,7 @@ import type { SpaceComment } from "../../shared/space";
 import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
+import { SecretTextarea } from "../streamer";
 
 export interface CommentDraft { text: string; quote: string; }
 
@@ -43,12 +44,12 @@ export function PageComments({ pageId, quote, draft, onDraft, onClose }: { pageI
     <div className="space-comments-scroll">
       {!loaded && !error ? <p role="status">Loading comments…</p> : !comments.length && !writing ? <div className="space-comments-empty"><Icon name="comment" size={20} /><p>No comments yet</p><p>Select text to add a comment</p>{quote && <button className="btn small" onClick={start}>Comment on selection</button>}</div> : comments.map(comment => <article className="space-comment" key={comment.id}>
         <div className="space-comment-author"><span className="space-avatar">Y</span><strong>You</strong><time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time><IconButton icon="trash" label="Delete comment" disabled={busy} onClick={() => void remove(comment.id)} /></div>
-        {comment.quote && <blockquote>{comment.quote}</blockquote>}<p>{comment.text}</p>
+        {comment.quote && <blockquote data-streamer-quote>{comment.quote}</blockquote>}<p>{comment.text}</p>
       </article>)}
     </div>
     {writing ? <form className="space-comment-form" onSubmit={event => { event.preventDefault(); void post(); }}>
-      {excerpt && <blockquote>{excerpt}</blockquote>}
-      <textarea ref={input} aria-label="Comment" placeholder="Write a comment…" maxLength={10_000} value={text} onChange={event => onDraft({ text: event.target.value, quote: excerpt })} disabled={busy} />
+      {excerpt && <blockquote data-streamer-quote>{excerpt}</blockquote>}
+      <SecretTextarea ref={input} aria-label="Comment" placeholder="Write a comment…" maxLength={10_000} value={text} onChange={event => onDraft({ text: event.target.value, quote: excerpt })} disabled={busy} />
       <div><span>Only on this Mac</span><button className="btn small ghost" type="button" onClick={() => onDraft(undefined)} disabled={busy}>Discard</button><button className="btn small primary" disabled={busy || !text.trim()}>Post comment</button></div>
     </form> : <footer><IconButton icon="comment" label="Add comment" size="lg" disabled={!loaded} onClick={start} /></footer>}
   </aside>;

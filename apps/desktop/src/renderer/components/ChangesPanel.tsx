@@ -1,3 +1,4 @@
+import { SecretInput } from "../streamer";
 import { useEffect, useRef, useState } from "react";
 import type { ChangesSnapshot, Thread } from "../../shared/types";
 import { bridge } from "../bridge";
@@ -76,7 +77,7 @@ export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
           {!diff ? <p className="hint pad" role="status">Loading diff…</p> : diff.error ? <p className="hint pad" role="alert">Could not load diff: {diff.error}</p> : <Diff text={diff.text} wrap={wrap} highlight={highlight} onExpand={() => setExpanded(true)} />}
         </div>
         {tree && <aside className="review-tree" data-testid="review-tree" aria-label="Changed files">
-          <label className="review-filter"><Icon name="search" size={13} /><input ref={filterRef} data-testid="review-filter" aria-label="Filter files" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
+          <label className="review-filter"><Icon name="search" size={13} /><SecretInput ref={filterRef} data-testid="review-filter" aria-label="Filter files" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
           {!paths.length && <p className="hint pad">No matching files.</p>}
           {[...groups].map(([folder, files]) => <FileGroup key={folder} folder={folder}>
             {files.map((f) => <div key={f.path} className={`review-file${file === f.path ? " selected" : ""}`} data-testid="changes-file" data-path={f.path} aria-current={file === f.path ? "true" : undefined}>
