@@ -64,6 +64,7 @@ verify() {
   local ents; ents="$(codesign -d --entitlements - --xml "$app" 2>/dev/null)"
   grep -q 'com.apple.security.cs.allow-jit' <<<"$ents" || die "allow-jit entitlement missing"
   grep -q 'disable-library-validation' <<<"$ents" && die "library validation is disabled; the build loads something unsigned"
+  grep -q 'ai.typesafe.modex.webauthn' <<<"$ents" && die "deferred WebAuthn keychain group must not ship in the default artifact"
   say "nested code is signed by the same team (node-pty, spawn-helper, terminal supervisor)"
   local team; team="$(grep -o 'TeamIdentifier=[A-Z0-9]*' <<<"$info" | head -1)"
   local unpacked="$app/Contents/Resources/app.asar.unpacked" native_count=0

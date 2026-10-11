@@ -372,6 +372,35 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   never finished. Before, `close()` waited for Node's 120 s handshake timeout on such a socket;
   the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
   holds a half-open connection and requires `dispose()` to return promptly.
+- **Browser extensions and document-bound 1Password filling.** The workspace browser
+  keeps a persistent session of its own. Its gear installs approved copies of unpacked
+  Manifest V3 extensions limited to page scripts and styles on named HTTPS sites (no
+  background, native messaging or host APIs); tampered copies fail closed on launch.
+  **Page options → Fill with 1Password** lists exact-origin logins through the local
+  1Password CLI, reads one item only after it is chosen, and fills visible login fields
+  without submitting. The selected guest receives the fields; matching approved extensions
+  can read them. Credentials are not returned through Modex app-bridge IPC or stored in the
+  app renderer, transcripts, or error messages. A request is prepared before vault reads
+  and consumed in one synchronous isolated-world fill;
+  loading, replaced, cached, and navigated documents fail closed. Frame and ancestor
+  navigation permanently cancels native passkey selections, while sibling navigation does
+  not. Device Touch ID stays disabled and its restricted keychain group is absent from
+  default artifacts; signed binaries alone do not authorize it. Passkeys use **Open in
+  system browser**. Controlled HTTPS/fake-CLI regressions cover document cancellation,
+  package restrictions, approved-copy integrity, chooser callbacks, and extension isolation.
+  Combined integration passed build, typecheck, 670 unit tests (one optional skip),
+  213 desktop E2E tests, seven site tests, and whole SPEC/QUALITY review. The actual #157
+  squash has the exact tested candidate tree. A controlled development-build check through
+  the real 1Password CLI 2.39.0 passed no-submit filling, scoped leak checks, and exact
+  temporary Login cleanup. All ten credential source/build hashes still match that pass.
+  A renewed check stopped before Modex launch because the 1Password desktop connection
+  timed out; its fixture creation result is uncertain and cleanup is not confirmed. Restore
+  that connection before exact fixture lookup/cleanup and renewed integrated acceptance.
+  Normal signed-app unlock and cancellation remain release gates; no fresh biometric
+  gesture was observed. Device Touch ID needs a separate provisioned enabling patch and
+  real signed create/get acceptance.
+  [Acceptance evidence](reviews/2026-10-11-browser-credential-acceptance.md) and
+  [usage and gates](browser-tools.md).
 
 - **Chats and Space reference layout.** Graphite uses a 280 px default sidebar and
   fixed 30 px chat rows. Hover or press Right Arrow on a chat to inspect its project,
@@ -393,15 +422,6 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   is a historical proposal: native identity-only sign-in shipped separately in
   #141. Repository authorization still needs a dedicated GitHub App owner and
   hosted service destination before implementation and live acceptance.
-
-- **Browser credentials ([#152](https://github.com/TypeSafeAI/modex/pull/152)).**
-  Document-bound 1Password filling and monotonic native chooser cancellation passed
-  independent review. A controlled development-build check through the real 1Password
-  CLI 2.39.0 passed filling without submission, scoped leak checks, and exact temporary
-  Login cleanup. Final-main integration and protected CI remain pending. Normal signed-app
-  unlock and cancellation acceptance is still required; no fresh biometric gesture was
-  observed. Device Touch ID remains disabled until matching Developer ID provisioning
-  and real signed WebAuthn create/get acceptance.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
