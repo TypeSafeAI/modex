@@ -1,0 +1,109 @@
+{
+  "provider": "gemini",
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.18.1",
+  "at": "2026-10-11T06:21:02.999Z",
+  "args": [
+    "--acp"
+  ],
+  "promptSent": true,
+  "authenticateSent": false,
+  "steps": [
+    {
+      "method": "initialize",
+      "protocolVersion": 1,
+      "agentInfo": {
+        "name": "gemini-cli",
+        "title": "Gemini CLI",
+        "version": "0.63.0"
+      },
+      "capabilities": {
+        "loadSession": true,
+        "promptCapabilities": {
+          "image": true,
+          "audio": true,
+          "embeddedContext": true
+        },
+        "mcpCapabilities": {
+          "http": true,
+          "sse": true
+        }
+      },
+      "authMethods": [
+        {
+          "id": "oauth-personal",
+          "name": "Log in with Google"
+        },
+        {
+          "id": "gemini-api-key",
+          "name": "Gemini API key"
+        },
+        {
+          "id": "vertex-ai",
+          "name": "Vertex AI"
+        },
+        {
+          "id": "gateway",
+          "name": "AI API Gateway"
+        }
+      ]
+    },
+    {
+      "method": "session/new",
+      "created": true,
+      "modes": {
+        "availableModes": [
+          {
+            "id": "default",
+            "name": "Default",
+            "description": "Prompts for approval"
+          },
+          {
+            "id": "autoEdit",
+            "name": "Auto Edit",
+            "description": "Auto-approves edit tools"
+          },
+          {
+            "id": "yolo",
+            "name": "YOLO",
+            "description": "Auto-approves all tools"
+          },
+          {
+            "id": "plan",
+            "name": "Plan",
+            "description": "Read-only mode"
+          }
+        ],
+        "currentModeId": "default"
+      }
+    },
+    {
+      "method": "session/set_mode",
+      "modeId": "plan",
+      "accepted": true,
+      "enforcementTested": false
+    },
+    {
+      "method": "session/prompt",
+      "stopReason": "end_turn",
+      "markerReceived": true,
+      "toolUpdates": 0
+    },
+    {
+      "method": "session/load",
+      "accepted": true,
+      "emptySessionOnly": false
+    },
+    {
+      "method": "session/cancel",
+      "stopReason": "cancelled",
+      "cancelled": true
+    }
+  ],
+  "version": "0.63.0",
+  "exit": {
+    "code": null,
+    "signal": "SIGKILL"
+  }
+}

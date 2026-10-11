@@ -208,6 +208,13 @@ test("Space comment quotes mask selected fragments while keeping original text",
   const quote = page.getByRole("complementary", { name: "Comments" }).locator("blockquote");
   await expect(quote).toHaveText("abcdef");
   const fullyMasked = () => quote.evaluate(quoteFullyHighlighted);
+  // A quote replacement can leave an old detached range in the highlight set
+  // until the observer refreshes it. Exercise that state before the live range.
+  await page.evaluate(() => {
+    const staleText = document.createTextNode("old quote");
+    const stale = document.createRange(); stale.selectNodeContents(staleText);
+    CSS.highlights.set("modex-streamer", new Highlight(stale, ...Array.from(CSS.highlights.get("modex-streamer") ?? [])));
+  });
   await expect.poll(fullyMasked).toBe(true);
   await page.evaluate(() => {
     const publicText = document.createElement("p"); publicText.id = "public-quote-twin"; publicText.textContent = "abcdef";

@@ -252,7 +252,7 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 10))
         capture(app, name: "Demo approval")
 
-        let input = app.descendants(matching: .any)["followup-input"].firstMatch
+        let input = app.inputField("followup-input")
         XCTAssertTrue(input.waitForExistence(timeout: 10))
         input.typeTextWhenReady("Ship it", in: app)
         app.buttons["send-followup"].tapWhenReady()
@@ -261,7 +261,7 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["new-thread"].tapWhenReady()
-        let newInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
+        let newInput = app.inputField("new-thread-input")
         XCTAssertTrue(newInput.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Creates a demo thread with scripted replies. Location and provider choices are simulated; nothing runs on a Mac."].exists)
         app.segmentedControls.buttons["Worktree"].tapWhenReady()

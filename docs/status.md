@@ -398,6 +398,17 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 - **iPhone CI keyboard.** The hosted simulator disables its hardware keyboard before first
   boot and verifies the preference, so the software keyboard can confirm input focus.
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
+- **PR #163 CI follow-up.** Attachment lifecycle tests wait until the
+  composer accepts dragover before dispatching a single drop. iPhone test input queries
+  use exact accessibility identifiers on text fields, avoiding the keyboard placeholder
+  lookup that crashed XCTest after dismissing the skills sheet. Streamer quote assertions
+  skip detached highlight ranges before checking full coverage; a deterministic regression
+  reproduces the prior exception. Production behavior and assertion coverage are unchanged.
+  The integration after #166 passed build/typecheck, 834 unit tests (12 Windows-only
+  skips), 241 desktop and seven site E2E tests, 11 offline approval checks, and 41 native
+  unit plus 28 UI tests. Approval rules remain disabled and both providers remain deferred;
+  fresh checks on the published integrated commit are still required.
+  [Failure evidence and verification](reviews/2026-10-11-pr163-ci.md).
 - **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
   to settle at the requested size. The real OpenKnowledge test retries file visibility when
   responsive layout changes its sidebar toggle. The packaged-demo unit fixture skips
@@ -548,9 +559,12 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   records the pairing and release path.
 
 - **Provider feasibility (#78/#79).** [Gemini](gemini-feasibility.md) and
-  [Grok](grok-feasibility.md) have conditional CLI/ACP integration decisions backed by
-  installed-version initialization probes. Neither is enabled. Read-only permission,
-  authentication and macOS acceptance evidence remain gates for future implementation.
+  [Grok](grok-feasibility.md) are explicitly deferred after the 2026-10-11 macOS refresh.
+  Gemini 0.63.0 completed a text turn, resume, and cancellation, but the negative permission
+  probe timed out during initialization. Grok 1.0.46 accepted cached auth and session RPCs,
+  then its text turn timed out; native plan/sandbox also has documented permission limits.
+  Neither provider is enabled. Both decisions include reproducible probes and distinguish
+  observed failures from unverified capabilities; coding execution remains CLI-only.
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2
@@ -559,8 +573,11 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   The gate remains off: saved rules can be previewed but do not decide live approvals.
   Reconciliation with the merged companion passed build, typecheck, 15 core and 248 desktop
   tests plus the browser bridge test, and all 94 desktop e2e checks. This integration follows
-  v0.0.6. Three live Jev preview examples passed on 2026-10-05; human acceptance and
-  broader judge evaluation remain open before enabling the gate. The
+  v0.0.6. The [2026-10-11 readiness review](reviews/2026-10-11-approval-provider-readiness.md)
+  expanded evaluation to 62 checks: 56 expected results and six false allows (quoted test
+  names and truncated destructive suffixes, three repeats each). Human acceptance is prepared
+  but not performed; native escalation normalization also needs proof. The gate stays off.
+  The
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
