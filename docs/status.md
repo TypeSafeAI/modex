@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-09._
+_Last updated 2026-10-11._
 
 ## Shipped
 
@@ -328,6 +328,15 @@ Deny and unexpected answers grant nothing; malformed or unsupported profiles are
 without prompting. The approval detail includes the complete profile. Validation covers
 wire responses and the installed protocol schema; a model-generated live approval has
 not been exercised. [Recovery evidence](reviews/2026-10-11-permission-response.md).
+
+**Chats and Space reference layout.** Graphite uses a 280 px default sidebar and
+fixed 30 px chat rows. Hover or press Right Arrow on a chat to inspect its project,
+model, branch, and PR without moving the list. Space has compact navigation, a page
+toolbar, an insert menu, local comments with per-page drafts, and a floating view of
+the current CLI chat. Share copies or exports Markdown; Sites and Images filter
+pages containing those references. Visualize prepares a chat prompt for review
+before sending. Comments stay in the local Space store and do not alter page
+revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
 
 ## In flight
 

@@ -224,6 +224,9 @@ handle("space:export", async ({ pageId }) => {
   return result.filePath;
 }, { localOnly: true });
 handle("space:list", () => store.space.list());
+handle("space:comments", ({ pageId }) => store.space.comments(pageId));
+handle("space:comment:add", ({ pageId, text, quote }) => store.space.addComment(pageId, text, quote));
+handle("space:comment:delete", ({ pageId, id }) => store.space.deleteComment(pageId, id));
 handle("space:create", (input) => store.space.create(input));
 handle("space:save", (page) => store.space.save(page));
 handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));

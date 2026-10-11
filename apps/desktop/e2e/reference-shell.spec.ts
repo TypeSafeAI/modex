@@ -9,14 +9,20 @@ test('reference shell keeps title actions reachable and matches the compact neut
     await createThread(page, 'Assess codebase and optimize');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(2177, 1050));
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite');
-    await expect(tid(page, 'sidebar')).toHaveCSS('width', '240px');
+    await expect(tid(page, 'sidebar')).toHaveCSS('width', '280px');
     await expect(tid(page, 'titlebar')).toHaveCSS('height', '44px');
     await expect(tid(page, 'titlebar').locator('.titlebar-folder')).toBeVisible();
     const row = page.locator('.thread-row').first();
     await tid(page, 'composer-input').focus();
-    await row.hover();
-    await expect(row.locator('.thread-provider-line')).toBeVisible();
-    await expect(row.locator('.thread-context-line')).toBeVisible();
+    const details = page.getByRole('dialog', { name: 'Chat details' });
+    // Native pointer movement can enter an Electron test window between actions.
+    await expect(async () => {
+      await row.hover();
+      await expect(details).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
+    await details.locator('summary').click();
+    await expect(details.locator('.thread-details-meta')).toBeVisible();
+    await expect(row).toHaveCSS('height', '30px');
     await tid(page, 'titlebar').hover();
     await expect(row.locator('.thread-provider-line')).toBeHidden();
     const rightEdge = async () => {
