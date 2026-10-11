@@ -43,6 +43,24 @@ is true. All eight Streamer tests passed after this test-only repair. The full b
 during that gate. Production source is unchanged; fresh hosted verification is required
 for the follow-up head.
 
+
+At `64ff149`, both macOS jobs passed 234 desktop and seven site tests; hosted unit
+verification passed 702 tests with one opt-in skip. The pull-request iPhone job passed.
+The push iPhone job passed its native units and 15 of 16 UI cases, but the demo exit
+assertion failed. Its captured hierarchy showed the original “Leave demo workspace”
+menu still open after the synthesized tap; the cause of the ineffective activation is
+unknown. iPhone source was unchanged from main. A scoped test action now permits at most
+one retry while the same menu action remains ready, shares its observation deadline,
+and requires the actual welcome screen. Menu dismissal alone is not success.
+
+The one-tap regression baseline failed three expected cases and passed 12 controls.
+After changing only the attempt bound, all 16 DemoWorkspace tests passed in an isolated
+iPhone 16 Pro / iOS 26.5 simulator, with zero skips. The original welcome, demo deep-link,
+and relaunch assertions remain. This is focused demo evidence, not a rerun of the full
+paired iPhone suite. The required full build and 703 unit tests subsequently passed with
+zero skips; all 470 tracked hashes stayed unchanged during the gate. Fresh hosted
+verification remains required before landing.
+
 ### Initial implementation evidence
 
 The workspace already had guest browser tabs and bounded source-file reads, but no Canvas.
