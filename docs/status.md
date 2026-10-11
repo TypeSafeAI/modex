@@ -453,7 +453,9 @@ Roughly in the order they earn their place; none is scheduled.
    portable build steps and Linux credential-backend refusal are implemented in the platform
    branch (#173). Linux now builds AppImage and Debian candidates with independently checked
    manifest hashes. Windows compiles and passes twelve CLI/process checks, but interactive
-   resize and worker shutdown remain unresolved. Installed startup,
+   resize observation and worker shutdown remain unresolved. Linux terminal cleanup passed
+   seven native tests (two platform/shell skips); a hosted installed-package smoke harness
+   is prepared but has not run. Installed startup,
    packaged ABI, CLI/PTY behavior, native credential storage, manual upgrade and uninstall
    acceptance remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is

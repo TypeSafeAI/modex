@@ -18,16 +18,29 @@ left the test runner alive. The fixture now writes to the console so Node can ob
 Windows resize events, and teardown closes the PTY even after an assertion failure.
 The [second native run](https://github.com/TypeSafeAI/modex/actions/runs/38134994369)
 still failed the Windows resize observation (80×24 after requesting 96×32) and timed out
-with the worker alive. Diagnostic coverage now records a fresh OS-size sample and the
-resources retained after teardown; the original assertions remain required.
+with the worker alive. The [third run](https://github.com/TypeSafeAI/modex/actions/runs/38135685702)
+confirmed the OS console reached 96×32 while Node retained cached 80×24 fields. Three
+worker MessagePorts remained after teardown. The resize observation and node-pty resource
+cleanup still need correction and native verification.
 
 Linux GCC rejected unchecked terminal receipt writes in the
 [initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
 After the helper handled partial writes, interruption and errors, the second run compiled
 and produced AppImage and Debian candidates. Downloaded sizes and SHA-256 hashes match
 their manifest, whose source is the PR merge of Canvas `05efc984` and platform `3de10de5`.
-The Linux terminal cleanup/job-control suite is also included before packaging. Installed
-startup, native credentials and installer lifecycle acceptance are still pending.
+The third run also passed seven Linux terminal cleanup/job-control tests; two require
+unavailable zsh or macOS. Installed startup, native credentials and installer lifecycle
+acceptance are still pending.
+
+The workflow now includes a hosted-only installed smoke harness, not yet executed. It
+verifies candidate hashes before installing Debian, launches the installed binary and
+extracted AppImage with an isolated Modex data directory, checks packaged ASAR identity
+and real terminal input/output/cleanup, then removes Debian and checks retained app data.
+It records screenshots, runtime identity and the actual credential backend. Extracted
+AppImage execution does not establish FUSE startup. Encrypted credential persistence,
+distinct-version upgrades and full CLI/account acceptance remain required. The harness
+refuses local and self-hosted execution and fails acceptance if app shutdown needs forced
+termination.
 
 Before release, collect native evidence for installed startup, packaged Electron addon
 and helper loading, CLI arguments and account/login launches, PTY input/resize/Ctrl-C,
