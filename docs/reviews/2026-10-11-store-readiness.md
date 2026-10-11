@@ -30,10 +30,13 @@ SHA-256 `bdcd801b743cd01247dcd0ad1fe7e566c7be77a8d740352921d5d6dd5a70e7c7` from
 was launched or modified, and no key export, notarization or upload occurred.
 
 The later [signed current-account receipt](2026-10-11-store-signed-acceptance.md) records
-real application-group discovery, a completed Codex turn and native denial. Saved-access
-relaunch failed in the initial isolated candidate; its runtime application name shared the
-installed Store app's keychain service. A controlled artifact-only comparison is pending.
-These results supplement the baseline matrix without accepting its remaining rows.
+real application-group discovery, completed Codex and Claude turns, native denial, and Stop
+cancellation of a real Claude task. Saved-access relaunch failed in the initial candidate,
+whose runtime application name shared the installed Store app's keychain service. A signed
+artifact-only comparison with an isolated runtime name passed saved-access relaunch. This
+proves current-account candidate persistence, not installed-app migration or a fresh user's
+Keychain behavior. These results supplement the baseline matrix; native reconnect/draft
+retention, revocation, fresh-user setup and installed-host auto-launch remain unaccepted.
 
 ## Parity matrix
 

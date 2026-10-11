@@ -378,8 +378,10 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   support URL, privacy-policy URL, and copyright. Three source-built Store screenshots and
   listing text are prepared locally. Current-account signed candidates passed running-host
   discovery, real Codex and Claude turns, native code comparison/denial, and credential persistence
-  after relaunch using an isolated runtime keychain name. Native launch into a
-  fresh user profile, cancellation, reconnect and revocation still need acceptance.
+  after relaunch using an isolated runtime keychain name. Store Stop ended a real Claude
+  background task. Native launch into a fresh user profile, reconnect draft retention
+  and revocation still need acceptance; the final native run ended after host exit 137
+  during shared resource pressure, with the exit's cause undetermined.
   [Signed acceptance evidence and limits](reviews/2026-10-11-store-signed-acceptance.md).
   Beta approval covers the October 6 builds; production
   approval and acceptance of this branch's changes remain open.
