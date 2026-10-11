@@ -23,8 +23,8 @@ The tests assert the replacement immediately, retain save/relaunch coverage, and
 check that formatting cannot overwrite a subsequent select-all replacement.
 All three focused checks passed after the fix, including same-block numbered-list
 continuation. Independent source review found no correctness gaps. Full build and
-workspace typecheck passed; 468 unit tests passed with one optional OpenKnowledge
-skip. All 167 desktop E2E tests passed, including three real Knowledge integrations,
+workspace typecheck passed; 469 unit tests passed after integrating the landed
+Companion shutdown fix (#158), with one optional OpenKnowledge skip. All 167 desktop E2E tests passed, including three real Knowledge integrations,
 and all seven site tests passed. The failed traces are retained
 under `~/.codex/recovery/modex-20261011/space-focus-red-results/`.
 
