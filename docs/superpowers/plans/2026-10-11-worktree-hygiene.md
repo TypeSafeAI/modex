@@ -59,7 +59,7 @@ paths independently before enabling the local schedule.
 
 - [x] Update `AGENTS.md`, `docs/worktree-hygiene.md`, and `docs/status.md` with ownership,
   release/claim commands, archive restore instructions, schedule controls, and limitations.
-- [x] Run 73 maintenance tests, `npm run build && npm test`, and typecheck. Verify the
+- [x] Run 75 maintenance tests, `npm run build && npm test`, and typecheck. Verify the
   schedule and its first live run (39 branches, 31 worktrees, zero removals/errors).
 - [x] Obtain independent specification and code-quality review; fix all reproduced findings.
 - [x] Finish configured desktop/site E2E: 163 desktop passes, 3 opt-in Knowledge skips,

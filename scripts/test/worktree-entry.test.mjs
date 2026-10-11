@@ -24,7 +24,7 @@ function fixture(t) {
   const bin = path.join(dir, 'bin'); fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho "offline fixture" >&2\nexit 1\n', { mode: 0o700 });
   const invoke = (cwd, ...args) => spawnSync('bash', [entry, ...args], { cwd, encoding: 'utf8', timeout: 20000, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
-  return { primary, invoke };
+  return { primary, invoke, bin };
 }
 
 test('remove never removes an unmerged checkout before proving delivery', (t) => {
@@ -74,3 +74,24 @@ test('remove refuses a directory whose branch no longer matches its session name
   assert.equal(records.find((row) => row.branch === 'named').status, 'claimed', 'a mismatched directory must not release an unrelated branch');
   assert.ok(fs.existsSync(dest));
 });
+
+for (const observationFails of [false, true]) {
+  test(`remove completes the real CLI archive flow${observationFails ? ' but reports a failed final observation' : ''}`, (t) => {
+    const { primary, invoke, bin } = fixture(t);
+    const created = invoke(primary, 'new', 'done', '--no-install');
+    assert.equal(created.status, 0, created.stderr);
+    fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\ncase "$*" in *"/pulls?"*) echo "[]";; *) echo \'{"full_name":"example/modex","default_branch":"main"}\';; esac\n', { mode: 0o700 });
+    fs.writeFileSync(path.join(bin, 'lsof'), '#!/bin/sh\nexit 1\n', { mode: 0o700 });
+    if (observationFails) {
+      const actualGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+      const quotedGit = `'${actualGit.replaceAll("'", "'\\''")}'`;
+      fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\nif [ "$1" = show-ref ]; then echo 'observation unavailable' >&2; exit 129; fi\nexec ${quotedGit} "$@"\n`, { mode: 0o700 });
+    }
+    const result = invoke(primary, 'remove', 'done');
+    if (observationFails) assert.notEqual(result.status, 0, 'uncertain completion must not be reported as success');
+    else assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(fs.existsSync(created.stdout.trim()), false);
+    const archives = path.join(primary, '.git/modex-maintenance/archives');
+    assert.ok(fs.readdirSync(archives).some((run) => fs.existsSync(path.join(archives, run, 'archive.bundle'))));
+  });
+}

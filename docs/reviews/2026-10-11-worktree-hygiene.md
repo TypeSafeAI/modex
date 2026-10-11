@@ -6,7 +6,7 @@ The existing `new` and `remove` entry points remain available to Modex threads.
 
 ## Verified
 
-- `npm run test:worktrees`: **73 passed**. These use real temporary Git repositories,
+- `npm run test:worktrees`: **75 passed**. These use real temporary Git repositories,
   including standalone bundle restoration and exact restored tip checks.
 - `npm run build`, the repository unit suite, and `npm run typecheck`: passed.
   The application suites reported **470 passed, 1 skipped**. The final maintenance suite

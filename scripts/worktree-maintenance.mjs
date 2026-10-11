@@ -105,7 +105,9 @@ export async function run(args = process.argv.slice(2), cwd = process.cwd()) {
       const head = command('git', ['rev-parse', '--verify', `refs/heads/${name}`], info.primary).stdout.trim();
       await core.release(name, { expectedHead: head, expectedPath: dest });
       const value = await core.prune({ apply: true, branch: name }); report(value, false);
-      if (fs.existsSync(dest) || command('git', ['show-ref', '--verify', '--quiet', `refs/heads/${name}`], info.primary, true).status === 0) throw new Error(`Preserved ${name}; see the reasons above. Claim it before resuming work`);
+      const removed = value.results.some((result) => result.branch === name && result.status === 'removed');
+      const absent = command('git', ['show-ref', '--verify', '--quiet', `refs/heads/${name}`], info.primary, true).status === 1;
+      if (!removed || fs.existsSync(dest) || !absent) throw new Error(`Cleanup of ${name} was not fully confirmed; inspect the report and any recovery manifest above. Claim retained work before resuming it`);
     });
     console.log(`removed worktree and archived local branch ${name}`); return 0;
   }
