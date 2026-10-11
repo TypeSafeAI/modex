@@ -7,6 +7,7 @@ import { DesktopClient, type DesktopCredentials } from "../../../desktop/src/mai
 import { desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
 import { WorkspaceBrowser } from "../../../desktop/src/main/workspace-browser.js";
 import type { BridgeCommands } from "../../../desktop/src/shared/types.js";
+import { connectedInvoke } from "./attachments.js";
 import { StoreDemo } from "./demo.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -133,7 +134,7 @@ app.whenReady().then(() => {
       if (typeof payload?.text !== "string") throw new Error("Invalid clipboard text.");
       clipboard.writeText(payload.text.slice(0, 200_000)); return;
     }
-    return client.invoke(request.channel, request.payload);
+    return connectedInvoke(request.channel, request.payload, (channel, payload) => client.invoke(channel, payload));
   });
   function createWindow(): void {
     nativeTheme.themeSource = "dark";

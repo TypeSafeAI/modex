@@ -528,8 +528,10 @@ test("composer: context strip, access menu, plan via + and its chip, send enable
   await expect(access).toHaveAttribute("data-mode", "chat");
   await expect(access).not.toHaveCSS("color", "rgb(220, 146, 88)");
 
-  // + opens with focus on its first item (Plan mode); choosing it turns plan on and shows the chip.
+  // + focuses Attach files first; ArrowDown reaches Plan mode and choosing it shows the chip.
   await tid(page, "composer-plus").click();
+  await expect(page.getByRole("menuitem", { name: "Attach files", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(tid(page, "plan-toggle")).toBeFocused();
   await expect(tid(page, "plan-toggle")).toHaveAttribute("aria-checked", "false");
   await page.keyboard.press("Enter");
