@@ -10,21 +10,29 @@ export function BlockEditor({ markdown, onChange }: { markdown: string; onChange
   const [editing, setEditing] = useState<string | null>(() => markdown ? null : blocks[0]!.id);
   const [choice, setChoice] = useState(0);
   const inputs = useRef(new Map<string, HTMLTextAreaElement>());
+  const pendingFocus = useRef<{ id: string; start?: number; end?: number } | null>(null);
   const source = useRef(markdown);
   useLayoutEffect(() => {
     if (markdown === source.current) return;
+    pendingFocus.current = null;
     source.current = markdown; setBlocks(splitMarkdown(markdown)); setEditing(null);
   }, [markdown]);
+  // Apply selection with the textarea commit, before a later user edit can supersede it.
+  useLayoutEffect(() => {
+    const request = pendingFocus.current;
+    pendingFocus.current = null;
+    if (!request || request.id !== editing) return;
+    const input = inputs.current.get(request.id);
+    if (!input) return;
+    const start = request.start ?? input.value.length;
+    input.focus();
+    input.setSelectionRange(start, request.end ?? start);
+  });
   const commit = (next: EditorBlock[]) => { source.current = joinMarkdown(next); setBlocks(next); onChange(source.current); };
   const update = (id: string, source: string) => commit(blocks.map(b => b.id === id ? { ...b, source } : b));
-  const focus = (id: string, position?: number) => {
+  const focus = (id: string, start?: number, end?: number) => {
+    pendingFocus.current = { id, start, end };
     setEditing(id);
-    requestAnimationFrame(() => {
-      const input = inputs.current.get(id);
-      input?.focus();
-      const at = position ?? input?.value.length ?? 0;
-      input?.setSelectionRange(at, at);
-    });
   };
   const insert = (index: number, source = "") => {
     const next = { id: crypto.randomUUID(), source };
@@ -49,7 +57,7 @@ export function BlockEditor({ markdown, onChange }: { markdown: string; onChange
     if (!input || !editing) return;
     const { selectionStart: start, selectionEnd: end, value } = input;
     update(editing, value.slice(0, start) + marker + value.slice(start, end) + marker + value.slice(end));
-    requestAnimationFrame(() => { input.focus(); input.setSelectionRange(start + marker.length, end + marker.length); });
+    focus(editing, start + marker.length, end + marker.length);
   };
   const applyCommand = (id: string, source: string) => { update(id, source); setChoice(0); focus(id, source.startsWith("```") ? 4 : undefined); };
 

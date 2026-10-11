@@ -1,7 +1,23 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { appDir, launch, seedHome, tid } from "./support";
+
+async function holdAppFrames(page: Page) {
+  await page.evaluate(() => {
+    const request = window.requestAnimationFrame;
+    const pending: FrameRequestCallback[] = [];
+    window.requestAnimationFrame = callback => pending.push(callback);
+    (window as typeof window & { releaseBlockFrame: () => void }).releaseBlockFrame = () => {
+      window.requestAnimationFrame = request;
+      for (const callback of pending) callback(performance.now());
+    };
+  });
+}
+
+async function releaseAppFrames(page: Page) {
+  await page.evaluate(() => (window as typeof window & { releaseBlockFrame: () => void }).releaseBlockFrame());
+}
 
 test("importing a page heading preserves indented code and lists through relaunch", async () => {
   const { home } = seedHome();
@@ -25,8 +41,15 @@ test("adding a block to imported Markdown keeps separate blocks after relaunch",
   try {
     await tid(page, "rail-space").click();
     await page.getByLabel("Import Markdown file").setInputFiles({ name: "boundary.md", mimeType: "text/markdown", buffer: Buffer.from("First\n") });
+    // Hold the next frame to reproduce focus arriving after a user's selection.
+    await holdAppFrames(page);
     await page.getByRole("button", { name: "Add a block", exact: true }).click();
-    await page.getByRole("textbox", { name: "Block 2", exact: true }).fill("Second");
+    const block = page.getByRole("textbox", { name: "Block 2", exact: true });
+    await block.focus();
+    await page.keyboard.press("ControlOrMeta+a");
+    await releaseAppFrames(page);
+    await page.keyboard.insertText("Second");
+    await expect(block).toHaveValue("Second");
     await page.getByRole("textbox", { name: "Page title" }).click();
     await expect(page.getByRole("status", { name: "Save status" })).toHaveText("Saved locally");
     await app.close();
@@ -36,6 +59,26 @@ test("adding a block to imported Markdown keeps separate blocks after relaunch",
     await expect(tid(page, "space-block")).toHaveCount(2);
     await expect(page.getByLabel("Edit block 1", { exact: true })).toHaveText("First");
     await expect(page.getByLabel("Edit block 2", { exact: true })).toHaveText("Second");
+  } finally { await app.close(); }
+});
+
+test("Space formatting restores the selection before the next user edit", async () => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "New page", exact: true }).click();
+    const block = page.getByRole("textbox", { name: "Block 1", exact: true });
+    await block.fill("draft note");
+    await block.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(0, 5));
+    await holdAppFrames(page);
+    await page.getByRole("button", { name: "Bold", exact: true }).click();
+    await expect(block).toHaveValue("**draft** note");
+    expect(await block.evaluate((input: HTMLTextAreaElement) => [input.selectionStart, input.selectionEnd])).toEqual([2, 7]);
+    await page.keyboard.press("ControlOrMeta+a");
+    await releaseAppFrames(page);
+    await page.keyboard.insertText("Replacement");
+    await expect(block).toHaveValue("Replacement");
   } finally { await app.close(); }
 });
 

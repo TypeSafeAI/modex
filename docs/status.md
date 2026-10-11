@@ -322,6 +322,10 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Space editor selection.** Adding a block and applying formatting focus the committed
+  textarea before the next user edit. A deferred focus callback can no longer collapse
+  a newer selection and turn a replacement such as `Second` into `/Second`.
+  [Regression evidence](reviews/2026-10-11-space-focus.md).
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
 - **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
   to settle at the requested size. The real OpenKnowledge test retries file visibility when
