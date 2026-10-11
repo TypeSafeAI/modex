@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, items, launch, seedHome, tid, currentRow } from "./support";
+import { appDir, items, launch, resizeWindow, seedHome, tid, currentRow } from "./support";
 
 /**
  * Visual harness for the Modex desktop shell.
@@ -30,10 +30,7 @@ const box = async (l: Locator) => (await l.boundingBox())!;
 /** Geometry checks set the pane layout they measure instead of inheriting it from the capture sequence. */
 async function changesHidden(): Promise<void> {
   // The window itself is a precondition too: re-assert the reference size before measuring.
-  if ((await page.evaluate(() => window.innerWidth)) !== REFERENCE.width) {
-    await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]!.setContentSize(s.width, s.height), REFERENCE);
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(REFERENCE.width);
-  }
+  await resizeWindow(app, page, REFERENCE.width, REFERENCE.height);
   if (await tid(page, "workspace").isVisible()) await page.keyboard.press("Meta+j");
   await expect(tid(page, "changes-panel")).toHaveCount(0);
   // Let the grid settle: the composer is centred in the full-width main pane.
@@ -49,8 +46,7 @@ test.beforeAll(async () => {
   const { home } = seedHome({ theme: "jev" });
   ({ app, page } = await launch(home));
   // Content size, not window size: the capture must match the reference pixel for pixel.
-  await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]!.setContentSize(s.width, s.height), REFERENCE);
-  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(REFERENCE.width);
+  await resizeWindow(app, page, REFERENCE.width, REFERENCE.height);
 });
 
 test.afterAll(async () => {

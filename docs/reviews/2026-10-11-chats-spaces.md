@@ -35,14 +35,16 @@ hover tests retry entering the target before asserting that the card appears.
 
 ## Validation
 
-Validation was repeated after incorporating the latest Codex permission fix on main.
-The workspace build and unit suite passed: 469 tests passed, with one opt-in Open
-Knowledge case skipped. All 163 enabled desktop end-to-end cases passed across the
-initial sweep and a resumed run of the remaining files. The initial sweep completed
-86 passing and three opt-in skipped cases before disk exhaustion (`ENOSPC`) stopped
-the runner. After unused npm cache cleanup, all 83 cases in the resumed file set
-passed, including six cases repeated from the initial sweep. No application change
-was needed for the disk error.
+The final run includes main's native-window and Knowledge readiness fixes. The
+reference capture uses the shared native/renderer resize helper; measured title
+geometry is unchanged.
 
-All seven site end-to-end cases also passed. GitHub CI runs the complete desktop
-suite, including the opt-in Open Knowledge cases, before protected-main landing.
+- `npm run build` passed.
+- `npm test` passed: 469 tests, with one opt-in Open Knowledge unit case skipped.
+- `MODEX_TEST_OPEN_KNOWLEDGE=1 npm run test:e2e` passed: all 168 desktop cases,
+  including real Open Knowledge integration, and all seven site cases.
+- `git diff --check` passed. Independent source review found no remaining important
+  blockers.
+
+GitHub CI repeats build, unit, desktop/browser, site, and iPhone checks before
+protected-main landing.

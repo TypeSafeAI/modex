@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, seedHome, launch, tid } from "./support.js";
+import { appDir, seedHome, launch, tid, resizeWindow } from "./support.js";
 
 test("reference chat rows stay still while their details open", async () => {
   const { home, repo } = seedHome({ theme: "graphite" });
@@ -59,7 +59,7 @@ test("Space toolbar, comments and floating chat preserve the open page", async (
   const { home, repo } = seedHome({ theme: "graphite" });
   const { app, page } = await launch(home);
   try {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setBounds({ width: 1923, height: 1049 }));
+    await resizeWindow(app, page, 1923, 1049);
     await tid(page, "rail-space").click();
     await page.getByLabel("Import Markdown file").setInputFiles({ name: "weekly.md", mimeType: "text/markdown", buffer: Buffer.from("# Weekly update\n\n## ✨ Highlights\n\n\u200b\n\n- Progress made\n\n## 🤞 Needs attention\n\n- Blockers and decisions needing input\n\n## ▶️ Next week\n\n- Upcoming milestones and confirmed commitments\n\n## 🔗 Sources\n\n- Links to sources") });
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("Weekly update");
@@ -104,7 +104,7 @@ test("Space toolbar, comments and floating chat preserve the open page", async (
     await page.getByRole("button", { name: "Open Weekly update", exact: true }).click();
     await page.getByRole("button", { name: "Comments", exact: true }).click();
     await expect(page.getByText("Confirm the milestones before Friday.", { exact: true })).toBeVisible();
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setBounds({ width: 900, height: 620 }));
+    await resizeWindow(app, page, 900, 620);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: path.join(appDir, ".probes/chats-spaces/space-narrow.png") });
   } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }

@@ -9,7 +9,15 @@ import { ThreadRunner } from "../src/main/engine/runner.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 
-test("demo runs from a packaged app without a source checkout", async () => {
+test("demo runs from a packaged app without a source checkout", async (t) => {
+  // This fixture needs git from the test PATH, not a developer's login profile. The profile
+  // probe can take 10 seconds, longer than the demo's 8-second approval readiness deadline.
+  const previous = process.env.MODEX_NO_LOGIN_PATH;
+  process.env.MODEX_NO_LOGIN_PATH = "1";
+  t.after(() => {
+    if (previous === undefined) delete process.env.MODEX_NO_LOGIN_PATH;
+    else process.env.MODEX_NO_LOGIN_PATH = previous;
+  });
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "modex-packaged-demo-"));
   const repoPath = path.join(root, "Contents", "Resources", "app.asar");
   const scriptPath = path.join(repoPath, "demo", "mock-script.json");
