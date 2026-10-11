@@ -322,6 +322,13 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
+  fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
+  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  and remote branches. Desktop retirement respects project-script retention. Maintenance
+  regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
+  and [verification](reviews/2026-10-11-worktree-hygiene.md).
+
 **Canvas previews.** The workspace launcher adds an interactive Canvas for checkout HTML,
 SVG and Markdown. Local document/asset changes refresh the isolated preview; full view,
 manual reload and deletion recovery are supported. Each guest has a temporary session,
