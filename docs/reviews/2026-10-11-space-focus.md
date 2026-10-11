@@ -32,9 +32,13 @@ Independent source review found no correctness gaps.
 After integrating UI candidate `590cb1e` and the landed Companion shutdown fix (#158),
 full build and workspace typecheck passed; 470 unit tests passed with one optional
 OpenKnowledge skip. All 171 desktop E2E tests passed, including three real Knowledge
-integrations, and all seven site tests passed. This verifies that exact integration;
-the UI owner's subsequent floating-chat Knowledge visibility change still needs
-integration and affected verification before landing.
+integrations, and all seven site tests passed. The final UI candidate `fd242f2` is now
+integrated, including its native Knowledge/floating-chat visibility regression and
+current main. The updated build, 470 unit tests (one optional skip), and typecheck
+passed. The final combined run passed all 171 desktop tests with real Knowledge
+enabled, including native guest visibility around floating chat, and all seven site
+tests. Dependencies removed by a concurrent storage cleanup were restored with
+`npm ci` before that run; source and package-lock content remained unchanged.
 
 Failed traces remain under `~/.codex/recovery/modex-20261011/space-focus-red-results/`
 and `space-toolbar-red-results/`. Earlier successful baseline runs are retained

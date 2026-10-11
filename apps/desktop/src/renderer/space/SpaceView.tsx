@@ -201,7 +201,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
       {onOpenChat && !chatOpen && !(page && commentsOpen) && <button className="space-chat-launcher" aria-label="Open chat" onClick={() => ask()}><Icon name="comment" size={18} /><span>Ask anything</span><Icon name="plus" size={18} /></button>}
     </main>
     </div>
-    {view === "knowledge" && <KnowledgeView active={active} onPages={() => selectView("pages")} />}
+    {view === "knowledge" && <KnowledgeView active={active && !chatOpen} onPages={() => selectView("pages")} />}
     <input ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
       const file = event.target.files?.[0]; event.target.value = "";
       if (!file) return;

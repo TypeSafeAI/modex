@@ -327,6 +327,9 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   a newer selection and turn a replacement such as `Second` into `/Second`. Toolbar
   Code insertion places the caret inside the fences, ready for typing.
   [Regression evidence](reviews/2026-10-11-space-focus.md).
+- **Jev documentation.** The README identifies the optional Jev CLI as unofficial.
+- **iPhone CI keyboard.** The hosted simulator disables its hardware keyboard before first
+  boot and verifies the preference, so the software keyboard can confirm input focus.
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
 - **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
   to settle at the requested size. The real OpenKnowledge test retries file visibility when
@@ -357,8 +360,7 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## In flight
 
-- **Open PR queue and composer #159.** #160 (CI simulator keyboard) and #161 (unofficial
-  CLI wording) passed code review and await protected landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
+- **Open PR queue and composer #159.** #157 needs attachment draft/copy recovery, storage and limit enforcement,
   development commands, the 960px by 109px composer, and live Claude/Codex image/file
   acceptance. Store attachments remain unavailable. #152 needs credential-navigation
   and signing fixes; real 1Password and signed Touch ID acceptance remain release gates.
@@ -472,6 +474,9 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   request hitting its 8 s timeout ten seconds before the send tap, no later request failing, and
   the reply never showing within 20 s. The fixture writes no log, so that run stays unexplained;
   if it recurs, make `fixture.mjs` log each request with a timestamp before anything else.
+  The CI job also turns off the simulator's hardware keyboard before the first boot, so the
+  software keyboard appears and the helper's fallback focus check (`app.keyboards`) can see it;
+  local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
