@@ -16,9 +16,18 @@ The first hosted run compiled the Windows helper with MSVC and passed twelve CLI
 process-ownership checks. Its interactive PTY case failed while observing resize, then
 left the test runner alive. The fixture now writes to the console so Node can observe
 Windows resize events, and teardown closes the PTY even after an assertion failure.
-Native re-verification is pending. Linux GCC rejected unchecked terminal receipt writes;
-the helper now handles partial writes, interruption and errors. No installers were built
-in that run. See [the initial native run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
+The [second native run](https://github.com/TypeSafeAI/modex/actions/runs/38134994369)
+still failed the Windows resize observation (80×24 after requesting 96×32) and timed out
+with the worker alive. Diagnostic coverage now records a fresh OS-size sample and the
+resources retained after teardown; the original assertions remain required.
+
+Linux GCC rejected unchecked terminal receipt writes in the
+[initial run](https://github.com/TypeSafeAI/modex/actions/runs/38134189896).
+After the helper handled partial writes, interruption and errors, the second run compiled
+and produced AppImage and Debian candidates. Downloaded sizes and SHA-256 hashes match
+their manifest, whose source is the PR merge of Canvas `05efc984` and platform `3de10de5`.
+The Linux terminal cleanup/job-control suite is also included before packaging. Installed
+startup, native credentials and installer lifecycle acceptance are still pending.
 
 Before release, collect native evidence for installed startup, packaged Electron addon
 and helper loading, CLI arguments and account/login launches, PTY input/resize/Ctrl-C,

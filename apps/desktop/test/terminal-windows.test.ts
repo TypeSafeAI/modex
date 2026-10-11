@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,6 +9,11 @@ import { spawnTerminal, stopTerminalProcess } from "../src/main/engine/terminal-
 
 const fixture = fileURLToPath(new URL("../../test/fixtures/cli-process-tree.mjs", import.meta.url));
 const cleanup = fileURLToPath(new URL("../../test/fixtures/cleanup-cli-tree.ps1", import.meta.url));
+after(async () => {
+  if (process.platform !== "win32") return;
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  console.error("Windows PTY resources after cleanup:", JSON.stringify(process.getActiveResourcesInfo()));
+});
 async function until(check: () => boolean, label: string) {
   const deadline = Date.now() + 10000;
   while (!check()) {
@@ -95,6 +100,10 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   pty.write("modex-input\r");
   await until(() => fs.existsSync(path.join(directory, "input")), "terminal input reaches child");
   pty.resize(96, 32);
+  // Capture an independent OS-size sample after the resize request has had time
+  // to reach ConPTY, while retaining the normal resize-event assertion below.
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  fs.writeFileSync(path.join(directory, "inspect-size"), "requested");
   await until(() => dimensions().columns === 96 && dimensions().rows === 32, "resize reaches child");
   pty.write("\x03");
   await until(() => fs.existsSync(path.join(directory, "interrupted")), "Ctrl-C reaches foreground command");

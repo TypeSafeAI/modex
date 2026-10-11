@@ -64,6 +64,18 @@ jobs:
           path: native-cli.tap
           if-no-files-found: warn
           retention-days: 7
+      - name: Exercise Linux terminal cleanup and job control
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: node --test --test-reporter=tap apps/desktop/dist/test/terminal-cleanup.test.js > native-terminal.tap
+      - name: Preserve Linux terminal evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-terminal-linux
+          path: native-terminal.tap
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build native installers (no publication)
         env:
           CSC_LINK: ""
