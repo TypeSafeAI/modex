@@ -3,10 +3,17 @@ import https from "node:https";
 import tls from "node:tls";
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
-import { DESKTOP_PROTOCOL } from "../../shared/desktop-protocol.js";
+import { DESKTOP_PROTOCOL, type DesktopConnectionStatus } from "../../shared/desktop-protocol.js";
 
 export interface DesktopCredentials { port: number; fingerprint: string; token: string; clientId: string }
-export interface DesktopConnectionStatus { state: "unpaired" | "authorizing" | "connecting" | "connected" | "offline"; detail: string; confirmationCode?: string }
+export type { DesktopConnectionStatus } from "../../shared/desktop-protocol.js";
+export class DesktopIdentityError extends Error {
+  constructor(message: string) { super(message); this.name = "DesktopIdentityError"; }
+}
+const identityCodes = new Set(["ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED", "CERT_NOT_YET_VALID", "DEPTH_ZERO_SELF_SIGNED_CERT", "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "CERT_SIGNATURE_FAILURE", "UNABLE_TO_GET_ISSUER_CERT", "UNABLE_TO_GET_ISSUER_CERT_LOCALLY"]);
+function identityFailure(error: unknown): boolean {
+  return error instanceof DesktopIdentityError || (error instanceof Error && "code" in error && identityCodes.has(String(error.code)));
+}
 interface Invitation { port: number; fingerprint: string; code: string }
 const hex = /^[a-f0-9]{64}$/;
 
@@ -34,9 +41,11 @@ export async function pinnedDesktopCertificate(port: number, fingerprint: string
     socket.once("secureConnect", () => {
       const cert = socket.getPeerCertificate();
       const digest = cert.raw && crypto.createHash("sha256").update(cert.raw).digest("hex");
-      if (digest !== fingerprint || Date.parse(cert.valid_from) > Date.now() || Date.parse(cert.valid_to) < Date.now()) return fail(new Error("The host identity changed. Create a new link from your trusted Modex host."));
+      if (digest !== fingerprint) return fail(new DesktopIdentityError("The host identity changed. Check your trusted Modex host before reconnecting."));
+      const from = Date.parse(cert.valid_from), to = Date.parse(cert.valid_to);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || from > Date.now() || to < Date.now()) return fail(new DesktopIdentityError("The host certificate is outside its valid dates. Check your Mac's clock and trusted host."));
       const identityError = tls.checkServerIdentity("127.0.0.1", cert);
-      if (identityError) return fail(new Error("The host certificate is not valid for this Mac."));
+      if (identityError) return fail(new DesktopIdentityError("The host certificate is not valid for this Mac."));
       const pem = `-----BEGIN CERTIFICATE-----\n${cert.raw.toString("base64").match(/.{1,64}/g)!.join("\n")}\n-----END CERTIFICATE-----\n`;
       socket.destroy();
       resolve(pem);
@@ -65,8 +74,13 @@ async function request(port: number, ca: string, endpoint: string, body: unknown
       res.on("end", () => {
         try {
           if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400) throw new Error("Host redirects are not allowed.");
-          const value = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
-          if (res.statusCode !== 200) throw new HostResponseError(typeof value.error === "string" ? value.error : "The host could not complete this action.", res.statusCode ?? 500);
+          let value: Record<string, unknown>;
+          try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>; }
+          catch (error) {
+            if (res.statusCode === 401 || res.statusCode === 409) throw new HostResponseError("The host rejected this desktop connection.", res.statusCode);
+            throw error;
+          }
+          if (res.statusCode !== 200) throw new HostResponseError(typeof value?.error === "string" ? value.error : "The host could not complete this action.", res.statusCode ?? 500);
           resolve(value);
         } catch (error) { reject(error); }
       });
@@ -139,6 +153,19 @@ export class DesktopClient extends EventEmitter {
     void this.connect(this.generation);
   }
 
+  /** Revalidate the saved pin and reopen events. Never resubmit a workspace action. */
+  retry(): void {
+    if (this.state.state !== "recovery" || !this.credentials) throw new Error("There is no saved connection waiting for recovery.");
+    this.start(this.credentials);
+  }
+
+  private recover(reason: "identity" | "protocol", detail?: string): void {
+    this.dispose();
+    this.update({ state: "recovery", reason, detail: reason === "identity"
+      ? `${detail ?? "The host certificate no longer matches your saved access."} Your saved access and draft are kept.`
+      : "The host desktop protocol is incompatible. Update the host and Store app, then retry. Your saved access and draft are kept." });
+  }
+
   disconnect(): void {
     this.save(undefined);
     this.dispose();
@@ -176,7 +203,11 @@ export class DesktopClient extends EventEmitter {
       if (generation !== this.generation) throw new Error("The desktop connection changed during this action.");
       return result.value;
     } catch (error) {
-      if (generation === this.generation && error instanceof HostResponseError && error.status === 401) this.revoked();
+      if (generation === this.generation) {
+        if (error instanceof HostResponseError && error.status === 401) this.revoked();
+        else if (error instanceof HostResponseError && error.status === 409) this.recover("protocol");
+        else if (identityFailure(error)) this.recover("identity");
+      }
       throw error;
     }
   }
@@ -184,12 +215,21 @@ export class DesktopClient extends EventEmitter {
   private async connect(generation: number): Promise<void> {
     const credentials = this.credentials;
     if (generation !== this.generation || !credentials) return;
+    let ended = false;
     const retry = () => {
-      if (generation !== this.generation || this.timer) return;
+      if (generation !== this.generation || ended) return;
+      ended = true;
+      this.stream?.destroy();
+      this.streamRequest?.destroy();
       this.ca = undefined;
       this.update({ state: "offline", detail: "Waiting for your Mac host. Your pairing and draft are kept." });
       this.timer = setTimeout(() => { this.timer = undefined; void this.connect(generation); }, this.retryDelay);
       this.retryDelay = Math.min(this.retryDelay * 2, 5000);
+    };
+    const failed = (error: unknown) => {
+      if (generation !== this.generation || ended) return;
+      if (identityFailure(error)) this.recover("identity", error instanceof DesktopIdentityError ? error.message : undefined);
+      else retry();
     };
     try {
       const ca = await pinnedDesktopCertificate(credentials.port, credentials.fingerprint);
@@ -197,6 +237,7 @@ export class DesktopClient extends EventEmitter {
       const req = https.get({ hostname: "127.0.0.1", port: credentials.port, path: "/events", ca, rejectUnauthorized: true, headers: { Authorization: `Bearer ${credentials.token}` } }, (res) => {
         if (generation !== this.generation) { res.destroy(); return; }
         if (res.statusCode === 401) { res.destroy(); this.revoked(); return; }
+        if (res.statusCode === 409) { res.destroy(); this.recover("protocol"); return; }
         if (res.statusCode !== 200 || !res.headers["content-type"]?.startsWith("text/event-stream")) { res.destroy(); retry(); return; }
         this.stream = res;
         req.setTimeout(0);
@@ -204,7 +245,7 @@ export class DesktopClient extends EventEmitter {
         res.setEncoding("utf8");
         let buffer = "";
         res.on("data", (chunk: string) => {
-          if (generation !== this.generation) return;
+          if (generation !== this.generation || ended) return;
           buffer += chunk;
           if (buffer.length > 1024 * 1024) { res.destroy(); return; }
           let end: number;
@@ -218,21 +259,22 @@ export class DesktopClient extends EventEmitter {
               const value = JSON.parse(data) as Record<string, unknown>;
               if (kind === "revoked") { this.revoked(); return; }
               if (kind === "connected") {
-                if (value.protocol !== DESKTOP_PROTOCOL) throw new Error("Incompatible host.");
+                if (value?.protocol !== DESKTOP_PROTOCOL) { this.recover("protocol"); return; }
                 this.ca = ca;
                 this.retryDelay = 500;
                 this.update({ state: "connected", detail: "Connected to your Mac host" });
+                if (generation !== this.generation) return;
                 this.emit("connected");
               } else if (this.state.state === "connected" && (kind === "thread" || kind === "terminal")) this.emit(kind, value);
             } catch { res.destroy(); }
           }
         });
-        res.once("error", retry);
+        res.once("error", failed);
         res.once("close", retry);
       });
       this.streamRequest = req;
       req.setTimeout(10_000, () => req.destroy(new Error("Host connection timed out.")));
-      req.once("error", retry);
-    } catch { retry(); }
+      req.once("error", failed);
+    } catch (error) { failed(error); }
   }
 }

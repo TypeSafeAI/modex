@@ -1,13 +1,15 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, Menu, MenuItem, clipboard, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DesktopClient, type DesktopCredentials } from "../../../desktop/src/main/engine/desktop-client.js";
-import { desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
+import { createDesktopDiscovery, desktopSystem, discoverDesktops } from "../../../desktop/src/main/engine/desktop-discovery.js";
 import { WorkspaceBrowser } from "../../../desktop/src/main/workspace-browser.js";
+import type { WorkspaceShortcut } from "../../../desktop/src/shared/browser.js";
 import type { BridgeCommands } from "../../../desktop/src/shared/types.js";
 import { StoreDemo } from "./demo.js";
+import { storeAccountCommands } from "./account.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const testing = !app.isPackaged && process.env.MODEX_E2E === "1";
@@ -21,6 +23,10 @@ let connectedBefore = false;
 let demo: StoreDemo | undefined;
 function trusted(event: IpcMainInvokeEvent): void {
   if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error("Untrusted desktop request.");
+}
+function updateWorkspaceMenu(): void {
+  const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Workspace")?.submenu;
+  for (const item of menu?.items ?? []) item.enabled = !!demo || client.status().state === "connected";
 }
 function send(channel: string, value?: unknown): void { if (win && !win.isDestroyed()) win.webContents.send(channel, value); }
 
@@ -45,24 +51,25 @@ app.whenReady().then(() => {
   client.on("status", (status) => {
     if (demo) return;
     if (status.state !== "connected") workspaceBrowser?.show(null);
+    updateWorkspaceMenu();
     send("host:status", status);
   });
   client.on("thread", (event) => { if (!demo) send("thread:event", event); });
   client.on("terminal", (event) => { if (!demo) send("terminal:event", event); });
   client.on("connected", () => { if (connectedBefore) send("host:reconnected"); connectedBefore = true; });
-  const system = (async () => {
-    if (testing) return { directory: process.env.MODEX_DESKTOP_DISCOVERY_DIR, installed: undefined };
-    if (!app.isPackaged || process.platform !== "darwin") return { directory: undefined, installed: undefined };
-    const directory = await desktopSystem("directory").then((value) => path.join(value, "desktop-hosts")).catch(() => undefined);
-    const adjacent = path.resolve(app.getPath("exe"), "../../../..", "Modex Host Preview.app");
-    const installed = await desktopSystem("installed", adjacent).catch(() => undefined);
-    return { directory, installed };
-  })();
-  const discover = async () => {
-    const { directory, installed } = await system;
-    const hosts = directory ? await discoverDesktops(directory) : [];
-    return { hosts, installed };
-  };
+  const discovery = createDesktopDiscovery({
+    async directory() {
+      if (testing) return process.env.MODEX_DESKTOP_DISCOVERY_DIR;
+      if (!app.isPackaged || process.platform !== "darwin") return;
+      return path.join(await desktopSystem("directory"), "desktop-hosts");
+    },
+    async installed() {
+      if (testing || !app.isPackaged || process.platform !== "darwin") return;
+      const adjacent = path.resolve(app.getPath("exe"), "../../../..", "Modex Host Preview.app");
+      return desktopSystem("installed", adjacent);
+    },
+    running: discoverDesktops,
+  });
   const status = () => demo ? { state: "demo", detail: "Offline demo workspace", workspaceId: demo.id } : storageError ? { state: "unpaired", detail: storageError } : client.status();
   ipcMain.handle("host:status", (event) => { trusted(event); return status(); });
   ipcMain.handle("host:demo", (event, action: unknown) => {
@@ -76,12 +83,13 @@ app.whenReady().then(() => {
       demo = workspace;
     } else throw new Error("That demo action is no longer available.");
     workspaceBrowser?.dispose();
+    updateWorkspaceMenu();
     send("host:status", status());
   });
   ipcMain.handle("host:discover", async (event) => {
     trusted(event);
     if (demo) return { available: false, installed: false, detail: "Offline demo: no host connected." };
-    const { hosts, installed } = await discover();
+    const { hosts, installed } = await discovery.check();
     return { available: hosts.length === 1, installed: !!installed && hosts.length === 0,
       detail: hosts.length > 1 ? "More than one host is open. Close the unused host, then check again." : hosts.length === 1 ? "Modex is running on this Mac. Your projects and CLI sign-ins are ready to connect." : installed ? "Modex is installed on this Mac. Open it and connect your workspace." : "Open the current Modex host preview on this Mac, then check again." };
   });
@@ -89,14 +97,15 @@ app.whenReady().then(() => {
     trusted(event);
     if (demo) throw new Error("Leave the demo before connecting your Mac.");
     if (pairing) throw new Error("A connection is already in progress.");
+    if (client.status().state !== "unpaired") throw new Error("Forget saved access before connecting a different host.");
     pairing = true;
     try {
-      let { hosts, installed } = await discover();
+      let { hosts, installed } = await discovery.check();
       if (hosts.length === 0 && installed) {
         await desktopSystem("launch", installed);
         for (let attempt = 0; attempt < 30 && hosts.length === 0; attempt++) {
           await new Promise((resolve) => setTimeout(resolve, 300));
-          hosts = (await discover()).hosts;
+          hosts = await discovery.running();
         }
       }
       if (hosts.length !== 1) throw new Error(hosts.length ? "Close the unused host and try again." : "The host is not ready. Open Modex and check again.");
@@ -109,14 +118,17 @@ app.whenReady().then(() => {
     if (typeof uri !== "string" || uri.length > 512) throw new Error("Paste a connection link from the host.");
     if (demo) throw new Error("Leave the demo before connecting your Mac.");
     if (pairing) throw new Error("A connection is already in progress.");
+    if (client.status().state !== "unpaired") throw new Error("Forget saved access before connecting a different host.");
     pairing = true;
     try { await client.pair(uri, clientId); storageError = undefined; } finally { pairing = false; }
   });
+  ipcMain.handle("host:retry", (event) => { trusted(event); if (demo) throw new Error("Leave the demo first."); client.retry(); });
   ipcMain.handle("host:disconnect", (event) => { trusted(event); if (demo) throw new Error("Leave the demo first."); client.disconnect(); storageError = undefined; });
   ipcMain.handle("store:invoke", async (event, request: { channel?: unknown; payload?: unknown }) => {
     trusted(event);
     if (!request || typeof request.channel !== "string" || request.channel.length > 80) throw new Error("Invalid workspace action.");
     if (demo && request.channel !== "clipboard:write") return demo.invoke(request.channel, request.payload);
+    if (Object.hasOwn(storeAccountCommands, request.channel)) return storeAccountCommands[request.channel as keyof typeof storeAccountCommands]();
     if (request.channel === "browser:command") {
       const payload = request.payload as BridgeCommands["browser:command"]["req"];
       if (payload.action !== "close" && client.status().state !== "connected") throw new Error("Connect to your Mac to use the workspace browser.");
@@ -151,6 +163,16 @@ app.whenReady().then(() => {
     win.on("closed", () => { win = undefined; });
     void win.loadFile(path.join(app.getAppPath(), "dist/renderer/index.html"));
   }
+  // Keyboard handling stays with WorkspaceBrowser and the shared renderer. Native
+  // accelerators would compete with those handlers (registerAccelerator is not macOS).
+  const shortcuts: [string, WorkspaceShortcut][] = [["New tab", "new"], ["New tab in full view", "full"], ["Files", "files"], ["Review", "review"], ["Address bar", "address"], ["Terminal", "terminal"], ["Hide workspace", "hide"]];
+  const menu = Menu.getApplicationMenu() ?? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]);
+  menu.append(new MenuItem({ label: "Workspace", submenu: shortcuts.map(([label, shortcut]) => ({ label, enabled: false, click: () => {
+    if ((!demo && client.status().state !== "connected") || !win || win.isDestroyed()) return;
+    win.webContents.focus();
+    send("workspace:shortcut", shortcut);
+  } })) }));
+  Menu.setApplicationMenu(menu);
   createWindow();
   if (fs.existsSync(credentialsFile)) {
     try {

@@ -31,6 +31,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 2500);
     const onKey = (event: KeyboardEvent) => {
+      if (dialogRef.current?.closest("[inert]")) return;
       if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); }
       if (event.key !== "Tab") return;
       const controls = [...(dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];

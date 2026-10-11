@@ -27,7 +27,7 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 
-export function App({ persistPreferences = true, spaceEnabled = true }: { persistPreferences?: boolean; spaceEnabled?: boolean } = {}) {
+export function App({ persistPreferences = true, spaceEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; suspended?: boolean } = {}) {
   const [openPage, setOpenPage] = useState<{ id: string }>();
   useEffect(() => {
     const open = (event: Event) => { setOpenPage({ id: (event as CustomEvent<string>).detail }); setSpaceOpened(true); setSurface("space"); };
@@ -404,7 +404,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (showSettings || showCompanion || streamerMode || surface === "space") return;
+      if (suspended || showSettings || showCompanion || streamerMode || surface === "space") return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -433,7 +433,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals, surface]);
+  }, [thread, state, draft, showSettings, showCompanion, streamerMode, showChanges, terminals, surface, suspended]);
 
   // Focus after React commits the selected thread or newly mounted draft.
   useEffect(() => {
@@ -545,7 +545,7 @@ export function App({ persistPreferences = true, spaceEnabled = true }: { persis
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
           visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
-          suspended={surface === "space" || showSettings || showCompanion || streamerMode}
+          suspended={suspended || surface === "space" || showSettings || showCompanion || streamerMode}
           onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
           onHideTerminal={() => closeTerminal(thread.id)} onFocusChat={() => requestAnimationFrame(() => inputRef.current?.focus())}
           terminal={terminals[thread.id] ? (<Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>

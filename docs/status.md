@@ -462,6 +462,15 @@ Roughly in the order they earn their place; none is scheduled.
 
 ## Local Mac Store development preview (unreleased)
 
+Store recovery now pauses on certificate identity/date/hostname failures and incompatible
+host protocols while retaining saved access and the mounted draft. Explicit retry rechecks
+the saved pin and stream without replaying commands. Discovery refreshes installed-host
+availability and retries failed group-directory lookup. The Store owns unavailable Modex
+account responses and a native Workspace menu through the existing shortcut pipeline.
+See the [recovery verification](reviews/2026-10-11-store-recovery.md) and
+[Store readiness audit](reviews/2026-10-11-store-readiness.md) for evidence and remaining gates.
+
+
 PR #119 adds a dedicated opt-in loopback host and a sandboxed Electron MAS client that
 reuses the desktop renderer. Val approved integrating this development preview. Transport
 boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted

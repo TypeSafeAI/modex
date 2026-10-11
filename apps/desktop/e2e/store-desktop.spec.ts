@@ -2,6 +2,7 @@ import { test, expect, _electron as electron, type ElectronApplication } from "@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import https from "node:https";
 import { appDir, seedHome, tid, items } from "./support";
 
 async function startHost(home: string): Promise<ElectronApplication> {
@@ -106,5 +107,114 @@ test("Store preview discovers this Mac, confirms access once and restores saved 
   } finally {
     await client.close(); await host.close();
     fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); fs.rmSync(clientHome, { recursive: true, force: true });
+  }
+});
+
+
+test("Store connected account commands stay local and explain unavailable sign-in", async () => {
+  const { home, repo } = seedHome();
+  const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-account-"));
+  const host = await startHost(home);
+  const clientDir = path.resolve(appDir, "../store-desktop");
+  const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome } });
+  try {
+    const page = await client.firstWindow();
+    await page.getByText("Use a connection link instead", { exact: true }).click();
+    await page.getByLabel("Connection link", { exact: true }).fill(await pairingLink(host));
+    await page.getByRole("button", { name: "Connect to my Mac" }).click();
+    await expect(tid(page, "draft-view")).toBeVisible();
+    const result = await page.evaluate(async () => {
+      const invoke = (channel: string) => (window as any).modex.invoke(channel);
+      const result: Record<string, unknown> = {};
+      for (const action of ["status", "signIn", "refresh", "cancel", "signOut"]) {
+        try { result[action] = await invoke(`modexAccount:${action}`); }
+        catch (error) { result[action] = (error as Error).message; }
+      }
+      return result;
+    });
+    expect(result.status).toEqual({ available: false, environment: "production", signingIn: false, user: null, expiresAt: null, detail: "Manage your Modex account in the full desktop app." });
+    expect(result.cancel).toBeUndefined();
+    for (const action of ["signIn", "refresh", "signOut"]) expect(result[action]).toContain("Manage your Modex account in the full desktop app.");
+    await tid(page, "open-settings").click();
+    await tid(page, "settings-nav").getByRole("button", { name: "General", exact: true }).click();
+    const account = tid(page, "modex-account");
+    await expect(account.getByRole("button", { name: "Continue with GitHub" })).toBeDisabled();
+    await expect(account).toContainText("Manage your Modex account in the full desktop app.");
+    await expect(page.getByText("Unknown desktop command.", { exact: false })).toHaveCount(0);
+  } finally {
+    await client.close(); await host.close();
+    for (const dir of [home, repo, clientHome]) fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const overlay of ["settings", "companion", "menu"] as const) test(`Store protocol recovery preserves the mounted draft and ${overlay} with keyboard access`, async () => {
+  const { home, repo } = seedHome();
+  const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-recovery-"));
+  let host: ElectronApplication | undefined = await startHost(home);
+  const clientDir = path.resolve(appDir, "../store-desktop");
+  const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome } });
+  let incompatible: https.Server | undefined;
+  try {
+    const page = await client.firstWindow();
+    await page.getByText("Use a connection link instead", { exact: true }).click();
+    await page.getByLabel("Connection link", { exact: true }).fill(await pairingLink(host));
+    await page.getByRole("button", { name: "Connect to my Mac" }).click();
+    await expect(tid(page, "draft-view")).toBeVisible();
+    await tid(page, "composer-input").fill("Keep this recovery draft");
+    const preservedOverlay = tid(page, overlay === "settings" ? "settings" : overlay === "companion" ? "companion-dialog" : "model-menu");
+    if (overlay === "settings") {
+      await tid(page, "open-settings").click();
+      await tid(page, "settings-nav").getByRole("button", { name: "General", exact: true }).click();
+      await page.getByLabel("Default backend for new threads").selectOption("codex");
+    } else await tid(page, overlay === "companion" ? "open-companion" : "model-picker").click();
+    await expect(preservedOverlay).toBeVisible();
+    const access = fs.readFileSync(path.join(clientHome, "host-access.enc"), "utf8");
+    const { port } = JSON.parse(access);
+    await host.close(); host = undefined;
+    incompatible = https.createServer({ key: fs.readFileSync(path.join(home, "desktop-host/key.pem")), cert: fs.readFileSync(path.join(home, "desktop-host/cert.pem")) }, (_req, res) => { res.writeHead(409); res.end(); });
+    await new Promise<void>(resolve => incompatible!.listen(port, "127.0.0.1", resolve));
+    const retry = page.getByRole("button", { name: "Retry saved connection", exact: true });
+    await expect(retry).toBeVisible();
+    expect(await page.evaluate(async () => {
+      try { await (window as any).modexHost.connect(); return false; } catch (error) { return (error as Error).message.includes("Forget saved access"); }
+    })).toBe(true);
+    await expect(page.getByText("Reconnecting automatically", { exact: true })).toBeHidden();
+    expect(fs.readFileSync(path.join(clientHome, "host-access.enc"), "utf8")).toBe(access);
+    await expect(tid(page, "composer-input")).toHaveValue("Keep this recovery draft");
+    await page.keyboard.press("Meta+n");
+    await expect(tid(page, "composer-input")).toHaveValue("Keep this recovery draft");
+    const forget = page.getByRole("button", { name: "Forget access and reconnect", exact: true });
+    await expect(forget).toBeVisible();
+    await retry.focus();
+    await page.keyboard.press("Tab");
+    await expect(forget).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(retry).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(preservedOverlay).toHaveCount(1);
+    if (overlay === "menu") {
+      await retry.click();
+      await expect.poll(() => page.evaluate(async () => (await (window as any).modexHost.status()).state)).toBe("recovery");
+      await expect(retry).toBeVisible();
+      await expect(preservedOverlay).toHaveCount(1);
+    }
+    await new Promise<void>(resolve => incompatible!.close(() => resolve())); incompatible = undefined;
+    host = await startHost(home);
+    await expect(retry).toBeVisible();
+    await retry.focus();
+    await page.keyboard.press("Enter");
+    await expect(retry).toBeHidden();
+    await expect(preservedOverlay).toBeVisible();
+    if (overlay === "settings") {
+      await expect(page.getByLabel("Default backend for new threads")).toHaveValue("codex");
+      await tid(page, "settings").getByRole("button", { name: "Cancel", exact: true }).click();
+    } else await page.keyboard.press("Escape");
+    await expect(tid(page, "composer-input")).toHaveValue("Keep this recovery draft");
+    await expect(tid(page, "draft-view")).toBeVisible();
+    expect(fs.readFileSync(path.join(clientHome, "host-access.enc"), "utf8")).toBe(access);
+  } finally {
+    await client.close(); await host?.close();
+    if (incompatible) { incompatible.closeAllConnections(); await new Promise<void>(resolve => incompatible!.close(() => resolve())); }
+    for (const dir of [home, repo, clientHome]) fs.rmSync(dir, { recursive: true, force: true });
   }
 });

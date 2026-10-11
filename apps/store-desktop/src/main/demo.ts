@@ -1,3 +1,4 @@
+import { storeAccountCommands } from "./account.js";
 import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, type AppState, type BridgeCommands, type RoutingStatus, type TerminalEvent, type TerminalSnapshot, type Thread, type ThreadEvent, type ThreadItem } from "../../../desktop/src/shared/types.js";
 
 type Handlers = { [K in keyof BridgeCommands]: (request: BridgeCommands[K]["req"]) => BridgeCommands[K]["res"] };
@@ -142,11 +143,7 @@ export class StoreDemo {
       "settings:update": patch => { this.state.settings = { ...this.state.settings, ...patch }; return this.state.settings; },
       "routing:status": routing, "routing:reset": routing, "routing:clearKey": routing, "routing:setKey": unavailable,
       "routing:test": () => ({ ok: false, message: "Offline demo: no judge request was sent.", transport: "none", ms: 0 }),
-      "modexAccount:status": () => ({ available: false, environment: "production", signingIn: false, user: null, expiresAt: null, detail: "Manage your Modex account in the full desktop app." }),
-      "modexAccount:signIn": () => { throw new Error("Manage your Modex account in the full desktop app."); },
-      "modexAccount:refresh": () => { throw new Error("Manage your Modex account in the full desktop app."); },
-      "modexAccount:cancel": () => {},
-      "modexAccount:signOut": () => { throw new Error("Manage your Modex account in the full desktop app."); },
+      ...storeAccountCommands,
       "chatgpt:status": account, "chatgpt:select": unavailable, "chatgpt:signIn": unavailable,
       "chatgpt:signOut": unavailable, "chatgpt:cancel": () => {},
       "claude:login": () => ({ status: "unsupported", detail: "Offline demo: connect your host to sign in to Claude." }), "claude:cancelLogin": () => {},

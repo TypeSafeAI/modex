@@ -40,13 +40,27 @@ renderer drafts survive a temporary disconnect; accepted work remains owned by t
 Restarting the client preserves pairing and saved threads, while unsent drafts have the
 same renderer lifetime as the regular desktop app.
 
+A changed certificate, invalid certificate date or hostname, or incompatible host protocol
+pauses reconnection and keeps your saved access and current draft. **Retry saved connection**
+checks the saved certificate pin and reopens the event stream. It doesn't resend a command
+or trust a new certificate. Choose **Forget access and reconnect** to remove the saved access
+and explicitly connect again. Ordinary outages still reconnect automatically; host revocation
+removes saved access.
+
+The native **Workspace** menu uses the same actions as workspace shortcuts. Menu actions and
+shortcuts pause while the host is disconnected or a workspace overlay is open. Modex account
+sign-in remains unavailable in the Store client, with an explanation in Settings. Claude and
+Codex account actions continue to use the connected host.
+
+
 The host binds a dedicated HTTPS port to `127.0.0.1`, rejects browser origins/Host changes,
 pins its self-signed identity before credentials are sent, and shares no credentials or
 administrative routes with the phone service. Its menu makes the full project, terminal,
 settings and account authority explicit. The service is off without `--desktop-host`.
 This preview currently keeps a persistent port; conflicts fail visibly instead of silently
-changing endpoints. Certificate renewal, host upgrades, multiple-client coordination and
-the complete parity matrix still need acceptance work.
+changing endpoints. Recovery now distinguishes identity and protocol failures; certificate renewal,
+host upgrades, multiple-client coordination, and the complete parity matrix still need native
+acceptance work.
 
 ## Local sandboxed MAS preview
 
@@ -73,6 +87,9 @@ sign-ins stay on the host and appear as connected in Settings.
 
 If the host is closed, the client can find and open a compatible installed host after
 checking its bundle identifier, desktop protocol marker and Soul Protocol code signature.
+Each discovery check and connection attempt refreshes the installed-host lookup. Failed
+application-group directory resolution is retried; only successful resolution is cached.
+After launch, polling checks running host records without repeating installed-host lookup.
 The preview first checks for a sibling `Modex Host Preview.app`, then macOS's registered
 apps. Older published builds without desktop-host support are not launched as hosts.
 The host preview uses its isolated Application Support directory; normal Modex uses its
