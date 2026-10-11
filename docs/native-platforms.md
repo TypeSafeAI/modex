@@ -165,5 +165,26 @@ follow-up now resets to welcome before both demo entry paths. On a disposable si
 the original Back test failed with a real saved pairing and the corrected test passed;
 all 33 native unit and 28 UI tests then passed without skips. The follow-up also passed
 build, typecheck and 805 unit tests (12 Windows-native skips). This fixes test setup and
-does not claim to fix the earlier keyboard stall. Fresh hosted gates for the follow-up
-remain required before merging.
+does not claim to fix the earlier keyboard stall. This native setup evidence belongs
+to that follow-up. Every later integrated revision requires fresh hosted verification
+before landing.
+
+## Integration after the Knowledge repair
+
+[Knowledge prerequisite #175](https://github.com/TypeSafeAI/modex/pull/175) landed as
+`595c676`. The platform branch incorporates that exact main revision: successful CLI
+status parsing excludes stderr diagnostics, and the real-editor reload test waits for
+the next document and editor before removing its network handler.
+
+The combined tree passed the full build, all workspace typechecks, 808 unit tests
+(12 Windows-native tests skipped on the local Mac), all 234 desktop E2E tests and seven
+site tests with real Open Knowledge enabled. All 506 tracked file hashes held throughout
+that gate. Only these evidence/status documents changed afterward. The previously
+recorded native setup proof and failures remain separate from this integration result.
+Fresh required macOS checks and native Windows/Linux jobs verify each submitted revision;
+[PR #173](https://github.com/TypeSafeAI/modex/pull/173) records the exact hosted receipts.
+
+Installer candidate implementation and native test artifacts are distinct from release
+publication. The protected release workflow still uploads only macOS assets; acceptance
+and publication of the exact tagged Windows/Linux installers remain pending, along with
+the account/session and historical-migration limits recorded above.

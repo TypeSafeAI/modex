@@ -6,7 +6,7 @@ import path from "node:path";
 import http from "node:http";
 import { KnowledgeService } from "../src/main/engine/knowledge.js";
 
-async function existingServer(options: { exitCode?: number; ready?: boolean; ui?: boolean; matchingPid?: boolean; banner?: boolean } = {}) {
+async function existingServer(options: { exitCode?: number; ready?: boolean; ui?: boolean; matchingPid?: boolean; banner?: boolean; statusWarning?: boolean; statusExit?: number; malformedStatus?: boolean } = {}) {
   const fixture = setup();
   const server = http.createServer((_req, res) => {
     res.setHeader("Content-Type", "application/json");
@@ -25,7 +25,11 @@ async function existingServer(options: { exitCode?: number; ready?: boolean; ui?
   };
   fs.writeFileSync(path.join(packageDir, "dist", "cli.mjs"), `
     if (process.env.FORCE_COLOR) throw new Error('FORCE_COLOR must not reach the companion');
-    if (process.argv.includes('status')) console.log(${JSON.stringify(JSON.stringify(status))});
+    if (process.argv.includes('status')) {
+      console.log(${JSON.stringify(JSON.stringify(status) + (options.malformedStatus ? "unexpected" : ""))});
+      if (${options.statusWarning ?? false}) console.error('status diagnostic on stderr');
+      process.exitCode = ${options.statusExit ?? 0};
+    }
     else {
       console.log(${JSON.stringify(options.banner === false ? url : `OpenKnowledge is already running on this project (pid ${process.pid}).\n  ${url}\nLeaving it running — run \`ok stop\` first if you want a fresh server.`)});
       process.exit(${options.exitCode ?? 0});
@@ -55,6 +59,38 @@ test("knowledge reuses a verified existing server and disconnects without stoppi
     assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
     assert.equal((await fixture.service.start()).status, "ready");
     await fixture.service.dispose();
+    assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
+  } finally { await fixture.dispose(); }
+});
+
+test("knowledge parses status stdout separately from CLI stderr diagnostics", async () => {
+  const fixture = await existingServer({ statusWarning: true });
+  try {
+    const state = await fixture.service.start();
+    assert.equal(state.status, "ready");
+    assert.equal(state.external, true);
+    assert.equal(state.url, fixture.url);
+    await fixture.service.stop();
+    assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
+  } finally { await fixture.dispose(); }
+});
+
+test("knowledge preserves stderr diagnostics from an unsuccessful status command", async () => {
+  const fixture = await existingServer({ statusWarning: true, statusExit: 1 });
+  try {
+    await assert.rejects(fixture.service.start(), /status diagnostic on stderr/);
+    assert.equal(fixture.service.snapshot().status, "error");
+    assert.equal(fixture.service.snapshot().url, null);
+    assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
+  } finally { await fixture.dispose(); }
+});
+
+test("knowledge still rejects non-JSON data on status stdout", async () => {
+  const fixture = await existingServer({ malformedStatus: true });
+  try {
+    await assert.rejects(fixture.service.start(), SyntaxError);
+    assert.equal(fixture.service.snapshot().status, "error");
+    assert.equal(fixture.service.snapshot().url, null);
     assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
   } finally { await fixture.dispose(); }
 });
