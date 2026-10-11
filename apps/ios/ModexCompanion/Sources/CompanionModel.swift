@@ -96,7 +96,7 @@ import SwiftUI
             let client = makeClient(candidate)
             var adopted = false
             defer { if !adopted { client.invalidate() } }
-            let first = try await client.snapshot(threadId: nil)
+            let first = try await client.pairingSnapshot()
             guard attempt == pairingRevision, !Task.isCancelled else { return }
             try store.save(candidate)
             let recoveringSameMac = pairing?.fingerprint == candidate.fingerprint

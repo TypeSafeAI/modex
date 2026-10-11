@@ -327,10 +327,38 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   active network. DHCP changes remove only affected listeners, preserving other connections
   and the saved certificate/token. Updated iPhone clients rotate through discovered endpoints
   and the saved endpoint. Shutdown also closes connections still in the TLS handshake.
-  Physical secondary-LAN acceptance remains open: this Mac currently has one supported LAN.
+  Initial iPhone pairing has its own connectivity-waiting request; recovery keeps ordinary
+  request behavior. Native38/38 and the paired physical flow passed. A final fresh-install
+  permission prompt was not observed, so first-use consent remains unaccepted. Physical
+  secondary-LAN acceptance remains open: this Mac currently has one supported LAN.
   [Implementation and acceptance ledger](reviews/2026-10-11-companion-apple-readiness.md).
+- **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
+- **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
+  to settle at the requested size. The real OpenKnowledge test retries file visibility when
+  responsive layout changes its sidebar toggle. The packaged-demo unit fixture skips
+  login-profile PATH probing, which could outlast its approval deadline. Exact capture
+  geometry and real editor assertions remain required.
+  [Failure evidence and verification](reviews/2026-10-11-queue-reconciliation.md).
+- **Codex additional permissions.** Permission approvals return the requested profile and
+  an explicit turn scope, matching the installed Codex 0.162.1 app-server contract.
+  Deny and unexpected answers grant nothing; malformed or unsupported profiles are denied
+  without prompting. The approval detail includes the complete profile. Validation covers
+  wire responses and the installed protocol schema; a model-generated live approval has
+  not been exercised. [Recovery evidence](reviews/2026-10-11-permission-response.md).
+- **Companion server shutdown.** Turning the iPhone companion off, quitting, or rebinding
+  after a network change destroys every accepted socket, including one whose TLS handshake
+  never finished. Before, `close()` waited for Node's 120 s handshake timeout on such a socket;
+  the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
+  holds a half-open connection and requires `dispose()` to return promptly.
 
 ## In flight
+
+- **Open PR queue and composer #159.** #160 (CI simulator keyboard) and #161 (unofficial
+  CLI wording) passed code review and await protected landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
+  development commands, the 960px by 109px composer, and live Claude/Codex image/file
+  acceptance. Store attachments remain unavailable. #152 needs credential-navigation
+  and signing fixes; real 1Password and signed Touch ID acceptance remain release gates.
+  [Current heads, CI causes, and next steps](reviews/2026-10-11-queue-reconciliation.md).
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
@@ -348,7 +376,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   records build IDs and verification. The production Mac draft is 0.0.8 with its build
   and review notes selected, but still needs screenshots, description, keywords, and
   support URL, privacy-policy URL, and copyright. Three source-built Store screenshots and
-  listing text are prepared locally. Beta approval covers the October 6 builds; production
+  listing text are prepared locally. Current-account signed candidates passed running-host
+  discovery, real Codex and Claude turns, native code comparison/denial, and credential persistence
+  after relaunch using an isolated runtime keychain name. Native launch into a
+  fresh user profile, cancellation, reconnect and revocation still need acceptance.
+  [Signed acceptance evidence and limits](reviews/2026-10-11-store-signed-acceptance.md).
+  Beta approval covers the October 6 builds; production
   approval and acceptance of this branch's changes remain open.
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
@@ -436,7 +469,20 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   loops (no evaluation can be interrupted), wait for a settled, finite frame before asking
   `isHittable`, retry the tap until the field has keyboard focus, wait for the typed value,
   and answer system prompts during actions and long waits. Timeouts alone (#147) did not
-  remove any of the three.
+  remove any of the three. (4) Found after those landed (run 37983100896, `main` at #154): the
+  paired flow's `/resume` call timed out while the runner was healthy (its 10 s wait expired
+  on schedule). The fixture answers only after `CompanionServer.dispose()` finishes, and
+  `https.Server.close()` waits for a socket the phone opened but never carried through the
+  TLS handshake, because `closeAllConnections()` only knows sockets that completed TLS; Node's
+  handshake timeout is 120 s. A slow simulator stretched the outage step to 66 s, so the resume
+  landed inside that window (green runs finished the step in 10 s). Reproduced locally with the
+  real fixture and one half-open connection: no reply in 15 s before the fix, 204 in 6 ms after.
+  `close()` now destroys every accepted socket. The fix's own commit then split its two CI runs:
+  the pull_request run passed the whole paired flow (resume answered in under a second) while
+  the push run (38012518622) failed earlier, at the first follow-up. The phone's log shows one
+  request hitting its 8 s timeout ten seconds before the send tap, no later request failing, and
+  the reply never showing within 20 s. The fixture writes no log, so that run stays unexplained;
+  if it recurs, make `fixture.mjs` log each request with a timestamp before anything else.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools

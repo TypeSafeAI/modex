@@ -5,16 +5,18 @@ delivered and acceptance is evidenced. Hardware and Apple gates must remain expl
 
 ## Current inventory
 
-- Main: `6c00c52`; issue [#109](https://github.com/TypeSafeAI/modex/issues/109) open.
+- Main advanced to `fa4e665` through protected PR #167; reviewed PR #158 / #167 stack `958253f` is integrated
+  locally pending final verification and signed commit. Issue [#109](https://github.com/TypeSafeAI/modex/issues/109) open.
 - Dedicated worktree/branch: `companion-readiness`, owned by session
   `01a12992-ca4f-7953-bf53-2e8875f2cf15`. Other worktrees are preserved.
-- [#158](https://github.com/TypeSafeAI/modex/pull/158), head `00d2d6b`:
-  closes pre-TLS sockets on shutdown; no review comments, one failing PR macOS check
-  and a passing branch run. Inspect failure before integration; do not bypass checks.
+- [#158](https://github.com/TypeSafeAI/modex/pull/158), reviewed head `958253f`:
+  includes the CI synchronization prerequisite [#167](https://github.com/TypeSafeAI/modex/pull/167).
+  Both are integrated locally; #167 landed after both required macOS checks passed.
+  #158 and subsequent queue landings remain coordinated by their owner; no protection is bypassed.
 - [#157](https://github.com/TypeSafeAI/modex/pull/157), head `5d79f2e`:
   attachment implementation in another session. Store limitations must remain explicit.
-- `xcrun devicectl list devices`: paired iPhone 16 Pro Max available. Two physical acceptance
-  flows passed; first-use pairing is under investigation. Mac has one supported IPv4 LAN
+- `xcrun devicectl list devices`: paired iPhone 16 Pro Max available. Paired and extended physical acceptance
+  flows passed, including the final scoped pairing build; first-use consent remains unaccepted. Mac has one supported IPv4 LAN
   (`en0`); no real secondary LAN present.
 - Authenticated App Store Connect GETs at 06:41–06:42 UTC confirmed both latest beta
   reviews approved. [Current Apple receipt](2026-10-11-apple-status.md). No Apple writes
@@ -28,12 +30,12 @@ delivered and acceptance is evidenced. Hardware and Apple gates must remain expl
 | Reachable secondary-LAN pairing/discovery | Per-endpoint advertisements and pairing; physical second-network connection | Implemented; real second LAN unavailable |
 | Stable unaffected connections and trust | Keep-alive socket identity, same certificate/token across address change | Socket and fingerprint tests passed |
 | DHCP/offline/occupied port/shutdown/revocation | Focused lifecycle and in-flight authorization tests | Automated checks passed; physical port recovery/revocation passed |
-| Physical iPhone | Pair, relaunch/reconnect, confirm/deny/persist approvals, complete skill descriptions, merged-PR retirement | Paired and extended flows passed; first-use failure under investigation |
-| Store parity | Matrix covering real host transport and every feature in mac-app-store.md | Matrix complete; identified recovery/parity gaps and acceptance remain |
-| Store discovery/launch/consent/reconnection | Compatible same-team signed host, native confirmation, cancellation/denial, revoked credentials | Pending |
-| Real CLI and fresh macOS user | Signed sandboxed Store client exercising both CLIs and new-user lifecycle | Pending |
+| Physical iPhone | Pair, relaunch/reconnect, confirm/deny/persist approvals, complete skill descriptions, merged-PR retirement | Paired, extended, deny and final scoped flows passed; fresh-consent trace remains separate |
+| Store parity | Matrix covering real host transport and every feature in mac-app-store.md | Matrix complete; recovery/parity patch reviewed, build/typecheck/481 unit passes plus one expected skip, 168 desktop and seven site UI passes; delivery pending |
+| Store discovery/launch/consent/reconnection | Compatible same-team signed host, native confirmation, cancellation/denial, revoked credentials | Native validator13/13; signed running discovery and code comparison/denial passed. Launch, cancellation, reconnect and revocation pending |
+| Real CLI and fresh macOS user | Signed sandboxed Store client exercising both CLIs and new-user lifecycle | Real signed Store Codex and Claude turns and isolated-runtime-name credential persistence passed. User confirmed no fresh account available |
 | Apple status and metadata | Current ASC records; screenshots, description, keywords, support URL, review evidence | Readback complete; both beta reviews approved. Draft metadata and three screenshots prepared; production drafts incomplete |
-| Delivery | Build + unit + UI checks before signed commit/push; review and protected squash merge | Required local checks passed; commit/push/CI/merge pending |
+| Delivery | Build + unit + UI checks before signed commit/push; review and protected squash merge | Signed `2d05556` pushed as [PR #166](https://github.com/TypeSafeAI/modex/pull/166); integrated build, 477 unit passes plus one expected skip, typecheck, 167 desktop and seven site UI passes; signed follow-up, protected CI and merge pending |
 
 ## Execution sequence
 
@@ -97,6 +99,8 @@ delivered and acceptance is evidenced. Hardware and Apple gates must remain expl
   the raw test results are private because UI diagnostics may include disposable pairing links.
 - Required local verification completed before preparing the signed networking commit.
   Protected PR checks and merge remain separate delivery gates.
+- Fresh review of signed head `2d05556` approved the implementation subset with no blocking
+  quality/security findings. First-use pairing and second-LAN hardware remain acceptance gates.
 
 ## Store and Apple preparation
 
@@ -107,9 +111,25 @@ the historical waiting-for-review states: both latest beta reviews are approved.
 metadata is incomplete, and Companion's production version/platform needs reconciliation.
 External submission/publication is not authorized by this brief.
 
+Store recovery implementation is isolated in the `store-recovery` worktree, based on
+`4945b33`. The next patch refreshes installed-host discovery, reports identity/protocol
+recovery, enforces the Modex account exclusion, and connects native workspace menu actions.
+Read-only CLI preflight found authenticated Claude Code 2.1.296 and Codex 0.162.1; this is
+not real Store coding-turn evidence. Val confirmed no fresh macOS test account is available.
+Current-account signed checks must use a separate client container and disposable host
+workspace; they cannot establish fresh-user acceptance or safely exercise a default-data
+host launch.
+
 ## Next action
 
-Sign/push the verified networking checkpoint while continuing first-use physical iPhone
-diagnosis. Land only after review and protected checks pass. Continue Store
-implementation and signed/fresh-user acceptance from the matrix; do not close #109 based on
-single-LAN or simulator evidence.
+Required integrated verification passed: build, 477 unit tests with one expected skip,
+typecheck, and all 167 desktop UI tests. Another session briefly occupied site port 5187;
+after it exited independently, all seven unchanged site tests passed. Receipts are
+`integrated-{build,unit,typecheck,e2e}.log` and `integrated-site-rerun.log` in the private
+acceptance artifacts. Sign, push and land PR #166 after the prerequisite protected PRs
+and checks pass. Native
+38/38 and the final scoped paired physical flow passed; the final fresh-consent trace
+reached its request and timed out after 75.63 seconds without a prompt. Store recovery
+passed review, full unit verification, and its complete UI rerun after an ENOSPC interruption.
+Continue [signed current-account acceptance](2026-10-11-store-signed-acceptance.md)
+and deliver that patch. Do not close #109 based on single-LAN or simulator evidence.

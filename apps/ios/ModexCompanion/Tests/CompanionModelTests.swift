@@ -453,6 +453,34 @@ import XCTest
         XCTAssertNil(model.error)
     }
 
+    func testInitialPairingUsesPermissionAwareSnapshotWhileRecoveryDoesNot() async throws {
+        let store = MemoryPairingStore()
+        let original = store.pairing!
+        let link = try JSONEncoder().encode(original).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let moved = URL(string: "https://192.168.1.24:43210")!
+        let discovery = FakeDiscovery()
+        discovery.endpoint = moved
+        let savedClient = ControlledClient()
+        let recoveredClient = ControlledClient()
+        let model = CompanionModel(store: store, discovery: discovery, makeClient: { $0.url == moved ? recoveredClient : savedClient })
+        await model.pair(link: "modex://pair?data=\(link)")
+        model.stopPolling()
+        savedClient.snapshotFailure = URLError(.cannotConnectToHost)
+        await model.refresh()
+        await model.refresh()
+
+        let pairingRequests = await savedClient.pairingSnapshotRequests
+        let recoveryPairingRequests = await recoveredClient.pairingSnapshotRequests
+        let recoveryRequests = await recoveredClient.snapshotRequests
+        XCTAssertEqual(pairingRequests, 1)
+        XCTAssertEqual(recoveryPairingRequests, 0, "Bonjour recovery must not wait for first-use permission again.")
+        XCTAssertGreaterThan(recoveryRequests, 0)
+        XCTAssertEqual(store.pairing?.url, moved)
+        XCTAssertTrue(model.connected)
+    }
+
     func testDisconnectRejectsAnUnfinishedPairingAttempt() async throws {
         let store = MemoryPairingStore()
         let candidate = try JSONEncoder().encode(store.pairing!).base64EncodedString()
@@ -464,7 +492,7 @@ import XCTest
         let pending = Pending<CompanionSnapshot>(requested: expectation(description: "pair"))
         await client.enqueueSnapshot(pending)
         let pairing = Task { await model.pair(link: "modex://pair?data=\(candidate)") }
-        await fulfillment(of: [pending.requested], timeout: 2)
+        await fulfillment(of: [pending.requested], timeout: 10)
         model.disconnect()
         await pending.resolve(.success(makeSnapshot(nil)))
         await pairing.value
@@ -557,6 +585,7 @@ private actor ControlledClient: CompanionClient {
     private var creations: [Pending<CompanionThread>] = []
     private(set) var calls: [String] = []
     private(set) var snapshotRequests = 0
+    private(set) var pairingSnapshotRequests = 0
     nonisolated(unsafe) var snapshotFailure: Error?
     nonisolated(unsafe) var createdThread: CompanionThread?
     nonisolated(unsafe) var createdProjectId: String?
@@ -568,6 +597,10 @@ private actor ControlledClient: CompanionClient {
     func enqueueAnswer(_ pending: Pending<Void>) { answers.append(pending) }
     func enqueueCommands(_ pending: Pending<[CompanionCommand]>) { commandLists.append(pending) }
     func enqueueCreation(_ pending: Pending<CompanionThread>) { creations.append(pending) }
+    func pairingSnapshot() async throws -> CompanionSnapshot {
+        pairingSnapshotRequests += 1
+        return try await snapshot(threadId: nil)
+    }
     func snapshot(threadId: String?) async throws -> CompanionSnapshot {
         snapshotRequests += 1
         if !snapshots.isEmpty { return try await snapshots.removeFirst().value() }

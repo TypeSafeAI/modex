@@ -14,11 +14,26 @@ Audit baseline: `6c00c52d372adc0f94c6dd667bcf97b671363248`, branch `companion-re
 | Previous signed smoke | October 5 ledger records sandboxed MAS preview, consent, scripted coding/edit, Changes, real terminal, saved encrypted access, restart, and revocation | Historical evidence only. It did not cover fresh macOS users, current source, real coding turns, full parity, or graceful host shutdown |
 | Apple delivery and current readback | October 6 builds Mac 0.0.8 and Companion 0.1.0 (5) now have `APPROVED` beta reviews in the October 11 GET receipt | Production drafts remain `PREPARE_FOR_SUBMISSION`; approval applies to those uploaded builds, not the later source changes |
 | Installed bundles, read-only inspection | `/Applications/Modex.app` is 0.0.10 with desktop protocol 1; `/Applications/Modex Host Preview.app` is 0.0.7 with protocol 1; `/Applications/Modex 2.app` is Store 0.0.8 | Each passed `codesign --verify --strict --deep`. This is neither a launch test nor proof that the installed Store app matches current source |
+| Native trust validation, October 11 06:55 UTC | 13/13 expected outcomes using a compiled wrapper around the exact unchanged `trustedHost` function: compatible installed host and both supported signed fixture IDs accepted; absent/malformed, unsigned/ad-hoc, missing/wrong protocol, unsupported identity and tampered resource rejected | Native validation only. No sandbox lookup, installed-app fallback, launch, native consent, or wrong-team Apple-signed fixture was exercised |
 | October 11 source screenshots | Three actual Store 0.0.8 offline-demo captures, each 1440 × 900; renderer reported zero page errors and created no host credentials | Prepared locally after the full workspace build. Isolated source app in `MODEX_E2E` mode, not signed MAS/TestFlight acceptance; see the capture manifest below |
 
 The Store workspace is version `0.0.8` at this baseline. The installed Store preview also includes an older `0.0.1` bundle. Record the exact bundle path, version, source commit, package checksum, and signing identity for acceptance so a different Modex installation cannot supply accidental proof.
 
 References: [historical Store preview evidence](../mac-store-preview-plan.md), [October 6 review-access receipt](2026-10-06-review-demo-access.md), [October 11 Apple status receipt](2026-10-11-apple-status.md), and [Store source/run instructions](../../apps/store-desktop/README.md).
+
+The native trust packet is preserved under
+`$HOME/Documents/Codex/artifacts/modex-native-host-trust-2026-10-11-065537Z/` with the
+reproducible harness, exact source snapshot, receipt and checksums. It exercised source
+SHA-256 `bdcd801b743cd01247dcd0ad1fe7e566c7be77a8d740352921d5d6dd5a70e7c7` from
+`2d05556` on macOS 26.7.1 arm64; receipt SHA-256 is
+`0ae32a56e9a6670bff77ebd6c7c5eb7a965fb243ed50197c5aa646b85cd0dd87`. No existing bundle
+was launched or modified, and no key export, notarization or upload occurred.
+
+The later [signed current-account receipt](2026-10-11-store-signed-acceptance.md) records
+real application-group discovery, a completed Codex turn and native denial. Saved-access
+relaunch failed in the initial isolated candidate; its runtime application name shared the
+installed Store app's keychain service. A controlled artifact-only comparison is pending.
+These results supplement the baseline matrix without accepting its remaining rows.
 
 ## Parity matrix
 
@@ -28,7 +43,7 @@ References: [historical Store preview evidence](../mac-store-preview-plan.md), [
 | --- | --- | --- |
 | No-host launch and review access | Store `demo.ts`; `store-demo.spec.ts`; `demo.test.mjs`. In-memory approvals, sample files/diffs, scripted replies, terminal echo, reset, and exit | Pending current signed build. With no account, host, or network, complete demo, reset, exit, and relaunch without creating host access |
 | Running-host discovery | `desktop-discovery.ts` validates record name, size, protocol, port, fingerprint, version, and live TLS pin. `desktop-host.test.ts` checks live/stale records and approval boundary | Pending real application-group lookup in the sandbox, malformed/forged records, multiple hosts, and stale records after a crash |
-| Compatible installed-host discovery and launch | `desktop-system.m` checks permitted bundle IDs, protocol marker 1, Apple signature and team `9LR8Z8UQ9X`; revalidates immediately before `NSWorkspace` launch. Store main waits for a discovery record | Pending native positive/negative tests for wrong team, missing marker, absent app, stopped host, and host already running. No dedicated native helper test exists at this baseline |
+| Compatible installed-host discovery and launch | `desktop-system.m` checks permitted bundle IDs, protocol marker 1, Apple signature and team `9LR8Z8UQ9X`; revalidates immediately before `NSWorkspace` launch. Store main waits for a discovery record | Native validator wrapper passed 13 cases described above. Pending sandbox lookup and real launch for absent/stopped/already-running hosts, plus wrong-team Apple-signed negative acceptance |
 | Installing/upgrading a host while welcome stays open | Store main resolves the `system` promise once, including the installed-host result | Gap: refresh native installed-host lookup on a later check/connect; prove an installation made after opening the client can be discovered without restarting the client |
 | Native consent and code comparison | Host `index.ts` shows a six-digit comparison dialog; `desktop-host.test.ts` and connected Store E2E cover the authorization boundary | Pending actual native dialog with no test override. No grant, credentials, or workspace before Allow; mismatched code must be cancelled |
 | Denial and cancellation | Unit tests assert neither denial nor cancellation persists credentials or grants; host confirmation uses an abort signal | Pending native deny, client cancel, window close during confirmation, and retry. No prior consent may leak into the retry |
@@ -66,6 +81,12 @@ Keep this guard until the Store follow-up provides bounded authenticated byte tr
 ## Real CLI and fresh-user acceptance packet
 
 Run these steps against the final candidate, outside E2E mode, on a fresh macOS user. A different `MODEX_HOME` under the current account does not satisfy this gate. Coordinate desktop tests with native/mobile runs so they do not compete for app focus or simulator state.
+
+Val confirmed on October 11 that no fresh macOS test account is available. Read-only current-account
+preflight found authenticated Claude Code 2.1.296 and Codex 0.162.1. Isolated signed checks can
+proceed under that account, but fresh-user acceptance remains open. A packaged Store candidate
+must have a distinct bundle/container, and its manually launched host must use a disposable
+`MODEX_HOME`; the native launch helper does not pass that override.
 
 1. Record macOS/architecture, fresh-user status, source commit, host/client versions, package checksums, signature verification, entitlements, and runtime sandbox evidence. Install the exact signed host and MAS candidate through the intended delivery path. Preserve the regular account's apps, credentials, and projects.
 2. Before installing or opening a host, verify welcome recovery and complete the offline demo. Confirm no network host, account, real filesystem action, or coding CLI is needed. Exit/reset must preserve any real saved access and preferences.
