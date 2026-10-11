@@ -5,7 +5,10 @@ import { failureReport } from "../../shared/failures";
 import { askedBecause, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
 import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from "../../shared/sources";
+import type { AttachmentActions } from "../composer-attachments";
+import type { Attachment } from "../../shared/attachments";
 import { bridge } from "../bridge";
+import { AttachmentChips } from "./Attachments";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
@@ -17,6 +20,9 @@ interface Props {
   /** Unsent composer text for this thread, kept by App across thread switches. */
   text: string;
   onText: (text: string) => void;
+  /** Files attached but not yet sent, kept by App like `text`. */
+  attachments: Attachment[];
+  attachmentActions: AttachmentActions;
   onSend: (text: string) => Promise<void>;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
@@ -52,7 +58,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
@@ -153,6 +159,8 @@ export function ThreadView({ thread, project, items, text, onText, onSend, onSto
       {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
         text={text}
         onText={onText}
+        attachments={attachments}
+        attachmentActions={attachmentActions}
         busy={busy}
         context={{ project: project.name, cwd: thread.cwd, worktree: thread.worktree, branch }}
         backend={thread.backend}
@@ -236,7 +244,12 @@ function TurnHeader({ start, end, status }: { start: string; end?: number; statu
 function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
-      return <div className="msg user" data-testid="item" data-item-kind="user"><div className="bubble" data-testid="item-text">{item.text}</div></div>;
+      return (
+        <div className="msg user" data-testid="item" data-item-kind="user">
+          {item.text && <div className="bubble" data-testid="item-text">{item.text}</div>}
+          {item.attachments?.length ? <AttachmentChips attachments={item.attachments} onOpen={(a) => void bridge.invoke("attachments:open", { rel: a.rel }).catch(() => {})} /> : null}
+        </div>
+      );
     case "assistant":
       return <AssistantItem text={item.text} live={Boolean(live)} />;
     case "tool":

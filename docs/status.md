@@ -322,6 +322,20 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Composer attachments.** Desktop and browser-development drafts accept files from Attach files,
+  drag/drop, and image paste, with removable chips, copy errors, and attachment-only send.
+  Drafts stay with their thread or project through switches and failed sends. Main keeps
+  byte-exact private copies and enforces 5 MiB per image, 25 MiB per other file, and 20 files
+  per message. Both coding CLIs receive local attachments through their existing backends;
+  clicking a sent attachment reveals it in Finder. The composer is up to 960 px wide with
+  a 109 px resting height. Store attachments remain unavailable, including connected-host
+  mode. Authenticated browser development uploads one bounded file at a time; regular
+  commands retain their 1 MiB limit. Raster thumbnails are identity-checked and never execute
+  attached HTML or SVG. Persisted ownership and transactional claims preserve retries across
+  restarts. [Live CLI acceptance and integration evidence](reviews/2026-10-11-attachment-live-acceptance.md).
+  Verified with a fresh build, typecheck, 621 unit tests (one existing skip), all 199 desktop
+  E2E tests with real OpenKnowledge enabled, all 7 site tests, and both installed coding CLIs.
+
 - **Usable Streamer Mode.** Recognized credentials are masked at display surfaces while
   the workspace stays usable. Editable fields containing a match mask the whole field
   but retain original native values, clipboard, undo, formatting, persistence, and CLI
@@ -379,11 +393,15 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   is a historical proposal: native identity-only sign-in shipped separately in
   #141. Repository authorization still needs a dedicated GitHub App owner and
   hosted service destination before implementation and live acceptance.
-- **Open PR queue and composer #159.** #157 needs attachment draft/copy recovery, storage and limit enforcement,
-  development commands, the 960px by 109px composer, and live Claude/Codex image/file
-  acceptance. Store attachments remain unavailable. #152 needs credential-navigation
-  and signing fixes; real 1Password and signed Touch ID acceptance remain release gates.
-  [Current heads, CI causes, and next steps](reviews/2026-10-11-queue-reconciliation.md).
+
+- **Browser credentials ([#152](https://github.com/TypeSafeAI/modex/pull/152)).**
+  Document-bound 1Password filling and monotonic native chooser cancellation passed
+  independent review. A controlled development-build check through the real 1Password
+  CLI 2.39.0 passed filling without submission, scoped leak checks, and exact temporary
+  Login cleanup. Final-main integration and protected CI remain pending. Normal signed-app
+  unlock and cancellation acceptance is still required; no fresh biometric gesture was
+  observed. Device Touch ID remains disabled until matching Developer ID provisioning
+  and real signed WebAuthn create/get acceptance.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
@@ -515,10 +533,9 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 Roughly in the order they earn their place; none is scheduled.
 
 1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
-2. **Image attachments** in the composer (both CLIs accept them).
-3. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
+2. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
    the platform-specific pieces to audit first.
-4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
+3. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
