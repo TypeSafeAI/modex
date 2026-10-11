@@ -52,11 +52,32 @@ export async function launch(home: string): Promise<{ app: ElectronApplication; 
   });
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
-  // Native show can restore the initial bounds after DOMContentLoaded. Resize/capture only once it finishes.
+  // Inactive macOS windows may never emit show. Visibility permits interaction; resizeWindow
+  // separately waits for native and renderer geometry to settle before layout measurements.
   await expect.poll(() => app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.isVisible() ?? false,
   )).toBe(true);
   return { app, page };
+}
+
+/** Wait for native and renderer geometry to settle after macOS restores launch bounds. */
+export async function resizeWindow(app: ElectronApplication, page: Page, width: number, height: number): Promise<void> {
+  let matchedSince: number | undefined;
+  const matches = (size: number[]) => size[0] === width && size[1] === height;
+  await expect.poll(async () => {
+    const before = await app.evaluate(({ BrowserWindow }, size) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      const current = window.getContentSize();
+      if (current[0] !== size.width || current[1] !== size.height) window.setContentSize(size.width, size.height);
+      return current;
+    }, { width, height });
+    const viewport = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+    const native = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize());
+    if (matches(before) && matches(viewport) && matches(native)) matchedSince ??= Date.now();
+    else matchedSince = undefined;
+    return { native, viewport, settled: matchedSince !== undefined && Date.now() - matchedSince >= 200 };
+  }, { timeout: 15_000, intervals: [50], message: "window content size must settle before layout measurements" })
+    .toEqual({ native: [width, height], viewport: [width, height], settled: true });
 }
 
 /** `data-testid` lookup, scoped to a page or a parent locator. */

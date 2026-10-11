@@ -3,9 +3,10 @@
 A sandboxed Mac App Store client of the full desktop renderer inside an Electron **MAS**
 bundle. Coding, terminal processes, projects, credentials and file operations remain owned by an
 explicitly started, signed Mac host.
-Coding, terminal processes, projects, credentials and file operations remain owned by an
-explicitly started Mac host. This does not establish App Review eligibility or complete the
-[Store acceptance gates](../../docs/mac-app-store.md).
+This does not establish App Review eligibility or complete the
+[Store acceptance gates](../../docs/mac-app-store.md). The
+[current parity matrix and listing packet](../../docs/reviews/2026-10-11-store-readiness.md)
+records implemented features, explicit exclusions, and signed/live acceptance still needed.
 
 ## Build and run from source
 

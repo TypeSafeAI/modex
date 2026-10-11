@@ -46,6 +46,13 @@ recovery, the complete rerun passed with production source unchanged. Local rece
 `/private/tmp/modex-store-recovery-verification.BM881Z/`: `build.log`, `typecheck.log`,
 `unit-fixed.log`, `e2e.log` (ENOSPC), and `e2e-rerun.log`.
 
+Integration with the reviewed prerequisite commit `e6bfeee` merged cleanly. The combined tree
+retains Companion's button/select focus handling and Store's inert guard. Full build,
+typecheck, and 490 unit tests passed with one expected integration skip; receipts are
+`integrated-build.log`, `integrated-typecheck.log`, and `integrated-unit.log`. Independent
+review approved the merged source. The integrated full E2E run passed all 171 desktop and
+seven site tests with OpenKnowledge enabled; `integrated-e2e.log` records the completed run.
+
 Two initial full unit runs hit an existing Codex disposal fixture race. A private diagnostic
 held the PID file between creation and publication: the empty read became PID `0`, so the
 test checked its process group even after the real worker exited. The original failures did
@@ -65,8 +72,13 @@ Escape, and Enter; human keyboard-only and VoiceOver acceptance remain unverifie
 
 ## Remaining acceptance
 
-Signed current-account runtime acceptance is coordinated separately. Fresh-user setup,
-sleep/wake, native installed-host auto-launch, real CLI turns, Apple distribution, and the
-complete Store parity matrix remain separate evidence gates. No fresh macOS account was
-available for this run. Attachments remain excluded from Store; this change does not alter
-PR #157 or perform Apple writes, submission, release, or installed-app mutation.
+The [signed current-account receipt](2026-10-11-store-signed-acceptance.md) records passed real
+Codex and Claude turns, Store Stop ending a real Claude task, and saved-access relaunch of
+the unchanged signed candidate with an isolated runtime keychain name. This does not prove
+installed-app credential migration or fresh-user setup.
+
+Signed reconnect with a retained draft, revocation, fresh-user setup, native installed-host
+auto-launch, and sleep/wake remain open. No fresh macOS account was available for this run.
+Apple distribution and the complete Store parity matrix remain separate gates. Attachments
+remain excluded from Store; this change does not alter PR #157 or perform Apple writes,
+submission, release, or installed-app mutation.

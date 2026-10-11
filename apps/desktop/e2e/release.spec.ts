@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launch, seedHome, tid } from "./support";
+import { resizeWindow, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -55,7 +55,7 @@ test("reasoning effort can be selected with the keyboard and returns focus to th
 });
 
 test("minimum window keeps composer controls inside the main pane with Changes open", async () => {
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(900, 600));
+  await resizeWindow(app, page, 900, 600);
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(900);
   await tid(page, "composer-input").fill("Review the project");
   await page.keyboard.press("Meta+Enter");

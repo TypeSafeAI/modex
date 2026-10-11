@@ -126,9 +126,13 @@ async function openKnowledgeFile(guest: Page, name: string) {
   const navigation = guest.getByRole("group", { name: "Workspace navigation" });
   await expect(navigation).toBeVisible();
   const showFiles = navigation.getByRole("button", { name: /^Show Files/ });
-  if (await showFiles.count()) await showFiles.click();
   const file = guest.getByText(name, { exact: true }).first();
-  await expect(file).toBeInViewport();
+  // The guest's first native bounds can cross OpenKnowledge's responsive breakpoint between
+  // lookup and click, replacing Show Files with Hide Files. Retry the visible-file outcome.
+  await expect(async () => {
+    if (await showFiles.isVisible()) await showFiles.click({ timeout: 1_000 });
+    await expect(file).toBeInViewport({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   await file.click();
 }
 
@@ -258,6 +262,10 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     await guest.waitForLoadState("domcontentloaded");
     url = new URL(guest.url()).origin;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, guestURL) =>
+      BrowserWindow.getAllWindows()[0]!.contentView.children.some(view =>
+        "webContents" in view && (view as import("electron").WebContentsView).webContents.getURL().startsWith(guestURL) && view.getVisible()),
+    url)).toBe(true);
     await expect(guest.getByText("Welcome", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
     await openKnowledgeFile(guest, "Welcome");
     await expect(guest.getByText("Welcome to Modex knowledge", { exact: true }).first()).toBeVisible();
