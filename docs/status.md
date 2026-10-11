@@ -326,6 +326,16 @@ No additional desktop changes are unreleased as of the v0.0.10 tag.
 
 ## In flight
 
+- **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
+  no remaining product or test patch beyond #144, #150, and #154. The
+  [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
+  comparison results and corrects historical runs left marked in progress.
+  Dirty source trees and probe artifacts remain preserved. The recovered
+  [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md)
+  is a historical proposal: native identity-only sign-in shipped separately in
+  #141. Repository authorization still needs a dedicated GitHub App owner and
+  hosted service destination before implementation and live acceptance.
+
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The
