@@ -355,6 +355,11 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 - **iPhone CI keyboard.** The hosted simulator disables its hardware keyboard before first
   boot and verifies the preference, so the software keyboard can confirm input focus.
 - **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
+- **PR #163 CI follow-up (in flight).** Attachment lifecycle tests wait until the
+  composer accepts dragover before dispatching a single drop. iPhone test input queries
+  use exact accessibility identifiers on text fields, avoiding the keyboard placeholder
+  lookup that crashed XCTest after dismissing the skills sheet. Production behavior and
+  assertion coverage are unchanged. [Failure evidence](reviews/2026-10-11-pr163-ci.md).
 - **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
   to settle at the requested size. The real OpenKnowledge test retries file visibility when
   responsive layout changes its sidebar toggle. The packaged-demo unit fixture skips

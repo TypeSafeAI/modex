@@ -5,6 +5,14 @@ import { createThread, launch, resizeWindow, seedHome, tid } from "./support";
 
 const chips = (page: Page) => tid(tid(page, "composer-attachments"), "attachment-chip");
 async function drop(page: Page, names: string[]) {
+  await expect(tid(page, "attachment-dropzone")).toBeVisible();
+  // Native window visibility precedes React's effects. Probe dragover until the
+  // mounted handler accepts it; never retry a drop that could stage files twice.
+  await expect.poll(() => page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([""], "ready.txt", { type: "text/plain" }));
+    return !window.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
+  })).toBe(true);
   await page.evaluate(names => {
     const dt = new DataTransfer();
     for (const name of names) dt.items.add(new File([`bytes:${name}`], name, { type: "text/plain" }));

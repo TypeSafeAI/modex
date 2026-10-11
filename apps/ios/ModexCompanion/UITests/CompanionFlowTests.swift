@@ -19,7 +19,7 @@ final class CompanionFlowTests: XCTestCase {
         }
         XCTAssertTrue(pair.waitForExistence(timeout: 15))
         pair.tapWhenReady()
-        let link = app.descendants(matching: .any)["pairing-link-input"].firstMatch
+        let link = app.inputField("pairing-link-input")
         XCTAssertTrue(link.waitForExistence(timeout: 10))
         link.typeTextWhenReady(fixture.link, in: app)
         app.buttons["connect-button"].tapWhenReady()
@@ -42,7 +42,7 @@ final class CompanionFlowTests: XCTestCase {
         app.buttons["Cancel"].tapWhenReady()
         if !app.buttons["new-thread"].isReadyToTap { app.swipeDown() }
         app.buttons["new-thread"].tapWhenReady()
-        let newThreadInput = app.descendants(matching: .any)["new-thread-input"].firstMatch
+        let newThreadInput = app.inputField("new-thread-input")
         XCTAssertTrue(newThreadInput.waitForExistence(timeout: 10))
         newThreadInput.typeTextWhenReady("Start from phone", in: app)
         app.buttons["new-thread-commands"].tapWhenReady()
@@ -72,7 +72,7 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Approved"].appears(within: 20))
         XCTAssertTrue(confirmation.waitForNonExistence(timeout: 10), "The approval sheet must finish dismissing before focusing the composer.")
 
-        let input = app.descendants(matching: .any)["followup-input"].firstMatch
+        let input = app.inputField("followup-input")
         input.typeTextWhenReady("Please summarize the result", in: app)
         app.buttons["send-followup"].tapWhenReady()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.appears(within: 20))
@@ -87,7 +87,7 @@ final class CompanionFlowTests: XCTestCase {
         }
         if fixture.reconnect != true {
             thread.tapWhenReady()
-            let recoveryInput = app.descendants(matching: .any)["followup-input"].firstMatch
+            let recoveryInput = app.inputField("followup-input")
             XCTAssertTrue(recoveryInput.waitForExistence(timeout: 10))
             recoveryInput.typeTextWhenReady("Pause for recovery", in: app)
             app.buttons["send-followup"].tapWhenReady()
@@ -120,7 +120,7 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(thread.exists, "Cancelling must preserve the paired workspace.")
         if fixture.reconnect == true {
             thread.tapWhenReady()
-            let followup = app.descendants(matching: .any)["followup-input"].firstMatch
+            let followup = app.inputField("followup-input")
             XCTAssertTrue(followup.waitForExistence(timeout: 10))
             followup.typeTextWhenReady("Revoke this phone", in: app)
             app.buttons["send-followup"].tapWhenReady()
