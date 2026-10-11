@@ -325,7 +325,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <div className="connections-heading">
-            <div><h3 id="settings-clis-title">Your coding tools</h3><p>Modex automatically uses the CLI sign-ins already on this Mac.</p></div>
+            <div><h3 id="settings-clis-title">Your coding tools</h3><p>Modex automatically uses the CLI sign-ins already on this computer.</p></div>
             <button type="button" className="btn small" disabled={claudeLoginBusy || chatgptBusy} onClick={() => { setClaudeLoginDetail(""); setChatgptDetail(""); setHealthRevision((revision) => revision + 1); }}><Icon name="restart" />Refresh account status</button>
           </div>
           <p className="connections-note">Sign-in and account changes apply immediately, even if you cancel Settings. Save other preferences below.</p>
@@ -358,7 +358,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           </div>
           <div className="connection-card" data-testid="claude-account" role="group" aria-labelledby="claude-connection-title">
             <header className="connection-heading">
-              <div><h4 id="claude-connection-title">Claude Code</h4><p>Use your Claude account on this Mac.</p></div>
+              <div><h4 id="claude-connection-title">Claude Code</h4><p>Use your Claude account on this computer.</p></div>
               <ConnectionStatus health={health?.claude} failed={healthFailed} busy={claudeLoginBusy} />
             </header>
             <p className="connection-health">{backendHealthText(health?.claude, healthFailed)}</p>

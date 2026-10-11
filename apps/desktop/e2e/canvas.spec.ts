@@ -7,10 +7,47 @@ let app: ElectronApplication;
 let page: Page;
 let home: string;
 let repo: string;
-const guest = (app: ElectronApplication, code: string) => app.evaluate(async ({ webContents }, source) => {
-  const contents = webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-canvas:"));
-  return contents ? contents.executeJavaScript(source, true) : null;
+// A guest can disappear while executeJavaScript waits for a document or promise.
+// Polling reads can retry transient lifecycle states; imperative calls must fail.
+const observeGuest = (app: ElectronApplication, code: string) => app.evaluate(async ({ BrowserWindow }, source) => {
+  type Observation = { state: "ready"; value: unknown } | { state: "absent" | "loading" | "destroyed" | "timed out" }
+    | { state: "error"; message: string };
+  const contents = BrowserWindow.getAllWindows().flatMap(window => window.contentView.children)
+    .filter((view): view is import("electron").WebContentsView => "webContents" in view)
+    .map(view => view.webContents).find(w => !w.isDestroyed() && w.getURL().startsWith("modex-canvas:"));
+  if (!contents) return { state: "absent" } as Observation;
+  if (contents.isLoadingMainFrame()) return { state: "loading" } as Observation;
+  let timer: ReturnType<typeof setTimeout>;
+  let destroyed: () => void;
+  try {
+    const interrupted = new Promise<Observation>(resolve => {
+      destroyed = () => resolve({ state: "destroyed" });
+      contents.once("destroyed", destroyed);
+      timer = setTimeout(() => resolve({ state: "timed out" }), 1_500);
+    });
+    const script = contents.executeJavaScript(source, true).then(
+      value => ({ state: "ready", value }) as Observation,
+      error => contents.isDestroyed() ? { state: "destroyed" } as Observation
+        : { state: "error", message: String(error) } as Observation);
+    return await Promise.race([script, interrupted]);
+  } finally {
+    clearTimeout(timer!);
+    contents.removeListener("destroyed", destroyed!);
+  }
 }, code);
+const guest = async (app: ElectronApplication, code: string): Promise<any> => {
+  const result = await observeGuest(app, code);
+  if (result.state !== "ready") throw new Error(`Canvas guest ${result.state}${result.state === "error" ? `: ${result.message}` : ""}`);
+  return result.value;
+};
+const readGuest = async (app: ElectronApplication, code: string) => {
+  const result = await observeGuest(app, code);
+  if (result.state === "error") throw new Error(`Canvas guest error: ${result.message}`);
+  return result.state === "ready" ? result.value : result;
+};
+const guestCount = (app: ElectronApplication) => app.evaluate(({ webContents }) =>
+  webContents.getAllWebContents().filter(w => !w.isDestroyed() && w.getURL().startsWith("modex-canvas:")).length);
+
 
 test.beforeEach(async () => {
   ({ home, repo } = seedHome());
@@ -30,7 +67,7 @@ test.afterEach(async () => {
 
 test("Canvas runs local HTML, refreshes document and assets, and preserves browser isolation and full view", async () => {
   await page.getByLabel("Canvas file").selectOption("preview.html");
-  await expect.poll(() => guest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
   expect(await guest(app, "window.privileges")).toEqual(["undefined", "undefined"]);
   const host = (await tid(page, "canvas-preview").boundingBox())!;
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.some(v => 'webContents' in v && (v as import('electron').WebContentsView).webContents.getURL().startsWith('modex-canvas:') && v.getVisible()))).toBe(true);
@@ -46,16 +83,16 @@ test("Canvas runs local HTML, refreshes document and assets, and preserves brows
     contents.sendInputEvent({ type: "mouseDown", x: Math.round(point.x), y: Math.round(point.y), button: "left", clickCount: 1 });
     contents.sendInputEvent({ type: "mouseUp", x: Math.round(point.x), y: Math.round(point.y), button: "left", clickCount: 1 });
   }, button);
-  await expect.poll(() => guest(app, 'document.querySelector("#count").textContent')).toBe("1");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count").textContent')).toBe("1");
   expect(await guest(app, 'getComputedStyle(document.querySelector("#count")).color')).toBe("rgb(12, 34, 56)");
   const prefs = await app.evaluate(({ webContents }) => webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-canvas:"))!.getLastWebPreferences());
   expect(prefs).toMatchObject({ nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true });
   await tid(page, "workspace-full").click();
   await expect(tid(page, "main")).toBeHidden();
   fs.writeFileSync(path.join(repo, "preview.css"), "button { color: rgb(65, 43, 21); }");
-  await expect.poll(() => guest(app, 'getComputedStyle(document.querySelector("#count")).color')).toBe("rgb(65, 43, 21)");
+  await expect.poll(() => readGuest(app, 'getComputedStyle(document.querySelector("#count")).color')).toBe("rgb(65, 43, 21)");
   fs.writeFileSync(path.join(repo, "preview.html"), "<h1>Updated by the agent</h1>");
-  await expect.poll(() => guest(app, 'document.querySelector("h1")?.textContent')).toBe("Updated by the agent");
+  await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("Updated by the agent");
   await tid(page, "workspace-full").click();
   await expect(tid(page, "main")).toBeVisible();
   await tid(page, "open-settings").click();
@@ -64,20 +101,101 @@ test("Canvas runs local HTML, refreshes document and assets, and preserves brows
 
 test("Canvas renders SVG and Markdown and recovers after the selected file is deleted", async () => {
   await page.getByLabel("Canvas file").selectOption("shape.svg");
-  await expect.poll(() => guest(app, 'document.querySelector("circle")?.getAttribute("fill")')).toBe("pink");
+  await expect.poll(() => readGuest(app, 'document.querySelector("circle")?.getAttribute("fill")')).toBe("pink");
   await page.getByLabel("Canvas file").selectOption("README.md");
-  await expect.poll(() => guest(app, 'document.querySelector("h1")?.textContent')).toBe("e2e");
+  await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("e2e");
   fs.writeFileSync(path.join(repo, "README.md"), '# Updated note\n\n**Strong** and `code`.\n\n<script>window.injected=true</script>');
-  await expect.poll(() => guest(app, 'document.querySelector("h1")?.textContent')).toBe("Updated note");
+  await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("Updated note");
   expect(await guest(app, 'typeof window.injected')).toBe("undefined");
   expect(await guest(app, 'document.querySelector("strong")?.textContent')).toBe("Strong");
   fs.unlinkSync(path.join(repo, "README.md"));
   await expect(tid(page, "canvas-error")).toBeVisible();
   fs.writeFileSync(path.join(repo, "README.md"), '# Restored');
-  await expect.poll(() => guest(app, 'document.querySelector("h1")?.textContent')).toBe("Restored");
+  await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("Restored");
   await expect(tid(page, "canvas-error")).toHaveCount(0);
   await page.getByRole("button", { name: "Close Canvas tab", exact: true }).click();
-  await expect.poll(() => guest(app, "true")).toBeNull();
+  await expect.poll(() => guestCount(app)).toBe(0);
+});
+
+test("Canvas observations settle when a loading guest is replaced", async () => {
+  await page.getByLabel("Canvas file").selectOption("shape.svg");
+  await expect.poll(() => readGuest(app, 'document.querySelector("circle")?.getAttribute("fill")')).toBe("pink");
+  await app.evaluate(({ app, webContents }) => {
+    const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
+    const { CanvasResources } = require("./dist/src/main/engine/canvas.js");
+    const original = CanvasResources.prototype.respond;
+    const state = (globalThis as any).__canvasResponse = { held: false, started: false, release: undefined };
+    CanvasResources.prototype.respond = async function (request: Request) {
+      if (this.selected === "shape.svg") {
+        CanvasResources.prototype.respond = original;
+        state.held = true;
+        await new Promise<void>(resolve => { state.release = resolve; });
+      }
+      return original.call(this, request);
+    };
+    const contents = webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-canvas:"))!;
+    const execute = contents.executeJavaScript.bind(contents);
+    contents.executeJavaScript = (...args) => { state.started = true; return execute(...args); };
+    contents.reload();
+  });
+  try {
+    await expect.poll(() => app.evaluate(() => (globalThis as any).__canvasResponse.held)).toBe(true);
+    let settled = false;
+    const pending = guest(app, 'document.querySelector("h1")?.textContent').then(
+      () => "unexpected success", error => String(error)).finally(() => { settled = true; });
+    // Observe the old guest query entering executeJavaScript, or an immediate loading
+    // refusal, before selection changes through the renderer's separate CDP target.
+    await expect.poll(async () => settled || await app.evaluate(() => (globalThis as any).__canvasResponse.started)).toBe(true);
+    await page.getByLabel("Canvas file").selectOption("README.md");
+    await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("e2e");
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      const outcome = await Promise.race([pending, new Promise<string>(resolve => {
+        timer = setTimeout(() => resolve("query remained pending after replacement"), 2_000);
+      })]);
+      expect(outcome).toMatch(/Canvas guest (loading|destroyed)/);
+    } finally { clearTimeout(timer!); }
+  } finally {
+    await app.evaluate(() => (globalThis as any).__canvasResponse.release?.());
+  }
+});
+
+test("Canvas observations reject when an executing guest is destroyed", async () => {
+  await page.getByLabel("Canvas file").selectOption("preview.html");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  const pending = guest(app, "window.__canvasScriptStarted = true; new Promise(() => {})").then(
+    () => "unexpected success", error => String(error));
+  await expect.poll(() => readGuest(app, "window.__canvasScriptStarted")).toBe(true);
+  await page.getByRole("button", { name: "Close Canvas tab", exact: true }).click();
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    const outcome = await Promise.race([pending, new Promise<string>(resolve => {
+      timer = setTimeout(() => resolve("query remained pending after destruction"), 3_000);
+    })]);
+    expect(outcome).toContain("Canvas guest destroyed");
+  } finally { clearTimeout(timer!); }
+});
+
+test("Canvas imperative scripts fail visibly when they never settle", async () => {
+  await page.getByLabel("Canvas file").selectOption("preview.html");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  const listeners = () => app.evaluate(({ webContents }) => webContents.getAllWebContents()
+    .find(w => w.getURL().startsWith("modex-canvas:"))!.listenerCount("destroyed"));
+  const before = await listeners();
+  const pending = guest(app, "new Promise(() => {})").then(
+    () => "unexpected success", error => String(error));
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    const outcome = await Promise.race([pending, new Promise<string>(resolve => {
+      timer = setTimeout(() => resolve("query remained pending beyond its bound"), 3_000);
+    })]);
+    expect(outcome).toContain("Canvas guest timed out");
+  } finally { clearTimeout(timer!); }
+  expect(await listeners()).toBe(before);
+  await expect(readGuest(app, 'throw new Error("canvas-script-sentinel")')).rejects.toThrow("Canvas guest error");
+  expect(await listeners()).toBe(before);
+  expect(await guest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  expect(await listeners()).toBe(before);
 });
 
 test("Canvas refuses external requests, privileged navigation and popups; closing destroys its guest", async () => {
@@ -89,7 +207,7 @@ test("Canvas refuses external requests, privileged navigation and popups; closin
   try {
     fs.writeFileSync(path.join(repo, "preview.html"), `<h1>Isolated</h1><img src="http://127.0.0.1:${port}/secret"><iframe src="file:///etc/passwd"></iframe>`);
     await page.getByLabel("Canvas file").selectOption("preview.html");
-    await expect.poll(() => guest(app, 'document.querySelector("h1")?.textContent')).toBe("Isolated");
+    await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("Isolated");
     expect(await guest(app, `fetch('http://127.0.0.1:${port}/secret').then(() => 'allowed', () => 'denied')`)).toBe("denied");
     const url = await guest(app, "location.href");
     await guest(app, "window.open('file:///etc/passwd'); location.href='file:///etc/passwd'; undefined");
@@ -103,7 +221,7 @@ test("Canvas refuses external requests, privileged navigation and popups; closin
     });
     await expect(tid(page, "main")).toBeVisible();
     await page.getByRole("button", { name: "Close Canvas tab", exact: true }).click();
-    await expect.poll(() => guest(app, "true")).toBeNull();
+    await expect.poll(() => guestCount(app)).toBe(0);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
@@ -112,13 +230,13 @@ test("Canvas retries an initially invalid file when it becomes previewable", asy
   await page.getByLabel("Canvas file").selectOption("preview.html");
   await expect(tid(page, "canvas-error")).toBeVisible();
   fs.writeFileSync(path.join(repo, "preview.html"), "<h1>Recovered initial selection</h1>");
-  await expect.poll(() => guest(app, 'document.querySelector("h1")?.textContent')).toBe("Recovered initial selection");
+  await expect.poll(() => readGuest(app, 'document.querySelector("h1")?.textContent')).toBe("Recovered initial selection");
   await expect(tid(page, "canvas-error")).toHaveCount(0);
 });
 
 test("Canvas clears a transient file listing error without losing the running preview", async () => {
   await page.getByLabel("Canvas file").selectOption("preview.html");
-  await expect.poll(() => guest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler("files:list");
     let calls = 0;
@@ -134,7 +252,7 @@ test("Canvas clears a transient file listing error without losing the running pr
 
 test("an explicit Canvas reload is honored while a refresh poll is pending", async () => {
   await page.getByLabel("Canvas file").selectOption("preview.html");
-  await expect.poll(() => guest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
   await guest(app, 'document.querySelector("#count").click()');
   await app.evaluate(async ({ app, ipcMain }) => {
     const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
@@ -154,5 +272,5 @@ test("an explicit Canvas reload is honored while a refresh poll is pending", asy
   await expect.poll(() => page.evaluate(() => window.modex!.invoke("test:canvas-held" as never))).toBe(true);
   await page.getByRole("button", { name: "Reload Canvas", exact: true }).click();
   await page.evaluate(() => window.modex!.invoke("test:canvas-release" as never));
-  await expect.poll(() => guest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
+  await expect.poll(() => readGuest(app, 'document.querySelector("#count")?.textContent')).toBe("0");
 });

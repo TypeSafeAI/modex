@@ -120,9 +120,11 @@ login profile. A controlled nine-second login shell reproduced its eight-second
 approval timeout; the same test passes with profile lookup disabled through the existing
 test seam. Production demo deadlines are unchanged.
 
-A KWallet5 follow-up harness is prepared for the disposable Linux runner. It creates a real
-wallet through KWallet's PAM key handoff using a random in-memory key, then exercises the
-installed app's production SecretStore across app and daemon restarts, including automatic
-selection under declared KDE5. It checks the exact owned daemon PID, flushes the wallet before
-shutdown, and preserves credential ciphertext. Hosted execution is pending. This does not
-represent a full graphical/PAM login session or KWallet6 acceptance.
+KWallet5 acceptance passed on the disposable Linux runner at `a59f761` in
+[run 38143281502](https://github.com/TypeSafeAI/modex/actions/runs/38143281502).
+The installed app's production SecretStore retained encrypted credentials across app and
+owned daemon restarts, including automatic selection under declared KDE5. The harness
+creates a real wallet through KWallet's PAM key handoff with a random in-memory key,
+checks the daemon PID, and flushes the wallet before shutdown. The downloaded evidence
+archive's SHA-256 and the tested merge tree were independently verified. This does not
+represent a full graphical/PAM login session, KWallet6, or real account acceptance.

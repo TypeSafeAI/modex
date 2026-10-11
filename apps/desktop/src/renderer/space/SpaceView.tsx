@@ -110,7 +110,7 @@ export function SpaceView({ sidebarOpen, active, openPage }: { sidebarOpen: bool
       <div className="space-sidebar-footer">
         <button onClick={() => importInput.current?.click()} disabled={!space.loaded}><Icon name="download" />Import Markdown</button>
         <button aria-current={view === "trash" ? "page" : undefined} onClick={() => selectView("trash")}><Icon name="trash" />Trash</button>
-        <span><Icon name="laptop" size={13} /> Saved on this Mac</span>
+        <span><Icon name="laptop" size={13} /> Saved on this computer</span>
       </div>
     </aside>}
     <div className="space-pages-panel" hidden={view === "knowledge"}>
