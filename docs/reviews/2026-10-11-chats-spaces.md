@@ -27,7 +27,8 @@ Visualize prepares a prompt in the existing chat for review before sending.
   the previous page's selection while retaining its quoted draft. Page changes
   replace the document and comments panel without leaving an old document mounted.
 - Floating chat retains the mounted composer and draft. Workspace shortcuts return
-  to the main chat, and global dialogs remain above the floating view.
+  to the main chat, and global dialogs remain above the floating view. The native
+  Knowledge guest hides while floating chat is open and returns when chat minimizes.
 - The insert menu, page navigation, history, sharing, and editing use existing
   actions. A 900 × 620 viewport check covers the compact comments overlay.
 
@@ -59,6 +60,12 @@ retained quoted draft. It and the Space reference case passed; the unchanged cha
 hover case timed out after its screenshot and passed its single focused rerun.
 All three reference cases passed across that sweep and rerun. Renderer build and
 workspace typecheck passed. Final CI repeats the combined tree before landing.
+
+The real Open Knowledge lifecycle test also reproduced the native guest remaining
+visible above floating chat. Gating the guest by chat visibility fixed the regression:
+the guest hides, the composer remains editable, its draft survives navigation, and
+minimizing chat restores the guest. The full real Knowledge case passed in 48.9 seconds.
+The final main sync changes only workflow and documentation files.
 
 Editor focus corrections, including placing the Code insert caret inside its
 fences, remain in the separate [Space focus PR #170](https://github.com/TypeSafeAI/modex/pull/170).
