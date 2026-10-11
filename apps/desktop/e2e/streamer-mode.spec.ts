@@ -180,7 +180,15 @@ test("Space comment quotes mask selected fragments while keeping original text",
   const fullyMasked = () => quote.evaluate(element => {
     const text = element.firstChild!;
     return Array.from(CSS.highlights.get("modex-streamer") ?? []).some(range =>
-      range instanceof Range && range.comparePoint(text, 0) === 0 && range.comparePoint(text, text.textContent!.length) === 0);
+      range instanceof Range && range.intersectsNode(text) &&
+      range.comparePoint(text, 0) === 0 && range.comparePoint(text, text.textContent!.length) === 0);
+  });
+  // A quote replacement can leave an old detached range in the highlight set
+  // until the observer refreshes it. Exercise that state before the live range.
+  await page.evaluate(() => {
+    const staleText = document.createTextNode("old quote");
+    const stale = document.createRange(); stale.selectNodeContents(staleText);
+    CSS.highlights.set("modex-streamer", new Highlight(stale, ...Array.from(CSS.highlights.get("modex-streamer") ?? [])));
   });
   await expect.poll(fullyMasked).toBe(true);
   await page.evaluate(() => {
