@@ -24,7 +24,8 @@
     "dev:usage": "vite --config vite.usage.config.ts",
     "build:usage": "vite build --config vite.usage.config.ts",
     "dist:windows": "node scripts/package-native.mjs win32",
-    "dist:linux": "node scripts/package-native.mjs linux"
+    "dist:linux": "node scripts/package-native.mjs linux",
+    "prepare:native-clis": "node scripts/prepare-native-clis.mjs"
   },
   "dependencies": {
     "@create-markdown/core": "2.0.3",

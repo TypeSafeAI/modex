@@ -118,6 +118,9 @@ jobs:
           if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
+      - name: Install pinned CLI tools for packaged identity probes
+        timeout-minutes: 4
+        run: npm run prepare:native-clis -w @modex/desktop
       - name: Exercise installed Debian and extracted AppImage
         if: runner.os == 'Linux'
         timeout-minutes: 7

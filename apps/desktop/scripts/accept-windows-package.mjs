@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { readNativePackages } from "./read-native-packages.mjs";
+import { acceptInstalledClis } from "./accept-installed-clis.mjs";
 
 // This script installs/removes a system package. It must never run on a developer host.
 assert.equal(process.platform, "win32", "Hosted Windows acceptance only");
@@ -153,6 +154,7 @@ async function launch(executablePath, kind, credentialAction, expectedVersion) {
     assert.equal(identity.appPath, path.join(install, "resources", "app.asar"));
     assert.equal(path.resolve(identity.executable).toLowerCase(), installedBinary.toLowerCase());
     assert.equal(identity.encryptionAvailable, true, "Real Windows DPAPI required");
+    if (kind === "nsis-restart") result.cliIdentity = await acceptInstalledClis(app);
     const stored = await app.evaluate(async ({ app, safeStorage }, { home, value, action }) => {
       const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
       const { SecretStore, electronCipher } = require("./dist/src/main/engine/secrets.js");

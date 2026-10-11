@@ -461,11 +461,13 @@ Roughly in the order they earn their place; none is scheduled.
    persistence across restart and uninstall retaining data also passed. Windows default
    shell lookup respects `ComSpec` casing, verified in the installed app. Linux libsecret
    encryption across app restart/package formats and basic-text refusal retaining
-   ciphertext passed. Windows distinct-version NSIS replacement retained saved state and DPAPI credentials;
-   Linux upgrade acceptance remains pending.
-   Linux keyring restart and actual AppImage FUSE checks are prepared. Complete CLI/account
-   acceptance, remaining keyring variants and installer lifecycle
-   checks remain required. Windows/Linux updates remain manual.
+   ciphertext passed. Distinct-version NSIS, Debian and extracted AppImage replacement
+   retained saved state and encrypted credentials. Linux keyring restart, automatic selection
+   under a declared GNOME environment, and actual AppImage FUSE startup/cleanup passed in
+   [native acceptance](https://github.com/TypeSafeAI/modex/actions/runs/38140210846).
+   Standard native-executable npm wrapper support passes local regressions. Installed
+   Codex/Claude identity probes are prepared; hosted results are pending. Complete CLI/account acceptance, remaining
+   keyring variants and final installer lifecycle checks remain required. Windows/Linux updates remain manual.
 4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 

@@ -59,16 +59,16 @@ then passed real libsecret encryption across app restart and Debian/extracted Ap
 plus `basic_text` refusal of new and overwrite writes with existing ciphertext preserved.
 The probe file retained mode `0600`; uninstall retained threads, ciphertext and unrelated
 data. Downloaded Windows/Linux evidence archives match GitHub's artifact digests, and the
-tested merge tree matches the platform commit. The harness explicitly selected libsecret
-with one keyring process across app restarts. Automatic backend selection, keyring/session
-restart persistence and KWallet remain separate checks. Extracted AppImage execution does
-not establish FUSE startup. A follow-up harness is prepared to restart the owned keyring,
-read the same credential with automatic selection under a declared GNOME environment,
-and launch the actual AppImage executable. It requires a FUSE mount for the packaged
-ASAR and verifies that mount is released after graceful close. Hosted execution of these
-additional checks is pending; a full graphical login session remains outside that evidence.
+tested merge tree matches the platform commit. The earlier harness explicitly selected libsecret with one keyring process across app
+restarts. The [environment acceptance run](https://github.com/TypeSafeAI/modex/actions/runs/38140210846)
+now also passed credential reads after restarting the owned keyring daemon, with automatic
+backend selection under a declared GNOME environment. The actual AppImage executable
+started from a verified FUSE mount, passed terminal and credential checks, and released
+that mount after graceful close. Both installed evidence archives match GitHub's artifact
+digests; the tested merge tree equals platform commit `65c1ca6`. A full graphical login
+session and KWallet remain outside this evidence.
 
-A hosted-only manual-upgrade harness is prepared. It builds a synthetic `0.0.0` baseline
+The hosted-only manual-upgrade harness has passed on Windows and Linux. It builds a synthetic `0.0.0` baseline
 and the current version from the same source into separate directories, verifies both
 manifests, installs the baseline, and replaces it through NSIS/Debian or an extracted
 AppImage directory. Runtime versions, saved thread titles/settings, unchanged encrypted
@@ -80,8 +80,10 @@ which the store correctly normalizes to `agent` on reload. The fixture now saves
 after restart. The [Windows upgrade run](https://github.com/TypeSafeAI/modex/actions/runs/38139835694)
 passed NSIS `0.0.0` → `0.0.10`, saved thread titles/settings and unchanged DPAPI ciphertext,
 then restart and uninstall retention. Its evidence archive matches GitHub's digest.
-Linux upgrade acceptance remains pending. Persisted composer draft acceptance
-belongs to the separate updater integration.
+The same run passed Debian and extracted AppImage replacement with saved titles/settings
+and unchanged libsecret ciphertext. The environment acceptance run repeated all three
+upgrade paths successfully. Persisted composer draft acceptance belongs to the separate
+updater integration.
 
 Before release, collect native evidence for installed startup, packaged Electron addon
 and helper loading, CLI arguments and account/login launches, PTY input/resize/Ctrl-C,
@@ -92,12 +94,19 @@ manual. Candidate artifacts and cross-compilation do not satisfy these gates.
 
 Windows job ownership covers ordinarily created descendants, not service/WMI execution.
 Custom batch launchers are refused; recognized plain npm Node wrappers launch the real
-Node entrypoint with unchanged arguments. Linux credentials require an encrypted storage
+Node entrypoint with unchanged arguments. A follow-up supports the exact standard npm
+native-executable wrapper used by Claude Code, launching its `.exe` directly through the
+owned supervisor. Added coverage rejects modified wrappers and preserves argument values.
+The hosted harness now prepares pinned Codex `0.162.1` and Claude Code `2.1.296` in a fresh
+runner-owned prefix and checks discovery, identity and version through the installed app's
+production launcher. Local wrapper regressions pass; hosted execution of the new real-CLI probes is pending.
+They run only `--version`, with isolated profiles, and do not establish account or inference
+acceptance. Linux credentials require an encrypted storage
 backend and preserve existing files when storage is unavailable.
 
-Local verification for the isolated platform change: full monorepo build, 493 passing
-tests, desktop typecheck, configuration validation and workflow lint. Twelve tests are
-skipped: eleven require Windows and one is the existing opt-in live Knowledge test. Strict
+Local verification for the isolated platform change: full monorepo build, 494 passing
+tests, desktop typecheck, configuration validation and workflow lint. Thirteen tests are
+skipped: twelve require Windows and one is the existing opt-in live Knowledge test. Strict
 Windows cross-compilation passes; the hosted results above provide the limited native
 evidence gathered so far.
 The Codex process-cleanup fixture also now waits for a valid PID; a deliberately delayed

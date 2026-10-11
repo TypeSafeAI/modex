@@ -6,6 +6,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { readNativePackages } from "./read-native-packages.mjs";
+import { acceptInstalledClis } from "./accept-installed-clis.mjs";
 
 // This script installs/removes a system package. It must never run on a developer host.
 assert.equal(process.platform, "linux", "Hosted Linux acceptance only");
@@ -173,6 +174,7 @@ async function launch(executablePath, kind, credentialAction, expectedVersion) {
       assert.ok(path.isAbsolute(fuseMount.target));
     }
     assert.equal(identity.storageBackend, credentialAction === "refuse" ? "basic_text" : "gnome_libsecret");
+    if (kind === "debian-restart") result.cliIdentity = await acceptInstalledClis(app);
     const stored = await app.evaluate(({ app, safeStorage }, { home, freshHome, value, action }) => {
       const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
       const { SecretStore, electronCipher } = require("./dist/src/main/engine/secrets.js");
