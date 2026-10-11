@@ -40,11 +40,13 @@ reference capture uses the shared native/renderer resize helper; measured title
 geometry is unchanged.
 
 - `npm run build` passed.
-- `npm test` passed: 469 tests, with one opt-in Open Knowledge unit case skipped.
+- `npm test` passed: 470 tests, with one opt-in Open Knowledge unit case skipped.
 - `MODEX_TEST_OPEN_KNOWLEDGE=1 npm run test:e2e` passed: all 168 desktop cases,
   including real Open Knowledge integration, and all seven site cases.
 - `git diff --check` passed. Independent source review found no remaining important
   blockers.
 
-GitHub CI repeats build, unit, desktop/browser, site, and iPhone checks before
-protected-main landing.
+After integrating the companion shutdown fix from main, build and units passed
+again, along with all 12 companion, reference UI, and Space E2E cases. The prior full
+168-case run and successful PR CI cover the reference UI; final CI repeats the
+combined tree before protected-main landing.

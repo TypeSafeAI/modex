@@ -335,6 +335,11 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   without prompting. The approval detail includes the complete profile. Validation covers
   wire responses and the installed protocol schema; a model-generated live approval has
   not been exercised. [Recovery evidence](reviews/2026-10-11-permission-response.md).
+- **Companion server shutdown.** Turning the iPhone companion off, quitting, or rebinding
+  after a network change destroys every accepted socket, including one whose TLS handshake
+  never finished. Before, `close()` waited for Node's 120 s handshake timeout on such a socket;
+  the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
+  holds a half-open connection and requires `dispose()` to return promptly.
 
 - **Chats and Space reference layout.** Graphite uses a 280 px default sidebar and
   fixed 30 px chat rows. Hover or press Right Arrow on a chat to inspect its project,
@@ -347,9 +352,8 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## In flight
 
-- **Open PR queue and composer #159.** #158 (companion shutdown), #160 (CI simulator
-  keyboard), and #161 (unofficial CLI wording) passed code review and await protected
-  landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
+- **Open PR queue and composer #159.** #160 (CI simulator keyboard) and #161 (unofficial
+  CLI wording) passed code review and await protected landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
   development commands, the 960px by 109px composer, and live Claude/Codex image/file
   acceptance. Store attachments remain unavailable. #152 needs credential-navigation
   and signing fixes; real 1Password and signed Touch ID acceptance remain release gates.
@@ -449,7 +453,20 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   loops (no evaluation can be interrupted), wait for a settled, finite frame before asking
   `isHittable`, retry the tap until the field has keyboard focus, wait for the typed value,
   and answer system prompts during actions and long waits. Timeouts alone (#147) did not
-  remove any of the three.
+  remove any of the three. (4) Found after those landed (run 37983100896, `main` at #154): the
+  paired flow's `/resume` call timed out while the runner was healthy (its 10 s wait expired
+  on schedule). The fixture answers only after `CompanionServer.dispose()` finishes, and
+  `https.Server.close()` waits for a socket the phone opened but never carried through the
+  TLS handshake, because `closeAllConnections()` only knows sockets that completed TLS; Node's
+  handshake timeout is 120 s. A slow simulator stretched the outage step to 66 s, so the resume
+  landed inside that window (green runs finished the step in 10 s). Reproduced locally with the
+  real fixture and one half-open connection: no reply in 15 s before the fix, 204 in 6 ms after.
+  `close()` now destroys every accepted socket. The fix's own commit then split its two CI runs:
+  the pull_request run passed the whole paired flow (resume answered in under a second) while
+  the push run (38012518622) failed earlier, at the first follow-up. The phone's log shows one
+  request hitting its 8 s timeout ten seconds before the send tap, no later request failing, and
+  the reply never showing within 20 s. The fixture writes no log, so that run stays unexplained;
+  if it recurs, make `fixture.mjs` log each request with a timestamp before anything else.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
