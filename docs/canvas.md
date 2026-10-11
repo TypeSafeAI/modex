@@ -10,6 +10,10 @@ assets that appear after the document. Polling runs while Canvas is visible. Swi
 workspace tabs preserves the preview; closing Canvas or its thread releases its guest.
 Deleted files show an error and recover when restored.
 
+Streamer Mode covers only the Canvas preview while the rest of the workspace stays usable.
+Turning it off restores the same running preview and selection. Recognized secrets in
+filename labels are masked without changing the selected path or the file Canvas opens.
+
 Markdown supports headings, paragraphs, lists, fenced code, inline code, bold and web
 link text. Raw HTML in Markdown is displayed as text. SVG renders as an SVG document.
 Canvas is a preview, so interactions do not save edits back to the source file.

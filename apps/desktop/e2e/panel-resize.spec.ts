@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page, type Locator } from "@playwright/test";
-import { launch, seedHome, createThread, tid } from "./support";
+import { resizeWindow, launch, seedHome, createThread, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -7,12 +7,45 @@ let home: string;
 test.beforeEach(async () => {
   ({ home } = seedHome());
   ({ app, page } = await launch(home));
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1366, 816));
+  await resizeWindow(app, page, 1366, 816);
   await createThread(page, "Resize the panels");
 });
-test.afterEach(async () => { await app?.close(); });
+test.afterEach(async ({}, testInfo) => {
+  try {
+    if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) {
+      const events = await page.evaluate(() => (window as Window & { panelPointerTrace?: unknown[] }).panelPointerTrace ?? []);
+      await testInfo.attach("panel-pointer-events", { body: JSON.stringify(events, null, 2), contentType: "application/json" });
+    }
+  } finally { await app?.close(); }
+});
 const width = async (pane: Locator) => (await pane.boundingBox())!.width;
 async function drag(handle: Locator, delta: number) {
+  // Passive failure evidence: keep the delivered coordinates, capture state and rendered width.
+  await page.evaluate(() => {
+    const target = window as Window & { panelPointerTrace?: unknown[] };
+    if (target.panelPointerTrace) return;
+    const events = target.panelPointerTrace = [] as unknown[];
+    const ids = new WeakMap<Element, number>();
+    let nextId = 1;
+    const id = (element: Element) => {
+      if (!ids.has(element)) ids.set(element, nextId++);
+      return ids.get(element);
+    };
+    for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel", "gotpointercapture", "lostpointercapture"]) {
+      document.addEventListener(type, event => {
+        const pointer = event as PointerEvent;
+        const element = pointer.target as Element;
+        const handles = [...document.querySelectorAll<HTMLElement>(".panel-resizer")].map(handle => ({
+          id: id(handle), side: handle.getAttribute("aria-label"), width: handle.getAttribute("aria-valuenow"),
+          max: handle.getAttribute("aria-valuemax"), captured: handle.hasPointerCapture(pointer.pointerId),
+          cssWidth: getComputedStyle(handle).getPropertyValue("--sidebar-w"),
+          sidebarWidth: document.querySelector('[aria-label="Space pages"]')?.getBoundingClientRect().width,
+        }));
+        events.push({ type, time: performance.now(), x: pointer.clientX, y: pointer.clientY, buttons: pointer.buttons,
+          pointerId: pointer.pointerId, target: id(element), targetClass: element.getAttribute("class"), handles });
+      }, { capture: true, passive: true });
+    }
+  });
   const box = (await handle.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
@@ -49,7 +82,7 @@ test("both panels resize by dragging and keyboard, retain widths, and keep chat 
   right = page.getByRole("separator", { name: "Resize workspace" });
   await expect.poll(() => width(tid(page, "sidebar"))).toBe(expectedLeft);
   await expect.poll(() => width(tid(page, "workspace"))).toBe(expectedRight);
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(900, 700));
+  await resizeWindow(app, page, 900, 700);
   await expect.poll(() => width(tid(page, "main"))).toBeGreaterThanOrEqual(350);
   await drag(right, -900);
   await expect.poll(() => width(tid(page, "main"))).toBeGreaterThanOrEqual(350);

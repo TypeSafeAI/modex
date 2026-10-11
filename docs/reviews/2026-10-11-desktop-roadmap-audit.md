@@ -4,6 +4,34 @@ Baseline: main `6c00c52d`, inspected 2026-10-11. This is an execution ledger, no
 
 ## Canvas
 
+### Integration with merged browser and Streamer work
+
+Integrated against signed main `a2f6130df7e91986c53d6671785d508971b1b194` (PR #152).
+The shared browser retains its frame and credential ownership guards; Canvas adds only
+its authorized URL resolver. Attachment and Canvas schemes register together before app ready.
+
+Three focused regressions failed before repair: absent pane-local Streamer cover, raw
+secret filename labels, and a delayed reload response restoring an error after selection
+was cleared. The repaired selection effect owns manual reload responses, and Streamer
+Mode hides the native guest while preserving its document and exact selected path.
+The focused run passed 22 tests: 12 Canvas, three browser tools and seven Streamer tests.
+Fresh full integration verification passed: monorepo build, 703 unit tests, all workspace
+typechecks, 233 desktop E2E tests and seven site tests, with zero skips and real
+OpenKnowledge enabled. All 470 tracked source-file hashes remained unchanged during the
+run. Protected landing and release acceptance remain pending at this checkpoint.
+
+The first unit run encountered an orphaned compiled Windows test from the separate platform
+branch. Its source was absent from this checkout; TypeScript had retained old output after
+the branch switch. The failed run was preserved, the owned untracked desktop build directory
+was removed, and the full gate above started from a clean build without changing source.
+
+The Canvas observation helper also handles loading, destroyed and timed-out guests without
+leaving polling callbacks pending. Imperative script errors remain failures, and closure
+is verified by enumerating native guests. Controlled guest replacement reproduced the
+old helper hang; the exact trigger of the earlier hosted failure remains unproven.
+
+### Initial implementation evidence
+
 The workspace already had guest browser tabs and bounded source-file reads, but no Canvas.
 New acceptance covers HTML interaction, relative CSS and document refresh, SVG, escaped
 Markdown, full view, overlay hiding, file deletion/recovery and guest disposal.

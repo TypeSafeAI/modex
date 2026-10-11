@@ -1,3 +1,4 @@
+import { SecretInput } from "../streamer";
 import { useEffect, useRef, useState } from "react";
 import type { Thread } from "../../shared/types";
 import { shortenHome, tailPath } from "./ThreadView";
@@ -98,7 +99,7 @@ function ThreadTitle({ title, onRename, renameSignal }: { title: string; onRenam
     else setDraft(title);
   };
   return (
-    <input
+    <SecretInput
       ref={input}
       className={`title-text${editing ? " editing" : ""}`}
       data-testid="thread-title"

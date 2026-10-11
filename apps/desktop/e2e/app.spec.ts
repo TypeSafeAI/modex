@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, createThread, items, launch, seedHome, tid, currentRow } from "./support";
+import { resizeWindow, appDir, createThread, items, launch, seedHome, tid, currentRow } from "./support";
 
 /**
  * Drives the real Electron window end to end with the keyboard, against the offline mock
@@ -528,8 +528,10 @@ test("composer: context strip, access menu, plan via + and its chip, send enable
   await expect(access).toHaveAttribute("data-mode", "chat");
   await expect(access).not.toHaveCSS("color", "rgb(220, 146, 88)");
 
-  // + opens with focus on its first item (Plan mode); choosing it turns plan on and shows the chip.
+  // + focuses Attach files first; ArrowDown reaches Plan mode and choosing it shows the chip.
   await tid(page, "composer-plus").click();
+  await expect(page.getByRole("menuitem", { name: "Attach files", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(tid(page, "plan-toggle")).toBeFocused();
   await expect(tid(page, "plan-toggle")).toHaveAttribute("aria-checked", "false");
   await page.keyboard.press("Enter");
@@ -697,7 +699,7 @@ test("title bar: ⋯ menu (rename, open, copy, delete), Changes icon with a coun
 test("a 1380×880 window with Changes open keeps the whole composer, send button included, on screen", async () => {
   await expect(tid(page, "sidebar")).toBeVisible();
   await createThread(page, "Narrow window check");
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
+  await resizeWindow(app, page, 1380, 880);
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1380);
   if (!(await tid(page, "changes-panel").count())) await tid(page, "changes-toggle").click();
   await expect(tid(page, "changes-panel")).toHaveCount(1);
@@ -711,7 +713,7 @@ test("a 1380×880 window with Changes open keeps the whole composer, send button
 
 test("accessibility: information text meets AA contrast, keyboard focus is visible, hit areas ≥ 28 px, motion respects the OS", async () => {
   await expect(tid(page, "sidebar")).toBeVisible();
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1380, 880));
+  await resizeWindow(app, page, 1380, 880);
   // A complete scripted turn, so tool rows carry their finished "done · Ns" status.
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "draft-view")).toBeVisible();
@@ -759,7 +761,11 @@ test("accessibility: information text meets AA contrast, keyboard focus is visib
 
   // Truncated titles and shortcut-bearing rows explain themselves on hover.
   const rowTitle = await tid(currentRow(page), "thread-row-title").innerText();
-  await expect(currentRow(page).getByRole("button").first()).toHaveAttribute("title", rowTitle);
+  await expect(currentRow(page).getByRole("button").first()).toHaveAccessibleName(rowTitle);
+  await currentRow(page).getByRole("button").first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("dialog", { name: "Chat details" })).toContainText(rowTitle);
+  await page.keyboard.press("Escape");
   await expect(tid(page, "new-chat")).toHaveAttribute("title", /⌘N/);
 
   // Spinners and the thinking shimmer stop when the OS asks for reduced motion.

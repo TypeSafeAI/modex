@@ -11,6 +11,8 @@ import { ThreadRunner } from "./engine/runner.js";
 import { TerminalManager } from "./engine/terminal.js";
 import { SecretStore, noCipher } from "./engine/secrets.js";
 import { hydratePath } from "./engine/shell-env.js";
+import { LIMITS } from "../shared/attachments.js";
+import { revealAttachment } from "./reveal-attachment.js";
 import { openTerminal } from "./engine/open-terminal.js";
 
 /** Local development transport only; never included in the packaged renderer. */
@@ -20,6 +22,9 @@ export function createBrowserDev(home: string) {
   const clients = new Set<ServerResponse>();
   const handlers = new Map<string, (payload: never) => unknown>();
   let closing = false;
+  const uploads = new Set<IncomingMessage>();
+  const maxEncodedFile = 4 * Math.ceil(LIMITS.fileBytes / 3);
+  const maxUploadBody = maxEncodedFile + 2048;
   const pathReady = hydratePath(process.env).catch((error: Error) => {
     console.error("[modex] login-shell PATH failed:", error.message);
   });
@@ -44,11 +49,12 @@ export function createBrowserDev(home: string) {
       const file = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open";
       await promisify(execFile)(file, [path]);
     },
-    openTerminal,
+    openTerminal, revealAttachment,
   });
 
   const json = (res: ServerResponse, status: number, body: unknown) => {
-    res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    if (res.destroyed) return;
+    res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
     res.end(JSON.stringify(body));
   };
   async function handle(req: IncomingMessage, res: ServerResponse, next: () => void): Promise<void> {
@@ -69,6 +75,68 @@ export function createBrowserDev(home: string) {
       clients.add(res);
       const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 15_000);
       res.on("close", () => { clients.delete(res); clearInterval(heartbeat); });
+      return;
+    }
+    if (url.pathname === "/__modex/attachments/image" && req.method === "GET") {
+      const image = runner.attachments.readImage(url.searchParams.get("rel") ?? "");
+      if (!image) return json(res, 404, { error: "Attachment image unavailable." });
+      res.writeHead(200, { "Content-Type": image.mime, "Content-Length": image.data.length,
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+      res.end(image.data);
+      return;
+    }
+    if (url.pathname === "/__modex/attachments/stage" && req.method === "POST") {
+      if (req.headers["content-type"] !== "application/json") return json(res, 415, { error: "Expected JSON." });
+      // One in-flight file across tabs. Body, decoded file, and JSON overhead stay bounded;
+      // the ordinary invoke route keeps its 1 MiB cap. No disk writes precede complete parsing.
+      if (uploads.size) return json(res, 429, { error: "Another attachment is uploading. Try again when it finishes." });
+      const declared = req.headers["content-length"];
+      if (declared !== undefined && (!/^\d+$/.test(declared) || Number(declared) > maxUploadBody)) {
+        return json(res, 413, { error: "Attachment request too large." });
+      }
+      uploads.add(req);
+      const timeout = setTimeout(() => req.destroy(), 30_000);
+      let staged: { id: string }[] = [];
+      const cleanup = () => {
+        if (!res.writableFinished && staged.length) {
+          const ids = staged.map(file => file.id); staged = [];
+          try { runner.attachments.discard(ids); } catch { /* The store retains ownership for a later sweep if storage changed. */ }
+        }
+      };
+      res.once("close", cleanup);
+      res.once("error", cleanup);
+      try {
+        let size = 0;
+        const chunks: Buffer[] = [];
+        for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+          size += chunk.length;
+          if (size > maxUploadBody) {
+            res.shouldKeepAlive = false;
+            req.resume();
+            return json(res, 413, { error: "Attachment request too large." });
+          }
+          chunks.push(chunk);
+        }
+        if (!req.complete || (declared !== undefined && size !== Number(declared))) throw new Error("Incomplete upload");
+        const payload = JSON.parse(Buffer.concat(chunks, size).toString("utf8"));
+        if (!Array.isArray(payload?.files) || payload.files.length !== 1) return json(res, 400, { error: "Upload one attachment at a time." });
+        const file = payload.files[0];
+        if (file && typeof file.data === "string" && file.data.length > maxEncodedFile) return json(res, 413, { error: "Attachment request too large." });
+        if (!file || typeof file.name !== "string" || file.name.length > 1024
+          || (file.mime !== undefined && (typeof file.mime !== "string" || file.mime.length > 128))) {
+          return json(res, 400, { error: "Invalid attachment metadata." });
+        }
+        if (closing || res.destroyed) return;
+        const result = runner.attachments.stage(payload.files, { bytesOnly: true });
+        staged = result.staged;
+        json(res, 200, { value: result });
+      } catch {
+        cleanup();
+        if (!req.aborted) json(res, 400, { error: "Invalid or incomplete attachment upload." });
+      } finally {
+        clearTimeout(timeout);
+        uploads.delete(req);
+      }
       return;
     }
     if (url.pathname !== "/__modex/invoke" || req.method !== "POST") return json(res, 404, { error: "Unknown bridge endpoint." });
@@ -100,6 +168,7 @@ export function createBrowserDev(home: string) {
     token, handle,
     async dispose() {
       closing = true;
+      for (const upload of uploads) upload.destroy();
       for (const client of clients) client.end();
       clients.clear();
       const results = await Promise.allSettled([terminals.dispose(), runner.dispose()]);

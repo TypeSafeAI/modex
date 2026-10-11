@@ -327,10 +327,110 @@ SVG and Markdown. Local document/asset changes refresh the isolated preview; ful
 manual reload and deletion recovery are supported. Each guest has a temporary session,
 no app bridge or Node access, bounded root-confined resource reads and no network access.
 The Store edition and development browser bridge report Canvas unavailable.
+Streamer Mode covers the preview without resetting it or blocking the workspace; filename
+labels are masked while selected paths remain original. Late reload responses cannot
+overwrite state after the selection changes.
+Integration passed 703 unit tests, all workspace typechecks, 233 desktop E2E tests and
+seven site tests, with real OpenKnowledge enabled and no skips.
 [Usage and limits](canvas.md). Roadmap acceptance and release evidence remain tracked in
 [the execution ledger](reviews/2026-10-11-desktop-roadmap-audit.md).
+- **Composer attachments.** Desktop and browser-development drafts accept files from Attach files,
+  drag/drop, and image paste, with removable chips, copy errors, and attachment-only send.
+  Drafts stay with their thread or project through switches and failed sends. Main keeps
+  byte-exact private copies and enforces 5 MiB per image, 25 MiB per other file, and 20 files
+  per message. Both coding CLIs receive local attachments through their existing backends;
+  clicking a sent attachment reveals it in Finder. The composer is up to 960 px wide with
+  a 109 px resting height. Store attachments remain unavailable, including connected-host
+  mode. Authenticated browser development uploads one bounded file at a time; regular
+  commands retain their 1 MiB limit. Raster thumbnails are identity-checked and never execute
+  attached HTML or SVG. Persisted ownership and transactional claims preserve retries across
+  restarts. [Live CLI acceptance and integration evidence](reviews/2026-10-11-attachment-live-acceptance.md).
+  Verified with a fresh build, typecheck, 621 unit tests (one existing skip), all 199 desktop
+  E2E tests with real OpenKnowledge enabled, all 7 site tests, and both installed coding CLIs.
+
+- **Usable Streamer Mode.** Recognized credentials are masked at display surfaces while
+  the workspace stays usable. Editable fields containing a match mask the whole field
+  but retain original native values, clipboard, undo, formatting, persistence, and CLI
+  payloads. Terminal redaction paints the original buffer without replaying it through
+  a second parser. Comment excerpts are masked in full, including public quotes, since
+  a selection can omit a secret's label; comment drafts and saved values stay original.
+  Only embedded Browser/Knowledge content is covered; pairing QR codes
+  are hidden. This supersedes the v0.0.9 full-window cover described above. Matching is
+  heuristic, and raw clipboard/accessibility text and arbitrary image content remain
+  original. See the [recovery evidence](reviews/2026-10-11-streamer-recovery.md).
+- **Space editor selection.** Adding a block and applying formatting focus the committed
+  textarea before the next user edit. A deferred focus callback can no longer collapse
+  a newer selection and turn a replacement such as `Second` into `/Second`. Toolbar
+  Code insertion places the caret inside the fences, ready for typing.
+  [Regression evidence](reviews/2026-10-11-space-focus.md).
+- **Jev documentation.** The README identifies the optional Jev CLI as unofficial.
+- **iPhone CI keyboard.** The hosted simulator disables its hardware keyboard before first
+  boot and verifies the preference, so the software keyboard can confirm input focus.
+- **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
+- **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
+  to settle at the requested size. The real OpenKnowledge test retries file visibility when
+  responsive layout changes its sidebar toggle. The packaged-demo unit fixture skips
+  login-profile PATH probing, which could outlast its approval deadline. Exact capture
+  geometry and real editor assertions remain required.
+  [Failure evidence and verification](reviews/2026-10-11-queue-reconciliation.md).
+- **Codex additional permissions.** Permission approvals return the requested profile and
+  an explicit turn scope, matching the installed Codex 0.162.1 app-server contract.
+  Deny and unexpected answers grant nothing; malformed or unsupported profiles are denied
+  without prompting. The approval detail includes the complete profile. Validation covers
+  wire responses and the installed protocol schema; a model-generated live approval has
+  not been exercised. [Recovery evidence](reviews/2026-10-11-permission-response.md).
+- **Companion server shutdown.** Turning the iPhone companion off, quitting, or rebinding
+  after a network change destroys every accepted socket, including one whose TLS handshake
+  never finished. Before, `close()` waited for Node's 120 s handshake timeout on such a socket;
+  the paused-Mac step of the iPhone CI flow hit that wait (see Known rough edges). A unit test
+  holds a half-open connection and requires `dispose()` to return promptly.
+- **Browser extensions and document-bound 1Password filling.** The workspace browser
+  installs approved copies of restricted Manifest V3 page scripts/styles in its own
+  persistent session; tampered copies fail closed. **Page options → Fill with 1Password**
+  lists exact-origin Logins through the local CLI, reads only the selected item, and fills
+  visible top-frame fields without submitting. Requests are bound to the initiating
+  document; loading, navigation, replacement, cache entry, and closure cancel them.
+  Native passkey selection tracks the initiating frame and ancestors, while sibling
+  navigation stays independent. Streamer Mode masks recognized secrets in native
+  login/passkey/extension labels without changing selections, credentials, package bytes,
+  sites, or digests. The selected guest and matching approved extensions can read filled
+  fields; credentials are not returned through Modex app-bridge IPC or stored in the app
+  renderer, transcripts, or errors.
+  Browser integration passed SPEC/QUALITY, **221 desktop E2E tests and seven site tests**.
+  A later iPhone-only confirmation-helper repair passed **16 native tests**, fresh build,
+  all-workspace typecheck, and **700 unit tests (zero skips)** with real OpenKnowledge
+  enabled. Desktop/product source, all 424 build artifacts, and 13 live-check hashes remain
+  unchanged, carrying forward the desktop/site and live evidence. A controlled real
+  1Password CLI 2.39.0 check on that unchanged
+  development build passed actual native selection, no-submit filling, scoped leak checks,
+  and exact temporary Login cleanup. Normal signed-app unlock/cancellation, public TLS,
+  real-site compatibility, and fresh biometric acceptance remain release gates. Device
+  Touch ID stays disabled and its restricted keychain group is absent from default
+  artifacts; enablement needs a separate provisioned patch and real signed create/get
+  acceptance. Passkeys can use **Open in system browser**.
+  [Acceptance evidence](reviews/2026-10-11-browser-credential-acceptance.md) and
+  [usage and gates](browser-tools.md).
+
+- **Chats and Space reference layout.** Graphite uses a 280 px default sidebar and
+  fixed 30 px chat rows. Hover or press Right Arrow on a chat to inspect its project,
+  model, branch, and PR without moving the list. Space has compact navigation, a page
+  toolbar, an insert menu, local comments with per-page drafts, and a floating view of
+  the current CLI chat. Share copies or exports Markdown; Sites and Images filter
+  pages containing those references. Visualize prepares a chat prompt for review
+  before sending. Comments stay in the local Space store and do not alter page
+  revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
 
 ## In flight
+
+- **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
+  no remaining product or test patch beyond #144, #150, and #154. The
+  [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
+  comparison results and corrects historical runs left marked in progress.
+  Dirty source trees and probe artifacts remain preserved. The recovered
+  [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md)
+  is a historical proposal: native identity-only sign-in shipped separately in
+  #141. Repository authorization still needs a dedicated GitHub App owner and
+  hosted service destination before implementation and live acceptance.
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
@@ -426,7 +526,23 @@ The Store edition and development browser bridge report Canvas unavailable.
   loops (no evaluation can be interrupted), wait for a settled, finite frame before asking
   `isHittable`, retry the tap until the field has keyboard focus, wait for the typed value,
   and answer system prompts during actions and long waits. Timeouts alone (#147) did not
-  remove any of the three.
+  remove any of the three. (4) Found after those landed (run 37983100896, `main` at #154): the
+  paired flow's `/resume` call timed out while the runner was healthy (its 10 s wait expired
+  on schedule). The fixture answers only after `CompanionServer.dispose()` finishes, and
+  `https.Server.close()` waits for a socket the phone opened but never carried through the
+  TLS handshake, because `closeAllConnections()` only knows sockets that completed TLS; Node's
+  handshake timeout is 120 s. A slow simulator stretched the outage step to 66 s, so the resume
+  landed inside that window (green runs finished the step in 10 s). Reproduced locally with the
+  real fixture and one half-open connection: no reply in 15 s before the fix, 204 in 6 ms after.
+  `close()` now destroys every accepted socket. The fix's own commit then split its two CI runs:
+  the pull_request run passed the whole paired flow (resume answered in under a second) while
+  the push run (38012518622) failed earlier, at the first follow-up. The phone's log shows one
+  request hitting its 8 s timeout ten seconds before the send tap, no later request failing, and
+  the reply never showing within 20 s. The fixture writes no log, so that run stays unexplained;
+  if it recurs, make `fixture.mjs` log each request with a timestamp before anything else.
+  The CI job also turns off the simulator's hardware keyboard before the first boot, so the
+  software keyboard appears and the helper's fallback focus check (`app.keyboards`) can see it;
+  local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
@@ -446,10 +562,9 @@ The Store edition and development browser bridge report Canvas unavailable.
 Roughly in the order they earn their place; none is scheduled.
 
 1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
-2. **Image attachments** in the composer (both CLIs accept them).
-3. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
+2. **Windows and Linux installers.** The terminal supervisor and login-shell PATH probing are
    the platform-specific pieces to audit first.
-4. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
+3. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
    complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true

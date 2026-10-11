@@ -1,3 +1,4 @@
+import { registerStreamerTerminal } from "../streamer";
 import type { Theme } from "../../shared/theme";
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
@@ -47,6 +48,7 @@ export function TerminalPanel({ theme, thread, onClose, command, onCommandConsum
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(host);
+    const stopRedaction = registerStreamerTerminal(host, terminal);
     fit.fit();
     const fail = (err: unknown) => { if (alive) setError(err instanceof Error ? err.message : String(err)); };
     const receive = (event: TerminalEvent) => {
@@ -85,6 +87,7 @@ export function TerminalPanel({ theme, thread, onClose, command, onCommandConsum
       unsubscribe();
       input.dispose();
       resize.disconnect();
+      stopRedaction();
       terminal.dispose();
       if (terminalRef.current === terminal) terminalRef.current = null;
     };

@@ -5,6 +5,22 @@ import os from "node:os";
 import path from "node:path";
 import { SpaceStore } from "../src/main/engine/space-store.js";
 
+test("page comments persist independently of content revisions and reject invalid writes", () => withStore((store, dir) => {
+  const page = store.create({ title: "Weekly update" });
+  const added = store.addComment(page.id, "Confirm the dates", "Next week");
+  store.save({ ...page, markdown: "Updated content" });
+  assert.deepEqual(new SpaceStore(dir).comments(page.id), [added]);
+  assert.equal(store.history(page.id).length, 2, "comments must not create or overwrite page revisions");
+  assert.throws(() => store.addComment(page.id, "  ", ""), /comment/i);
+  assert.throws(() => store.addComment(page.id, "x".repeat(10_001), ""), /comment/i);
+  assert.throws(() => store.addComment("missing", "Keep", ""), /page/i);
+  store.trash(page.id, true);
+  assert.throws(() => store.addComment(page.id, "Keep", ""), /Restore/);
+  store.trash(page.id, false);
+  store.deleteComment(page.id, added.id);
+  assert.deepEqual(store.comments(page.id), []);
+}));
+
 test("Space persists edits, checks revisions, and restores a trashed subtree", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "modex-space-"));
   try {

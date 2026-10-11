@@ -1,5 +1,5 @@
 import type { CanvasSnapshot } from "./canvas.js";
-import type { BrowserBounds, BrowserSnapshot, WorkspaceShortcut } from "./browser.js";
+import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 /** Types shared between the Electron main process and the React renderer. */
 
@@ -72,7 +72,8 @@ export interface AgentActivity {
 }
 
 export type ThreadItem =
-  | { id: string; kind: "user"; text: string; at: string }
+  /** `attachments` are the files sent with the message; main keeps them under its attachments folder. */
+  | { id: string; kind: "user"; text: string; at: string; attachments?: import("./attachments.js").Attachment[] }
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
@@ -374,6 +375,11 @@ export interface ModexBridge {
   onEvent(cb: (event: ThreadEvent) => void): () => void;
   onTerminalEvent(cb: (event: TerminalEvent) => void): () => void;
   platform: string;
+  /** The OS path behind a dropped File (Electron's webUtils); empty for pasted or synthetic files. */
+  pathForFile?(file: unknown): string;
+  /** Browser development capabilities; never transport local source paths or tokens in image URLs. */
+  pickFiles?(): Promise<File[]>;
+  attachmentThumbnail?(rel: string, signal: AbortSignal): Promise<Blob>;
   /** Optional host transport: refresh snapshots after reconnect without discarding drafts. */
   onReconnect?(cb: () => void): () => void;
 }
@@ -437,6 +443,9 @@ export interface BridgeCommands {
   "knowledge:copy": { req: { pageId: string }; res: string };
   "space:export": { req: { pageId: string }; res: string | null };
   "space:list": { req: undefined; res: import("./space.js").SpacePage[] };
+  "space:comments": { req: { pageId: string }; res: import("./space.js").SpaceComment[] };
+  "space:comment:add": { req: { pageId: string; text: string; quote: string }; res: import("./space.js").SpaceComment };
+  "space:comment:delete": { req: { pageId: string; id: string }; res: void };
   "space:create": { req: import("./space.js").CreateSpacePage; res: import("./space.js").SpacePage };
   "space:save": { req: import("./space.js").SpacePage; res: import("./space.js").SpacePage };
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
@@ -447,7 +456,14 @@ export interface BridgeCommands {
   "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
-  "thread:send": { req: { threadId: string; text: string }; res: { ok: boolean; error?: string } };
+  "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[] }; res: { ok: boolean; error?: string } };
+  /** Copies dropped, pasted or picked files into main's staging folder; over-limit files come back as errors. */
+  "attachments:stage": { req: { files: import("./attachments.js").StagedFile[] }; res: { staged: import("./attachments.js").Attachment[]; errors: string[] } };
+  /** Opens the file picker (or stages `paths` directly, for tests) and stages the choice. */
+  "attachments:pick": { req: { paths?: string[]; remaining?: number } | undefined; res: { staged: import("./attachments.js").Attachment[]; errors: string[] } };
+  "attachments:discard": { req: { ids: string[] }; res: void };
+  /** Reveals a sent or staged attachment in the system file manager; never executes it. */
+  "attachments:open": { req: { rel: string }; res: void };
   /** Runs the thread's last message again in place (no second user bubble); the Retry on a failure card. */
   "thread:retry": { req: { threadId: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
@@ -495,6 +511,11 @@ export interface BridgeCommands {
   "canvas:close": { req: { id: string }; res: void };
   "browser:command": { req: { id: string; action: "navigate" | "back" | "forward" | "reload" | "state" | "close"; url?: string }; res: BrowserSnapshot | null };
   "browser:show": { req: { id: string | null; bounds?: BrowserBounds; fullView?: boolean }; res: void };
+  "browser:extensions": { req: undefined; res: BrowserToolsSnapshot };
+  "browser:extensionInstall": { req: undefined; res: BrowserToolsSnapshot };
+  "browser:extensionUpdate": { req: { id: string; action: "enable" | "disable" | "remove" }; res: BrowserToolsSnapshot };
+  "browser:fillLogin": { req: { id: string }; res: boolean };
+  "browser:external": { req: { id: string }; res: void };
   "files:list": { req: { threadId: string }; res: { paths: string[]; truncated: boolean } };
   "files:read": { req: { threadId: string; path: string }; res: string };
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
