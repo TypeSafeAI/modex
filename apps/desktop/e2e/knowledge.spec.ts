@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -318,15 +318,33 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
       await guest.screenshot({ path: path.join(screenshots, `knowledge-theme-${theme}.png`) });
     }
     let resumeReload!: () => void;
+    let reloadEntered = false, reloadContinued = false;
     const reloadGate = new Promise<void>(resolve => { resumeReload = resolve; });
-    await guest.route(`${url}/`, async route => { await reloadGate; await route.continue(); });
-    try {
-      await page.getByRole("button", { name: "Reload knowledge base" }).click();
-      await expect.poll(visibleGuest).toBe(false);
-    } finally { resumeReload(); }
-    await guest.waitForLoadState("domcontentloaded");
-    await guest.unroute(`${url}/`);
+    const interceptReload = async (route: Route) => {
+      if (!route.request().isNavigationRequest() || route.request().frame() !== guest.mainFrame()) {
+        await route.continue();
+        return;
+      }
+      reloadEntered = true;
+      await reloadGate;
+      await route.continue();
+      reloadContinued = true;
+    };
+    await guest.route(`${url}/`, interceptReload);
+    // Observe the next document, not the old document's cached load state.
+    await Promise.all([
+      guest.waitForEvent("domcontentloaded", { timeout: 15_000 }),
+      (async () => {
+        try {
+          await page.getByRole("button", { name: "Reload knowledge base" }).click();
+          await expect.poll(() => reloadEntered).toBe(true);
+          await expect.poll(visibleGuest).toBe(false);
+        } finally { resumeReload(); }
+      })(),
+    ]);
+    await expect.poll(() => reloadContinued).toBe(true);
     await expect(editor).toBeVisible();
+    await guest.unroute(`${url}/`, interceptReload);
     await expect.poll(visibleGuest).toBe(true);
     await expect.poll(() => guest.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(28, 27, 29)");
     await editor.click();
@@ -344,7 +362,28 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     await expect.poll(visibleGuest).toBe(true);
     await page.getByRole("button", { name: /Streamer Mode/ }).click();
     await expect.poll(visibleGuest).toBe(false);
-    await tid(page, "streamer-mode-disable").click();
+    await expect(tid(page, "streamer-knowledge-cover")).toBeVisible();
+    await expect(tid(page, "space")).toBeVisible();
+    await tid(page, "streamer-mode-toggle").click();
+    await expect.poll(visibleGuest).toBe(true);
+    await page.locator(".knowledge-topbar").getByRole("button", { name: "Space", exact: true }).click();
+    await expect.poll(visibleGuest).toBe(false);
+    await page.getByRole("button", { name: "Open chat", exact: true }).click();
+    await tid(page, "composer-input").fill("Keep chat above Knowledge");
+    await page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await expect(tid(page, "knowledge-canvas")).toBeVisible();
+    await expect(tid(page, "space-chat")).toBeVisible();
+    await expect.poll(visibleGuest).toBe(false);
+    await tid(page, "composer-input").click();
+    await expect(tid(page, "composer-input")).toBeFocused();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.insertText("Keep chat above Knowledge while editing");
+    await expect(tid(page, "composer-input")).toHaveValue("Keep chat above Knowledge while editing");
+    await page.getByRole("button", { name: "Minimize chat" }).click();
+    await expect.poll(visibleGuest).toBe(true);
+    await tid(page, "rail-chat").click();
+    await expect(tid(page, "composer-input")).toHaveValue("Keep chat above Knowledge while editing");
+    await tid(page, "rail-space").click();
     await expect.poll(visibleGuest).toBe(true);
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByRole("button", { name: "Open knowledge base", exact: true })).toBeVisible();

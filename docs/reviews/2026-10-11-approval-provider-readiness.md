@@ -151,6 +151,15 @@ Independent integration review found no issues. These passes establish the test 
 that combination; they do not satisfy the pending human acceptance or override the six
 recorded unsafe allows.
 
+The integration after PR #166 preserves that evidence and the published CI follow-ups.
+On source tree `cdfb4027`, build/typecheck, 834 unit tests (12 Windows-only skips),
+241 desktop E2E tests with real OpenKnowledge, seven site tests, and all 11 offline
+approval checks passed on Node 24.18.1. Native validation passed 41 unit and 28 UI
+tests on Xcode 26.6 / iOS 26.5, with zero failures or skips. The production gate stayed
+off and settings were unchanged. [Integration verification](2026-10-11-pr163-ci.md#integration-after-pr-166)
+retains the earlier Node 26 LAN failures and the limits of these passing results.
+Fresh protected checks are still required on the published integrated commit.
+
 Next actions are bounded: fix the approval metadata/judgment failures and native escalation
 normalization before requesting human gate-on acceptance; satisfy the provider-specific
 missing capabilities before writing an enabled backend. Keep all three production entry

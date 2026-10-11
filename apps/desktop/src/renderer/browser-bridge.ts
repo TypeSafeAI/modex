@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { IMAGE_TYPES, LIMITS } from "../shared/attachments";
 import type { BridgeCommands, ModexBridge, ThreadEvent, TerminalEvent } from "../shared/types";
 
 /** Same-origin dev transport. The Electron preload continues to take precedence. */
@@ -30,6 +31,24 @@ export function createBrowserBridge(): ModexBridge {
   if (import.meta.hot) import.meta.hot.dispose(disconnect);
   return {
     platform: "web",
+    pickFiles: () => new Promise<File[]>((resolve, reject) => {
+      const input = document.createElement("input");
+      input.type = "file"; input.multiple = true; input.hidden = true;
+      const done = (files: File[]) => { input.remove(); resolve(files); };
+      input.addEventListener("change", () => done(Array.from(input.files ?? [])), { once: true });
+      input.addEventListener("cancel", () => done([]), { once: true });
+      document.body.append(input);
+      try { input.click(); } catch (error) { input.remove(); reject(error); }
+    }),
+    async attachmentThumbnail(rel, signal) {
+      const response = await fetch(`/__modex/attachments/image?rel=${encodeURIComponent(rel)}`, {
+        headers: { "X-Modex-Token": token }, signal,
+      });
+      if (!response.ok || !Object.hasOwn(IMAGE_TYPES, response.headers.get("Content-Type") ?? "")) throw new Error("Attachment image unavailable.");
+      const blob = await response.blob();
+      if (blob.size > LIMITS.imageBytes) throw new Error("Attachment image unavailable.");
+      return blob;
+    },
     async invoke(channel, payload) {
       if (channel === "clipboard:write") {
         await navigator.clipboard.writeText((payload as BridgeCommands["clipboard:write"]["req"]).text);
@@ -37,10 +56,11 @@ export function createBrowserBridge(): ModexBridge {
       }
       if (!token) throw new Error("Start the browser bridge with npm run desktop:dev, then refresh this page.");
       if (channel === "thread:send" || channel === "thread:retry" || channel === "terminal:open") await ready();
-      const response = await fetch("/__modex/invoke", {
+      const staging = channel === "attachments:stage";
+      const response = await fetch(staging ? "/__modex/attachments/stage" : "/__modex/invoke", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Modex-Token": token },
-        body: JSON.stringify({ channel, payload }),
+        body: JSON.stringify(staging ? payload : { channel, payload }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? `Browser bridge failed (${response.status}).`);

@@ -1,3 +1,4 @@
+import { registerAttachmentCommands } from "./attachment-commands.js";
 import { cliHealth } from "./engine/cli-path.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
@@ -15,7 +16,7 @@ export type RegisterCommand = <K extends keyof BridgeCommands>(channel: K, handl
 
 /** Desktop IPC and browser dev use the same runner, persistence, and command semantics. */
 export function registerCommands(handle: RegisterCommand, {
-  store, runner, terminals, emit, pickDirectory, openPath, openTerminal,
+  store, runner, terminals, emit, pickDirectory, openPath, openTerminal, revealAttachment,
 }: {
   store: Store;
   runner: ThreadRunner;
@@ -24,6 +25,7 @@ export function registerCommands(handle: RegisterCommand, {
   pickDirectory: () => Promise<string | null>;
   openPath: (path: string) => Promise<void>;
   openTerminal: (path: string) => Promise<void>;
+  revealAttachment?: (path: string) => Promise<void> | void;
 }): void {
   const sessionCliSettings = store.settings;
   const threadContexts = new ThreadContextReader({ enabled: false });
@@ -47,6 +49,9 @@ export function registerCommands(handle: RegisterCommand, {
   }
   handle("updates:check", () => null); // Browser development stays offline.
   handle("space:list", () => store.space.list());
+  handle("space:comments", ({ pageId }) => store.space.comments(pageId));
+  handle("space:comment:add", ({ pageId, text, quote }) => store.space.addComment(pageId, text, quote));
+  handle("space:comment:delete", ({ pageId, id }) => store.space.deleteComment(pageId, id));
   handle("space:create", (input) => store.space.create(input));
   handle("space:save", (page) => store.space.save(page));
   handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
@@ -69,7 +74,8 @@ export function registerCommands(handle: RegisterCommand, {
   handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
   handle("thread:items", ({ threadId }) => runner.items(threadId));
   handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
-  handle("thread:send", ({ threadId, text }) => startTurn(threadId, runner.send(threadId, text)));
+  handle("thread:send", ({ threadId, text, attachments }) => startTurn(threadId, runner.send(threadId, text, attachments)));
+  registerAttachmentCommands(handle, runner.attachments, { bytesOnly: true, reveal: revealAttachment ?? (() => { throw new Error("Attachment reveal is unavailable."); }) });
   handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
   handle("thread:stop", ({ threadId }) => runner.stop(threadId));
   handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
@@ -82,6 +88,10 @@ export function registerCommands(handle: RegisterCommand, {
     const p = store.project(projectId);
     return p && (await gitx.isRepo(p.path)) ? gitx.currentBranch(p.path) : null;
   });
+  handle("canvas:open", () => { throw new Error("Canvas previews require the desktop app."); });
+  handle("canvas:state", () => { throw new Error("Canvas previews require the desktop app."); });
+  handle("canvas:show", () => {});
+  handle("canvas:close", () => {});
   handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
   handle("thread:context", ({ threadId }) => threadContexts.read(cwdFor(threadId)));
   handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));

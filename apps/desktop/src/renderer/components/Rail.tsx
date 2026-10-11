@@ -14,7 +14,7 @@ function activeWorkLabel({ count, waiting, agents = 0 }: RailActiveWork): string
 /**
  * The 48 px icon rail. Chat remains the main surface; companion pairing and Settings live below it.
  */
-export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenSettings, onOpenCompanion, onEnableStreamerMode, activeWork, onOpenActiveWork }: { surface?: "chat" | "space"; onOpenChat?: () => void; onOpenSpace?: () => void; onOpenSettings: () => void; onOpenCompanion: () => void; onEnableStreamerMode: () => void; activeWork?: RailActiveWork; onOpenActiveWork?: () => void }) {
+export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenSettings, onOpenCompanion, onEnableStreamerMode, streamerMode = false, activeWork, onOpenActiveWork }: { surface?: "chat" | "space"; onOpenChat?: () => void; onOpenSpace?: () => void; onOpenSettings: () => void; onOpenCompanion: () => void; onEnableStreamerMode: () => void; streamerMode?: boolean; activeWork?: RailActiveWork; onOpenActiveWork?: () => void }) {
   const workLabel = activeWork && activeWork.count > 0 ? activeWorkLabel(activeWork) : "";
   return (
     <nav className="rail" aria-label="Surfaces" data-testid="rail">
@@ -27,7 +27,7 @@ export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenSettings
         </div>
       )}
       <span className="spacer" />
-      <IconButton icon="privacy" label="Turn on Streamer Mode" size="lg" className="rail-btn" data-testid="streamer-mode-toggle" tooltipSide="top" onClick={onEnableStreamerMode} />
+      <IconButton icon="privacy" label={streamerMode ? "Turn off Streamer Mode" : "Turn on Streamer Mode"} aria-pressed={streamerMode} size="lg" className="rail-btn" data-testid="streamer-mode-toggle" tooltipSide="top" onClick={onEnableStreamerMode} />
       <IconButton icon="phone" label="iPhone companion" size="lg" className="rail-btn" data-testid="open-companion" tooltipSide="top" onClick={onOpenCompanion} />
       <IconButton icon="gear" label="Settings" size="lg" className="rail-btn" data-testid="open-settings" tooltipSide="top" onClick={onOpenSettings} />
     </nav>

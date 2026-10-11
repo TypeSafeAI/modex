@@ -77,6 +77,26 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
   return { seen, threadId, turnId };
 }
 
+test("Codex receives attached images as localImage inputs after the text; other files ride in the text", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId, seen } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  try {
+    const attachments = [
+      { name: "shot.png", mime: "image/png", kind: "image" as const, path: "/tmp/att/shot.png" },
+      { name: "notes.pdf", mime: "application/pdf", kind: "file" as const, path: "/tmp/att/notes.pdf" },
+    ];
+    const run = backend.runTurn("what is this?", { cwd: "/w", mode: "agent", plan: false, model: "", attachments }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(l => l.includes('"turn/start"'));
+    const input = seen.find(s => s.method === "turn/start")?.params.input as { type: string; text?: string; path?: string }[];
+    assert.equal(input[0]!.type, "text");
+    assert.match(input[0]!.text!, /what is this\?/);
+    assert.deepEqual(input.slice(1), [{ type: "localImage", path: "/tmp/att/shot.png" }]);
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    assert.equal((await run).status, "completed");
+  } finally { await backend.dispose(); }
+});
+
 test("CodexBackend.policy maps modes to approval + sandbox policies", () => {
   const base = { cwd: "/w", model: "", plan: false } as const;
   assert.deepEqual(CodexBackend.policy({ ...base, mode: "chat" }).approvalPolicy, "untrusted");
@@ -515,19 +535,27 @@ test("force-stop with no server running is a no-op", async () => {
 test("disposing Codex terminates commands owned by its app-server", { skip: process.platform === "win32" }, async () => {
   const dir = tmpdir("codex-dispose-");
   const pidFile = path.join(dir, "worker.pid");
-  const worker = `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  // A PID file exists before its contents are written; deliberately exercise that gap.
+  const worker = `const fs=require('node:fs'); const fd=fs.openSync(${JSON.stringify(pidFile)}, 'w'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,150); fs.writeSync(fd,String(process.pid)); fs.closeSync(fd); setInterval(() => {}, 1000);`;
   const script = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(worker)}], {stdio:'ignore'}); require('node:readline').createInterface({input:process.stdin}).on('line', line => { const m=JSON.parse(line); if(m.id) process.stdout.write(JSON.stringify({id:m.id,result:m.method==='model/list'?{data:[]}:{}})+'\\n'); });`;
   let server: ChildProcess | undefined;
   let workerPid: number | undefined;
   const backend = new CodexBackend("fixture", ((_bin: string, _args: string[], options: SpawnOptions) => server = spawn(process.execPath, ["-e", script], options)) as unknown as typeof spawn);
-  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const alive = (pid: number) => {
+    assert.ok(Number.isSafeInteger(pid) && pid > 1, "expected a fixture process ID");
+    try { process.kill(pid, 0); return true; } catch { return false; }
+  };
   try {
     await backend.listModels();
-    for (let i = 0; i < 100 && !fs.existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 20));
-    workerPid = Number(fs.readFileSync(pidFile, "utf8"));
+    for (let i = 0; i < 100; i++) {
+      const candidate = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
+      if (Number.isSafeInteger(candidate) && candidate > 1) { workerPid = candidate; break; }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.ok(workerPid && workerPid > 1, "fixture did not publish a valid owned PID");
     await backend.dispose();
     for (let i = 0; i < 100 && alive(workerPid); i++) await new Promise((r) => setTimeout(r, 20));
-    assert.equal(alive(workerPid), false, "owned command survived backend disposal");
+    assert.equal(alive(workerPid), false, `owned command ${workerPid} survived backend disposal`);
   } finally {
     // The worker can exit between the check and the kill; only a vanished PID is tolerated.
     if (workerPid && alive(workerPid)) try { process.kill(workerPid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }

@@ -99,7 +99,8 @@ async function restartMac() {
   await server.dispose();
   if (closing) return;
   // Occupy the original port so only Bonjour can reconnect the saved pairing.
-  blocker = net.createServer();
+  // The client may reset its stalled TLS socket while moving to the new endpoint.
+  blocker = net.createServer((socket) => { socket.on("error", () => {}); });
   await new Promise((resolve) => blocker.listen(status.port, new URL(data.url).hostname, resolve));
   await new Promise((resolve) => setTimeout(resolve, 4000));
   if (closing) return;

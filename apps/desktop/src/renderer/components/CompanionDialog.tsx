@@ -1,13 +1,21 @@
+import { useStreamerMode } from "../streamer";
 import { useEffect, useRef, useState } from "react";
 import type { CompanionStatus } from "../../shared/types";
 import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
 
 export function CompanionDialog({ onClose }: { onClose: () => void }) {
+  const streamerMode = useStreamerMode();
   const [status, setStatus] = useState<CompanionStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const endpoint = status?.endpoints?.find((candidate) => candidate.address === selectedAddress) ?? status?.endpoints?.[0];
+  // Older hosts provide only one code. New hosts offer one code for each live listener.
+  const pairingUri = endpoint?.pairingUri ?? status?.pairingUri;
+  const qrDataUrl = endpoint?.qrDataUrl ?? status?.qrDataUrl;
+  const address = endpoint?.address ?? status?.addresses[0];
   const requestRevision = useRef(0);
   const actionPending = useRef(false);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -31,9 +39,10 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 2500);
     const onKey = (event: KeyboardEvent) => {
+      if (dialogRef.current?.closest("[inert]")) return;
       if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); }
       if (event.key !== "Tab") return;
-      const controls = [...(dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+      const controls = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), select:not(:disabled)") ?? [])];
       const first = controls[0], last = controls.at(-1);
       if (!first || !last) return;
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -52,7 +61,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
     finally { actionPending.current = false; setBusy(false); }
   };
   const copyLink = async () => {
-    const link = status?.pairingUri;
+    const link = pairingUri;
     if (!link) return;
     try {
       await bridge.invoke("clipboard:write", { text: link });
@@ -69,13 +78,20 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
         <p className="companion-eyebrow">MODEX FOR IPHONE</p>
         <h2 id="companion-title">Your work, within reach.</h2>
         <p className="companion-intro">Review live threads, send a follow-up, and answer approvals while your Mac runs the coding work.</p>
-        {status?.enabled && status.qrDataUrl ? (
+        {status?.enabled && qrDataUrl ? (
           <div className="companion-pairing">
-            <div className="companion-qr"><img src={status.qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" /></div>
+            <div className="companion-qr">{streamerMode ? <p>Pairing code hidden while streaming</p> : <img src={qrDataUrl} alt="Pairing code for Modex on iPhone" data-testid="companion-qr" />}</div>
+            {(status.endpoints?.length ?? 0) > 1 && <label className="companion-network">
+              Mac network
+              <select aria-label="Mac network" value={address} disabled={busy} onChange={(event) => setSelectedAddress(event.target.value)}>
+                {status.endpoints!.map((candidate) => <option key={candidate.address} value={candidate.address}>{candidate.address}</option>)}
+              </select>
+              <span>Choose the address on your iPhone’s network.</span>
+            </label>}
             <p>Open Modex on your iPhone and scan this code.</p>
-            <button className="btn" data-testid="companion-copy-link" disabled={busy || !status.pairingUri} onClick={() => void copyLink()}>{copiedLink === status.pairingUri ? "Copied pairing link" : "Copy pairing link"}</button>
-            <span role="status" className="sr-only">{copiedLink === status.pairingUri ? "Pairing link copied to clipboard" : ""}</span>
-            <span className="companion-address">Mac on {status.addresses[0]} · local network</span>
+            <button className="btn" data-testid="companion-copy-link" disabled={busy || !pairingUri} onClick={() => void copyLink()}>{copiedLink === pairingUri ? "Copied pairing link" : "Copy pairing link"}</button>
+            <span role="status" className="sr-only">{copiedLink === pairingUri ? "Pairing link copied to clipboard" : ""}</span>
+            <span className="companion-address">Mac on {address} · local network</span>
           </div>
         ) : (
           <div className="companion-idle">
@@ -93,7 +109,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
             </>
           ) : <button className="btn primary" data-testid="companion-start" disabled={busy || !status} onClick={() => void act("companion:start")}>Turn on companion</button>}
         </div>
-        <p className="companion-note">Pair once on the same network. Your iPhone remembers this Mac and reconnects automatically. Keep this code and link private. Turn off pauses access; Forget paired phones permanently revokes the old code and link.</p>
+        <p className="companion-note">Pair once on the same network. Your iPhone remembers this computer and reconnects automatically. Keep this code and link private. Turn off pauses access; Forget paired phones permanently revokes the old code and link.</p>
       </section>
     </div>
   );

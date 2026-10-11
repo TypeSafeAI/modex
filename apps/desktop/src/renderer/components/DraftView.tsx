@@ -1,6 +1,8 @@
 import { BrandMark } from "./BrandMark";
 import { useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo, Project } from "../../shared/types";
+import type { AttachmentActions } from "../composer-attachments";
+import type { Attachment } from "../../shared/attachments";
 import { Composer } from "./Composer";
 import { Icon } from "./ui/Icon";
 import { Menu, MenuItem } from "./ui/Menu";
@@ -37,13 +39,15 @@ interface Props {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   text: string;
   onText: (text: string) => void;
+  attachments: Attachment[];
+  attachmentActions: AttachmentActions;
 }
 
 /**
  * The "What should we build in <project>?" screen: a live composer before any thread exists.
  * The project name is a picker; the context strip's Local/Worktree item is a toggle.
  */
-export function DraftView({ draft, projects, creating, models, modelsError, onRetryModels, branch, onChange, onSend, inputRef, text, onText }: Props) {
+export function DraftView({ draft, projects, creating, models, modelsError, onRetryModels, branch, onChange, onSend, inputRef, text, onText, attachments, attachmentActions }: Props) {
   const project = projects.find((p) => p.id === draft.projectId);
   const set = (patch: Partial<DraftSettings>) => onChange({ ...draft, settings: { ...draft.settings, ...patch } });
   if (!project) return null;
@@ -59,6 +63,8 @@ export function DraftView({ draft, projects, creating, models, modelsError, onRe
       <Composer
         text={text}
         onText={onText}
+        attachments={attachments}
+        attachmentActions={attachmentActions}
         busy={creating}
         context={{ project: project.name, cwd: project.path, worktree: draft.worktree ? { branch: "" } : undefined, branch, onToggleWorktree: () => onChange({ ...draft, worktree: !draft.worktree }) }}
         backend={draft.settings.backend}

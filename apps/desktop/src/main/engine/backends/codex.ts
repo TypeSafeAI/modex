@@ -4,10 +4,10 @@ import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
-import { cliEnvironment, health, installation } from "./health.js";
+import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 
 /**
@@ -41,7 +41,7 @@ export class CodexBackend implements Backend {
 
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
-  constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = spawn,
+  constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = cliSpawn,
     private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string }) {}
 
   private ensure(): Promise<void> {
@@ -478,7 +478,8 @@ export class CodexBackend implements Backend {
       signal.addEventListener("abort", onAbort, { once: true });
       this.request<{ turn: { id: string } }>("turn/start", {
         threadId: tid,
-        input: [{ type: "text", text: input, text_elements: [] }],
+        // Images go by path (the app-server reads them); other attached files are named in the text.
+        input: [{ type: "text", text: input, text_elements: [] }, ...(opts.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ type: "localImage", path: a.path }))],
         cwd: opts.cwd,
         approvalPolicy: pol.approvalPolicy,
         sandboxPolicy: pol.sandboxPolicy,
@@ -627,7 +628,7 @@ function duringSetup<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
  * the shell commands it is running. Fall back to the server alone if the group is gone.
  */
 function killGroup(child: ChildProcess): void {
-  if (child.pid) {
+  if (process.platform !== "win32" && child.pid) {
     try {
       process.kill(-child.pid, "SIGKILL");
       return;

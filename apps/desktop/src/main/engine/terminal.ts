@@ -41,7 +41,12 @@ export class TerminalManager {
     const env: NodeJS.ProcessEnv = { ...this.env, TERM: "xterm-256color", COLORTERM: "truecolor" };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_NO_ASAR;
-    const shell = this.shellOverride?.file ?? (process.platform === "win32" ? env.COMSPEC || "powershell.exe" : env.SHELL || "/bin/bash");
+    // A plain cloned environment loses Windows process.env's case-insensitive
+    // lookup. Preserve the user's command shell regardless of key spelling.
+    const inheritedShell = process.platform === "win32"
+      ? Object.entries(env).find(([key]) => key.toUpperCase() === "COMSPEC")?.[1]
+      : env.SHELL;
+    const shell = this.shellOverride?.file ?? (inheritedShell || (process.platform === "win32" ? "powershell.exe" : "/bin/bash"));
     const args = this.shellOverride?.args ?? (process.platform === "win32" ? [] : ["-l"]);
     const pty = this.spawn(shell, args, { cwd, cols, rows, env, name: "xterm-256color" });
     const session: Session = { pty, subscriptions: [], sessionId: randomUUID(), output: "", sequence: 0, exitCode: null };
