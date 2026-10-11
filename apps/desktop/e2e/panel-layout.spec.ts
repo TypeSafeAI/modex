@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
-import { launch, seedHome, tid } from "./support";
+import { resizeWindow, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -61,7 +61,7 @@ async function expectLayout(): Promise<void> {
 
 for (const width of [1366, 960]) {
   test(`draft stays centered through repeated sidebar toggles at ${width}px`, async ({}, testInfo) => {
-    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, 816), width);
+    await resizeWindow(app, page, width, 816);
     await tid(page, "new-chat").click();
     await expect(tid(page, "draft-view")).toBeVisible();
     await tid(page, "composer-input").fill("Keep this draft while toggling");
@@ -84,7 +84,7 @@ for (const width of [1366, 960]) {
   });
 
   test(`thread fills remaining width for every panel combination and relaunch at ${width}px`, async ({}, testInfo) => {
-    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, 816), width);
+    await resizeWindow(app, page, width, 816);
     await tid(page, "new-chat").click();
     await tid(page, "composer-input").fill("Panel layout check");
     await tid(page, "send").click();

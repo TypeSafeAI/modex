@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-09._
+_Last updated 2026-10-11._
 
 ## Shipped
 
@@ -322,9 +322,23 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
-No additional desktop changes are unreleased as of the v0.0.10 tag.
+- **Model picker.** #156 names `claude-sonnet-5-5` as the newest Sonnet.
+- **Desktop CI synchronization.** Layout tests wait for native and renderer dimensions
+  to settle at the requested size. The real OpenKnowledge test retries file visibility when
+  responsive layout changes its sidebar toggle. The packaged-demo unit fixture skips
+  login-profile PATH probing, which could outlast its approval deadline. Exact capture
+  geometry and real editor assertions remain required.
+  [Failure evidence and verification](reviews/2026-10-11-queue-reconciliation.md).
 
 ## In flight
+
+- **Open PR queue and composer #159.** #158 (companion shutdown), #160 (CI simulator
+  keyboard), and #161 (unofficial CLI wording) passed code review and await protected
+  landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
+  development commands, the 960px by 109px composer, and live Claude/Codex image/file
+  acceptance. Store attachments remain unavailable. #152 needs credential-navigation
+  and signing fixes; real 1Password and signed Touch ID acceptance remain release gates.
+  [Current heads, CI causes, and next steps](reviews/2026-10-11-queue-reconciliation.md).
 
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's

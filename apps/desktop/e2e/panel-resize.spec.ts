@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page, type Locator } from "@playwright/test";
-import { launch, seedHome, createThread, tid } from "./support";
+import { resizeWindow, launch, seedHome, createThread, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -7,7 +7,7 @@ let home: string;
 test.beforeEach(async () => {
   ({ home } = seedHome());
   ({ app, page } = await launch(home));
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1366, 816));
+  await resizeWindow(app, page, 1366, 816);
   await createThread(page, "Resize the panels");
 });
 test.afterEach(async () => { await app?.close(); });
@@ -49,7 +49,7 @@ test("both panels resize by dragging and keyboard, retain widths, and keep chat 
   right = page.getByRole("separator", { name: "Resize workspace" });
   await expect.poll(() => width(tid(page, "sidebar"))).toBe(expectedLeft);
   await expect.poll(() => width(tid(page, "workspace"))).toBe(expectedRight);
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(900, 700));
+  await resizeWindow(app, page, 900, 700);
   await expect.poll(() => width(tid(page, "main"))).toBeGreaterThanOrEqual(350);
   await drag(right, -900);
   await expect.poll(() => width(tid(page, "main"))).toBeGreaterThanOrEqual(350);
