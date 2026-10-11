@@ -226,6 +226,7 @@ export class ThreadRunner {
         const project = this.o.store.project(thread.projectId);
         if (project) {
           const script = thread.worktree.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
+          if (thread.worktree.manager === "project-script" && !script) throw new Error("Project worktree script is missing; restore it before removing this task.");
           if (script) await gitx.projectWorktreeRemove(project.path, script, thread.worktree.branch);
           else await gitx.worktreeRemove(project.path, thread.worktree.path);
         }
@@ -256,12 +257,15 @@ export class ThreadRunner {
       const branch = await gitx.currentBranch(wt.path);
       if (!state.clean || state.head !== pr.headSha || branch !== wt.branch) return;
       const script = wt.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
+      if (wt.manager === "project-script" && !script) throw new Error("Project worktree script is missing; restore it before retiring this task.");
       if (script) await gitx.projectWorktreeRemove(project.path, script, wt.branch);
-      else await gitx.worktreeRemove(project.path, wt.path, false);
-      // The project script already drops a landed branch; a Modex-managed one is ours to drop.
-      await gitx.branchDelete(project.path, wt.branch).catch(() => {});
+      else {
+        await gitx.worktreeRemove(project.path, wt.path, false);
+        // A project script owns branch retention; never override its decision.
+        await gitx.branchDelete(project.path, wt.branch).catch(() => {});
+      }
       const retired = { at: new Date().toISOString(), reason: "merged" as const, pr: pr.number, url: pr.url };
-      this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Pull request #${pr.number} merged. Modex removed the worktree and branch ${wt.branch}; this thread is now a read-only record.`, at: retired.at });
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Pull request #${pr.number} merged. Modex retired this task; this thread is now a read-only record.`, at: retired.at });
       const t = this.o.store.updateThread(threadId, { retired });
       this.o.emit({ threadId, type: "thread", thread: t });
     } finally {

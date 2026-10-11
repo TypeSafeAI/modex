@@ -338,6 +338,13 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## In flight
 
+- **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
+  fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
+  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  and remote branches. Desktop retirement respects project-script retention. Maintenance
+  regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
+  and [verification](reviews/2026-10-11-worktree-hygiene.md).
+
 - **Open PR queue and composer #159.** #158 (companion shutdown), #160 (CI simulator
   keyboard), and #161 (unofficial CLI wording) passed code review and await protected
   landing. #157 needs attachment draft/copy recovery, storage and limit enforcement,
