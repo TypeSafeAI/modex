@@ -341,7 +341,7 @@ final class DemoWorkspaceTests: XCTestCase {
     private func openDemoThread(_ app: XCUIApplication, timeout: TimeInterval = 30,
                                 tap: ((XCUIElement) -> Void)? = nil) -> Bool {
         let thread = app.buttons["thread-demo-launch"]
-        let opened = { app.buttons["Back to threads"].isReadyToTap && !thread.exists }
+        let opened = { !thread.exists && app.buttons["Back to threads"].isReadyToTap }
         var initiated = false
         return completeDemoAction(
             timeout: timeout,
