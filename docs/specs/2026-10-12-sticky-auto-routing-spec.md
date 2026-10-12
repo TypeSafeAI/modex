@@ -87,9 +87,9 @@ present.
 `cacheWriteInputTokens` and `outputTokens`. The turn's first notification fills `first`; its
 last fills `contextTokens`. Whether `inputTokens` already includes the cached and written
 tokens is read from a captured notification before the parser is written, and the parser
-follows what it shows. `outputTokens` is the sum of `last.outputTokens` over the turn's
-notifications if the captured payloads show one notification per response; otherwise Codex
-leaves it unset.
+follows what it shows. `outputTokens` is the change in `tokenUsage.total.outputTokens` across the
+turn: the last notification's total minus the total before the turn's first response (its total
+less its `last.outputTokens`), which stays correct if a notification repeats.
 
 ### What the cache was built with
 
@@ -106,8 +106,9 @@ lastTurn?: { at: string; model: string; effort?: string; fast: boolean; contextT
 - `at` is when the turn ended. It slightly overstates how recent the last call was, which
   errs toward keeping the model.
 - `model`, `effort` and `fast` are what the turn ran with.
-- It is cleared wherever `sessionHandle` is cleared (a backend change in `updateThread`), and
-  when the session sink replaces an existing handle with a different one.
+- It is cleared wherever `sessionHandle` is cleared (a backend change in `updateThread`). A
+  replaced handle does not clear it: a resumed Claude session can report a new id over the same
+  history, and a genuinely fresh conversation reports a small context on its first turn.
 - Every thread gets it, Auto or not, so turning Auto on mid-thread finds a record. State
   written before this change loads unchanged.
 
