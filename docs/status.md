@@ -711,6 +711,9 @@ The desktop changes above are included in the v0.0.11 candidate; publication is 
   opening and Back actions. In job `114763678754`, the initial row tap left the dashboard
   visible; native evidence does not establish why. This is a test correction, with hosted
   native verification required before merge; app navigation is unchanged.
+  The destination check first requires the original row to disappear: job `114806660312`
+  repeatedly inspected the absent Back button and exhausted the retry budget without a
+  real thread tap. Both destination conditions and the two-attempt, 30-second budget remain.
 - **Native and renderer sizing in desktop tests.** The layout helper can make one native
   size transition when the renderer stays at different dimensions despite correct native
   bounds. It observes the intermediate dimensions before restoring the target and still
