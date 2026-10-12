@@ -36,7 +36,7 @@ private func completeDemoAction(timeout: TimeInterval = 30,
 /// Runs without a Mac or fixture: the path App Review follows from the welcome screen.
 final class DemoWorkspaceTests: XCTestCase {
 
-    func testDemoBackNavigationRecoversAnIgnoredFirstTap() {
+    func testDemoNavigationRecoversIgnoredFirstTaps() {
         continueAfterFailure = false
         let prompts = answerSystemAlertsDuringActions()
         defer { removeUIInterruptionMonitor(prompts) }
@@ -46,7 +46,12 @@ final class DemoWorkspaceTests: XCTestCase {
         returnToWelcome(app)
         app.open(URL(string: "modex://demo")!)
         XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10))
-        app.buttons["thread-demo-launch"].tapWhenReady()
+        var openingAttempts = 0
+        XCTAssertTrue(openDemoThread(app) { thread in
+            openingAttempts += 1
+            if openingAttempts > 1 { thread.tap() }
+        }, "An ignored first thread action must recover to the actual thread.")
+        XCTAssertEqual(openingAttempts, 2)
         XCTAssertTrue(app.buttons["Back to threads"].waitForExistence(timeout: 10))
         var attempts = 0
         XCTAssertTrue(backToDemoThreads(app) { back in
@@ -240,7 +245,7 @@ final class DemoWorkspaceTests: XCTestCase {
         let thread = app.buttons["thread-demo-launch"]
         XCTAssertTrue(thread.waitForExistence(timeout: 10))
         capture(app, name: "Demo workspace")
-        thread.tapWhenReady()
+        XCTAssertTrue(openDemoThread(app), "Opening the demo thread must reach its destination.")
 
         let approval = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "approve-")).firstMatch
         XCTAssertTrue(approval.waitForExistence(timeout: 10), "The demo approval should appear.")
@@ -285,7 +290,7 @@ final class DemoWorkspaceTests: XCTestCase {
         app.buttons["workspace-options"].tapWhenReady()
         app.buttons["Reset demo workspace"].tapWhenReady()
         XCTAssertTrue(thread.waitForExistence(timeout: 10))
-        thread.tapWhenReady()
+        XCTAssertTrue(openDemoThread(app), "Opening the reset demo thread must reach its destination.")
         XCTAssertTrue(approval.waitForExistence(timeout: 10), "Reset must restore the pending approval.")
         app.buttons["deny-launch-approval"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["Denied"].waitForExistence(timeout: 10))
@@ -331,6 +336,26 @@ final class DemoWorkspaceTests: XCTestCase {
             }
         }
         XCTAssertTrue(demo.waitForExistence(timeout: 15))
+    }
+
+    private func openDemoThread(_ app: XCUIApplication, timeout: TimeInterval = 30,
+                                tap: ((XCUIElement) -> Void)? = nil) -> Bool {
+        let thread = app.buttons["thread-demo-launch"]
+        let opened = { app.buttons["Back to threads"].isReadyToTap && !thread.exists }
+        var initiated = false
+        return completeDemoAction(
+            timeout: timeout,
+            isPresented: { thread.exists },
+            isComplete: opened,
+            prepare: { remaining in
+                if !initiated { return thread.waitUntilReady(timeout: remaining) }
+                return waitUntil(timeout: remaining) { opened() || !thread.exists || thread.isReadyToTap }
+            },
+            isReady: { thread.isReadyToTap },
+            tap: {
+                initiated = true
+                if let tap { tap(thread) } else { thread.tap() }
+            })
     }
 
     private func backToDemoThreads(_ app: XCUIApplication, timeout: TimeInterval = 30,

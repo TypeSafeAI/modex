@@ -669,6 +669,18 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
+- **Owner-removal test readiness.** The fixture waits for the displayed branch after launch
+  and each project switch. Draft persistence alone does not prove the asynchronous branch
+  lookup has left restart admission. Holding that lookup reproduced the refusal from
+  macOS job `114750352400`; the corrected test passed three times with the same delay.
+  That CI run did not record its pending channel. Production admission and refusal behavior
+  are unchanged.
+- **Demo thread navigation in iPhone tests.** Opening the demo thread uses the same bounded
+  destination check as Back: at most one retry while the original row remains ready, and no
+  further tap after the thread appears. The native regression deliberately ignores the first
+  opening and Back actions. In job `114763678754`, the initial row tap left the dashboard
+  visible; native evidence does not establish why. This is a test correction, with hosted
+  native verification required before merge; app navigation is unchanged.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
