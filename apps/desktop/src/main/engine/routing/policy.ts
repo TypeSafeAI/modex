@@ -58,6 +58,10 @@ export interface Decision {
   pinned: boolean;
   /** The request must not run because an effort or premium budget limit cannot be guaranteed. */
   blocked?: true;
+  /** True when a warm prompt cache kept the thread's model, effort or fast mode. */
+  held?: true;
+  /** The cache warmth the hold step saw; absent when no cache information was passed. */
+  warmth?: Warmth;
   reasons: string[];
 }
 
@@ -142,6 +146,67 @@ function keepCurrent(input: DecisionInput, candidate: Candidate | undefined, rea
   return { backend: input.current.backend, model: input.current.model, effort: effort ?? undefined, fast: false, tier: candidate?.tier ?? 2, pinned: true, reasons };
 }
 
+const kTokens = (n: number): string => `~${Math.max(1, Math.round(n / 1000))}k`;
+const minutes = (ms: number | undefined): string => `${Math.max(0, Math.round((ms ?? 0) / 60_000))} min`;
+
+function heldFast(input: DecisionInput, current: Candidate): boolean {
+  return Boolean(input.cache?.lastTurn?.fast) && input.policy.allow_fast && Boolean(current.fastTier || current.backend === "claude");
+}
+
+/** keepCurrent's route marked as held, or undefined when a limit stops the current route. */
+function heldRoute(input: DecisionInput, current: Candidate, reasons: string[]): Decision | undefined {
+  const notes: string[] = [];
+  const kept = keepCurrent(input, current, notes);
+  if (kept.blocked) return undefined;
+  reasons.push(...notes);
+  return { ...kept, reasons, fast: heldFast(input, current), pinned: false, held: true };
+}
+
+/**
+ * Keeps a warm thread on the model its prompt cache was built with. A switch re-reads the whole
+ * history uncached and drops the previous model's thinking, so a warm thread moves only up, and
+ * only on a big jump. Limits still win: a model that is gone or over budget is not held.
+ */
+function hold(input: DecisionInput, free: Decision, current: Candidate | undefined, reasons: string[]): Decision {
+  const w = warmth(input);
+  if (w === "none") return free;
+  const last = input.cache?.lastTurn;
+  if (w === "cold") {
+    reasons.push(last && last.model !== input.current.model ? "The cache was built for another model, so free choice." : `Idle ${minutes(input.cache?.idleMs)}, cache likely expired, so free choice.`);
+    return { ...free, warmth: w };
+  }
+  if (w === "small") {
+    reasons.push(`Only ${kTokens(last!.contextTokens!)} tokens of context, so switching is cheap.`);
+    return { ...free, warmth: w };
+  }
+  if (!current || (input.premiumExhausted && current.tier === 3)) return { ...free, warmth: w };
+  const state = w === "unknown" ? "no cache record for this thread yet" : `${last!.contextTokens !== undefined ? `${kTokens(last!.contextTokens)} tokens cached` : "cache still warm"}, last turn ${minutes(input.cache?.idleMs)} ago`;
+  const tail = (change: string) => (w === "unknown" ? "" : ` ${change} would re-read the history uncached.`);
+  if (free.model === current.model) {
+    const effort = EFFORT_CLEARS_CACHE[current.backend] ? heldRoute(input, current, [])?.effort ?? free.effort : free.effort;
+    const fast = FAST_CLEARS_CACHE[current.backend] ? heldFast(input, current) : free.fast;
+    if (effort === free.effort && fast === free.fast) return { ...free, warmth: w };
+    reasons.push(`Kept ${current.label} at ${effort ?? "its default"} effort${fast ? " in fast mode" : ""}: ${state}.${tail(effort !== free.effort ? "Changing effort" : "Changing fast mode")}`);
+    return { ...free, effort, fast, held: true, warmth: w };
+  }
+  if (free.tier > current.tier) {
+    const to = (input.ladders[free.backend] ?? []).find((c) => c.model === free.model)?.label ?? free.model;
+    const j = input.judgments;
+    if (free.tier - current.tier >= UPGRADE_TIERS) {
+      reasons.push(`Moved up to ${to} despite the warm cache: ${free.tier - current.tier} tiers above ${current.label}.`);
+      return { ...free, warmth: w };
+    }
+    if (j.needsDeepReasoning >= DEEP_REASONING_UPGRADE && j.dependsOnPriorTurns < PRIOR_TURNS_DEPENDENT) {
+      reasons.push(`Moved up to ${to} despite the warm cache: the request needs deep reasoning and stands on its own.`);
+      return { ...free, warmth: w };
+    }
+  }
+  const kept = heldRoute(input, current, reasons);
+  if (!kept) return { ...free, warmth: w };
+  reasons.push(`Kept ${current.label}: ${state}.${tail("Switching")}`);
+  return { ...kept, warmth: w };
+}
+
 export function decide(input: DecisionInput): Decision {
   const { judgments: j, policy, current } = input;
   const reasons: string[] = [];
@@ -214,5 +279,6 @@ export function decide(input: DecisionInput): Decision {
   const fast = policy.allow_fast && j.wantsSpeed >= 0.6 && j.needsDeepReasoning < 0.5 && candidate.tier <= 1 && Boolean(candidate.fastTier || backend === "claude");
   if (fast) reasons.push("Fast mode: quick turnaround requested and the task is light.");
 
-  return { backend, model: candidate.model, effort, fast, tier: candidate.tier, pinned: false, reasons };
+  // 7. Hold: a warm prompt cache keeps the thread where it is unless the jump is worth a rebuild.
+  return hold(input, { backend, model: candidate.model, effort, fast, tier: candidate.tier, pinned: false, reasons }, candidateNow, reasons);
 }
