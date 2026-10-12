@@ -96,7 +96,7 @@ export type ThreadItem =
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
   /** An Auto routing decision made before a turn: what was picked and why. */
-  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; reasons: string[]; durationMs: number; at: string };
+  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
 
 /** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
 export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unsupported_history" | "unknown";
