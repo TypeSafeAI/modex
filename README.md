@@ -4,7 +4,7 @@
 
 # Modex
 
-[Download Modex for Mac](https://modex.build) · iPhone companion coming soon.
+[Download Modex for Mac](https://modex.codes) · [iPhone Companion TestFlight beta](https://testflight.apple.com/join/Qr14JKCh).
 
 [![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
 

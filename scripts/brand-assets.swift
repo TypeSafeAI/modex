@@ -64,7 +64,7 @@ for (width, height, name) in [(1800, 600, "modex-header"), (1200, 630, "modex-so
   let x = h * 0.76
   label(context, "Modex", x: x, y: h * 0.49, size: h * 0.17, weight: .semibold)
   label(context, "Your agents. Your workspace.", x: x + 2, y: h * 0.36, size: h * 0.043, color: NSColor(white: 0.72, alpha: 1))
-  label(context, "modex.build", x: x + 2, y: h * 0.24, size: h * 0.032, weight: .medium, color: pink)
+  label(context, "modex.codes", x: x + 2, y: h * 0.24, size: h * 0.032, weight: .medium, color: pink)
   write(context, "docs/branding/\(name).png")
 }
 copy("docs/branding/modex-social-preview.png", "apps/site/public/assets/social-preview.png")
