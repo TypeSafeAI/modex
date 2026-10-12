@@ -17,6 +17,32 @@ const merged: PullRequestSummary = { state: "merged", number: 12, title: "t", ur
 const task = (over: Partial<Thread> = {}): Thread => ({ id: "t1", projectId: "p", title: "x", createdAt: "", updatedAt: "", cwd: "/wt", worktree: { path: "/wt", branch: "modex-t1" }, backend: "mock", mode: "agent", plan: false, model: "", status: "idle", ...over });
 const decide = (over: Partial<Parameters<typeof retireDecision>[0]> = {}) => retireDecision({ thread: task(), busy: false, pullRequest: merged, clean: true, head: SHA, ...over });
 
+test("restart holds wait for existing retirement work and prevent new sweeps without removing tasks", async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  let reads = 0, retired = 0;
+  const service = new TaskRetirer({ enabled: () => false, threads: () => [task()], busy: () => false,
+    context: async () => { reads++; await pending; return { isRepo: true, branch: "main", pullRequest: merged }; },
+    inspect: async () => ({ clean: true, head: SHA }), retire: async () => { retired++; },
+  });
+  const sweep = service.sweep();
+  assert.throws(() => service.holdForRestart(), /finish/i);
+  finish();
+  await sweep;
+  const release = service.holdForRestart();
+  await service.sweep();
+  assert.equal(reads, 1);
+  assert.equal(retired, 0);
+  release();
+  const next = service.holdForRestart();
+  release();
+  await service.sweep();
+  assert.equal(reads, 1);
+  next();
+  await service.sweep();
+  assert.equal(reads, 2);
+});
+
 test("retire: only an idle task whose merged PR is exactly what the worktree holds", () => {
   assert.deepEqual(decide(), { retire: true, pr: { number: 12, url: merged.state === "merged" ? merged.url : "", headSha: SHA } });
   const why = (over: Parameters<typeof decide>[0]) => { const d = decide(over); return d.retire ? "retire" : d.reason; };

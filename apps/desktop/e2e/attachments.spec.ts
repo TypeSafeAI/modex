@@ -8,7 +8,7 @@ import { currentRow, items, launch, seedHome, tid } from "./support";
  * Files travel with a message. A pasted image, a dropped file and the paperclip's picker all become
  * chips in the composer (main stages the bytes at once); the sent message shows the same chips and
  * reveals a file on click. The mock backend ignores attachments: what is asserted here is Modex's own
- * plumbing — staging, thumbnails over the custom scheme, the move into the thread's folder.
+ * plumbing — staging, thumbnails over the custom scheme, and the claimed thread copy.
  */
 let app: ElectronApplication;
 let page: Page;
@@ -19,6 +19,15 @@ let repo: string;
 const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const PNG = Buffer.from(PNG_B64, "base64");
 
+const nativeDrafts = process.platform !== "win32";
+const savedDraftFiles = (): Array<{ name: string; rel: string }> => {
+  const saved = JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8"));
+  return [...saved.drafts.threads, ...saved.drafts.projects].flatMap(row => row.attachments);
+};
+async function expectNoEditableFiles() {
+  await expect.poll(savedDraftFiles).toEqual([]);
+  await expect.poll(() => fs.readdirSync(path.join(home, "app/pending-sends"))).toEqual([]);
+}
 const staging = () => path.join(home, "attachments", "staging");
 const composerChips = () => tid(tid(page, "composer-attachments"), "attachment-chip");
 
@@ -35,6 +44,7 @@ async function stopTurn() {
 test.beforeAll(async () => {
   ({ home, repo } = seedHome());
   ({ app, page } = await launch(home));
+  console.log(JSON.stringify({ fixture: "attachments", home, repo, pid: app.process().pid }));
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "draft-view")).toBeVisible();
   await expect(tid(page, "composer-input")).toBeFocused();
@@ -63,6 +73,7 @@ test("a pasted image becomes a chip with a live thumbnail, enables Send on its o
   // The thumbnail really loaded: main served the staged file over the custom scheme.
   await expect.poll(() => thumb.evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth)).toBe(1);
   expect(fs.readdirSync(staging())).toHaveLength(1);
+  const stagedImage = path.join(staging(), fs.readdirSync(staging())[0]!);
   await expect(tid(page, "send")).toBeEnabled();
 
   await page.keyboard.press("Meta+Enter");
@@ -77,7 +88,10 @@ test("a pasted image becomes a chip with a live thumbnail, enables Send on its o
 
   const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
   expect(fs.readdirSync(path.join(home, "attachments", threadId))).toHaveLength(1);
-  expect(fs.readdirSync(staging())).toHaveLength(0);
+  if (nativeDrafts) {
+    await expectNoEditableFiles();
+    expect(fs.readFileSync(stagedImage)).toEqual(PNG); // The original copy remains recovery evidence.
+  } else expect(fs.readdirSync(staging())).toHaveLength(0);
   expect(fs.readFileSync(path.join(home, "attachments", threadId, fs.readdirSync(path.join(home, "attachments", threadId))[0]!))).toEqual(PNG);
   const saved = JSON.parse(fs.readFileSync(path.join(home, "app", "threads", `${threadId}.json`), "utf8")) as { kind: string; attachments?: { name: string; kind: string; mime: string; size: number; rel: string }[] }[];
   expect(saved[0]!.kind).toBe("user");
@@ -92,9 +106,16 @@ test("a pasted image becomes a chip with a live thumbnail, enables Send on its o
   await expect.poll(() => app.evaluate(() => (globalThis as Record<string, unknown>).__openedAttachment)).toMatch(/dot\.png$/);
   expect(await app.evaluate(() => (globalThis as Record<string, unknown>).__executedAttachment)).toBeUndefined();
   await stopTurn();
+  if (nativeDrafts) {
+    await page.reload();
+    await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", threadId);
+    await expect(composerChips()).toHaveCount(0);
+    await expect(tid(items(page, "user").first(), "attachment-chip")).toContainText("dot.png");
+  }
 });
 
-test("dragging files over the window shows the drop target; dropping attaches them; × removes the staged copy", async () => {
+test("dragging files over the window shows the drop target; dropping attaches them; × removes the draft attachment", async () => {
+  const stagedBefore = fs.readdirSync(staging());
   const drag = (type: string) => page.evaluate((type) => {
     const dt = new DataTransfer();
     dt.items.add(new File(["hello"], "reference.md", { type: "text/plain" }));
@@ -113,10 +134,20 @@ test("dragging files over the window shows the drop target; dropping attaches th
   await expect(chips.first()).toHaveAttribute("data-kind", "file");
   await expect(chips.first()).toContainText("reference.md");
   await expect(chips.first()).toContainText("5 B");
-  expect(fs.readdirSync(staging())).toHaveLength(1);
+  const added = fs.readdirSync(staging()).filter(name => !stagedBefore.includes(name));
+  expect(added).toHaveLength(1);
+  const stagedFile = path.join(staging(), added[0]!);
+  expect(fs.readFileSync(stagedFile, "utf8")).toBe("hello");
   await tid(chips.first(), "attachment-remove").click();
   await expect(chips).toHaveCount(0);
-  await expect.poll(() => fs.readdirSync(staging()).length).toBe(0);
+  if (nativeDrafts) {
+    await expectNoEditableFiles();
+    expect(fs.readFileSync(stagedFile, "utf8")).toBe("hello");
+    await page.reload();
+    await expect(tid(page, "thread-view")).toBeVisible();
+    await expect(composerChips()).toHaveCount(0);
+    expect(savedDraftFiles()).toEqual([]);
+  } else await expect.poll(() => fs.readdirSync(staging()).length).toBe(0);
   // Text dragged in is not a file drop.
   await page.evaluate(() => {
     const dt = new DataTransfer();
@@ -145,6 +176,11 @@ test("the paperclip's picker attaches files by path, reports an over-limit file,
   await tid(page, "attach-warning").getByRole("button", { name: "Dismiss" }).click();
   await expect(tid(page, "attach-warning")).toHaveCount(0);
 
+  let stagedFiles: Array<{ name: string; rel: string }> = [];
+  if (nativeDrafts) {
+    await expect.poll(savedDraftFiles).toHaveLength(2);
+    stagedFiles = savedDraftFiles();
+  }
   await tid(page, "composer-input").fill("read these");
   await page.keyboard.press("Meta+Enter");
   const user = items(page, "user").nth(1);
@@ -153,12 +189,22 @@ test("the paperclip's picker attaches files by path, reports an over-limit file,
   await expect(tid(user, "attachment-chip").nth(1)).toContainText("spec.md");
   const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
   await expect.poll(() => fs.readdirSync(path.join(home, "attachments", threadId)).length).toBe(3);
-  expect(fs.readdirSync(staging())).toHaveLength(0);
+  if (nativeDrafts) {
+    await expectNoEditableFiles();
+    for (const file of stagedFiles) expect(fs.readFileSync(path.join(home, "attachments", file.rel))).toEqual(file.name === "shot.png" ? PNG : Buffer.from("# spec\n"));
+  } else expect(fs.readdirSync(staging())).toHaveLength(0);
   await expect(tid(page, "composer-attach")).toBeDisabled();
   await tid(page, "composer-plus").click();
   await expect(page.getByRole("menuitem", { name: "Attach files", exact: true })).toBeDisabled();
   await page.keyboard.press("Escape");
   await stopTurn();
+  if (nativeDrafts) {
+    await page.reload();
+    await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", threadId);
+    await expect(composerChips()).toHaveCount(0);
+    await expect(items(page, "user")).toHaveCount(2);
+    await expect(tid(items(page, "user").nth(1), "attachment-chip")).toHaveText([/shot.png/, /spec.md/]);
+  }
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

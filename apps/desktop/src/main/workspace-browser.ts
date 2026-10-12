@@ -13,6 +13,7 @@ interface BrowserEntry {
 /** Guest pages have no app preload, Node, app storage or access to Modex's bridge. */
 export class WorkspaceBrowser {
   private views = new Map<string, BrowserEntry>();
+  get hasOpenPages(): boolean { return this.views.size > 0; }
   private fullView = false;
   private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
   constructor(private window: BrowserWindow, private options: { partition?: string; resolveURL?: (input: string) => string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string } } = {}) {}

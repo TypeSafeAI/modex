@@ -16,6 +16,11 @@ export interface Attachment {
   rel: string;
 }
 
+/** Main verifies this context against its live thread/project draft registry. */
+export type AttachmentDraftOwner =
+  | { readonly kind: "thread"; readonly threadId: string }
+  | { readonly kind: "project"; readonly key: string; readonly projectId: string };
+
 /** What the renderer hands main: a path the OS gave it (drop, picker) or base64 bytes it already holds (paste). */
 export type StagedFile =
   | { name: string; mime?: string; size?: number; path: string; data?: undefined }

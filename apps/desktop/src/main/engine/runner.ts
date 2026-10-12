@@ -1,4 +1,5 @@
 import { resolveCli } from "./cli-path.js";
+import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
@@ -16,9 +17,25 @@ import type { SecretStore } from "./secrets.js";
 import { describeFailure } from "../../shared/failures.js";
 import type { PagesAgents, PagesLease } from "./pages-agents.js";
 import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
-import { AttachmentStore } from "./attachments.js";
+import { AttachmentStore, type AttachmentDraft } from "./attachments.js";
 import { describeAttachments, type Attachment } from "../../shared/attachments.js";
 import type { TurnAttachment } from "./backends/types.js";
+import type { PendingCreation, PendingSendRecord } from "./pending-sends.js";
+import { copyComposerRecovery } from "./update-recovery.js";
+import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
+import type { DraftRemovalScope } from "../../shared/native-drafts.js";
+
+type ThreadCreationOptions = { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean; plan?: boolean; effort?: string };
+
+type UserItem = Extract<ThreadItem, { kind: "user" }>;
+export interface DurableSendAdmission {
+  readonly id: string;
+  readonly at: string;
+  /** Main-only synchronous callback; never IPC data. Called after the raw user
+   * item is durable and before routing/backend work. No automatic replay. */
+  readonly committed: (item: Readonly<Omit<UserItem, "attachments">> & { readonly attachments?: readonly Readonly<Attachment>[] }) => void;
+}
+interface PreparedAdmission extends DurableSendAdmission { readonly rawText: string }
 
 interface Live {
   abort: AbortController | null;
@@ -49,6 +66,8 @@ export interface RunnerOptions {
   secrets?: SecretStore;
   /** Stop thread-owned resources before deleting its state or working directory. */
   beforeDeleteThread?: (threadId: string) => Promise<void>;
+  /** Main-owned live draft fence, retained through all asynchronous removal. */
+  withOwnerRemoval?: (scope: DraftRemovalScope, operation: () => Promise<void>) => Promise<void>;
   /** Where attached files live; defaults to `<home>/attachments`. */
   attachments?: AttachmentStore;
 }
@@ -61,11 +80,14 @@ export interface RunnerOptions {
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
   private disposing = false;
+  private restartHold?: symbol;
+  private readonly background = new RestartAdmission();
   private readonly naming = new Map<string, AbortController>();
   private readonly titleRuns = new Set<Promise<void>>();
   private readonly deleting = new Set<string>();
   private readonly removingProjects = new Set<string>();
   private readonly creating = new Map<string, Set<Promise<Thread>>>();
+  private readonly pendingCreations = new Map<string, { signature: string; promise: Promise<Thread> }>();
   private readonly backends: Record<BackendId, Backend>;
   /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
   readonly router: Router;
@@ -89,8 +111,9 @@ export class ThreadRunner {
 
   async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
     if (this.disposing) return { models: [], error: "Modex is shutting down." };
+    if (this.restartHold) return { models: [], error: "Modex is preparing to restart." };
     try {
-      return { models: await this.backends[id].listModels() };
+      return { models: await this.background.run(() => this.backends[id].listModels()) };
     } catch (err) {
       return { models: [], error: (err as Error).message };
     }
@@ -104,6 +127,26 @@ export class ThreadRunner {
     for (const t of this.live.keys()) this.stop(t);
     await Promise.all(Object.values(this.backends).map((b) => b.dispose()));
     await Promise.allSettled([...runs, ...this.titleRuns]);
+  }
+
+  /** Reversible admission fence, acquired synchronously before restart preflight awaits.
+   * Direct Companion calls share it with local IPC. The caller must also fence other
+   * services and persist renderer drafts before committing to a native update.
+   */
+  holdForRestart(): () => void {
+    this.assertNotRestarting();
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    if (this.creating.size || this.deleting.size || this.removingProjects.size || this.titleRuns.size
+      || [...this.live.values()].some(l => l.run || l.pending.size || l.status === "running" || l.status === "waiting")) {
+      throw new Error("Let current turns and worktree operations finish before restarting.");
+    }
+    const releaseBackground = this.background.holdForRestart();
+    const token = this.restartHold = Symbol();
+    return () => { if (this.restartHold === token) { this.restartHold = undefined; releaseBackground(); } };
+  }
+
+  private assertNotRestarting(): void {
+    if (this.restartHold) throw new Error("Modex is preparing to restart.");
   }
 
   private slot(threadId: string): Live {
@@ -131,6 +174,7 @@ export class ThreadRunner {
 
   /** Shared by coding turns and embedded terminals; removal fences cover both. */
   assertThreadAvailable(threadId: string): void {
+    this.assertNotRestarting();
     if (this.disposing) throw new Error("Modex is shutting down.");
     const thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
@@ -144,6 +188,7 @@ export class ThreadRunner {
    * again on every render of an idle thread, and Jev must not be asked twice for the same turn.
    */
   async followUp(threadId: string): Promise<FollowUp | null> {
+    this.assertNotRestarting();
     const thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     const l = this.slot(threadId);
@@ -155,17 +200,66 @@ export class ThreadRunner {
     l.followUp?.abort.abort();
     const abort = new AbortController();
     const project = this.o.store.project(thread.projectId);
-    const result = this.router.followUp({ thread, text: user.text, items: [...l.items], project: { name: project?.name ?? "" } }, abort.signal);
+    const result = this.background.run(() => this.router.followUp({ thread, text: user.text, items: [...l.items], project: { name: project?.name ?? "" } }, abort.signal));
     l.followUp = { key, abort, result };
     return result;
   }
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
+    return this.trackCreation(projectId, opts);
+  }
+
+  /** Main-only pending intent path. Public thread:create never accepts the
+   * reserved identity. Startup only binds existing matches; it never calls this. */
+  async createThreadForPending(projectId: string, creation: PendingCreation, configuration: PendingSendRecord["configuration"]): Promise<Thread> {
+    this.assertNotRestarting();
+    if (!this.o.store.supportsDurableAdmission || this.disposing || this.removingProjects.has(projectId)) throw new Error("Pending thread creation is unavailable.");
+    const copied = parseRecoveryJSON(recoveryJSON({ projectId, creation, configuration }, 8192), 8192) as { projectId: string; creation: PendingCreation; configuration: PendingSendRecord["configuration"] };
+    const reserved = copied.creation;
+    if (!reserved || Object.keys(reserved).length !== 2 || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(reserved.threadId)
+      || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(reserved.createdAt)
+      || !Number.isFinite(Date.parse(reserved.createdAt)) || new Date(reserved.createdAt).toISOString() !== reserved.createdAt) throw new Error("Invalid pending creation identity.");
+    const validated = copyComposerRecovery({ threads: [], selectedThreadId: null,
+      projects: [{ key: `draft:0:${copied.projectId}`, projectId: copied.projectId, text: "", attachments: [] }],
+      draft: { revision: 0, projectId: copied.projectId, ...copied.configuration } });
+    if (!this.o.store.project(copied.projectId)) throw new Error("Pending creation project is unavailable.");
+    const config = validated.draft!, signature = recoveryJSON(copied, 8192);
+    const pending = this.pendingCreations.get(reserved.threadId);
+    if (pending) {
+      if (pending.signature !== signature) throw new Error("Pending creation identity was reused.");
+      return pending.promise;
+    }
+    const existing = this.o.store.thread(reserved.threadId);
+    if (existing) {
+      if (existing.projectId !== copied.projectId || existing.createdAt !== reserved.createdAt) throw new Error("Pending creation identity conflicts with an existing thread.");
+      this.assertThreadAvailable(existing.id);
+      this.o.store.checkpointThread(existing.id);
+      return existing;
+    }
+    if (this.pendingCreations.size >= 1000) throw new Error("Pending thread creations require recovery.");
+    const promise = this.trackCreation(copied.projectId, { worktree: config.worktree, ...config.settings }, reserved).then(thread => {
+      this.o.store.checkpointThread(thread.id); return thread;
+    });
+    this.pendingCreations.set(reserved.threadId, { signature, promise });
+    // Successful future requests can bind the Store record. Keep a failed
+    // in-process creation: a worktree script may already have created evidence.
+    void promise.then(() => this.pendingCreations.delete(reserved.threadId), () => {
+      // No script/git work was attempted and Store publishes only after a
+      // durable write. Its usable/absent state proves this retry is harmless.
+      if (!config.worktree && this.o.store.supportsDurableAdmission && !this.o.store.thread(reserved.threadId)) {
+        this.pendingCreations.delete(reserved.threadId);
+      }
+    });
+    return promise;
+  }
+
+  private async trackCreation(projectId: string, opts: ThreadCreationOptions, reserved?: PendingCreation): Promise<Thread> {
+    this.assertNotRestarting();
     if (this.disposing) throw new Error("Modex is shutting down.");
     if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
     const pending = this.creating.get(projectId) ?? new Set<Promise<Thread>>();
     this.creating.set(projectId, pending);
-    const creation = this.createThreadInProject(projectId, opts);
+    const creation = this.createThreadInProject(projectId, opts, reserved);
     pending.add(creation);
     try { return await creation; }
     finally {
@@ -174,13 +268,13 @@ export class ThreadRunner {
     }
   }
 
-  private async createThreadInProject(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }): Promise<Thread> {
+  private async createThreadInProject(projectId: string, opts: ThreadCreationOptions, reserved?: PendingCreation): Promise<Thread> {
     const project = this.o.store.project(projectId);
     if (!project) throw new Error(`unknown project ${projectId}`);
     const settings = this.o.store.settings;
     const backend = opts.backend ?? settings.default_backend;
-    const id = newId();
-    const now = new Date().toISOString();
+    const id = reserved?.threadId ?? newId();
+    const now = reserved?.createdAt ?? new Date().toISOString();
     let cwd = project.path;
     let worktree: Thread["worktree"];
     if (opts.worktree) {
@@ -197,7 +291,8 @@ export class ThreadRunner {
     }
     const thread: Thread = {
       id, projectId, title: "New thread", createdAt: now, updatedAt: now, cwd, worktree,
-      backend, mode: opts.mode ?? settings.default_mode, plan: false,
+      backend, mode: opts.mode ?? settings.default_mode, plan: opts.plan ?? false,
+      ...(opts.effort !== undefined ? { effort: opts.effort } : {}),
       model: opts.model ?? settings.default_model[backend] ?? "", status: "idle",
       auto: opts.auto ?? settings.routing.auto_by_default,
     };
@@ -206,12 +301,19 @@ export class ThreadRunner {
   }
 
   async removeProject(projectId: string): Promise<void> {
+    this.assertNotRestarting();
+    const operation = () => this.removeProjectHeld(projectId);
+    return this.o.withOwnerRemoval ? this.o.withOwnerRemoval({ kind: "project", id: projectId }, operation) : operation();
+  }
+  private async removeProjectHeld(projectId: string): Promise<void> {
     if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
     this.removingProjects.add(projectId);
     try {
       await Promise.allSettled(this.creating.get(projectId) ?? []);
       const threads = this.o.store.snapshot().threads.filter((thread) => thread.projectId === projectId);
-      await Promise.all(threads.map((thread) => this.deleteThread(thread.id)));
+      const removals = await Promise.allSettled(threads.map((thread) => this.deleteThreadHeld(thread.id)));
+      const failure = removals.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failure) throw failure.reason;
       this.o.store.removeProject(projectId);
     } finally {
       this.removingProjects.delete(projectId);
@@ -219,6 +321,11 @@ export class ThreadRunner {
   }
 
   async deleteThread(threadId: string, removeWorktree = false): Promise<void> {
+    this.assertNotRestarting();
+    const operation = () => this.deleteThreadHeld(threadId, removeWorktree);
+    return this.o.withOwnerRemoval ? this.o.withOwnerRemoval({ kind: "thread", id: threadId }, operation) : operation();
+  }
+  private async deleteThreadHeld(threadId: string, removeWorktree = false): Promise<void> {
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted. If its CLI has not confirmed the stop, press Stop again to force it.");
     this.deleting.add(threadId);
     this.naming.get(threadId)?.abort();
@@ -252,6 +359,13 @@ export class ThreadRunner {
    * retired. The transcript stays, read-only. Callers have already checked that nothing would be lost.
    */
   async retireThread(threadId: string, pr: { number: number; url: string; headSha: string }): Promise<void> {
+    if (this.restartHold) return;
+    const thread = this.o.store.thread(threadId);
+    if (!thread?.worktree || thread.retired || this.deleting.has(threadId) || this.live.get(threadId)?.run) return;
+    const operation = () => this.retireThreadHeld(threadId, pr);
+    return this.o.withOwnerRemoval ? this.o.withOwnerRemoval({ kind: "thread", id: threadId }, operation) : operation();
+  }
+  private async retireThreadHeld(threadId: string, pr: { number: number; url: string; headSha: string }): Promise<void> {
     const thread = this.o.store.thread(threadId);
     const wt = thread?.worktree;
     if (!thread || !wt || thread.retired) return;
@@ -286,6 +400,18 @@ export class ThreadRunner {
     return this.start(threadId, text, undefined, attachments);
   }
 
+  /** Native durable adapter only. Files have already crossed its journaled
+   * ownership transaction. Existing generic send and explicit Retry stay separate. */
+  async sendDurably(threadId: string, rawText: string, attachments: readonly Readonly<Attachment>[], admission: DurableSendAdmission): Promise<void> {
+    const id = admission.id, at = admission.at, committed = admission.committed;
+    if (!this.o.store.supportsDurableAdmission) throw new Error("Durable native message admission is unavailable.");
+    if (typeof rawText !== "string" || rawText.length > 1024 * 1024 || !/^[A-Za-z0-9_-]{1,128}$/.test(id)
+      || typeof at !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(at)
+      || !Number.isFinite(Date.parse(at)) || typeof committed !== "function") throw new Error("Invalid durable message admission.");
+    const files = attachments.map(file => ({ ...file }));
+    await this.start(threadId, rawText.trim(), undefined, files, Object.freeze({ id, at, committed, rawText }));
+  }
+
   /**
    * Runs the thread's last message again, in place: the transcript keeps its one user bubble and the
    * new attempt follows the failure card. Auto routing is not re-asked; the pick already applied.
@@ -297,24 +423,35 @@ export class ThreadRunner {
     return this.start(threadId, user.text, user.id, user.attachments);
   }
 
-  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = []): Promise<void> {
+  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
     this.assertThreadAvailable(threadId);
     const l = this.slot(threadId);
     if (l.run) throw new Error("This thread is still working. Stop it or wait for it to finish.");
-    const run = this.runTurn(threadId, text, reuse, attachments);
-    l.run = run;
-    try { await run; }
-    finally { if (l.run === run) l.run = null; }
+    // Publish admission before runTurn's synchronous prefix can emit or invoke
+    // a main callback. Reentrant sends and restart/disposal see this reservation.
+    let release!: () => void;
+    const reservation = new Promise<void>(resolve => { release = resolve; });
+    l.run = reservation;
+    try { await this.runTurn(threadId, text, reuse, attachments, prepared); }
+    finally { if (l.run === reservation) l.run = null; release(); }
   }
 
   /** `reuse` names an existing user item to run again instead of adding one (Retry). */
-  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = []): Promise<void> {
+  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
     const savedThread = this.o.store.thread(threadId);
     if (!savedThread) throw new Error(`unknown thread ${threadId}`);
     let thread = savedThread;
     const l = this.slot(threadId);
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
+
+    if (prepared) {
+      if (reuse !== undefined || l.items.some(item => item.id === prepared.id)) throw new Error("This message was already admitted. Use Retry explicitly.");
+      const checkpoint = this.o.store.checkpointThread(threadId);
+      if (checkpoint.projectId !== savedThread.projectId || checkpoint.createdAt !== savedThread.createdAt) throw new Error("Prepared message target changed.");
+      if (attachments.some(file => !file.rel.startsWith(`${threadId}/`)
+        || !this.attachments.validateRecovery(file, { kind: "thread", threadId }))) throw new Error("Prepared message attachments changed.");
+    }
 
     // Keep the initial permission ceiling while observing any live reduction during setup/turns.
     const initialPlan = thread.plan;
@@ -328,7 +465,18 @@ export class ThreadRunner {
 
     const retry = reuse !== undefined;
     // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
-    const files = this.attachments.claim(threadId, attachments);
+    let draft: AttachmentDraft | undefined;
+    if ((prepared || retry) && Array.isArray(attachments) && attachments.length) {
+      try { draft = this.attachments.mintDraft({ kind: "thread", threadId }); }
+      catch (error) {
+        // Legacy transcript Retry may contain unbound files. Its existing claim
+        // path still refuses every bound file without the matching capability.
+        if (prepared) throw error;
+      }
+    }
+    let files: Attachment[];
+    try { files = this.attachments.claim(threadId, attachments, draft ? { draft } : {}); }
+    finally { if (draft) this.attachments.revokeDraft(draft); }
     const derivedTitle = (text.replace(/\s+/g, " ").trim() || files.map((f) => f.name).join(", ")).slice(0, 60) || "New thread";
     // Name the thread after its first completed turn, including a retried first turn that still carries the opening-message title.
     const firstTurn = !l.items.some((item) => item.kind === "user" && item.id !== reuse);
@@ -336,7 +484,13 @@ export class ThreadRunner {
     l.followUp?.abort.abort();
     l.followUp = undefined;
     if (!retry) {
-      this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString(), ...(files.length ? { attachments: files } : {}) });
+      const item: UserItem = { id: prepared?.id ?? newId(), kind: "user", text: prepared?.rawText ?? text,
+        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}) };
+      this.addItem(threadId, item, prepared ? () => {
+        const receipt = Object.freeze({ ...item, ...(item.attachments ? { attachments: Object.freeze(item.attachments.map(file => Object.freeze({ ...file }))) } : {}) });
+        if (prepared.committed(receipt) !== undefined) throw new Error("Durable admission callback must complete synchronously.");
+      } : undefined);
+      this.assertThreadAvailable(threadId);
       if (thread.title === "New thread" && thread.titleSource !== "manual") this.updateThread(threadId, { title: derivedTitle }, { automaticTitle: true });
     }
 
@@ -568,6 +722,7 @@ export class ThreadRunner {
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
+    this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals"].includes(key))) as ThreadPatch;
@@ -590,7 +745,8 @@ export class ThreadRunner {
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
     const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");
     if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && lastRoute && !lastRoute.blocked) {
-      void this.router.noteOverride(current, patch.model).then((learned) => {
+      void this.background.run(async () => {
+        const learned = await this.router.noteOverride(current, patch.model!);
         if (learned) this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Noted — for ${learned.task.replace(/_/g, " ")} you chose tier ${learned.to} over Auto's tier ${learned.from}. Auto will lean that way next time.`, at: new Date().toISOString() });
       }).catch(() => {});
     }
@@ -724,10 +880,14 @@ export class ThreadRunner {
     }
   }
 
-  private addItem(threadId: string, item: ThreadItem): void {
+  private addItem(threadId: string, item: ThreadItem, persisted?: () => void): void {
     const l = this.slot(threadId);
     l.items.push(item);
-    this.persistItems(threadId, l);
+    try { this.persistItems(threadId, l); }
+    catch (error) { l.items.pop(); throw error; }
+    // A failure here is after durable persistence: keep the item in memory and
+    // retain the pending intent. Do not pretend a failed callback rolled disk back.
+    persisted?.();
     this.o.emit({ threadId, type: "item", item });
   }
 

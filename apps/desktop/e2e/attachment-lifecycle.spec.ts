@@ -3,6 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { createThread, launch, resizeWindow, seedHome, tid } from "./support";
 
+const nativeDrafts = process.platform !== "win32";
+const attachmentChannel = (channel: string) => nativeDrafts ? ({ "attachments:stage": "drafts:stage", "attachments:pick": "drafts:pick", "thread:create": "drafts:create", "thread:send": "drafts:send" } as Record<string, string>)[channel] ?? channel : channel;
+const savedPending = (home: string) => {
+  const directory = path.join(home, "app/pending-sends");
+  return fs.existsSync(directory) ? fs.readdirSync(directory).map(file => JSON.parse(fs.readFileSync(path.join(directory, file), "utf8"))) : [];
+};
+const savedUsers = (home: string, id: string) => {
+  try { return JSON.parse(fs.readFileSync(path.join(home, "app/threads", `${id}.json`), "utf8")).filter((item: any) => item.kind === "user"); }
+  catch { return []; }
+};
+const logFixture = (app: ElectronApplication, home: string, repo: string) => console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo, electronPid: app.process().pid }));
 const chips = (page: Page) => tid(tid(page, "composer-attachments"), "attachment-chip");
 async function drop(page: Page, names: string[]) {
   await expect(tid(page, "composer-input")).toBeVisible();
@@ -21,18 +32,20 @@ async function drop(page: Page, names: string[]) {
 }
 // Hold a real IPC handler before it stages anything; release still exercises actual storage/claims.
 async function hold(app: ElectronApplication, channel: string, fail = false) {
-  await app.evaluate(({ ipcMain }, { channel, fail }) => {
+  await app.evaluate(({ ipcMain }, { channel, fail, actual }) => {
     const ipc = ipcMain as typeof ipcMain & { _invokeHandlers: Map<string, (...args: unknown[]) => unknown> };
-    const original = ipc._invokeHandlers.get(channel)!;
+    const original = ipc._invokeHandlers.get(actual)!;
     const waits: Array<() => void> = [];
     Object.assign(globalThis, { attachmentPending: () => waits.length, releaseAttachment: (index = 0) => waits.splice(index, 1)[0]?.() });
-    ipcMain.removeHandler(channel);
-    ipcMain.handle(channel, (...args) => new Promise((resolve, reject) => waits.push(() => {
+    Object.assign(globalThis, { restoreAttachmentHandler: () => { ipcMain.removeHandler(actual); ipcMain.handle(actual, original); } });
+    ipcMain.removeHandler(actual);
+    ipcMain.handle(actual, (...args) => new Promise((resolve, reject) => waits.push(() => {
       if (fail) reject(new Error(`Synthetic ${channel} rejection`));
       else Promise.resolve(original(...args)).then(resolve, reject);
     })));
-  }, { channel, fail });
+  }, { channel, fail, actual: attachmentChannel(channel) });
 }
+const restoreHandler = (app: ElectronApplication) => app.evaluate(() => (globalThis as any).restoreAttachmentHandler());
 const pending = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as { attachmentPending: () => number }).attachmentPending());
 const release = (app: ElectronApplication, index = 0) => app.evaluate((_, index) => (globalThis as unknown as { releaseAttachment: (index: number) => void }).releaseAttachment(index), index);
 
@@ -49,21 +62,21 @@ async function switchProject(page: Page, projectId: string) {
 }
 
 test("drop waits for startup state and stages its file exactly once", async ({}, testInfo) => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   const staging = path.join(home, "attachments", "staging");
   const stagedFiles = () => fs.existsSync(staging) ? fs.readdirSync(staging) : [];
   let dropping: Promise<void> | undefined;
   try {
     await expect(tid(page, "composer-input")).toBeVisible();
     await hold(app, "state:get");
-    await app.evaluate(({ ipcMain }) => {
+    await app.evaluate(({ ipcMain }, channel) => {
       const ipc = ipcMain as typeof ipcMain & { _invokeHandlers: Map<string, (...args: unknown[]) => unknown> };
-      const original = ipc._invokeHandlers.get("attachments:stage")!;
+      const original = ipc._invokeHandlers.get(channel)!;
       let calls = 0;
       Object.assign(globalThis, { attachmentStageCalls: () => calls });
-      ipcMain.removeHandler("attachments:stage");
-      ipcMain.handle("attachments:stage", (...args) => { calls++; return original(...args); });
-    });
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel, (...args) => { calls++; return original(...args); });
+    }, attachmentChannel("attachments:stage"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect.poll(() => pending(app)).toBe(1);
     await expect(tid(page, "composer-input")).toHaveCount(0);
@@ -97,7 +110,7 @@ test("drop waits for startup state and stages its file exactly once", async ({},
 
 test("Space visualization appends to the active project's attachment draft", async () => {
   const { home, repo } = seedHome({ theme: "graphite" }); addSecondProject(home);
-  const { app, page } = await launch(home);
+  let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await tid(page, "composer-input").fill("Keep project A's draft");
     await drop(page, ["A.md"]); await expect(chips(page)).toHaveCount(1);
@@ -123,7 +136,7 @@ test("Space visualization appends to the active project's attachment draft", asy
 
 test("Streamer masks attachment labels while sending original metadata and bytes", async () => {
   const { home, repo } = seedHome();
-  const { app, page } = await launch(home);
+  let { app, page } = await launch(home); logFixture(app, home, repo);
   const name = "TOKEN=attachment-secret.md";
   try {
     await tid(page, "streamer-mode-toggle").click();
@@ -153,7 +166,7 @@ test("Streamer masks attachment labels while sending original metadata and bytes
 
 for (const failure of [false, true]) test(`project switch keeps B input isolated from A's held ${failure ? "failed" : "successful"} creation`, async () => {
   const { home, repo } = seedHome(); addSecondProject(home);
-  const { app, page } = await launch(home);
+  let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await drop(page, ["A.md"]); await expect(chips(page)).toHaveCount(1);
     await tid(page, "composer-input").fill("first message for A");
@@ -173,8 +186,13 @@ for (const failure of [false, true]) test(`project switch keeps B input isolated
     await expect(chips(page)).toHaveCount(1); await expect(chips(page).first()).toContainText("B.md");
     if (failure) {
       await switchProject(page, "p1");
-      await expect(tid(page, "composer-input")).toHaveValue("first message for A");
-      await expect(chips(page)).toHaveCount(1); await expect(chips(page).first()).toContainText("A.md");
+      await expect(tid(page, "composer-input")).toHaveValue(nativeDrafts ? "" : "first message for A");
+      if (nativeDrafts) {
+        await expect(chips(page)).toHaveCount(0);
+        await expect(tid(page, "pending-message")).toContainText("first message for A");
+        expect(savedPending(home)).toHaveLength(1);
+        expect(savedPending(home)[0]).toMatchObject({ source: { kind: "project", projectId: "p1" }, rawText: "first message for A", files: [{ name: "A.md" }] });
+      } else { await expect(chips(page)).toHaveCount(1); await expect(chips(page).first()).toContainText("A.md"); }
       await switchProject(page, "p2");
       await expect(tid(page, "composer-input")).toHaveValue("newer text for B");
       await expect(chips(page).first()).toContainText("B.md");
@@ -197,7 +215,7 @@ for (const failure of [false, true]) test(`project switch keeps B input isolated
 
 test("project switch-back keeps pending staging and ordinary unsent drafts on their own project", async () => {
   const { home, repo } = seedHome(); addSecondProject(home);
-  const { app, page } = await launch(home);
+  let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await tid(page, "composer-input").fill("A draft");
     await hold(app, "attachments:stage");
@@ -220,12 +238,22 @@ test("project switch-back keeps pending staging and ordinary unsent drafts on th
     await expect(chips(page).first()).toContainText("B.md");
     await page.keyboard.press("Meta+n");
     await expect(chips(page)).toHaveCount(0);
-    await expect.poll(() => fs.readdirSync(path.join(home, "attachments", "staging")).length).toBe(0);
+    if (nativeDrafts) {
+      const saved = () => JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8"));
+      await expect.poll(() => fs.existsSync(path.join(home, "app/update-recovery.json")) ? saved().drafts.projects.flatMap((row: any) => row.attachments) : null).toEqual([]);
+      const retained = fs.readdirSync(path.join(home, "attachments/staging"));
+      expect(retained).toHaveLength(2); // Revocation preserves evidence; it is not a physical-delete authority.
+      for (const file of retained) expect(fs.readFileSync(path.join(home, "attachments/staging", file), "utf8")).toMatch(/^bytes:[AB]\.md$/);
+      await page.reload(); await expect(tid(page, "draft-view")).toBeVisible();
+      await expect(chips(page)).toHaveCount(0);
+      await switchProject(page, "p1"); await expect(chips(page)).toHaveCount(0);
+      await switchProject(page, "p2"); await expect(chips(page)).toHaveCount(0);
+    } else await expect.poll(() => fs.readdirSync(path.join(home, "attachments", "staging")).length).toBe(0);
   } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
 for (const existing of [false, true]) test(`${existing ? "thread" : "draft"}: pending stage blocks button and keyboard send; rejection releases it`, async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     if (existing) await createThread(page, "existing");
     await hold(app, "attachments:stage", true);
@@ -245,7 +273,7 @@ for (const existing of [false, true]) test(`${existing ? "thread" : "draft"}: pe
 });
 
 for (const operation of ["picker", "encoding"] as const) for (const existing of [false, true]) test(`${existing ? "thread" : "draft"}: pending ${operation} blocks click and keyboard until rejection`, async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     if (existing) await createThread(page, "existing");
     await tid(page, "composer-input").fill("keep text");
@@ -273,7 +301,7 @@ for (const operation of ["picker", "encoding"] as const) for (const existing of 
 });
 
 test("failed creation restores files while keeping newer text and other drafts usable", async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await drop(page, ["old.md"]); await expect(chips(page)).toHaveCount(1);
     await hold(app, "thread:create", true);
@@ -283,6 +311,33 @@ test("failed creation restores files while keeping newer text and other drafts u
     await tid(page, "composer-input").press("Meta+Enter");
     await expect.poll(() => pending(app)).toBe(1);
     await release(app);
+    if (nativeDrafts) {
+      await expect(tid(page, "toast")).toContainText("Synthetic thread:create rejection");
+      await expect(chips(page)).toHaveCount(0);
+      await expect(tid(page, "composer-input")).toHaveValue("newer text");
+      await expect(tid(page, "send")).toBeDisabled();
+      const original = savedPending(home)[0];
+      expect(original).toMatchObject({ rawText: "old text", files: [{ name: "old.md" }] });
+      await tid(page, "pending-message-retry").click(); await expect.poll(() => pending(app)).toBe(1);
+      await page.keyboard.press("Meta+n"); await tid(page, "composer-input").fill("another draft");
+      await expect(tid(page, "send")).toBeEnabled();
+      await release(app); await expect(tid(page, "pending-message-retry")).toBeEnabled();
+      expect(savedPending(home)[0].id).toBe(original.id);
+      expect(fs.readFileSync(path.join(home, "attachments", original.files[0].rel), "utf8")).toBe("bytes:old.md");
+      await app.close(); ({ app, page } = await launch(home)); logFixture(app, home, repo);
+      await expect(tid(page, "composer-input")).toHaveValue("another draft");
+      await expect(tid(page, "thread-row")).toHaveCount(0);
+      expect(savedPending(home)[0].id).toBe(original.id);
+      await tid(page, "pending-message-retry").click();
+      await expect(tid(page, "thread-row")).toHaveCount(1);
+      const id = (await tid(page, "thread-row").getAttribute("data-thread-id"))!;
+      await expect.poll(() => savedUsers(home, id)).toMatchObject([{ id: original.id, text: "old text", attachments: [{ name: "old.md" }] }]);
+      expect(savedPending(home)).toEqual([]);
+      await expect(tid(page, "composer-input")).toHaveValue("another draft");
+      await expect(chips(page)).toHaveCount(0);
+      await page.evaluate(id => window.modex!.invoke("thread:stop", { threadId: id }), id);
+      return;
+    }
     await expect(chips(page)).toHaveCount(1);
     await expect(tid(page, "composer-input")).toHaveValue("newer text");
     await expect(tid(page, "toast-retry")).toHaveCount(0);
@@ -299,7 +354,7 @@ test("failed creation restores files while keeping newer text and other drafts u
 });
 
 test("late staging survives switch/remount without replacing removals or newer chips", async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     const id = await createThread(page, "existing");
     await drop(page, ["old.md"]); await expect(chips(page)).toHaveCount(1);
@@ -321,12 +376,21 @@ test("late staging survives switch/remount without replacing removals or newer c
     await release(app); await expect(chips(page)).toHaveCount(2);
     await expect(chips(page)).toHaveText([/late.md/, /new.md/]);
     await expect(tid(page, "send")).toBeEnabled();
-    expect(fs.readdirSync(path.join(home, "attachments", "staging"))).toHaveLength(2);
+    if (nativeDrafts) {
+      const savedFiles = () => JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.threads.find((row: any) => row.threadId === id)?.attachments;
+      await expect.poll(() => savedFiles()?.map((file: any) => file.name)).toEqual(["late.md", "new.md"]);
+      const retained = fs.readdirSync(path.join(home, "attachments/staging"));
+      expect(retained).toHaveLength(3);
+      const old = retained.find(file => file.endsWith("-old.md"))!;
+      expect(fs.readFileSync(path.join(home, "attachments/staging", old), "utf8")).toBe("bytes:old.md");
+      await page.reload(); await expect(chips(page)).toHaveText([/late.md/, /new.md/]);
+      expect(savedFiles().map((file: any) => file.name)).toEqual(["late.md", "new.md"]);
+    } else expect(fs.readdirSync(path.join(home, "attachments", "staging"))).toHaveLength(2);
   } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
 test("failed early send keeps its 19-file reservation across remount and restores alongside newer input", async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     const id = await createThread(page, "existing");
     await drop(page, Array.from({ length: 19 }, (_, i) => `old${i}.md`)); await expect(chips(page)).toHaveCount(19);
@@ -339,7 +403,38 @@ test("failed early send keeps its 19-file reservation across remount and restore
     await expect.poll(() => pending(app)).toBe(1);
     await drop(page, ["new.md", "overflow.md"]); await expect(chips(page)).toHaveCount(1);
     await expect(tid(page, "attach-warning")).toContainText("20");
-    await release(app); await expect(chips(page)).toHaveCount(20);
+    await release(app);
+    if (nativeDrafts) {
+      await expect(tid(page, "toast")).toContainText("Synthetic thread:send rejection");
+      await expect(chips(page)).toHaveCount(1); await expect(chips(page).first()).toContainText("new.md");
+      await expect(tid(page, "composer-input")).toHaveValue("newer text");
+      await expect(tid(page, "send")).toBeDisabled();
+      const original = savedPending(home)[0];
+      expect(original.rawText).toBe("old text"); expect(original.files).toHaveLength(19);
+      for (const file of original.files) expect(fs.readFileSync(path.join(home, "attachments", file.rel), "utf8")).toBe(`bytes:${file.name}`);
+      await tid(page, "pending-message-retry").click(); await expect.poll(() => pending(app)).toBe(1);
+      await page.keyboard.press("Meta+n"); await page.locator(`[data-testid="thread-row"][data-thread-id="${id}"] .thread-main`).click();
+      await tid(page, "composer-input").fill("typing during retry");
+      await expect(tid(page, "send")).toBeDisabled();
+      await tid(page, "send").dispatchEvent("click"); await tid(page, "composer-input").press("Meta+Enter");
+      await expect.poll(() => pending(app)).toBe(1);
+      await release(app); await expect(tid(page, "pending-message-retry")).toBeEnabled();
+      expect(savedPending(home)[0].id).toBe(original.id);
+      await restoreHandler(app); await app.close(); ({ app, page } = await launch(home)); logFixture(app, home, repo);
+      await expect(tid(page, "composer-input")).toHaveValue("typing during retry");
+      await expect(chips(page)).toHaveCount(1); await expect(chips(page).first()).toContainText("new.md");
+      expect(savedPending(home)[0].id).toBe(original.id);
+      expect(savedUsers(home, id).some((row: any) => row.id === original.id)).toBe(false);
+      await tid(page, "pending-message-retry").click();
+      await expect.poll(() => savedUsers(home, id).filter((row: any) => row.id === original.id)).toHaveLength(1);
+      const sent = savedUsers(home, id).find((row: any) => row.id === original.id);
+      expect(sent.text).toBe("old text"); expect(sent.attachments).toEqual(original.files);
+      await expect(tid(page, "pending-message")).toHaveCount(0);
+      await expect(tid(page, "composer-input")).toHaveValue("typing during retry"); await expect(chips(page)).toHaveCount(1);
+      await page.evaluate(id => window.modex!.invoke("thread:stop", { threadId: id }), id);
+      return;
+    }
+    await expect(chips(page)).toHaveCount(20);
     await expect(tid(page, "composer-input")).toHaveValue("newer text");
     await expect(tid(page, "toast-retry")).toHaveCount(0);
     await expect(tid(page, "send")).toBeEnabled();
@@ -360,7 +455,7 @@ test("failed early send keeps its 19-file reservation across remount and restore
 });
 
 test("overlapping file arrivals reserve at most 20 slots before their IPC calls finish", async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await hold(app, "attachments:stage");
     await drop(page, Array.from({ length: 19 }, (_, i) => `held${i}.md`));
@@ -381,7 +476,7 @@ test("overlapping file arrivals reserve at most 20 slots before their IPC calls 
 });
 
 test("native picker limits 21 files and nearly-full drafts; Plus menu works with keyboard", async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     const files = Array.from({ length: 21 }, (_, i) => path.join(repo, `pick${i}.md`));
     for (const file of files) fs.writeFileSync(file, file);
@@ -405,12 +500,18 @@ test("native picker limits 21 files and nearly-full drafts; Plus menu works with
     await expect(chips(page)).toHaveCount(20); await expect(tid(page, "attach-warning")).toContainText("20");
     await tid(chips(page).first(), "attachment-remove").click(); await expect(chips(page)).toHaveCount(19);
     await tid(page, "composer-attach").click(); await expect(chips(page)).toHaveCount(20);
-    await expect.poll(() => fs.readdirSync(path.join(home, "attachments", "staging")).length).toBe(20);
+    if (nativeDrafts) {
+      const savedFiles = () => JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.projects.flatMap((row: any) => row.attachments);
+      await expect.poll(() => savedFiles().length).toBe(20);
+      expect(new Set(savedFiles().map((file: any) => file.id)).size).toBe(20);
+      for (const file of savedFiles()) expect(fs.readFileSync(path.join(home, "attachments", file.rel), "utf8")).toBe(path.join(repo, file.name));
+      await page.reload(); await expect(chips(page)).toHaveCount(20);
+    } else await expect.poll(() => fs.readdirSync(path.join(home, "attachments", "staging")).length).toBe(20);
   } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
 test("composer is 960 by 109 wide and stays contained at 900", async () => {
-  const { home, repo } = seedHome(); const { app, page } = await launch(home);
+  const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await resizeWindow(app, page, 1728, 1044);
     const wide = await tid(page, "composer-box").boundingBox();

@@ -709,12 +709,24 @@ a.thread-pr:hover { text-decoration: underline; }
 .update-banner a:active { transform: scale(0.96); }
 .update-banner a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .update-banner .icon-btn { width: 32px; height: 32px; }
+.update-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.update-banner progress { width: 100%; height: 6px; accent-color: var(--accent); }
+.update-restart-panel { position: absolute; inset: 0; z-index: 100; overflow: auto; padding: 64px 24px; background: var(--bg-main); color: var(--text-1); }
+.update-restart-panel p { line-height: 1.5; color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) {
   .update-banner a { transition: none; }
   .update-banner a:active { transform: none; }
 }
 
 /* Live child tasks share the sidebar's quiet type hierarchy and selected theme. */
+.update-recovery { width: 100%; height: 100%; overflow: auto; padding: 48px 24px; background: var(--bg-main); color: var(--text-1); }
+.update-recovery-content { max-width: 760px; margin: 0 auto; }
+.update-recovery-content > p, .update-recovery-drafts > p { color: var(--text-2); line-height: 1.5; }
+.update-recovery-drafts { margin: 24px 0; }
+.update-recovery-draft { margin: 16px 0; }
+.update-recovery-draft textarea { display: block; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid var(--border-pane); border-radius: 8px; background: var(--bg-elevated); color: var(--text-1); resize: vertical; }
+.update-recovery-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.update-recovery-actions a { text-decoration: none; }
 .active-agents { flex: none; min-height: 0; max-height: 35vh; display: flex; flex-direction: column; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-pane); }
 .active-agents .section-label { flex: none; justify-content: space-between; }
 .agent-count { color: var(--text-4); font-size: var(--text-xs); font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; text-transform: none; letter-spacing: normal; }

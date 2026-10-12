@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CreateSpacePage, SpacePage } from "../../shared/space";
 import { bridge } from "../bridge";
+import { restartDrafts } from "../restart-drafts";
 
 /** Per-page save queue: edits stay local immediately; acknowledgements never replace newer text. */
 export function useSpace(active = true) {
@@ -15,6 +16,7 @@ export function useSpace(active = true) {
   const inFlight = useRef<Promise<void> | null>(null);
   const publish = (next: SpacePage[]) => { current.current = next; setPages(next); };
   const load = useCallback(async () => {
+    if (restartDrafts.frozen) return;
     try {
       const result = await bridge.invoke("space:list", undefined);
       const merged = result.map(remote => {
@@ -54,7 +56,16 @@ export function useSpace(active = true) {
     return inFlight.current;
   }, []);
 
+  useEffect(() => {
+    if (!loaded) return;
+    return restartDrafts.register("pages", async () => {
+      if (mutating.current) throw new Error("Let the current page action finish before restarting.");
+      await flush();
+    });
+  }, [loaded, flush]);
+
   const edit = (id: string, patch: Partial<Pick<SpacePage, "title" | "markdown" | "favorite" | "parentId">>) => {
+    if (restartDrafts.frozen) return;
     if (mutating.current) return;
     const page = current.current.find(p => p.id === id);
     if (!page) return;
@@ -73,12 +84,14 @@ export function useSpace(active = true) {
   }, []);
 
   const create = async (input: CreateSpacePage = {}) => {
+    restartDrafts.assertOpen();
     if (mutating.current) throw new Error("Wait for the current page action to finish.");
     const page = await bridge.invoke("space:create", input);
     publish([...current.current, page]);
     return page;
   };
   const trash = async (id: string, value: boolean) => {
+    restartDrafts.assertOpen();
     if (mutating.current) return;
     mutating.current = true; setBusy(true);
     try {
@@ -91,6 +104,7 @@ export function useSpace(active = true) {
     } finally { mutating.current = false; setBusy(false); }
   };
   const preserveDrafts = async () => {
+    restartDrafts.assertOpen();
     if (mutating.current) return;
     mutating.current = true; setBusy(true);
     try {

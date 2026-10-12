@@ -38,6 +38,9 @@ export class TaskRetirer {
   private readonly seen = new Map<string, PullRequestSummary>();
   private sweeping: Promise<string[]> | null = null;
   private timer?: ReturnType<typeof setInterval>;
+  private restartHold?: symbol;
+  private wanted = false;
+  private intervalMs = 180_000;
 
   constructor(private readonly deps: RetirerDeps) {}
 
@@ -47,17 +50,35 @@ export class TaskRetirer {
   }
 
   start(intervalMs = 180_000): void {
+    this.wanted = true;
+    this.intervalMs = intervalMs;
+    if (this.restartHold) return;
     this.timer ??= setInterval(() => { void this.sweep().catch(() => {}); }, intervalMs).unref();
     void this.sweep().catch(() => {});
   }
 
   stop(): void {
+    this.wanted = false;
     clearInterval(this.timer);
     this.timer = undefined;
   }
 
+  holdForRestart(): () => void {
+    if (this.restartHold) throw new Error("Modex is preparing to restart.");
+    if (this.sweeping) throw new Error("Let the current task check finish before restarting.");
+    const token = this.restartHold = Symbol();
+    clearInterval(this.timer);
+    this.timer = undefined;
+    return () => {
+      if (this.restartHold !== token) return;
+      this.restartHold = undefined;
+      if (this.wanted) this.start(this.intervalMs);
+    };
+  }
+
   /** Returns the ids it retired. One sweep at a time; a second call joins the running one. */
   sweep(): Promise<string[]> {
+    if (this.restartHold) return Promise.resolve([]);
     if (this.sweeping) return this.sweeping;
     const run = this.run().finally(() => { if (this.sweeping === run) this.sweeping = null; });
     this.sweeping = run;

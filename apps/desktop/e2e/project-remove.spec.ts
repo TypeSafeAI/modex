@@ -28,6 +28,7 @@ test.beforeAll(async () => {
   fs.writeFileSync(statePath, JSON.stringify(state));
 
   ({ app, page } = await launch(home));
+  console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo1, fixtureSecondRepo: repo2, electronPid: app.process().pid }));
 });
 
 test.afterAll(async () => {
@@ -37,7 +38,7 @@ test.afterAll(async () => {
   fs.rmSync(repo2, { recursive: true, force: true });
 });
 
-test("removing a project replaces its active draft and clears the last project", async () => {
+test("removing a project protects its unsent draft, then replaces a cleared draft and clears the last project", async () => {
   await expect(tid(page, "sidebar")).toBeVisible();
   const projects = tid(page, "project");
   await expect(projects).toHaveCount(2);
@@ -58,6 +59,17 @@ test("removing a project replaces its active draft and clears the last project",
   await p2.hover();
   await tid(p2, "project-menu").click();
   await tid(p2, "project-remove").click();
+
+  if (await page.evaluate(() => Boolean(window.modex!.nativeDrafts))) {
+    await expect(tid(page, "toast")).toContainText(/unsent draft/i);
+    await expect(projects).toHaveCount(2);
+    await expect(tid(page, "composer-input")).toHaveValue("Unsent draft message in p2");
+    expect(JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.projects.find((row: any) => row.projectId === "p2").text).toBe("Unsent draft message in p2");
+    await tid(page, "toast").getByRole("button", { name: "Dismiss", exact: true }).click();
+    await tid(page, "composer-input").fill("");
+    page.once("dialog", d => void d.accept());
+    await p2.hover(); await tid(p2, "project-menu").click(); await tid(p2, "project-remove").click();
+  }
 
   // Project 2 is removed from sidebar
   await expect(projects).toHaveCount(1);

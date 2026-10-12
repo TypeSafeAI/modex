@@ -62,7 +62,10 @@ modex/
   Set `MODEX_NO_LOGIN_PATH=1` to skip this.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
-  Removing a project clears its drafts and thread views while leaving its folder on disk.
+  Removing a project leaves its folder on disk. On macOS and Linux, removal first saves
+  current drafts and refuses while the affected project or threads have unsent text,
+  attachments, or pending originals. Clear or send that work first; unrelated drafts remain.
+  Windows retains its existing composer path and clears project drafts on removal.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` so agents never step on
   each other or on your checkout. If the project ships `scripts/worktree.sh` (as this repo
   does), Modex delegates to it — `new modex-<id>` / `remove` — and the thread lives wherever the
@@ -207,7 +210,10 @@ Starting with v0.0.7, installed macOS builds check for a newer stable release at
 workspace is visible, with a check when you return to it. A small banner links to the
 release page; dismissing it hides that version across relaunches. A later release appears
 again. Checks use public GitHub release metadata and require an uploaded installer for
-your Mac. Offline failures stay quiet. Downloads and installation are manual.
+your Mac. Offline failures stay quiet. Published builds still require manual downloads and
+installation. The in-flight [automatic update and durable-draft work](docs/update-recovery.md)
+adds verified preparation and recovery and has passed local integration checks. Signed native
+acceptance and release approval remain required before publication.
 
 If you are on v0.0.6 or earlier, install v0.0.7 from the release page once to enable future
 update notifications; older builds do not contain the banner.
@@ -262,8 +268,10 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks, scheduled automations, image attachments, auto-update, and Windows/Linux
-installers. Modex has no HTTP-API execution mode;
+Codex Cloud tasks and scheduled automations remain deferred until local readiness. Automatic
+update installation and public Windows/Linux installers still need their release gates;
+[native installer candidates](docs/native-platforms.md) already have bounded acceptance
+evidence. Modex has no HTTP-API execution mode;
 if a CLI is not installed or logged in, the thread says so.
 
 ## License

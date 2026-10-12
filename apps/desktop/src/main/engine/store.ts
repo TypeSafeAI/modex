@@ -104,11 +104,18 @@ export class Store {
   readonly dir: string;
   readonly space: SpaceStore;
   private state: AppState;
+  private storageUncertain = false;
+  private readonly directories = new Map<string, { dev: number; ino: number; real: string }>();
 
   constructor(readonly home: string) {
     this.dir = path.join(home, "app");
     this.space = new SpaceStore(this.dir);
     fs.mkdirSync(path.join(this.dir, "threads"), { recursive: true });
+    for (const directory of [this.dir, path.join(this.dir, "threads")]) {
+      const stat = fs.lstatSync(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("App storage directory is not a regular directory.");
+      this.directories.set(directory, { dev: stat.dev, ino: stat.ino, real: fs.realpathSync(directory) });
+    }
     this.state = this.read();
   }
 
@@ -128,10 +135,115 @@ export class Store {
     };
   }
 
+  /** Only platforms with a synced parent directory may acknowledge the strong
+   * persistence required to retire a pending native send intent. Windows keeps
+   * manual updates; its atomic file replacement is not this stronger receipt. */
+  get supportsDurableAdmission(): boolean { return process.platform !== "win32" && !this.storageUncertain; }
+
+  /** Main-only proof before binding an existing or newly created native target.
+   * Sync every creation ancestor: syncing app alone does not persist its entry
+   * in home, and a recursively created home may have new ancestors of its own. */
+  checkpointThread(threadId: string): Readonly<Thread> {
+    if (!this.supportsDurableAdmission) throw new Error("Durable native message admission is unavailable.");
+    const thread = this.thread(threadId);
+    if (!thread) throw new Error("Unknown thread.");
+    this.write();
+    try {
+      this.assertDirectory(this.dir);
+      this.assertDirectory(path.join(this.dir, "threads"));
+      let directory = fs.realpathSync(path.join(this.dir, "threads"));
+      while (true) {
+        const before = fs.lstatSync(directory);
+        if (!before.isDirectory() || before.isSymbolicLink()) throw new Error("App storage ancestor changed.");
+        const fd = fs.openSync(directory, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          const opened = fs.fstatSync(fd);
+          if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("App storage ancestor changed.");
+          fs.fsyncSync(fd);
+        } finally { fs.closeSync(fd); }
+        const parent = path.dirname(directory);
+        if (parent === directory) break;
+        directory = parent;
+      }
+      this.assertDirectory(this.dir);
+      this.assertDirectory(path.join(this.dir, "threads"));
+    } catch (error) { this.storageUncertain = true; throw error; }
+    return Object.freeze(structuredClone(thread));
+  }
+
+  private assertDirectory(directory: string): { dev: number; ino: number } {
+    const expected = this.directories.get(directory), stat = fs.lstatSync(directory);
+    if (!expected || !stat.isDirectory() || stat.isSymbolicLink() || stat.dev !== expected.dev || stat.ino !== expected.ino
+      || fs.realpathSync(directory) !== expected.real) throw new Error("App storage directory changed.");
+    return expected;
+  }
+
+  private replaceFile(file: string, body: string): void {
+    if (this.storageUncertain) throw new Error("App storage requires recovery before further writes.");
+    const directory = path.dirname(file), temporary = `${file}.${crypto.randomUUID()}.tmp`;
+    let fd: number | undefined, parent: number | undefined;
+    let original: fs.Stats | undefined;
+    let preflight = false, candidateOpened = false;
+    const identity = (left: { dev: number; ino: number }, right: { dev: number; ino: number }) => left.dev === right.dev && left.ino === right.ino;
+    const current = (): fs.Stats | undefined => {
+      try { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("App storage file is not regular."); return stat; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+    };
+    try {
+      const owner = this.assertDirectory(directory);
+      original = current(); preflight = true;
+      // Windows directory durability has not been established by this adapter.
+      // Do not claim a durable native admission on that platform.
+      if (process.platform !== "win32") {
+        parent = fs.openSync(directory, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        if (!identity(fs.fstatSync(parent), owner)) throw new Error("App storage directory changed.");
+      }
+      fd = fs.openSync(temporary, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
+      candidateOpened = true;
+      const created = fs.fstatSync(fd);
+      fs.writeFileSync(fd, body);
+      fs.fsyncSync(fd);
+      fs.closeSync(fd); fd = undefined;
+      this.assertDirectory(directory);
+      const next = current(), staged = fs.lstatSync(temporary);
+      if ((original ? !next || !identity(original, next) : next !== undefined)
+        || !staged.isFile() || staged.isSymbolicLink() || !identity(created, staged)) throw new Error("App storage changed before replacement.");
+      fs.renameSync(temporary, file);
+      this.assertDirectory(directory);
+      const written = current();
+      if (!written || !identity(created, written)) throw new Error("App storage changed after replacement.");
+      if (parent !== undefined) fs.fsyncSync(parent);
+    } catch (error) {
+      // Preserve the old file and any candidate temporary before rename; after
+      // rename preserve the replacement. Never guess a rollback after fsync.
+      // An exclusive-open refusal before obtaining a candidate fd cannot have
+      // written the record. Permit retry only while its directory and original
+      // identity/metadata still match. All later failures remain uncertain.
+      let unchanged = preflight && !candidateOpened;
+      if (unchanged) {
+        try {
+          this.assertDirectory(directory);
+          const now = current();
+          unchanged = original ? !!now && identity(original, now) && original.size === now.size
+            && original.mtimeMs === now.mtimeMs && original.ctimeMs === now.ctimeMs : now === undefined;
+          try { fs.lstatSync(temporary); unchanged = false; }
+          catch (probe) { if ((probe as NodeJS.ErrnoException).code !== "ENOENT") unchanged = false; }
+        } catch { unchanged = false; }
+      }
+      if (!unchanged) this.storageUncertain = true;
+      throw error;
+    } finally {
+      let closeFailure: unknown;
+      for (const descriptor of [fd, parent]) {
+        if (descriptor === undefined) continue;
+        try { fs.closeSync(descriptor); } catch (error) { closeFailure ??= error; }
+      }
+      if (closeFailure) { this.storageUncertain = true; throw closeFailure; }
+    }
+  }
+
   private write(state: AppState = this.state): void {
-    const tmp = `${this.file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-    fs.renameSync(tmp, this.file);
+    this.replaceFile(this.file, JSON.stringify(state, null, 2));
   }
 
   snapshot(): AppState {
@@ -204,16 +316,18 @@ export class Store {
   }
 
   addThread(thread: Thread): Thread {
-    this.state.threads.unshift(thread);
-    this.write();
+    const threads = [thread, ...this.state.threads];
+    this.write({ ...this.state, threads });
+    this.state.threads = threads;
     return thread;
   }
 
   updateThread(threadId: string, patch: Partial<Thread>): Thread {
     const t = this.thread(threadId);
     if (!t) throw new Error(`unknown thread ${threadId}`);
-    Object.assign(t, patch, { updatedAt: new Date().toISOString() });
-    this.write();
+    const updated = { ...t, ...patch, updatedAt: new Date().toISOString() };
+    this.write({ ...this.state, threads: this.state.threads.map(thread => thread === t ? updated : thread) });
+    Object.assign(t, updated);
     return { ...t };
   }
 
@@ -233,7 +347,8 @@ export class Store {
   }
 
   saveItems(threadId: string, items: ThreadItem[]): void {
-    fs.writeFileSync(this.itemsFile(threadId), JSON.stringify(items));
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(threadId)) throw new Error("Invalid thread id.");
+    this.replaceFile(this.itemsFile(threadId), JSON.stringify(items));
   }
 
   private deleteThreadFiles(threadId: string): void {

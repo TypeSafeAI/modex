@@ -164,9 +164,41 @@ rehearsal that gates the merge.
    `MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" npm run test:e2e`.
 2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
 3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
-   `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, runs the full
-   e2e suite against the packaged app, and attaches the DMG, ZIP and `SHA256SUMS.txt` to a
-   draft release.
+   `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, and runs
+   the full e2e suite against the packaged app. It also signs a private updater-enabled
+   `0.0.0` source fixture. Three fresh GitHub-hosted macOS runners use those exact source
+   and candidate ZIPs for native upgrade, native download failure, and interrupted-download
+   acceptance. Only after all jobs pass does it attach the DMG, ZIP, and `SHA256SUMS.txt`
+   to a draft release. Existing public releases and asset names cannot be overwritten.
+   The private source fixture is never a public release asset.
 4. Download the draft's assets and check them on a Mac as in
    [Verifying a download](#verifying-a-download): `shasum -c`, Gatekeeper, stapler and the
    signing certificate. Attach the verification log, write the notes, then publish the draft.
+
+
+## Native updater release gate
+
+Run `scripts/verify-update-mac.mjs prepare` inside the protected signing job, then
+`accept` on a separate hosted macOS arm64 runner for each scenario. The driver refuses
+local and self-hosted execution. Each runner owns its default home and updater state;
+changing `MODEX_HOME` alone does not isolate Squirrel. A manifest binds both signed ZIPs
+to their hashes, byte lengths, and source commit. Acceptance jobs receive no signing secrets.
+
+The driver supplies unpublished release metadata and the actual candidate ZIP. Publisher
+verification, draft persistence, restart coordination, and native updater events remain real.
+Every scenario checks tamper refusal and open-Settings refusal. Upgrade acceptance requires
+native replacement, automatic relaunch, the exact installed version, and unchanged raw drafts.
+The failure scenarios inject an HTTP 503 or interrupt the owned source process only after
+Squirrel requests its private ZIP. They then require read-only recovery on a fresh A launch,
+refusal of another install, and manual recovery using signed B without clearing saved drafts
+or native updater state.
+
+These scenarios cover native download failure and interruption before staging completes.
+They do not prove recovery from arbitrary ShipIt replacement failures, interruption after
+`update-downloaded`, or historical schema migration. The private A build uses the same source
+with version `0.0.0`; the first later published-to-published upgrade needs separate evidence.
+
+Keep the `macos-native-update-*` artifacts with the release review. Local harness tests and
+simulated controller tests pass, but the three hosted native scenarios have not run. Signed
+tag approval, the `release-signing` reviewer, and draft-asset verification remain required
+before publication. See [update recovery](update-recovery.md) for current local behavior.

@@ -159,3 +159,23 @@ for (const spelling of ["COMSPEC", "ComSpec", "comspec"]) {
     }
   });
 }
+
+test("restart refuses open terminals without killing shell work and fences new terminal admission", async () => {
+  const { manager, processes } = harness();
+  const session = manager.open("one", 80, 24);
+  try {
+    assert.throws(() => manager.holdForRestart(), /terminal/i);
+    assert.equal(processes[0]!.kills, 0);
+    manager.write("one", session.sessionId, "still usable");
+    processes[0]!.emit("exit", { exitCode: 0 });
+    const release = manager.holdForRestart();
+    assert.throws(() => manager.open("two", 80, 24), /restart/i);
+    release();
+    const next = manager.holdForRestart();
+    release();
+    assert.throws(() => manager.open("two", 80, 24), /restart/i);
+    next();
+    manager.open("two", 80, 24);
+    assert.equal(processes.length, 2);
+  } finally { await manager.dispose(); }
+});

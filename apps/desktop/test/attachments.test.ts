@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { AttachmentStore } from "../src/main/engine/attachments.js";
-import { LIMITS, attachmentUrl, describeAttachments, formatBytes, kindFor, mimeFor, rejectReason, relFromUrl, safeName } from "../src/shared/attachments.js";
+import { AttachmentStore, type AttachmentDraft } from "../src/main/engine/attachments.js";
+import { type Attachment, LIMITS, attachmentUrl, describeAttachments, formatBytes, kindFor, mimeFor, rejectReason, relFromUrl, safeName } from "../src/shared/attachments.js";
 import { PNG_B64, tmpdir } from "./helpers.js";
 
 test("the type comes from a specific OS hint, else the extension; only web image types are images", () => {
@@ -823,3 +823,470 @@ test("a same-instance retry recovers known failed rollback files before collisio
   stat.mock.restore();
   assert.equal(store.claim("thread-1", files).length, 2);
 });
+
+test("staging synchronizes attachment bytes and directory entries before acknowledgment", t => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const events: string[] = [];
+  const open = fs.openSync, close = fs.closeSync, sync = fs.fsyncSync, rename = fs.renameSync;
+  const opened = new Map<number, string>();
+  t.mock.method(fs, "openSync", (...args: Parameters<typeof fs.openSync>) => {
+    const fd = Reflect.apply(open, fs, args); opened.set(fd, String(args[0])); return fd;
+  });
+  t.mock.method(fs, "closeSync", (fd: number) => { opened.delete(fd); return close(fd); });
+  t.mock.method(fs, "fsyncSync", (fd: number) => { events.push(`sync:${opened.get(fd)}`); return sync(fd); });
+  t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => {
+    const result = Reflect.apply(rename, fs, args); events.push(`rename:${args[1]}`); return result;
+  });
+  const result = store.stage([{ name: "durable.txt", data: Buffer.from("original bytes").toString("base64") }]);
+  assert.deepEqual(result.errors, []); assert.equal(result.staged.length, 1);
+  const file = result.staged[0]!;
+  const contentSync = events.indexOf(`sync:${path.join(store.root, file.rel)}`);
+  const stagingSync = events.indexOf(`sync:${store.staging}`);
+  const publication = events.indexOf(`rename:${path.join(store.root, ".manifest.json")}`);
+  const manifestDirectorySync = events.lastIndexOf(`sync:${store.root}`);
+  assert.ok(contentSync >= 0, "staged file contents must be synchronized");
+  if (process.platform !== "win32") {
+    assert.ok(stagingSync > contentSync && stagingSync < publication, "staged directory entry precedes manifest publication");
+    assert.ok(manifestDirectorySync > publication, "manifest directory must be synchronized after publication");
+  }
+});
+
+test("post-publication manifest sync failure keeps staged bytes and ownership for restart", { skip: process.platform === "win32" }, t => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const rename = fs.renameSync, sync = fs.fsyncSync;
+  let published = false;
+  t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => {
+    const result = Reflect.apply(rename, fs, args);
+    if (String(args[1]) === path.join(store.root, ".manifest.json")) published = true;
+    return result;
+  });
+  const fault = t.mock.method(fs, "fsyncSync", (fd: number) => {
+    if (published && fs.fstatSync(fd).isDirectory()) throw new Error("forced published-directory sync failure");
+    return sync(fd);
+  });
+  const result = store.stage([{ name: "preserve.txt", data: Buffer.from("preserve original bytes").toString("base64") }]);
+  assert.deepEqual(result.staged, [], "an uncertain durable write cannot acknowledge staging");
+  assert.match(result.errors.join(" "), /sync|durab|storage/i);
+  const manifest = JSON.parse(fs.readFileSync(path.join(store.root, ".manifest.json"), "utf8"));
+  const retained: Attachment = manifest.files[0].attachment;
+  assert.equal(fs.readFileSync(path.join(store.root, retained.rel), "utf8"), "preserve original bytes");
+  fault.mock.restore();
+  const fresh = new AttachmentStore(store.root);
+  assert.ok(fresh.resolve(retained.rel), "the published manifest must still name owned original bytes");
+});
+
+for (const phase of ["checkpoint", "final"] as const) {
+  test(`uncertain ${phase} claim commit preserves staged, copied and write-ahead bytes`, { skip: process.platform === "win32" }, t => {
+    const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+    const files = stagedPair(store);
+    const originalBytes = new Map(files.map(file => [file.id, fs.readFileSync(path.join(store.root, file.rel))]));
+    const rename = fs.renameSync, sync = fs.fsyncSync;
+    let inject = false;
+    t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => {
+      let requested = false;
+      if (String(args[1]) === path.join(store.root, ".manifest.json")) {
+        const record = JSON.parse(fs.readFileSync(String(args[0]), "utf8"));
+        const final = record.files.some((file: { attachment: Attachment }) => file.attachment.rel.startsWith("thread-1/"));
+        requested = phase === "final" ? final : !final;
+      }
+      const result = Reflect.apply(rename, fs, args); inject ||= requested; return result;
+    });
+    const fault = t.mock.method(fs, "fsyncSync", (fd: number) => {
+      if (inject && fs.fstatSync(fd).isDirectory()) throw new Error("forced claim directory sync failure");
+      return sync(fd);
+    });
+    assert.throws(() => store.claim("thread-1", files), /sync/i);
+    fault.mock.restore();
+    assert.throws(() => store.discard(files.map(file => file.id)), /uncertain/i);
+    assert.throws(() => store.sweepStaging(-1), /uncertain/i);
+    assert.throws(() => store.removeThread("thread-1"), /uncertain/i);
+    assert.deepEqual(store.stage([{ name: "blocked.txt", data: "Yw==" }]).staged, []);
+    for (const file of files) assert.deepEqual(fs.readFileSync(path.join(store.root, file.rel)), originalBytes.get(file.id));
+    const before = fs.readFileSync(path.join(store.root, ".manifest.json"));
+    const fresh = new AttachmentStore(store.root);
+    assert.deepEqual(fs.readFileSync(path.join(store.root, ".manifest.json")), before);
+    const record = JSON.parse(before.toString());
+    const owned = [...record.files, ...record.retired] as { attachment: Attachment }[];
+    let preservedTemporary = 0, preservedDestination = 0;
+    for (const { attachment } of owned) {
+      const absolute = path.join(store.root, attachment.rel);
+      if (!fs.existsSync(absolute)) continue; // checkpoint includes future final names.
+      assert.deepEqual(fs.readFileSync(absolute), originalBytes.get(attachment.id));
+      if (attachment.rel.includes("/.claim-")) preservedTemporary++;
+      else if (attachment.rel.startsWith("thread-1/")) preservedDestination++;
+    }
+    assert.equal(preservedTemporary, 2);
+    assert.equal(preservedDestination, phase === "final" ? 2 : 0);
+    for (const { attachment } of record.files) assert.ok(fresh.resolve(attachment.rel));
+  });
+}
+
+const protectRecovery = (store: AttachmentStore, references: readonly Attachment[] | null): boolean => {
+  return store.setRecoveryRetention(references);
+};
+
+test("recovery retains referenced expired staging using a copied main-owned identity set", () => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const [keep, expire] = stagedPair(store) as [Attachment, Attachment];
+  const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  for (const file of [keep, expire]) fs.utimesSync(path.join(store.root, file.rel), old, old);
+  const references = [{ ...keep }];
+  assert.equal(protectRecovery(store, references), true); references[0]!.name = "caller mutation"; references.length = 0;
+  assert.equal(store.sweepStaging(), 1);
+  assert.equal(fs.readFileSync(path.join(store.root, keep.rel), "utf8"), "a");
+  assert.equal(fs.existsSync(path.join(store.root, expire.rel)), false);
+  store.discard([keep.id]);
+  assert.equal(fs.readFileSync(path.join(store.root, keep.rel), "utf8"), "a");
+  const fresh = new AttachmentStore(store.root);
+  protectRecovery(fresh, [keep]);
+  assert.equal(fresh.sweepStaging(-1), 0);
+  assert.equal(fs.readFileSync(path.join(store.root, keep.rel), "utf8"), "a");
+  protectRecovery(fresh, []); fresh.sweepStaging();
+  assert.equal(fs.existsSync(path.join(store.root, keep.rel)), false);
+});
+
+test("unreadable recovery preserves active and retired evidence through cleanup and restart", t => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const files = stagedPair(store);
+  const unlink = t.mock.method(fs, "unlinkSync", () => { throw new Error("defer cleanup"); });
+  const claimed = store.claim("thread-1", files);
+  unlink.mock.restore();
+  const metadata = JSON.parse(fs.readFileSync(path.join(store.root, ".manifest.json"), "utf8"));
+  const paths = [...metadata.files, ...metadata.retired].map((file: { attachment: Attachment }) => file.attachment.rel)
+    .filter((rel: string) => fs.existsSync(path.join(store.root, rel)));
+  assert.ok(paths.length >= 6);
+  protectRecovery(store, null);
+  assert.equal(store.sweepStaging(-1), 0);
+  store.removeThread("thread-1");
+  for (const rel of paths) assert.ok(fs.existsSync(path.join(store.root, rel)), rel);
+  const fresh = new AttachmentStore(store.root); protectRecovery(fresh, null);
+  assert.equal(fresh.sweepStaging(-1), 0);
+  for (const rel of paths) assert.ok(fs.existsSync(path.join(store.root, rel)), rel);
+  assert.equal(claimed.length, 2);
+});
+
+test("known recovery protection preserves sources without blocking failed-claim rollback and retry", t => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const files = stagedPair(store); protectRecovery(store, files);
+  const write = fs.writeSync;
+  let writes = 0;
+  const fault = t.mock.method(fs, "writeSync", (...args: Parameters<typeof fs.writeSync>) => {
+    if (++writes === 2) throw new Error("forced second copy failure");
+    return Reflect.apply(write, fs, args);
+  });
+  assert.throws(() => store.claim("thread-1", files), /second copy failure/);
+  fault.mock.restore();
+  assert.deepEqual(fs.readdirSync(path.join(store.root, "thread-1")), []);
+  for (const file of files) assert.ok(store.resolve(file.rel));
+  assert.equal(store.claim("thread-1", files).length, 2);
+  for (const file of files) assert.ok(fs.existsSync(path.join(store.root, file.rel)), "referenced staging remains recoverable");
+});
+
+
+test("recovery protects an exact claimed reference after retirement and restart", () => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const claimed = store.claim("thread-1", stagedPair(store));
+  assert.equal(protectRecovery(store, claimed), true);
+  store.removeThread("thread-1");
+  const fresh = new AttachmentStore(store.root);
+  assert.equal(protectRecovery(fresh, claimed), true);
+  fresh.sweepStaging(-1);
+  for (const file of claimed) assert.ok(fs.existsSync(path.join(store.root, file.rel)));
+});
+
+test("unresolved or replaced recovery references preserve all possible evidence", () => {
+  const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+  const files = stagedPair(store);
+  assert.equal(protectRecovery(store, [{ ...files[0]!, id: "unknown-id" }]), false);
+  assert.equal(store.sweepStaging(-1), 0);
+  const original = path.join(store.root, files[0]!.rel);
+  fs.renameSync(original, original + ".preserved"); fs.writeFileSync(original, "replacement");
+  assert.equal(protectRecovery(store, files), false);
+  assert.equal(store.sweepStaging(-1), 0);
+  assert.equal(fs.readFileSync(original, "utf8"), "replacement");
+  assert.ok(fs.existsSync(path.join(store.root, files[1]!.rel)));
+});
+
+type TestOwner = { kind: "thread"; threadId: string } | { kind: "project"; key: string; projectId: string };
+const projectOwner = (): TestOwner => ({ kind: "project", key: "draft:1:project-1", projectId: "project-1" });
+const ownedStore = (root: string, authorizeDraft: (owner: TestOwner) => boolean = () => true,
+  authorizeTransfer: (owner: TestOwner, threadId: string) => boolean = () => true): AttachmentStore =>
+  new AttachmentStore(root, { authorizeDraft, authorizeTransfer });
+const mintDraft = (store: AttachmentStore, owner: TestOwner): AttachmentDraft => store.mintDraft(owner);
+const stageDraft = (store: AttachmentStore, draft: object, files: unknown = [{ name: "draft.txt", data: "YQ==" }]) =>
+  store.stage(files, { draft: draft as AttachmentDraft });
+const validateRecovery = (store: AttachmentStore, file: Attachment, owner: TestOwner): boolean =>
+  store.validateRecovery(file, owner);
+
+test("authorized draft ownership survives restart without adopting renderer metadata", () => {
+  const root = path.join(tmpdir(), "attachments");
+  const owner = projectOwner();
+  const store = ownedStore(root);
+  const draft = mintDraft(store, owner);
+  assert.ok(Object.isFrozen(draft));
+  if (owner.kind === "project") owner.projectId = "mutated-project";
+  const result = stageDraft(store, draft);
+  assert.deepEqual(result.errors, []);
+  const file = result.staged[0]!;
+  const manifest = path.join(root, ".manifest.json");
+  const before = fs.readFileSync(manifest);
+  assert.equal(JSON.parse(before.toString()).version, 2);
+  const fresh = ownedStore(root);
+  assert.equal(validateRecovery(fresh, file, projectOwner()), true);
+  assert.equal(validateRecovery(fresh, file, { kind: "thread", threadId: "thread-1" }), false);
+  assert.equal(validateRecovery(fresh, { ...file, mime: "changed" }, projectOwner()), false);
+  assert.deepEqual(fs.readFileSync(manifest), before, "validation cannot rewrite or rebind metadata");
+  assert.equal(fs.readFileSync(path.join(root, file.rel), "utf8"), "a");
+});
+
+test("forged cross-instance revoked and stale draft handles fail before reading sources", t => {
+  const store = ownedStore(path.join(tmpdir(), "attachments"));
+  const other = ownedStore(path.join(tmpdir(), "attachments"));
+  let active = true;
+  const live = ownedStore(path.join(tmpdir(), "attachments"), () => active);
+  const stale = mintDraft(live, projectOwner());
+  active = false;
+  const revoked = mintDraft(store, projectOwner());
+  store.revokeDraft(revoked);
+  const foreign = mintDraft(other, projectOwner());
+  const open = fs.openSync;
+  let sourceReads = 0;
+  t.mock.method(fs, "openSync", (...args: Parameters<typeof fs.openSync>) => {
+    if (args[0] === "/never-read-draft-source") { sourceReads++; throw new Error("source was read"); }
+    return Reflect.apply(open, fs, args);
+  });
+  for (const [target, handle] of [[store, {}], [store, foreign], [store, revoked], [live, stale]] as const) {
+    const result = stageDraft(target, handle, [{ name: "source.txt", path: "/never-read-draft-source" }]);
+    assert.equal(result.staged.length, 0); assert.equal(result.errors.length, 1);
+    assert.match(result.errors[0]!, /draft|authoriz|capabilit/i);
+  }
+  assert.equal(sourceReads, 0);
+});
+
+test("legacy unbound staging remains sendable but cannot be rebound by recovery", () => {
+  const root = path.join(tmpdir(), "attachments");
+  const old = new AttachmentStore(root);
+  const files = stagedPair(old);
+  const manifest = path.join(root, ".manifest.json");
+  const value = JSON.parse(fs.readFileSync(manifest, "utf8")); value.version = 1;
+  fs.writeFileSync(manifest, JSON.stringify(value));
+  const original = fs.readFileSync(manifest);
+  const fresh = ownedStore(root);
+  assert.equal(validateRecovery(fresh, files[0]!, projectOwner()), false);
+  assert.deepEqual(fs.readFileSync(manifest), original);
+  assert.equal(fresh.claim("thread-1", files).length, 2);
+});
+
+test("bound staging requires its draft and an explicitly authorized project transfer", () => {
+  const store = ownedStore(path.join(tmpdir(), "attachments"), () => true, (_owner, thread) => thread === "thread-1");
+  const draft = mintDraft(store, projectOwner());
+  const files = stageDraft(store, draft).staged;
+  assert.throws(() => store.discard(files.map(file => file.id)), /draft|authoriz|capabilit/i);
+  assert.throws(() => store.claim("thread-1", files), /draft|authoriz|capabilit/i);
+  assert.throws(() => Reflect.apply(store.claim, store, ["thread-1", files, { draft }]), /transfer/i);
+  assert.throws(() => store.mintTransfer(draft, "thread-2"), /authoriz|transfer/i);
+  const transfer = store.mintTransfer(draft, "thread-1");
+  const claimed = Reflect.apply(store.claim, store, ["thread-1", files, { draft, transfer }]) as Attachment[];
+  assert.equal(validateRecovery(store, claimed[0]!, { kind: "thread", threadId: "thread-1" }), true);
+  assert.equal(validateRecovery(store, claimed[0]!, projectOwner()), false);
+});
+
+test("thread draft claim and discard require the exact authorized context", () => {
+  const store = ownedStore(path.join(tmpdir(), "attachments"));
+  const context: TestOwner = { kind: "thread", threadId: "thread-1" };
+  const draft = mintDraft(store, context);
+  const foreign = mintDraft(store, { kind: "thread", threadId: "thread-2" });
+  const [first, second] = stageDraft(store, draft, [{ name: "a.txt", data: "YQ==" }, { name: "b.txt", data: "Yg==" }]).staged;
+  assert.throws(() => Reflect.apply(store.discard, store, [[first!.id], { draft: foreign }]), /draft|owner|authoriz/i);
+  Reflect.apply(store.discard, store, [[first!.id], { draft }]);
+  assert.equal(fs.existsSync(path.join(store.root, first!.rel)), false);
+  const claimed = Reflect.apply(store.claim, store, ["thread-1", [second], { draft }]) as Attachment[];
+  assert.equal(validateRecovery(store, claimed[0]!, context), true);
+});
+
+for (const ambiguous of [false, true]) {
+  test(`retention ${ambiguous ? "refuses differing" : "deduplicates matching"} authoritative identities`, () => {
+    const store = new AttachmentStore(path.join(tmpdir(), "attachments"));
+    const files = stagedPair(store);
+    const manifest = path.join(store.root, ".manifest.json");
+    const value = JSON.parse(fs.readFileSync(manifest, "utf8"));
+    const duplicate = structuredClone(value.files[0]);
+    if (ambiguous) duplicate.identity.ino++;
+    value.retired.push(duplicate);
+    fs.writeFileSync(manifest, JSON.stringify(value));
+    const fresh = new AttachmentStore(store.root);
+    assert.equal(protectRecovery(fresh, [files[0]!]), !ambiguous);
+    assert.equal(fresh.sweepStaging(-1), ambiguous ? 0 : 1);
+    assert.ok(fs.existsSync(path.join(store.root, files[0]!.rel)));
+    assert.equal(fs.existsSync(path.join(store.root, files[1]!.rel)), ambiguous);
+  });
+}
+
+test("draft authorization refuses truthy asynchronous results and reentrant mutations", () => {
+  for (const answer of [undefined, {}, Promise.resolve(true)]) {
+    const store = ownedStore(path.join(tmpdir(), "attachments"), (() => answer) as () => boolean);
+    assert.throws(() => mintDraft(store, projectOwner()), /authoriz/i);
+  }
+  let nested = false;
+  const store = ownedStore(path.join(tmpdir(), "attachments"), () => {
+    if (nested) assert.equal(store.stage([{ name: "unauthorized.txt", data: "YQ==" }]).staged.length, 0);
+    return true;
+  });
+  const draft = mintDraft(store, projectOwner());
+  nested = true;
+  const result = stageDraft(store, draft);
+  assert.equal(result.staged.length, 0); assert.match(result.errors[0]!, /authoriz/i);
+  assert.deepEqual(fs.readdirSync(store.staging), []);
+});
+
+test("live authority is rechecked before publication and cannot replace a writer's manifest", () => {
+  let checks = 0;
+  const store = ownedStore(path.join(tmpdir(), "attachments"), () => ++checks < 3);
+  const draft = mintDraft(store, projectOwner());
+  const result = stageDraft(store, draft);
+  assert.equal(result.staged.length, 0); assert.equal(result.errors.length, 1);
+  assert.deepEqual(fs.readdirSync(store.staging), []);
+  let replace = false;
+  const root = path.join(tmpdir(), "attachments");
+  const racing = ownedStore(root, () => {
+    if (replace) {
+      new AttachmentStore(root).stage([{ name: "new-writer.txt", data: "Yg==" }]);
+      replace = false;
+    }
+    return true;
+  });
+  const handle = mintDraft(racing, projectOwner());
+  replace = true;
+  assert.equal(stageDraft(racing, handle).staged.length, 0);
+  assert.equal(fs.readdirSync(racing.staging).length, 1, "the other writer's file survives");
+});
+
+test("a failed project claim preserves draft bindings across restart and transfer retry", t => {
+  const root = path.join(tmpdir(), "attachments");
+  const store = ownedStore(root); const draft = mintDraft(store, projectOwner());
+  const files = stageDraft(store, draft).staged;
+  const transfer = store.mintTransfer(draft, "thread-1");
+  const rename = fs.renameSync;
+  const fault = t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => {
+    if (String(args[1]).endsWith(".manifest.json")) {
+      const value = JSON.parse(fs.readFileSync(args[0], "utf8"));
+      if (value.files.some((file: { attachment: Attachment }) => file.attachment.rel.startsWith("thread-1/"))) throw new Error("final owner commit refused");
+    }
+    return Reflect.apply(rename, fs, args);
+  });
+  assert.throws(() => Reflect.apply(store.claim, store, ["thread-1", files, { draft, transfer }]), /final owner commit refused/);
+  fault.mock.restore();
+  const fresh = ownedStore(root); const nextDraft = mintDraft(fresh, projectOwner());
+  assert.equal(validateRecovery(fresh, files[0]!, projectOwner()), true);
+  const nextTransfer = fresh.mintTransfer(nextDraft, "thread-1");
+  const result = Reflect.apply(fresh.claim, fresh, ["thread-1", files, { draft: nextDraft, transfer: nextTransfer }]) as Attachment[];
+  assert.equal(validateRecovery(fresh, result[0]!, { kind: "thread", threadId: "thread-1" }), true);
+});
+
+test("draft contexts reject inherited fields and non-data properties before authorization", () => {
+  let authorizations = 0;
+  const store = ownedStore(path.join(tmpdir(), "attachments"), () => { authorizations++; return true; });
+  const inherited = Object.assign(Object.create({ kind: "thread", threadId: "thread-1" }), { extra: true, another: true });
+  assert.throws(() => mintDraft(store, inherited), /draft/i);
+  const getter = { kind: "thread", get threadId(): string { throw new Error("getter evaluated"); } } as TestOwner;
+  assert.throws(() => mintDraft(store, getter), /draft/i);
+  assert.equal(authorizations, 0);
+});
+
+test("unsupported manifest fields and ambiguous active ownership fail without rewriting evidence", () => {
+  const root = path.join(tmpdir(), "attachments");
+  const store = ownedStore(root); stageDraft(store, mintDraft(store, projectOwner()));
+  const manifest = path.join(root, ".manifest.json");
+  const original = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  const invalid = [
+    { ...original, version: 99 },
+    { ...original, extra: true },
+    { ...original, version: 1 },
+    { ...original, files: [...original.files, original.files[0]] },
+    { ...original, files: [{ ...original.files[0], owner: { ...projectOwner(), extra: true } }] },
+  ];
+  for (const value of invalid) {
+    const bytes = JSON.stringify(value); fs.writeFileSync(manifest, bytes);
+    assert.throws(() => ownedStore(root), /manifest|metadata|draft/i);
+    assert.equal(fs.readFileSync(manifest, "utf8"), bytes);
+  }
+});
+
+// Durable replay compares this captured proof, not just the restored path/metadata.
+test("attachment fingerprints preserve ownership and detect same-size content changes", () => {
+  const store = ownedStore(path.join(tmpdir(), "attachments"));
+  const owner = projectOwner();
+  const file = stageDraft(store, mintDraft(store, owner)).staged[0]!;
+  const manifest = fs.readFileSync(path.join(store.root, ".manifest.json"));
+  const before = store.fingerprint(file, owner);
+  assert.equal(before.sha256, "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");
+  assert.equal(before.size, 1);
+  assert.ok(Object.isFrozen(before));
+  assert.throws(() => { (before as { sha256: string }).sha256 = "forged"; }, TypeError);
+  assert.deepEqual(ownedStore(store.root).fingerprint(file, owner), before);
+  fs.writeFileSync(path.join(store.root, file.rel), "b");
+  const changed = store.fingerprint(file, owner);
+  assert.equal(changed.ino, before.ino);
+  assert.equal(changed.size, before.size);
+  assert.notEqual(changed.sha256, before.sha256);
+  assert.deepEqual(fs.readFileSync(path.join(store.root, ".manifest.json")), manifest);
+});
+
+test("fingerprints refuse wrong owners, unbound staging, and invalid sizes", () => {
+  const store = ownedStore(path.join(tmpdir(), "attachments"));
+  const owner = projectOwner();
+  const file = stageDraft(store, mintDraft(store, owner)).staged[0]!;
+  assert.throws(() => store.fingerprint(file, { kind: "thread", threadId: "thread-1" }), /ownership/i);
+  const unbound = store.stage([{ name: "legacy.txt", data: "YQ==" }]).staged[0]!;
+  assert.throws(() => store.fingerprint(unbound, owner), /ownership/i);
+  for (const size of [-1, 0.5, NaN, Infinity, LIMITS.fileBytes + 1]) {
+    assert.throws(() => store.fingerprint({ ...file, size }, owner), /ownership/i);
+  }
+});
+
+for (const fault of ["missing", "replacement", "symlink", "oversize"] as const) {
+  test(`fingerprints reject ${fault} without changing evidence`, () => {
+    const store = ownedStore(path.join(tmpdir(), "attachments"));
+    const owner = projectOwner();
+    const file = stageDraft(store, mintDraft(store, owner)).staged[0]!;
+    const target = path.join(store.root, file.rel);
+    const manifest = fs.readFileSync(path.join(store.root, ".manifest.json"));
+    if (fault === "oversize") fs.truncateSync(target, LIMITS.fileBytes + 1);
+    else {
+      fs.renameSync(target, target + ".original");
+      if (fault === "replacement") fs.writeFileSync(target, "b");
+      if (fault === "symlink") fs.symlinkSync(target + ".original", target);
+    }
+    assert.throws(() => store.fingerprint(file, owner), /attachment/i);
+    assert.deepEqual(fs.readFileSync(path.join(store.root, ".manifest.json")), manifest);
+    if (fault !== "oversize") assert.equal(fs.readFileSync(target + ".original", "utf8"), "a");
+  });
+}
+
+for (const fault of ["same-size", "growth", "replacement"] as const) {
+  test(`fingerprints reject ${fault} mutation during the bounded read and close the descriptor`, () => {
+    const store = ownedStore(path.join(tmpdir(), "attachments"));
+    const owner = projectOwner();
+    const file = stageDraft(store, mintDraft(store, owner)).staged[0]!;
+    const target = path.join(store.root, file.rel);
+    const read = fs.readSync;
+    let observed: number | undefined;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = Reflect.apply(read, fs, args) as number;
+      if (observed === undefined) {
+        observed = args[0];
+        if (fault === "replacement") { fs.renameSync(target, target + ".original"); fs.writeFileSync(target, "b"); }
+        else {
+          fs.writeFileSync(target, fault === "growth" ? "bb" : "b");
+          // Deterministic metadata change even on filesystems with coarse clocks.
+          fs.utimesSync(target, new Date(0), new Date(0));
+        }
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try { assert.throws(() => store.fingerprint(file, owner), /attachment/i); }
+    finally { fs.readSync = read; }
+    assert.notEqual(observed, undefined);
+    assert.throws(() => fs.fstatSync(observed!), { code: "EBADF" });
+  });
+}

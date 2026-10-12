@@ -9,6 +9,7 @@ export class WorkspaceCanvas {
   private entries = new Map<string, { cwd: string; resources: CanvasResources; browser: WorkspaceBrowser; dispose: () => void; polling?: Promise<CanvasSnapshot> }>();
   private generation = new Map<string, number>();
   private disposed = false;
+  get hasOpenPages(): boolean { return this.entries.size > 0; }
   constructor(private window: BrowserWindow) {}
   async open(id: string, cwd: string, relative: string): Promise<CanvasSnapshot> {
     if (this.disposed || typeof id !== "string" || !/^[\w-]{1,100}$/.test(id)) throw new Error("Canvas unavailable.");
