@@ -57,6 +57,14 @@ ShellCheck reports the pre-existing SC2046 keychain-list warning. No application
 changed, so the prior updater UI acceptance remains scoped to its recorded source.
 
 Independent read-only review found no blocking correctness or security issue. Its stale
-macOS-only workflow paragraph was corrected. The modified native report producers still
-need hosted CI on this patch, and the combined release workflow needs an approved signed
-tag. No signed tag, native macOS acceptance run, draft upload, or publication occurred.
+macOS-only workflow paragraph was corrected. The modified native report producers passed hosted CI at `5189b57`; their manifests
+and all three downloaded installer hashes were verified. The combined release workflow
+still needs an approved signed tag. No signed tag, native macOS acceptance run, draft upload, or publication occurred.
+
+The prospective integration with the independently verified approval, beta-documentation,
+and worktree-maintenance recovery source (`7e461bf`) passed a fresh full build, workspace
+typechecks, and 1,405 unit tests with 15 skips. All 639 source hashes held during the runs;
+all observed owned process identities were absent afterward. The 329 application, core,
+E2E, site/store and listed build-input paths match the approval revision `87368ec`, whose
+271 desktop and seven site E2E cases passed separately. This is source-equivalence evidence,
+not a new UI run. Reconcile the actual protected main commits before pushing this integration.

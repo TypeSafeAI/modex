@@ -247,8 +247,8 @@ being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
 exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these
-changes and was submitted for beta review. The v0.0.9 standalone desktop now supplies
-these endpoints for real paired use.
+changes and was approved for TestFlight beta testing on 2026-10-07. The v0.0.9 standalone
+desktop now supplies these endpoints for real paired use.
 
 **Chat title quality.** The title request now includes a bounded final reply and asks for a
 short action-and-subject title in the user's language. Validation normalizes plain text and
@@ -363,7 +363,8 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 - **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
   fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
-  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  A squash-merged tip whose tree matches the landed commit counts as proof, so branches
+  that merged `main` in before landing can be pruned. The shared command supports a daily macOS user job and keeps unknown legacy worktrees
   and remote branches. Desktop retirement respects project-script retention. Maintenance
   regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
   and [verification](reviews/2026-10-11-worktree-hygiene.md).
@@ -482,8 +483,10 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and
-  an acceptance manifest. Local build/typechecks and 1,387 unit tests passed (15 skipped).
-  This workflow has not yet run on an approved signed tag.
+  an acceptance manifest. The combined recovery source passed local build/typechecks and
+  1,405 unit tests (15 skipped). Native reports and all three installer hashes were verified
+  on [the release-patch run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498).
+  The combined release workflow has not yet run on an approved signed tag.
   Windows signing stays deferred; account/session and historical migration gaps remain.
   [Attachment checks](release-signing.md#candidate-attachment-checks).
 
@@ -616,6 +619,11 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
+  A follow-up makes an allow ask when the command chains or redirects commands or is longer
+  than the text Jev sees, and makes receipts say when Jev was not consulted. That closes the
+  truncated-suffix false allow; the quoted-test-name case remains open.
+  [Recovery verification](reviews/2026-10-12-approval-recovery.md) passed 1,376 unit tests
+  (15 skipped), 271 desktop E2E cases and seven site cases. The gate remains off by default.
 - **Retired worktrees.** None from this list awaits a disposition. All six were retired after
   their work landed, and their uncommitted work or unique commits were saved as patches outside
   the repository first.
@@ -726,8 +734,9 @@ reuses the desktop renderer. Val approved integrating this development preview. 
 boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
 saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
 App Sandbox was verified on the running client. Graceful host shutdown, full parity and
-real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
-pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+real CLI acceptance, provisioning and App Review eligibility remain pending. Store 0.0.8
+was approved for macOS TestFlight beta testing on 2026-10-07; this is not an App Store
+release. See [the preview ledger](mac-store-preview-plan.md) and
 [run instructions](../apps/store-desktop/README.md).
 
 The shared Mac connection settings now recognize existing system CLI sign-ins and recheck

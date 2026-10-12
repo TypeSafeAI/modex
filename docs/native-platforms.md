@@ -202,3 +202,11 @@ This workflow change has not yet run on an approved signed tag. It does not chan
 evidence or outstanding gates above. Windows installers remain unsigned, updates remain
 manual, and `installerAcceptance` stays `pending` until the remaining account/session checks
 have evidence. See [release signing](release-signing.md#candidate-attachment-checks).
+
+The [release-patch native run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498)
+passed at `5189b57`. Both reports contain the verified candidate manifest and
+`nativeChecksPassed: true`. The downloaded installer archives match GitHub's sizes and
+digests; their manifests exactly match the installed-app receipts, and all three installer
+byte sizes and SHA-256 values match. The tested merge tree equals that source head.
+This proves the new report fields on that revision; it does not complete the pending
+account/session checks or the first combined signed-tag execution.

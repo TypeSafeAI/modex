@@ -132,6 +132,41 @@ for (const kind of ['wrong-head', 'wrong-base', 'patch-mismatch']) {
   });
 }
 
+// A branch that merged main into itself before landing, as long-lived PR branches do.
+function mergedMainBranch(f) {
+  const w = f.create();
+  fs.writeFileSync(path.join(f.primary, 'other.txt'), 'main moved\n');
+  git(f.primary, 'add', 'other.txt'); git(f.primary, 'commit', '-m', 'main moved'); git(f.primary, 'push', 'origin', 'main');
+  git(w.location, 'merge', '--no-ff', 'main', '-m', 'merge main');
+  w.head = git(w.location, 'rev-parse', 'HEAD');
+  assert.ok(git(w.location, 'rev-list', '--min-parents=2', 'main..HEAD'), 'branch carries a merge commit');
+  return w;
+}
+
+test('squash proof accepts a branch with merge commits whose tip tree is the landed tree', async (t) => {
+  const f = fixture(t); const w = mergedMainBranch(f); f.merge(w, true); await f.release(w);
+  assert.equal(git(f.primary, 'rev-parse', `${w.head}^{tree}`), git(f.primary, 'rev-parse', 'main^{tree}'));
+  const row = await f.row(w.name);
+  assert.equal(row.eligible, true, row.reasons.join(','));
+  assert.equal(row.proof.kind, 'squash-tree');
+  const result = await f.core.prune({ apply: true });
+  assert.equal(result.results[0].status, 'removed');
+  assert.equal(fs.existsSync(w.location), false);
+  assert.equal(result.run.entries[0].proof.kind, 'squash-tree');
+  assert.equal(git(f.primary, 'rev-parse', result.run.entries[0].archiveRef), w.head);
+});
+
+for (const kind of ['wrong-head', 'wrong-base', 'tree-mismatch']) {
+  test(`rejects tree proof for a branch with merge commits with ${kind}`, async (t) => {
+    const f = fixture(t); const w = mergedMainBranch(f); f.merge(w, true); await f.release(w);
+    if (kind === 'wrong-head') f.pulls[0].head.sha = '1'.repeat(40);
+    if (kind === 'wrong-base') f.pulls[0].base.ref = 'other';
+    if (kind === 'tree-mismatch') { fs.appendFileSync(path.join(f.primary, 'code.txt'), 'only part landed\n'); git(f.primary, 'commit', '-am', 'different squash', '--amend'); git(f.primary, 'push', '--force', 'origin', 'main'); f.pulls[0].merge_commit_sha = git(f.primary, 'rev-parse', 'HEAD'); }
+    assert.deepEqual((await f.row(w.name)).reasons, ['not-proven-merged']);
+    await f.core.prune({ apply: true }); assert.equal(f.exists(w), true);
+  });
+}
+
 test('changed head after audit is preserved by apply', async (t) => {
   const f = fixture(t); const w = f.create(); f.merge(w); await f.release(w);
   assert.equal((await f.row()).eligible, true);
