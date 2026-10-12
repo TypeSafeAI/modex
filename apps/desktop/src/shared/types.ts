@@ -31,6 +31,17 @@ export interface Project {
   addedAt: string;
 }
 
+/** What a thread's last model-reaching turn ran with, and how much context the next turn re-reads. */
+export interface LastTurn {
+  /** When the turn ended. */
+  at: string;
+  model: string;
+  effort?: string;
+  fast: boolean;
+  /** Input of the turn's last model call; absent when the CLI reported no usage. */
+  contextTokens?: number;
+}
+
 export interface Thread {
   id: string;
   projectId: string;
@@ -54,6 +65,8 @@ export interface Thread {
   auto?: boolean;
   /** Backend resume handle: Claude session id or Codex thread id. */
   sessionHandle?: string;
+  /** The last turn that reached a model: what the backend's prompt cache was built with. Auto reads it. */
+  lastTurn?: LastTurn;
   /** Opaque identity binding; never credentials. Older Codex handles belong to CLI auth. */
   codexAccount?: string;
   status: ThreadStatus;

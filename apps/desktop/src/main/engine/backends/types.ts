@@ -98,6 +98,18 @@ export interface TurnOptions {
   addDirs?: string[];
 }
 
+/** Token usage a backend observed during one turn, for Auto routing and its records. */
+export interface TurnUsage {
+  /** The turn's first model call on the thread's own session: did it find the cache warm? */
+  first: { cacheRead: number; cacheWrite: number; uncached: number };
+  /** Total input of the turn's last model call (read + written + uncached): what the next turn re-reads. */
+  contextTokens: number;
+  /** Output tokens for the turn, reasoning included, as the CLI reports them. Informational only. */
+  outputTokens?: number;
+  /** Model calls counted. */
+  calls: number;
+}
+
 export interface TurnResult {
   status: "completed" | "interrupted" | "failed";
   error?: string;
@@ -105,6 +117,8 @@ export interface TurnResult {
   detail?: Record<string, unknown>;
   /** What the backend tried on its own before giving up, oldest first. */
   recovery?: string[];
+  /** Token usage the backend observed; absent when no model call was seen. */
+  usage?: TurnUsage;
 }
 
 export interface TitleOptions {

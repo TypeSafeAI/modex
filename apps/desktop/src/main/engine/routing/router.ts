@@ -7,6 +7,7 @@ import { cliTransport, DEFAULT_JEV_MODEL, detectJevCli, httpTransport, JevError,
 import { judgeHeuristically, judgeWithJev, stateFor, QUESTION_SET_VERSION, type JudgeSource, type Judgments } from "./judge.js";
 import { decide, type Decision } from "./policy.js";
 import { fallbackFollowUp, FOLLOW_UP_QUESTION, FOLLOW_UPS, followUpState } from "./followup.js";
+import type { TurnUsage } from "../backends/types.js";
 
 export interface RouterOptions {
   home: string;
@@ -257,6 +258,9 @@ export class Router {
       catch (err) { ladders[b] = []; discoveryErrors.push((err as Error).message); }
     }));
 
+    const last = thread.lastTurn;
+    const lastAt = last ? Date.parse(last.at) : Number.NaN;
+    const idleMs = Number.isFinite(lastAt) ? Math.max(0, Date.now() - lastAt) : undefined;
     const premiumExhausted = policy.premium_turns_per_day != null && this.fit.premiumToday() >= policy.premium_turns_per_day;
     const decision = decide({
       judgments, source, policy, ladders, premiumExhausted,
@@ -271,7 +275,9 @@ export class Router {
     if (!decision.blocked) {
       this.blockedThreads.delete(thread.id);
       try {
-        this.fit.recordRoute({ threadId: thread.id, task: judgments.task, source, backend: decision.backend, model: decision.model, effort: decision.effort, fast: decision.fast, tier: decision.tier, confidence: judgments.taskConfidence, premium });
+        this.fit.recordRoute({ threadId: thread.id, task: judgments.task, source, backend: decision.backend, model: decision.model, effort: decision.effort, fast: decision.fast, tier: decision.tier, confidence: judgments.taskConfidence, premium,
+          ...(idleMs !== undefined ? { idleMs } : {}), ...(last?.contextTokens !== undefined ? { contextTokens: last.contextTokens } : {}),
+        });
       } catch (err) {
         decision.reasons.push(`Could not save routing learning (${(err as Error).message}); this session retains its premium count and the safe route will run.`);
       }
@@ -297,8 +303,8 @@ export class Router {
     return { item, judgments, decision, source, questionSetVersion: QUESTION_SET_VERSION };
   }
 
-  noteOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted"): void {
-    try { this.fit.recordOutcome(threadId, outcome); } catch { /* Learning persistence cannot change a coding turn's outcome. */ }
+  noteOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage): void {
+    try { this.fit.recordOutcome(threadId, outcome, usage); } catch { /* Learning persistence cannot change a coding turn's outcome. */ }
   }
 
   /**

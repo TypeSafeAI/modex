@@ -1,11 +1,11 @@
 import { resolveCli } from "./cli-path.js";
 import fs from "node:fs";
 import path from "node:path";
-import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
+import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, LastTurn, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
 import { APPROVAL_POLICIES } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
-import type { ApprovalRequest, Backend, TurnSink } from "./backends/types.js";
+import type { ApprovalRequest, Backend, TurnResult, TurnSink } from "./backends/types.js";
 import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
 import { MockBackend } from "./backends/mock.js";
@@ -430,11 +430,12 @@ export class ThreadRunner {
         sink,
         abort.signal,
       );
+      this.noteLastTurn(threadId, thread, fast, result);
       if (result.status === "completed" && shouldName && !abort.signal.aborted) {
         const reply = l.items.slice(turnStart).reverse().find((item) => item.kind === "assistant" && item.text.trim());
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
-      if (auto) this.router.noteOutcome(threadId, result.status);
+      if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
       } else {
@@ -580,7 +581,7 @@ export class ThreadRunner {
     const live = this.o.store.thread(threadId);
     const current = live ? { ...live } : undefined;
     // Switching backend starts a fresh backend conversation; the transcript stays.
-    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
+    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, lastTurn: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
     const titleSource = patch.title === undefined ? {} : { titleSource: opts.automaticTitle ? "auto" as const : "manual" as const };
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch, ...titleSource });
     this.o.emit({ threadId, type: "thread", thread: t });
@@ -595,6 +596,20 @@ export class ThreadRunner {
       }).catch(() => {});
     }
     return t;
+  }
+
+  /** Records what the backend's prompt cache was last built with, so Auto can avoid discarding it. */
+  private noteLastTurn(threadId: string, ran: Thread, fast: boolean, result: TurnResult): void {
+    if (!result.usage && result.status !== "completed") return;
+    const now = this.o.store.thread(threadId);
+    // A backend switch during the turn started another conversation; this record would describe the old one.
+    if (!now || now.backend !== ran.backend) return;
+    const lastTurn: LastTurn = {
+      at: new Date().toISOString(), model: ran.model, fast,
+      ...(ran.effort ? { effort: ran.effort } : {}),
+      ...(result.usage ? { contextTokens: result.usage.contextTokens } : {}),
+    };
+    this.o.store.updateThread(threadId, { lastTurn });
   }
 
   private sinkFor(threadId: string, l: Live): TurnSink {

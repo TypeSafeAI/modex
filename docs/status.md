@@ -320,6 +320,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Cache usage per turn.** Claude and Codex turns report how much input the first model call
+  read from the prompt cache, wrote to it or sent uncached, and how much context the next turn
+  re-reads. Threads keep this as `lastTurn`; Auto's routing records add idle time and cache
+  figures. Routing is unchanged; this is the measurement half of
+  [sticky Auto routing](specs/2026-10-12-sticky-auto-routing-spec.md).
+
 - **Minimal right workspace.** Review opens with a compact toolbar and keeps selection,
   filters, display options and scroll position when switching tools or hiding the rail.
   Files sit above full-width code at narrow widths and beside it when expanded. Pointer

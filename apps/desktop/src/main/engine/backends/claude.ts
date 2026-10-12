@@ -7,6 +7,7 @@ import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
+import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
 
@@ -130,6 +131,7 @@ export class ClaudeBackend implements Backend {
       let stderr = "";
       // What the CLI said about itself at startup (build, model, where its key came from), for failure reports.
       const init: Record<string, unknown> = {};
+      const meter = new UsageMeter();
       // Background work (Bash or Agent with run_in_background) outlives the `result` that ends the model's
       // reply. When it finishes, the CLI starts a follow-up turn by itself, and that turn's permission
       // prompts are answered on stdin. Closing stdin at the first `result` failed every later prompt with
@@ -159,6 +161,7 @@ export class ClaudeBackend implements Backend {
         idleTimer = setTimeout(() => settle(done), idleMs);
       };
       const onResult = (msg: ClaudeMessage) => {
+        meter.addOutput(msg.usage?.output_tokens);
         if (msg.session_id) sink.session(msg.session_id);
         const r = resultOf(msg);
         // An error ends the turn at once, as on a turn without background work; holding it would hide it.
@@ -190,7 +193,7 @@ export class ClaudeBackend implements Backend {
         clearTimeout(idleTimer);
         clearTimeout(capTimer);
         signal.removeEventListener("abort", onAbort);
-        resolve(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r);
+        resolve(withUsage(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r, meter));
       };
       const write = (o: unknown) => {
         try {
@@ -219,6 +222,8 @@ export class ClaudeBackend implements Backend {
           } catch {
             return;
           }
+          // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
+          if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
           if (msg.type === "result") return onResult(msg);
           // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
           const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
@@ -408,6 +413,12 @@ interface ContentBlock {
   content?: string | { type: string; text?: string }[];
   is_error?: boolean;
 }
+interface ClaudeUsage {
+  input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  output_tokens?: number;
+}
 interface ClaudeMessage {
   type: string;
   subtype?: string;
@@ -425,7 +436,9 @@ interface ClaudeMessage {
   /** `system/background_tasks_changed`: every background task still running. */
   tasks?: { task_id?: string }[];
   session_id?: string;
-  message?: { content?: ContentBlock[] };
+  message?: { id?: string; content?: ContentBlock[]; usage?: ClaudeUsage };
+  /** `result`: the turn's token totals. */
+  usage?: ClaudeUsage;
   event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
   request_id?: string;
   request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] };

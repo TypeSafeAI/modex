@@ -159,6 +159,20 @@ The file also counts premium turns per day (`premium_turns_per_day` bound) and k
 last 200 routing records with outcomes, which is the dataset a future calibrated fit model
 (or a threshold sweep in `.probes/`) would train on. Settings → "Reset learning" clears it.
 
+## Cache usage
+
+Both CLIs report token usage for every model call: Claude on each `assistant` message
+(`cache_read_input_tokens`, `cache_creation_input_tokens`, `input_tokens`), Codex in
+`thread/tokenUsage/updated`. Modex keeps two things from each turn: how the first call's input
+split between cache reads, cache writes and uncached tokens, and the total input of the last
+call, which is what the next turn re-reads. Sub-agent calls are not counted; they have their own
+context.
+
+The thread stores the latter as `lastTurn` in `state.json`, with the model, effort and fast mode
+the turn ran on and when it ended. Auto's routing records in `routing-fit.json` add the idle time
+and context size at decision time and the turn's cache figures afterwards, so the records show
+what each switch actually cost.
+
 ## Bounds you control
 
 Settings has separate General, Coding CLIs, Auto routing, and Advanced sections, with Save
