@@ -184,7 +184,8 @@ function hold(input: DecisionInput, free: Decision, current: Candidate | undefin
   const tail = (change: string) => (w === "unknown" ? "" : ` ${change} would re-read the history uncached.`);
   if (free.model === current.model) {
     const effort = EFFORT_CLEARS_CACHE[current.backend] ? heldRoute(input, current, [])?.effort ?? free.effort : free.effort;
-    const fast = FAST_CLEARS_CACHE[current.backend] ? heldFast(input, current) : free.fast;
+    // Without a record there is no fast-mode state to keep.
+    const fast = FAST_CLEARS_CACHE[current.backend] && last ? heldFast(input, current) : free.fast;
     if (effort === free.effort && fast === free.fast) return { ...free, warmth: w };
     reasons.push(`Kept ${current.label} at ${effort ?? "its default"} effort${fast ? " in fast mode" : ""}: ${state}.${tail(effort !== free.effort ? "Changing effort" : "Changing fast mode")}`);
     return { ...free, effort, fast, held: true, warmth: w };

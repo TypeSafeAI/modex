@@ -102,3 +102,10 @@ test("cold, small and unknown threads say why; without cache info the choice is 
   const today = decide(D({ cache: undefined }));
   assert.deepEqual([today.model, today.held, today.warmth], ["sonnet", undefined, undefined]);
 });
+
+test("without a cache record, fast mode on the same model stays as Auto chose it", () => {
+  withClears(false, true, () => {
+    const d = decide(D({ judgments: J({ complexity: 0.4, wantsSpeed: 0.9 }), current: { backend: "claude", model: "haiku", effort: "low", hasSession: true }, cache: { idleMs: undefined } }));
+    assert.deepEqual([d.model, d.fast, d.held, d.warmth], ["haiku", true, undefined, "unknown"]);
+  });
+});
