@@ -355,7 +355,8 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 - **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
   fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
-  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  A squash-merged tip whose tree matches the landed commit counts as proof, so branches
+  that merged `main` in before landing can be pruned. The shared command supports a daily macOS user job and keeps unknown legacy worktrees
   and remote branches. Desktop retirement respects project-script retention. Maintenance
   regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
   and [verification](reviews/2026-10-11-worktree-hygiene.md).
