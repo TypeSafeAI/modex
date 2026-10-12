@@ -481,7 +481,8 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   cancellation, restart preparation, and recovery for packaged Macs. Schema-2 draft storage
   preserves independent text and files, pending originals, and owner-removal recovery.
   Local build, workspace typechecks, 1,352 unit tests (15 skipped), 270 desktop E2E cases,
-  and seven site E2E cases passed. Coverage includes raw draft/attachment restoration,
+  and seven site E2E cases passed, including a full rerun after hosted fixture corrections.
+  Coverage includes raw draft/attachment restoration,
   owner removal, controller cancellation, and partial-shutdown reload/Quit. Download,
   staging, and publisher checks are simulated in the controller UI tests. Three signed
   hosted native scenarios and release approval remain open; published builds still update
