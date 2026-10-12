@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-11._
+_Last updated 2026-10-12._
 
 ## Shipped
 
@@ -247,8 +247,8 @@ being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
 exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these
-changes and was submitted for beta review. The v0.0.9 standalone desktop now supplies
-these endpoints for real paired use.
+changes and was approved for TestFlight beta testing on 2026-10-07. The v0.0.9 standalone
+desktop now supplies these endpoints for real paired use.
 
 **Chat title quality.** The title request now includes a bounded final reply and asks for a
 short action-and-subject title in the user's language. Validation normalizes plain text and
@@ -363,7 +363,8 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 - **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
   fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
-  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  A squash-merged tip whose tree matches the landed commit counts as proof, so branches
+  that merged `main` in before landing can be pruned. The shared command supports a daily macOS user job and keeps unknown legacy worktrees
   and remote branches. Desktop retirement respects project-script retention. Maintenance
   regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
   and [verification](reviews/2026-10-11-worktree-hygiene.md).
@@ -478,6 +479,16 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
 
 ## In flight
+
+- **Verified multiplatform release candidates.** The release workflow now joins native
+  Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
+  to the exact tag/source/run, and prepares a draft with five installers, checksums and
+  an acceptance manifest. The combined recovery source passed local build/typechecks and
+  1,405 unit tests (15 skipped). Native reports and all three installer hashes were verified
+  on [the release-patch run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498).
+  The combined release workflow has not yet run on an approved signed tag.
+  Windows signing stays deferred; account/session and historical migration gaps remain.
+  [Attachment checks](release-signing.md#candidate-attachment-checks).
 
 - **Automatic updates and durable drafts.** The unreleased desktop code connects verified download,
   cancellation, restart preparation, and recovery for packaged Macs. Schema-2 draft storage
@@ -687,9 +698,8 @@ Roughly in the order they earn their place; none is scheduled.
 
 1. **Ship automatic installation of updates.** Finish the in-flight acceptance and signed
    release gates above. Published builds still require manual installation.
-2. **Publish Windows and Linux installers.** Extend the protected release pipeline, which
-   currently uploads macOS artifacts, to verify and publish the exact tagged native
-   installers. Candidate Actions artifacts are not releases. Provider-account acceptance,
+2. **Publish Windows and Linux installers.** Run the prepared protected release pipeline
+   on an approved new signed tag, verify its draft assets, and complete release review. Candidate Actions artifacts are not releases. Provider-account acceptance,
    KWallet6/full graphical sessions, and historical schema migration remain unproven;
    see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
 3. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
@@ -724,8 +734,9 @@ reuses the desktop renderer. Val approved integrating this development preview. 
 boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
 saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
 App Sandbox was verified on the running client. Graceful host shutdown, full parity and
-real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
-pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+real CLI acceptance, provisioning and App Review eligibility remain pending. Store 0.0.8
+was approved for macOS TestFlight beta testing on 2026-10-07; this is not an App Store
+release. See [the preview ledger](mac-store-preview-plan.md) and
 [run instructions](../apps/store-desktop/README.md).
 
 The shared Mac connection settings now recognize existing system CLI sign-ins and recheck

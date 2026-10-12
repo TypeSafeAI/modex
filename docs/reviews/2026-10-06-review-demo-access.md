@@ -135,10 +135,31 @@ the Mac TestFlight page also displayed Waiting for Review with Internal and Publ
 Receipts and sanitized API readbacks are retained at
 `/Users/buns/Documents/Codex/artifacts/modex-pr128-review-2026-10-06/submission/`.
 
+## Apple beta review decision
+
+Apple approved both replacement builds for TestFlight beta testing on **2026-10-07**, about
+five hours after submission. This resolves the Guideline 2.1 demo-access request.
+
+| App | Version | Build ID | Beta review | Approved (UTC) |
+| --- | --- | --- | --- | --- |
+| Modex Mac App Store | 0.0.8 (0.0.8) | `b65a5d8f-c3b3-480a-9164-e421aee66c71` | `APPROVED` | 2026-10-07 04:38 |
+| Modex Companion | 0.1.0 (5) | `ba880ae0-e6f9-4c29-9d3c-ccdc87f0b96e` | `APPROVED` | 2026-10-07 04:46 |
+
+The approval times come from Apple's App Store Connect notification emails; the API
+reports only submission times. The read-only [Apple status receipt](2026-10-11-apple-status.md)
+from 2026-10-11 06:41 UTC returned the same `APPROVED` beta review states. Companion's
+external build state was `IN_BETA_TESTING` and the Mac build's was `BETA_APPROVED`. The
+rejected predecessors, Companion build 4 and Mac 0.0.7, keep their `REJECTED` states.
+
+Beta approval is not App Store approval. Production App Review, including the separate-host
+Mac Store architecture, happens when a build is submitted for customer distribution. Beta
+approval also does not verify physical TestFlight installation.
+
 ## Remaining delivery steps
 
 - Complete physical-device/TestFlight installation and Camera scanning acceptance.
-- Await Apple's demo-access and beta review decision, including the separate-host question.
+- Pass production App Review, including the separate-host question. Beta review is
+  approved (see above).
 - Complete the production Mac listing. Its 0.0.8 draft has the uploaded build and review
   notes selected, but description, keywords, support URL, and screenshots are missing.
 - Publish a new standalone host release for real paired mobile creation and skills.

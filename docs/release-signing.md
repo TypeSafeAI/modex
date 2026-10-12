@@ -1,6 +1,6 @@
 # Signing and notarizing the macOS build
 
-From v0.0.5 every release artifact is signed with a Developer ID Application certificate,
+From v0.0.5 every macOS release artifact is signed with a Developer ID Application certificate,
 hardened-runtime enabled, notarized by Apple and stapled, so Gatekeeper opens it without a
 warning on a fresh Mac. v0.0.1–v0.0.4 were ad-hoc signed and needed a right-click → Open.
 
@@ -85,7 +85,7 @@ Rules that keep this safe:
 4. **The private key stays in the keychain.** Export a `.p12` only to populate CI, with a
    strong password, and delete the export afterwards. The workflow imports it into a
    temporary keychain on the runner and deletes that keychain at the end of the job.
-5. **CI refuses unsigned output.** The workflow checks every secret is present, verifies the
+5. **macOS CI refuses unsigned output.** The workflow checks every secret is present, verifies the
    tag's SSH signature against `TAG_ALLOWED_SIGNERS` before building, and uploads only after
    the same verification the local script runs. The `release-signing` environment should
    require a reviewer, so a tag push alone cannot mint artifacts.
@@ -168,9 +168,13 @@ rehearsal that gates the merge.
    the full e2e suite against the packaged app. It also signs a private updater-enabled
    `0.0.0` source fixture. Three fresh GitHub-hosted macOS runners use those exact source
    and candidate ZIPs for native upgrade, native download failure, and interrupted-download
-   acceptance. Only after all jobs pass does it attach the DMG, ZIP, and `SHA256SUMS.txt`
-   to a draft release. Existing public releases and asset names cannot be overwritten.
-   The private source fixture is never a public release asset.
+   acceptance. The same workflow also runs native Windows and Linux installer checks.
+   After all jobs pass, it verifies the five candidate installers against their hashes,
+   exact tag/package/source/run identity, and native receipts. It attaches the macOS
+   DMG/ZIP, unsigned Windows NSIS installer, Linux AppImage/Debian packages,
+   `SHA256SUMS.txt`, and `RELEASE-MANIFEST.json` to a draft release. Existing public
+   releases and drafts containing assets are refused. The private source fixtures are
+   never public release assets.
 4. Download the draft's assets and check them on a Mac as in
    [Verifying a download](#verifying-a-download): `shasum -c`, Gatekeeper, stapler and the
    signing certificate. Attach the verification log, write the notes, then publish the draft.
@@ -202,3 +206,26 @@ Keep the `macos-native-update-*` artifacts with the release review. Local harnes
 simulated controller tests pass, but the three hosted native scenarios have not run. Signed
 tag approval, the `release-signing` reviewer, and draft-asset verification remain required
 before publication. See [update recovery](update-recovery.md) for current local behavior.
+
+## Candidate attachment checks
+
+`node scripts/verify-release-candidate.mjs identity` requires a stable, nonzero desktop
+version matching the tag and a checkout matching the workflow commit. The signing job
+also verifies that the signed tag points to that commit. Version `0.0.0` is reserved for
+private upgrade fixtures; an existing published tag must not be reused.
+
+The attachment job downloads candidates and acceptance reports from the same workflow run
+into separate directories. The verifier checks all five installer files, both native
+platform manifests, and all three signed macOS scenario receipts before copying an explicit
+allowlist into a fresh output directory. It checks the copied hashes again, then writes
+the combined checksum list and release manifest. Missing, extra, tampered, symlinked, stale,
+or failed inputs stop attachment. Windows and Linux checks use the reusable native workflow
+with read-only repository access and receive no Apple signing secrets.
+
+`nativeChecksPassed: true` records that the installed-app harness and its cleanup passed.
+It does not complete `installerAcceptance`, which remains `pending` with the account/session
+limits in each report and the release manifest. Windows signing is deferred, Windows/Linux
+updates remain manual, and same-source `0.0.0` fixtures do not prove historical migration.
+The combined release workflow still needs its first approved tagged execution; helper tests
+verify the attachment checks, not installed-app behavior. Review the remaining gates in
+[native-platforms.md](native-platforms.md) before publication.

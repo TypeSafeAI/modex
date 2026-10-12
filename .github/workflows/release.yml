@@ -1,8 +1,8 @@
 name: Release
 
-# Builds, signs, notarizes and verifies the macOS artifacts for a pushed version tag and attaches
-# them to that tag's GitHub release (created as a draft if it does not exist). Fails closed: no
-# secret, no artifact. Nothing unsigned is ever uploaded. See docs/release-signing.md.
+# Signs and verifies macOS updates, builds unsigned Windows/Linux installers on native hosts,
+# then attaches exact accepted candidates to a draft release. Publication is separate.
+# macOS signing fails closed. See docs/release-signing.md.
 on:
   push:
     tags: ["v*"]
@@ -53,11 +53,15 @@ jobs:
           git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           [ "$(git cat-file -t "${GITHUB_REF_NAME}")" = tag ] || { echo "::error::${GITHUB_REF_NAME} is not an annotated, signed tag"; exit 1; }
           git tag -v "${GITHUB_REF_NAME}"
+          [ "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "$GITHUB_SHA" ] || { echo "::error::signed tag does not match workflow source"; exit 1; }
 
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
+
+      - name: Verify tag, package version and checkout identity
+        run: node scripts/verify-release-candidate.mjs identity
 
       - name: Install
         run: npm ci
@@ -197,28 +201,67 @@ jobs:
           path: ${{ runner.temp }}/modex-update-acceptance-evidence/
           if-no-files-found: ignore
 
+  native-platforms:
+    name: native Windows and Linux candidates
+    uses: ./.github/workflows/platform-cli.yml
+    permissions:
+      contents: read
+
   attach-release:
     name: attach verified release artifacts
-    needs: [macos, native-update]
+    needs: [macos, native-update, native-platforms]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v4
         with:
           name: macos-release-candidate
-          path: release
-      - name: Verify candidate bytes and attach to the release (draft if new)
+          path: release-candidates/macos
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-installers-win32
+          path: release-candidates/win32
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-installers-linux
+          path: release-candidates/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-installed-win32
+          path: release-candidates/installed-win32
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-installed-linux
+          path: release-candidates/installed-linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-native-update-upgrade
+          path: release-candidates/macos-upgrade
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-native-update-native-failure
+          path: release-candidates/macos-native-failure
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-native-update-interrupted
+          path: release-candidates/macos-interrupted
+      - name: Bind installer bytes and native receipts to this release
+        run: node scripts/verify-release-candidate.mjs collect release-candidates release-candidates/verified
+      - name: Attach verified files to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        working-directory: release
+        working-directory: release-candidates/verified
         run: |
-          sha256sum --check SHA256SUMS.txt
-          # Existing public releases and existing asset names are immutable here.
+          # Existing public releases and assets are immutable here. No --clobber.
           if gh api "repos/$GH_REPO/releases/tags/$GITHUB_REF_NAME" > "$RUNNER_TEMP/release.json"; then
-            jq -e '.draft == true' "$RUNNER_TEMP/release.json"
+            jq -e '.draft == true and (.assets | length == 0)' "$RUNNER_TEMP/release.json"
           else
-            gh api --method POST "repos/$GH_REPO/releases" -f tag_name="$GITHUB_REF_NAME" -f name="Modex $GITHUB_REF_NAME" -f body="Draft: notes pending." -F draft=true > "$RUNNER_TEMP/release.json"
+            gh api --method POST "repos/$GH_REPO/releases" -f tag_name="$GITHUB_REF_NAME" -f name="Modex $GITHUB_REF_NAME" -f body="Draft: notes pending. Windows installers are unsigned. See RELEASE-MANIFEST.json for native acceptance limits." -F draft=true > "$RUNNER_TEMP/release.json"
           fi
-          gh release upload "$GITHUB_REF_NAME" Modex-*-arm64.dmg Modex-*-arm64.zip SHA256SUMS.txt
+          gh release upload "$GITHUB_REF_NAME" ./*

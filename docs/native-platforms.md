@@ -185,6 +185,28 @@ Fresh required macOS checks and native Windows/Linux jobs verify each submitted 
 [PR #173](https://github.com/TypeSafeAI/modex/pull/173) records the exact hosted receipts.
 
 Installer candidate implementation and native test artifacts are distinct from release
-publication. The protected release workflow still uploads only macOS assets; acceptance
-and publication of the exact tagged Windows/Linux installers remain pending, along with
+publication. The combined release workflow below is prepared, but acceptance and
+publication of the exact tagged Windows/Linux installers remain pending, along with
 the account/session and historical-migration limits recorded above.
+
+## Tagged release candidates
+
+The protected Release workflow calls the native platform workflow for the same tagged
+source. Each installed-app report includes its byte-verified candidate manifest and sets
+`nativeChecksPassed` only after acceptance and cleanup succeed. The attachment job requires
+matching source, run, version, architecture, file sizes and hashes, plus the signed macOS
+scenario receipts. It copies only the five verified installers and publishes their hashes
+and remaining acceptance limits into a draft release; private upgrade baselines are excluded.
+
+This workflow change has not yet run on an approved signed tag. It does not change the native
+evidence or outstanding gates above. Windows installers remain unsigned, updates remain
+manual, and `installerAcceptance` stays `pending` until the remaining account/session checks
+have evidence. See [release signing](release-signing.md#candidate-attachment-checks).
+
+The [release-patch native run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498)
+passed at `5189b57`. Both reports contain the verified candidate manifest and
+`nativeChecksPassed: true`. The downloaded installer archives match GitHub's sizes and
+digests; their manifests exactly match the installed-app receipts, and all three installer
+byte sizes and SHA-256 values match. The tested merge tree equals that source head.
+This proves the new report fields on that revision; it does not complete the pending
+account/session checks or the first combined signed-tag execution.

@@ -248,7 +248,11 @@ export class WorktreeMaintenance {
       if (!this.ancestor(merge, info.defaultHead)) continue;
       const parents = this.text(['rev-list', '--parents', '-n', '1', merge]).split(' ').slice(1);
       if (parents.length !== 1) continue; // Only unambiguous single-parent squash commits.
-      const bases = this.text(['merge-base', '--all', row.head, parents[0]]).split('\n');
+      // An identical tree (every path, mode, blob and gitlink) means the tip is exactly the snapshot
+      // that landed, so merge commits on the branch cannot hold anything the default branch lacks.
+      const tree = this.text(['rev-parse', '--verify', `${row.head}^{tree}`]);
+      if (fullSha(tree) && tree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'squash-tree', pull: pr.number, mergeCommit: merge, tree, defaultHead: info.defaultHead };
+      const bases =this.text(['merge-base', '--all', row.head, parents[0]]).split('\n');
       if (bases.length !== 1 || !bases[0]) continue;
       if (this.text(['rev-list', '--min-parents=2', `${bases[0]}..${row.head}`])) continue;
       const flags = ['diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color', '--ignore-submodules=none', '--submodule=short', '--no-relative'];
