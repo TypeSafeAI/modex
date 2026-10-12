@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { TaskKind } from "./judge.js";
+import type { TurnUsage } from "../backends/types.js";
 
 /**
  * The learning loop, kept deliberately legible: a per-task tier offset that moves when the
@@ -31,6 +32,17 @@ export interface RouteRecord {
   premium: boolean;
   outcome?: "completed" | "failed" | "interrupted" | "overridden";
   overrideTier?: number;
+  /** Time since the thread's last model-reaching turn, at decision time. */
+  idleMs?: number;
+  /** Context the previous turn left, which this turn re-reads, at decision time. */
+  contextTokens?: number;
+  /** This turn's first call: input read from the cache, written to it, and sent uncached. */
+  cacheRead?: number;
+  cacheWrite?: number;
+  uncached?: number;
+  /** Context this turn left for the next one. */
+  turnContextTokens?: number;
+  outputTokens?: number;
 }
 
 export interface FitState {
@@ -107,10 +119,14 @@ export class Fit {
     return undefined;
   }
 
-  recordOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted"): void {
+  recordOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage): void {
     const r = this.open(threadId);
     if (!r) return;
     r.outcome = outcome;
+    if (usage) {
+      Object.assign(r, { cacheRead: usage.first.cacheRead, cacheWrite: usage.first.cacheWrite, uncached: usage.first.uncached, turnContextTokens: usage.contextTokens });
+      if (usage.outputTokens !== undefined) r.outputTokens = usage.outputTokens;
+    }
     const t = (this.state.tasks[r.task] ??= empty());
     if (outcome === "failed") {
       t.failures += 1;

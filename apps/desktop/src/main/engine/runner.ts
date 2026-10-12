@@ -435,7 +435,7 @@ export class ThreadRunner {
         const reply = l.items.slice(turnStart).reverse().find((item) => item.kind === "assistant" && item.text.trim());
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
-      if (auto) this.router.noteOutcome(threadId, result.status);
+      if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
       } else {
