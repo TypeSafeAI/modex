@@ -82,6 +82,8 @@ test("switching projects does not carry another thread's unsent instructions", a
   state.threads = ["one", "two"].map((id, i) => ({ id, projectId: i ? "p2" : "p1", title: id, cwd: repo, backend: "mock", model: "mock", mode: "chat", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
   fs.writeFileSync(file, JSON.stringify(state));
   ({ app, page } = await launch(home));
+  // The earlier blank launch can persist New chat as its selected surface.
+  await tid(page, "thread-row").filter({ hasText: "one" }).getByRole("button", { name: "one", exact: true }).click();
   await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "one");
   await tid(page, "composer-input").fill("Only change files in the first project");
   await tid(page, "thread-row").filter({ hasText: "two" }).getByRole("button", { name: "two", exact: true }).click();
@@ -107,6 +109,8 @@ test("unsent text waits on its own thread: switching threads keeps it, the sideb
   const row = (title: string) => tid(page, "thread-row").filter({ hasText: title });
   const open = (title: string) => row(title).getByRole("button", { name: title, exact: true }).click();
   const input = tid(page, "composer-input");
+  // Seeded thread rows do not override the saved New chat selection.
+  await open("one");
   await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "one");
   await input.fill("Keep this for one");
   await expect(tid(row("one"), "thread-row-unsent")).toHaveCount(0); // the selected thread needs no reminder

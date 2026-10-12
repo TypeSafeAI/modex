@@ -320,6 +320,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
+- **Cache usage per turn.** Claude and Codex turns report how much input the first model call
+  read from the prompt cache, wrote to it or sent uncached, and how much context the next turn
+  re-reads. Threads keep this as `lastTurn`; Auto's routing records add idle time and cache
+  figures. Routing is unchanged; this is the measurement half of
+  [sticky Auto routing](specs/2026-10-12-sticky-auto-routing-spec.md).
+
 - **Minimal right workspace.** Review opens with a compact toolbar and keeps selection,
   filters, display options and scroll position when switching tools or hiding the rail.
   Files sit above full-width code at narrow widths and beside it when expanded. Pointer
@@ -471,10 +477,10 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## In flight
 
-- **Automatic updates and durable drafts.** The updater branch connects verified download,
+- **Automatic updates and durable drafts.** The unreleased desktop code connects verified download,
   cancellation, restart preparation, and recovery for packaged Macs. Schema-2 draft storage
   preserves independent text and files, pending originals, and owner-removal recovery.
-  Local build, workspace typechecks, 1,341 unit tests (15 skipped), 270 desktop E2E cases,
+  Local build, workspace typechecks, 1,352 unit tests (15 skipped), 270 desktop E2E cases,
   and seven site E2E cases passed. Coverage includes raw draft/attachment restoration,
   owner removal, controller cancellation, and partial-shutdown reload/Quit. Download,
   staging, and publisher checks are simulated in the controller UI tests. Three signed

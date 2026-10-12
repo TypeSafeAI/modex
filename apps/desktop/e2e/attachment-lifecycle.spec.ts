@@ -300,15 +300,47 @@ for (const operation of ["picker", "encoding"] as const) for (const existing of 
   } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
-test("failed creation restores files while keeping newer text and other drafts usable", async () => {
+test("failed creation restores files while keeping newer text and other drafts usable", async ({}, testInfo) => {
   const { home, repo } = seedHome(); let { app, page } = await launch(home); logFixture(app, home, repo);
   try {
     await drop(page, ["old.md"]); await expect(chips(page)).toHaveCount(1);
     await hold(app, "thread:create", true);
     await tid(page, "composer-input").fill("old text"); await tid(page, "send").click();
     await expect.poll(() => pending(app)).toBe(1);
-    await tid(page, "composer-input").fill("newer text");
-    await tid(page, "composer-input").press("Meta+Enter");
+    // Main receiving create does not establish that the renderer has released its
+    // temporary input hold. Accept one real edit before testing failure recovery.
+    const input = tid(page, "composer-input");
+    await input.evaluate(element => {
+      const events: Array<{ value: string; focused: boolean; inert: boolean; trusted: boolean }> = [];
+      Object.assign(window, { heldCreationInputs: events });
+      element.addEventListener("input", event => events.push({
+        value: (element as HTMLTextAreaElement).value,
+        focused: document.activeElement === element,
+        inert: Boolean(element.closest("[inert]")), trusted: event.isTrusted,
+      }));
+    });
+    await input.click();
+    await expect(input).toBeFocused();
+    await input.fill("newer text");
+    await expect(input).toHaveValue("newer text");
+    const inputs = await page.evaluate(() => (window as unknown as {
+      heldCreationInputs: Array<{ value: string; focused: boolean; inert: boolean; trusted: boolean }>;
+    }).heldCreationInputs);
+    expect(inputs).toContainEqual({ value: "newer text", focused: true, inert: false, trusted: true });
+    let savedNewer: string | undefined;
+    if (nativeDrafts) {
+      const key = savedPending(home)[0].source.key;
+      await expect.poll(() => {
+        const saved = JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8"));
+        savedNewer = saved.drafts.projects.find((row: any) => row.key === key)?.text;
+        return savedNewer;
+      }).toBe("newer text");
+    }
+    expect(await pending(app)).toBe(1);
+    const receipt = testInfo.outputPath("accepted-newer-draft.json");
+    fs.mkdirSync(path.dirname(receipt), { recursive: true });
+    fs.writeFileSync(receipt, JSON.stringify({ inputs, rawText: await input.inputValue(), savedNewer, heldCreates: 1 }, null, 2));
+    await input.press("Meta+Enter");
     await expect.poll(() => pending(app)).toBe(1);
     await release(app);
     if (nativeDrafts) {

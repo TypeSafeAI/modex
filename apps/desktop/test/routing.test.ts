@@ -669,3 +669,18 @@ test("router: reset switches transport and executable without letting an old set
   assert.deepEqual((await router.status()).transport, { kind: "cli", bin: "/another/jev", version: "3.0" });
 });
 type SpawnLikeT = import("../src/main/engine/routing/jev.js").SpawnLike;
+
+test("router: routing records carry the idle gap, the context the turn re-reads, and the turn's cache figures", async () => {
+  const home = tmpdir("modex-home-");
+  const router = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => jevAnswers("small_edit", 0.6) });
+  const at = new Date(Date.now() - 4 * 60_000).toISOString();
+  await router.route({ thread: thread({ lastTurn: { at, model: "gpt-6-astra", effort: "high", fast: false, contextTokens: 150_000 } }), text: "rename a to b", items: [], project: { name: "demo" } });
+  router.noteOutcome("th1", "completed", { first: { cacheRead: 149_000, cacheWrite: 900, uncached: 100 }, contextTokens: 152_000, outputTokens: 1_200, calls: 3 });
+  const r = router.fit.latest("th1")!;
+  assert.ok(r.idleMs! >= 4 * 60_000 && r.idleMs! < 5 * 60_000, `idle ${r.idleMs}`);
+  assert.deepEqual([r.contextTokens, r.cacheRead, r.cacheWrite, r.uncached, r.turnContextTokens, r.outputTokens, r.outcome], [150_000, 149_000, 900, 100, 152_000, 1_200, "completed"]);
+  await router.route({ thread: thread({ id: "th2" }), text: "rename a to b", items: [], project: { name: "demo" } });
+  router.noteOutcome("th2", "failed");
+  const bare = router.fit.latest("th2")!;
+  assert.deepEqual([bare.idleMs, bare.contextTokens, bare.cacheRead, bare.outcome], [undefined, undefined, undefined, "failed"]);
+});

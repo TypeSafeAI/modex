@@ -6,6 +6,8 @@ import { ClaudeBackend, denyMessage, toolTitle, userContent } from "../src/main/
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 import { PNG_B64, tmpdir } from "./helpers.js";
+import { fileURLToPath } from "node:url";
+import { claudeCall } from "../src/main/engine/backends/usage.js";
 
 test("attached images become base64 blocks on the user message; text and other files stay as text", () => {
   assert.equal(userContent("hi"), "hi");
@@ -262,4 +264,63 @@ test("denyMessage keeps the rule on one line and bounded", () => {
   assert.ok(long.startsWith("The user denied this action in Modex (rule: xxx"));
   assert.ok(long.endsWith("…)."));
   assert.ok(long.length < 260);
+});
+
+const tokens = (read: number, write: number, input: number, output = 1) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+
+test("ClaudeBackend reports usage: first call, last call's context, each id once, sub-agents excluded", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "opus" }, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  proc.emitLine({ type: "assistant", parent_tool_use_id: null, session_id: "s", message: { id: "m1", content: [], usage: tokens(40_000, 500, 3) } });
+  proc.emitLine({ type: "assistant", parent_tool_use_id: null, session_id: "s", message: { id: "m1", content: [], usage: tokens(40_000, 500, 3) } });
+  proc.emitLine({ type: "assistant", parent_tool_use_id: "toolu_agent", session_id: "s", message: { id: "sub1", content: [], usage: tokens(0, 9_000, 9) } });
+  proc.emitLine({ type: "assistant", parent_tool_use_id: null, session_id: "s", message: { id: "m2", content: [], usage: tokens(40_500, 1_200, 2) } });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s", usage: { output_tokens: 850 } });
+  const result = await run;
+  assert.deepEqual(result.usage, { first: { cacheRead: 40_000, cacheWrite: 500, uncached: 3 }, contextTokens: 41_702, outputTokens: 850, calls: 2 });
+});
+
+test("ClaudeBackend usage spans the follow-up turn after background work", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const run = backend.runTurn("run it in the background", { cwd: "/repo", mode: "agent", plan: false, model: "sonnet" }, collectSink(["yes"]).sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  proc.emitLine({ type: "system", subtype: "init", session_id: "s" });
+  proc.emitLine({ type: "assistant", message: { id: "a1", usage: tokens(30_000, 100, 1, 5), content: [{ type: "tool_use", id: "tu-bg", name: "Bash", input: { command: "npm test", run_in_background: true } }] } });
+  proc.emitLine({ type: "system", subtype: "task_started", task_id: "bash-1", tool_use_id: "tu-bg", task_type: "local_bash", is_backgrounded: true });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "Started.", usage: { output_tokens: 40 } });
+  proc.emitLine({ type: "system", subtype: "task_notification", task_id: "bash-1", tool_use_id: "tu-bg", status: "completed" });
+  proc.emitLine({ type: "system", subtype: "init", session_id: "s" });
+  proc.emitLine({ type: "assistant", message: { id: "a2", usage: tokens(30_100, 300, 1, 5), content: [{ type: "text", text: "Tests passed." }] } });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "Done.", usage: { output_tokens: 60 } });
+  const result = await run;
+  assert.deepEqual(result.usage, { first: { cacheRead: 30_000, cacheWrite: 100, uncached: 1 }, contextTokens: 30_401, outputTokens: 100, calls: 2 });
+  proc.close(0);
+});
+
+test("ClaudeBackend reads usage from a captured stream-json turn; a turn without usage reports none", async () => {
+  const lines = fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/usage/claude-turn.jsonl", import.meta.url)), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { type: string; message?: { id: string; usage: Record<string, number> }; usage?: { output_tokens: number } });
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "haiku" }, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  for (const line of lines) proc.emitLine(line);
+  const result = await run;
+  const calls = [...new Map(lines.filter((l) => l.type === "assistant").map((l) => [l.message!.id, l.message!.usage])).values()];
+  const last = claudeCall(calls.at(-1)!);
+  assert.deepEqual(result.usage, {
+    first: claudeCall(calls[0]!),
+    contextTokens: last.cacheRead + last.cacheWrite + last.uncached,
+    outputTokens: lines.find((l) => l.type === "result")!.usage!.output_tokens,
+    calls: calls.length,
+  });
+  assert.ok(result.usage!.first.cacheRead > 0, "the captured resumed turn read the cache");
+
+  const bare = new FakeProcess();
+  const none = new ClaudeBackend("claude", fakeSpawn(bare).spawn).runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await bare.waitFor((l) => l.includes('"type":"user"'));
+  bare.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s" });
+  assert.deepEqual(await none, { status: "completed" });
 });

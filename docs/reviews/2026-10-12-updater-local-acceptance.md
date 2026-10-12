@@ -2,7 +2,7 @@
 
 The updater integration passed local verification on October 12, 2026. This is evidence
 for the application and recovery flows, not a signed installed upgrade or a published
-release. The base is `fb415b704854e3eff044db086c3cc61eec802ff5`.
+release. The base is `ef17fc8a41ed0751cee8a74db0b3030c9900d309`.
 
 ## Verification
 
@@ -10,20 +10,20 @@ release. The base is `fb415b704854e3eff044db086c3cc61eec802ff5`.
 | --- | --- |
 | `npm run build` | Passed across the monorepo |
 | `npm run typecheck --workspaces --if-present` | Passed |
-| `npm test` | 1,341 passed, 15 skipped, zero failures |
-| Desktop Playwright suite | All 270 cases passed in 8.9 minutes |
-| Site Playwright suite | All seven cases passed in 7.1 seconds |
+| `npm test` | 1,352 passed, 15 skipped, zero failures |
+| Desktop Playwright suite | All 270 cases passed in 9.0 minutes |
+| Site Playwright suite | All seven cases passed in 7.3 seconds |
 
 The tests used Node 24.18.1, CI mode, Open Knowledge acceptance enabled, and one Playwright
 worker. Desktop Playwright ran from `apps/desktop`, matching CI; no installed application
-was substituted. The full E2E run held all 626 source files unchanged. Later changes only
+was substituted. The full E2E run held all 634 source files unchanged. Later changes only
 update this report and the status/behavior documentation.
 
 The passing source archive is retained outside the worktree at
 `~/.codex/recovery/modex-20261011`, SHA-256
-`303a5d43b4008cf9136e6a94285ee8f7b69e3d3720c1955c99793664fd5b5078`.
+`9ab56d8d7ef44130878c3bb5b2d7e3132272fc7e35cc8337668cc757a30c5640`.
 The worktree's `.codex/` contains phase logs, source manifests, process identities, and
-retained JSON receipts. Checks found all 1,473 observed owned process identities absent
+retained JSON receipts. Checks found all 1,503 observed owned process identities absent
 after the run and all 110 explicitly logged fixture path strings absent. Older tests that
 do not log fixture paths are outside that temporary-path claim. No process signals were
 needed for the passing run.
@@ -57,6 +57,29 @@ runner's working directory and passed after matching CI. A Streamer clipboard fa
 occurred while another worktree ran Playwright and supplied the same pairing URL observed
 in the failed paste. The unchanged real clipboard test passed in the final run; process
 checks observed no competing runner during that run.
+
+## Integration with current main
+
+The final run includes the prompt-cache measurement changes from #180. Full build,
+workspace typechecks and 1,352 unit tests passed on that combined application source.
+Only two E2E fixture files changed afterward, followed by 12 focused passes and the
+complete 270-desktop/seven-site run above.
+
+Both earlier hosted macOS jobs passed 268 cases and failed two. Directly seeded thread
+fixtures now select their target row explicitly because saved New chat selection can
+survive relaunch. The held-creation fixture now clicks and focuses the editor before one
+fill, records a trusted input event, and requires the exact newer text in native recovery
+storage while creation remains held. It retains the rejection, immutable original, newer
+draft and full-relaunch assertions. Three focused receipts and the full-run receipt prove
+that accepted-edit precondition. The earlier traces lack input-event evidence, so the
+original empty-input failure's cause remains unproven.
+
+An intermediate local run passed 269 cases and failed the delayed-window-restoration
+fixture: native bounds reached the target while the renderer retained its old dimensions.
+That case passed unchanged in three focused runs and the final full run; the permanent
+clamp rejection also remains unchanged. One earlier iPhone push job recorded partial
+follow-up typing while its parallel PR job passed. These failures and their traces are
+retained; current-head hosted checks are still required before merge.
 
 ## Remaining release gates
 
