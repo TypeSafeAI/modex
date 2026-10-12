@@ -63,21 +63,50 @@ export async function launch(home: string): Promise<{ app: ElectronApplication; 
 /** Wait for native and renderer geometry to settle after macOS restores launch bounds. */
 export async function resizeWindow(app: ElectronApplication, page: Page, width: number, height: number): Promise<void> {
   let matchedSince: number | undefined;
-  const matches = (size: number[]) => size[0] === width && size[1] === height;
-  await expect.poll(async () => {
-    const before = await app.evaluate(({ BrowserWindow }, size) => {
-      const window = BrowserWindow.getAllWindows()[0]!;
+  let staleSince: number | undefined, staleViewport: number[] | undefined;
+  let resynchronized = false, waitingForTransition = false;
+  const target = [width, height], transition = [width + 1, height + 1];
+  const matches = (size: number[], expected = target) => size[0] === expected[0] && size[1] === expected[1];
+  try {
+    await expect.poll(async () => {
+      const requested = waitingForTransition ? transition : target;
+      const before = await app.evaluate(({ BrowserWindow }, size) => {
+        const window = BrowserWindow.getAllWindows()[0]!;
+        const current = window.getContentSize();
+        if (current[0] !== size.width || current[1] !== size.height) window.setContentSize(size.width, size.height);
+        return current;
+      }, { width: requested[0]!, height: requested[1]! });
+      const viewport = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+      const native = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize());
+      if (waitingForTransition) {
+        // Observe the intermediate size in both processes before restoring the target.
+        if (matches(before, transition) && matches(viewport, transition) && matches(native, transition)) waitingForTransition = false;
+        matchedSince = undefined;
+        return { native, viewport, settled: false };
+      }
+      if (!resynchronized && matches(before) && matches(native) && !matches(viewport)) {
+        if (!staleViewport || !matches(viewport, staleViewport)) { staleViewport = viewport; staleSince = Date.now(); }
+        if (Date.now() - staleSince! >= 500) {
+          // A same-size request need not notify a stale renderer. One upward transition
+          // avoids the minimum window size and stays within the original polling budget.
+          resynchronized = true;
+          waitingForTransition = true;
+        }
+      } else { staleSince = undefined; staleViewport = undefined; }
+      if (matches(before) && matches(viewport) && matches(native)) matchedSince ??= Date.now();
+      else matchedSince = undefined;
+      return { native, viewport, settled: matchedSince !== undefined && Date.now() - matchedSince >= 200 };
+    }, { timeout: 15_000, intervals: [50], message: "window content size must settle before layout measurements" })
+      .toEqual({ native: [width, height], viewport: [width, height], settled: true });
+  } finally {
+    // A permanently mismatched renderer must fail without leaving the temporary size.
+    if (resynchronized) await app.evaluate(({ BrowserWindow }, size) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (!window || window.isDestroyed()) return;
       const current = window.getContentSize();
       if (current[0] !== size.width || current[1] !== size.height) window.setContentSize(size.width, size.height);
-      return current;
     }, { width, height });
-    const viewport = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
-    const native = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize());
-    if (matches(before) && matches(viewport) && matches(native)) matchedSince ??= Date.now();
-    else matchedSince = undefined;
-    return { native, viewport, settled: matchedSince !== undefined && Date.now() - matchedSince >= 200 };
-  }, { timeout: 15_000, intervals: [50], message: "window content size must settle before layout measurements" })
-    .toEqual({ native: [width, height], viewport: [width, height], settled: true });
+  }
 }
 
 /** `data-testid` lookup, scoped to a page or a parent locator. */

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import { launch, resizeWindow, seedHome } from "./support";
 
@@ -39,6 +39,92 @@ test("layout sizing rejects a permanently clamped native window", async () => {
       window.setContentSize = () => resize(1380, 880);
     });
     await expect(resizeWindow(app, page, 1786, 1049)).rejects.toThrow("window content size must settle");
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+async function mismatchRenderer(app: ElectronApplication, page: Page, settleOnResize: boolean) {
+  await resizeWindow(app, page, 900, 600);
+  await app.evaluate(({ BrowserWindow }, settleOnResize) => {
+    const window = BrowserWindow.getAllWindows()[0]!;
+    const requests: number[][] = [];
+    (globalThis as { resizeRequests?: number[][] }).resizeRequests = requests;
+    const resize = window.setContentSize.bind(window);
+    window.setContentSize = (width, height, animate) => { requests.push([width, height]); resize(width, height, animate); };
+    // A controlled real viewport mismatch. This models a renderer requiring another
+    // native resize, without claiming zoom caused the observed macOS restoration race.
+    window.webContents.setZoomFactor(1.25);
+    if (settleOnResize) {
+      const release = () => {
+        const [width, height] = window.getContentSize();
+        if (width !== 901 || height !== 601) return;
+        window.removeListener("resize", release);
+        window.webContents.setZoomFactor(1);
+      };
+      window.on("resize", release);
+    }
+  }, settleOnResize);
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(900);
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize())).toEqual([900, 600]);
+}
+
+test("layout sizing resynchronizes a stale renderer once at the minimum size", async () => {
+  const { home, repo } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await mismatchRenderer(app, page, true);
+    await resizeWindow(app, page, 900, 600);
+    expect(await app.evaluate(() => (globalThis as { resizeRequests?: number[][] }).resizeRequests)).toEqual([[901, 601], [900, 600]]);
+    expect(await page.evaluate(() => [innerWidth, innerHeight])).toEqual([900, 600]);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize())).toEqual([900, 600]);
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("layout sizing leaves an independently settling renderer alone", async () => {
+  const { home, repo } = seedHome();
+  const { app, page } = await launch(home);
+  const evaluate = page.evaluate;
+  let observedMismatch = false;
+  try {
+    await mismatchRenderer(app, page, false);
+    page.evaluate = (async (...args: Parameters<Page["evaluate"]>) => {
+      const value = await evaluate.call(page, ...args);
+      if (!observedMismatch && Array.isArray(value) && value.length === 2 && value[0] < 900) {
+        observedMismatch = true;
+        // Deliver this real mismatching sample to the helper, then let subsequent
+        // observations settle independently of any native resize request.
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(1));
+      }
+      return value;
+    }) as Page["evaluate"];
+    await resizeWindow(app, page, 900, 600);
+    expect(observedMismatch).toBe(true);
+    expect(await app.evaluate(() => (globalThis as { resizeRequests?: number[][] }).resizeRequests)).toEqual([]);
+  } finally {
+    page.evaluate = evaluate;
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("layout sizing rejects a permanent renderer mismatch and restores native bounds", async () => {
+  const { home, repo } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await mismatchRenderer(app, page, false);
+    await expect(resizeWindow(app, page, 900, 600)).rejects.toThrow("window content size must settle");
+    expect(await app.evaluate(() => (globalThis as { resizeRequests?: number[][] }).resizeRequests)).toEqual([[901, 601], [900, 600]]);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize())).toEqual([900, 600]);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.getZoomFactor())).toBe(1.25);
+    expect(await page.evaluate(() => innerWidth)).toBeLessThan(900);
   } finally {
     await app.close();
     fs.rmSync(home, { recursive: true, force: true });
