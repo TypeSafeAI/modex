@@ -21,7 +21,7 @@ export interface DigestContext {
 }
 
 export const MAX_COMMAND = 500;
-const MAX_TITLE = 200;
+export const MAX_TITLE = 200;
 const MAX_PATHS = 20;
 const MAX_PATH = 300;
 export const REDACTED = "«redacted»";
@@ -91,11 +91,25 @@ function pathsOf(action: ApprovalAction): string[] {
   return out.slice(0, MAX_PATHS);
 }
 
+/** The title Jev sees, before clipping to MAX_TITLE. */
 function titleOf(action: ApprovalAction, command: string | undefined, paths: string[]): string {
-  if (TITLE_FROM_TOOL.has(action.tool)) return clip(`${action.tool === "Write" ? "write" : "edit"} ${paths[0] ?? ""}`.trim(), MAX_TITLE);
+  if (TITLE_FROM_TOOL.has(action.tool)) return `${action.tool === "Write" ? "write" : "edit"} ${paths[0] ?? ""}`.trim();
   // A title that repeats the command gets the scrubbed command, never the raw one.
-  if (command && action.title.includes(command)) return clip(action.title.replace(command, scrubSecrets(command)), MAX_TITLE);
-  return clip(scrubSecrets(action.title), MAX_TITLE);
+  if (command && action.title.includes(command)) return action.title.replace(command, scrubSecrets(command));
+  return scrubSecrets(action.title);
+}
+
+/**
+ * True when `digestAction` clips text Jev needs to judge the action: a command longer than
+ * MAX_COMMAND, or a title longer than MAX_TITLE. A title that is only the command line ("$ cmd"
+ * for Claude, the bare command for Codex) does not count when the command itself fits, because
+ * Jev then reads the whole command in `command`. Paths are not considered.
+ */
+export function digestClipped(action: ApprovalAction): boolean {
+  const raw = commandOf(action);
+  if (raw && scrubSecrets(raw).length > MAX_COMMAND) return true;
+  if (raw && (action.title === raw || action.title === `$ ${raw}`)) return false;
+  return titleOf(action, raw, pathsOf(action)).length > MAX_TITLE;
 }
 
 /** Builds the state Jev sees for one approval. Pure: same action, same digest. */
@@ -107,7 +121,7 @@ export function digestAction(action: ApprovalAction, ctx: DigestContext): Approv
     action: {
       backend: action.backend,
       tool: action.tool,
-      title: titleOf(action, rawCommand, paths),
+      title: clip(titleOf(action, rawCommand, paths), MAX_TITLE),
       ...(action.cwd ? { cwd_name: path.basename(action.cwd) } : {}),
       ...(action.escalation ? { escalation: true } : {}),
     },

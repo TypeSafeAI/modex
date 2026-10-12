@@ -2,7 +2,7 @@ import { toolSummary } from "../../shared/tool-summary";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
-import { askedBecause, receiptVia } from "../../shared/approval-receipt";
+import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
 import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from "../../shared/sources";
 import type { AttachmentActions } from "../composer-attachments";
@@ -396,7 +396,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
   const [open, setOpen] = useState(false);
   const allowed = r.decision === "allow";
   const title = item.title ?? item.question;
-  const via = `${receiptVia(r)} · ${r.ms} ms${r.downgraded === "jev-unavailable" ? " · Jev unavailable" : ""}`;
+  const via = `${receiptVia(r)} · ${r.ms} ms${jevNotConsulted(r) ? " · Jev not consulted" : ""}`;
   return (
     <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered="true" data-decided-by={r.decision}>
       <button className="receipt-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
@@ -415,7 +415,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
             {r.source === "policy"
               ? `Approved because this thread is set to "${r.when}".`
               : <>{allowed ? "Approved once" : "Denied"} by your rule "{r.when}" ({receiptVia(r)}, {r.ms} ms){r.destructive !== undefined ? `; Jev put the chance that it is destructive at ${r.destructive.toFixed(2)}` : ""}.
-                {r.downgraded === "jev-unavailable" ? " Jev was unavailable, so only rules with an exact match could apply." : ""}</>}
+                {jevNotConsulted(r) ? " Jev was not consulted (not configured or unavailable), so only rules with an exact match could apply and nothing was checked for destructive effects." : ""}</>}
           </div>
         </div>
       )}

@@ -247,8 +247,8 @@ being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
 exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these
-changes and was submitted for beta review. The v0.0.9 standalone desktop now supplies
-these endpoints for real paired use.
+changes and was approved for TestFlight beta testing on 2026-10-07. The v0.0.9 standalone
+desktop now supplies these endpoints for real paired use.
 
 **Chat title quality.** The title request now includes a bounded final reply and asks for a
 short action-and-subject title in the user's language. Validation normalizes plain text and
@@ -609,6 +609,11 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   [reconstructed spec](specs/2026-10-01-modex-jev-approval-rules-spec.md) records the part 2 decisions.
   By default a new rule covers the current project, and rules that need Jev show as inactive
   without it rather than being hidden.
+  A follow-up makes an allow ask when the command chains or redirects commands or is longer
+  than the text Jev sees, and makes receipts say when Jev was not consulted. That closes the
+  truncated-suffix false allow; the quoted-test-name case remains open.
+  [Recovery verification](reviews/2026-10-12-approval-recovery.md) passed 1,376 unit tests
+  (15 skipped), 271 desktop E2E cases and seven site cases. The gate remains off by default.
 - **Retired worktrees.** None from this list awaits a disposition. All six were retired after
   their work landed, and their uncommitted work or unique commits were saved as patches outside
   the repository first.
@@ -720,8 +725,9 @@ reuses the desktop renderer. Val approved integrating this development preview. 
 boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
 saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
 App Sandbox was verified on the running client. Graceful host shutdown, full parity and
-real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
-pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+real CLI acceptance, provisioning and App Review eligibility remain pending. Store 0.0.8
+was approved for macOS TestFlight beta testing on 2026-10-07; this is not an App Store
+release. See [the preview ledger](mac-store-preview-plan.md) and
 [run instructions](../apps/store-desktop/README.md).
 
 The shared Mac connection settings now recognize existing system CLI sign-ins and recheck

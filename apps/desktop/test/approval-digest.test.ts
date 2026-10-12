@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { digestAction, scrubSecrets, MAX_COMMAND, REDACTED } from "../src/main/engine/approvals/digest.js";
+import { digestAction, digestClipped, scrubSecrets, MAX_COMMAND, MAX_TITLE, REDACTED } from "../src/main/engine/approvals/digest.js";
 import type { ApprovalAction } from "../src/main/engine/backends/types.js";
 
 const ctx = { project: { name: "modex", branch: "approval-rules" }, mode: "agent" as const };
@@ -82,4 +82,23 @@ test("secret scrubber", () => {
 test("no branch and no cwd: those keys are simply absent", () => {
   const d = digestAction({ backend: "mock", tool: "shell", title: "$ ls", input: { command: "ls" } }, { project: { name: "p", branch: null }, mode: "chat" });
   assert.deepEqual(d, { action: { backend: "mock", tool: "shell", title: "$ ls" }, command: "ls", project: { name: "p" }, mode: "chat" });
+});
+
+test("digestClipped: true exactly when Jev would see a clipped command, or a clipped title that is not the command", () => {
+  const bash = (command: string): ApprovalAction => ({ backend: "claude", tool: "Bash", title: `$ ${command}`, input: { command } });
+  const atLimit = "echo " + "x".repeat(MAX_COMMAND - 5);
+  assert.equal(digestClipped(bash(atLimit)), false, "exactly MAX_COMMAND is not clipped");
+  assert.equal(digestClipped(bash(atLimit + "x")), true);
+  assert.equal(digestClipped({ backend: "codex", tool: "command", title: atLimit + "x" }), true, "Codex title-only command");
+  // Scrubbing happens before clipping: a long secret that shrinks to «redacted» leaves the rest visible.
+  assert.equal(digestClipped(bash(`curl --token=${"t".repeat(MAX_COMMAND)} https://x`)), false);
+  // A Bash title over MAX_TITLE adds nothing while the command fits.
+  assert.equal(digestClipped(bash("echo " + "x".repeat(MAX_TITLE))), false);
+  assert.equal(digestClipped({ backend: "claude", tool: "WebFetch", title: "fetch " + "u".repeat(MAX_TITLE), input: { url: "u" } }), true);
+  assert.equal(digestClipped({ backend: "claude", tool: "Edit", title: "edit a.ts", input: { file_path: "d/".repeat(MAX_TITLE / 2) + "a.ts" } }), true, "rebuilt edit titles count");
+  assert.equal(digestClipped({ backend: "claude", tool: "Edit", title: "edit a.ts", input: { file_path: "a.ts" } }), false);
+  for (const action of [bash(atLimit + "x"), bash("echo " + "x".repeat(MAX_TITLE))]) {
+    const d = digestAction(action, ctx);
+    assert.equal(d.command!.endsWith("…"), digestClipped(action), "agrees with what digestAction sends");
+  }
 });

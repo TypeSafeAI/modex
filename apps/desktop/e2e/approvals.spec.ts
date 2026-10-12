@@ -49,6 +49,11 @@ test("Settings scopes new rules, previews without saving, keeps inactive rules v
   await expect(preview()).toHaveAttribute("data-decision", "allow");
   await expect(preview()).toContainText("Exact match");
   await expect(preview()).toContainText("Preview only");
+  await page.getByLabel("Sample action").fill("npm test && rm -rf src");
+  await page.getByRole("button", { name: "Try it", exact: true }).click();
+  await expect(preview()).toHaveAttribute("data-decision", "ask");
+  await expect(preview()).toContainText("Allow became Ask because the command chains several commands.");
+  await expect(preview()).toContainText("Jev not consulted");
   expect(await storedRules()).toHaveLength(1);
   expect((await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads).toHaveLength(0);
   await page.getByLabel("Sample action").fill("npm build");
@@ -121,6 +126,8 @@ test("automatic allow and never persist compact receipts; ask and project isolat
       await approval.getByRole("button", { name: "Deny", exact: true }).click();
     } else {
       await expect(tid(approval, "approval-receipt")).toContainText(decision === "allow" ? "Allowed:" : "Refused by rule");
+      // No Jev in this environment: the allow had no destructive check, and its receipt says so.
+      if (decision === "allow") await expect(tid(approval, "receipt-meta")).toContainText("Jev not consulted");
       await expect(approval.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
       await tid(approval, "item-toggle").click();
       await expect(tid(approval, "item-body")).toContainText("write the sample");
@@ -158,4 +165,28 @@ test("a safety-downgraded receipt explains why a human must answer", async () =>
   await expect(card.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: "Deny", exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: "Always", exact: true })).toHaveCount(0);
+});
+
+test("an allow rule covers one command: a chained shell command asks and says why", async () => {
+  const script = path.join(home, "chained-script.json");
+  fs.writeFileSync(script, JSON.stringify({ steps: [
+    { tool_calls: [{ name: "shell", arguments: { command: "echo one; touch chained.txt" } }] },
+    { content: "Finished." },
+  ] }));
+  await page.evaluate(async ({ script, repo }) => {
+    await window.modex!.invoke("settings:update", { mock_script: script, approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 3000 }, approval_rules: [
+      { id: "echo", when: "print text", decision: "allow", project: repo, match: "shell: echo *", enabled: true },
+    ] });
+  }, { script, repo });
+  await page.keyboard.press("Meta+n");
+  await tid(page, "composer-input").fill("chain two commands");
+  await page.keyboard.press("Meta+Enter");
+  const card = items(page, "approval");
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute("data-decided-by", "ask");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "waiting");
+  await expect(tid(card, "approval-reason")).toHaveText('Asked because: the command chains several commands; rule "print text" would have allowed it · Jev not consulted');
+  await card.getByRole("button", { name: "Deny", exact: true }).click();
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+  expect(fs.existsSync(path.join(repo, "chained.txt"))).toBe(false);
 });
