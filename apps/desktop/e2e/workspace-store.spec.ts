@@ -65,6 +65,8 @@ test("Store browser guests belong to the client and hide while its host is disco
     await expect(tabs).toHaveCount(initialTabs + 4);
     await expect(tid(page, "workspace-address")).toBeFocused();
     await tid(page, "open-settings").click();
+    // The menu is suppressed only once Settings has rendered; clicking it earlier tests nothing.
+    await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
     expect(await clickMenu()).toBe(true);
     await page.keyboard.press("Escape");
     await expect(tabs).toHaveCount(initialTabs + 4);

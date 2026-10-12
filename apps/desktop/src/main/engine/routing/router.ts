@@ -266,6 +266,7 @@ export class Router {
       judgments, source, policy, ladders, premiumExhausted,
       current: { backend: thread.backend, model: thread.model, effort: thread.effort, hasSession: Boolean(thread.sessionHandle) },
       fitOffset: this.fit.offsetFor(judgments.task),
+      cache: { lastTurn: last, idleMs },
     });
     const premium = decision.tier === 3 || decision.effort === "xhigh" || decision.effort === "max";
     decision.reasons.unshift(...discoveryErrors);
@@ -277,6 +278,7 @@ export class Router {
       try {
         this.fit.recordRoute({ threadId: thread.id, task: judgments.task, source, backend: decision.backend, model: decision.model, effort: decision.effort, fast: decision.fast, tier: decision.tier, confidence: judgments.taskConfidence, premium,
           ...(idleMs !== undefined ? { idleMs } : {}), ...(last?.contextTokens !== undefined ? { contextTokens: last.contextTokens } : {}),
+          ...(decision.warmth ? { warmth: decision.warmth } : {}), ...(decision.held ? { held: true } : {}),
         });
       } catch (err) {
         decision.reasons.push(`Could not save routing learning (${(err as Error).message}); this session retains its premium count and the safe route will run.`);
@@ -296,6 +298,7 @@ export class Router {
       complexity: Math.round(judgments.complexity * 10) / 10,
       pinned: decision.pinned,
       blocked: decision.blocked,
+      ...(decision.held ? { held: true as const } : {}),
       reasons: fallback ? [fallback, ...decision.reasons] : decision.reasons,
       durationMs: Date.now() - started,
       at: new Date().toISOString(),

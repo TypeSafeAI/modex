@@ -1,4 +1,4 @@
-import type { BackendId, EffortLevel, RoutingPolicy } from "../../../shared/types.js";
+import type { BackendId, EffortLevel, LastTurn, RoutingPolicy } from "../../../shared/types.js";
 import type { Candidate, Tier } from "./catalog.js";
 import { pick } from "./catalog.js";
 import type { JudgeSource, Judgments } from "./judge.js";
@@ -10,6 +10,28 @@ import type { JudgeSource, Judgments } from "./judge.js";
  */
 export const EFFORTS: EffortLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
+/** How long a backend's prompt cache is assumed to survive an idle thread. Claude Code writes 1-hour entries. */
+export const CACHE_LIFETIME_MS: Record<BackendId, number> = { claude: 60 * 60_000, codex: 60 * 60_000, mock: 0 };
+/** Below this many context tokens a switch re-reads too little to matter. */
+export const SMALL_CONTEXT_TOKENS = 20_000;
+/** A warm thread moves up only to a model at least this many tiers higher... */
+export const UPGRADE_TIERS = 2;
+/** ...or when Jev is this confident the request needs deep reasoning... */
+export const DEEP_REASONING_UPGRADE = 0.85;
+/** ...and the request does not lean on earlier turns this strongly. */
+export const PRIOR_TURNS_DEPENDENT = 0.7;
+/**
+ * Whether changing effort or fast mode alone clears the backend's cached history. Measured on
+ * 2026-10-12 (claude 2.1.296, codex-cli 0.162.1): an effort change kept the whole cache on both.
+ * Fast mode could not be measured (Claude's fast-mode setting did not apply; Codex's default model
+ * has no fast tier), so it stays assumed to clear.
+ */
+export const EFFORT_CLEARS_CACHE: Record<BackendId, boolean> = { claude: false, codex: false, mock: false };
+export const FAST_CLEARS_CACHE: Record<BackendId, boolean> = { claude: true, codex: true, mock: false };
+
+/** How likely a switch is to discard a warm prompt cache on this thread. */
+export type Warmth = "none" | "unknown" | "cold" | "small" | "warm";
+
 export interface DecisionInput {
   judgments: Judgments;
   source: JudgeSource;
@@ -19,6 +41,11 @@ export interface DecisionInput {
   /** Learned per-task tier offset (see fit.ts). */
   fitOffset: number;
   premiumExhausted: boolean;
+  /**
+   * What the thread's prompt cache was built with, and how long ago. The router always passes it;
+   * a caller that omits it gets a fresh choice every turn.
+   */
+  cache?: { lastTurn?: LastTurn; idleMs?: number };
 }
 
 export interface Decision {
@@ -31,6 +58,10 @@ export interface Decision {
   pinned: boolean;
   /** The request must not run because an effort or premium budget limit cannot be guaranteed. */
   blocked?: true;
+  /** True when a warm prompt cache kept the thread's model, effort or fast mode. */
+  held?: true;
+  /** The cache warmth the hold step saw; absent when no cache information was passed. */
+  warmth?: Warmth;
   reasons: string[];
 }
 
@@ -43,6 +74,18 @@ function effortIndex(e: string | undefined): number | undefined {
 
 function currentCandidate(input: DecisionInput): Candidate | undefined {
   return (input.ladders[input.current.backend] ?? []).find((c) => input.current.model ? c.model === input.current.model : c.isDefault);
+}
+
+/** How likely a switch is to discard a warm prompt cache on this thread. */
+export function warmth(input: DecisionInput): Warmth {
+  const { current, cache } = input;
+  if (!cache || !current.hasSession || current.backend === "mock") return "none";
+  const last = cache.lastTurn;
+  if (!last) return "unknown";
+  if (last.model !== current.model) return "cold";
+  if (cache.idleMs !== undefined && cache.idleMs >= CACHE_LIFETIME_MS[current.backend]) return "cold";
+  if (last.contextTokens !== undefined && last.contextTokens < SMALL_CONTEXT_TOKENS) return "small";
+  return "warm";
 }
 
 function effortCeiling(input: DecisionInput, reasons: string[]): number | undefined {
@@ -101,6 +144,68 @@ function keepCurrent(input: DecisionInput, candidate: Candidate | undefined, rea
       : `No effort requested; using ${effort} within the ${input.policy.max_effort} ceiling.`);
   }
   return { backend: input.current.backend, model: input.current.model, effort: effort ?? undefined, fast: false, tier: candidate?.tier ?? 2, pinned: true, reasons };
+}
+
+const kTokens = (n: number): string => `~${Math.max(1, Math.round(n / 1000))}k`;
+const minutes = (ms: number | undefined): string => `${Math.max(0, Math.round((ms ?? 0) / 60_000))} min`;
+
+function heldFast(input: DecisionInput, current: Candidate): boolean {
+  return Boolean(input.cache?.lastTurn?.fast) && input.policy.allow_fast && Boolean(current.fastTier || current.backend === "claude");
+}
+
+/** keepCurrent's route marked as held, or undefined when a limit stops the current route. */
+function heldRoute(input: DecisionInput, current: Candidate, reasons: string[]): Decision | undefined {
+  const notes: string[] = [];
+  const kept = keepCurrent(input, current, notes);
+  if (kept.blocked) return undefined;
+  reasons.push(...notes);
+  return { ...kept, reasons, fast: heldFast(input, current), pinned: false, held: true };
+}
+
+/**
+ * Keeps a warm thread on the model its prompt cache was built with. A switch re-reads the whole
+ * history uncached and drops the previous model's thinking, so a warm thread moves only up, and
+ * only on a big jump. Limits still win: a model that is gone or over budget is not held.
+ */
+function hold(input: DecisionInput, free: Decision, current: Candidate | undefined, reasons: string[]): Decision {
+  const w = warmth(input);
+  if (w === "none") return free;
+  const last = input.cache?.lastTurn;
+  if (w === "cold") {
+    reasons.push(last && last.model !== input.current.model ? "The cache was built for another model, so free choice." : `Idle ${minutes(input.cache?.idleMs)}, cache likely expired, so free choice.`);
+    return { ...free, warmth: w };
+  }
+  if (w === "small") {
+    reasons.push(`Only ${kTokens(last!.contextTokens!)} tokens of context, so switching is cheap.`);
+    return { ...free, warmth: w };
+  }
+  if (!current || (input.premiumExhausted && current.tier === 3)) return { ...free, warmth: w };
+  const state = w === "unknown" ? "no cache record for this thread yet" : `${last!.contextTokens !== undefined ? `${kTokens(last!.contextTokens)} tokens cached` : "cache still warm"}, last turn ${minutes(input.cache?.idleMs)} ago`;
+  const tail = (change: string) => (w === "unknown" ? "" : ` ${change} would re-read the history uncached.`);
+  if (free.model === current.model) {
+    const effort = EFFORT_CLEARS_CACHE[current.backend] ? heldRoute(input, current, [])?.effort ?? free.effort : free.effort;
+    // Without a record there is no fast-mode state to keep.
+    const fast = FAST_CLEARS_CACHE[current.backend] && last ? heldFast(input, current) : free.fast;
+    if (effort === free.effort && fast === free.fast) return { ...free, warmth: w };
+    reasons.push(`Kept ${current.label} at ${effort ?? "its default"} effort${fast ? " in fast mode" : ""}: ${state}.${tail(effort !== free.effort ? "Changing effort" : "Changing fast mode")}`);
+    return { ...free, effort, fast, held: true, warmth: w };
+  }
+  if (free.tier > current.tier) {
+    const to = (input.ladders[free.backend] ?? []).find((c) => c.model === free.model)?.label ?? free.model;
+    const j = input.judgments;
+    if (free.tier - current.tier >= UPGRADE_TIERS) {
+      reasons.push(`Moved up to ${to} despite the warm cache: ${free.tier - current.tier} tiers above ${current.label}.`);
+      return { ...free, warmth: w };
+    }
+    if (j.needsDeepReasoning >= DEEP_REASONING_UPGRADE && j.dependsOnPriorTurns < PRIOR_TURNS_DEPENDENT) {
+      reasons.push(`Moved up to ${to} despite the warm cache: the request needs deep reasoning and stands on its own.`);
+      return { ...free, warmth: w };
+    }
+  }
+  const kept = heldRoute(input, current, reasons);
+  if (!kept) return { ...free, warmth: w };
+  reasons.push(`Kept ${current.label}: ${state}.${tail("Switching")}`);
+  return { ...kept, warmth: w };
 }
 
 export function decide(input: DecisionInput): Decision {
@@ -175,5 +280,6 @@ export function decide(input: DecisionInput): Decision {
   const fast = policy.allow_fast && j.wantsSpeed >= 0.6 && j.needsDeepReasoning < 0.5 && candidate.tier <= 1 && Boolean(candidate.fastTier || backend === "claude");
   if (fast) reasons.push("Fast mode: quick turnaround requested and the task is light.");
 
-  return { backend, model: candidate.model, effort, fast, tier: candidate.tier, pinned: false, reasons };
+  // 7. Hold: a warm prompt cache keeps the thread where it is unless the jump is worth a rebuild.
+  return hold(input, { backend, model: candidate.model, effort, fast, tier: candidate.tier, pinned: false, reasons }, candidateNow, reasons);
 }

@@ -320,11 +320,13 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
 
 ## On main, unreleased
 
-- **Cache usage per turn.** Claude and Codex turns report how much input the first model call
-  read from the prompt cache, wrote to it or sent uncached, and how much context the next turn
-  re-reads. Threads keep this as `lastTurn`; Auto's routing records add idle time and cache
-  figures. Routing is unchanged; this is the measurement half of
-  [sticky Auto routing](specs/2026-10-12-sticky-auto-routing-spec.md).
+- **Sticky Auto routing.** Auto keeps a thread's model while its prompt cache is warm, because
+  a switch re-reads the whole history uncached. It still chooses freely on a thread's first turn,
+  after an hour idle, on small threads, and after you pick a model; while warm it moves up only on
+  a two-tier jump or a self-contained deep-reasoning request. Held routes read "Auto kept" with
+  the cache size and idle time. Claude and Codex turns now report cache usage, kept on the thread
+  and in Auto's routing records. A probe showed effort changes keep the cache on both CLIs, so
+  effort still adapts per turn on the same model. [Spec](specs/2026-10-12-sticky-auto-routing-spec.md).
 
 - **Minimal right workspace.** Review opens with a compact toolbar and keeps selection,
   filters, display options and scroll position when switching tools or hiding the rail.
