@@ -5,7 +5,7 @@ import { ThreadRunner } from "../src/main/engine/runner.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import { policyAnswer, policyReceipt } from "../src/main/engine/approvals/policy.js";
 import type { Backend, TurnSink } from "../src/main/engine/backends/types.js";
-import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
+import type { ApprovalDowngrade, ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { gitRepo, tmpdir } from "./helpers.js";
 
 const bash = { backend: "claude" as const, tool: "Bash", title: "$ make", input: { command: "make" } };
@@ -25,6 +25,17 @@ test("policy: ask never answers; always answers unless it cannot tell or the req
   assert.equal(policyAnswer("yolo", escalating), "yes");
   assert.equal(policyAnswer("yolo", undefined), "yes");
   assert.deepEqual([policyReceipt("always").via, policyReceipt("yolo").ruleId], ["policy", "policy:yolo"]);
+});
+
+test("policy: Always allow does not override a compound or incomplete downgrade; YOLO does", () => {
+  const gated = (decision: "ask" | "allow", downgraded: ApprovalDowngrade) => ({ ...policyReceipt("always"), source: "rule" as const, via: "match" as const, decision, downgraded });
+  for (const downgraded of ["compound", "incomplete", "destructive", "escalation"] as const) {
+    assert.equal(policyAnswer("always", bash, gated("ask", downgraded)), null, `${downgraded} stands under Always allow`);
+    // Held by the label itself, not only because the gate's decision was "ask".
+    assert.equal(policyAnswer("always", bash, gated("allow", downgraded)), null, `${downgraded} label alone holds`);
+    assert.equal(policyAnswer("yolo", bash, gated("ask", downgraded)), "yes", `YOLO overrides ${downgraded}`);
+  }
+  assert.equal(policyAnswer("always", bash, { ...gated("allow", "compound"), downgraded: undefined, jevNotConsulted: true }), "yes", "Jev not being consulted is not a reason to ask");
 });
 
 function setup() {

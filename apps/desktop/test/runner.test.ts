@@ -1116,9 +1116,27 @@ test("approval gate: an exact-match allow answers 'yes' (never 'always'), lands 
   assert.deepEqual(answers, ["yes"]);
   const card = runner.items(thread.id).find((i) => i.kind === "approval") as Extract<ThreadItem, { kind: "approval" }>;
   assert.equal(card.answer, "yes");
-  assert.deepEqual({ ...card.decidedBy, ms: 0 }, { source: "rule", ruleId: "t", when: "run the test suite", decision: "allow", via: "match", p: 1, ms: 0 });
+  assert.deepEqual({ ...card.decidedBy, ms: 0 }, { source: "rule", ruleId: "t", when: "run the test suite", decision: "allow", via: "match", p: 1, ms: 0, jevNotConsulted: true }, "no Jev: the match allowed without a destructive check, and the receipt says so");
   assert.deepEqual(statusesOf(h.events), ["running", "idle"], "the thread never waited on a human");
   assert.equal(new Store(h.home).items(thread.id).find((i) => i.kind === "approval")?.answer, "yes", "the answered card persists");
+});
+
+test("approval gate: a chained command under an allow rule waits for a human, even on an Always allow thread", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "t", when: "run the test suite", decision: "allow", match: "Bash: npm test*", enabled: true }] });
+  const answers: string[] = [];
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: asking({ backend: "claude", tool: "Bash", title: "$ npm test && rm -rf ~", input: { command: "npm test && rm -rf ~" } }, answers) } });
+  const thread = await runner.createThread(project.id);
+  runner.updateThread(thread.id, { approvals: "always", title: "x" });
+  const done = runner.send(thread.id, "test it");
+  const card = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval")) as Extract<ThreadItem, { kind: "approval" }>;
+  assert.equal(runner.status(thread.id), "waiting");
+  assert.deepEqual([card.answer, card.decidedBy?.decision, card.decidedBy?.downgraded, card.decidedBy?.jevNotConsulted], [undefined, "ask", "compound", true]);
+  runner.answer(thread.id, card.id, "no");
+  await done;
+  assert.deepEqual(answers, ["no"]);
 });
 
 test("approval gate: a never rule refuses with a receipt; the mock engine's write is not applied", async () => {
