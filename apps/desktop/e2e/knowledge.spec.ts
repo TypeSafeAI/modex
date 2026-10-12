@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -318,15 +318,33 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
       await guest.screenshot({ path: path.join(screenshots, `knowledge-theme-${theme}.png`) });
     }
     let resumeReload!: () => void;
+    let reloadEntered = false, reloadContinued = false;
     const reloadGate = new Promise<void>(resolve => { resumeReload = resolve; });
-    await guest.route(`${url}/`, async route => { await reloadGate; await route.continue(); });
-    try {
-      await page.getByRole("button", { name: "Reload knowledge base" }).click();
-      await expect.poll(visibleGuest).toBe(false);
-    } finally { resumeReload(); }
-    await guest.waitForLoadState("domcontentloaded");
-    await guest.unroute(`${url}/`);
+    const interceptReload = async (route: Route) => {
+      if (!route.request().isNavigationRequest() || route.request().frame() !== guest.mainFrame()) {
+        await route.continue();
+        return;
+      }
+      reloadEntered = true;
+      await reloadGate;
+      await route.continue();
+      reloadContinued = true;
+    };
+    await guest.route(`${url}/`, interceptReload);
+    // Observe the next document, not the old document's cached load state.
+    await Promise.all([
+      guest.waitForEvent("domcontentloaded", { timeout: 15_000 }),
+      (async () => {
+        try {
+          await page.getByRole("button", { name: "Reload knowledge base" }).click();
+          await expect.poll(() => reloadEntered).toBe(true);
+          await expect.poll(visibleGuest).toBe(false);
+        } finally { resumeReload(); }
+      })(),
+    ]);
+    await expect.poll(() => reloadContinued).toBe(true);
     await expect(editor).toBeVisible();
+    await guest.unroute(`${url}/`, interceptReload);
     await expect.poll(visibleGuest).toBe(true);
     await expect.poll(() => guest.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(28, 27, 29)");
     await editor.click();

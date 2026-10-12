@@ -80,3 +80,41 @@ test("a version-manager executable can load its adjacent Node runtime from a Fin
   fs.writeFileSync(path.join(path.dirname(cli), "modex-fixture-node"), "#!/bin/sh\nprintf '%s\\n' '2.1.288 (Claude Code)'\n");
   assert.equal(await verifyCliOverride("claude", cli, { env: { HOME: home, PATH: "/usr/bin:/bin" } }), cli);
 });
+
+function windowsFiles(t: import("node:test").TestContext, files: string[]) {
+  const names = new Set(files.map(file => path.win32.normalize(file).toLowerCase()));
+  t.mock.method(fs, "statSync", (file: string) => {
+    if (!names.has(path.win32.normalize(file).toLowerCase())) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    return { isFile: () => true };
+  });
+  t.mock.method(fs, "accessSync", (file: string) => {
+    if (!names.has(path.win32.normalize(file).toLowerCase())) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+  });
+}
+
+test("Windows discovery honours PATH casing, PATHEXT order and paths with spaces", t => {
+  windowsFiles(t, [String.raw`C:\CLI Tools\claude.exe`, String.raw`C:\CLI Tools\claude.cmd`]);
+  const env = { Path: String.raw`relative;\drive-relative;"C:\CLI Tools"`, PATHEXT: ".CMD;.EXE", MODEX_NO_LOGIN_PATH: "1" };
+  assert.equal(resolveCli("claude", "", { env, platform: "win32" }), String.raw`C:\CLI Tools\claude.cmd`);
+  assert.equal(resolveCli("claude", "", { env: { ...env, PATHEXT: ".PS1;.EXE" }, platform: "win32" }), String.raw`C:\CLI Tools\claude.exe`);
+});
+
+test("Windows discovers native and npm installs without Unix fallback locations", t => {
+  const home = String.raw`C:\Users\Val`;
+  windowsFiles(t, [String.raw`C:\Users\Val\.local\bin\claude.exe`, String.raw`C:\Users\Val\AppData\Roaming\npm\codex.cmd`]);
+  const options = { platform: "win32" as const, env: { USERPROFILE: home, APPDATA: String.raw`C:\Users\Val\AppData\Roaming`, Path: String.raw`C:\Windows\System32` } };
+  assert.equal(resolveCli("claude", "", options), String.raw`C:\Users\Val\.local\bin\claude.exe`);
+  assert.equal(resolveCli("codex", "", options), String.raw`C:\Users\Val\AppData\Roaming\npm\codex.cmd`);
+  assert.throws(() => resolveCli("codex", "", { ...options, env: { ...options.env, MODEX_NO_LOGIN_PATH: "1" } }), /not found/i);
+});
+
+test("Windows overrides resolve native paths and shims but reject command strings and drive-relative paths", t => {
+  windowsFiles(t, [String.raw`C:\Users\Val\CLI Tools\codex.cmd`, String.raw`C:\bin\custom.exe`, String.raw`\\server\tools\claude.exe`]);
+  const options = { platform: "win32" as const, env: { USERPROFILE: String.raw`C:\Users\Val`, PATH: String.raw`C:\bin`, MODEX_NO_LOGIN_PATH: "1" } };
+  assert.equal(resolveCli("codex", "~/CLI Tools/codex.cmd", options), String.raw`C:\Users\Val\CLI Tools\codex.cmd`);
+  assert.equal(resolveCli("codex", "custom", options), String.raw`C:\bin\custom.exe`);
+  assert.equal(resolveCli("claude", String.raw`\\server\tools\claude.exe`, options), String.raw`\\server\tools\claude.exe`);
+  for (const value of [String.raw`C:custom.exe`, String.raw`\bin\custom.exe`, "codex --version", "codex&echo bad", "./custom.exe", "custom.ps1"]) {
+    assert.throws(() => resolveCli("codex", value, options), /executable/i);
+  }
+});

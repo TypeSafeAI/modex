@@ -32,7 +32,7 @@ async function changesHidden(): Promise<void> {
   // The window itself is a precondition too: re-assert the reference size before measuring.
   await resizeWindow(app, page, REFERENCE.width, REFERENCE.height);
   if (await tid(page, "workspace").isVisible()) await page.keyboard.press("Meta+j");
-  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toBeHidden();
   // Let the grid settle: the composer is centred in the full-width main pane.
   await expect.poll(async () => { const m = (await box(tid(page, "main"))); const c = (await box(tid(page, "composer-box"))); return Math.round(Math.abs(c.x + c.width / 2 - (m.x + 1 + (m.width - 1) / 2))); }).toBeLessThanOrEqual(1);
 }
@@ -92,7 +92,7 @@ test("captures every named chat state at the reference size", async () => {
   await page.keyboard.press("Escape");
 
   await page.keyboard.press("Meta+j");
-  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toBeHidden();
   await capture("08-changes-hidden");
 
   expect(manifest.map((m) => m.state)).toEqual(["01-draft", "02-draft-focused", "03-composer-typed", "04-approval", "05-turn-complete", "06-items-expanded", "07-model-menu", "08-changes-hidden"]);
@@ -289,9 +289,9 @@ test.describe("Phase 7 · title bar actions", () => {
     };
     await check(REFERENCE.width);
     await page.keyboard.press("Meta+j");
-    await expect(tid(page, "changes-panel")).toHaveCount(1);
+    await expect(tid(page, "changes-panel")).toBeVisible();
     await check(REFERENCE.width);
-    expect((await box(page.locator('[data-testid="changes-panel"] > header'))).height).toBe(48);
+    expect((await box(page.locator('[data-testid="changes-panel"] > header'))).height).toBe(40);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
     await changesHidden();
   });

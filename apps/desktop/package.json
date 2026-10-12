@@ -8,10 +8,10 @@
   "main": "./dist/src/main/index.js",
   "scripts": {
     "build": "npm run build:main && npm run build:renderer && npm run build:usage",
-    "build:main": "node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && cp src/main/preload.cjs dist/src/main/preload.cjs",
+    "build:main": "node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && node scripts/copy-main-assets.mjs",
     "build:renderer": "vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs",
+    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs test/native-packages.test.mjs",
     "start": "electron .",
     "predev": "npm run build -w @modex/core && npm run build:main",
     "dev": "vite",
@@ -22,7 +22,10 @@
     "dist": "npm run build && electron-builder --mac --arm64 --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false",
     "dist:release": "npm run build && electron-builder --mac --arm64 --publish never -c.mac.sign=./build/sign.cjs",
     "dev:usage": "vite --config vite.usage.config.ts",
-    "build:usage": "vite build --config vite.usage.config.ts"
+    "build:usage": "vite build --config vite.usage.config.ts",
+    "dist:windows": "node scripts/package-native.mjs win32",
+    "dist:linux": "node scripts/package-native.mjs linux",
+    "prepare:native-clis": "node scripts/prepare-native-clis.mjs"
   },
   "dependencies": {
     "@create-markdown/core": "2.0.3",
@@ -45,13 +48,17 @@
     "electron-builder": "26.15.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "vite": "^8.3.1"
+    "vite": "^8.3.1",
+    "cmd-shim": "9.0.2"
   },
   "productName": "Modex",
   "author": "Val Alexander / OpenCoven",
   "build": {
     "appId": "ai.typesafe.modex",
     "productName": "Modex",
+    "protocols": [
+      { "name": "Modex Desktop Host", "schemes": ["modex-host"] }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -69,11 +76,13 @@
     "asarUnpack": [
       "node_modules/node-pty/**",
       "dist/src/main/engine/terminal-supervisor",
+      "dist/src/main/engine/cli-supervisor.exe",
       "dist/src/main/engine/desktop-system"
     ],
     "mac": {
       "extendInfo": {
         "ModexDesktopHostProtocol": 1,
+        "ModexDesktopHostLaunchProtocol": 1,
         "NSLocalNetworkUsageDescription": "Let your paired iPhone find and reconnect to Modex on this Mac.",
         "NSBonjourServices": [
           "_modex._tcp"
@@ -104,6 +113,49 @@
     },
     "artifactName": "Modex-${version}-${arch}.${ext}",
     "electronVersion": "44.4.5",
-    "npmRebuild": false
-  }
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../../docs/branding/modex-icon.png",
+      "artifactName": "Modex-${version}-windows-${arch}.${ext}",
+      "forceCodeSigning": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "executableName": "modex",
+      "maintainer": "Val Alexander <val@opencoven.ai>",
+      "artifactName": "Modex-${version}-linux-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "deb": {
+      "packageName": "modex"
+    }
+  },
+  "homepage": "https://github.com/TypeSafeAI/modex"
 }

@@ -1,8 +1,9 @@
 # Modex landing page
 
-Vite/TypeScript site for **https://modex.build**, with a small cached Vercel function for
-public GitHub release metadata. Uses CSS perspective and an automatically looping three-step product carousel;
-no WebGL, analytics or third-party fonts.
+Vite/TypeScript site for **https://modex.codes**, with a small cached Vercel function for
+public GitHub release metadata. The scrollable page follows a real demo task through three manually selected stages,
+then explains agent access, worktrees, Pages/Knowledge, setup and the optional iPhone
+companion. No WebGL, analytics or third-party fonts.
 
 ## Develop and verify
 
@@ -19,10 +20,10 @@ npm run test:e2e -w @modex/site
 
 Vite dev and preview expose the same `/api/release` handler as production. Browser tests
 intercept this endpoint and exercise future releases, invalid responses, offline fallback,
-periodic refresh, all carousel steps across desktop/mobile viewport sizes, automatic looping,
-manual selection stopping autoplay, reduced motion, details dialogs and JavaScript-disabled links.
-The headerless landing view uses the full viewport without page scrolling; supporting content
-remains available through About Modex.
+periodic refresh, the full product story across desktop/mobile viewport sizes, manual workflow
+selection, keyboard access, reduced motion, screenshot enlargement and JavaScript-disabled links.
+Product copy and platform requirements remain in document flow at narrow or short sizes.
+Set `MODEX_SITE_TEST_PORT` to give concurrent site checks their own port (default 5187).
 Both the feed unit tests and site browser tests run in CI.
 
 ## Automatic releases and counts
@@ -69,14 +70,18 @@ vercel deploy --prebuilt --prod --scope 0xbuns
 
 The former static-only `prepare-vercel.mjs` deployment is removed because it omitted the API.
 After deploying, verify `/api/release`, current download links, GitHub counts, TestFlight
-buttons and mobile layout. `.vercel` is local and ignored. Val manages the `modex.build`
-custom-domain and DNS setup in Vercel manually. The public deployment remains available at
-<https://modex-0xbuns.vercel.app> during setup; canonical and social metadata point to
-`https://modex.build/`.
+buttons and mobile layout. `.vercel` is local and ignored. The public custom domain is
+<https://modex.codes>, attached to project `modex` under `0xbuns`. Canonical and social
+metadata use this address. The Vercel alias <https://modex-0xbuns.vercel.app> remains available.
 
 ## Asset sources
 
-- `desktop-*.png`: real Modex demo captures at 2760×1760; generated with
+- `workflow-approval.png` and `workflow-complete.png`: unchanged copies of the real
+  `docs/screenshots/04-graphite-approval.png` and `05-graphite-complete.png` captures, also
+  present in published tag v0.0.10. CSS crops follow the same scripted CONTRIBUTING.md task.
+  These demonstrate the app, not live Claude/Codex inference. The original images remain
+  accessible; the enlargement dialog supports scrolling to inspect small details.
+- `desktop-*.png`: earlier real Modex demo captures at 2760×1760; generated with
   `electron . --demo --screenshot=<directory> --demo-answer=yes` on 2026-10-05.
 - `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 4, using
   the isolated demo pairing fixture. These illustrate the workflow, not public availability.

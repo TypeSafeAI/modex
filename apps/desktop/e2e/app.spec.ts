@@ -165,7 +165,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await page.keyboard.press("Meta+Shift+p");
   await expect(tid(page, "plan-chip")).toBeVisible();
   await page.keyboard.press("Meta+j");
-  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toBeHidden();
 
   await page.screenshot({ path: path.join(appDir, "test-results", "e2e-final.png") });
 });
@@ -564,7 +564,7 @@ test("drafts: a new chat is nothing until its first send; leaving it creates no 
   await expect(projectRow).toHaveCount(1);
   await expect(page.locator('[data-testid="thread-row"][aria-current="true"]')).toHaveCount(0);
   await expect(tid(page, "thread-title")).toHaveCount(0);
-  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toBeHidden();
 
   // Settings chosen in the draft are its own; typing and leaving creates nothing.
   await tid(page, "access-picker").click();
@@ -683,9 +683,9 @@ test("title bar: ⋯ menu (rename, open, copy, delete), Changes icon with a coun
   const shown = (await toggle.getAttribute("aria-pressed")) === "true";
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", String(!shown));
-  await expect(tid(page, "changes-panel")).toHaveCount(shown ? 0 : 1);
+  await expect(tid(page, "changes-panel")).toBeVisible({ visible: !shown });
   if (shown) await toggle.click();
-  await expect(tid(page, "changes-panel")).toHaveCount(1);
+  await expect(tid(page, "changes-panel")).toBeVisible();
   const files = await tid(page, "changes-file").count();
   if (files > 0) await expect(tid(page, "changes-count")).toHaveText(String(files));
   else await expect(tid(page, "changes-count")).toHaveCount(0);
@@ -701,8 +701,8 @@ test("a 1380×880 window with Changes open keeps the whole composer, send button
   await createThread(page, "Narrow window check");
   await resizeWindow(app, page, 1380, 880);
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1380);
-  if (!(await tid(page, "changes-panel").count())) await tid(page, "changes-toggle").click();
-  await expect(tid(page, "changes-panel")).toHaveCount(1);
+  if (!(await tid(page, "changes-panel").isVisible())) await tid(page, "changes-toggle").click();
+  await expect(tid(page, "changes-panel")).toBeVisible();
   const box = (await tid(page, "composer-box").boundingBox())!;
   const send = (await tid(page, "send").boundingBox())!;
   const main = (await tid(page, "main").boundingBox())!;

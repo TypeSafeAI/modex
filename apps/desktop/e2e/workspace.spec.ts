@@ -54,14 +54,15 @@ test("reference review has a numbered diff and a filterable tree on its right", 
   await tid(page, "review-filter").fill("nothing matches");
   await expect(page.getByText("No matching files.")).toBeVisible();
   await tid(page, "review-filter").clear();
-  await page.getByRole("button", { name: "Show all unchanged lines", exact: true }).click();
+  await page.getByRole("button", { name: "Review options", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Show all unchanged lines", exact: true }).click();
   await expect(page.getByRole("button", { name: /269 unmodified lines/ })).toBeVisible();
   await page.mouse.move(10, 10);
   await tid(page, "review-filter").blur();
   const workspace = tid(page, "workspace");
   await expect(workspace).toHaveCSS("background-color", "rgb(15, 15, 17)");
   expect(Math.round((await workspace.boundingBox())!.width)).toBe(647);
-  expect(Math.round((await tid(page, "review-tree").boundingBox())!.width)).toBe(255);
+  expect(Math.round((await tid(page, "review-tree").boundingBox())!.width)).toBe(207);
   await workspace.screenshot({ path: info.outputPath("review.png"), scale: "css" });
 });
 
@@ -82,9 +83,7 @@ test("new-tab menu, launcher, full view and Files replace the old panel", async 
   await page.keyboard.press("Escape");
   await page.getByRole("tab", { name: "Review", exact: true }).hover();
   await page.getByRole("button", { name: "Close Review tab", exact: true }).click();
-  // Keep the active new tab; the inactive initial tab reveals its close action on hover.
-  await page.getByRole("tab", { name: "New tab", exact: true }).first().hover();
-  await page.getByRole("button", { name: "Close New tab tab", exact: true }).first().click();
+  await expect(page.getByRole("tab", { name: "New tab", exact: true })).toHaveCount(1);
   await resizeWindow(app, page, 1600, 972);
   await page.mouse.move(10, 10);
   await tid(page, "workspace-address").focus();

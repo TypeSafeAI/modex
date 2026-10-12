@@ -66,6 +66,15 @@ extension XCTestCase {
     }
 }
 
+extension XCUIApplication {
+    /// Restrict both the type and identifier. A broad Any/identifiers lookup walks
+    /// keyboard keys after sheet dismissal; Xcode's placeholder fallback can crash
+    /// XCTAutomationSupport with "snapshot has no data source" (CI 38150693945).
+    func inputField(_ identifier: String) -> XCUIElement {
+        textFields.matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
+    }
+}
+
 extension XCUIElement {
     /// Taps once the element is ready; see `waitUntilReady`.
     func tapWhenReady(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
