@@ -7,6 +7,7 @@ import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
 import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
+import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 
@@ -285,6 +286,10 @@ export class CodexBackend implements Backend {
     // reported once, with the completion, instead of as a separate red line.
     let lastError: Record<string, unknown> | null = null;
     const retried: string[] = [];
+    const meter = new UsageMeter();
+    // Output comes from the thread's running total: the total before this turn's first response, then the latest.
+    let outputBase: number | undefined;
+    let outputNow: number | undefined;
 
     return new Promise<TurnResult>((resolve) => {
       let done = false;
@@ -310,7 +315,8 @@ export class CodexBackend implements Backend {
         this.disconnects.delete(onDisconnect);
         clearTimeout(abortTimer);
         signal.removeEventListener("abort", onAbort);
-        resolve(r);
+        if (outputBase !== undefined && outputNow !== undefined) meter.addOutput(outputNow - outputBase);
+        resolve(withUsage(r, meter));
       };
       const onAbort = () => {
         // A requested interrupt is not a terminal acknowledgement. Keep the turn active so
@@ -445,6 +451,18 @@ export class CodexBackend implements Backend {
               const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n\n");
               if (reasoning.has(item.id) || text) sink.thinkingDone(item.id, text || undefined);
               reasoning.delete(item.id);
+            }
+            break;
+          }
+          case "thread/tokenUsage/updated": {
+            const u = p.tokenUsage as { last?: Record<string, unknown>; total?: Record<string, unknown> } | undefined;
+            if (!u?.last) break;
+            meter.call(codexCall(u.last));
+            const total = Number(u.total?.outputTokens);
+            const last = Number(u.last.outputTokens);
+            if (Number.isFinite(total)) {
+              if (outputBase === undefined && Number.isFinite(last)) outputBase = total - last;
+              outputNow = total;
             }
             break;
           }

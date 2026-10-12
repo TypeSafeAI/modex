@@ -51,6 +51,8 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { tmpdir } from "./helpers.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
+import { fileURLToPath } from "node:url";
+import { codexCall } from "../src/main/engine/backends/usage.js";
 
 /** Minimal scripted app-server: answers initialize, thread/start|resume, turn/start, model/list. */
 function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string } = {}) {
@@ -731,4 +733,29 @@ test("CodexBackend: malformed or unsupported permission profiles grant nothing w
     await run;
     await backend.dispose();
   }
+});
+
+test("CodexBackend reports the turn's usage from captured notifications and ignores other threads", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const captured = JSON.parse(fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/usage/codex-token-usage.json", import.meta.url)), "utf8")) as { last: Record<string, number>; total: Record<string, number> }[];
+  try {
+    const run = backend.runTurn("go", { cwd: "/w", mode: "agent", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor((l) => l.includes('"turn/start"'));
+    proc.emitLine({ method: "thread/tokenUsage/updated", params: { threadId: "another-thread", turnId: "other", tokenUsage: captured[0] } });
+    for (const tokenUsage of captured) proc.emitLine({ method: "thread/tokenUsage/updated", params: { threadId, turnId, tokenUsage } });
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    const result = await run;
+    const first = captured[0]!;
+    const final = captured.at(-1)!;
+    const context = codexCall(final.last);
+    assert.ok(first.last.cachedInputTokens! > 0, "the captured second turn read the cache");
+    assert.deepEqual(result.usage, {
+      first: codexCall(first.last),
+      contextTokens: context.cacheRead + context.cacheWrite + context.uncached,
+      outputTokens: final.total.outputTokens! - (first.total.outputTokens! - first.last.outputTokens!),
+      calls: captured.length,
+    });
+  } finally { await backend.dispose(); }
 });
