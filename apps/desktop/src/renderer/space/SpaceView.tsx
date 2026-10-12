@@ -14,6 +14,7 @@ import { BlockEditor } from "./BlockEditor";
 import { PageComments, type CommentDraft } from "./PageComments";
 import { BLOCK_COMMANDS } from "./markdown";
 import { useSpace } from "./useSpace";
+import { restartDrafts } from "../restart-drafts";
 import "./space.css";
 
 type View = "all" | "pages" | "favorites" | "trash" | "knowledge" | "sites" | "images";
@@ -34,10 +35,18 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const importing = useRef(0);
+  useLayoutEffect(() => restartDrafts.register("space-actions", async () => {
+    if (importing.current || creating) throw new Error("Wait for the current Space action to finish before restarting.");
+  }), [creating]);
   const [searching, setSearching] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [quote, setQuote] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, CommentDraft>>({});
+  const commentDraftsRef = useRef(commentDrafts); commentDraftsRef.current = commentDrafts;
+  useEffect(() => restartDrafts.register("page-comments", async () => {
+    if (Object.values(commentDraftsRef.current).some(draft => draft.text.length > 0)) throw new Error("Post or discard your draft comments before restarting.");
+  }), []);
   const [insertOpen, setInsertOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -68,7 +77,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     .filter(p => view === "images" ? /!\[[^\]]*\]\(https?:\/\//i.test(p.markdown) : view === "sites" ? /(?<!!)\[[^\]]+\]\(https?:\/\//i.test(p.markdown) : true)
     .filter(p => `${p.title}\n${p.markdown}`.toLowerCase().includes(query.toLowerCase()));
   const run = async (operation: () => Promise<unknown>) => {
-    try { setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
+    try { restartDrafts.assertOpen(); setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
   const open = (id: string) => { if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
   useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
@@ -85,6 +94,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
   useEffect(() => {
     if (!active) return;
     const key = (event: KeyboardEvent) => {
+      if (restartDrafts.frozen) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n" && !(event.target as HTMLElement).closest(".space-chat")) { event.preventDefault(); void create(); }
     };
     window.addEventListener("keydown", key);
@@ -205,13 +215,17 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     {view === "knowledge" && <KnowledgeView active={active && !chatOpen} onPages={() => selectView("pages")} />}
     <SecretInput ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
       const file = event.target.files?.[0]; event.target.value = "";
-      if (!file) return;
+      if (!file || restartDrafts.frozen) return;
+      importing.current++;
       void run(async () => {
         if (file.size > 1_000_000) throw new Error("Choose a Markdown file smaller than 1 MB.");
         const markdown = await file.text();
+        // This already-started import vetoes preparation. Keep its text until
+        // main acknowledges cancellation, then finish the requested import.
+        await restartDrafts.waitUntilOpen();
         const imported = importMarkdownPage(markdown, file.name);
         await create(imported.title, imported.markdown);
-      });
+      }).finally(() => { importing.current--; });
     }} />
   </div>;
 }

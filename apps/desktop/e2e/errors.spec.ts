@@ -191,7 +191,7 @@ test("the model-list Retry requests the catalogue again and clears the error", a
   });
   await page.evaluate(() => window.modex!.invoke("settings:update", { default_backend: "codex" }));
   await page.reload();
-  await expect(tid(page, "thread-view")).toBeVisible();
+  await expect(tid(page, "composer-input")).toBeVisible();
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "draft-view")).toBeVisible();
   await expect(tid(page, "models-retry")).toBeVisible();

@@ -48,8 +48,26 @@ export class StoreDemo {
     const companion = () => ({ enabled: false, addresses: [] });
     const health = { executable: "unknown" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo: no CLI is installed or executed by this workspace." };
     this.handlers = {
+      "drafts:open": unavailable,
+      "drafts:save": unavailable,
+      "drafts:stage": unavailable,
+      "drafts:pick": unavailable,
+      "drafts:discard": unavailable,
+      "drafts:retire": unavailable,
+      "drafts:begin": unavailable,
+      "drafts:create": unavailable,
+      "drafts:transfer": unavailable,
+      "drafts:send": unavailable,
+      "drafts:pending": unavailable,
+
       "state:get": () => this.state,
       "updates:check": () => null,
+      "updates:state": unavailable,
+      "updates:download": unavailable,
+      "updates:cancel": unavailable,
+      "updates:install": unavailable,
+      "updates:quit": unavailable,
+      "updates:recovery-folder": unavailable,
       "knowledge:state": unavailable,
       "knowledge:choose": unavailable,
       "knowledge:install": unavailable,

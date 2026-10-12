@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ReleaseChecker, releaseUpdate } from "../src/main/engine/updates.js";
+import { ReleaseChecker, releaseUpdate, releaseArchive } from "../src/main/engine/updates.js";
 
 const release = (version = "0.0.7") => ({
   tag_name: `v${version}`, draft: false, prerelease: false, published_at: "2026-10-05T12:00:00Z",
@@ -73,4 +73,45 @@ test("development, demo and test mode can disable all update network requests", 
   const checker = new ReleaseChecker({ currentVersion: "0.0.6", platform: "darwin", arch: "arm64", enabled: false,
     fetcher: async () => { assert.fail("No network request expected"); } });
   assert.equal(await checker.check(), null);
+});
+
+test("automatic installation requires a bounded ZIP and GitHub asset digest for the selected newer release", () => {
+  const zip = { name: "Modex-0.0.7-arm64.zip", state: "uploaded", size: 1234, digest: `sha256:${"ab".repeat(32)}`, browser_download_url: "https://untrusted.example/archive.zip" };
+  const metadata = { ...release(), assets: [...release().assets, zip] };
+  assert.deepEqual(releaseArchive(metadata, "0.0.6", "darwin", "arm64"), { version: "0.0.7", arch: "arm64", size: 1234, sha256: "ab".repeat(32) });
+  for (const changed of [{ digest: null }, { digest: "sha256:bad" }, { size: 0 }, { size: 512 * 1024 * 1024 + 1 }, { state: "new" }, { name: "Modex-0.0.7-x64.zip" }]) {
+    assert.equal(releaseArchive({ ...metadata, assets: [...release().assets, { ...zip, ...changed }] }, "0.0.6", "darwin", "arm64"), null);
+  }
+  assert.equal(releaseArchive({ ...metadata, assets: [...metadata.assets, zip] }, "0.0.6", "darwin", "arm64"), null);
+  assert.equal(releaseArchive(metadata, "0.0.7", "darwin", "arm64"), null);
+  assert.equal(releaseArchive(metadata, "0.0.6", "linux", "arm64"), null);
+});
+
+test("one bounded release fetch serves both the banner and main-owned installation metadata", async () => {
+  let calls = 0;
+  const checker = new ReleaseChecker({ currentVersion: "0.0.6", platform: "darwin", arch: "arm64", enabled: true, fetcher: async () => {
+    calls++;
+    return Response.json({ ...release(), assets: [...release().assets, { name: "Modex-0.0.7-arm64.zip", state: "uploaded", size: 1234, digest: `sha256:${"ab".repeat(32)}` }] });
+  } });
+  assert.equal(checker.archive(), null);
+  await checker.check();
+  const archive = checker.archive()!;
+  archive.size = 1;
+  assert.equal(checker.archive()!.size, 1234, "callers cannot mutate cached verification metadata");
+  await checker.check();
+  assert.equal(calls, 1);
+  const oversized = new ReleaseChecker({ currentVersion: "0.0.6", platform: "darwin", arch: "arm64", enabled: true,
+    fetcher: async () => Response.json({ ...release(), padding: "x".repeat(1024 * 1024) }),
+  });
+  assert.equal(await oversized.check(), null);
+  assert.equal(oversized.archive(), null);
+});
+
+test("a rejected release response is cancelled without leaving its body live", async () => {
+  let cancelled = false;
+  const checker = new ReleaseChecker({ currentVersion: "0.0.6", platform: "darwin", arch: "arm64", enabled: true,
+    fetcher: async () => new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status: 503 }),
+  });
+  assert.equal(await checker.check(), null);
+  assert.equal(cancelled, true);
 });

@@ -490,38 +490,44 @@ test("stop cancels a waiting approval and returns the thread to idle", async () 
   await assert.rejects(runner.send("nope", "x"), /unknown thread/);
 });
 
-test("two threads in the same project run concurrently and independently", async () => {
+test("two threads in the same project run concurrently and independently", { timeout: 10_000 }, async () => {
   const h = harness();
-  const repo = gitRepo();
-  const project = h.store.addProject(repo);
-  // A backend that takes 300ms per turn: serial execution would need ≥600ms for two threads.
-  const slow: Backend = {
-    id: "mock",
-    listModels: async () => [],
-    dispose: async () => {},
-    async runTurn(_text: string, _o: TurnOptions, sink: TurnSink): Promise<TurnResult> {
-      await new Promise((r) => setTimeout(r, 300));
+  const project = h.store.addProject(gitRepo());
+  const entered: string[] = [], releases = new Map<string, () => void>();
+  let cleaning = false;
+  const held: Backend = {
+    id: "mock", listModels: async () => [], dispose: async () => {},
+    async runTurn(text: string, _o: TurnOptions, sink: TurnSink): Promise<TurnResult> {
+      entered.push(text);
+      if (!cleaning) await new Promise<void>(resolve => { releases.set(text, resolve); });
       sink.assistant("finished");
       return { status: "completed" };
     },
   };
-  const runner = new ThreadRunner({ ...h, backends: { mock: slow } });
+  const runner = new ThreadRunner({ ...h, backends: { mock: held } });
   const a = await runner.createThread(project.id, { mode: "full-access" });
   const b = await runner.createThread(project.id, { mode: "full-access" });
-  const started = Date.now();
-  await Promise.all([runner.send(a.id, "task a"), runner.send(b.id, "task b")]);
-  const elapsed = Date.now() - started;
-  assert.ok(elapsed < 550, `expected parallel execution, took ${elapsed}ms`);
-  assert.equal(runner.status(a.id), "idle");
-  assert.equal(runner.status(b.id), "idle");
-  const order = h.events.filter((e) => e.type === "status").map((e) => e.threadId);
-  assert.ok(order.indexOf(b.id) < order.lastIndexOf(a.id), "events interleave across threads");
-  await assert.rejects(async () => {
-    const p = runner.send(a.id, "again");
-    await runner.send(a.id, "while busy");
-    await p;
-  }, /still working/);
-  assert.equal(runner.items(a.id).filter((i) => i.kind === "notice").length, 0, "concurrent send rejection leaves no notice item");
+  const runs = [runner.send(a.id, "task a"), runner.send(b.id, "task b")];
+  const settled = Promise.allSettled(runs);
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(entered, ["task a", "task b"], "both backends enter while the first remains held");
+    assert.equal(runner.status(a.id), "running"); assert.equal(runner.status(b.id), "running");
+    releases.get("task b")!(); await runs[1];
+    assert.equal(runner.status(b.id), "idle"); assert.equal(runner.status(a.id), "running", "finishing b does not finish a");
+    releases.get("task a")!(); await runs[0];
+    assert.equal(runner.status(a.id), "idle");
+    const order = h.events.filter((e) => e.type === "status").map((e) => e.threadId);
+    assert.ok(order.indexOf(b.id) < order.lastIndexOf(a.id), "events interleave across threads");
+    const again = runner.send(a.id, "again"); runs.push(again);
+    await assert.rejects(runner.send(a.id, "while busy"), /still working/);
+    releases.get("again")!(); await again;
+    assert.equal(runner.items(a.id).filter((i) => i.kind === "notice").length, 0, "concurrent send rejection leaves no notice item");
+  } finally {
+    cleaning = true;
+    for (const release of releases.values()) release();
+    await settled; await Promise.allSettled(runs); await runner.dispose();
+  }
 });
 
 test("send while a turn is running rejects and does not record a notice item", async () => {

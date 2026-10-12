@@ -12,6 +12,7 @@ let repo: string;
 test.beforeEach(async () => {
   ({ home, repo } = seedHome());
   ({ app, page } = await launch(home));
+  console.log(`release fixture ${JSON.stringify({ home, repo, pid: app.process().pid })}`);
 });
 
 test.afterEach(async () => {
@@ -82,6 +83,8 @@ test("switching projects does not carry another thread's unsent instructions", a
   state.threads = ["one", "two"].map((id, i) => ({ id, projectId: i ? "p2" : "p1", title: id, cwd: repo, backend: "mock", model: "mock", mode: "chat", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
   fs.writeFileSync(file, JSON.stringify(state));
   ({ app, page } = await launch(home));
+  // The earlier blank launch can persist New chat as its selected surface.
+  await tid(page, "thread-row").filter({ hasText: "one" }).getByRole("button", { name: "one", exact: true }).click();
   await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "one");
   await tid(page, "composer-input").fill("Only change files in the first project");
   await tid(page, "thread-row").filter({ hasText: "two" }).getByRole("button", { name: "two", exact: true }).click();
@@ -107,6 +110,8 @@ test("unsent text waits on its own thread: switching threads keeps it, the sideb
   const row = (title: string) => tid(page, "thread-row").filter({ hasText: title });
   const open = (title: string) => row(title).getByRole("button", { name: title, exact: true }).click();
   const input = tid(page, "composer-input");
+  // Seeded thread rows do not override the saved New chat selection.
+  await open("one");
   await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "one");
   await input.fill("Keep this for one");
   await expect(tid(row("one"), "thread-row-unsent")).toHaveCount(0); // the selected thread needs no reminder
@@ -144,6 +149,8 @@ test("unsent text waits on its own thread: switching threads keeps it, the sideb
 });
 
 test("quitting waits for the CLI to stop and flushes the final transcript", async () => {
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await expect(tid(page, "model-picker")).toContainText("Scripted mock");
   await app.close();
   const stopped = path.join(home, "fixture-stopped");
   const pidFile = path.join(home, "fixture.pid");
@@ -155,6 +162,12 @@ test("quitting waits for the CLI to stop and flushes the final transcript", asyn
   state.settings.claude_bin = cli;
   fs.writeFileSync(file, JSON.stringify(state));
   ({ app, page } = await launch(home));
+  // Restoring the earlier draft preserves its backend despite a new global default.
+  await tid(page, "composer-plus").click();
+  await page.getByRole("menuitemradio", { name: "Claude", exact: true }).click();
+  await tid(page, "composer-plus").click();
+  await expect(page.getByRole("menuitemradio", { name: "Claude", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
   await tid(page, "composer-input").fill("Test shutdown");
   await page.keyboard.press("Meta+Enter");
   await expect(page.getByText("final shutdown text", { exact: true })).toBeVisible();

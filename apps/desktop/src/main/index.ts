@@ -1,3 +1,16 @@
+import { NativeDrafts } from "./engine/native-drafts.js";
+import { OwnerRemoval } from "./engine/owner-removal.js";
+import type { DraftRemovalScope } from "../shared/native-drafts.js";
+import { RestartAdmission } from "./engine/restart-admission.js";
+import { readUpdateStartup } from "./engine/update-startup.js";
+import { UpdateRecovery } from "./engine/update-recovery.js";
+import { UpdateRestartCoordinator } from "./engine/update-restart-coordinator.js";
+import { UpdateInstallation } from "./engine/update-installation.js";
+import { MacUpdateHandoff } from "./engine/update-mac-handoff.js";
+import type { UpdateInstallState } from "../shared/updates.js";
+import type { UpdateStartupRecovery } from "../shared/update-recovery.js";
+import { DocumentRestartPreflight } from "./engine/update-renderer-preflight.js";
+import type { IpcMainInvokeEvent } from "electron";
 import { WorkspaceCanvas } from "./workspace-canvas.js";
 import { CANVAS_SCHEME } from "../shared/canvas.js";
 import { KnowledgeService } from "./engine/knowledge.js";
@@ -10,7 +23,7 @@ import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -90,6 +103,7 @@ const pathReady = hydratePath(process.env).then(
 
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
+const restartAdmission = new RestartAdmission();
 const knowledge = new KnowledgeService(home);
 const knowledgeAgents = new KnowledgeAgents({ knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true });
 const pagesAgents = new PagesAgents({ space: store.space, enabled: id => store.project(id)?.pagesMaintenance === true });
@@ -105,11 +119,12 @@ let browserTools: BrowserTools | null = null;
 let knowledgeBrowser: WorkspaceBrowser | null = null;
 let knowledgeURL: string | null = null;
 let shuttingDown = false;
+let servicesTouched = false;
 let shutdownComplete = false;
 let checkingWindowClose = false;
 let desktopHost: DesktopHost | undefined;
 const desktopHostActivation = createDesktopHostActivation({
-  available: () => !demo && !shuttingDown && !checkingWindowClose,
+  available: () => !demo && !shuttingDown && !servicesTouched && !checkingWindowClose && !restartAdmission.held && !nativeDraftFailure && !nativeStartup?.recovery,
   start: startDesktopHost,
   onError: (error) => console.error("[modex] desktop host activation failed:", error),
 });
@@ -132,9 +147,87 @@ const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url
 const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
 process.env.MODEX_VERSION = app.getVersion();
-const attachments = new AttachmentStore(path.join(home, "attachments"));
-attachments.sweepStaging();
-const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id) });
+const attachments = new AttachmentStore(path.join(home, "attachments"), {
+  authorizeDraft: owner => owner.kind === "project" ? !!store.project(owner.projectId) : !!store.thread(owner.threadId) && !store.thread(owner.threadId)!.retired,
+  authorizeTransfer: (owner, threadId) => owner.kind === "thread" ? owner.threadId === threadId : store.thread(threadId)?.projectId === owner.projectId,
+});
+// Install preservation before any cleanup. NativeDrafts replays sealed ownership
+// before startup inspection can update the installed-version receipt.
+attachments.setRecoveryRetention(null);
+const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+let nativeDrafts: NativeDrafts | undefined;
+let nativeDraftFailure: string | undefined;
+let nativeStartup: ReturnType<typeof readUpdateStartup> | undefined;
+let restartCoordinator: UpdateRestartCoordinator | undefined;
+if (process.platform !== "win32" && !demo) {
+  try {
+    nativeDrafts = new NativeDrafts({ store, runner, attachments });
+    nativeStartup = readUpdateStartup(nativeDrafts.recovery, app.getVersion());
+  } catch (error) {
+    nativeDraftFailure = error instanceof Error ? error.message : "Native draft recovery is unavailable.";
+    attachments.setRecoveryRetention(null);
+  }
+} else attachments.setRecoveryRetention([]);
+// Native document opening establishes strict durable retention. A failed startup
+// stays preserve-all; Windows/demo keep their existing unbound staging cleanup.
+if (!nativeDrafts && !nativeDraftFailure) attachments.sweepStaging();
+let documentEpoch = 0;
+let nativeDocument: { frame: unknown; epoch: number; session: string } | undefined;
+let readOnlyDocument: { frame: unknown; epoch: number } | undefined;
+type RecoveryQuitOperation = { document: NonNullable<typeof nativeDocument>; promise: Promise<void> };
+let recoveryQuitOperation: RecoveryQuitOperation | undefined;
+const rendererPreflight = new DocumentRestartPreflight(() => nativeDocument, (_document, request) => {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) throw new Error("The workspace is unavailable.");
+  win.webContents.send("updates:prepare", request);
+});
+const recoveryQuitPreflight = new DocumentRestartPreflight(() => nativeDocument, (_document, request) => {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) throw new Error("The workspace is unavailable.");
+  win.webContents.send("updates:prepare-quit", request);
+});
+const ownerRemoval = new OwnerRemoval({
+  current: () => nativeDocument,
+  send: (_document, request) => {
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) throw new Error("The workspace is unavailable.");
+    win.webContents.send(request.phase === "prepare" ? "drafts:remove-prepare" : "drafts:remove-adopt", {
+      id: request.id, type: request.type, payload: request.phase === "prepare" ? request.scope : request.result,
+    });
+  },
+  // Do not hold TaskRetirer here: retirement itself runs inside its sweep.
+  holds: [() => restartAdmission.holdForRestart(), () => runner.holdForRestart(), () => nativeDrafts!.holdForOwnerRemoval()],
+  prune: (scope, revision) => nativeDrafts!.pruneEmptyOwner(scope, revision),
+  snapshot: () => store.snapshot(),
+  requiresRecovery: () => Boolean(nativeDrafts?.requiresRecovery),
+  recover: error => {
+    nativeDraftFailure = `Owner removal could not be confirmed: ${error.message}`;
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("drafts:remove-recovery", nativeDraftFailure);
+  },
+});
+async function withOwnerRemoval(scope: DraftRemovalScope, operation: () => Promise<void>): Promise<void> {
+  const recovery = currentDraftRecovery();
+  if (recovery) throw new Error(recovery.message);
+  if (!nativeDrafts) return restartAdmission.run(operation);
+  return ownerRemoval.run(scope, operation);
+}
+function invalidateNativeDocument(): void {
+  ownerRemoval.invalidate();
+  rendererPreflight.invalidate();
+  recoveryQuitPreflight.invalidate(); recoveryQuitOperation = undefined;
+  documentEpoch++; nativeDocument = undefined; readOnlyDocument = undefined; nativeDrafts?.invalidate();
+}
+ipcMain.on("updates:prepared", (event, reply) => {
+  if (!isTrustedTerminalSender(event, win) || !nativeDocument || nativeDocument.frame !== event.senderFrame || nativeDocument.epoch !== documentEpoch) return;
+  rendererPreflight.reply(nativeDocument, reply);
+});
+ipcMain.on("updates:quit-prepared", (event, reply) => {
+  if (!isTrustedTerminalSender(event, win) || !nativeDocument || nativeDocument.frame !== event.senderFrame || nativeDocument.epoch !== documentEpoch) return;
+  recoveryQuitPreflight.reply(nativeDocument, reply);
+});
+for (const [channel, phase] of [["drafts:remove-prepared", "prepare"], ["drafts:remove-adopted", "adopt"]] as const) {
+  ipcMain.on(channel, (event, reply) => {
+    if (!isTrustedTerminalSender(event, win) || !nativeDocument || nativeDocument.frame !== event.senderFrame || nativeDocument.epoch !== documentEpoch) return;
+    ownerRemoval.reply(nativeDocument, { ...reply, phase });
+  });
+}
 const retirer = new TaskRetirer({
   enabled: () => store.settings.auto_retire,
   threads: () => store.snapshot().threads,
@@ -146,12 +239,22 @@ const retirer = new TaskRetirer({
 const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
   pullRequest: (id) => retirer.pullRequest(id),
-  setApprovals: (id, approvals) => { runner.updateThread(id, { approvals }); },
+  setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
-  create: async (projectId, options) => { await pathReady; return runner.createThread(projectId, options); },
-  send: async (id, text) => { await pathReady; return startTurn(id, runner.send(id, text)); },
-  answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
+  create: (projectId, options) => restartAdmission.run(async () => {
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    await pathReady;
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    return runner.createThread(projectId, options);
+  }),
+  send: (id, text) => restartAdmission.run(async () => {
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    await pathReady;
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    return startTurn(id, runner.send(id, text));
+  }),
+  answer: (id, itemId, answer) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answer(id, itemId, answer); },
 });
 const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => {
   const endpoints = await Promise.all((status.endpoints ?? []).map(async (endpoint) => ({
@@ -161,22 +264,121 @@ const companionView = async (status: CompanionStatus): Promise<CompanionStatus> 
   return { ...status, ...(endpoints.length ? { endpoints, qrDataUrl: endpoints[0]!.qrDataUrl } : {}) };
 };
 
-type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
+type NativeIPCEvent = Pick<IpcMainInvokeEvent, "sender" | "senderFrame">;
+type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"], event?: NativeIPCEvent) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 /** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
-const SPAWNS = new Set<keyof BridgeCommands>(["knowledge:install", "knowledge:start", "settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
-const desktopCommands = new Map<string, (payload: unknown) => unknown>();
+const SPAWNS = new Set<keyof BridgeCommands>(["drafts:create", "drafts:send", "knowledge:install", "knowledge:start", "settings:update", "thread:create", "thread:send", "thread:retry", "thread:followup", "terminal:open", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test", "approvals:try"]);
+const desktopCommands = new Map<string, (payload: unknown, authorized: () => boolean) => unknown>();
 
+// These operations persist preflight drafts or control the restart itself.
+// They must not count as work which prevents their own restart admission.
+const RESTART_CONTROL = new Set<string>(["state:get", "drafts:save", "drafts:pending", "updates:check", "updates:state", "updates:install", "updates:cancel", "updates:quit", "updates:recovery-folder"]);
+// These acquire their own admission fence before awaiting renderer preparation.
+const OWNER_REMOVAL_CONTROL = new Set<string>(["thread:delete", "project:remove"]);
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, options: { localOnly?: boolean } = {}): void {
-  if (!options.localOnly) desktopCommands.set(channel, (payload) => fn(payload as BridgeCommands[K]["req"]));
-  ipcMain.handle(channel, async (event, req) => {
-    if (shuttingDown) throw new Error("Modex is shutting down.");
-    if (SPAWNS.has(channel)) await pathReady;
-    if (shuttingDown) throw new Error("Modex is shutting down.");
-    // Guest pages never receive app authority: commands belong to the app window's top frame.
-    if (!isTrustedTerminalSender(event, win)) throw new Error(channel.startsWith("terminal:") ? "Untrusted terminal request." : "Untrusted app request.");
-    return fn(req as BridgeCommands[K]["req"]);
-  });
+  const invoke = (req: BridgeCommands[K]["req"], event?: NativeIPCEvent, authorized?: () => boolean) => {
+    const epoch = documentEpoch;
+    const recoveryPersistence = () => Boolean(channel === "space:save" && restartAdmission.held && event && nativeDocument
+      && nativeDocument.frame === event.senderFrame && nativeDocument.epoch === epoch && recoveryQuitPreflight.allowsPersistence(nativeDocument));
+    const check = () => {
+      if (shuttingDown) throw new Error("Modex is shutting down.");
+      if (authorized && authorized() !== true) throw new Error("Desktop host access is unavailable.");
+      if (event && (!isTrustedTerminalSender(event, win) || epoch !== documentEpoch)) throw new Error("Untrusted or stale app request.");
+      const recovery = currentDraftRecovery();
+      if (recovery && !["state:get", "drafts:open", "updates:state", "updates:check", "updates:quit", "updates:recovery-folder"].includes(channel) && !recoveryPersistence()) {
+        throw new Error(recovery.message);
+      }
+    };
+    const run = async () => {
+      check();
+      if (SPAWNS.has(channel)) await pathReady;
+      check();
+      return fn(req, event);
+    };
+    // Claim admission before PATH or any other asynchronous operation can yield.
+    const preparationSave = restartAdmission.held && channel === "space:save" && event
+      && nativeDocument?.frame === event.senderFrame && nativeDocument.epoch === epoch
+      && (rendererPreflight.allowsPersistence(nativeDocument) || ownerRemoval.allowsPersistence(nativeDocument));
+    const recoveryRead = channel === "drafts:open" && Boolean(currentDraftRecovery());
+    return RESTART_CONTROL.has(channel) || OWNER_REMOVAL_CONTROL.has(channel) || preparationSave || recoveryRead || recoveryPersistence() ? run() : restartAdmission.run(run);
+  };
+  if (!options.localOnly) desktopCommands.set(channel, (payload, authorized) => invoke(payload as BridgeCommands[K]["req"], undefined, authorized));
+  ipcMain.handle(channel, (event, req) => invoke(req as BridgeCommands[K]["req"], event));
 }
+
+function nativeFor(request: { session: string }, event?: NativeIPCEvent): NativeDrafts {
+  if (!event || !isTrustedTerminalSender(event, win) || !nativeDrafts || !nativeDocument
+    || nativeDocument.frame !== event.senderFrame || nativeDocument.epoch !== documentEpoch || nativeDocument.session !== request?.session) {
+    throw new Error("The native draft document is no longer available.");
+  }
+  return nativeDrafts;
+}
+function currentDraftRecovery(): UpdateStartupRecovery | null {
+  if (nativeDraftFailure) return { outcome: "unreadable", message: `${nativeDraftFailure} Original recovery files have been preserved. Quit and repair or restore them before continuing.` };
+  const phase = restartCoordinator?.state;
+  if (servicesTouched || (phase && !["idle", "preparing"].includes(phase))) {
+    return nativeDrafts ? readUpdateStartup(nativeDrafts.recovery, app.getVersion(), phase && !["idle", "preparing"].includes(phase) ? phase : "recovery").recovery
+      : { outcome: "recovery", message: "Modex has started shutting down. Quit and reopen Modex before continuing." };
+  }
+  return nativeStartup?.recovery ?? null;
+}
+// Explicitly local-only: paired desktop commands never receive document sessions.
+handle("drafts:open", (_req, event) => {
+  if (!event || !isTrustedTerminalSender(event, win)) throw new Error("Untrusted app request.");
+  const recovery = currentDraftRecovery();
+  if (recovery) {
+    nativeDrafts?.invalidate(); nativeDocument = undefined;
+    readOnlyDocument = { frame: event.senderFrame, epoch: documentEpoch };
+    try {
+      const saved = nativeDrafts?.readOnly() ?? { drafts: new UpdateRecovery(store.dir).read().drafts, pending: [] };
+      return { readOnly: true as const, ...saved, pendingIds: [] as [], recovery };
+    } catch {
+      return { readOnly: true as const, drafts: null, pendingIds: [] as [], pending: [],
+        recovery: { outcome: "unreadable" as const, message: "Some recovery data could not be read. Original files have been preserved. Quit and repair or restore them before continuing." } };
+    }
+  }
+  if (!nativeDrafts) return null;
+  const opened = nativeDrafts.open();
+  readOnlyDocument = undefined;
+  nativeDocument = { frame: event.senderFrame, epoch: documentEpoch, session: opened.session };
+  attachments.sweepStaging();
+  return opened;
+}, { localOnly: true });
+handle("drafts:save", (req, event) => nativeFor(req, event).save(req.session, req), { localOnly: true });
+handle("drafts:stage", (req, event) => nativeFor(req, event).stage(req.session, req.owner, req.files), { localOnly: true });
+handle("drafts:pick", async (req, event) => {
+  let omitted = 0;
+  const picked = await nativeFor(req, event).pick(req.session, req.owner, req.remaining, async () => {
+    const result = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], title: "Attach files", buttonLabel: "Attach" });
+    if (result.canceled) return [];
+    omitted = Math.max(0, result.filePaths.length - req.remaining);
+    return result.filePaths.slice(0, req.remaining);
+  });
+  if (omitted) picked.errors.push(`Up to ${LIMITS.perTurn} attachments per message; ${omitted} left out.`);
+  return picked;
+}, { localOnly: true });
+handle("drafts:discard", (req, event) => nativeFor(req, event).discard(req.session, req.owner, req.ids), { localOnly: true });
+handle("drafts:retire", (req, event) => nativeFor(req, event).retire(req.session, req.owner), { localOnly: true });
+handle("drafts:begin", (req, event) => nativeFor(req, event).begin(req.session, req.input), { localOnly: true });
+handle("drafts:create", (req, event) => nativeFor(req, event).create(req.session, req.intentId), { localOnly: true });
+handle("drafts:transfer", (req, event) => nativeFor(req, event).transfer(req.session, req), { localOnly: true });
+handle("drafts:pending", (req, event) => {
+  const record = nativeFor(req, event).readPending(req.session, req.intentId);
+  if (!record) return null;
+  const { creation: _mainOnly, ...view } = record;
+  return view;
+}, { localOnly: true });
+handle("drafts:send", (req, event) => {
+  const controller = nativeFor(req, event), record = controller.readPending(req.session, req.intentId);
+  if (!record?.target) throw new Error("The pending message has no target thread.");
+  return startTurn(record.target.threadId, controller.send(req.session, req.intentId));
+}, { localOnly: true });
+ipcMain.on("drafts:close-save", (event, req) => {
+  try {
+    if (shuttingDown || nativeDraftFailure || nativeStartup?.recovery) throw new Error("Draft recovery is unavailable.");
+    event.returnValue = nativeFor(req, event).save(req.session, req);
+  } catch { event.returnValue = { saved: false, revision: 0 }; }
+});
 
 function cwdFor(threadId: string): string {
   const t = store.thread(threadId);
@@ -196,6 +398,67 @@ const terminals = new TerminalManager(
   // e2e types into the shell: a plain bash, not the user's login shell and its rc files.
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined,
 );
+
+let servicesDrained = false;
+let drainingServices: Promise<void> | undefined;
+function drainServices(): Promise<void> {
+  if (servicesDrained) return Promise.resolve();
+  if (drainingServices) return drainingServices;
+  servicesTouched = true;
+  modexAccount.cancel(); chatgpt.cancel(); claudeLogin.cancel(); retirer.stop();
+  drainingServices = (async () => {
+    // Start every disposer even if another throws before returning its promise.
+    const operations = [() => pagesAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
+      () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose()];
+    const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
+    modexAccount.dispose(); chatgpt.dispose();
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+    servicesDrained = true;
+  })().finally(() => { drainingServices = undefined; });
+  return drainingServices;
+}
+// Main-owned update lifecycle.
+const automaticUpdates = Boolean(app.isPackaged && process.platform === "darwin" && ["arm64", "x64"].includes(process.arch)
+  && !demo && !process.env.MODEX_E2E && !hostPreview && nativeDrafts && !nativeDraftFailure && !nativeStartup?.recovery);
+const updateInstallation = new UpdateInstallation({
+  enabled: automaticUpdates, parent: path.join(home, "updates"),
+  runningApp: path.resolve(path.dirname(process.execPath), "../.."), arch: process.arch === "x64" ? "x64" : "arm64",
+  checker: updates,
+  changed: state => {
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("updates:state", state);
+  },
+  restart: candidate => {
+    if (!restartCoordinator) throw new Error("Automatic installation is unavailable.");
+    return restartCoordinator.restart(candidate);
+  },
+});
+if (automaticUpdates) {
+  const native = new MacUpdateHandoff(autoUpdater, state => restartCoordinator?.observeNative(state));
+  restartCoordinator = new UpdateRestartCoordinator({
+    currentVersion: app.getVersion(), recovery: nativeDrafts!.recovery, native,
+    holds: [() => restartAdmission.holdForRestart(), () => runner.holdForRestart(), () => terminals.holdForRestart(),
+      () => retirer.holdForRestart(), () => nativeDrafts!.holdForRestart(), () => {
+        // Guest content has its own editor state. Closing it is an explicit user
+        // decision; app draft persistence cannot acknowledge unsaved guest forms.
+        if (workspaceBrowser?.hasOpenPages || workspaceCanvas?.hasOpenPages || knowledgeBrowser?.hasOpenPages) {
+          throw new Error("Close Browser, Canvas and Knowledge pages before restarting to protect unsaved work.");
+        }
+        return () => {};
+      }],
+    prepareRenderer: () => rendererPreflight.prepare(), assertRendererPrepared: () => rendererPreflight.assertPrepared(),
+    releaseRenderer: () => rendererPreflight.release(), drainServices,
+    changed: state => updateInstallation.observeRestart(state), quitAndInstall: () => autoUpdater.quitAndInstall(),
+  });
+}
+function updateState(): UpdateInstallState {
+  const state = updateInstallation.state(), recovery = currentDraftRecovery();
+  // An in-flight handoff must not become an actionable recovery screen. Its
+  // coordinator will publish a terminal outcome after the native boundary settles.
+  if (!recovery || state.phase === "preparing") return state;
+  return { ...state, phase: recovery.outcome === "staged" || recovery.outcome === "uncertain" ? recovery.outcome : "recovery",
+    installable: false, canRestart: restartCoordinator?.state === "staged", message: recovery.message };
+}
 
 handle("canvas:open", ({ id, threadId, path }) => {
   if (!workspaceCanvas) throw new Error("Canvas unavailable.");
@@ -260,7 +523,77 @@ handle("knowledge:copy", ({ pageId }) => {
   return knowledge.copyPage(page);
 }, { localOnly: true });
 
-handle("updates:check", () => updates.check());
+function requireReadOnlyRecoveryDocument(event?: NativeIPCEvent): void {
+  assertRecoveryQuitReady();
+  if (!currentDraftRecovery() || !event || !isTrustedTerminalSender(event, win) || nativeDocument || !readOnlyDocument
+    || readOnlyDocument.frame !== event.senderFrame || readOnlyDocument.epoch !== documentEpoch) {
+    throw new Error("The read-only recovery document is no longer available.");
+  }
+}
+function requireRecoveryEditingDocument(event?: NativeIPCEvent): NonNullable<typeof nativeDocument> {
+  assertRecoveryQuitReady();
+  if (!currentDraftRecovery() || !event || !isTrustedTerminalSender(event, win) || readOnlyDocument || !nativeDrafts || !nativeDocument
+    || nativeDocument.frame !== event.senderFrame || nativeDocument.epoch !== documentEpoch) {
+    throw new Error("The recovery editing document is no longer available.");
+  }
+  return nativeDocument;
+}
+function assertRecoveryQuitReady(): void {
+  if (restartCoordinator && ["preparing", "draining", "staging"].includes(restartCoordinator.state)) {
+    throw new Error("Modex is still preparing the update. Wait for it to finish before quitting.");
+  }
+}
+function releaseRecoveryQuit(): void {
+  recoveryQuitOperation = undefined;
+  recoveryQuitPreflight.release();
+}
+function requestRecoveryQuit(event?: NativeIPCEvent): Promise<void> {
+  const document = requireRecoveryEditingDocument(event);
+  if (recoveryQuitOperation) {
+    if (recoveryQuitOperation.document !== document) throw new Error("The recovery document changed.");
+    return recoveryQuitOperation.promise;
+  }
+  const operation: RecoveryQuitOperation = { document, promise: Promise.resolve().then(async () => {
+    if (recoveryQuitOperation !== operation || requireRecoveryEditingDocument(event) !== document) throw new Error("The recovery document changed.");
+    const revision = await recoveryQuitPreflight.prepare();
+    if (recoveryQuitOperation !== operation || requireRecoveryEditingDocument(event) !== document) throw new Error("The recovery document changed.");
+    recoveryQuitPreflight.assertPrepared();
+    nativeDrafts!.recovery.validateRecoveryClose(revision);
+    // Keep this proof until actual close or will-prevent-unload, not just until
+    // app.quit returns. The renderer can still revoke it in beforeunload.
+    app.quit();
+  }).catch(error => {
+    if (recoveryQuitOperation === operation) releaseRecoveryQuit();
+    throw error;
+  }) };
+  recoveryQuitOperation = operation;
+  return operation.promise;
+}
+handle("updates:check", async () => automaticUpdates ? (await updateInstallation.check()).release : updates.check());
+handle("updates:state", (_req, event) => {
+  const state = updateState();
+  // Windows has no native draft capability. A trusted local state read still
+  // binds ordinary recovery controls after service disposal, without granting
+  // any editing authority or bypassing the window's beforeunload checks.
+  if (!nativeDrafts && !nativeDraftFailure && currentDraftRecovery() && event && isTrustedTerminalSender(event, win)) {
+    readOnlyDocument = { frame: event.senderFrame, epoch: documentEpoch };
+  }
+  return state;
+}, { localOnly: true });
+handle("updates:download", () => updateInstallation.download(), { localOnly: true });
+handle("updates:cancel", () => updateInstallation.cancel(), { localOnly: true });
+handle("updates:install", () => updateInstallation.install(), { localOnly: true });
+handle("updates:quit", (_req, event) => {
+  if (!readOnlyDocument) return requestRecoveryQuit(event);
+  requireReadOnlyRecoveryDocument(event);
+  // Keep normal beforeunload handling: this never bypasses unsaved editors.
+  setImmediate(() => app.quit());
+}, { localOnly: true });
+handle("updates:recovery-folder", async (_req, event) => {
+  requireReadOnlyRecoveryDocument(event);
+  const error = await shell.openPath(store.dir);
+  if (error) throw new Error(error);
+}, { localOnly: true });
 handle("space:export", async ({ pageId }) => {
   const page = store.space.list().find(page => page.id === pageId && !page.trashedAt);
   if (!page) throw new Error("This page is no longer available.");
@@ -448,6 +781,11 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  w.webContents.on("did-start-navigation", details => {
+    if (win === w && details.isMainFrame && !details.isSameDocument) invalidateNativeDocument();
+  });
+  w.once("closed", () => { if (win === w) invalidateNativeDocument(); });
+  w.webContents.on("render-process-gone", () => { if (win === w) invalidateNativeDocument(); });
   w.once("closed", () => {
     // Electron 44's visibility handlers access the native window without checking
     // destruction. Late macOS notifications must not reopen an error dialog on quit.
@@ -509,44 +847,57 @@ let startingDesktopHost: Promise<void> | undefined;
 function startDesktopHost(): Promise<void> {
   if (demo || desktopHost) return Promise.resolve();
   if (startingDesktopHost) return startingDesktopHost;
-  startingDesktopHost = (async () => {
+  startingDesktopHost = restartAdmission.run(async () => {
+    const check = () => {
+      restartAdmission.assertOpen();
+      if (shuttingDown || servicesTouched || checkingWindowClose || nativeDraftFailure || nativeStartup?.recovery) throw new Error("Desktop host is unavailable during recovery or shutdown.");
+    };
+    check();
     let discoveryDirectory: string | undefined;
     if (!app.isPackaged && process.env.MODEX_E2E && process.env.MODEX_DESKTOP_DISCOVERY_DIR) discoveryDirectory = process.env.MODEX_DESKTOP_DISCOVERY_DIR;
     else if (app.isPackaged && process.platform === "darwin") {
       try { discoveryDirectory = path.join(await desktopSystem("directory"), "desktop-hosts"); }
       catch { console.warn("[modex] system discovery unavailable; manual desktop links remain available"); }
     }
+    check();
     desktopHost = new DesktopHost(home, {
       version: app.getVersion(),
       channels: () => [...desktopCommands.keys()],
-      authorize: async (confirmationCode, signal) => {
+      authorize: (confirmationCode, signal) => restartAdmission.run(async () => {
+        check();
         if (!win || win.isDestroyed()) win = createWindow();
         win.show(); win.focus();
         const result = await dialog.showMessageBox(win, { type: "question", title: "Connect Modex on this Mac", message: `Does your desktop show ${confirmationCode}?`, detail: "Approve only if this code matches the Modex connection screen you just opened. This gives that desktop access to your projects, coding agents, existing CLI sign-ins, terminals, settings and approvals. Access stays saved until you revoke it from Desktop access.", buttons: ["Cancel", "Allow this desktop"], defaultId: 0, cancelId: 0, signal });
+        check();
         return result.response === 1 && !signal.aborted;
-      },
+      }),
       invoke: async (channel, payload, authorized) => {
-        if (SPAWNS.has(channel as keyof BridgeCommands)) await pathReady;
-        if (shuttingDown || !authorized()) throw new Error("Desktop host access is unavailable.");
         const command = desktopCommands.get(channel);
         if (!command) throw new Error("Unknown desktop command.");
-        return command(payload);
+        // The shared dispatcher owns the only PATH wait, counts it as active
+        // work, and rechecks this live authorization immediately before fn.
+        return command(payload, authorized);
       },
     }, discoveryDirectory);
     try {
       await desktopHost.start();
+      check();
       const menu = Menu.getApplicationMenu() ?? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]);
       menu.append(new MenuItem({ label: "Desktop access", submenu: [
-        { label: "Pair a desktop…", click: () => { void (async () => {
+        { label: "Pair a desktop…", click: () => { void restartAdmission.run(async () => {
+          check();
           const result = await dialog.showMessageBox(win!, { type: "info", title: "Connect a trusted desktop", message: "Allow a desktop to use this Mac host", detail: "A connected desktop can manage projects, run coding agents and terminals, change settings, and review approvals. Copy this link only into a desktop app you trust. The link works once and expires in five minutes. You can revoke access from this menu.", buttons: ["Cancel", "Copy connection link"], defaultId: 0, cancelId: 0 });
+          check();
           if (result.response === 1) clipboard.writeText(desktopHost!.invite());
-        })().catch((error: Error) => dialog.showErrorBox("Desktop pairing failed", error.message)); } },
-        { label: "Manage connected desktops…", click: () => { void (async () => {
+        }).catch((error: Error) => dialog.showErrorBox("Desktop pairing failed", error.message)); } },
+        { label: "Manage connected desktops…", click: () => { void restartAdmission.run(async () => {
+          check();
           const clients = desktopHost!.clients();
           const result = await dialog.showMessageBox(win!, { type: "info", title: "Connected desktops", message: clients.length ? "Remove a desktop's host access" : "No desktops are connected", detail: clients.length ? "Revoking access disconnects that desktop and prevents further commands. Coding turns already accepted by this host remain owned by the host." : "Use Pair a desktop to create a one-time connection link.", buttons: ["Done", ...clients.map((client, i) => `Revoke ${client.name} (${i + 1})`)], defaultId: 0, cancelId: 0 });
+          check();
           const selected = clients[result.response - 1];
           if (selected) desktopHost!.revoke(selected.id);
-        })().catch((error: Error) => dialog.showErrorBox("Desktop access could not be changed", error.message)); } },
+        }).catch((error: Error) => dialog.showErrorBox("Desktop access could not be changed", error.message)); } },
       ] }));
       Menu.setApplicationMenu(menu);
     } catch (error) {
@@ -555,7 +906,7 @@ function startDesktopHost(): Promise<void> {
       console.error("[modex] desktop host could not start:", (error as Error).message);
       dialog.showErrorBox("Desktop host could not start", "Its local port may already be in use. Quit the other Modex host and try again.");
     }
-  })().finally(() => { startingDesktopHost = undefined; });
+  }).finally(() => { startingDesktopHost = undefined; });
   return startingDesktopHost;
 }
 
@@ -564,12 +915,12 @@ app.on("second-instance", (_event, args) => {
     if (!win || win.isDestroyed()) win = createWindow();
     if (args.includes("--desktop-host")) await startDesktopHost();
     win.show(); win.focus();
-  });
+  }).catch(error => console.error("[modex] second-instance activation refused:", error));
 });
 
 app.whenReady().then(async () => {
   browserTools = new BrowserTools(home, () => win && !win.isDestroyed() && workspaceBrowser ? { window: win, browser: workspaceBrowser } : null);
-  await browserTools.restore();
+  if (!nativeDraftFailure && !nativeStartup?.recovery) await browserTools.restore();
   // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
   protocol.handle(ATTACHMENT_SCHEME, (request) => {
     const rel = relFromUrl(request.url);
@@ -577,10 +928,10 @@ app.whenReady().then(async () => {
     return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } }) : new Response("Not found", { status: 404 });
   });
   win = createWindow();
-  if ((flag("desktop-host") || hostPreview) && !demo) await startDesktopHost();
+  if ((flag("desktop-host") || hostPreview) && !demo && !nativeDraftFailure && !nativeStartup?.recovery) await startDesktopHost();
   desktopHostActivation.ready();
-  if (!demo && !process.env.MODEX_E2E) void pathReady.then(() => retirer.start());
-  if (!demo && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
+  if (!demo && !process.env.MODEX_E2E && !nativeDraftFailure && !nativeStartup?.recovery) void pathReady.then(() => retirer.start());
+  if (!demo && !nativeDraftFailure && !nativeStartup?.recovery && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
     await new Promise<void>((r) => win!.webContents.once("did-finish-load", () => r()));
@@ -603,6 +954,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", (event) => {
   if (shutdownComplete) return;
   event.preventDefault();
+  if (restartCoordinator && ["preparing", "draining", "staging"].includes(restartCoordinator.state)) return;
   if (shuttingDown || checkingWindowClose) return;
   // Let unsaved-page beforeunload handlers veto quitting while services and IPC
   // are still usable. Teardown starts only after the renderer accepts closing.
@@ -611,6 +963,7 @@ app.on("before-quit", (event) => {
     checkingWindowClose = true;
     const cancelled = () => {
       checkingWindowClose = false;
+      releaseRecoveryQuit();
       window.removeListener("closed", closed);
     };
     const closed = () => {
@@ -622,23 +975,19 @@ app.on("before-quit", (event) => {
     window.close();
     return;
   }
-  modexAccount.cancel();
-  chatgpt.cancel();
-  claudeLogin.cancel();
   shuttingDown = true;
-  retirer.stop();
-  void Promise.allSettled([pagesAgents.dispose(), knowledgeAgents.dispose().then(() => knowledge.dispose()), desktopHost?.dispose(), companion.dispose(), terminals.dispose(), runner.dispose()]).then((results) => {
-    modexAccount.dispose();
-    chatgpt.dispose();
-    const failure = results.find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") {
-      shuttingDown = false;
-      console.error("[modex] shutdown failed:", failure.reason);
-      dialog.showErrorBox("Modex could not finish quitting", "A running command could not be stopped. Your working directories have been preserved. Quit again to retry.");
-      return;
-    }
+  // A partial service failure still has to cancel downloads and release their
+  // files. Keep updater disposal outside the coordinator's drain to avoid
+  // waiting on the install operation from inside that same operation.
+  void Promise.allSettled([() => drainServices(), () => updateInstallation.dispose()].map(dispose => Promise.resolve().then(dispose))).then(results => {
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
     shutdownComplete = true;
     app.quit();
+  }).catch(error => {
+    shuttingDown = false;
+    console.error("[modex] shutdown failed:", error);
+    dialog.showErrorBox("Modex could not finish quitting", "A running command could not be stopped. Your working directories have been preserved. Quit again to retry.");
   });
 });
 

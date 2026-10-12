@@ -1,3 +1,4 @@
+import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
@@ -383,6 +384,17 @@ export type TerminalEvent = { threadId: string; sessionId: string; sequence: num
 
 /** The API the preload exposes to the renderer as `window.modex`. */
 export interface ModexBridge {
+  /** Explicit local main-owned recovery capability; absent on remote/Store/Windows clients. */
+  nativeDrafts?: NativeDraftBridge;
+  /** Main-owned attempt; invalidation revokes even a completed preparation.
+   * release is called only after main confirms the matching attempt is cancelled. */
+  onRestartPreparation?(prepare: (invalidated: () => void) => Promise<number>, release: () => void): () => void;
+  /** Fresh close proof; releasing it never resumes the original editing hold. */
+  onRecoveryQuitPreparation?(prepare: (invalidated: () => void) => Promise<number>, release: () => void): () => void;
+  onOwnerRemovalPreparation?(prepare: (invalidated: () => void, scope: import("./native-drafts.js").DraftRemovalScope) => Promise<number>, release: () => void): () => void;
+  onOwnerRemovalAdoption?(adopt: (invalidated: () => void, result: { drafts: import("./update-recovery.js").ComposerRecovery; revision: number; state: AppState }) => Promise<number>, release: () => void): () => void;
+  onOwnerRemovalRecovery?(cb: (message: string) => void): () => void;
+  onUpdateState?(cb: (state: import("./updates.js").UpdateInstallState) => void): () => void;
   onWorkspaceShortcut?(cb: (shortcut: WorkspaceShortcut) => void): () => void;
   invoke<K extends keyof BridgeCommands>(channel: K, payload: BridgeCommands[K]["req"]): Promise<BridgeCommands[K]["res"]>;
   onEvent(cb: (event: ThreadEvent) => void): () => void;
@@ -440,7 +452,7 @@ export interface CompanionStatus {
 
 export interface ReleaseUpdate { version: string; url: string; }
 
-export interface BridgeCommands {
+export interface BridgeCommands extends NativeDraftCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
   "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };
@@ -464,6 +476,12 @@ export interface BridgeCommands {
   "space:save": { req: import("./space.js").SpacePage; res: import("./space.js").SpacePage };
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
+  "updates:state": { req: undefined; res: import("./updates.js").UpdateInstallState };
+  "updates:download": { req: undefined; res: import("./updates.js").UpdateInstallState };
+  "updates:cancel": { req: undefined; res: void };
+  "updates:install": { req: undefined; res: import("./updates.js").UpdateInstallState };
+  "updates:quit": { req: undefined; res: void };
+  "updates:recovery-folder": { req: undefined; res: void };
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };
   "project:remove": { req: { projectId: string }; res: AppState };

@@ -1,3 +1,4 @@
+import type { Attachment, StagedFile } from "../shared/attachments";
 import { LIMITS } from "../shared/attachments";
 import { bridge } from "./bridge";
 import { stageFileBatch } from "./stage-files";
@@ -7,7 +8,7 @@ export function hasFiles(dt: DataTransfer | null | undefined): boolean {
   return Boolean(dt && Array.from(dt.types).includes("Files"));
 }
 
-export const stageFiles = (files: Iterable<File>, room = LIMITS.perTurn) => stageFileBatch(files, room, bridge);
+export const stageFiles = (files: Iterable<File>, room = LIMITS.perTurn, stage?: (files: StagedFile[]) => Promise<{ staged: Attachment[]; errors: string[] }>) => stageFileBatch(files, room, bridge, stage);
 
 /** Only browser development supplies a file input; desktop and Store retain their native command. */
 export async function pickFiles(remaining: number) {

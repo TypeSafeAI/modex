@@ -6,6 +6,7 @@ import { launch, seedHome, tid, items } from "./support";
 for (const theme of ["jev", "coven"]) test(`${theme}: live agents remain visible across threads and reload; tools stay compact`, async () => {
   const { home, repo } = seedHome({ theme, default_backend: "claude" });
   let app: ElectronApplication | undefined;
+  let completed = false;
   const stage = path.join(home, "stage");
   const cli = path.join(home, "claude-fixture.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
@@ -36,6 +37,22 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
   try {
     const opened = await launch(home); app = opened.app;
     const page = opened.page;
+    console.log(JSON.stringify({ fixture: "agents", home, repo, pid: app.process().pid }));
+    if (process.platform !== "win32") await app.evaluate(({ ipcMain }) => {
+      const ipc = ipcMain as typeof ipcMain & { _invokeHandlers: Map<string, (...args: any[]) => any> };
+      Object.assign(globalThis, { agentSendAdmissions: [] });
+      for (const channel of ["drafts:begin", "drafts:create", "drafts:transfer", "drafts:send"]) {
+        const original = ipc._invokeHandlers.get(channel)!;
+        ipcMain.removeHandler(channel);
+        ipcMain.handle(channel, async (...args) => {
+          const settings = args[1].input?.configuration.settings ?? args[1].snapshot?.draft?.settings ?? {};
+          const receipt = { channel, settings: Object.entries(settings).map(([key, value]) => ({ key, type: typeof value })), error: "" };
+          (globalThis as any).agentSendAdmissions.push(receipt);
+          try { return await original(...args); }
+          catch (error) { receipt.error = String(error); throw error; }
+        });
+      }
+    });
     await tid(page, "new-chat").click();
     await expect(tid(page, "draft-view")).toBeVisible();
     await tid(page, "composer-input").fill("Review the UI");
@@ -94,5 +111,29 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
     expect(await toggle.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.screenshot({ path: test.info().outputPath(`${theme}-agent-results.png`) });
-  } finally { await app?.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
+    completed = true;
+  } finally {
+    if (app) {
+      // Keep admission diagnostics even when the first send fails. Failure cleanup
+      // destroys only this test window; it is not ordinary Quit acceptance.
+      try {
+        const admissions = await app.evaluate(() => (globalThis as any).agentSendAdmissions ?? []);
+        fs.writeFileSync(test.info().outputPath("send-admissions.json"), JSON.stringify(admissions, null, 2));
+        if (!completed) {
+          fs.cpSync(path.join(home, "app"), test.info().outputPath("failed-app-state"), { recursive: true });
+          const page = app.windows()[0];
+          if (page) fs.writeFileSync(test.info().outputPath("failed-workspace.txt"), await page.locator("body").innerText());
+        }
+      } catch (error) { console.error("Agent fixture diagnostic error", error); }
+      fs.writeFileSync(stage, "finish");
+      if (!completed) {
+        try { await app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.destroy(); }); }
+        catch (error) { console.error("Agent fixture window cleanup error", error); }
+      }
+      try { await app.close(); }
+      catch (error) { if (completed) throw error; console.error("Agent fixture close error", error); }
+    }
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });

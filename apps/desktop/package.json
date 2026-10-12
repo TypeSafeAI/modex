@@ -11,7 +11,7 @@
     "build:main": "node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && node scripts/copy-main-assets.mjs",
     "build:renderer": "vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs test/native-packages.test.mjs",
+    "test": "npm run build:main && node --test \"dist/test/**/*.test.js\" && node --test test/browser-dev.test.mjs test/native-packages.test.mjs test/native-update-acceptance.test.mjs test/native-update-fault.test.mjs test/update-acceptance-artifacts.test.mjs",
     "start": "electron .",
     "predev": "npm run build -w @modex/core && npm run build:main",
     "dev": "vite",
@@ -34,7 +34,8 @@
     "@modex/core": "0.3.0",
     "node-pty": "1.2.0-beta.15",
     "qrcode": "^1.5.4",
-    "yaml": "2.9.1"
+    "yaml": "2.9.1",
+    "yauzl": "3.4.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -49,7 +50,10 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "vite": "^8.3.1",
-    "cmd-shim": "9.0.2"
+    "cmd-shim": "9.0.2",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
+    "yazl": "3.3.1"
   },
   "productName": "Modex",
   "author": "Val Alexander / OpenCoven",

@@ -8,6 +8,7 @@ import { appDir, createThread, seedHome, tid } from "./support";
 test("Store browser guests belong to the client and hide while its host is disconnected", async () => {
   const { home, repo } = seedHome();
   const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-browser-"));
+  console.log(`Store browser fixture ${JSON.stringify({ home, repo, clientHome })}`);
   const clientDir = path.resolve(appDir, "../store-desktop");
   const server = createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end("<title>Store local browser</title><h1>Client-owned page</h1>"); });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -51,12 +52,36 @@ test("Store browser guests belong to the client and hide while its host is disco
     await expect(tid(page, "workspace-address")).toBeFocused();
     await client.evaluate(({ webContents }, url) => webContents.getAllWebContents().find((w) => w.getURL() === url)!.sendInputEvent({ type: "keyDown", keyCode: "B", modifiers: ["meta", "shift"] }), url);
     await expect(tabs).toHaveCount(initialTabs + 2);
-    const clickMenu = (label = "New tab") => client!.evaluate(({ Menu }, label) => {
-      const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Workspace")?.submenu;
-      const item = menu?.items.find(item => item.label === label);
-      if (!item) return false;
-      item.click(); return true;
-    }, label);
+    await page.evaluate(() => {
+      const receipts: Array<{ shortcut: string; dialogs: string[] }> = [];
+      Object.assign(window, { workspaceShortcutReceipts: receipts });
+      window.modex!.onWorkspaceShortcut!(shortcut => receipts.push({ shortcut,
+        dialogs: Array.from(document.querySelectorAll('[role="dialog"]'))
+          .filter(element => element.getClientRects().length > 0).map(element => element.getAttribute("aria-label") ?? ""),
+      }));
+    });
+    const receipts = () => page.evaluate(() => (window as unknown as {
+      workspaceShortcutReceipts: Array<{ shortcut: string; dialogs: string[] }>;
+    }).workspaceShortcutReceipts);
+    const clickMenu = async (label = "New tab", delivered = true) => {
+      const before = (await receipts()).length;
+      const clicked = await client!.evaluate(({ Menu }, label) => {
+        const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Workspace")?.submenu;
+        const item = menu?.items.find(item => item.label === label);
+        if (!item) return false;
+        item.click(); return true;
+      }, label);
+      if (clicked && delivered) {
+        // Main's click returns before renderer IPC delivery. Keep the tested modal
+        // open until its shortcut handler has received the event and rendered.
+        await expect.poll(async () => (await receipts()).length).toBe(before + 1);
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        const file = test.info().outputPath("workspace-shortcut-receipts.json");
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify({ receipts: await receipts(), tabs: await tabs.count() }, null, 2));
+      }
+      return clicked;
+    };
     expect(await clickMenu()).toBe(true);
     await expect(tabs).toHaveCount(initialTabs + 3);
     expect(await clickMenu("Review")).toBe(true);
@@ -68,7 +93,10 @@ test("Store browser guests belong to the client and hide while its host is disco
     // The menu is suppressed only once Settings has rendered; clicking it earlier tests nothing.
     await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
     expect(await clickMenu()).toBe(true);
+    expect((await receipts()).at(-1)).toEqual({ shortcut: "new", dialogs: ["Settings"] });
+    await expect(tabs).toHaveCount(initialTabs + 4);
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toHaveCount(0);
     await expect(tabs).toHaveCount(initialTabs + 4);
     await page.getByRole("button", { name: "Browser extensions and sign-in", exact: true }).click();
     const tools = page.getByRole("dialog", { name: "Browser extensions and sign-in" });
@@ -83,7 +111,7 @@ test("Store browser guests belong to the client and hide while its host is disco
     await host.close(); host = undefined;
     await expect(page.getByText("Reconnecting automatically", { exact: true })).toBeVisible();
     await expect.poll(guestVisible).toBe(false);
-    expect(await clickMenu()).toBe(true);
+    expect(await clickMenu("New tab", false)).toBe(true);
     await page.keyboard.press("Meta+Shift+b");
     await page.keyboard.press("Meta+n");
     await expect(tabs).toHaveCount(initialTabs + 4);

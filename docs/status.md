@@ -479,6 +479,18 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## In flight
 
+- **Automatic updates and durable drafts.** The unreleased desktop code connects verified download,
+  cancellation, restart preparation, and recovery for packaged Macs. Schema-2 draft storage
+  preserves independent text and files, pending originals, and owner-removal recovery.
+  Local build, workspace typechecks, 1,362 unit tests (15 skipped), 270 desktop E2E cases,
+  and seven site E2E cases passed, including a full rerun after hosted fixture corrections.
+  Coverage includes raw draft/attachment restoration,
+  owner removal, controller cancellation, and partial-shutdown reload/Quit. Download,
+  staging, and publisher checks are simulated in the controller UI tests. Three signed
+  hosted native scenarios and release approval remain open; published builds still update
+  manually. [Local acceptance](reviews/2026-10-12-updater-local-acceptance.md) and
+  [behavior and acceptance limits](update-recovery.md).
+
 - **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
   no remaining product or test patch beyond #144, #150, and #154. The
   [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
@@ -668,7 +680,8 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Automatic installation of updates.** Release notifications are implemented; installation remains manual.
+1. **Ship automatic installation of updates.** Finish the in-flight acceptance and signed
+   release gates above. Published builds still require manual installation.
 2. **Publish Windows and Linux installers.** Extend the protected release pipeline, which
    currently uploads macOS artifacts, to verify and publish the exact tagged native
    installers. Candidate Actions artifacts are not releases. Provider-account acceptance,

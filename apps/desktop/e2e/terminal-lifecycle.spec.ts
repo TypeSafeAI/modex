@@ -19,9 +19,12 @@ function killIfAlive(pid: number): void {
 test("terminal fills its workspace after a window resize", async () => {
   const { home, repo } = seedHome();
   const { app, page } = await launch(home);
+  console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo, electronPid: app.process().pid }));
   try {
-    await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat" }));
+    const thread = await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat" }));
     await page.reload();
+    // Reload restores the user's saved selection, including a New chat draft.
+    await page.locator(`[data-testid="thread-row"][data-thread-id="${thread.id}"] .thread-main`).click();
     await tid(page, "terminal-toggle").click();
     await expect(tid(page, "terminal-panel")).toBeVisible();
     for (const [width, height] of [[1380, 880], [900, 600]]) {
@@ -49,6 +52,7 @@ for (const action of ["close", "thread deletion", "project removal", "quit"] as 
     try {
       const launched = await launch(home);
       app = launched.app;
+      console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo, electronPid: app.process().pid }));
       const page = launched.page;
       const thread = await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat", worktree: true }));
       const session = await page.evaluate((threadId) => window.modex!.invoke("terminal:open", { threadId, cols: 80, rows: 24 }), thread.id);

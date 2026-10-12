@@ -155,6 +155,10 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
           </Fragment>
         ))}
       </div>
+      {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
+        <p>This message is saved. Start its coding turn when you are ready.</p>
+        <button type="button" className="btn small" data-testid="saved-message-retry" onClick={onRetry}>Retry saved message</button>
+      </div>}
 
       {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
         text={text}

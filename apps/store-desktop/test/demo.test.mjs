@@ -76,3 +76,20 @@ test('snapshots and settings are not shared with callers or another demo', t => 
   assert.equal(demo.invoke('state:get').settings.theme, 'coven');
   assert.equal(setup(t).demo.invoke('state:get').settings.theme, 'jev');
 });
+
+test('native draft channels explicitly refuse the offline Store demo without changing messages', t => {
+  const { demo } = setup(t), before = demo.invoke('state:get');
+  for (const channel of ['drafts:open', 'drafts:save', 'drafts:stage', 'drafts:pick', 'drafts:discard', 'drafts:retire', 'drafts:begin', 'drafts:create', 'drafts:transfer', 'drafts:send', 'drafts:pending']) {
+    assert.throws(() => demo.invoke(channel, {}), /offline demo/);
+  }
+  assert.deepEqual(demo.invoke('state:get'), before);
+  assert.equal(demo.invoke('updates:check'), null);
+});
+
+test('native installer controls explicitly refuse the offline Store demo', t => {
+  const { demo } = setup(t), before = demo.invoke('state:get');
+  for (const channel of ['updates:state', 'updates:download', 'updates:cancel', 'updates:install', 'updates:quit', 'updates:recovery-folder']) {
+    assert.throws(() => demo.invoke(channel), /offline demo/);
+  }
+  assert.deepEqual(demo.invoke('state:get'), before);
+});

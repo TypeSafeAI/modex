@@ -9,6 +9,21 @@ import { JevError, type JevResponse } from "../src/main/engine/routing/jev.js";
 import { DEFAULT_ROUTING } from "../src/shared/types.js";
 import { tmpdir } from "./helpers.js";
 
+/** Refuse the actual exclusive temporary creation without mutating host permissions. */
+function refuseStateCreation(home: string, run: () => void): void {
+  const open = fs.openSync, prefix = path.join(home, "app", "state.json.");
+  let refused = false;
+  fs.openSync = ((...args: Parameters<typeof fs.openSync>) => {
+    if (typeof args[0] === "string" && args[0].startsWith(prefix) && args[0].endsWith(".tmp")) {
+      refused = true;
+      throw Object.assign(new Error("injected state temporary creation refusal"), { code: "EACCES" });
+    }
+    return Reflect.apply(open, fs, args);
+  }) as typeof fs.openSync;
+  try { run(); } finally { fs.openSync = open; }
+  assert.equal(refused, true);
+}
+
 test("settings IPC update persists transport changes, refreshes setup, and keeps fit history", async () => {
   const home = tmpdir("modex-settings-routing-update-");
   const store = new Store(home);
@@ -72,20 +87,17 @@ test("routing saves preserve approval rules and persist approval changes transac
   const before = store.settings;
   assert.equal(before.approval_rules[0]?.when, "run tests", "approval migrations remain active");
   assert.deepEqual(new Store(home).settings, before);
-  const blocker = path.join(home, "app", "state.json.tmp");
-  fs.mkdirSync(blocker);
-  assert.throws(() => updateSettings(store, router, {
+  refuseStateCreation(home, () => assert.throws(() => updateSettings(store, router, {
     approval_rules: [], approval_gate: { ...before.approval_gate, enabled: false },
-  }));
+  }), /temporary creation refusal/));
   assert.deepEqual(store.settings, before, "failed writes cannot publish approval drafts in memory");
   assert.deepEqual(new Store(home).settings, before);
-  fs.rmSync(blocker, { recursive: true });
   updateSettings(store, router, { approval_rules: [], approval_gate: { ...before.approval_gate, enabled: false } });
   assert.deepEqual(new Store(home).settings.approval_rules, []);
   assert.equal(new Store(home).settings.approval_gate.enabled, false);
 });
 
-test("a real state-file write failure keeps settings and explicit router health unchanged, then permits retry", async () => {
+test("a state-file creation failure keeps settings and explicit router health unchanged, then permits retry", async () => {
   const home = tmpdir("modex-settings-write-failure-");
   const store = new Store(home);
   store.updateSettings({ default_backend: store.settings.default_backend });
@@ -101,13 +113,10 @@ test("a real state-file write failure keeps settings and explicit router health 
   assert.equal((await router.status()).transport.kind, "http");
   const file = path.join(home, "app", "state.json");
   const persistedBefore = fs.readFileSync(file, "utf8");
-  const blocker = `${file}.tmp`;
-  fs.mkdirSync(blocker);
-
-  assert.throws(
+  refuseStateCreation(home, () => assert.throws(
     () => updateSettings(store, router, { routing: { ...original.routing, jev_model: "jev-next-model" } }),
-    /EISDIR|illegal operation on a directory|is a directory/i,
-  );
+    /temporary creation refusal/,
+  ));
   assert.equal(store.settings.routing.jev_model, original.routing.jev_model, "failed persistence does not publish the draft in memory");
   assert.equal(fs.readFileSync(file, "utf8"), persistedBefore, "failed persistence leaves the saved file intact");
   let status = await router.status();
@@ -115,7 +124,6 @@ test("a real state-file write failure keeps settings and explicit router health 
   assert.equal(status.transport.kind, "http");
   assert.equal(status.lastTest?.ok, true, "the still-active setup retains its explicit health result");
 
-  fs.rmSync(blocker, { recursive: true });
   const saved = updateSettings(store, router, { routing: { ...original.routing, jev_model: "jev-next-model" } });
   assert.equal(saved.routing.jev_model, "jev-next-model");
   status = await router.status();

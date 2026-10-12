@@ -1,13 +1,45 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { newId } from "./store.js";
-import { LIMITS, kindFor, mimeFor, rejectReason, safeName, type Attachment } from "../../shared/attachments.js";
+import { LIMITS, kindFor, mimeFor, rejectReason, safeName, type Attachment, type AttachmentDraftOwner } from "../../shared/attachments.js";
 
 type Identity = Pick<fs.Stats, "dev" | "ino">;
-type OwnedFile = { attachment: Attachment; identity: Identity };
+type OwnedFile = { attachment: Attachment; identity: Identity; owner?: AttachmentDraftOwner };
+declare const draftBrand: unique symbol;
+declare const transferBrand: unique symbol;
+/** Opaque, instance-local main-process handles. Never serialize these over IPC. */
+export type AttachmentDraft = { readonly [draftBrand]: true };
+export type AttachmentTransfer = { readonly [transferBrand]: true };
+type DraftState = { owner: AttachmentDraftOwner; revoked: boolean };
+type DraftOptions = { draft?: AttachmentDraft };
+type ClaimOptions = DraftOptions & { transfer?: AttachmentTransfer };
+type Authorities = {
+  authorizeDraft?: (owner: AttachmentDraftOwner) => boolean;
+  authorizeTransfer?: (owner: AttachmentDraftOwner, threadId: string) => boolean;
+};
 const identity = ({ dev, ino }: Identity): Identity => ({ dev, ino });
 const sameIdentity = (a: Identity, b: Identity): boolean => a.dev === b.dev && a.ino === b.ino;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const copyOwner = (value: unknown): AttachmentDraftOwner => {
+  if (!record(value) || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) throw new Error("Invalid attachment draft owner.");
+  const keys = Reflect.ownKeys(value);
+  if (keys.some(key => !Object.getOwnPropertyDescriptor(value, key)?.enumerable
+    || !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key)!, "value"))) throw new Error("Invalid attachment draft owner.");
+  const id = (v: unknown): v is string => typeof v === "string" && v.length <= 128 && /^[\w-]+$/.test(v) && v !== "staging";
+  if (keys.length === 2 && keys.includes("kind") && keys.includes("threadId") && value.kind === "thread" && id(value.threadId)) return Object.freeze({ kind: "thread", threadId: value.threadId });
+  if (keys.length === 3 && keys.includes("kind") && keys.includes("key") && keys.includes("projectId")
+    && value.kind === "project" && id(value.projectId) && typeof value.key === "string") {
+    const revision = value.key.match(/^draft:(0|[1-9]\d*):/);
+    if (revision && Number.isSafeInteger(Number(revision[1])) && value.key === `draft:${revision[1]}:${value.projectId}`) {
+      return Object.freeze({ kind: "project", key: value.key, projectId: value.projectId });
+    }
+  }
+  throw new Error("Invalid attachment draft owner.");
+};
+const sameOwner = (a: AttachmentDraftOwner, b: AttachmentDraftOwner): boolean => a.kind === "thread"
+  ? b.kind === "thread" && a.threadId === b.threadId
+  : b.kind === "project" && a.key === b.key && a.projectId === b.projectId;
 const attachmentShape = (a: unknown): a is Attachment => record(a)
   && ["id", "name", "mime", "rel"].every(key => typeof a[key] === "string" && !!a[key])
   && typeof a.size === "number" && Number.isFinite(a.size) && a.size >= 0
@@ -27,10 +59,18 @@ export class AttachmentStore {
   private readonly directoryIdentities = new Map<string, Identity>();
   private manifestIdentity?: Identity;
   private records = new Map<string, OwnedFile>();
+  private uncertain = false;
+  // Null preserves all evidence when recovery cannot be read or resolved safely.
+  private recoveryRetention: Set<string> | null = new Set();
+  private readonly drafts = new WeakMap<AttachmentDraft, DraftState>();
+  private readonly transfers = new WeakMap<AttachmentTransfer, { draft: DraftState; threadId: string }>();
+  private authorizing = false;
+  private authorizationReentered = false;
   // Retire only after the new manifest is durable. Failed cleanup remains retryable after restart.
   private retired: OwnedFile[] = [];
 
-  constructor(readonly root: string) {
+  constructor(readonly root: string, private readonly authorities: Authorities = {}) {
+    this.authorities = Object.freeze({ ...authorities });
     this.root = path.resolve(root);
     this.staging = path.join(this.root, "staging");
     fs.mkdirSync(this.root, { recursive: true, mode: 0o700 });
@@ -40,10 +80,105 @@ export class AttachmentStore {
     const staging = this.directory("staging", true);
     if (!staging) throw new Error("attachment staging directory is unavailable or changed");
     this.loadManifest();
+    this.syncDirectory(this.root, this.rootIdentity);
+    const parent = path.dirname(this.canonicalRoot);
+    this.syncDirectory(parent, fs.lstatSync(parent));
+  }
+
+  mintDraft(owner: AttachmentDraftOwner): AttachmentDraft {
+    this.assertReady();
+    const copied = copyOwner(owner);
+    this.authorize(copied);
+    const handle = Object.freeze({}) as AttachmentDraft;
+    this.drafts.set(handle, { owner: copied, revoked: false });
+    return handle;
+  }
+
+  revokeDraft(handle: AttachmentDraft): void {
+    this.assertReady();
+    const state = this.drafts.get(handle);
+    if (state) state.revoked = true;
+  }
+
+  mintTransfer(handle: AttachmentDraft, threadId: string): AttachmentTransfer {
+    const draft = this.requireDraft(handle);
+    if (!this.isThreadId(threadId)) throw new Error("Invalid attachment transfer target.");
+    this.authorize(draft.owner, threadId);
+    const transfer = Object.freeze({}) as AttachmentTransfer;
+    this.transfers.set(transfer, { draft, threadId });
+    return transfer;
+  }
+
+  private requireDraft(handle: AttachmentDraft): DraftState {
+    this.assertReady();
+    const draft = this.drafts.get(handle);
+    if (!draft || draft.revoked) throw new Error("Attachment draft capability is invalid or revoked.");
+    this.authorize(draft.owner);
+    return draft;
+  }
+
+  private authorize(owner: AttachmentDraftOwner, threadId?: string): void {
+    this.assertManifest();
+    this.authorizing = true;
+    this.authorizationReentered = false;
+    let allowed = false;
+    try {
+      allowed = this.authorities.authorizeDraft?.(owner) === true;
+      if (allowed && threadId !== undefined) allowed = this.authorities.authorizeDraft?.(Object.freeze({ kind: "thread", threadId })) === true
+        && this.authorities.authorizeTransfer?.(owner, threadId) === true;
+    } finally { this.authorizing = false; }
+    this.assertManifest();
+    if (!allowed || this.authorizationReentered || !this.directory("staging")) throw new Error("Attachment draft or transfer is no longer authorized.");
+  }
+
+  /** Read-only validation: snapshot metadata cannot adopt or rebind a staged file. */
+  validateRecovery(attachment: Readonly<Attachment>, owner: AttachmentDraftOwner): boolean {
+    try {
+      const context = copyOwner(owner);
+      this.authorize(context);
+      const file = this.records.get(attachment.id);
+      if (!file || Object.keys(file.attachment).some(key => file.attachment[key as keyof Attachment] !== attachment[key as keyof Attachment])) return false;
+      if (attachment.rel.startsWith("staging/")) {
+        if (!file.owner || !sameOwner(file.owner, context)) return false;
+      } else if (context.kind !== "thread" || !attachment.rel.startsWith(`${context.threadId}/`)
+        || (file.owner && !sameOwner(file.owner, context))) return false;
+      return !!this.resolve(attachment.rel);
+    } catch { return false; }
+  }
+
+  /** Main-only content proof for durable claim replay. Never trust metadata/path
+   * alone or return a raw file descriptor to renderer/IPC code. */
+  fingerprint(attachment: Readonly<Attachment>, owner: AttachmentDraftOwner): Readonly<{ dev: number; ino: number; size: number; sha256: string }> {
+    if (!Number.isSafeInteger(attachment.size) || attachment.size < 0
+      || attachment.size > (attachment.kind === "image" ? LIMITS.imageBytes : LIMITS.fileBytes)
+      || !this.validateRecovery(attachment, owner)) throw new Error("Attachment ownership or identity changed.");
+    const owned = this.records.get(attachment.id)!;
+    const file = this.resolve(attachment.rel);
+    if (!file) throw new Error("Attachment is missing or changed.");
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    try {
+      const before = fs.fstatSync(fd);
+      if (!before.isFile() || !sameIdentity(before, owned.identity) || before.size !== attachment.size) throw new Error("Attachment identity changed before reading.");
+      const hash = createHash("sha256");
+      const buffer = Buffer.allocUnsafe(64 * 1024);
+      let size = 0;
+      while (true) {
+        const count = fs.readSync(fd, buffer, 0, Math.min(buffer.length, attachment.size + 1 - size), null);
+        if (!count) break;
+        size += count;
+        if (size > attachment.size) throw new Error("Attachment grew while reading.");
+        hash.update(buffer.subarray(0, count));
+      }
+      const after = fs.fstatSync(fd);
+      if (size !== attachment.size || !sameIdentity(before, after) || before.size !== after.size
+        || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
+        || !this.validateRecovery(attachment, owner)) throw new Error("Attachment changed while reading.");
+      return Object.freeze({ dev: after.dev, ino: after.ino, size, sha256: hash.digest("hex") });
+    } finally { fs.closeSync(fd); }
   }
 
   /** IPC is untrusted: reject excessive requests before any per-file decoding or filesystem work. */
-  stage(files: unknown, { bytesOnly = false }: { bytesOnly?: boolean } = {}): { staged: Attachment[]; errors: string[] } {
+  stage(files: unknown, { bytesOnly = false, draft }: { bytesOnly?: boolean } & DraftOptions = {}): { staged: Attachment[]; errors: string[] } {
     const error = requestError(files);
     if (error) return { staged: [], errors: [error] };
     const staged: Attachment[] = [];
@@ -51,6 +186,8 @@ export class AttachmentStore {
     for (const f of files as unknown[]) {
       let created: OwnedFile | undefined;
       try {
+        this.assertReady();
+        const owner = draft === undefined ? undefined : this.requireDraft(draft).owner;
         if (bytesOnly && (!record(f) || f.path !== undefined || typeof f.data !== "string")) throw new Error("Browser attachments require bytes; source paths are not allowed.");
         if (!record(f) || typeof f.name !== "string") throw new Error("file name must be a string");
         if (f.mime !== undefined && typeof f.mime !== "string") throw new Error("MIME type must be a string");
@@ -104,10 +241,13 @@ export class AttachmentStore {
         const dest = path.join(dir, path.basename(attachment.rel));
         const fd = fs.openSync(dest, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
         try {
-          created = { attachment, identity: identity(fs.fstatSync(fd)) };
+          created = { attachment, identity: identity(fs.fstatSync(fd)), ...(owner ? { owner } : {}) };
           fs.writeFileSync(fd, contents);
+          fs.fsyncSync(fd);
         } finally { fs.closeSync(fd); }
+        this.syncDirectory(dir, this.directoryIdentities.get("staging")!);
         const next = new Map(this.records).set(id, created);
+        if (draft !== undefined) this.requireDraft(draft);
         this.commit(next);
         staged.push({ ...attachment });
       } catch (err) {
@@ -122,25 +262,28 @@ export class AttachmentStore {
   }
 
   /** Native picker paths share staging's limits, including the composer's remaining slots. */
-  stagePaths(paths: unknown, remaining: unknown = LIMITS.perTurn): { staged: Attachment[]; errors: string[] } {
+  stagePaths(paths: unknown, remaining: unknown = LIMITS.perTurn, options: DraftOptions = {}): { staged: Attachment[]; errors: string[] } {
     if (typeof remaining !== "number" || !Number.isInteger(remaining) || remaining < 0 || remaining > LIMITS.perTurn) {
       return { staged: [], errors: ["Remaining attachment slots must be an integer from 0 to 20."] };
     }
     const error = requestError(paths, remaining);
     if (error) return { staged: [], errors: [error] };
-    return this.stage((paths as unknown[]).map(p => typeof p === "string" ? { name: path.basename(p), path: p } : { name: "file", path: p }));
+    return this.stage((paths as unknown[]).map(p => typeof p === "string" ? { name: path.basename(p), path: p } : { name: "file", path: p }), options);
   }
 
   /** Drops staged files the user removed from the composer, never a sent file or an unowned path. */
-  discard(ids: string[]): void {
+  discard(ids: string[], { draft }: DraftOptions = {}): void {
+    this.assertReady();
     if (!Array.isArray(ids)) return;
     const selected = new Set(ids.filter(id => typeof id === "string"));
-    this.retire([...this.records.values()].filter(file => selected.has(file.attachment.id)
-      && file.attachment.rel.startsWith("staging/") && this.resolve(file.attachment.rel)));
+    const files = [...this.records.values()].filter(file => selected.has(file.attachment.id) && file.attachment.rel.startsWith("staging/"));
+    const context = draft === undefined ? undefined : this.requireDraft(draft).owner;
+    if (files.some(file => file.owner && (!context || !sameOwner(file.owner, context)))) throw new Error("Attachment draft owner is not authorized.");
+    this.retire(files.filter(file => this.resolve(file.attachment.rel)));
   }
 
   /** Validate the entire request, then copy exclusively and commit ownership before retiring sources. */
-  claim(threadId: string, attachments: unknown): Attachment[] {
+  claim(threadId: string, attachments: unknown, options: ClaimOptions = {}): Attachment[] {
     if (!this.isThreadId(threadId)) throw new Error(`bad thread id ${threadId}`);
     const error = requestError(attachments);
     if (error) throw new Error(error);
@@ -161,6 +304,18 @@ export class AttachmentStore {
       if (!this.resolve(a.rel)) throw new Error(`attachment ${a.name} is missing or changed`);
       return owned;
     });
+    const authorizeClaim = () => {
+      const draft = options.draft === undefined ? undefined : this.requireDraft(options.draft);
+      for (const file of files) {
+        if (!file.owner) continue;
+        if (!draft || !sameOwner(file.owner, draft.owner)) throw new Error("Attachment draft owner is not authorized.");
+        if (draft.owner.kind === "thread" && draft.owner.threadId === threadId) continue;
+        const transfer = options.transfer === undefined ? undefined : this.transfers.get(options.transfer);
+        if (!transfer || transfer.draft !== draft || transfer.threadId !== threadId) throw new Error("Attachment transfer capability is required.");
+        this.authorize(draft.owner, threadId);
+      }
+    };
+    authorizeClaim();
     // Recover only main-recorded leftovers from earlier failed claims, after validating the whole input.
     this.cleanupRetired();
     for (const { attachment: a } of files) {
@@ -193,7 +348,7 @@ export class AttachmentStore {
         const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
         let tempOwned: OwnedFile | undefined;
         try {
-          tempOwned = { attachment: tempAttachment, identity: identity(fs.fstatSync(fd)) };
+          tempOwned = { attachment: tempAttachment, identity: identity(fs.fstatSync(fd)), ...(owned.owner ? { owner: owned.owner } : {}) };
           temporary.push(tempOwned);
           const source = fs.openSync(from, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
           try {
@@ -220,19 +375,23 @@ export class AttachmentStore {
           // Recover a transient first-stat failure while the owned fd is still open. If the
           // filesystem cannot identify it at all, leave only an empty unique temp, never a final path.
           if (!tempOwned) {
-            try { temporary.push({ attachment: tempAttachment, identity: identity(fs.fstatSync(fd)) }); }
+            try { temporary.push({ attachment: tempAttachment, identity: identity(fs.fstatSync(fd)), ...(owned.owner ? { owner: owned.owner } : {}) }); }
             catch { /* no bytes were written and no final path was published */ }
           }
           throw err;
         } finally { fs.closeSync(fd); }
-        const claimed = { attachment: { ...a, rel: `${threadId}/${path.basename(a.rel)}` }, identity: tempOwned.identity };
+        const claimed: OwnedFile = { attachment: { ...a, rel: `${threadId}/${path.basename(a.rel)}` }, identity: tempOwned.identity,
+          ...(owned.owner ? { owner: Object.freeze({ kind: "thread" as const, threadId }) } : {}) };
         prepared.push({ source: owned, claimed, temp, dest });
         sources.push(owned);
         next.set(a.id, claimed);
       }
+      this.syncDirectory(dir, this.directoryIdentities.get(threadId)!);
+      authorizeClaim();
       // Write-ahead ownership keeps rollback recoverable even if cleanup AND the final metadata
       // commit fail. Until the final commit, every authoritative attachment still names staging.
-      this.commit(this.records, [...priorRetired, ...temporary, ...prepared.map(file => file.claimed)]);
+      this.commit(this.records, [...priorRetired, ...temporary, ...prepared.map(file => ({ ...file.claimed,
+        ...(file.source.owner ? { owner: file.source.owner } : {}) }))]);
       for (const { source, claimed, temp, dest } of prepared) {
         const a = source.attachment;
         if (!this.resolve(a.rel) || this.directory(threadId) !== dir) throw new Error(`attachment ${a.name} changed during copying`);
@@ -242,6 +401,8 @@ export class AttachmentStore {
         const stat = fs.lstatSync(dest);
         if (!stat.isFile() || !sameIdentity(stat, claimed.identity) || stat.size !== a.size) throw new Error(`attachment ${a.name} changed during copying`);
       }
+      this.syncDirectory(dir, this.directoryIdentities.get(threadId)!);
+      authorizeClaim();
       this.commit(next, [...priorRetired, ...sources, ...temporary]);
     } catch (err) {
       for (const file of copied) this.deleteOwned(file);
@@ -307,6 +468,7 @@ export class AttachmentStore {
   }
 
   removeThread(threadId: string): void {
+    this.assertReady();
     if (!this.isThreadId(threadId)) return;
     const dir = this.directory(threadId);
     if (!dir) return;
@@ -322,9 +484,52 @@ export class AttachmentStore {
     } catch { /* retained retirement records let the next sweep retry owned files */ }
   }
 
-  /** Staged files older than `maxAgeMs` belong to composers that were never sent. */
+  /** Main installs recovery protection before any startup or incidental cleanup.
+   * Paths supplied by a snapshot never establish ownership or update admission. */
+  setRecoveryRetention(references: readonly Attachment[] | null): boolean {
+    try {
+      this.assertReady();
+      this.recoveryRetention = null;
+      if (!Array.isArray(references)) return false;
+      this.assertManifest();
+      const retained = new Set<string>();
+      const owned = [...this.records.values(), ...this.retired];
+      for (const reference of references) {
+        if (!attachmentShape(reference)) return false;
+        const matches = owned.filter(file => Object.keys(file.attachment)
+          .every(key => file.attachment[key as keyof Attachment] === reference[key as keyof Attachment]));
+        const identities = new Set(matches.map(file => this.retentionKey(file)));
+        if (identities.size !== 1) return false;
+        const file = matches[0]!;
+        const [folder, name, extra] = file.attachment.rel.split("/");
+        if (!folder || !name || extra !== undefined || name === "." || name === ".."
+          || name.includes("\\") || name.includes("\0") || !/^[\w-]+$/.test(folder)) return false;
+        const directory = this.directory(folder);
+        if (!directory) return false;
+        const stat = fs.lstatSync(path.join(directory, name));
+        if (!stat.isFile() || !sameIdentity(stat, file.identity) || stat.size !== file.attachment.size) return false;
+        retained.add(this.retentionKey(file));
+      }
+      this.assertManifest();
+      this.recoveryRetention = retained;
+      return true;
+    } catch { return false; }
+  }
+
+  private retentionKey(file: OwnedFile): string {
+    return JSON.stringify([file.attachment.rel, file.identity.dev, file.identity.ino]);
+  }
+
+  private retainedForRecovery(file: OwnedFile): boolean {
+    return this.recoveryRetention === null || this.recoveryRetention.has(this.retentionKey(file));
+  }
+
+  /** Only unreferenced staged files older than `maxAgeMs` can expire. */
   sweepStaging(maxAgeMs = 24 * 60 * 60 * 1000, now = Date.now()): number {
-    const expired = [...this.records.values()].filter(({ attachment }) => {
+    this.assertReady();
+    const expired = [...this.records.values()].filter(owned => {
+      if (this.retainedForRecovery(owned)) return false;
+      const { attachment } = owned;
       if (!attachment.rel.startsWith("staging/")) return false;
       const file = this.resolve(attachment.rel);
       try { return !!file && now - fs.lstatSync(file).mtimeMs > maxAgeMs; }
@@ -355,13 +560,29 @@ export class AttachmentStore {
       if (!stat.isFile()) throw new Error("invalid attachment manifest");
       this.manifestIdentity = identity(stat);
       const data = JSON.parse(fs.readFileSync(fd, "utf8"));
-      const validIdentity = (v: unknown): v is Identity => record(v) && typeof v.dev === "number" && typeof v.ino === "number";
-      const validFile = (v: unknown): v is OwnedFile => record(v) && attachmentShape(v.attachment) && validIdentity(v.identity);
-      if (!record(data) || data.version !== 1 || !validIdentity(data.root) || !sameIdentity(data.root, this.rootIdentity)
+      const exactKeys = (v: object, keys: string[]) => Object.keys(v).length === keys.length && keys.every(key => Object.hasOwn(v, key));
+      const validIdentity = (v: unknown): v is Identity => record(v) && exactKeys(v, ["dev", "ino"])
+        && typeof v.dev === "number" && Number.isSafeInteger(v.dev) && typeof v.ino === "number" && Number.isSafeInteger(v.ino);
+      const validFile = (v: unknown): v is OwnedFile => {
+        if (!record(v) || !attachmentShape(v.attachment) || !exactKeys(v.attachment, ["id", "name", "mime", "size", "kind", "rel"])
+          || !validIdentity(v.identity) || !exactKeys(v, Object.hasOwn(v, "owner") ? ["attachment", "identity", "owner"] : ["attachment", "identity"])) return false;
+        if (Object.hasOwn(v, "owner")) {
+          if (data.version !== 2) return false;
+          v.owner = copyOwner(v.owner);
+        }
+        return true;
+      };
+      if (!record(data) || !exactKeys(data, ["version", "root", "directories", "files", "retired"])
+        || (data.version !== 1 && data.version !== 2) || !validIdentity(data.root) || !sameIdentity(data.root, this.rootIdentity)
         || !Array.isArray(data.files) || !data.files.every(validFile) || !Array.isArray(data.retired) || !data.retired.every(validFile)
         || !Array.isArray(data.directories)) throw new Error("invalid attachment manifest");
+      if (new Set(data.files.map(file => file.attachment.id)).size !== data.files.length
+        || new Set(data.files.map(file => file.attachment.rel)).size !== data.files.length) throw new Error("ambiguous attachment manifest ownership");
+      const directories = new Set<string>();
       for (const entry of data.directories) {
-        if (!Array.isArray(entry) || typeof entry[0] !== "string" || !/^[\w-]+$/.test(entry[0]) || !validIdentity(entry[1])) throw new Error("invalid attachment directory metadata");
+        if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string" || !/^[\w-]+$/.test(entry[0])
+          || directories.has(entry[0]) || !validIdentity(entry[1])) throw new Error("invalid attachment directory metadata");
+        directories.add(entry[0]);
         this.directoryIdentities.set(entry[0], entry[1]);
       }
       this.records = new Map(data.files.map(file => [file.attachment.id, file]));
@@ -370,6 +591,7 @@ export class AttachmentStore {
   }
 
   private assertManifest(): void {
+    this.assertReady();
     try {
       const stat = fs.lstatSync(this.manifest);
       if (!stat.isFile() || !this.manifestIdentity || !sameIdentity(stat, this.manifestIdentity)) throw new Error("attachment metadata changed; reload before retrying");
@@ -385,28 +607,44 @@ export class AttachmentStore {
     const temp = path.join(this.root, `.manifest-${newId()}.tmp`);
     const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
     let tempIdentity: Identity | undefined;
+    let published = false;
+    const adopt = () => {
+      this.manifestIdentity = tempIdentity;
+      this.records = records;
+      this.retired = retired;
+    };
     try {
       try {
         tempIdentity = identity(fs.fstatSync(fd));
-        fs.writeFileSync(fd, JSON.stringify({ version: 1, root: identity(this.rootIdentity), directories: [...this.directoryIdentities], files: [...records.values()], retired }));
+        fs.writeFileSync(fd, JSON.stringify({ version: 2, root: identity(this.rootIdentity), directories: [...this.directoryIdentities], files: [...records.values()], retired }));
         fs.fsyncSync(fd);
       } finally { fs.closeSync(fd); }
       if (!this.directory("staging")) throw new Error("attachment directory changed during metadata commit");
       this.assertManifest();
       fs.renameSync(temp, this.manifest);
+      published = true;
+      adopt();
+      this.syncDirectory(this.root, this.rootIdentity);
     } catch (err) {
+      // A failed parent sync does not undo rename. Preserve the published files,
+      // write-ahead sources and temporary copies; never run ordinary rollback on
+      // a manifest that may already name the new files. Refuse further mutations
+      // until a fresh instance can read the surviving authoritative manifest.
+      if (!published && tempIdentity && this.directory("staging")) {
+        try { published = sameIdentity(fs.lstatSync(this.manifest), tempIdentity); }
+        catch { /* no observed publication; retain the original failure */ }
+      }
+      if (published) { adopt(); this.uncertain = true; throw err; }
       // Never follow a replaced root or delete another writer's temporary file.
       try {
         if (tempIdentity && this.directory("staging") && sameIdentity(fs.lstatSync(temp), tempIdentity)) fs.unlinkSync(temp);
       } catch { /* preserve the original commit failure */ }
       throw err;
     }
-    this.manifestIdentity = tempIdentity;
-    this.records = records;
-    this.retired = retired;
   }
 
   private deleteOwned(file: OwnedFile): boolean {
+    if (this.uncertain || this.retainedForRecovery(file)) return false;
     const [folder, name, extra] = file.attachment.rel.split("/");
     if (!folder || !name || extra !== undefined || name === "." || name === ".." || name.includes("\\") || !/^[\w-]+$/.test(folder)) return false;
     const dir = this.directory(folder);
@@ -431,6 +669,26 @@ export class AttachmentStore {
 
   private isThreadId(id: string): boolean {
     return typeof id === "string" && /^[\w-]+$/.test(id) && id !== "staging";
+  }
+
+  private assertReady(): void {
+    if (this.authorizing) {
+      this.authorizationReentered = true;
+      throw new Error("Attachment authorization cannot reenter a mutation.");
+    }
+    if (this.uncertain) throw new Error("Attachment storage durability is uncertain. Reload before retrying; existing files were preserved.");
+  }
+
+  /** Windows keeps ordinary attachment support; native update durability is
+   * admitted only on the POSIX path with directory synchronization available. */
+  private syncDirectory(directory: string, expected: Identity): void {
+    if (process.platform === "win32") return;
+    const fd = fs.openSync(directory, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW);
+    try {
+      const stat = fs.fstatSync(fd);
+      if (!stat.isDirectory() || !sameIdentity(stat, expected)) throw new Error("attachment directory changed before synchronization");
+      fs.fsyncSync(fd);
+    } finally { fs.closeSync(fd); }
   }
 
   /** Node path operations cannot eliminate concurrent replacement races; recheck before each use. */

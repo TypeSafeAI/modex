@@ -17,6 +17,7 @@ interface Session extends TerminalSnapshot {
 export class TerminalManager {
   private readonly sessions = new Map<string, Session>();
   private disposing = false;
+  private restartHold?: symbol;
 
   constructor(
     private readonly cwdFor: (threadId: string) => string,
@@ -29,6 +30,7 @@ export class TerminalManager {
   ) {}
 
   open(threadId: string, cols: number, rows: number): TerminalSnapshot {
+    if (this.restartHold) throw new Error("Modex is preparing to restart.");
     if (this.disposing) throw new Error("Terminals are shutting down.");
     this.checkSize(cols, rows);
     const cwd = this.cwdFor(threadId);
@@ -95,6 +97,19 @@ export class TerminalManager {
     const results = await Promise.allSettled([...this.sessions.keys()].map((id) => this.close(id)));
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
+  }
+
+  /** Shell prompts can contain unsaved input too; require the user to close live
+   * terminal sessions before installation rather than guessing whether they are idle.
+   */
+  holdForRestart(): () => void {
+    if (this.restartHold) throw new Error("Modex is preparing to restart.");
+    if (this.disposing) throw new Error("Terminals are shutting down.");
+    if ([...this.sessions.values()].some(session => session.exitCode === null || session.closing)) {
+      throw new Error("Close open terminal sessions before restarting.");
+    }
+    const token = this.restartHold = Symbol();
+    return () => { if (this.restartHold === token) this.restartHold = undefined; };
   }
 
   private session(threadId: string, sessionId: string): Session {

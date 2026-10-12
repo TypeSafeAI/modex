@@ -5,7 +5,7 @@ import { LIMITS, kindFor, mimeFor, rejectReason } from "../shared/attachments.js
 // File objects can wait in the queue, but only one file's bytes/base64 are materialized at a time,
 // even when drops or pastes overlap across composers. App keeps the original batch reservation.
 let uploading: Promise<unknown> = Promise.resolve();
-export async function stageFileBatch(files: Iterable<File>, room: number, bridge: Pick<ModexBridge, "invoke" | "pathForFile">): Promise<{ staged: Attachment[]; errors: string[] }> {
+export async function stageFileBatch(files: Iterable<File>, room: number, bridge: Pick<ModexBridge, "invoke" | "pathForFile">, stage?: (files: StagedFile[]) => Promise<{ staged: Attachment[]; errors: string[] }>): Promise<{ staged: Attachment[]; errors: string[] }> {
   const all = Array.from(files);
   const take = all.slice(0, Math.max(0, Math.min(room, LIMITS.perTurn)));
   const errors = all.length > take.length ? [`Up to ${LIMITS.perTurn} attachments per message; ${all.length - take.length} left out.`] : [];
@@ -18,7 +18,7 @@ export async function stageFileBatch(files: Iterable<File>, room: number, bridge
       let path = "";
       try { path = bridge.pathForFile?.(file) ?? ""; } catch { /* synthetic/pasted file */ }
       const source: StagedFile = path ? { ...base, path } : { ...base, data: await toBase64(file) };
-      const result = await bridge.invoke("attachments:stage", { files: [source] });
+      const result = await (stage ? stage([source]) : bridge.invoke("attachments:stage", { files: [source] }));
       staged.push(...result.staged);
       errors.push(...result.errors);
     });

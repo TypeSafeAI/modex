@@ -1,5 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { resizeWindow, appDir, createThread, items, launch, seedHome, tid, currentRow } from "./support";
 
@@ -18,10 +19,13 @@ let repo: string;
 test.beforeAll(async () => {
   ({ home, repo } = seedHome());
   ({ app, page } = await launch(home));
+  console.log(JSON.stringify({ fixture: "app", home, repo, pid: app.process().pid }));
 });
 
 test.afterAll(async () => {
   await app?.close();
+  fs.rmSync(home, { recursive: true, force: true });
+  fs.rmSync(repo, { recursive: true, force: true });
 });
 
 test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI shows every step", async () => {
@@ -192,13 +196,14 @@ test("the transcript scrolls vertically inside its pane; the page itself never o
 });
 
 test("⇧⌘N creates a worktree thread and the header shows its branch and path", async () => {
-  await createThread(page, "Check the worktree", { worktree: true });
+  const threadId = await createThread(page, "Check the worktree", { worktree: true });
   await expect(tid(page, "thread-row")).toHaveCount(2);
   const branch = tid(page, "context-branch");
-  await expect(branch).toHaveText(/^modex\/\w+$/);
+  await expect(branch).toHaveText(`modex/${threadId}`);
   const pathTitle = await tid(page, "composer-context").getAttribute("title");
   expect(pathTitle).toContain(path.join(home, "worktrees"));
   expect(fs.existsSync(path.join(pathTitle!, "README.md"))).toBe(true);
+  expect(execFileSync("git", ["branch", "--show-current"], { cwd: pathTitle!, encoding: "utf8" }).trim()).toBe(`modex/${threadId}`);
   // Long paths are shortened from the left, keeping whole trailing segments and no stray separators.
   // The ⋯ menu shows the worktree's branch and a shortened path; the full path is its tooltip and the copy.
   await tid(page, "thread-menu-toggle").click();
@@ -221,6 +226,7 @@ test("⇧⌘N creates a worktree thread and the header shows its branch and path
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
   await app.close();
   ({ app, page } = await launch(home));
+  console.log(JSON.stringify({ fixture: "app", home, repo, pid: app.process().pid }));
   await expect(tid(page, "thread-row")).toHaveCount(2);
   await tid(page, "thread-row").nth(1).click();
   await expect(items(page, "approval").locator('[data-testid="approval-answer"]')).toHaveText("Approved");
@@ -485,6 +491,7 @@ test("shell: back/forward, rename, search, show more, row menus, and a sidebar t
   await expect(tid(page, "sidebar-toggle")).toHaveAttribute("aria-pressed", "false");
   await app.close();
   ({ app, page } = await launch(home));
+  console.log(JSON.stringify({ fixture: "app", home, repo, pid: app.process().pid }));
   await expect(tid(page, "rail")).toBeVisible();
   await expect(tid(page, "sidebar")).toHaveCount(0);
   await tid(page, "sidebar-toggle").click();
