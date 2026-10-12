@@ -90,7 +90,9 @@ function PreviewReceipt({ result: r }: { result: ApprovalPreview }) {
     <div>{r.source === "match" ? "Exact match" : r.source === "jev" ? `Jev ${r.p?.toFixed(2) ?? ""}` : "No match"} · {r.ms} ms{r.destructive !== undefined ? ` · destructive ${r.destructive.toFixed(2)}` : ""}</div>
     {r.downgraded === "destructive" && <p>Allow became Ask because the action may be destructive.</p>}
     {r.downgraded === "escalation" && <p>Allow became Ask because only you can grant additional permissions.</p>}
-    {(!r.jevAvailable || r.downgraded === "jev-unavailable") && <p>Jev unavailable; only exact-match rules were considered.{r.jevError ? ` ${r.jevError}` : ""}</p>}
+    {r.downgraded === "compound" && <p>Allow became Ask because the command chains several commands.</p>}
+    {r.downgraded === "incomplete" && <p>Allow became Ask because Jev could not see the whole command.</p>}
+    {(!r.jevAvailable || r.jevNotConsulted) && <p>Jev not consulted; only exact-match rules were considered.{r.jevError ? ` ${r.jevError}` : ""}</p>}
     {!r.gateEnabled && <p>Preview only — the approval gate is off.</p>}
   </div>;
 }

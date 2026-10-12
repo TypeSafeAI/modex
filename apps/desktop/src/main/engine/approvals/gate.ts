@@ -1,7 +1,7 @@
-import type { ApprovalAnswer, ApprovalGateConfig, ApprovalReceipt, ApprovalRule, Mode, RuleDecision } from "../../../shared/types.js";
+import type { ApprovalAnswer, ApprovalDowngrade, ApprovalGateConfig, ApprovalReceipt, ApprovalRule, Mode, RuleDecision } from "../../../shared/types.js";
 import type { ApprovalAction } from "../backends/types.js";
 import { JevError, type JevQuestion, type JevTransport } from "../routing/jev.js";
-import { digestAction } from "./digest.js";
+import { digestAction, digestClipped } from "./digest.js";
 
 /**
  * The approval gate: answers an approval from the user's plain-language rules before it reaches a
@@ -13,14 +13,19 @@ import { digestAction } from "./digest.js";
  * 3. Rules without one go to Jev (one request, one noul per rule, plus `destructive`), capped at
  *    MAX_JEV_RULES. A rule applies when its noul ≥ threshold.
  * 4. Applying rules combine as never > ask > allow; nothing applies → ask.
- * 5. Safety downgrades no rule can override: allow on something Jev finds destructive (≥ 0.5) or on a
- *    sandbox/permission escalation → ask.
- * 6. Jev unavailable → only the deterministic result counts, and the receipt says so.
+ * 5. Safety downgrades no rule can override, labelled in this order: allow on a sandbox/permission
+ *    escalation, on something Jev finds destructive (≥ 0.5), on a command line that chains or
+ *    redirects commands, or on an action whose digest clipped text Jev needed → ask.
+ * 6. Jev needed (language rules, or the destructive check on a match allow) but not configured or
+ *    unavailable → only the deterministic result counts, and the decision and receipt say Jev was
+ *    not consulted.
  * 7. Aborted while deciding → the approval is answered "no".
  */
 
 export const MAX_JEV_RULES = 12;
 export const DESTRUCTIVE_THRESHOLD = 0.5;
+/** The reason recorded when Jev was needed and there is no transport to ask. */
+export const JEV_NOT_CONFIGURED = "Jev is not configured or unavailable.";
 
 export const DESTRUCTIVE_QUESTION: JevQuestion = {
   type: "noul",
@@ -56,8 +61,10 @@ export interface GateDecision {
   ms: number;
   /** Jev's `destructive` probability, when it was asked. */
   destructive?: number;
-  /** Why a rule's allow became an ask, or that Jev could not be consulted. */
-  downgraded?: "destructive" | "escalation" | "jev-unavailable";
+  /** Why a rule's allow became an ask. */
+  downgraded?: ApprovalDowngrade;
+  /** Jev was needed for this decision but was not consulted; independent of `downgraded`. */
+  jevNotConsulted?: true;
   /** Why Jev could not be consulted, when it could not. */
   jevError?: string;
   /** The turn stopped while the gate was deciding: the approval is answered "no". */
@@ -85,6 +92,7 @@ export function receiptFor(d: GateDecision): ApprovalReceipt | undefined {
     ms: d.ms,
     ...(d.destructive !== undefined ? { destructive: round(d.destructive) } : {}),
     ...(d.downgraded ? { downgraded: d.downgraded } : {}),
+    ...(d.jevNotConsulted ? { jevNotConsulted: true as const } : {}),
   };
 }
 
@@ -114,6 +122,37 @@ export function matchesRule(match: string, action: Pick<ApprovalAction, "tool" |
   const candidates = [action.title];
   if (action.title.startsWith("$ ")) candidates.push(action.title.slice(2));
   return candidates.some((c) => re.test(c));
+}
+
+/** Tools whose approval runs a shell command line: Claude's Bash, Codex's command, the scripted engine's shell. */
+const COMMAND_TOOLS = new Set(["Bash", "command", "shell"]);
+
+/**
+ * Shell control operators and line breaks: `;`, `&` (so `&&`, `&`, `2>&1`), `|` (so `||`), backtick,
+ * `$(`, `<` and `>` (so `<(` and `>(`), CR and LF. Quoting is deliberately not parsed, so
+ * `grep "a|b"` counts too: a false positive only means a person is asked.
+ */
+const CHAINING = /[;&|`<>\r\n]|\$\(/;
+
+/**
+ * True when a command action's full command line (never the digest's clipped copy) chains,
+ * redirects or substitutes commands. An allow rule covers one command, so such a line is asked.
+ * Both the input's `command` and the title are checked; either one chaining is enough.
+ */
+export function chainsCommands(action: Pick<ApprovalAction, "tool" | "title" | "input">): boolean {
+  if (!COMMAND_TOOLS.has(action.tool)) return false;
+  const command = action.input?.command;
+  const lines = [action.title.replace(/^\$ /, ""), ...(typeof command === "string" ? [command] : [])];
+  return lines.some((line) => CHAINING.test(line));
+}
+
+/** Why an allow must be asked instead; the first reason wins the label. */
+function downgradeOf(action: ApprovalAction, destructive: number | undefined): ApprovalDowngrade | undefined {
+  if (action.escalation) return "escalation";
+  if (destructive !== undefined && destructive >= DESTRUCTIVE_THRESHOLD) return "destructive";
+  if (chainsCommands(action)) return "compound";
+  if (digestClipped(action)) return "incomplete";
+  return undefined;
 }
 
 /** Rules sent to Jev: project-scoped first, then newest (later in the list), at most MAX_JEV_RULES. */
@@ -184,9 +223,11 @@ export async function decide(action: ApprovalAction | undefined, ctx: GateContex
   // so the destructive downgrade can apply to an exact-match allow too.
   const unmatched = jevRules(rules.filter((r) => !r.match));
   const wouldAllow = combine(hits)?.rule.decision === "allow";
+  const needsJev = unmatched.length > 0 || wouldAllow;
   let destructive: number | undefined;
   let jevError: string | undefined;
-  if (ctx.transport && (unmatched.length || wouldAllow)) {
+  if (needsJev && !ctx.transport) jevError = JEV_NOT_CONFIGURED;
+  else if (needsJev && ctx.transport) {
     const questions: Record<string, JevQuestion> = { destructive: DESTRUCTIVE_QUESTION };
     unmatched.forEach((r, n) => { questions[`rule_${n}`] = ruleQuestion(r); });
     const state = digestAction(action, { project: { name: ctx.project.name, branch: ctx.project.branch }, mode: ctx.mode });
@@ -206,12 +247,10 @@ export async function decide(action: ApprovalAction | undefined, ctx: GateContex
   if (signal?.aborted) return { decision: "ask", source: "none", ms: ms(), aborted: true };
 
   const best = combine(hits);
-  const base = { ms: ms(), ...(destructive !== undefined ? { destructive } : {}), ...(jevError ? { jevError, downgraded: "jev-unavailable" as const } : {}) };
+  const base = { ms: ms(), ...(destructive !== undefined ? { destructive } : {}), ...(jevError ? { jevError, jevNotConsulted: true as const } : {}) };
   if (!best) return { decision: "ask", source: "none", ...base };
   const decided: GateDecision = { decision: best.rule.decision, rule: best.rule, source: best.via, p: best.p, ...base };
-  if (decided.decision === "allow") {
-    if (action.escalation) return { ...decided, decision: "ask", downgraded: "escalation" };
-    if (destructive !== undefined && destructive >= DESTRUCTIVE_THRESHOLD) return { ...decided, decision: "ask", downgraded: "destructive" };
-  }
-  return decided;
+  // Never and Ask rules stand as they are; only a rule-driven allow can be downgraded.
+  const downgraded = decided.decision === "allow" ? downgradeOf(action, destructive) : undefined;
+  return downgraded ? { ...decided, decision: "ask", downgraded } : decided;
 }

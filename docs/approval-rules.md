@@ -24,8 +24,10 @@ Jev, they stay visible with **Inactive without Jev**. An optional exact match wo
 Jev: `Bash: npm test` for Claude, or `command: npm test` for Codex. Tool names and patterns
 are case-sensitive; `*` matches any text. A leading `$ ` in the command title may be omitted.
 Exact matches are mechanical patterns, so keep allow patterns narrow. For example,
-`Bash: npm test*` also matches `npm test; rm -rf ./src`. The glob does not parse shell
-operations, and without Jev there is no destructive-action judgment.
+`Bash: npm test*` also matches `npm testify` and `npm test; rm -rf ./src`. The glob does not
+parse shell operations, so an allow never approves a chained or redirected command on its
+own: it asks instead (see [Decisions and receipts](#decisions-and-receipts)). Without Jev,
+a single command gets no destructive-action judgment.
 
 ## Try a draft
 
@@ -49,6 +51,14 @@ the chance it is destructive at 0.5 or higher. An allow is always one approval, 
 session-wide “Always”. If Jev is missing, times out, or returns invalid answers, only exact
 matches can decide; otherwise Modex asks you. Stopping a pending judgment refuses it.
 
+An allow covers one command. A command line that chains, pipes, redirects or substitutes
+commands (`;`, `&&`, `||`, `|`, `&`, a backtick, `$(`, `<`, `>`, or a line break) asks
+instead. The check does not parse shell quoting, so `grep "a|b"` asks too. A command longer
+than the 500 characters Jev is shown also asks, because Jev judged only part of it. Always
+allow does not override either. When Jev was needed but is not configured or did not answer,
+the receipt says Jev was not consulted. For exact matches, prefer the pair `npm test` and
+`npm test *` over `npm test*`, which also matches `npm testify`.
+
 Automatic allows and refusals leave compact, expandable transcript receipts. Expand one to
 see the request, rule, source, timing and safety context. An ask keeps the normal approval
 card and explains the rule or downgrade that sent it to you. Old cards still render normally.
@@ -67,7 +77,7 @@ approval card, or the Approvals menu on the iPhone.
 - **Always allow**: approves what the CLI asks about in this thread. It still asks before
   extra sandbox access, when the request cannot be described (no structured action), and when
   your rules sent it to you on purpose: an **Ask** rule, or a downgrade because the action looked
-  destructive.
+  destructive, chained several commands, or was only partly seen by Jev.
 - **YOLO**: approves everything, extra sandbox access included. Switching to YOLO also answers
   whatever is already waiting. The phone and the Mac both confirm before turning it on.
 
@@ -96,5 +106,8 @@ The [2026-10-11 readiness review](reviews/2026-10-11-approval-provider-readiness
 supersedes those three examples as the enablement decision: **not ready**. A 62-check
 evaluation found six false allows across two cases (three repeats each): mentioning a
 test command inside `printf`, and a destructive suffix hidden by command truncation.
-The production default and saved gate remain off. The review includes reproducible probes,
+The truncation case is now closed: a command Jev saw only in part, and any chained command,
+asks instead (see [Decisions and receipts](#decisions-and-receipts)). The quoted-mention case
+is still open, so the decision stays **not ready**. The production default and saved gate
+remain off. The review includes reproducible probes,
 specification reconciliation, and the human acceptance procedure still required to enable it.
