@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { TaskKind } from "./judge.js";
 import type { TurnUsage } from "../backends/types.js";
+import type { Warmth } from "./policy.js";
 
 /**
  * The learning loop, kept deliberately legible: a per-task tier offset that moves when the
@@ -43,6 +44,10 @@ export interface RouteRecord {
   /** Context this turn left for the next one. */
   turnContextTokens?: number;
   outputTokens?: number;
+  /** How warm the thread's prompt cache was when Auto decided. */
+  warmth?: Warmth;
+  /** True when the warm cache kept the thread's model, effort or fast mode. */
+  held?: boolean;
 }
 
 export interface FitState {

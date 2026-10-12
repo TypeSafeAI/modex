@@ -91,7 +91,8 @@ deterministically, and every step that changes the outcome adds a reason to the 
    clamped to 0–3; capped at 2 once the daily premium budget is spent.
 3. **Backend.** Stays put unless `allow_backend_switch` is on **and** the thread has no
    existing CLI session. Even then it only moves to an allowed backend when the current CLI cannot reach the target tier or is
-   unavailable. Mid-thread switches lose the CLI's context, so this is off by default.
+   unavailable. Mid-thread switches lose the CLI's context, so this is off by default; model
+   switches have their own guard in step 7.
 4. **Model.** The highest rung at or below the target tier on that backend
    (`routing/catalog.ts`). The ladder is rebuilt from the CLI's live model list: Claude's
    aliases (haiku 0 · sonnet 1 · opus 2 · fable 3) and Codex's catalogue (gpt-5.5 0 ·
@@ -116,6 +117,20 @@ deterministically, and every step that changes the outcome adds a reason to the 
 6. **Fast mode.** Only when the user signalled speed, the task is not reasoning-heavy, the
    pick is tier ≤ 1, and the model offers it. Codex: the `fast` service tier for this turn
    only (`serviceTierForTurn`). Claude: `--settings '{"fastMode":true}'` for the session.
+
+7. **Holding the model.** On a thread with a CLI session, a switch re-reads the whole history
+   without the prompt cache and drops the previous model's thinking. So Auto keeps the model
+   while the cache is likely warm. It still chooses freely on the first turn, after the thread
+   has been idle 60 minutes or more, when the last turn left under 20k tokens of context, and
+   when you have picked a different model since the last turn. While the cache is warm it never
+   moves down, and it moves up only to a model two or more tiers higher, or when Jev is at least
+   0.85 sure the request needs deep reasoning and the request does not lean on earlier turns.
+   A kept model keeps its effort and fast mode too. On the same model, effort changes freely:
+   a probe on 2026-10-12 (Claude Code 2.1.296, codex-cli 0.162.1) showed an effort change keeps
+   the whole cache on both CLIs, while a model change re-read it from scratch. Fast mode is
+   held on the same model, because neither CLI's fast mode could be measured. Limits still win:
+   a model over the premium budget or no longer listed is not held. A held route reads
+   "Auto kept", with the cache size and idle time in its reasons.
 
 Changing the policy never requires re-asking Jev; the raw judgments are reusable.
 

@@ -2,7 +2,7 @@
 
 The updater integration passed local verification on October 12, 2026. This is evidence
 for the application and recovery flows, not a signed installed upgrade or a published
-release. The base is `ef17fc8a41ed0751cee8a74db0b3030c9900d309`.
+release. The base is `5085349157b7d005666f608c6a55cf2ccf78171e`.
 
 ## Verification
 
@@ -10,20 +10,20 @@ release. The base is `ef17fc8a41ed0751cee8a74db0b3030c9900d309`.
 | --- | --- |
 | `npm run build` | Passed across the monorepo |
 | `npm run typecheck --workspaces --if-present` | Passed |
-| `npm test` | 1,352 passed, 15 skipped, zero failures |
+| `npm test` | 1,362 passed, 15 skipped, zero failures |
 | Desktop Playwright suite | All 270 cases passed in 9.4 minutes |
-| Site Playwright suite | All seven cases passed in 6.9 seconds |
+| Site Playwright suite | All seven cases passed in 7.1 seconds |
 
 The tests used Node 24.18.1, CI mode, Open Knowledge acceptance enabled, and one Playwright
 worker. Desktop Playwright ran from `apps/desktop`, matching CI; no installed application
-was substituted. The full E2E run held all 634 source files unchanged. Later changes only
+was substituted. The full E2E run held all 635 source files unchanged. Later changes only
 update this report and the status documentation.
 
 The earlier passing source archive is retained outside the worktree at
 `~/.codex/recovery/modex-20261011`, SHA-256
 `9ab56d8d7ef44130878c3bb5b2d7e3132272fc7e35cc8337668cc757a30c5640`.
 The worktree's `.codex/` contains phase logs, source manifests, process identities, and
-retained JSON receipts. Checks found all 1,506 observed owned process identities absent
+retained JSON receipts. Checks found all 1,561 observed owned process identities absent
 after the run and all 129 explicitly logged fixture path strings absent. Older tests that
 do not log fixture paths are outside that temporary-path claim. No process signals were
 needed for the passing run.
@@ -60,11 +60,15 @@ checks observed no competing runner during that run.
 
 ## Integration with current main
 
-The final run includes the prompt-cache measurement changes from #180. Full build,
-workspace typechecks and 1,352 unit tests passed on that combined application source.
+The final run includes prompt-cache measurement from #180 and warm-cache model holding
+from #183. Full build,
+workspace typechecks and 1,362 unit tests passed on that combined application source.
 Only E2E fixtures changed afterward. The first corrections passed 12 focused cases;
 the subsequent corrections below passed six focused cases and the complete
-270-desktop/seven-site run in the table above.
+270-desktop/seven-site run. After #183 landed, build, typechecks, all unit tests, and the
+full UI suite were repeated on the combined source; the table above records that result.
+The only merge conflict was a comment beside the identical Settings-visible assertion.
+Both that precondition and the observed menu-delivery barrier remain.
 
 Both earlier hosted macOS jobs passed 268 cases and failed two. Directly seeded thread
 fixtures now select their target row explicitly because saved New chat selection can
