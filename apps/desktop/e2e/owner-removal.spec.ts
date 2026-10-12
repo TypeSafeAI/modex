@@ -20,6 +20,7 @@ test.beforeEach(async () => {
   fs.writeFileSync(file, JSON.stringify(state));
   await launchOwned();
   await expect(tid(page, "draft-view")).toBeVisible();
+  await expect(tid(page, "context-branch")).toHaveText("main");
 });
 test.afterEach(async () => {
   await app?.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true });
@@ -28,6 +29,8 @@ const recovery = () => JSON.parse(fs.readFileSync(path.join(home, "app", "update
 const selectProject = async (id: string) => {
   await tid(page, "draft-project").click(); await page.locator(`[data-testid="draft-project-option"][data-project-id="${id}"]`).click();
   await expect(tid(page, "draft-view")).toHaveAttribute("data-project-id", id);
+  // Draft persistence can finish before the admitted branch lookup settles.
+  await expect(tid(page, "context-branch")).toHaveText("main");
 };
 
 test("owner removal refuses raw whitespace typed before the debounce reaches disk", async () => {
