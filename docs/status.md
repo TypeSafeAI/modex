@@ -318,7 +318,12 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   See [usage and integration boundaries](knowledge-maintenance.md) and
   [verification](reviews/2026-10-09-knowledge-agents.md).
 
-## On main, unreleased
+## v0.0.11 release candidate
+
+Release preparation is in progress. The candidate includes the changes below, from sticky
+Auto routing (#180, #183) back to the Graphite reference layout, plus iPhone companion
+build 6. Publication remains gated on the protected release workflow and independent
+artifact verification. [Release ledger](reviews/2026-10-12-v0.0.11-release-review.md).
 
 - **Sticky Auto routing.** Auto keeps a thread's model while its prompt cache is warm, because
   a switch re-reads the whole history uncached. It still chooses freely on a thread's first turn,
@@ -477,6 +482,10 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   pages containing those references. Visualize prepares a chat prompt for review
   before sending. Comments stay in the local Space store and do not alter page
   revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
+
+## On main, unreleased
+
+The desktop changes above are included in the v0.0.11 candidate; publication is pending.
 
 ## In flight
 
@@ -637,6 +646,12 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   - `livestream-redaction` (2026-10-07): superseded by #100.
 
 ## Known rough edges
+
+- **Claude fast mode may not apply.** Auto's fast mode passes `--settings '{"fastMode":true}'`
+  to Claude. On 2026-10-12 (Claude Code 2.1.296, Opus 5.5, a subscription account) the turn's
+  `result.usage.speed` still read `standard`, and `claude --help` lists no fast-mode flag.
+  Whether the account lacks fast mode or the setting no longer enables it is not established;
+  check `usage.speed` on an account known to have fast mode before relying on it.
 
 - **node-pty is a pre-release.** v0.0.6 still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
