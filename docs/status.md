@@ -669,6 +669,27 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
+- **Owner-removal test readiness.** The fixture waits for the displayed branch after launch
+  and each project switch. Draft persistence alone does not prove the asynchronous branch
+  lookup has left restart admission. Holding that lookup reproduced the refusal from
+  macOS job `114750352400`; the corrected test passed three times with the same delay.
+  That CI run did not record its pending channel. Production admission and refusal behavior
+  are unchanged.
+- **Demo thread navigation in iPhone tests.** Opening the demo thread uses the same bounded
+  destination check as Back: at most one retry while the original row remains ready, and no
+  further tap after the thread appears. The native regression deliberately ignores the first
+  opening and Back actions. In job `114763678754`, the initial row tap left the dashboard
+  visible; native evidence does not establish why. This is a test correction, with hosted
+  native verification required before merge; app navigation is unchanged.
+  The destination check first requires the original row to disappear: job `114806660312`
+  repeatedly inspected the absent Back button and exhausted the retry budget without a
+  real thread tap. Both destination conditions and the two-attempt, 30-second budget remain.
+- **Native and renderer sizing in desktop tests.** The layout helper can make one native
+  size transition when the renderer stays at different dimensions despite correct native
+  bounds. It observes the intermediate dimensions before restoring the target and still
+  requires both sizes to settle. The original 15-second budget and permanent-clamp refusal
+  remain. This addresses a locally reproduced test failure from job `114782323496`; the
+  underlying cause of the native/renderer divergence is unproven. App sizing is unchanged.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
