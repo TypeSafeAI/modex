@@ -1,4 +1,4 @@
-import type { BackendId, EffortLevel, RoutingPolicy } from "../../../shared/types.js";
+import type { BackendId, EffortLevel, LastTurn, RoutingPolicy } from "../../../shared/types.js";
 import type { Candidate, Tier } from "./catalog.js";
 import { pick } from "./catalog.js";
 import type { JudgeSource, Judgments } from "./judge.js";
@@ -10,6 +10,28 @@ import type { JudgeSource, Judgments } from "./judge.js";
  */
 export const EFFORTS: EffortLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
+/** How long a backend's prompt cache is assumed to survive an idle thread. Claude Code writes 1-hour entries. */
+export const CACHE_LIFETIME_MS: Record<BackendId, number> = { claude: 60 * 60_000, codex: 60 * 60_000, mock: 0 };
+/** Below this many context tokens a switch re-reads too little to matter. */
+export const SMALL_CONTEXT_TOKENS = 20_000;
+/** A warm thread moves up only to a model at least this many tiers higher... */
+export const UPGRADE_TIERS = 2;
+/** ...or when Jev is this confident the request needs deep reasoning... */
+export const DEEP_REASONING_UPGRADE = 0.85;
+/** ...and the request does not lean on earlier turns this strongly. */
+export const PRIOR_TURNS_DEPENDENT = 0.7;
+/**
+ * Whether changing effort or fast mode alone clears the backend's cached history. Measured on
+ * 2026-10-12 (claude 2.1.296, codex-cli 0.162.1): an effort change kept the whole cache on both.
+ * Fast mode could not be measured (Claude's fast-mode setting did not apply; Codex's default model
+ * has no fast tier), so it stays assumed to clear.
+ */
+export const EFFORT_CLEARS_CACHE: Record<BackendId, boolean> = { claude: false, codex: false, mock: false };
+export const FAST_CLEARS_CACHE: Record<BackendId, boolean> = { claude: true, codex: true, mock: false };
+
+/** How likely a switch is to discard a warm prompt cache on this thread. */
+export type Warmth = "none" | "unknown" | "cold" | "small" | "warm";
+
 export interface DecisionInput {
   judgments: Judgments;
   source: JudgeSource;
@@ -19,6 +41,11 @@ export interface DecisionInput {
   /** Learned per-task tier offset (see fit.ts). */
   fitOffset: number;
   premiumExhausted: boolean;
+  /**
+   * What the thread's prompt cache was built with, and how long ago. The router always passes it;
+   * a caller that omits it gets a fresh choice every turn.
+   */
+  cache?: { lastTurn?: LastTurn; idleMs?: number };
 }
 
 export interface Decision {
@@ -43,6 +70,18 @@ function effortIndex(e: string | undefined): number | undefined {
 
 function currentCandidate(input: DecisionInput): Candidate | undefined {
   return (input.ladders[input.current.backend] ?? []).find((c) => input.current.model ? c.model === input.current.model : c.isDefault);
+}
+
+/** How likely a switch is to discard a warm prompt cache on this thread. */
+export function warmth(input: DecisionInput): Warmth {
+  const { current, cache } = input;
+  if (!cache || !current.hasSession || current.backend === "mock") return "none";
+  const last = cache.lastTurn;
+  if (!last) return "unknown";
+  if (last.model !== current.model) return "cold";
+  if (cache.idleMs !== undefined && cache.idleMs >= CACHE_LIFETIME_MS[current.backend]) return "cold";
+  if (last.contextTokens !== undefined && last.contextTokens < SMALL_CONTEXT_TOKENS) return "small";
+  return "warm";
 }
 
 function effortCeiling(input: DecisionInput, reasons: string[]): number | undefined {
