@@ -3,138 +3,113 @@ import "./style.css";
 import "./viewport.css";
 import "./release";
 
-document.documentElement.classList.add("js");
 const showcase = document.querySelector<HTMLElement>(".showcase")!;
-const stage = document.querySelector<HTMLElement>(".device-stage")!;
-const rig = document.querySelector<HTMLElement>(".device-rig")!;
-const desktop = document.querySelector<HTMLImageElement>("#desktop-screen")!;
-const phone = document.querySelector<HTMLImageElement>("#phone-screen")!;
-const description = document.querySelector<HTMLElement>(".scene-description")!;
-const buttons = [
-  ...document.querySelectorAll<HTMLButtonElement>("[data-scene-step]"),
-];
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
+const image = document.querySelector<HTMLImageElement>("#desktop-screen")!;
+const screenshotLink = image.closest<HTMLAnchorElement>("a")!;
+const controls = document.querySelector<HTMLElement>(".step-buttons")!;
 const scenes = [
   {
-    desktop: "desktop-approval.png",
-    phone: "iphone-workspace.png",
-    alt: "Modex Companion showing threads from the paired Mac",
+    kicker: "01 / THE REQUEST",
+    title: "Give the task a home.",
     description:
-      "Bring a project, choose an agent, and see each change as it happens.",
+      "Open a project and start a thread. Your request, the agent’s work, and its changes stay together.",
+    example:
+      "“Add a CONTRIBUTING.md with the three-step workflow: install, test, PR.”",
+    outcome: "A real demo task, ready to follow.",
+    image: "workflow-approval.png",
+    alt: "Modex follows the contributor-guide request, reads the project and prepares a patch",
   },
   {
-    desktop: "desktop-approval.png",
-    phone: "iphone-approval.png",
-    alt: "An iPhone approval card with Deny and Approve once controls",
+    kicker: "02 / THE PROPOSED CHANGE",
+    title: "See what you’re approving.",
     description:
-      "When a decision needs you, review it on your iPhone. Approve once, or say no.",
+      "Read the proposed patch in the thread. Choose whether to approve this action or deny it before the work continues.",
+    example:
+      "One new file. The install, test, and pull-request steps, visible before the edit.",
+    outcome: "The demo pauses at a real approval request.",
+    image: "workflow-approval.png",
+    alt: "A proposed CONTRIBUTING.md patch with Approve, Always and Deny buttons in Modex",
   },
   {
-    desktop: "desktop-complete.png",
-    phone: "iphone-follow-up.png",
-    alt: "An iPhone thread after an approval, with a follow-up message",
+    kicker: "03 / THE RESULT",
+    title: "Keep the change in view.",
     description:
-      "Send the next instruction from your phone. Your Mac keeps the work moving.",
+      "After approval, inspect the diff beside the conversation. The result and the next instruction stay in the same place.",
+    example:
+      "CONTRIBUTING.md added: five lines, with a visible diff and an approval receipt.",
+    outcome: "Approved. Changed. Ready for your next instruction.",
+    image: "workflow-complete.png",
+    alt: "The approved contributor guide, its five added lines, and the completion message in Modex",
   },
 ];
-let current = 0;
-let timer: ReturnType<typeof setTimeout> | undefined;
-let manuallySelected = false;
-function stop() {
-  clearTimeout(timer);
-  timer = undefined;
-}
-function autoplay() {
-  stop();
-  if (manuallySelected || document.hidden || reducedMotion.matches || details.open) return;
-  timer = setTimeout(() => {
-    show((current + 1) % scenes.length);
-    autoplay();
-  }, 4_000);
-}
+const buttons = [
+  ...controls.querySelectorAll<HTMLButtonElement>("[data-scene-step]"),
+];
 function show(index: number) {
-  current = index;
-  const scene = scenes[index]!;
+  const scene = scenes[index];
+  if (!scene) return;
   showcase.dataset.step = String(index);
-  desktop.src = `/assets/${scene.desktop}`;
-  desktop.alt =
-    index === 2
-      ? "Modex on Mac showing the approved change and its diff"
-      : "Modex on Mac showing a coding thread and a request to approve a file change";
-  phone.src = `/assets/${scene.phone}`;
-  phone.alt = scene.alt;
-  description.textContent = scene.description;
+  image.src = `/assets/${scene.image}`;
+  image.alt = scene.alt;
+  screenshotLink.href = image.src;
+  screenshotLink.dataset.imageTitle = scene.title;
+  for (const [className, text] of Object.entries({
+    "scene-kicker": scene.kicker,
+    "scene-title": scene.title,
+    "scene-description": scene.description,
+    "scene-example": scene.example,
+    "scene-outcome": scene.outcome,
+  })) {
+    showcase.querySelector<HTMLElement>(`.${className}`)!.textContent = text;
+  }
   buttons.forEach((button, i) =>
     button.setAttribute("aria-pressed", String(i === index)),
   );
 }
 buttons.forEach((button, index) =>
-  button.addEventListener("click", () => {
-    manuallySelected = true;
-    stop();
-    description.setAttribute("aria-live", "polite");
-    show(index);
-  }),
+  button.addEventListener("click", () => show(index)),
 );
-document.addEventListener("visibilitychange", autoplay);
-let frame = 0;
-function resetTilt() {
-  cancelAnimationFrame(frame);
-  rig.style.removeProperty("--tilt-x");
-  rig.style.removeProperty("--tilt-y");
-}
-stage.addEventListener("pointermove", (event) => {
-  if (
-    reducedMotion.matches ||
-    !finePointer.matches ||
-    event.pointerType !== "mouse"
-  )
-    return;
-  const bounds = stage.getBoundingClientRect();
-  cancelAnimationFrame(frame);
-  frame = requestAnimationFrame(() => {
-    rig.style.setProperty(
-      "--tilt-y",
-      `${((event.clientX - bounds.left) / bounds.width - 0.5) * 4}deg`,
-    );
-    rig.style.setProperty(
-      "--tilt-x",
-      `${-((event.clientY - bounds.top) / bounds.height - 0.5) * 3}deg`,
-    );
-  });
-});
-stage.addEventListener("pointerleave", resetTilt);
-reducedMotion.addEventListener("change", () => {
-  resetTilt();
-  autoplay();
-});
-// Fetch only local screenshots; the carousel never contacts a model or pairing service.
-for (const src of [
-  "desktop-complete.png",
-  "iphone-approval.png",
-  "iphone-follow-up.png",
-]) {
-  const image = new Image();
-  image.src = `/assets/${src}`;
-}
-
-// Keep supporting information available without extending the landing viewport.
-const details = document.querySelector<HTMLDialogElement>("#details-dialog")!;
-document.querySelector<HTMLButtonElement>("#close-details")!
-  .addEventListener("click", () => details.close());
-for (const link of document.querySelectorAll<HTMLAnchorElement>('a[data-details]')) {
-  const target = document.getElementById(link.dataset.details!);
-  if (!target || !details.contains(target)) continue;
+controls.hidden = false;
+// Deliberate selection only: no timer, autoplay or pointer-driven movement.
+const dialog = document.querySelector<HTMLDialogElement>("#image-dialog")!;
+const expanded = document.querySelector<HTMLImageElement>("#expanded-image")!;
+for (const link of document.querySelectorAll<HTMLAnchorElement>(
+  "[data-open-image]",
+)) {
   link.setAttribute("aria-haspopup", "dialog");
-  link.setAttribute("aria-controls", details.id);
-  link.addEventListener("click", (event) => {
+  link.setAttribute("aria-controls", dialog.id);
+  link.addEventListener("click", async (event) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
     event.preventDefault();
-    stop();
-    details.showModal();
-    target.scrollIntoView({ block: "start", behavior: "instant" });
+    const thumbnail = link.querySelector("img")!;
+    const crop = link.getBoundingClientRect();
+    const source = thumbnail.getBoundingClientRect();
+    const cropX = Math.max(0, (crop.left - source.left) / source.width);
+    const cropY = Math.max(0, (crop.top - source.top) / source.height);
+    dialog.dataset.format = link.closest(".companion-visual")
+      ? "portrait"
+      : "desktop";
+    expanded.src = link.href;
+    expanded.alt = link.querySelector("img")?.alt ?? "Modex product screenshot";
+    document.querySelector<HTMLElement>("#image-title")!.textContent =
+      link.dataset.imageTitle ?? "Inside Modex";
+    document.querySelector<HTMLAnchorElement>("#original-image")!.href =
+      link.href;
+    dialog.showModal();
+    try {
+      await expanded.decode();
+      if (!dialog.open || expanded.src !== link.href) return;
+      dialog.querySelector<HTMLElement>(".image-viewport")!.scrollTo({
+        left: cropX * expanded.clientWidth,
+        top: cropY * expanded.clientHeight,
+        behavior: "instant",
+      });
+    } catch {
+      // The original-image link remains available if decoding fails.
+    }
   });
 }
-
-details.addEventListener("close", autoplay);
-autoplay();
+document
+  .querySelector<HTMLButtonElement>("#close-image")!
+  .addEventListener("click", () => dialog.close());

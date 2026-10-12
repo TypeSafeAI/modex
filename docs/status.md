@@ -60,28 +60,26 @@ The release includes [the verification log](https://github.com/TypeSafeAI/modex/
 
 ## Landing page
 
-The download site lives in `apps/site`, deployed to Vercel project `modex` for
-`modex.build`. It uses the Jev near-black blue/pink palette and a three-stage CSS 3D
-carousel with real demo captures. Mac links point to the published signed/notarized
-latest stable Apple Silicon release automatically through a cached public GitHub feed,
-with independently verified v0.0.8 links as the static fallback. The page shows GitHub
-stars, forks and total stable Mac installer downloads; missing counts remain hidden and
-cached counts are labeled after a failed refresh. The iPhone buttons now use Val's
-[public TestFlight invitation](https://testflight.apple.com/join/Qr14JKCh).
-Apple reported that the beta was not accepting new testers during the 2026-10-05 browser
-check; the CTA links to TestFlight to check availability.
-The homepage link, canonical URL and social metadata target `https://modex.build/`.
-Val handles custom-domain and DNS setup in Vercel manually; the public preview is
-[modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app). Build and deployment commands and
-asset provenance are in [the site README](../apps/site/README.md).
-The repository now pins Vercel to the site-only build and output directory, so Git
-deployments do not attempt to compile the native desktop helper on Linux.
+The download site lives in `apps/site`, deployed to Vercel project `modex`. The new
+landing design keeps the near-black blue/pink identity and follows a concrete task through
+request, proposed patch and approved result with manually selected real app captures.
+The page scrolls through agent choice, parallel worktrees, Pages/Knowledge, setup, optional
+iPhone Companion and inline FAQ. Mobile retains the product explanation and platform
+requirements; screenshot enlargement, keyboard controls and no-JavaScript links remain usable.
 
-The headerless landing view fills the browser width and dynamic height without page
-scrolling. The carousel loops through three steps every four seconds until a visitor selects
-a step; reduced motion keeps it still. All step controls and download actions remain visible
-on portrait and landscape screens. About Modex opens iPhone, installation and FAQ details in
-a dismissible dialog. [Viewport verification](reviews/2026-10-05-landing-viewport.md).
+Mac links update to the latest stable Apple Silicon release through the cached public
+GitHub feed, with verified v0.0.10 URLs as the static fallback. Signing, release and MIT
+license links sit beside the main download; community counts move to the footer. Missing
+counts remain hidden and cached counts are labeled after a failed refresh. The optional
+Companion links to Val's [public TestFlight invitation](https://testflight.apple.com/join/Qr14JKCh),
+with same-local-network and awake-Mac requirements alongside it. Apple controls enrollment.
+
+Val confirmed `https://modex.codes/` as the public domain. DNS, HTTPS and the binding to
+Vercel project `modex` were verified on 2026-10-11. Canonical/social metadata, the README
+homepage and generated brand artwork now use that address. The Vercel alias
+[modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app) remains available. Vercel uses the
+repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
+and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## v0.0.7 release
 

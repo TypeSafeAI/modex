@@ -2,54 +2,54 @@
 
 ## Intent
 
-Help developers understand the Mac workspace and iPhone companion, then find the correct
-installation route. Keep the existing near-black blue and Jev pink direction.
+Show how Claude Code and Codex fit into a Mac workspace, follow a concrete task, and
+make installation predictable. Preserve the near-black blue and pink identity.
 
 ## Design
 
-- Ink `#f3f1f5`, secondary `#b2b6c6`, canvas `#080c17`, surface `#101625`,
-  Jev pink `#f386a1`, quiet lavender `#9386d0`.
-- Manrope variable for the large, closely set headline; system sans for body and controls;
-  system monospace for small platform/status captions.
-- The signature is a dimensional Mac workspace with an iPhone moving forward as the visitor
-  selects a real workflow stage. Actual product captures supply the screen content.
-- Keep supporting content available through About Modex: three concrete benefits, an
-  iPhone explanation, installation details and FAQ.
+- Canvas `#080c17`, surface `#101625`, ink `#f3f1f5`, secondary `#b2b6c6`,
+  pink `#f386a1`, borders `#29303f`.
+- Self-hosted Manrope for headings, system sans for reading, monospace for file and step labels.
+- The hero pairs a concrete promise with an enlarged approval capture. Pink connects the
+  primary download, selected workflow step and small section labels.
+- A CONTRIBUTING.md task supplies the request, proposed patch and approved diff. Captures
+  come from the actual scripted app demo; they do not claim live provider inference.
 
 ```
-Modex · latest release      [dimensional desktop + phone]
-A home for your
-coding agents.              [Mac → approval → follow-up, looping]
-Mac download / TestFlight   [three persistent step controls]
+Navigation / Get started
+Concrete promise + requirements     [proposed patch]
+Download / Explore workflow          [signing / release / MIT]
 
-About Modex                         GitHub / MIT / Powered by Jev
+One task: Start → Review → Approve   [manual controls + enlarged capture]
+Agent choice / worktrees / Pages and Knowledge, with examples
+Three setup steps / download
+Optional iPhone / same-network and awake-Mac requirements
+Inline FAQ / final download
+GitHub / license / Jev / community counts
 ```
 
-## Viewport layout
+## Responsive behavior and access
 
-The landing view occupies the full browser width and dynamic viewport height with no page
-header. Branding sits with the hero copy; the product carousel uses the remaining space.
-Desktop uses two columns and portrait screens stack the copy above the devices. Short
-screens simplify supporting copy but keep all three step controls visible. Devices scale to
-their available space rather than increasing page height.
+The page scrolls at every size. Mobile and short windows retain the product explanation,
+platform requirements and setup content. Workflow buttons are at least 44px high and never
+advance automatically. Pointer and keyboard selection update the description politely.
+Reduced motion disables transitions and smooth scrolling.
 
-The carousel advances every four seconds and wraps back to the first step. Selecting a step
-by pointer or keyboard stops autoplay for the rest of the visit. There is no Play control or
-separate playback dialog. Reduced motion disables autoplay, and hidden tabs or open details
-temporarily pause it. Automatic updates stay out of live screen-reader announcements.
-
-About Modex opens the supporting benefits, iPhone, installation and FAQ details in a native
-dialog. Only that dialog scrolls; Escape and Close return focus to About Modex. With
-JavaScript disabled, Mac, TestFlight and repository links remain usable.
+Screenshot links open a native dialog with a scrollable, readable-size desktop image. Escape
+and Close restore focus to the trigger; the image viewport is keyboard-focusable. Original
+images are linked directly when JavaScript is disabled. FAQ uses native details elements,
+and download, setup and repository links do not depend on JavaScript.
 
 ## Delivery and evidence
 
-- Isolated `apps/site` Vite static build with root-relative asset paths.
-- macOS: cached public GitHub metadata selects the latest stable Apple Silicon release;
-  verified v0.0.7 links remain the static fallback.
-- iPhone: the approved public TestFlight invitation remains visible. Apple controls beta
-  enrollment availability; this is not an App Store listing.
-- Use `modex.build` as the homepage and canonical URL. Val handles custom-domain and DNS
-  setup in Vercel manually; use the public Vercel alias to verify content during setup.
-- Verify desktop/mobile rendering, keyboard access, reduced motion, carousel controls,
-  links, and built asset loading. Run repository build, unit and e2e gates before pushing.
+- Isolated `apps/site` Vite build with root-relative assets and the existing cached release API.
+- The verified static download fallback is v0.0.10; valid newer public metadata updates all
+  download links and version labels together. Unknown counts remain hidden in the footer.
+- Apple silicon and macOS 13 requirements match the installed v0.0.10 app's Info.plist.
+  Provider access and costs are separate from the free MIT-licensed app.
+- Companion uses the approved public TestFlight invitation; tester availability is controlled
+  by Apple. The nearby copy states same local network, awake Mac, and running Modex.
+- Val confirmed `modex.codes` as the public domain on 2026-10-11. DNS, HTTPS and its
+  Vercel project binding were verified; canonical and social metadata use that address.
+- See [implementation verification](../reviews/2026-10-11-landing-clarity.md) for checked
+  behavior and remaining launch gates.
