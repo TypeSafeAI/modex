@@ -247,8 +247,8 @@ being edited. [Acceptance](reviews/2026-10-07-ui-completion.md).
 **Mobile thread creation and skills (#128).** The paired Mac service now supports starting
 Local or Worktree threads and discovering provider-native commands. The iPhone demo also
 exercises thread creation and skills without a Mac. Companion 0.1.0 (5) includes these
-changes and was submitted for beta review. The v0.0.9 standalone desktop now supplies
-these endpoints for real paired use.
+changes and was approved for TestFlight beta testing on 2026-10-07. The v0.0.9 standalone
+desktop now supplies these endpoints for real paired use.
 
 **Chat title quality.** The title request now includes a bounded final reply and asks for a
 short action-and-subject title in the user's language. Validation normalizes plain text and
@@ -719,8 +719,9 @@ reuses the desktop renderer. Val approved integrating this development preview. 
 boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
 saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
 App Sandbox was verified on the running client. Graceful host shutdown, full parity and
-real CLI acceptance, provisioning, App Review eligibility and macOS TestFlight remain
-pending; this is not an App Store release. See [the preview ledger](mac-store-preview-plan.md) and
+real CLI acceptance, provisioning and App Review eligibility remain pending. Store 0.0.8
+was approved for macOS TestFlight beta testing on 2026-10-07; this is not an App Store
+release. See [the preview ledger](mac-store-preview-plan.md) and
 [run instructions](../apps/store-desktop/README.md).
 
 The shared Mac connection settings now recognize existing system CLI sign-ins and recheck
