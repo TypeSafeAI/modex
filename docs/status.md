@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-11._
+_Last updated 2026-10-12._
 
 ## Shipped
 
@@ -480,6 +480,16 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## In flight
 
+- **Verified multiplatform release candidates.** The release workflow now joins native
+  Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
+  to the exact tag/source/run, and prepares a draft with five installers, checksums and
+  an acceptance manifest. The combined recovery source passed local build/typechecks and
+  1,405 unit tests (15 skipped). Native reports and all three installer hashes were verified
+  on [the release-patch run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498).
+  The combined release workflow has not yet run on an approved signed tag.
+  Windows signing stays deferred; account/session and historical migration gaps remain.
+  [Attachment checks](release-signing.md#candidate-attachment-checks).
+
 - **Automatic updates and durable drafts.** The unreleased desktop code connects verified download,
   cancellation, restart preparation, and recovery for packaged Macs. Schema-2 draft storage
   preserves independent text and files, pending originals, and owner-removal recovery.
@@ -709,9 +719,8 @@ Roughly in the order they earn their place; none is scheduled.
 
 1. **Ship automatic installation of updates.** Finish the in-flight acceptance and signed
    release gates above. Published builds still require manual installation.
-2. **Publish Windows and Linux installers.** Extend the protected release pipeline, which
-   currently uploads macOS artifacts, to verify and publish the exact tagged native
-   installers. Candidate Actions artifacts are not releases. Provider-account acceptance,
+2. **Publish Windows and Linux installers.** Run the prepared protected release pipeline
+   on an approved new signed tag, verify its draft assets, and complete release review. Candidate Actions artifacts are not releases. Provider-account acceptance,
    KWallet6/full graphical sessions, and historical schema migration remain unproven;
    see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
 3. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
