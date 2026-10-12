@@ -666,8 +666,12 @@ Roughly in the order they earn their place; none is scheduled.
    installers. Candidate Actions artifacts are not releases. Provider-account acceptance,
    KWallet6/full graphical sessions, and historical schema migration remain unproven;
    see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
-3. **Codex Cloud tasks and scheduled automations.** Out of scope until the local story is
-   complete; Modex stays CLI-only for coding turns (no API execution mode — see `AGENTS.md`).
+3. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
+   result written to a Space page. They follow a groundwork phase (a shared decision service
+   and an event journal), and routines that change code wait for the approval gate decision.
+   See the [routines specification](specs/2026-10-11-modex-routines-spec.md).
+4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+   for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
 
