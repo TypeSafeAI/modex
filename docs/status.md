@@ -711,6 +711,12 @@ The desktop changes above are included in the v0.0.11 candidate; publication is 
   opening and Back actions. In job `114763678754`, the initial row tap left the dashboard
   visible; native evidence does not establish why. This is a test correction, with hosted
   native verification required before merge; app navigation is unchanged.
+- **Native and renderer sizing in desktop tests.** The layout helper can make one native
+  size transition when the renderer stays at different dimensions despite correct native
+  bounds. It observes the intermediate dimensions before restoring the target and still
+  requires both sizes to settle. The original 15-second budget and permanent-clamp refusal
+  remain. This addresses a locally reproduced test failure from job `114782323496`; the
+  underlying cause of the native/renderer divergence is unproven. App sizing is unchanged.
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
