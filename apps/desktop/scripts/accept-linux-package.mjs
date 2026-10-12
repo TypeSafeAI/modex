@@ -58,7 +58,7 @@ fs.writeFileSync(path.join(home, "app", "state.json"), JSON.stringify({ version:
 const sentinel = path.join(root, "unrelated-data");
 const marker = randomUUID();
 fs.writeFileSync(sentinel, marker);
-const result = { schema: 1, sourceSha: manifest.sourceSha, runId: manifest.runId,
+const result = { schema: 1, candidate: manifest, sourceSha: manifest.sourceSha, runId: manifest.runId,
   platform: process.platform, arch: process.arch, launches: [], uninstall: "pending",
   installerAcceptance: "pending", credentials: "pending", remaining: ["KWallet credential persistence", "complete CLI/account acceptance"] };
 let installAttempted = false;
@@ -307,6 +307,7 @@ finally {
   } catch (error) { failure = failure ? new AggregateError([failure, error], "Acceptance and cleanup failed") : error; }
   try { await stopKeyring(); }
   catch (error) { failure = failure ? new AggregateError([failure, error], "Acceptance and keyring cleanup failed") : error; }
+  result.nativeChecksPassed = !failure;
   result.error = failure ? String(failure) : undefined;
   fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify(result, null, 2) + "\n");
 }

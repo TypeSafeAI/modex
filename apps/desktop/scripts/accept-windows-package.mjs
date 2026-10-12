@@ -85,7 +85,7 @@ const dataMarkers = defaultData.map(directory => {
   fs.writeFileSync(file, marker);
   return file;
 });
-const result = { schema: 1, sourceSha: manifest.sourceSha, runId: manifest.runId,
+const result = { schema: 1, candidate: manifest, sourceSha: manifest.sourceSha, runId: manifest.runId,
   platform: process.platform, arch: process.arch, terminalShell: commandShell, terminalEnvironmentKey: "ComSpec", launches: [], uninstall: "pending",
   installerAcceptance: "pending", credentials: "pending", remaining: ["complete CLI/account acceptance"] };
 let installAttempted = false;
@@ -247,6 +247,7 @@ finally {
       result.uninstall = "NSIS removed application and registration; recorded threads, probe ciphertext and unrelated data retained";
     }
   } catch (error) { failure = failure ? new AggregateError([failure, error], "Acceptance and cleanup failed") : error; }
+  result.nativeChecksPassed = !failure;
   result.error = failure ? String(failure) : undefined;
   fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify(result, null, 2) + "\n");
 }
