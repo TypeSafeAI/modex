@@ -501,6 +501,7 @@ export class ThreadRunner {
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
     let fast = false;
+    let routeId: string | undefined;
     let routingBlocked: string | undefined;
     const auto = Boolean(thread.auto);
     if (auto && !retry) {
@@ -510,6 +511,7 @@ export class ThreadRunner {
         const project = this.o.store.project(thread.projectId);
         const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
         this.addItem(threadId, receipt.item);
+        routeId = receipt.item.id;
         const d = receipt.decision;
         if (d.blocked) routingBlocked = d.reasons.at(-1) ?? "The reasoning-effort ceiling cannot be guaranteed.";
         // A blocked route is diagnostic evidence only. Never let it mutate the thread or
@@ -584,7 +586,10 @@ export class ThreadRunner {
         sink,
         abort.signal,
       );
-      this.noteLastTurn(threadId, thread, fast, result);
+      // Record what ran, not what was asked for: the CLI can refuse fast mode (no usage credits, for one).
+      const ranFast = result.fastMode ? result.fastMode.on : fast;
+      if (fast && !ranFast && routeId) this.noteFastOff(threadId, routeId, result.fastMode?.why);
+      this.noteLastTurn(threadId, thread, ranFast, result);
       if (result.status === "completed" && shouldName && !abort.signal.aborted) {
         const reply = l.items.slice(turnStart).reverse().find((item) => item.kind === "assistant" && item.text.trim());
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
@@ -752,6 +757,13 @@ export class ThreadRunner {
       }).catch(() => {});
     }
     return t;
+  }
+
+  /** Auto asked for fast mode and the CLI ran without it: the turn's receipt says so, and why. */
+  private noteFastOff(threadId: string, routeId: string, why: string | undefined): void {
+    const item = this.slot(threadId).items.find((i) => i.id === routeId);
+    if (item?.kind !== "route") return;
+    this.patchItem(threadId, routeId, { fast: false, reasons: [...item.reasons, `Fast mode did not apply: ${why ?? "the CLI ran at standard speed"}.`] });
   }
 
   /** Records what the backend's prompt cache was last built with, so Auto can avoid discarding it. */

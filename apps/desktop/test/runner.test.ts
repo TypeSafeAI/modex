@@ -742,6 +742,37 @@ test("Auto threads: a route item lands before the turn, the pick is applied, and
   assert.equal(seen[1]!.model, "big");
 });
 
+test("Auto fast mode the CLI refused: the receipt says why, and the thread records what ran", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const seen: TurnOptions[] = [];
+  const reports: (TurnResult["fastMode"])[] = [{ on: false, why: "fast mode requires usage credits (extra_usage_disabled)" }, { on: true }, undefined];
+  const backend: Backend = {
+    id: "mock",
+    listModels: async () => [{ id: "mini", label: "Mini", description: "fastest", efforts: ["low", "high"], serviceTiers: ["fast"] }, { id: "big", label: "Big", efforts: ["low", "high"] }],
+    dispose: async () => {},
+    async runTurn(_t, o, sink) { seen.push(o); sink.assistant("ok"); const fastMode = reports[seen.length - 1]; return fastMode ? { status: "completed", fastMode } : { status: "completed" }; },
+  };
+  const { Router } = await import("../src/main/engine/routing/router.js");
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: await backend.listModels() }), transport: null });
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend }, router });
+  const thread = await runner.createThread(project.id, { mode: "agent", auto: true });
+  const route = () => runner.items(thread.id).filter((i): i is Extract<ThreadItem, { kind: "route" }> => i.kind === "route").at(-1)!;
+
+  await runner.send(thread.id, "quick: rename x to y in one file");
+  assert.equal(seen[0]!.fast, true, "Auto asked for fast mode");
+  assert.deepEqual([route().fast, route().reasons.at(-1)], [false, "Fast mode did not apply: fast mode requires usage credits (extra_usage_disabled)."]);
+  assert.equal(h.store.thread(thread.id)?.lastTurn?.fast, false, "the cache record says what ran");
+  const saved = new Store(h.home).items(thread.id).find((i) => i.id === route().id);
+  assert.equal(saved?.kind === "route" && saved.fast, false, "the corrected receipt persists");
+
+  await runner.send(thread.id, "quick: rename y to z in one file");
+  assert.deepEqual([route().fast, h.store.thread(thread.id)?.lastTurn?.fast], [true, true]);
+  assert.ok(!route().reasons.some((r) => r.startsWith("Fast mode did not apply")));
+  await runner.send(thread.id, "quick: rename z to w in one file");
+  assert.equal(h.store.thread(thread.id)?.lastTurn?.fast, true, "a backend that does not report fast mode keeps the request as the record");
+});
+
 test("Auto mock threads keep model discovery errors in a receipt without losing the turn", async () => {
   const h = harness([{ content: "fine" }]);
   const project = h.store.addProject(gitRepo());
