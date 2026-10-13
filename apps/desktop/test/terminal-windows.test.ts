@@ -28,13 +28,15 @@ function gone(pid: number) {
   try { process.kill(pid, 0); return false; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return true; throw error; }
 }
-function fallback(directory: string) {
-  execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", cleanup, "-Directory", directory], { timeout: 8000, windowsHide: true });
+function cleanupFixture(directory: string, cleanupVerified = false) {
+  // Emergency cleanup is still required when the independent exit assertions fail.
+  if (!cleanupVerified) execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", cleanup, "-Directory", directory], { timeout: 8000, windowsHide: true });
   fs.rmSync(directory, { recursive: true, force: true });
 }
 for (const mode of ["natural", "close", "owner-exit", "supervisor-failure"] as const) {
   test(`native Windows PTY removes detached descendants on ${mode}`, { skip: process.platform !== "win32", timeout: 30000 }, async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "modex-pty-tree-"));
+    let cleanupVerified = false;
     const args = [fixture, directory, "root", mode];
     const options = { cwd: directory, cols: 80, rows: 24, env: { ...process.env } };
     if (mode === "owner-exit") {
@@ -43,7 +45,7 @@ for (const mode of ["natural", "close", "owner-exit", "supervisor-failure"] as c
       const owner = spawn(process.execPath, [ownerFile], { stdio: ["ignore", "ignore", "pipe"] });
       let error = "";
       owner.stderr?.on("data", chunk => { error += String(chunk); });
-      t.after(() => { if (error) t.diagnostic(error); if (owner.exitCode === null && owner.signalCode === null) owner.kill(); fallback(directory); });
+      t.after(() => { if (error) t.diagnostic(error); if (owner.exitCode === null && owner.signalCode === null) owner.kill(); cleanupFixture(directory, cleanupVerified); });
       await until(() => {
         const receipt = path.join(directory, "supervisor.pid");
         const pid = fs.existsSync(receipt) ? Number(fs.readFileSync(receipt, "utf8")) : 0;
@@ -56,7 +58,7 @@ for (const mode of ["natural", "close", "owner-exit", "supervisor-failure"] as c
       let exited = false;
       pty.onExit(() => { exited = true; });
       pty.onData(data => { output += data; });
-      t.after(() => { if (output) t.diagnostic(output); fallback(directory); });
+      t.after(() => { if (output) t.diagnostic(output); cleanupFixture(directory, cleanupVerified); });
       await until(() => pty.pid > 0, "PTY supervisor starts");
       fs.writeFileSync(path.join(directory, "supervisor.pid"), String(pty.pid));
       await until(() => fs.existsSync(path.join(directory, "grandchild.heartbeat")), "PTY tree starts");
@@ -65,16 +67,19 @@ for (const mode of ["natural", "close", "owner-exit", "supervisor-failure"] as c
       if (mode === "supervisor-failure") {
         process.kill(pty.pid, "SIGKILL");
         await assert.rejects(stopTerminalProcess(pty), /without confirming cleanup|before connecting/);
+        await until(() => exited, "PTY exits after supervisor failure");
       } else await stopTerminalProcess(pty);
     }
     const pids = ["root", "child", "grandchild", "supervisor"].map(role => Number(fs.readFileSync(path.join(directory, `${role}.pid`), "utf8")));
     assert.ok(pids.every(pid => Number.isSafeInteger(pid) && pid > 0));
     await until(() => pids.every(gone), "all PTY-owned descendants exit");
+    cleanupVerified = true;
   });
 }
 
 test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { skip: process.platform !== "win32", timeout: 30000 }, async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "modex-pty-input-"));
+  let cleanupVerified = false;
   const interactive = fileURLToPath(new URL("../../test/fixtures/terminal-interactive.mjs", import.meta.url));
   const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
   const prompt = "MODEX_INTERACTIVE_PROMPT> ";
@@ -90,10 +95,11 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
     t.diagnostic(`Last terminal dimensions: ${JSON.stringify(dimensions())}`);
     try { await stopTerminalProcess(pty); }
     catch (error) { t.diagnostic(`Terminal teardown: ${String(error)}`); }
-    finally { fallback(directory); }
+    finally { cleanupFixture(directory, cleanupVerified); }
   });
   await until(() => pty.pid > 0, "interactive supervisor starts");
-  fs.writeFileSync(path.join(directory, "supervisor.pid"), String(pty.pid));
+  const supervisorPid = pty.pid;
+  fs.writeFileSync(path.join(directory, "supervisor.pid"), String(supervisorPid));
   await until(() => dimensions().columns === 80, "initial terminal size");
   assert.equal(dimensions().stdin, true);
   assert.equal(dimensions().stdout, true);
@@ -115,7 +121,8 @@ test("native Windows PTY preserves input, resize and shell Ctrl-C behavior", { s
   await until(() => output.includes("SHELL_READY"), "shell remains interactive after Ctrl-C");
   pty.write("exit\r");
   await stopTerminalProcess(pty);
-  await until(() => gone(Number(fs.readFileSync(path.join(directory, "interactive.pid"), "utf8"))), "interactive fixture exits");
+  await until(() => gone(Number(fs.readFileSync(path.join(directory, "interactive.pid"), "utf8"))) && gone(supervisorPid), "interactive fixture and supervisor exit");
+  cleanupVerified = true;
 });
 
 // No process.exit or post-exit PTY kill in this fixture: leaked native handles or
