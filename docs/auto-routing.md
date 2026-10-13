@@ -117,6 +117,13 @@ deterministically, and every step that changes the outcome adds a reason to the 
 6. **Fast mode.** Only when the user signalled speed, the task is not reasoning-heavy, the
    pick is tier ≤ 1, and the model offers it. Codex: the `fast` service tier for this turn
    only (`serviceTierForTurn`). Claude: `--settings '{"fastMode":true}'` for the session.
+   Claude Code runs fast mode only on Opus 4.8 and newer Opus models, so only `opus` offers it
+   and this step never picks it on Claude. On a subscription, it also needs usage credits
+   turned on, and it draws on them even while plan usage remains.
+   Claude reports in `system/init` and `result` whether fast mode is serving
+   (`fast_mode_state`) and, if not, why (`fast_mode_disabled_reason`). When Auto asked for fast
+   mode and Claude ran without it, the receipt drops "fast" and gives the reason, for example
+   "Fast mode did not apply: fast mode requires usage credits (extra_usage_disabled)."
 
 7. **Holding the model.** On a thread with a CLI session, a switch re-reads the whole history
    without the prompt cache and drops the previous model's thinking. So Auto keeps the model
@@ -190,7 +197,8 @@ call, which is what the next turn re-reads. Sub-agent calls are not counted; the
 context.
 
 The thread stores the latter as `lastTurn` in `state.json`, with the model, effort and fast mode
-the turn ran on and when it ended. Auto's routing records in `routing-fit.json` add the idle time
+the turn ran on and when it ended. Its fast mode is what the CLI reported when it says (Claude
+does), otherwise what Modex asked for. Auto's routing records in `routing-fit.json` add the idle time
 and context size at decision time and the turn's cache figures afterwards, so the records show
 what each switch actually cost.
 

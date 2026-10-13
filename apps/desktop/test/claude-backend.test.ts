@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ClaudeBackend, denyMessage, toolTitle, userContent } from "../src/main/engine/backends/claude.js";
+import { ClaudeBackend, denyMessage, fastModeOf, toolTitle, userContent } from "../src/main/engine/backends/claude.js";
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 import { PNG_B64, tmpdir } from "./helpers.js";
@@ -191,6 +191,36 @@ test("ClaudeBackend.args passes reasoning effort and fast mode; models advertise
   assert.ok(tuned.join(" ").includes("--effort xhigh"));
   assert.equal(tuned[tuned.indexOf("--settings") + 1], '{"fastMode":true}');
   assert.deepEqual(ClaudeBackend.MODELS[0]!.efforts, ["low", "medium", "high", "xhigh", "max"]);
+});
+
+test("only Opus advertises fast mode, which Claude Code runs on Opus 4.8 and newer only", () => {
+  assert.deepEqual(ClaudeBackend.MODELS.filter((m) => m.serviceTiers?.includes("fast")).map((m) => m.id), ["opus"]);
+});
+
+test("ClaudeBackend reports fast mode as the CLI did, from a captured turn whose account has no usage credits", async () => {
+  const lines = fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/usage/claude-fast-off.jsonl", import.meta.url)), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+  const proc = new FakeProcess();
+  const run = new ClaudeBackend("claude", fakeSpawn(proc).spawn).runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "opus", fast: true }, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  for (const line of lines) proc.emitLine(line);
+  const result = await run;
+  assert.equal(result.status, "completed");
+  assert.deepEqual(result.fastMode, { on: false, why: "fast mode requires usage credits (extra_usage_disabled)" });
+});
+
+test("fastModeOf words each state; the latest init or result wins", async () => {
+  assert.equal(fastModeOf(undefined, undefined), undefined);
+  assert.deepEqual(fastModeOf("on", undefined), { on: true });
+  assert.deepEqual(fastModeOf("cooldown", undefined), { on: false, why: "fast mode is cooling down after a rate limit" });
+  assert.deepEqual(fastModeOf("off", "preference"), { on: false, why: "fast mode is disabled by your organization (preference)" });
+  assert.deepEqual(fastModeOf("off", "something_new"), { on: false, why: "Claude Code reported something_new" });
+  assert.deepEqual(fastModeOf("off", undefined), { on: false, why: "Claude Code reported fast mode off" });
+  const proc = new FakeProcess();
+  const run = new ClaudeBackend("claude", fakeSpawn(proc).spawn).runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "opus", fast: true }, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  proc.emitLine({ type: "system", subtype: "init", session_id: "s", fast_mode_state: "on" });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s", fast_mode_state: "cooldown" });
+  assert.deepEqual((await run).fastMode, { on: false, why: "fast mode is cooling down after a rate limit" });
 });
 
 test("Stop waits for the Claude process to close before settling", async () => {

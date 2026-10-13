@@ -494,14 +494,20 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   change keeps the cache. A model kept above its pick runs at the pick's lower effort. Held
   turns do not reuse the thread's last effort, so a raise does not carry into later held turns.
   The ceiling and the budget's high cap still apply. [Auto routing, step 7](auto-routing.md).
-- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
-  carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
-  through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
-  `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
+- **Claude fast mode reports what ran.** The Claude CLI says in `system/init` whether fast
+  mode is serving, and if not, why. On this account it was off because usage credits are off
+  (`extra_usage_disabled`), which is why `usage.speed` read `standard` on 2026-10-12. Modex now
+  records the fast mode a Claude turn actually ran with, and an Auto receipt that asked for fast mode
+  says why it did not apply. Only Opus offers fast mode on Claude, matching Claude Code, so Auto
+  no longer asks for it on Haiku or Sonnet. [Auto routing, step 6](auto-routing.md).
 - **Worktree merge proof** (#188). A squash-merged tip whose tree matches the landed commit
   counts as proof, so branches that merged `main` in before landing can be pruned.
 - **Haiku alias label.** The model picker now names `claude-haiku-5-5` as the current
   Haiku, matching what Claude Code 2.1.296 runs for `--model haiku`; it previously said 4-5.
+- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
+  carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
+  through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
+  `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
 
 Automatic updates and durable drafts (#181), verified multiplatform release candidates (#186)
 and the approval-rule follow-up (#185) are on `main` after v0.0.11; their status is under
@@ -674,12 +680,6 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   - `livestream-redaction` (2026-10-07): superseded by #100.
 
 ## Known rough edges
-
-- **Claude fast mode may not apply.** Auto's fast mode passes `--settings '{"fastMode":true}'`
-  to Claude. On 2026-10-12 (Claude Code 2.1.296, Opus 5.5, a subscription account) the turn's
-  `result.usage.speed` still read `standard`, and `claude --help` lists no fast-mode flag.
-  Whether the account lacks fast mode or the setting no longer enables it is not established;
-  check `usage.speed` on an account known to have fast mode before relying on it.
 
 - **node-pty is a pre-release.** v0.0.6 still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
