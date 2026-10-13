@@ -67,6 +67,7 @@ for (const mode of ["natural", "close", "owner-exit", "supervisor-failure"] as c
       if (mode === "supervisor-failure") {
         process.kill(pty.pid, "SIGKILL");
         await assert.rejects(stopTerminalProcess(pty), /without confirming cleanup|before connecting/);
+        await until(() => exited, "PTY exits after supervisor failure");
       } else await stopTerminalProcess(pty);
     }
     const pids = ["root", "child", "grandchild", "supervisor"].map(role => Number(fs.readFileSync(path.join(directory, `${role}.pid`), "utf8")));
