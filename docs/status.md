@@ -489,6 +489,11 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
+- **Held models get the pick's effort.** When a warm cache keeps a thread on a model one tier
+  below Auto's pick, the turn runs at the effort the pick would have had, because an effort
+  change keeps the cache. A model kept above its pick runs at the pick's lower effort. Held
+  turns do not reuse the thread's last effort, so a raise does not carry into later held turns.
+  The ceiling and the budget's high cap still apply. [Auto routing, step 7](auto-routing.md).
 - **Worktree merge proof** (#188). A squash-merged tip whose tree matches the landed commit
   counts as proof, so branches that merged `main` in before landing can be pruned.
 - **Haiku alias label.** The model picker now names `claude-haiku-5-5` as the current
@@ -512,7 +517,7 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   exact tagged installer verification, account/session acceptance, and publication remain
   open. Native Windows tests now avoid emergency cleanup after independent exit proof,
   retaining fallback cleanup for incomplete cases and waiting for PTY exit after supervisor
-  failure; fresh native verification is pending.
+  failure. Native CI passed at `fdaf1cb`; fresh combined-source checks follow the #193 merge.
   [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
