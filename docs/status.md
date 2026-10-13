@@ -535,7 +535,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   open. Native Windows tests now avoid emergency cleanup after independent exit proof,
   retaining fallback cleanup for incomplete cases and waiting for PTY exit after supervisor
   failure. Hosted checks passed at `83e3340`; fresh combined-source checks follow the #195 merge.
-  [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md).
+  Val chose to publish macOS installers only, and to ship automatic installation only if all
+  three signed updater scenarios pass. The first tagged run on `e3fecf0` failed those scenarios:
+  Electron could not stage the candidate's `app.asar`. That is fixed, and the next tag repeats
+  every gate. [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md#first-tagged-run).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
@@ -554,9 +557,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   and seven site E2E cases passed, including a full rerun after hosted fixture corrections.
   Coverage includes raw draft/attachment restoration,
   owner removal, controller cancellation, and partial-shutdown reload/Quit. Download,
-  staging, and publisher checks are simulated in the controller UI tests. Three signed
-  hosted native scenarios and release approval remain open; published builds still update
-  manually. [Local acceptance](reviews/2026-10-12-updater-local-acceptance.md) and
+  staging, and publisher checks are simulated in the controller UI tests. The first signed
+  hosted run (2026-10-13) failed all three native scenarios. Inside Electron, staging could not
+  create the candidate's `Contents/Resources/app.asar` ("Invalid package"). Staging now uses
+  Electron's unpatched filesystem, and an Electron test stages a real `app.asar`. The three
+  scenarios must pass on the next tag; published builds still update manually. [Local acceptance](reviews/2026-10-12-updater-local-acceptance.md) and
   [behavior and acceptance limits](update-recovery.md).
 
 - **Local work recovery (October 11).** The seven Space/Knowledge snapshots have

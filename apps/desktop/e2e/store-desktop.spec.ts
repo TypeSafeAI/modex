@@ -163,8 +163,11 @@ for (const overlay of ["settings", "companion", "menu", "browser-tools"] as cons
     if (overlay === "browser-tools") {
       await createThread(page, "Store browser recovery");
       await page.keyboard.press("Meta+Shift+b");
+      // The new tab takes focus as it opens; filling mid-switch raced it on a hosted run.
+      await expect(tid(page, "workspace-address")).toBeFocused();
     }
     await tid(page, "composer-input").fill("Keep this recovery draft");
+    await expect(tid(page, "composer-input")).toHaveValue("Keep this recovery draft");
     const preservedOverlay = overlay === "browser-tools" ? page.locator(".browser-tools-modal")
       : tid(page, overlay === "settings" ? "settings" : overlay === "companion" ? "companion-dialog" : "model-menu");
     if (overlay === "settings") {
