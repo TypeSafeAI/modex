@@ -533,6 +533,7 @@ test("native picker limits 21 files and nearly-full drafts; Plus menu works with
     await tid(chips(page).first(), "attachment-remove").click(); await expect(chips(page)).toHaveCount(19);
     await tid(page, "composer-attach").click(); await expect(chips(page)).toHaveCount(20);
     if (nativeDrafts) {
+      await expect.poll(() => fs.existsSync(path.join(home, "app/update-recovery.json"))).toBe(true);
       const savedFiles = () => JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.projects.flatMap((row: any) => row.attachments);
       await expect.poll(() => savedFiles().length).toBe(20);
       expect(new Set(savedFiles().map((file: any) => file.id)).size).toBe(20);
