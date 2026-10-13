@@ -51,7 +51,7 @@ export class ClaudeBackend implements Backend {
     // Fast mode runs only on Opus 4.8 and newer Opus models (Claude Code's own check, and its docs), so only Opus offers it.
     { id: "opus", label: "Opus (latest)", description: "Newest Opus — currently claude-opus-5-5", efforts: ClaudeBackend.EFFORTS, serviceTiers: ["fast"] },
     { id: "sonnet", label: "Sonnet (latest)", description: "Newest Sonnet — currently claude-sonnet-5-5", efforts: ClaudeBackend.EFFORTS },
-    { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-4-5", efforts: ClaudeBackend.EFFORTS },
+    { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-5-5", efforts: ClaudeBackend.EFFORTS },
   ];
 
   async listModels(): Promise<ModelInfo[]> {
