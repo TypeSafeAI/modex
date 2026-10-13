@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-12._
+_Last updated 2026-10-13._
 
 ## Shipped
 
@@ -20,6 +20,7 @@ _Last updated 2026-10-12._
 | v0.0.8 | 2026-10-06 | #126, #127 | Per-thread provider/model, live branch and PR state; tabbed workspace, empty-screen polish and failure recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.8). |
 | v0.0.9 | 2026-10-08 | #137, #139, #144, #141, #142 | Graphite shell, Settings privacy, Pages/Knowledge, Sources, background turns and separate GitHub identity. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.9). |
 | v0.0.10 | 2026-10-09 | #148, #149, #150, #154, #151 | Agent-maintained Knowledge and Pages, compact resizable panels, approval policies, task retirement and shutdown recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.10). |
+| v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -318,12 +319,16 @@ or a live merged PR; the sweep and removal are covered by unit tests with a real
   See [usage and integration boundaries](knowledge-maintenance.md) and
   [verification](reviews/2026-10-09-knowledge-agents.md).
 
-## v0.0.11 release candidate
+## v0.0.11 release
 
-Release preparation is in progress. The candidate includes the changes below, from sticky
-Auto routing (#180, #183) back to the Graphite reference layout, plus iPhone companion
-build 6. Publication remains gated on the protected release workflow and independent
-artifact verification. [Release ledger](reviews/2026-10-12-v0.0.11-release-review.md).
+Published on 2026-10-13 from signed tag `v0.0.11` on release commit `fb267e7` (base #183),
+cut before #181 so automatic update installation is not included. Protected Release run
+`38345912131` passed signing, notarization, stapling and all 245 desktop plus 7 website
+packaged E2E tests. Independently downloaded DMG and ZIP passed checksums, signatures,
+Gatekeeper, tickets, version and archive checks; their app payloads match, and the packaged
+suite passed again against the download. iPhone companion build 6 is cut from the same source;
+its TestFlight upload needs an interactive 1Password approval.
+[Release ledger](reviews/2026-10-12-v0.0.11-release-review.md).
 
 - **Sticky Auto routing.** Auto keeps a thread's model while its prompt cache is warm, because
   a switch re-reads the whole history uncached. It still chooses freely on a thread's first turn,
@@ -368,8 +373,7 @@ artifact verification. [Release ledger](reviews/2026-10-12-v0.0.11-release-revie
 
 - **Worktree hygiene.** Local pruning requires an explicit release of an exact commit,
   fresh merged-work proof, no active or dirty state, and a verified recovery bundle.
-  A squash-merged tip whose tree matches the landed commit counts as proof, so branches
-  that merged `main` in before landing can be pruned. The shared command supports a daily macOS user job and keeps unknown legacy worktrees
+  The shared command supports a daily macOS user job and keeps unknown legacy worktrees
   and remote branches. Desktop retirement respects project-script retention. Maintenance
   regression tests run in the standard test suite. [Procedure and recovery](worktree-hygiene.md)
   and [verification](reviews/2026-10-11-worktree-hygiene.md).
@@ -485,7 +489,12 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
-The desktop changes above are included in the v0.0.11 candidate; publication is pending.
+- **Worktree merge proof** (#188). A squash-merged tip whose tree matches the landed commit
+  counts as proof, so branches that merged `main` in before landing can be pruned.
+
+Automatic updates and durable drafts (#181), verified multiplatform release candidates (#186)
+and the approval-rule follow-up (#185) are on `main` after v0.0.11; their status is under
+In flight.
 
 ## In flight
 
