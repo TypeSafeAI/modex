@@ -56,8 +56,10 @@ Apple controls enrollment availability, and the site does not promise an open te
 
 Vercel project `modex`, team `0xbuns`. **Use the repository root**, so deployment includes both
 `api/release.js` and the static site. Git deployments use the committed `vercel.json` to install
-only the site workspace and root development tools with the pinned pnpm (through Corepack),
-build `@modex/site`, and serve `apps/site/dist`. They do not compile the native desktop helper on Linux.
+the workspace with the pinned pnpm (through Corepack), build `@modex/site`, and serve
+`apps/site/dist`. They do not compile the native desktop helper on Linux. Keep the install
+unfiltered: Vercel's function build runs its own full `pnpm install` afterwards, and on top of
+a filtered install it fails with `ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY`.
 
 For a verified manual deployment, from the root:
 
