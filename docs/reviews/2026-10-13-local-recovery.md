@@ -56,6 +56,21 @@ fault. The original PR macOS job passed 273 of 274 desktop cases and failed when
 picker test read `update-recovery.json` before it existed. Failure logs remain preserved.
 Passing retries do not establish a correction for either original failure.
 
+## Picker persistence readiness
+
+The follow-up corrects the macOS picker test's missing-file race: wait for the recovery
+file to exist before reading it. The existing attachment count, unique IDs, file contents,
+and reload assertions remain. A delayed-write probe reproduced the original `ENOENT`;
+the corrected source waits for creation while permanent absence and malformed JSON still
+fail. Application behavior is unchanged.
+
+Fresh build, workspace typechecks, and 1,405 unit tests passed with 15 skips. The picker
+case passed three consecutive Electron runs, followed by 274 desktop and seven site cases
+with real OpenKnowledge enabled. All 640 tracked source hashes held through those gates;
+the source maps, log hashes, and absence of the observed test processes were independently
+checked. Only documentation changed when this verified test correction was integrated
+with the recovery record.
+
 ## Reconciliation with the published release
 
 [#184](https://github.com/TypeSafeAI/modex/pull/184) subsequently delivered desktop 0.0.11,
@@ -73,7 +88,7 @@ acceptance. Windows and Linux updates remain manual.
 
 ## Preservation and remaining acceptance
 
-The October 13 inventory accounts for 43 present worktrees and 56 dispositions. A fresh
+The October 13 07:48 UTC inventory accounts for 43 present worktrees and 56 dispositions. A fresh
 comparison of nine original priority/Space trees confirmed unchanged heads, staged and
 unstaged patches, and all 187 saved untracked source hashes. Retained owner-held or dirty
 trees have explicit dispositions; a missing checkout is not treated as deletion proof.

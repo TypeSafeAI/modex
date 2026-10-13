@@ -709,6 +709,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
+- **Native picker test readiness.** The attachment test waits for the recovery file before
+  reading persisted drafts. A delayed file reproduced the `ENOENT` from macOS job
+  `114881524305`; the corrected test passed three focused runs and the full 274 desktop
+  and seven site cases. Count, unique-ID, file-content and reload assertions remain;
+  permanently missing or malformed persistence still fails. App behavior is unchanged.
 - **Owner-removal test readiness.** The fixture waits for the displayed branch after launch
   and each project switch. Draft persistence alone does not prove the asynchronous branch
   lookup has left restart admission. Holding that lookup reproduced the refusal from
