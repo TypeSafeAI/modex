@@ -174,7 +174,15 @@ Codex and Claude, with provider and location choices visibly simulated. Reset re
 approval and clears drafts; leaving or restarting discards the demo. The QR, exact review
 instructions and current verification/submission state are in the
 [review access ledger](reviews/2026-10-06-review-demo-access.md). This addresses the reported
-pairing/access blocker; Apple acceptance of demo access remains pending.
+pairing/access blocker; Apple approved build 5 for external testing on 2026-10-07.
+
+Build 6 ships with Mac v0.0.11. It groups threads by project, adds per-thread approval
+settings and full skill descriptions, and keeps the saved pairing and draft while reconnecting.
+It also rotates through every private address the Mac advertises. On 2026-10-13 its signed IPA
+passed validation and upload (build ID `2f6e7d20-527e-44dd-a337-74564ac23bba`), reached
+`VALID`, and was assigned to the Internal and External groups. Apple returned beta review
+`APPROVED` at submission. Physical installation of this build was not performed. See the
+[v0.0.11 ledger](reviews/2026-10-12-v0.0.11-release-review.md#iphone-companion-build-6).
 
 The iPhone build has a separate release path from the signed and notarized macOS release.
 The App Store Connect record for **Modex Companion** uses `works.jev.modex` under Soul
