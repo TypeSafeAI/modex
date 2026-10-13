@@ -491,6 +491,8 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 - **Worktree merge proof** (#188). A squash-merged tip whose tree matches the landed commit
   counts as proof, so branches that merged `main` in before landing can be pruned.
+- **Haiku alias label.** The model picker now names `claude-haiku-5-5` as the current
+  Haiku, matching what Claude Code 2.1.296 runs for `--model haiku`; it previously said 4-5.
 
 Automatic updates and durable drafts (#181), verified multiplatform release candidates (#186)
 and the approval-rule follow-up (#185) are on `main` after v0.0.11; their status is under
