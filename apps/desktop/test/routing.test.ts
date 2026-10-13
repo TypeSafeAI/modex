@@ -690,8 +690,9 @@ test("router: a warm thread keeps its model, and the receipt and record say so",
   const router = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => jevAnswers("small_edit", 0.6) });
   const lastTurn = { at: new Date(Date.now() - 4 * 60_000).toISOString(), model: "gpt-6-astra", effort: "high", fast: false, contextTokens: 150_000 };
   const r = await router.route({ thread: thread({ sessionHandle: "thr-9", lastTurn }), text: "rename a to b", items: [], project: { name: "demo" } });
-  assert.deepEqual([r.item.model, r.item.effort, r.item.held, r.item.pinned], ["gpt-6-astra", "high", true, false]);
-  assert.match(r.item.reasons.at(-1)!, /^Kept gpt-6-astra: ~150k tokens cached, last turn 4 min ago\./);
+  assert.deepEqual([r.item.model, r.item.effort, r.item.held, r.item.pinned], ["gpt-6-astra", "medium", true, false]);
+  assert.match(r.item.reasons.at(-2)!, /^Kept gpt-6-astra: ~150k tokens cached, last turn 4 min ago\./);
+  assert.equal(r.item.reasons.at(-1), "Lowered effort from xhigh to medium, the effort gpt-5.6-x would have used; an effort change keeps the cache.");
   const record = router.fit.latest("th1")!;
   assert.deepEqual([record.warmth, record.held], ["warm", true]);
   const fresh = await router.route({ thread: thread({ id: "th2" }), text: "rename a to b", items: [], project: { name: "demo" } });
