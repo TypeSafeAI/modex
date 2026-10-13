@@ -326,8 +326,8 @@ cut before #181 so automatic update installation is not included. Protected Rele
 `38345912131` passed signing, notarization, stapling and all 245 desktop plus 7 website
 packaged E2E tests. Independently downloaded DMG and ZIP passed checksums, signatures,
 Gatekeeper, tickets, version and archive checks; their app payloads match, and the packaged
-suite passed again against the download. iPhone companion build 6 is cut from the same source;
-its TestFlight upload needs an interactive 1Password approval.
+suite passed again against the download. iPhone companion build 6, cut from the same source,
+uploaded on 2026-10-13, passed processing and was approved for external TestFlight testing.
 [Release ledger](reviews/2026-10-12-v0.0.11-release-review.md).
 
 - **Sticky Auto routing.** Auto keeps a thread's model while its prompt cache is warm, because
@@ -614,7 +614,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   October 11 readback confirms build 5's beta review is approved and external testing is
   active. Two isolated signed-development physical iPhone flows passed pairing persistence,
   reconnect/revocation, persistent approvals, complete skill descriptions, and retirement
-  against a real merged PR. First-use permission diagnosis and final TestFlight candidate
+  against a real merged PR. On 2026-10-13, build 6 (v0.0.11 source, adding multi-network
+  reachability) passed processing and entered external testing, with beta review approved at
+  submission. Physical installation of build 6 from TestFlight was not performed.
+  First-use permission diagnosis and final TestFlight candidate
   acceptance remain open. [Physical evidence](reviews/2026-10-11-iphone-acceptance.md).
   The first connection target is the same local network; [the companion guide](ios-companion.md)
   records the pairing and release path.
