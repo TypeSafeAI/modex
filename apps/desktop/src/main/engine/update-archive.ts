@@ -1,10 +1,17 @@
-import fs from "node:fs/promises";
-import { constants, createWriteStream } from "node:fs";
+import nodeFs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { openPromise, type Entry } from "yauzl";
+
+// Electron's fs treats any path ending in ".asar" as an archive to read, so creating, checking
+// or removing the candidate's own Contents/Resources/app.asar fails with "Invalid package".
+// Inside Electron the update is staged with its unpatched module; plain Node has no such patch.
+const rawFs: typeof nodeFs = process.versions.electron ? createRequire(import.meta.url)("original-fs") : nodeFs;
+const fs = rawFs.promises;
+const { constants, createWriteStream } = rawFs;
 
 interface Limits { archiveBytes: number; expandedBytes: number; fileBytes: number; entries: number }
 const DEFAULT_LIMITS: Limits = { archiveBytes: 512 * 1024 * 1024, expandedBytes: 2 * 1024 * 1024 * 1024, fileBytes: 512 * 1024 * 1024, entries: 20_000 };
