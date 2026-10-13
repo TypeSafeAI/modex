@@ -489,6 +489,13 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
+- **E2E launch waits for the native show.** The desktop e2e launch helper waits for each
+  window's `show` event, recorded from a listener installed before the window exists, instead
+  of `isVisible()`, which on macOS turns true as soon as the window is ordered front and before
+  the window server has displayed it. The v0.0.7 release-run failure resized the window inside
+  that gap; its cause is now recorded in the
+  [release review](reviews/2026-10-05-v0.0.7-release-review.md#hosted-candidate-checks).
+  The update-banner spec's resize also goes through `resizeWindow`.
 - **Held models get the pick's effort.** When a warm cache keeps a thread on a model one tier
   below Auto's pick, the turn runs at the effort the pick would have had, because an effort
   change keeps the cache. A model kept above its pick runs at the pick's lower effort. Held
