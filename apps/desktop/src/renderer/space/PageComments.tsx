@@ -41,16 +41,17 @@ export function PageComments({ pageId, quote, draft, onDraft, onClose }: { pageI
   return <aside className="space-comments" aria-label="Comments">
     <header><h2>Comments</h2><IconButton icon="close" size="md" label="Close comments" onClick={onClose} /></header>
     {error && <p className="space-comment-error" role="alert">{error}</p>}
+    {writing ? <form className="space-comment-form" onSubmit={event => { event.preventDefault(); void post(); }}>
+      {excerpt && <blockquote data-streamer-quote>{excerpt}</blockquote>}
+      <SecretTextarea ref={input} rows={1} aria-label="Comment" placeholder="Add a comment…" maxLength={10_000} value={text} onChange={event => onDraft({ text: event.target.value, quote: excerpt })} disabled={busy} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void post(); } }} />
+      <div><button className="space-comment-discard" type="button" aria-label="Discard" title="Discard comment" onClick={() => onDraft(undefined)} disabled={busy}><Icon name="close" size={13} /></button><button className="space-comment-submit" aria-label="Post comment" title="Post comment" disabled={busy || !text.trim()}><Icon name="arrow-up" size={14} /></button></div>
+    </form> : <button className="space-comment-start" aria-label="Add comment" disabled={!loaded} onClick={start}><span>Add a comment…</span><Icon name="arrow-up" size={14} /></button>}
     <div className="space-comments-scroll">
       {!loaded && !error ? <p role="status">Loading comments…</p> : !comments.length && !writing ? <div className="space-comments-empty"><Icon name="comment" size={20} /><p>No comments yet</p><p>Select text to add a comment</p>{quote && <button className="btn small" onClick={start}>Comment on selection</button>}</div> : comments.map(comment => <article className="space-comment" key={comment.id}>
         <div className="space-comment-author"><span className="space-avatar">Y</span><strong>You</strong><time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time><IconButton icon="trash" label="Delete comment" disabled={busy} onClick={() => void remove(comment.id)} /></div>
         {comment.quote && <blockquote data-streamer-quote>{comment.quote}</blockquote>}<p>{comment.text}</p>
       </article>)}
     </div>
-    {writing ? <form className="space-comment-form" onSubmit={event => { event.preventDefault(); void post(); }}>
-      {excerpt && <blockquote data-streamer-quote>{excerpt}</blockquote>}
-      <SecretTextarea ref={input} aria-label="Comment" placeholder="Write a comment…" maxLength={10_000} value={text} onChange={event => onDraft({ text: event.target.value, quote: excerpt })} disabled={busy} />
-      <div><span>Only on this Mac</span><button className="btn small ghost" type="button" onClick={() => onDraft(undefined)} disabled={busy}>Discard</button><button className="btn small primary" disabled={busy || !text.trim()}>Post comment</button></div>
-    </form> : <footer><IconButton icon="comment" label="Add comment" size="lg" disabled={!loaded} onClick={start} /></footer>}
+
   </aside>;
 }

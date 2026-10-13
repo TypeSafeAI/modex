@@ -163,7 +163,8 @@ test("Space imports Markdown, nests pages, finds content, and exports the curren
     await page.getByRole("button", { name: /Project brief From/ }).click();
     await page.getByRole("textbox", { name: "Page title" }).fill("The next chapter");
     await expect(page.getByRole("heading", { name: "The idea" })).toBeVisible();
-    await page.getByRole("button", { name: "Add to favorites" }).click();
+    await page.getByRole("button", { name: "Page actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Add to favorites" }).click();
     await page.getByRole("button", { name: "Page actions" }).click();
     await page.getByRole("menuitem", { name: "Add subpage" }).click();
     // Child creation is asynchronous; the previous page title stays visible until selection changes.

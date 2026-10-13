@@ -1,5 +1,5 @@
 import { toolSummary } from "../../shared/tool-summary";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useId, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
@@ -148,11 +148,8 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
           </div>
         )}
         {turns.map((turn, i) => (
-          <Fragment key={turn.user?.id ?? `pre-${i}`}>
-            {turn.user && <Item item={turn.user} onAnswer={onAnswer} onFix={onFix} />}
-            {turn.user && (i === lastUser && busy ? <TurnHeader start={turn.user.at} status={thread.status} /> : turn.rest.length > 0 && <TurnHeader start={turn.user.at} end={turnEnd(turn.rest)} />)}
-            {turn.rest.map((item) => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />)}
-          </Fragment>
+          <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
+            render={item => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
       {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
@@ -214,6 +211,29 @@ function groupTurns(items: ThreadItem[]): Turn[] {
   }
   return turns;
 }
+/** Keep the final answer and actionable notices visible; completed work stays inspectable. */
+function TurnContent({ turn, status, render }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem) => ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  const historyId = useId();
+  const finalIndex = turn.rest.map(item => item.kind).lastIndexOf("assistant");
+  const isWork = (item: ThreadItem, index: number) => index < finalIndex && (
+    (item.kind === "tool" && item.status === "done" && item.ok !== false && item.agent?.state !== "running" && item.agent?.state !== "waiting") ||
+    (item.kind === "thinking" && item.status === "done") || item.kind === "route" || item.kind === "assistant" ||
+    (item.kind === "approval" && Boolean(item.answer))
+  );
+  const hasWork = turn.rest.some(isWork);
+  const live = status !== undefined;
+  const showWork = live || expanded || !turn.user;
+  return <>
+    {turn.user && render(turn.user)}
+    {turn.user && (live || turn.rest.length > 0) && <TurnHeader start={turn.user.at} end={live ? undefined : turnEnd(turn.rest)} status={status}
+      expanded={hasWork && !live ? expanded : undefined} controls={historyId} onToggle={() => setExpanded(value => !value)} />}
+    {/* Wrappers preserve chronological order and mounted item state while work is folded. */}
+    <div id={historyId} className="turn-content">
+      {turn.rest.map((item, index) => <div key={item.id} hidden={isWork(item, index) && !showWork}>{render(item)}</div>)}
+    </div>
+  </>;
+}
 /** When a finished turn ended: its last item's time, plus that item's own duration when it has one. */
 function turnEnd(rest: ThreadItem[]): number {
   return Math.max(...rest.map((i) => Date.parse(i.at) + ("durationMs" in i && typeof i.durationMs === "number" ? i.durationMs : 0)));
@@ -228,7 +248,7 @@ export function formatElapsed(ms: number): string {
 }
 
 /** "Working for 7s" (live, ticking) or "Worked for 1m 36s" above a rule, between a message and the agent's work. */
-function TurnHeader({ start, end, status }: { start: string; end?: number; status?: Thread["status"] }) {
+function TurnHeader({ start, end, status, expanded, controls, onToggle }: { start: string; end?: number; status?: Thread["status"]; expanded?: boolean; controls?: string; onToggle?: () => void }) {
   const live = end === undefined;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -240,7 +260,7 @@ function TurnHeader({ start, end, status }: { start: string; end?: number; statu
   const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `Waiting for approval · ${elapsed}` : `Working for ${elapsed}`;
   return (
     <div className={`turn-header${live ? " live" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
-      <span className="turn-label" data-testid="turn-label">{label}</span>
+      {expanded === undefined ? <span className="turn-label" data-testid="turn-label">{label}</span> : <button className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span>{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
     </div>
   );
 }

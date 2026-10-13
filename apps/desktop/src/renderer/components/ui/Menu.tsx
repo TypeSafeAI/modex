@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
 import { Icon } from "./Icon";
 
 type MenuRole = "menu" | "listbox";
@@ -15,6 +15,8 @@ interface MenuProps {
   /** Choice menus can focus the checked item; mixed command menus start at the first command. */
   focusSelected?: boolean;
   placement?: "top-start" | "bottom-start" | "top-end" | "bottom-end";
+  /** Keep wide menus inside the viewport when their trigger sits near an edge. */
+  fitViewport?: boolean;
   className?: string;
   testId?: string;
   children: ReactNode;
@@ -31,8 +33,22 @@ const MenuContext = createContext<MenuRole>("menu");
  * - a pointer press outside the menu and trigger closes it.
  * Position it by placing it inside a `position: relative` wrapper next to the trigger.
  */
-export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", placement = "top-start", className, testId, children }: MenuProps) {
+export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", placement = "top-start", fitViewport = false, className, testId, children }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !fitViewport) return;
+    const fit = () => {
+      const menu = ref.current;
+      if (!menu) return;
+      menu.style.translate = "none";
+      const rect = menu.getBoundingClientRect();
+      const x = Math.max(8, Math.min(rect.x, window.innerWidth - rect.width - 8)) - rect.x;
+      menu.style.translate = `${x}px 0`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [open, fitViewport]);
   const close = useRef(onClose);
   close.current = onClose;
 
