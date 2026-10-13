@@ -119,6 +119,8 @@ export interface TurnResult {
   recovery?: string[];
   /** Token usage the backend observed; absent when no model call was seen. */
   usage?: TurnUsage;
+  /** Whether fast mode ran, as the CLI reported it, and if not, why; absent when the backend does not say. */
+  fastMode?: { on: boolean; why?: string };
 }
 
 export interface TitleOptions {

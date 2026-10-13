@@ -48,7 +48,8 @@ export class ClaudeBackend implements Backend {
     // Aliases always point at the newest model of each family (resolved by the CLI on every run);
     // a full model id such as "claude-fable-5-1" can be typed as well.
     { id: "fable", label: "Fable (latest)", description: "Newest Fable — currently claude-fable-5-1", isDefault: true, efforts: ClaudeBackend.EFFORTS },
-    { id: "opus", label: "Opus (latest)", description: "Newest Opus — currently claude-opus-5-5", efforts: ClaudeBackend.EFFORTS },
+    // Fast mode runs only on Opus 4.8 and newer Opus models (Claude Code's own check, and its docs), so only Opus offers it.
+    { id: "opus", label: "Opus (latest)", description: "Newest Opus — currently claude-opus-5-5", efforts: ClaudeBackend.EFFORTS, serviceTiers: ["fast"] },
     { id: "sonnet", label: "Sonnet (latest)", description: "Newest Sonnet — currently claude-sonnet-5-5", efforts: ClaudeBackend.EFFORTS },
     { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-4-5", efforts: ClaudeBackend.EFFORTS },
   ];
@@ -132,6 +133,8 @@ export class ClaudeBackend implements Backend {
       // What the CLI said about itself at startup (build, model, where its key came from), for failure reports.
       const init: Record<string, unknown> = {};
       const meter = new UsageMeter();
+      // Whether fast mode serves this session, from the latest `system/init` or `result` that says.
+      let fast: { state?: string; reason?: string } = {};
       // Background work (Bash or Agent with run_in_background) outlives the `result` that ends the model's
       // reply. When it finishes, the CLI starts a follow-up turn by itself, and that turn's permission
       // prompts are answered on stdin. Closing stdin at the first `result` failed every later prompt with
@@ -193,7 +196,9 @@ export class ClaudeBackend implements Backend {
         clearTimeout(idleTimer);
         clearTimeout(capTimer);
         signal.removeEventListener("abort", onAbort);
-        resolve(withUsage(signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r, meter));
+        const out: TurnResult = signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
+        const fastMode = fastModeOf(fast.state, fast.reason);
+        resolve(withUsage(fastMode ? { ...out, fastMode } : out, meter));
       };
       const write = (o: unknown) => {
         try {
@@ -224,6 +229,7 @@ export class ClaudeBackend implements Backend {
           }
           // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
           if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
+          if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
           if (msg.type === "result") return onResult(msg);
           // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
           const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
@@ -452,6 +458,32 @@ interface ClaudeMessage {
   model?: string;
   permissionMode?: string;
   apiKeySource?: string;
+  /** `system/init` and `result`: "on", "off" or "cooldown" (paused after a rate limit), and why it is not on. */
+  fast_mode_state?: string;
+  fast_mode_disabled_reason?: string;
+}
+
+/** Claude Code's `fast_mode_disabled_reason` values (2.1.296), in words. Its own messages read the same. */
+const FAST_MODE_OFF: Record<string, string> = {
+  extra_usage_disabled: "fast mode requires usage credits",
+  free: "fast mode requires a paid subscription",
+  preference: "fast mode is disabled by your organization",
+  model_not_allowed: "Opus is not in your organization's allowed models",
+  not_first_party: "fast mode needs the Anthropic API directly, not a cloud provider",
+  disabled_by_env: "CLAUDE_CODE_DISABLE_FAST_MODE is set",
+  network_error: "Claude Code could not check fast-mode availability (network error)",
+  pending: "Claude Code was still checking fast-mode availability",
+  sdk_opt_in_required: "fast mode is not available in the Agent SDK",
+  unknown: "fast mode is currently unavailable",
+};
+
+/** Fast mode as the CLI reported it, or undefined when it did not say. Exported for tests. */
+export function fastModeOf(state: string | undefined, reason: string | undefined): TurnResult["fastMode"] {
+  if (state === undefined) return undefined;
+  if (state === "on") return { on: true };
+  if (state === "cooldown") return { on: false, why: "fast mode is cooling down after a rate limit" };
+  if (!reason) return { on: false, why: "Claude Code reported fast mode off" };
+  return { on: false, why: FAST_MODE_OFF[reason] ? `${FAST_MODE_OFF[reason]} (${reason})` : `Claude Code reported ${reason}` };
 }
 
 /** A `result` message as a turn outcome. */
