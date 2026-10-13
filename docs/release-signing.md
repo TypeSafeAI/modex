@@ -226,6 +226,6 @@ with read-only repository access and receive no Apple signing secrets.
 It does not complete `installerAcceptance`, which remains `pending` with the account/session
 limits in each report and the release manifest. Windows signing is deferred, Windows/Linux
 updates remain manual, and same-source `0.0.0` fixtures do not prove historical migration.
-The combined release workflow still needs its first approved tagged execution; helper tests
-verify the attachment checks, not installed-app behavior. Review the remaining gates in
+The combined release workflow first ran on an approved tag for v0.0.12 (run 38465731604).
+Helper tests verify the attachment checks, not installed-app behavior. Review the remaining gates in
 [native-platforms.md](native-platforms.md) before publication.
