@@ -37,10 +37,13 @@ test("warmth: none without cache info, a session, or on mock; unknown without a 
 
 test("a warm thread never moves down, and the receipt names the cache it keeps", () => {
   const d = decide(D());
-  assert.deepEqual([d.model, d.effort, d.fast, d.held, d.pinned, d.warmth], ["opus", "high", false, true, false, "warm"]);
-  assert.equal(d.reasons.at(-1), "Kept opus: ~150k tokens cached, last turn 4 min ago. Switching would re-read the history uncached.");
+  assert.deepEqual([d.model, d.effort, d.fast, d.held, d.pinned, d.warmth], ["opus", "medium", false, true, false, "warm"]);
+  assert.deepEqual(d.reasons.slice(-2), [
+    "Kept opus: ~150k tokens cached, last turn 4 min ago. Switching would re-read the history uncached.",
+    "Lowered effort from high to medium, the effort sonnet would have used; an effort change keeps the cache.",
+  ]);
   const sizeless = decide(D({ cache: { lastTurn: last({ contextTokens: undefined }), idleMs: 4 * 60_000 } }));
-  assert.equal(sizeless.reasons.at(-1), "Kept opus: cache still warm, last turn 4 min ago. Switching would re-read the history uncached.");
+  assert.equal(sizeless.reasons.at(-2), "Kept opus: cache still warm, last turn 4 min ago. Switching would re-read the history uncached.");
 });
 
 test("a warm thread keeps its model over another model of the same tier", () => {
@@ -62,6 +65,35 @@ test("a warm thread moves up only on a two-tier jump or a self-contained deep-re
   assert.equal(deep.reasons.at(-1), "Moved up to opus despite the warm cache: the request needs deep reasoning and stands on its own.");
   const leaning = decide(D({ ...sonnet, judgments: J({ task: "feature", complexity: 1.4, needsDeepReasoning: 0.9, dependsOnPriorTurns: 0.8 }) }));
   assert.deepEqual([leaning.model, leaning.held], ["sonnet", true], "a request that builds on earlier turns needs the full jump");
+});
+
+test("a kept model runs at the effort of the model Auto would have picked, so a raise does not carry into later held turns", () => {
+  const sonnet = (effort: string) => ({ current: { backend: "claude" as const, model: "sonnet", effort, hasSession: true }, cache: { lastTurn: last({ model: "sonnet", effort }), idleMs: 60_000 } });
+  const raised = decide(D({ ...sonnet("medium"), judgments: J({ task: "feature", complexity: 2 }) }));
+  assert.deepEqual([raised.model, raised.effort, raised.held], ["sonnet", "high", true]);
+  assert.deepEqual(raised.reasons.slice(-2), [
+    "Kept sonnet: ~150k tokens cached, last turn 1 min ago. Switching would re-read the history uncached.",
+    "Raised effort from medium to high to make up for staying below opus; an effort change keeps the cache.",
+  ]);
+  const next = decide(D({ ...sonnet("high"), judgments: J({ task: "quick_answer", complexity: 0.4 }) }));
+  assert.deepEqual([next.model, next.effort, next.held], ["sonnet", "low", true], "a later light request is not stuck at the raised effort");
+  assert.equal(next.reasons.at(-1), "Lowered effort from medium to low, the effort haiku would have used; an effort change keeps the cache.");
+  const deep = decide(D({ ...sonnet("medium"), judgments: J({ task: "feature", complexity: 1.4, needsDeepReasoning: 0.9, dependsOnPriorTurns: 0.8 }) }));
+  assert.deepEqual([deep.model, deep.effort], ["sonnet", "xhigh"], "deep reasoning bumps both the held model's effort and the pick's");
+  assert.equal(deep.reasons.at(-1), "Raised effort from high to xhigh to make up for staying below opus; an effort change keeps the cache.");
+});
+
+test("the effort raised for a kept model stays within the ceiling, and is held where effort clears the cache", () => {
+  const top = { judgments: J({ task: "feature", complexity: 2.6 }) };
+  const free = decide(D(top));
+  assert.deepEqual([free.model, free.effort, free.reasons.at(-1)], ["opus", "xhigh", "Raised effort from high to xhigh to make up for staying below fable; an effort change keeps the cache."]);
+  const capped = decide(D(top, { max_effort: "high" }));
+  assert.deepEqual([capped.model, capped.effort, capped.held], ["opus", "high", true]);
+  assert.match(capped.reasons.at(-1)!, /^Kept opus:/, "no raise is claimed when the ceiling stops it");
+  withClears(true, true, () => {
+    const held = decide(D({ judgments: J({ task: "feature", complexity: 2 }), current: { backend: "claude", model: "sonnet", effort: "medium", hasSession: true }, cache: { lastTurn: last({ model: "sonnet", effort: "medium" }), idleMs: 60_000 } }));
+    assert.deepEqual([held.model, held.effort, held.held], ["sonnet", "medium", true]);
+  });
 });
 
 test("on the same model, effort and fast mode are held only where changing them clears the cache", () => {
@@ -98,7 +130,7 @@ test("cold, small and unknown threads say why; without cache info the choice is 
   assert.equal(small.reasons.at(-1), "Only ~12k tokens of context, so switching is cheap.");
   const unknown = decide(D({ cache: { idleMs: undefined } }));
   assert.deepEqual([unknown.model, unknown.held, unknown.warmth], ["opus", true, "unknown"]);
-  assert.equal(unknown.reasons.at(-1), "Kept opus: no cache record for this thread yet.");
+  assert.equal(unknown.reasons.at(-2), "Kept opus: no cache record for this thread yet.");
   const today = decide(D({ cache: undefined }));
   assert.deepEqual([today.model, today.held, today.warmth], ["sonnet", undefined, undefined]);
 });

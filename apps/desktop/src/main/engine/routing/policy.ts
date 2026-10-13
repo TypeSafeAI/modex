@@ -99,6 +99,15 @@ function effortCeiling(input: DecisionInput, reasons: string[]): number | undefi
   return configured;
 }
 
+/** The effort a request needs on a model of `tier`, before the ceiling: tier sets the base, deep reasoning bumps, a speed signal drops. */
+function requestEffort(j: Judgments, tier: Tier): number {
+  const base: EffortLevel[] = ["low", "medium", "high", "xhigh"];
+  let e = effortIndex(base[tier]!)!;
+  if (j.needsDeepReasoning >= 0.7) e += 1;
+  if (j.wantsSpeed >= 0.7 && j.needsDeepReasoning < 0.5) e -= 1;
+  return Math.max(0, Math.min(EFFORTS.length - 1, e));
+}
+
 /** Nearest known supported effort to the request that stays at or below the active ceiling. */
 function fitEffort(candidate: Candidate, wanted: EffortLevel, cap: EffortLevel): EffortLevel | undefined {
   const desired = effortIndex(wanted)!;
@@ -153,13 +162,33 @@ function heldFast(input: DecisionInput, current: Candidate): boolean {
   return Boolean(input.cache?.lastTurn?.fast) && input.policy.allow_fast && Boolean(current.fastTier || current.backend === "claude");
 }
 
-/** keepCurrent's route marked as held, or undefined when a limit stops the current route. */
-function heldRoute(input: DecisionInput, current: Candidate, reasons: string[]): Decision | undefined {
+/**
+ * keepCurrent's route marked as held, or undefined when a limit stops the current route. With an
+ * `effort`, that effort replaces the current one, so keepCurrent's notes about it do not apply.
+ */
+function heldRoute(input: DecisionInput, current: Candidate, reasons: string[], effort?: EffortLevel): Decision | undefined {
   const notes: string[] = [];
   const kept = keepCurrent(input, current, notes);
   if (kept.blocked) return undefined;
-  reasons.push(...notes);
-  return { ...kept, reasons, fast: heldFast(input, current), pinned: false, held: true };
+  if (!effort) reasons.push(...notes);
+  return { ...kept, effort: effort ?? kept.effort, reasons, fast: heldFast(input, current), pinned: false, held: true };
+}
+
+/**
+ * Effort for a kept model when changing effort leaves the cache intact: the cache decides the
+ * model, the request decides the effort. The kept model runs at the effort the pick would have
+ * had, so a model kept below the pick thinks harder and one kept above it does not overspend.
+ * `from` is what the kept model would have used as the pick. A held turn does not reuse the
+ * thread's last effort, so a raise does not carry into later held turns.
+ */
+function heldEffort(input: DecisionInput, current: Candidate, free: Decision): { effort: EffortLevel; from?: EffortLevel } | undefined {
+  const cap = effortCeiling(input, []);
+  if (cap === undefined) return undefined;
+  const at = (tier: Tier) => fitEffort(current, EFFORTS[Math.min(requestEffort(input.judgments, tier), cap)]!, EFFORTS[cap]!);
+  const effort = at(free.tier);
+  if (!effort) return undefined;
+  const own = at(current.tier);
+  return own && own !== effort ? { effort, from: own } : { effort };
 }
 
 /**
@@ -190,8 +219,8 @@ function hold(input: DecisionInput, free: Decision, current: Candidate | undefin
     reasons.push(`Kept ${current.label} at ${effort ?? "its default"} effort${fast ? " in fast mode" : ""}: ${state}.${tail(effort !== free.effort ? "Changing effort" : "Changing fast mode")}`);
     return { ...free, effort, fast, held: true, warmth: w };
   }
+  const to = (input.ladders[free.backend] ?? []).find((c) => c.model === free.model)?.label ?? free.model;
   if (free.tier > current.tier) {
-    const to = (input.ladders[free.backend] ?? []).find((c) => c.model === free.model)?.label ?? free.model;
     const j = input.judgments;
     if (free.tier - current.tier >= UPGRADE_TIERS) {
       reasons.push(`Moved up to ${to} despite the warm cache: ${free.tier - current.tier} tiers above ${current.label}.`);
@@ -202,9 +231,15 @@ function hold(input: DecisionInput, free: Decision, current: Candidate | undefin
       return { ...free, warmth: w };
     }
   }
-  const kept = heldRoute(input, current, reasons);
+  const effort = EFFORT_CLEARS_CACHE[current.backend] ? undefined : heldEffort(input, current, free);
+  const kept = heldRoute(input, current, reasons, effort?.effort);
   if (!kept) return { ...free, warmth: w };
   reasons.push(`Kept ${current.label}: ${state}.${tail("Switching")}`);
+  if (effort?.from) {
+    reasons.push(free.tier > current.tier
+      ? `Raised effort from ${effort.from} to ${effort.effort} to make up for staying below ${to}; an effort change keeps the cache.`
+      : `Lowered effort from ${effort.from} to ${effort.effort}, the effort ${to} would have used; an effort change keeps the cache.`);
+  }
   return { ...kept, warmth: w };
 }
 
@@ -260,14 +295,12 @@ export function decide(input: DecisionInput): Decision {
   if (candidate.tier < target) reasons.push(`No tier-${target} model on ${backend}; using the highest available (${candidate.label}).`);
 
   // 5. Effort: tier sets the base; deep reasoning bumps, a speed signal drops, policy caps.
-  const base: EffortLevel[] = ["low", "medium", "high", "xhigh"];
-  let e = effortIndex(base[candidate.tier]!)!;
-  if (j.needsDeepReasoning >= 0.7) e += 1;
-  if (j.wantsSpeed >= 0.7 && j.needsDeepReasoning < 0.5) { e -= 1; reasons.push("You asked for speed → lower reasoning effort."); }
+  let e = requestEffort(j, candidate.tier);
+  if (j.wantsSpeed >= 0.7 && j.needsDeepReasoning < 0.5) reasons.push("You asked for speed → lower reasoning effort.");
   const cap = effortCeiling(input, reasons);
   if (cap === undefined) return blocked(input, reasons, "The configured reasoning-effort ceiling is unknown; the route was stopped.");
   if (e > cap) { e = cap; reasons.push(`Effort capped at ${EFFORTS[cap]} by your limit.`); }
-  const wanted = EFFORTS[Math.max(0, Math.min(EFFORTS.length - 1, e))]!;
+  const wanted = EFFORTS[e]!;
   const effort = fitEffort(candidate, wanted, EFFORTS[cap]!);
   if (!effort && candidate.backend !== "mock") {
     const detail = candidate.efforts.length
