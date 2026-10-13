@@ -1,8 +1,9 @@
 # Update preparation and draft recovery
 
 Modex prepares a verified update before asking you to restart, and preserves saved drafts
-when restart preparation fails. This implementation is in development. Published builds
-still use manual installation; signed native acceptance and release approval remain open.
+when restart preparation fails. v0.0.12 is the first published build with automatic
+installation; its signed native upgrade, download-failure and interruption scenarios passed in
+the release workflow. Builds before v0.0.12 install it manually once.
 
 ## Download and restart
 
