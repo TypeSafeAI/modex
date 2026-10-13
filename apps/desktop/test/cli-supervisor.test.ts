@@ -28,6 +28,7 @@ function closed(child: ChildProcess) {
 for (const mode of ["natural", "cancel", "owner-exit"] as const) {
   test(`native Windows CLI job removes detached descendants on ${mode}`, { skip: process.platform !== "win32", timeout: 30000 }, async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "modex-cli-tree-"));
+    let cleanupVerified = false;
     let child: ChildProcess;
     let supervisor: number | undefined;
     if (mode === "owner-exit") {
@@ -48,7 +49,7 @@ for (const mode of ["natural", "cancel", "owner-exit"] as const) {
       if (child.exitCode === null && child.signalCode === null) child.kill();
       // Independent fallback: the owner-death test must not rely on its own
       // behavior under test to clean a failed run. Verify recorded PID ownership.
-      execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", cleanup, "-Directory", directory], { timeout: 8000, windowsHide: true });
+      if (!cleanupVerified) execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", cleanup, "-Directory", directory], { timeout: 8000, windowsHide: true });
       await exited.catch(() => {});
       fs.rmSync(directory, { recursive: true, force: true });
     });
@@ -71,5 +72,6 @@ for (const mode of ["natural", "cancel", "owner-exit"] as const) {
       await new Promise(resolve => setTimeout(resolve, 100));
       assert.equal(fs.readFileSync(file, "utf8"), before, `${role} stopped writing`);
     }
+    cleanupVerified = true;
   });
 }

@@ -510,7 +510,9 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   and requires manual installation of the first updater-enabled release. Windows signing
   stays deferred, and Windows/Linux updates remain manual. Signed hosted updater scenarios,
   exact tagged installer verification, account/session acceptance, and publication remain
-  open. [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md).
+  open. Native Windows tests now avoid emergency cleanup after independent exit proof,
+  retaining fallback cleanup for incomplete cases; fresh native verification is pending.
+  [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
