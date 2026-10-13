@@ -6,7 +6,8 @@ import type { Judgments } from "../src/main/engine/routing/judge.js";
 import { DEFAULT_ROUTING, type LastTurn, type ModelInfo, type RoutingPolicy } from "../src/shared/types.js";
 
 const m = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({ id, label: id, efforts: ["low", "medium", "high", "xhigh", "max"], ...extra });
-const claude = () => ladder("claude", ["haiku", "sonnet", "opus", "fable"].map((id) => m(id)));
+// As ClaudeBackend.MODELS: only Opus offers fast mode.
+const claude = () => ladder("claude", ["haiku", "sonnet", "opus", "fable"].map((id) => m(id, id === "opus" ? { serviceTiers: ["fast"] } : {})));
 const J = (over: Partial<Judgments> = {}): Judgments => ({ task: "small_edit", taskConfidence: 0.9, taskProbabilities: {}, complexity: 0.6, complexityConfidence: 0.8, blastRadius: 0.3, wantsSpeed: 0.1, needsDeepReasoning: 0.2, dependsOnPriorTurns: 0, ...over });
 const last = (over: Partial<LastTurn> = {}): LastTurn => ({ at: "2026-10-12T00:00:00.000Z", model: "opus", effort: "high", fast: false, contextTokens: 150_000, ...over });
 const D = (over: Partial<DecisionInput> = {}, policy: Partial<RoutingPolicy> = {}): DecisionInput => ({
@@ -112,6 +113,8 @@ test("on the same model, effort and fast mode are held only where changing them 
 test("a held route keeps the last turn's fast mode only while fast mode is allowed", () => {
   assert.equal(decide(D({ cache: { lastTurn: last({ fast: true }), idleMs: 0 } })).fast, true);
   assert.equal(decide(D({ cache: { lastTurn: last({ fast: true }), idleMs: 0 } }, { allow_fast: false })).fast, false);
+  const sonnet = decide(D({ current: { backend: "claude", model: "sonnet", effort: "medium", hasSession: true }, cache: { lastTurn: last({ model: "sonnet", fast: true }), idleMs: 0 } }));
+  assert.deepEqual([sonnet.model, sonnet.fast], ["sonnet", false], "a model without fast mode does not keep it");
 });
 
 test("limits win over the cache: a top-tier model over the premium budget is not held", () => {
@@ -137,7 +140,9 @@ test("cold, small and unknown threads say why; without cache info the choice is 
 
 test("without a cache record, fast mode on the same model stays as Auto chose it", () => {
   withClears(false, true, () => {
-    const d = decide(D({ judgments: J({ complexity: 0.4, wantsSpeed: 0.9 }), current: { backend: "claude", model: "haiku", effort: "low", hasSession: true }, cache: { idleMs: undefined } }));
+    // A light model that offers fast mode, as Codex's do.
+    const rungs = ladder("claude", ["haiku", "sonnet", "opus", "fable"].map((id) => m(id, id === "haiku" ? { serviceTiers: ["fast"] } : {})));
+    const d = decide(D({ judgments: J({ complexity: 0.4, wantsSpeed: 0.9 }), current: { backend: "claude", model: "haiku", effort: "low", hasSession: true }, ladders: { claude: rungs }, cache: { idleMs: undefined } }));
     assert.deepEqual([d.model, d.fast, d.held, d.warmth], ["haiku", true, undefined, "unknown"]);
   });
 });

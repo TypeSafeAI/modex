@@ -159,7 +159,7 @@ const kTokens = (n: number): string => `~${Math.max(1, Math.round(n / 1000))}k`;
 const minutes = (ms: number | undefined): string => `${Math.max(0, Math.round((ms ?? 0) / 60_000))} min`;
 
 function heldFast(input: DecisionInput, current: Candidate): boolean {
-  return Boolean(input.cache?.lastTurn?.fast) && input.policy.allow_fast && Boolean(current.fastTier || current.backend === "claude");
+  return Boolean(input.cache?.lastTurn?.fast) && input.policy.allow_fast && Boolean(current.fastTier);
 }
 
 /**
@@ -310,7 +310,7 @@ export function decide(input: DecisionInput): Decision {
   }
 
   // 6. Fast mode: only when the user signals speed, the task is not reasoning-heavy, and the model offers it.
-  const fast = policy.allow_fast && j.wantsSpeed >= 0.6 && j.needsDeepReasoning < 0.5 && candidate.tier <= 1 && Boolean(candidate.fastTier || backend === "claude");
+  const fast = policy.allow_fast && j.wantsSpeed >= 0.6 && j.needsDeepReasoning < 0.5 && candidate.tier <= 1 && Boolean(candidate.fastTier);
   if (fast) reasons.push("Fast mode: quick turnaround requested and the task is light.");
 
   // 7. Hold: a warm prompt cache keeps the thread where it is unless the jump is worth a rebuild.

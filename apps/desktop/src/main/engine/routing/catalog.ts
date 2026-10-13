@@ -17,7 +17,7 @@ export interface Candidate {
   tier: Tier;
   efforts: string[];
   defaultEffort?: string;
-  /** Service tier id that means "fast mode" for this model (Codex), if any. */
+  /** Tier id that means "fast mode" for this model, if it has one: a Codex service tier, or "fast" for Claude's Opus. */
   fastTier?: string;
   isDefault?: boolean;
 }

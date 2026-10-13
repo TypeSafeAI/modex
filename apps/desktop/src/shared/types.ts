@@ -327,7 +327,7 @@ export interface ModelInfo {
   isDefault?: boolean;
   efforts?: string[];
   defaultEffort?: string;
-  /** Codex service tiers (e.g. "fast") the model offers. */
+  /** Speed tiers the model offers: Codex service tiers (e.g. "fast"), or "fast" for a Claude model with fast mode. */
   serviceTiers?: string[];
   defaultServiceTier?: string;
 }

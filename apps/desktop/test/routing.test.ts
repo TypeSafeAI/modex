@@ -107,7 +107,8 @@ test("catalogue: known families land on their tier, descriptions hint the rest, 
 
 const CODEX_EFFORTS = ["low", "medium", "high", "xhigh"];
 const codexLadder = () => ladder("codex", [m("gpt-5.5", { efforts: CODEX_EFFORTS, serviceTiers: ["fast"] }), m("gpt-5.6-x", { efforts: CODEX_EFFORTS }), m("gpt-6-luna", { efforts: CODEX_EFFORTS }), m("gpt-6-astra", { efforts: CODEX_EFFORTS, isDefault: true })]);
-const claudeLadder = () => ladder("claude", ["haiku", "sonnet", "opus", "fable"].map((id) => m(id, { efforts: ["low", "medium", "high", "xhigh", "max"] })));
+// As ClaudeBackend.MODELS: only Opus offers fast mode.
+const claudeLadder = () => ladder("claude", ["haiku", "sonnet", "opus", "fable"].map((id) => m(id, { efforts: ["low", "medium", "high", "xhigh", "max"], ...(id === "opus" ? { serviceTiers: ["fast"] } : {}) })));
 const J = (over: Partial<Judgments> = {}): Judgments => ({ task: "small_edit", taskConfidence: 0.9, taskProbabilities: {}, complexity: 0.6, complexityConfidence: 0.8, blastRadius: 0.3, wantsSpeed: 0.1, needsDeepReasoning: 0.2, dependsOnPriorTurns: 0, ...over });
 const D = (over: Partial<DecisionInput> = {}, policy: Partial<RoutingPolicy> = {}): DecisionInput => ({
   judgments: J(), source: "jev", policy: { ...DEFAULT_ROUTING, ...policy },
@@ -142,7 +143,7 @@ test("policy: fast mode needs a speed signal, a light task, and a model that off
   assert.equal(decide(D({ judgments: J({ complexity: 0.4, wantsSpeed: 0.9, needsDeepReasoning: 0.8 }) })).fast, false, "not when reasoning is needed");
   assert.equal(decide(D({ judgments: J({ complexity: 2.4, wantsSpeed: 0.9 }) })).fast, false, "not on big models");
   const claude = decide(D({ judgments: J({ complexity: 0.4, wantsSpeed: 0.9 }), current: { backend: "claude", model: "opus", hasSession: false } }));
-  assert.deepEqual([claude.model, claude.fast], ["haiku", true]);
+  assert.deepEqual([claude.model, claude.fast], ["haiku", false], "Claude runs fast mode only on Opus, which a light task never picks");
 });
 
 test("policy: an unsure Jev keeps the user's model; the heuristic's confidence is not gated", () => {
