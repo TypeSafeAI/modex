@@ -8,12 +8,12 @@
   "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=20",
-    "pnpm": ">=10.34.0"
+    "pnpm": "^10.34.0"
   },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": ">=10.34.0",
+      "version": "^10.34.0",
       "onFail": "error"
     }
   },

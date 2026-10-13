@@ -32,6 +32,11 @@ test('preinstall guard refuses other installers and names them', () => {
 test('root manifest pins pnpm for Corepack, devEngines and the guard', () => {
   const pkg = JSON.parse(fs.readFileSync(`${root}/package.json`, 'utf8'));
   assert.match(pkg.packageManager, /^pnpm@\d+\.\d+\.\d+$/);
+  // Vercel picks its pnpm from devEngines; an open range (>=) handed it pnpm 12, which
+  // rejected this lockfile. Both ranges must stay on the pinned major.
+  const major = pkg.packageManager.split('@')[1].split('.')[0];
+  assert.ok(pkg.devEngines.packageManager.version.startsWith(`^${major}.`), pkg.devEngines.packageManager.version);
+  assert.ok(pkg.engines.pnpm.startsWith(`^${major}.`), pkg.engines.pnpm);
   assert.equal(pkg.devEngines.packageManager.name, 'pnpm');
   assert.equal(pkg.devEngines.packageManager.onFail, 'error');
   assert.equal(pkg.scripts.preinstall, 'node scripts/require-pnpm.mjs');
