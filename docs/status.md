@@ -498,6 +498,11 @@ Automatic updates and durable drafts (#181), verified multiplatform release cand
 and the approval-rule follow-up (#185) are on `main` after v0.0.11; their status is under
 In flight.
 
+The [local recovery record](reviews/2026-10-13-local-recovery.md) ties the recovered
+permission, Streamer Mode, Space/Knowledge, and readiness work to its delivery PRs. It
+retains the integrated candidate's CI and native evidence separately from the published
+v0.0.11 artifacts, including the original CI failures and remaining acceptance limits.
+
 ## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
@@ -709,6 +714,11 @@ In flight.
   local Simulator settings are left alone.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
+- **Native picker test readiness.** The attachment test waits for the recovery file before
+  reading persisted drafts. A delayed file reproduced the `ENOENT` from macOS job
+  `114881524305`; the corrected test passed three focused runs and the full 274 desktop
+  and seven site cases. Count, unique-ID, file-content and reload assertions remain;
+  permanently missing or malformed persistence still fails. App behavior is unchanged.
 - **Owner-removal test readiness.** The fixture waits for the displayed branch after launch
   and each project switch. Draft persistence alone does not prove the asynchronous branch
   lookup has left restart admission. Holding that lookup reproduced the refusal from
