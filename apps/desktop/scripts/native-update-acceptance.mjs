@@ -196,6 +196,9 @@ export async function runNativeUpdateAcceptance({ sourceApp, candidateArchive, v
       const state = await page.evaluate(() => window.modex.invoke("updates:install", undefined));
       assert.equal(state.phase, "ready"); assert.match(state.message, /Save or close the open dialog/);
     }).toPass({ timeout: 30_000 });
+    // Each refused install briefly marks the workspace, Settings included, inert while the
+    // renderer prepares; Settings ignores Escape until the ready state reaches the window.
+    await expect.poll(() => page.getByRole("dialog", { name: "Settings" }).evaluate(element => Boolean(element.closest("[inert]")))).toBe(false);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
     await expect(page.getByTestId("composer-input")).toBeEditable();
@@ -255,12 +258,14 @@ export async function runNativeUpdateAcceptance({ sourceApp, candidateArchive, v
         try { await window.modex.invoke("updates:install", undefined); return "unexpected success"; }
         catch (error) { return String(error); }
       });
-      assert.match(retry, /not ready|recovery/i);
+      // During startup recovery every refused request carries the recovery message.
+      const unconfirmed = new RegExp(`The update to Modex ${version.replaceAll(".", "\\.")} has not been confirmed`);
+      assert.match(retry, unconfirmed);
       const newWork = await page.evaluate(async () => {
         try { await window.modex.invoke("thread:create", { projectId: "p1", backend: "mock" }); return "unexpected success"; }
         catch (error) { return String(error); }
       });
-      assert.match(newWork, /restart|recovery/i);
+      assert.match(newWork, unconfirmed);
       assert.equal(fs.readFileSync(receiptFile, "utf8"), beforeRetry);
       await page.screenshot({ path: path.join(evidence, "reopened-A-recovery.png") });
       fs.copyFileSync(receiptFile, path.join(evidence, "reopened-A-receipt.json"));
