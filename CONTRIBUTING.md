@@ -13,9 +13,9 @@ Coding turns use the existing CLI backends. Optional Jev routing supplies select
 ## Verify and submit
 
 ```sh
-npm run build
-npm test
-npm run test:e2e
+pnpm build
+pnpm test
+pnpm test:e2e
 ```
 
 Use the platform and offline fixtures expected by the repository's CI. Explain what changed, which checks ran, their actual results, and anything unverified. Do not describe a synthetic run as live-provider evidence. Main remains subject to its signing and CI gates.

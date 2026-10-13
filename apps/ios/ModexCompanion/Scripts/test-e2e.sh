@@ -13,7 +13,7 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$repo_dir"
-npm run build -w @modex/desktop
+pnpm --filter @modex/desktop build
 MODEX_IOS_LAN=1 node "$app_dir/Scripts/fixture.mjs" "$fixture_file" &
 fixture_pid=$!
 for _ in {1..100}; do

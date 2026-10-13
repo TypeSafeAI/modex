@@ -1,7 +1,7 @@
 # Native Windows and Linux candidates
 
-Development commands: `npm run dist:windows -w @modex/desktop` and
-`npm run dist:linux -w @modex/desktop`. Each requires its native x64 host. Windows
+Development commands: `pnpm --filter @modex/desktop dist:windows` and
+`pnpm --filter @modex/desktop dist:linux`. Each requires its native x64 host. Windows
 also needs an MSVC x64 tools environment. The commands build core and desktop,
 write candidates under `apps/desktop/release/native-{win32,linux}`, and never publish.
 

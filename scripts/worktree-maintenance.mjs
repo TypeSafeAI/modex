@@ -71,8 +71,8 @@ export async function run(args = process.argv.slice(2), cwd = process.cwd()) {
       await core.claim(name, { owner: process.env.CODEX_THREAD_ID ?? `session:${name}` });
     });
     if (!options['--no-install'] && fs.existsSync(path.join(dest, 'package.json'))) {
-      const install = command('npm', ['ci', '--no-audit', '--no-fund', '--loglevel=error'], dest, true);
-      if (install.status !== 0 || command('npm', ['run', 'build', '-w', '@modex/core'], dest, true).status !== 0) console.error('note: dependency setup failed; run npm ci && npm run build inside the worktree');
+      const install = command('pnpm', ['install', '--frozen-lockfile', '--loglevel=error'], dest, true);
+      if (install.status !== 0 || command('pnpm', ['--filter', '@modex/core', 'build'], dest, true).status !== 0) console.error('note: dependency setup failed; run pnpm install && pnpm build inside the worktree');
     }
     console.log(dest); return 0;
   }

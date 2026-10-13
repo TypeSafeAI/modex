@@ -9,7 +9,7 @@ export default defineConfig({
   timeout: 30_000,
   use: { baseURL, trace: "retain-on-failure" },
   webServer: {
-    command: `npm run preview -- --port ${port} --strictPort`,
+    command: `pnpm run preview --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: false,
   },
