@@ -489,7 +489,7 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
-- **pnpm only.** The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which carries the
+- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which carries the
   same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse through
   `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
   `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
