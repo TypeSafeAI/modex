@@ -50,7 +50,7 @@ export class ClaudeBackend implements Backend {
     { id: "fable", label: "Fable (latest)", description: "Newest Fable — currently claude-fable-5-1", isDefault: true, efforts: ClaudeBackend.EFFORTS },
     { id: "opus", label: "Opus (latest)", description: "Newest Opus — currently claude-opus-5-5", efforts: ClaudeBackend.EFFORTS },
     { id: "sonnet", label: "Sonnet (latest)", description: "Newest Sonnet — currently claude-sonnet-5-5", efforts: ClaudeBackend.EFFORTS },
-    { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-4-5", efforts: ClaudeBackend.EFFORTS },
+    { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-5-5", efforts: ClaudeBackend.EFFORTS },
   ];
 
   async listModels(): Promise<ModelInfo[]> {
