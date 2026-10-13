@@ -489,6 +489,11 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
+- **Held models get the pick's effort.** When a warm cache keeps a thread on a model one tier
+  below Auto's pick, the turn runs at the effort the pick would have had, because an effort
+  change keeps the cache. A model kept above its pick runs at the pick's lower effort. Held
+  turns do not reuse the thread's last effort, so a raise does not carry into later held turns.
+  The ceiling and the budget's high cap still apply. [Auto routing, step 7](auto-routing.md).
 - **Claude fast mode reports what ran.** The Claude CLI says in `system/init` whether fast
   mode is serving, and if not, why. On this account it was off because usage credits are off
   (`extra_usage_disabled`), which is why `usage.speed` read `standard` on 2026-10-12. Modex now

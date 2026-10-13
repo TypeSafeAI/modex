@@ -132,11 +132,17 @@ deterministically, and every step that changes the outcome adds a reason to the 
    when you have picked a different model since the last turn. While the cache is warm it never
    moves down, and it moves up only to a model two or more tiers higher, or when Jev is at least
    0.85 sure the request needs deep reasoning and the request does not lean on earlier turns.
-   A kept model keeps its effort and fast mode too. On the same model, effort changes freely:
-   a probe on 2026-10-12 (Claude Code 2.1.296, codex-cli 0.162.1) showed an effort change keeps
-   the whole cache on both CLIs, while a model change re-read it from scratch. Fast mode is
-   held on the same model, because neither CLI's fast mode could be measured. Limits still win:
-   a model over the premium budget or no longer listed is not held. A held route reads
+   Effort still follows the request. A probe on 2026-10-12 (Claude Code 2.1.296, codex-cli
+   0.162.1) showed an effort change keeps the whole cache on both CLIs, while a model change
+   re-read it from scratch. A kept model runs at the effort Auto chose for the model it would
+   have picked. A model kept a tier below that pick runs at higher effort to make up for it, and
+   the receipt says "Raised effort from medium to high to make up for staying below …". A model
+   kept above the pick runs at the pick's lower effort. A held turn does not reuse the thread's
+   last effort, so a raise does not carry into later held turns. The `max_effort` ceiling, the
+   budget's high cap and the model's supported levels still apply. A raise to xhigh or max
+   counts as a premium turn, as moving up to the bigger model would have. Fast mode is held,
+   because neither CLI's fast mode could be measured. Limits still win: a model over the
+   premium budget or no longer listed is not held. A held route reads
    "Auto kept", with the cache size and idle time in its reasons.
 
 Changing the policy never requires re-asking Jev; the raw judgments are reusable.
