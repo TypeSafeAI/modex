@@ -537,8 +537,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   failure. Hosted checks passed at `83e3340`; fresh combined-source checks follow the #195 merge.
   Val chose to publish macOS installers only, and to ship automatic installation only if all
   three signed updater scenarios pass. The first tagged run on `e3fecf0` failed those scenarios:
-  Electron could not stage the candidate's `app.asar`. That is fixed, and the next tag repeats
-  every gate. [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md#first-tagged-run).
+  Electron could not stage the candidate's `app.asar`, which #200 fixed. On `a4383ff` the real
+  signed upgrade scenario passed. The native-failure and interrupted scenarios failed at harness
+  steps written before any real run, which are now corrected. The next tag repeats every gate.
+  [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md#second-tagged-run).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
