@@ -42,8 +42,8 @@ Modify `.github/workflows/platform-cli.yml` and `.github/workflows/release.yml`.
 
 - [x] Update release-signing/native-platform/status docs with actual behavior and remaining account/session/history gates.
 - [x] Run full build, workspace typechecks and npm test before signed commit/push; run E2E if application/UI code changes.
-- [ ] Deliver this follow-up through its own PR after #181 (merged as `7c9229a`). Preserve the earlier source/test evidence and any dirty follow-up during landing.
-- [ ] Reconcile the separately owned v0.0.11 release PR #184 before preparing an exact source/tag proposal after workflow delivery. Do not duplicate its version bump or reuse a published tag. No signed tag, signing-environment approval, native installed macOS run or publication is implied by preparing this code.
+- [x] Deliver this follow-up through its own PR after #181: #186 merged as `3add7ef`. Earlier source/test evidence and dirty follow-up remain preserved.
+- [x] Reconcile the separately owned #184 release: v0.0.11 published from `fb267e7` without the updater; #190 retains integrated verification separately. The next release needs its own version and exact source, preserving those published artifacts and records. No tag, signing approval, or publication is implied by source preparation.
 
 Windows signing stays deferred and Windows/Linux updates remain manual. Private same-source upgrade fixtures do not prove historical migrations. Cloud/automation remains deferred pending local readiness.
 
