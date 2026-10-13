@@ -489,9 +489,14 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
-- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which carries the
-  same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse through
-  `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
+- **Held models get the pick's effort.** When a warm cache keeps a thread on a model one tier
+  below Auto's pick, the turn runs at the effort the pick would have had, because an effort
+  change keeps the cache. A model kept above its pick runs at the pick's lower effort. Held
+  turns do not reuse the thread's last effort, so a raise does not carry into later held turns.
+  The ceiling and the budget's high cap still apply. [Auto routing, step 7](auto-routing.md).
+- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
+  carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
+  through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
   `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
 - **Worktree merge proof** (#188). A squash-merged tip whose tree matches the landed commit
   counts as proof, so branches that merged `main` in before landing can be pruned.
