@@ -34,5 +34,9 @@ xcodebuild -quiet -project ModexCompanion.xcodeproj -scheme ModexCompanion \
   -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES build-for-testing
 xctestrun="$(find "$derived_data/Build/Products" -maxdepth 1 -name 'ModexCompanion_*.xctestrun' -print -quit)"
 if [[ -z "$xctestrun" ]]; then echo "Xcode did not create an iPhone test plan." >&2; exit 1; fi
-xcodebuild -xctestrun "$xctestrun" -destination "$destination" \
+# A shared CI runner takes 5–30× longer than a developer Mac on every XCTest round trip (see
+# UITestBudget in UITests/XCUIElement+Ready.swift). Every UI-test wait is multiplied by this;
+# xcodebuild hands TEST_RUNNER_* variables to the test runner's environment.
+timeout_scale="${MODEX_UI_TIMEOUT_SCALE:-1}"
+TEST_RUNNER_MODEX_UI_TIMEOUT_SCALE="$timeout_scale" xcodebuild -xctestrun "$xctestrun" -destination "$destination" \
   -parallel-testing-enabled NO -only-testing:ModexCompanionUITests/DemoWorkspaceTests -only-testing:ModexCompanionUITests/CompanionFlowTests test-without-building
