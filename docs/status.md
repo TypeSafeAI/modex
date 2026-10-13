@@ -69,7 +69,7 @@ iPhone Companion and inline FAQ. Mobile retains the product explanation and plat
 requirements; screenshot enlargement, keyboard controls and no-JavaScript links remain usable.
 
 Mac links update to the latest stable Apple Silicon release through the cached public
-GitHub feed, with verified v0.0.10 URLs as the static fallback. Signing, release and MIT
+GitHub feed, with verified v0.0.11 URLs as the static fallback. Signing, release and MIT
 license links sit beside the main download; community counts move to the footer. Missing
 counts remain hidden and cached counts are labeled after a failed refresh. The optional
 Companion links to Val's [public TestFlight invitation](https://testflight.apple.com/join/Qr14JKCh),
@@ -515,6 +515,16 @@ retains the integrated candidate's CI and native evidence separately from the pu
 v0.0.11 artifacts, including the original CI failures and remaining acceptance limits.
 
 ## In flight
+
+- **Desktop v0.0.12 preparation.** The next candidate combines signed macOS update
+  installation with native Windows/Linux installers. Published v0.0.11 remains unchanged
+  and requires manual installation of the first updater-enabled release. Windows signing
+  stays deferred, and Windows/Linux updates remain manual. Signed hosted updater scenarios,
+  exact tagged installer verification, account/session acceptance, and publication remain
+  open. Native Windows tests now avoid emergency cleanup after independent exit proof,
+  retaining fallback cleanup for incomplete cases and waiting for PTY exit after supervisor
+  failure. Hosted checks passed at `83e3340`; fresh combined-source checks follow the #195 merge.
+  [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
