@@ -215,6 +215,8 @@ test("Canvas refuses external requests, privileged navigation and popups; closin
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
     expect(requests).toBe(0);
     await tid(page, "workspace-full").click();
+    // Escape can only leave full view once it is entered; sent earlier, the click wins the race.
+    await expect(tid(page, "main")).toBeHidden();
     await app.evaluate(({ webContents }) => {
       const contents = webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-canvas:"))!;
       contents.focus(); contents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
