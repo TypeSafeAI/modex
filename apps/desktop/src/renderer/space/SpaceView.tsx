@@ -19,9 +19,13 @@ import "./space.css";
 
 type View = "all" | "pages" | "favorites" | "trash" | "knowledge" | "sites" | "images";
 const TEMPLATES = [
-  { title: "Blank page", description: "Make room for an idea", icon: "file" as const, markdown: "" },
-  { title: "Project brief", description: "From a thought to a plan", icon: "review" as const, markdown: "## The idea\n\nWhat are we making, and why does it matter?\n\n## What success looks like\n\n- [ ] Define the outcome\n- [ ] Build the first version\n- [ ] Share what we learned\n\n## Notes\n\nStart collecting the details here." },
+  { title: "Your guide to pages", description: "Get started with pages", icon: "guide" as const, markdown: "## A place for your ideas\n\nWrite notes, plan a project, or start from a template. Your pages are saved locally as Markdown.\n\n## Make it yours\n\n- [ ] Click a block to edit it\n- [ ] Select text to format, comment, or ask for a change\n- [ ] Use Insert to add a heading, list, image, or table\n\n## Work with your agent\n\nUse Generate or Visualize to describe what you need, then continue in chat. Use the page menu to export Markdown or copy a page into your knowledge base." },
+  { title: "Feedback tracker", description: "Turn feedback into next steps", icon: "compose" as const, markdown: "## Feedback\n\n| Feedback | Next step | Status |\n| --- | --- | --- |\n| What did you hear? | What will you do? | Open |\n\n## Follow up\n\n- [ ] Review new feedback\n- [ ] Share what changed" },
+  { title: "To-do list", description: "Keep your priorities in view", icon: "checklist" as const, markdown: "## Today\n\n### Top priorities\n\n- [ ] Run propulsion test\n- [ ] Verify course calculations\n- [ ] Inspect fuel tanks\n\n## If time allows\n\n- [ ] Inspect radiation shields\n- [ ] Test communication systems\n- [ ] Write status report" },
+  { title: "Weekly update", description: "Share progress and next steps", icon: "page" as const, markdown: "## This week\n\nWhat moved forward?\n\n## Next week\n\n- [ ] Set the next priority\n\n## Blockers\n\nWhere do you need help?" },
   { title: "Meeting notes", description: "Keep the useful parts", icon: "comment" as const, markdown: "## On the agenda\n\n- What should we discuss?\n\n## Decisions\n\nWhat did we agree on?\n\n## Next steps\n\n- [ ] Add an action and an owner" },
+  { title: "Project brief", description: "From a thought to a plan", icon: "review" as const, markdown: "## The idea\n\nWhat are we making, and why does it matter?\n\n## What success looks like\n\n- [ ] Define the outcome\n- [ ] Build the first version\n- [ ] Share what we learned\n\n## Notes\n\nStart collecting the details here." },
+  { title: "Blank page", description: "Make room for an idea", icon: "file" as const, markdown: "" },
 ];
 
 export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen = false }: { sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
@@ -31,6 +35,12 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
   const [view, setView] = useState<View>("pages");
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(false);
+  const [gridView, setGridView] = useState(false);
+  const [sort, setSort] = useState<"updated" | "name" | "created">("updated");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortTrigger = useRef<HTMLButtonElement>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const newTrigger = useRef<HTMLButtonElement>(null);
   const [wide, setWide] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -48,6 +58,16 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     if (Object.values(commentDraftsRef.current).some(draft => draft.text.length > 0)) throw new Error("Post or discard your draft comments before restarting.");
   }), []);
   const [insertOpen, setInsertOpen] = useState(false);
+  const [generationDrafts, setGenerationDrafts] = useState<Record<string, { kind: "write" | "visualize"; prompt: string }>>({});
+  const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({});
+  const requestDrafts = useRef({ generationDrafts, chatDrafts });
+  requestDrafts.current = { generationDrafts, chatDrafts };
+  useEffect(() => restartDrafts.register("page-requests", async () => {
+    const { generationDrafts, chatDrafts } = requestDrafts.current;
+    if (Object.values(generationDrafts).some(draft => draft.prompt.trim()) || Object.values(chatDrafts).some(text => text.trim())) {
+      throw new Error("Continue or discard your page requests before restarting.");
+    }
+  }), []);
   const [shareOpen, setShareOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [maintenance, setMaintenance] = useState(false);
@@ -72,7 +92,14 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
       setSelected(null); setView("trash"); setQuery(""); setNotice("This note is in Trash. Restore it to open it.");
     }
   }, [selected, space.pages]);
+  const generation = page ? generationDrafts[page.id]?.kind : undefined;
+  const generationPrompt = page ? generationDrafts[page.id]?.prompt ?? "" : "";
+  const chatDraftKey = page?.id ?? "overview";
+  const chatDraft = chatDrafts[chatDraftKey] ?? "";
+  const setChatDraft = (text: string) => setChatDrafts(current => ({ ...current, [chatDraftKey]: text }));
+  const clearGeneration = () => { if (page) setGenerationDrafts(current => { const next = { ...current }; delete next[page.id]; return next; }); };
   const live = space.pages.filter(p => !p.trashedAt);
+  const comparePages = (a: SpacePage, b: SpacePage) => sort === "name" ? pageTitle(a).localeCompare(pageTitle(b)) : sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt);
   const visible = space.pages.filter(p => view === "trash" ? !!p.trashedAt : !p.trashedAt && (view !== "favorites" || p.favorite))
     .filter(p => view === "images" ? /!\[[^\]]*\]\(https?:\/\//i.test(p.markdown) : view === "sites" ? /(?<!!)\[[^\]]+\]\(https?:\/\//i.test(p.markdown) : true)
     .filter(p => `${p.title}\n${p.markdown}`.toLowerCase().includes(query.toLowerCase()));
@@ -110,8 +137,12 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
   });
   const pick = (fn: () => void) => () => { setMenu(false); fn(); };
   const insertBlock = (source: string) => { setInsertOpen(false); setInsertRequest({ source, nonce: Date.now() }); };
+  const beginGeneration = (kind: "write" | "visualize") => {
+    setInsertOpen(false);
+    if (page) setGenerationDrafts(current => ({ ...current, [page.id]: { kind, prompt: current[page.id]?.prompt ?? "" } }));
+  };
   const closeComments = () => { setCommentsOpen(false); commentsTrigger.current?.focus(); };
-  const ask = (instruction?: string) => onOpenChat?.(instruction && page ? `${instruction}\n\nSpace page: ${pageTitle(page)}\n\n${page.markdown}` : undefined);
+  const ask = (instruction?: string) => onOpenChat?.(instruction && page ? `${instruction}\n\nSpace page: ${pageTitle(page)}\n\n${page.markdown}` : instruction);
   const ancestors: SpacePage[] = [];
   let parentId = page?.parentId;
   const seen = new Set<string>();
@@ -124,7 +155,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
 
   return <div className="space-surface" data-testid="space" hidden={!active} inert={space.busy} aria-busy={space.busy}>
     {sidebarOpen && <aside className="space-sidebar" aria-label="Space pages">
-      <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}>Import Markdown</MenuItem></Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
+      <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}><Icon name="file" />Import Markdown</MenuItem></Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
       <button className="space-new-page" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="review" />New page</button>
       {searching && <label className="space-search"><Icon name="search" /><SecretInput autoFocus type="search" aria-label="Search pages" placeholder="Search pages" value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} /></label>}
       <nav className="space-views" aria-label="Page collections">
@@ -146,35 +177,39 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
     </aside>}
     <div className="space-pages-panel" hidden={view === "knowledge"}>
     <main className={`space-main${wide ? " space-wide" : ""}`}>
-      <header className="space-topbar">
+      <header className={`space-topbar${!page ? " space-overview-topbar" : ""}`}>
         {page ? <>
           <span className="space-page-menu"><button ref={trigger} className="space-page-pill" aria-label="Page actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="page" /><span>{pageTitle(page)}</span><Icon name="chevron-down" size={12} /></button>
-            <Menu open={menu} onClose={() => setMenu(false)} anchorRef={trigger} label="Page actions" placement="bottom-end">
-              {ancestors.map(parent => <MenuItem key={parent.id} onClick={pick(() => open(parent.id))}>Open {pageTitle(parent)}</MenuItem>)}
-              <MenuItem onClick={pick(() => { titleInput.current?.focus(); titleInput.current?.select(); })}>Rename</MenuItem>
-              <MenuItem onClick={pick(() => void create("", "", page.id))}>Add subpage</MenuItem>
-              <MenuItem onClick={pick(() => void create(`${pageTitle(page)} (copy)`, page.markdown, page.parentId))}>Duplicate page</MenuItem>
+            <Menu open={menu} onClose={() => setMenu(false)} anchorRef={trigger} label="Page actions" placement="bottom-end" className="space-actions-menu">
+              <MenuItem onClick={pick(() => setSelected(null))}><Icon name="list" />Show pages</MenuItem>
               <MenuSeparator />
-              <MenuItem onClick={pick(() => void run(async () => { await bridge.invoke("clipboard:write", { text: exportText(page) }); setNotice("Markdown copied"); }))}>Copy Markdown</MenuItem>
-              <MenuItem onClick={pick(() => download(page))}>Export Markdown</MenuItem>
-              <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await bridge.invoke("knowledge:copy", { pageId: page.id }); setNotice("Page copied to your knowledge base"); }))}>Copy to knowledge base</MenuItem>
-              <MenuItem onClick={pick(() => importInput.current?.click())}>Import Markdown</MenuItem>
-              <MenuItem onClick={pick(() => setHistory(true))}>Version history</MenuItem>
+              <MenuItem onClick={pick(() => setShareOpen(true))}><Icon name="arrow-up" />Share</MenuItem>
+              <MenuItem onClick={pick(() => space.edit(page.id, { favorite: !page.favorite }))}><Icon name="star" />{page.favorite ? "Remove from favorites" : "Add to favorites"}</MenuItem>
+              {ancestors.map(parent => <MenuItem key={parent.id} onClick={pick(() => open(parent.id))}>Open {pageTitle(parent)}</MenuItem>)}
+              <MenuItem onClick={pick(() => { titleInput.current?.focus(); titleInput.current?.select(); })}><Icon name="compose" />Rename</MenuItem>
+              <MenuItem onClick={pick(() => void create("", "", page.id))}><Icon name="plus" />Add subpage</MenuItem>
+              <MenuItem onClick={pick(() => void create(`${pageTitle(page)} (copy)`, page.markdown, page.parentId))}><Icon name="space" />Duplicate page</MenuItem>
+              <MenuSeparator />
+              <MenuItem onClick={pick(() => void run(async () => { await bridge.invoke("clipboard:write", { text: exportText(page) }); setNotice("Markdown copied"); }))}><Icon name="space" />Copy Markdown</MenuItem>
+              <MenuItem onClick={pick(() => download(page))}><Icon name="download" />Export Markdown</MenuItem>
+              <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await bridge.invoke("knowledge:copy", { pageId: page.id }); setNotice("Page copied to your knowledge base"); }))}><Icon name="folder" />Copy to knowledge base</MenuItem>
+              <MenuItem onClick={pick(() => importInput.current?.click())}><Icon name="file" />Import Markdown</MenuItem>
+              <MenuItem onClick={pick(() => setHistory(true))}><Icon name="history" />Version history</MenuItem>
               <MenuItem onClick={pick(() => setWide(!wide))}>{wide ? "Standard width" : "Full width"}</MenuItem>
               <MenuSeparator />
-              <MenuItem className="danger" onClick={pick(() => void run(async () => { await space.trash(page.id, true); setSelected(null); setNotice("Page moved to trash"); }))}>Move to trash</MenuItem>
+              <MenuItem className="danger" onClick={pick(() => void run(async () => { await space.trash(page.id, true); setSelected(null); setNotice("Page moved to trash"); }))}><Icon name="trash" />Move to trash</MenuItem>
             </Menu>
           </span>
           <div className="space-tools">
-            <IconButton icon="star" label={page.favorite ? "Remove from favorites" : "Add to favorites"} size="md" aria-pressed={page.favorite} className={page.favorite ? "space-starred" : ""} onClick={() => space.edit(page.id, { favorite: !page.favorite })} />
+            <IconButton icon="sparkle" label="Generate page content" size="md" disabled={!onOpenChat} onClick={() => beginGeneration("write")} />
             <IconButton icon="image" label="Insert image" size="md" onClick={() => insertBlock("![Image description](https://)")} />
-            <IconButton icon="grid" label="Visualize page" size="md" disabled={!onOpenChat} onClick={() => ask("Create an interactive visualization of this page.")} />
-            <span className="space-insert-anchor"><IconButton ref={insertTrigger} icon="plus" label="Insert" size="md" aria-expanded={insertOpen} aria-haspopup="menu" onClick={() => setInsertOpen(value => !value)} />
-              <Menu open={insertOpen} onClose={() => setInsertOpen(false)} anchorRef={insertTrigger} label="Insert into page" placement="bottom-start" className="space-insert-menu">
-                <MenuLabel>Generate</MenuLabel><MenuItem disabled={!onOpenChat} onClick={() => { setInsertOpen(false); ask("Create an interactive visualization of this page."); }}><Icon name="grid" /><span>Visualize</span><small>Create an interactive visualization</small></MenuItem>
+            <IconButton icon="shapes" label="Visualize page" size="md" disabled={!onOpenChat} onClick={() => beginGeneration("visualize")} />
+            <span className="space-insert-anchor"><IconButton ref={insertTrigger} icon="insert-square" label="Insert" size="md" aria-expanded={insertOpen} aria-haspopup="menu" onClick={() => setInsertOpen(value => !value)} />
+              <Menu open={insertOpen} onClose={() => setInsertOpen(false)} anchorRef={insertTrigger} label="Insert into page" fitViewport placement="bottom-start" className="space-insert-menu">
+                <MenuLabel>Generate</MenuLabel><MenuItem disabled={!onOpenChat} onClick={() => beginGeneration("write")}><Icon name="sparkle" /><span>Generate</span><small>Describe what you want to write</small></MenuItem><MenuItem disabled={!onOpenChat} onClick={() => beginGeneration("visualize")}><Icon name="shapes" /><span>Visualize</span><small>Create an interactive visualization</small></MenuItem>
                 <MenuLabel>Create</MenuLabel><MenuItem onClick={() => { setInsertOpen(false); void create("", "", page.id); }}><Icon name="page" /><span>Page</span><small>Create a page inside this one</small></MenuItem>
                 <MenuLabel>Media</MenuLabel><MenuItem onClick={() => insertBlock("![Image description](https://)")}><Icon name="image" /><span>Image</span><small>Add an image by URL</small></MenuItem>
-                <MenuLabel>Basic</MenuLabel>{BLOCK_COMMANDS.filter(command => command.name !== "Image").map(command => <MenuItem key={command.name} onClick={() => insertBlock(command.source)}><span className="space-insert-symbol">{command.symbol}</span><span>{command.name}</span></MenuItem>)}
+                <MenuLabel>Basic</MenuLabel>{BLOCK_COMMANDS.filter(command => command.name !== "Image").map(command => <MenuItem key={command.name} onClick={() => insertBlock(command.source)}><span className="space-insert-symbol">{command.symbol}</span><span>{command.name}</span><kbd>{command.source.split("\n")[0]?.trim() || "Aa"}</kbd></MenuItem>)}
               </Menu>
             </span>
           </div>
@@ -183,7 +218,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
           <IconButton icon="history" label="Version history" size="lg" className="space-round-action" aria-pressed={history} onClick={() => setHistory(value => !value)} />
           <IconButton ref={commentsTrigger} icon="comment" label="Comments" size="lg" className="space-round-action" aria-pressed={commentsOpen} onClick={() => setCommentsOpen(value => !value)} />
           <span className="space-share-anchor"><button ref={shareTrigger} className="space-share" aria-haspopup="menu" aria-expanded={shareOpen} onClick={() => setShareOpen(value => !value)}><span className="space-avatar"><Icon name="laptop" size={13} /></span>Share</button>
-            <Menu open={shareOpen} onClose={() => setShareOpen(false)} anchorRef={shareTrigger} label="Share page" placement="bottom-end"><MenuLabel>Share a copy · saved on this Mac</MenuLabel><MenuItem onClick={() => { setShareOpen(false); void run(async () => { await space.flush(); await bridge.invoke("clipboard:write", { text: exportText(page) }); setNotice("Markdown copied"); }); }}>Copy Markdown</MenuItem><MenuItem onClick={() => { setShareOpen(false); download(page); }}>Export Markdown</MenuItem></Menu>
+            <Menu open={shareOpen} onClose={() => setShareOpen(false)} anchorRef={shareTrigger} label="Share page" placement="bottom-end"><MenuLabel>Share a copy · saved on this Mac</MenuLabel><MenuItem onClick={() => { setShareOpen(false); void run(async () => { await space.flush(); await bridge.invoke("clipboard:write", { text: exportText(page) }); setNotice("Markdown copied"); }); }}><Icon name="space" />Copy Markdown</MenuItem><MenuItem onClick={() => { setShareOpen(false); download(page); }}><Icon name="download" />Export Markdown</MenuItem></Menu>
           </span>
         </> : <button className="btn small space-new" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="plus" size={14} /> Create page</button>}
       </header>
@@ -195,21 +230,36 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
         <article className="space-document" onMouseUp={() => { const selection = window.getSelection(); if (selection?.toString().trim()) setQuote(selection.toString().slice(0, 2000)); }} onSelect={event => { if (event.target instanceof HTMLTextAreaElement) setQuote(event.target.value.slice(event.target.selectionStart, event.target.selectionEnd).slice(0, 2000)); }}>
           <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
-          <BlockEditor key={page.id} markdown={page.markdown} insertRequest={insertRequest} onChange={markdown => space.edit(page.id, { markdown })} />
+          <BlockEditor key={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
+            <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />
+            {generation === "visualize" ? <Icon name="shapes" size={18} /> : <div className="space-generation-lines" aria-hidden="true"><i /><i /><i /></div>}
+            <form onSubmit={event => { event.preventDefault(); if (!generationPrompt.trim()) return; ask(`${generation === "visualize" ? "Create an interactive visualization for this page" : "Write content for this page"}: ${generationPrompt}`); clearGeneration(); }}>
+              <SecretInput autoFocus aria-label={generation === "write" ? "What would you like to write?" : "Describe a visualization"} placeholder={generation === "write" ? "What would you like to write?" : "Describe a visualization"} value={generationPrompt} onChange={event => { const prompt = event.target.value; setGenerationDrafts(current => ({ ...current, [page.id]: { kind: generation!, prompt } })); }} />
+              <button aria-label="Continue in chat" title="Continue in chat" disabled={!generationPrompt.trim()}><Icon name="arrow-up" size={16} /></button>
+            </form>
+          </section>} onAsk={onOpenChat ? instruction => ask(instruction) : undefined} onComment={selectedQuote => { const quote = selectedQuote.slice(0, 2000); setQuote(quote); setCommentDrafts(current => { const existing = current[page.id]; return { ...current, [page.id]: existing?.text ? existing : { text: "", quote } }; }); setCommentsOpen(true); }} onChange={markdown => space.edit(page.id, { markdown })} />
+
           {live.filter(p => p.parentId === page.id).length > 0 && <div className="space-subpages"><span>IN THIS PAGE</span>{live.filter(p => p.parentId === page.id).map(p => <button key={p.id} onClick={() => open(p.id)}><Icon name="file" />{pageTitle(p)}<Icon name="arrow-right" /></button>)}</div>}
         </article>
       </div> : <div className="space-overview">
-        <div className="space-overview-heading"><h1>{query ? "Search" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : view === "sites" ? "Sites" : view === "images" ? "Images" : "Your pages"}</h1><p>{view === "trash" ? "Restore a page to pick up where you left off." : query ? `Pages matching “${query}”` : view === "sites" ? "Pages with links to websites." : view === "images" ? "Pages with images." : view === "favorites" ? "The pages you come back to, all in one place." : "Notes, plans, and ideas, saved on this Mac."}</p></div>
-        {(view === "pages" || view === "all") && !query && <div className="space-templates">{TEMPLATES.map(template => <button key={template.title} disabled={creating} onClick={() => void create(template.markdown ? template.title : "", template.markdown)}><Icon name={template.icon} size={22} /><strong>{template.title}</strong><span>{template.description}</span><Icon name="arrow-right" size={14} /></button>)}</div>}
-        <div className="space-list-heading"><h2>{query ? "Results" : view === "trash" ? "Deleted pages" : view === "favorites" ? "Favorites" : "Your pages"}</h2><span>{visible.length} {visible.length === 1 ? "page" : "pages"}</span></div>
-        {visible.length ? <div className="space-page-list">{[...visible].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(p => <div key={p.id} className="space-page-list-row">
-          <button onClick={() => open(p.id)} disabled={view === "trash"}><Icon name="file" size={18} /><span><strong>{pageTitle(p)}</strong><small>{p.parentId ? pageTitle(space.pages.find(parent => parent.id === p.parentId) ?? { title: "Space" }) : "Private page"}</small></span>{p.favorite && <Icon name="star" size={13} />}<time>{new Date(p.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time></button>
+        <div className="space-overview-heading"><h1>{view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : view === "sites" ? "Sites" : view === "images" ? "Images" : "All"}</h1><label className="space-overview-search"><Icon name="search" size={14} /><SecretInput type="search" aria-label="Find pages" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} /></label><span className="space-new-anchor"><button ref={newTrigger} className="space-overview-new" disabled={creating} aria-haspopup="menu" aria-expanded={newOpen} onClick={() => setNewOpen(value => !value)}>New<Icon name="chevron-down" size={13} /></button><Menu open={newOpen} onClose={() => setNewOpen(false)} anchorRef={newTrigger} label="New page" placement="bottom-end"><MenuItem onClick={() => { setNewOpen(false); void create(); }}><Icon name="page" />Blank page</MenuItem><MenuItem onClick={() => { setNewOpen(false); importInput.current?.click(); }}><Icon name="file" />Import Markdown</MenuItem></Menu></span></div>
+        <nav className="space-overview-tabs" aria-label="Page filters"><button aria-current={view === "pages" ? "page" : undefined} onClick={() => selectView("pages")}>Suggested</button><button aria-current={view === "favorites" ? "page" : undefined} onClick={() => selectView("favorites")}>Favorites</button><button aria-current={view === "all" ? "page" : undefined} onClick={() => selectView("all")}>Your items</button><span className="spacer" /><span className="space-sort-anchor"><IconButton ref={sortTrigger} icon="sort" label="Sort pages" aria-haspopup="menu" aria-expanded={sortOpen} onClick={() => setSortOpen(value => !value)} /><Menu open={sortOpen} onClose={() => setSortOpen(false)} anchorRef={sortTrigger} label="Sort pages" placement="bottom-end"><MenuLabel>Sort by</MenuLabel>{([ ["updated", "Last activity"], ["name", "Name"], ["created", "Date created"] ] as const).map(([value, label]) => <MenuItem key={value} checkable selected={sort === value} onClick={() => { setSort(value); setSortOpen(false); }}>{label}</MenuItem>)}</Menu></span><span className="space-view-divider" /><IconButton icon="grid" label="Grid view" aria-pressed={gridView} onClick={() => setGridView(true)} /><IconButton icon="list" label="List view" aria-pressed={!gridView} onClick={() => setGridView(false)} /></nav>
+        {(view === "pages" || view === "all") && !query && <div className="space-template-heading"><h2>Create pages in Space</h2><p>Choose a template to start working with your agent</p></div>}
+        {(view === "pages" || view === "all") && !query && <div className="space-templates">{TEMPLATES.map(template => <button key={template.title} className={template.icon === "guide" ? "space-template-guide" : undefined} disabled={creating} onClick={() => void create(template.markdown ? template.title : "", template.markdown)}><Icon name={template.icon} size={22} /><strong>{template.title}</strong><span>{template.description}</span><Icon name="arrow-right" size={14} /></button>)}</div>}
+        {!gridView && <div className="space-list-heading"><span>Name</span><span>Source</span><span>Last activity</span></div>}
+        {visible.length ? <div className={`space-page-list${gridView ? " space-page-grid" : ""}`}>{[...visible].sort(comparePages).map(p => <div key={p.id} className="space-page-list-row">
+          <button onClick={() => open(p.id)} disabled={view === "trash"}><span className="space-list-name"><span className="space-list-icon"><Icon name="page" size={18} /></span><strong>{pageTitle(p)}</strong>{p.favorite && <Icon name="star" size={13} />}</span><small className="space-page-source">{p.parentId ? pageTitle(space.pages.find(parent => parent.id === p.parentId) ?? { title: "Space" }) : "Local"}</small><time dateTime={p.updatedAt}>{new Date(p.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time></button>
           {view === "trash" && <button className="btn small" aria-label={`Restore ${pageTitle(p)}`} onClick={() => void run(() => space.trash(p.id, false))}>Restore</button>}
-        </div>)}</div> : <div className="space-list-empty"><Icon name={view === "trash" ? "trash" : "file"} size={26} /><p>{query ? "No pages found. Try another word." : view === "favorites" ? "Add a page to favorites with the star in its toolbar." : view === "trash" ? "No deleted pages." : "Start a page. See where it takes you."}</p></div>}
+        </div>)}</div> : <div className="space-list-empty"><Icon name={view === "trash" ? "trash" : "file"} size={26} /><p>{query ? "No pages found. Try another word." : view === "favorites" ? "Add a page to favorites from its page actions menu." : view === "trash" ? "No deleted pages." : "Start a page. See where it takes you."}</p></div>}
       </div>}
       {page && commentsOpen && <PageComments key={`comments:${page.id}`} pageId={page.id} quote={quote} draft={commentDrafts[page.id]} onDraft={draft => setCommentDrafts(current => { const next = { ...current }; if (draft) next[page.id] = draft; else delete next[page.id]; return next; })} onClose={closeComments} />}
       </div>
-      {onOpenChat && !chatOpen && !(page && commentsOpen) && <button className="space-chat-launcher" aria-label="Open chat" onClick={() => ask()}><Icon name="comment" size={18} /><span>Ask anything</span><Icon name="plus" size={18} /></button>}
+      {onOpenChat && !chatOpen && <form className="space-chat-launcher" onSubmit={event => { event.preventDefault(); if (chatDraft.trim()) { ask(chatDraft.trim()); setChatDraft(""); } else ask(); }}>
+        <button type="button" aria-label="Open chat" title="Open chat and attachments" onClick={() => ask()}><Icon name="plus" size={16} /></button>
+        <SecretInput aria-label={page ? "Work with this page" : "Ask anything"} placeholder={page ? "Work with this page…" : "Ask anything"} value={chatDraft} onChange={event => setChatDraft(event.target.value)} />
+        {chatDraft && <button type="button" aria-label="Discard page request" onClick={() => setChatDraft("")}><Icon name="close" size={14} /></button>}
+        <button className="space-chat-send" aria-label="Continue page request in chat" title="Continue in chat"><Icon name="arrow-up" size={15} /></button>
+      </form>}
     </main>
     </div>
     {view === "knowledge" && <KnowledgeView active={active && !chatOpen} onPages={() => selectView("pages")} />}

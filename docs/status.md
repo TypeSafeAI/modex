@@ -489,6 +489,17 @@ seven site tests, with real OpenKnowledge enabled and no skips.
 
 ## On main, unreleased
 
+- **Space reference layout.** Knowledge guest bounds account for shell
+  zoom, and maintenance controls wrap within the available pane. Pages reserves room for
+  comments, keeps comment entry at the top and chat reachable, adds contextual selection
+  actions and inline Generate/Visualize prompts, and tightens menus, templates and page
+  lists to the supplied reference. The compact composer and generation cards retain drafts
+  per page; selection supports links and block conversion. Completed transcript work folds
+  behind its duration while failures and pending approvals remain visible. Generation stages
+  a page-aware request in the existing CLI chat. Contextual insertion follows the active
+  block; rendered selections support keyboard formatting. The overview adds sorting,
+  a page guide and feedback template. [Verification](reviews/2026-10-13-space-reference-fit.md).
+
 - **Held models get the pick's effort.** When a warm cache keeps a thread on a model one tier
   below Auto's pick, the turn runs at the effort the pick would have had, because an effort
   change keeps the cache. A model kept above its pick runs at the pick's lower effort. Held
