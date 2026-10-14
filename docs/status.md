@@ -563,6 +563,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   own reason under its generic message and the main process logs the full error. In v0.0.12's
   first signed run the generic message alone hid Electron's `Invalid package …/app.asar`.
   [Behavior](update-recovery.md#download-and-restart).
+- **Event journal, opt-in** (Routines Phase 0). With `MODEX_EVENT_JOURNAL=1`, Modex records every
+  thread event in `app/events.sqlite` (`node:sqlite`) with a durable cursor. It writes alongside
+  the state files, which stay authoritative. A real session replays from the journal to its exact
+  saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
 
 ## In flight
 
