@@ -563,6 +563,15 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   own reason under its generic message and the main process logs the full error. In v0.0.12's
   first signed run the generic message alone hid Electron's `Invalid package …/app.asar`.
   [Behavior](update-recovery.md#download-and-restart).
+- **Thread archiving on Mac and iPhone.** A thread can be put away from the Mac (sidebar row
+  menu, title bar ⋯ menu) or the phone (hold a thread, or the transcript's ⋯ menu). Archived
+  threads leave the working list: the Mac keeps them under **Archived (n)** per project, where
+  search still finds them; the phone hides them until **Show archived** is chosen, and forgets
+  that choice with the workspace. The transcript stays, a new message brings the thread back,
+  and a thread that is working or waiting for an approval cannot be archived. The paired API
+  adds `POST /v1/threads/:id/archive` and an `archived` flag on snapshot threads; an older Mac
+  answers the phone with 501. Companion build 6 does not include the phone side; it ships with
+  the next iPhone build.
 
 ## In flight
 

@@ -19,6 +19,8 @@ interface CompanionSource {
   answer(threadId: string, itemId: string, answer: ApprovalAnswer): void;
   /** Sets the thread's standing answer to approvals (Always allow / YOLO). */
   setApprovals?(threadId: string, approvals: ApprovalPolicy): void;
+  /** Puts a thread away or brings it back. The Mac refuses while the thread is working. */
+  setArchived?(threadId: string, archived: boolean): void;
   /** The pull request last seen for a worktree task, if any. */
   pullRequest?(threadId: string): PullRequestSummary | undefined;
 }
@@ -290,7 +292,7 @@ export class CompanionServer {
       this.reply(res, 201, { thread: mobileThread(thread, this.source.status(thread.id), this.source.pullRequest?.(thread.id)) });
       return;
     }
-    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer|policy)$/.exec(url.pathname);
+    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer|policy|archive)$/.exec(url.pathname);
     if (req.method !== "POST" || !match) { this.reply(res, 404, { error: "Not found." }); return; }
     const threadId = match[1]!;
     const action = match[2]!;
@@ -305,6 +307,16 @@ export class CompanionServer {
       if (typeof policy !== "string" || !APPROVAL_POLICIES.includes(policy as ApprovalPolicy)) { this.reply(res, 400, { error: "Choose Ask, Always allow or YOLO." }); return; }
       if (!this.source.setApprovals) { this.reply(res, 501, { error: "Approval settings are unavailable." }); return; }
       this.source.setApprovals(threadId, policy as ApprovalPolicy);
+      this.reply(res, 200, { ok: true });
+      return;
+    }
+    if (action === "archive") {
+      if (typeof input.archived !== "boolean") { this.reply(res, 400, { error: "Choose Archive or Unarchive." }); return; }
+      if (!this.source.setArchived) { this.reply(res, 501, { error: "Archiving is unavailable." }); return; }
+      const status = this.source.status(threadId);
+      // Nothing hidden may be waiting for an answer: a working thread stays in the list until it finishes.
+      if (input.archived && (status === "running" || status === "waiting")) { this.reply(res, 409, { error: "Wait for this thread to finish before archiving it." }); return; }
+      this.source.setArchived(threadId, input.archived);
       this.reply(res, 200, { ok: true });
       return;
     }
@@ -338,6 +350,7 @@ function mobileThread(thread: Thread, status: string, pr?: PullRequestSummary): 
     approvals: thread.approvals ?? "ask",
     ...(thread.worktree ? { worktree: true } : {}),
     ...(thread.retired ? { retiredPr: thread.retired.pr } : {}),
+    ...(thread.archived ? { archived: true } : {}),
     ...(pr && "number" in pr ? { pr: { number: pr.number, state: pr.state } } : {}),
   };
 }
