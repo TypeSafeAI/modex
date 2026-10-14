@@ -23,8 +23,8 @@ Close terminals, editors, and agents using the worktree. An open process preserv
 ## Ownership and enforcement
 
 `new` claims the new branch and checkout under `.worktrees/<name>`. It refuses to reuse
-an existing branch and installs dependencies with `npm ci`. Use `--no-install` when you
-only need a checkout. `check` requires the matching branch, managed path, and active
+an existing branch and installs dependencies with `pnpm install --frozen-lockfile`. Use
+`--no-install` when you only need a checkout. `check` requires the matching branch, managed path, and active
 claim. Before resuming a released or legacy worktree, run:
 
 ```sh
@@ -100,8 +100,8 @@ Per-run JSON reports are in `modex-maintenance/schedule/reports/`; stdout and er
 the reason. Check these reports regularly, including for candidates that remain blocked.
 
 ```sh
-npm run worktrees:audit -- --json
-npm run worktrees:prune -- --apply
+pnpm worktrees:audit --json
+pnpm worktrees:prune --apply
 scripts/worktree.sh schedule uninstall
 ```
 
@@ -128,7 +128,7 @@ lock directory. The job never steals a lock based on its age.
 
 ## Regression coverage
 
-`npm run test:worktrees` uses temporary Git repositories to verify preservation, exact merge
+`pnpm test:worktrees` uses temporary Git repositories to verify preservation, exact merge
 proof, archive restoration, concurrent changes, and schedule installation. It runs as part
-of the normal `npm test` command and the protected CI check. Desktop retirement tests cover
+of the normal `pnpm test` command and the protected CI check. Desktop retirement tests cover
 project-script retention and missing-script refusal.

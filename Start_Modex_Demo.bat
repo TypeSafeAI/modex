@@ -20,17 +20,17 @@ echo This opens the offline demo. It does not commit or push anything.
 echo.
 where node >nul 2>nul
 if errorlevel 1 goto node_missing
-where npm >nul 2>nul
-if errorlevel 1 goto node_missing
+where pnpm >nul 2>nul
+if errorlevel 1 goto pnpm_missing
 node -e "if(Number(process.versions.node.split('.')[0])<22){console.error('Node.js 22 or newer is required.');process.exit(1)}"
 if errorlevel 1 goto failed
 
 echo [1/5] Installing or checking dependencies...
-call npm install
+call pnpm install --frozen-lockfile
 if errorlevel 1 goto failed
 
 echo [2/5] Building the core...
-call npm run build -w @modex/core
+call pnpm --filter @modex/core build
 if errorlevel 1 goto failed
 
 echo [3/5] Building the desktop main process...
@@ -38,17 +38,17 @@ cd apps\desktop
 if errorlevel 1 goto failed
 node scripts\prepare-terminal.mjs
 if errorlevel 1 goto failed
-call npx --no-install tsc -p tsconfig.main.json
+call pnpm exec tsc -p tsconfig.main.json
 if errorlevel 1 goto failed
 copy /y src\main\preload.cjs dist\src\main\preload.cjs >nul
 if errorlevel 1 goto failed
 
 echo [4/5] Building the interface...
-call npm run build:renderer
+call pnpm run build:renderer
 if errorlevel 1 goto failed
 
 echo [5/5] Opening the offline demo...
-call npm run start -- --demo
+call pnpm start --demo
 if errorlevel 1 goto failed
 echo.
 echo Demo closed.
@@ -56,8 +56,13 @@ pause
 exit /b 0
 
 :node_missing
-echo Node.js or npm was not found. Install Node.js 22 or newer,
+echo Node.js was not found. Install Node.js 22 or newer,
 echo then close this window and run this file again.
+goto failed
+
+:pnpm_missing
+echo pnpm was not found. Run "corepack enable pnpm" in an administrator
+echo terminal, then close this window and run this file again.
 :failed
 echo.
 echo The demo could not start or a command failed.
