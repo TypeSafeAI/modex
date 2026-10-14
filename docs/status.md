@@ -548,6 +548,13 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **E2E launch waits for the native show.** The desktop e2e launch helper waits for each
+  window's `show` event, recorded from a listener installed before the window exists, instead
+  of `isVisible()`, which on macOS turns true as soon as the window is ordered front and before
+  the window server has displayed it. The v0.0.7 release-run failure resized the window inside
+  that gap; its cause is now recorded in the
+  [release review](reviews/2026-10-05-v0.0.7-release-review.md#hosted-candidate-checks).
+  The update-banner spec's resize also goes through `resizeWindow`.
 - **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
   carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
   through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
