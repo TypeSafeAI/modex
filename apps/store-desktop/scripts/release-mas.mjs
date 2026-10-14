@@ -139,9 +139,9 @@ validateMasIdentityNames({ app: appIdentity, installer: installerIdentity });
 console.log(`MAS identities: ${appIdentity}; ${installerIdentity}`);
 console.log(`MAS profile: ${profile.Name || 'unnamed'} (${path.basename(path.resolve(profilePath))})`);
 
-run('npm', ['run', 'build', '-w', '@modex/store-desktop'], { cwd: repoRoot });
-run('npm', [
-  'exec', '--workspace=@modex/store-desktop', '--', 'electron-builder', '--mac', 'mas', '--arm64', '--publish', 'never',
+run('pnpm', ['--filter', '@modex/store-desktop', 'build'], { cwd: repoRoot });
+run('pnpm', [
+  '--filter', '@modex/store-desktop', 'exec', 'electron-builder', '--mac', 'mas', '--arm64', '--publish', 'never',
   `-c.mas.provisioningProfile=${path.resolve(profilePath)}`,
 ], { cwd: repoRoot, env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'true' } });
 

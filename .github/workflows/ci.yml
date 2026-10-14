@@ -15,15 +15,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
       - name: Install build tools
         run: |
           brew install xcodegen
-          npm ci
-          npm run build
+          pnpm install --frozen-lockfile
+          pnpm build
       - name: Select an available iPhone simulator
         run: |
           xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
@@ -73,34 +74,35 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       - name: Install
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       - name: Unit tests (core + desktop + site)
-        run: npm test
+        run: pnpm test
 
       - name: Install browser for browser-dev e2e
-        run: npx playwright install chromium
+        run: pnpm exec playwright install chromium
         working-directory: apps/desktop
 
       # Both Electron and browser dev use the offline mock backend; no CLI login is needed.
       - name: E2E (Electron and browser)
-        run: npx playwright test
+        run: pnpm exec playwright test
         working-directory: apps/desktop
         env:
           CI: "1"
           MODEX_TEST_OPEN_KNOWLEDGE: "1"
 
       - name: Landing page release and responsive tests
-        run: npm run test:e2e -w @modex/site
+        run: pnpm --filter @modex/site test:e2e
 
       - name: Upload e2e artifacts
         if: always()

@@ -10,12 +10,12 @@ companion. No WebGL, analytics or third-party fonts.
 From the repository root:
 
 ```sh
-npm install
-npm run site:dev
-npm run site:build
-npm run typecheck -w @modex/site
-npm run test -w @modex/site
-npm run test:e2e -w @modex/site
+pnpm install
+pnpm site:dev
+pnpm site:build
+pnpm --filter @modex/site typecheck
+pnpm --filter @modex/site test
+pnpm --filter @modex/site test:e2e
 ```
 
 Vite dev and preview expose the same `/api/release` handler as production. Browser tests
@@ -56,8 +56,10 @@ Apple controls enrollment availability, and the site does not promise an open te
 
 Vercel project `modex`, team `0xbuns`. **Use the repository root**, so deployment includes both
 `api/release.js` and the static site. Git deployments use the committed `vercel.json` to install
-only the site workspace and root development tools, build with `npm run site:build`, and serve
-`apps/site/dist`. They do not compile the native desktop helper on Linux.
+the workspace with the pinned pnpm (through Corepack), build `@modex/site`, and serve
+`apps/site/dist`. They do not compile the native desktop helper on Linux. Keep the install
+unfiltered: Vercel's function build runs its own full `pnpm install` afterwards, and on top of
+a filtered install it fails with `ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY`.
 
 For a verified manual deployment, from the root:
 

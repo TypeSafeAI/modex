@@ -172,24 +172,24 @@ warning; v0.0.1–v0.0.4 were ad-hoc signed and need a right-click → Open the 
 still need `claude` or `codex` installed and logged in. To check a download yourself, see
 [docs/release-signing.md](docs/release-signing.md).
 
-To run from source, install Node.js 22 or later and the Xcode Command Line Tools on macOS
-(`xcode-select --install`). The build compiles a terminal supervisor; the packaged app
-doesn't need a compiler.
+To run from source, install Node.js 22 or later, pnpm 10 (`corepack enable pnpm`), and the
+Xcode Command Line Tools on macOS (`xcode-select --install`). The build compiles a terminal
+supervisor; the packaged app doesn't need a compiler.
 
 ```sh
-npm install
-npm run build
-npm run desktop          # requires `claude` and/or `codex` on PATH, already logged in
+pnpm install
+pnpm build
+pnpm desktop          # requires `claude` and/or `codex` on PATH, already logged in
 ```
 
 Offline demo (no key needed) — seeds a throwaway project and a scripted agent, then
 captures screenshots:
 
 ```sh
-npm run screenshot -w @modex/desktop -- --screenshot=/tmp/modex-shots --demo-answer=yes
+pnpm --filter @modex/desktop screenshot --screenshot=/tmp/modex-shots --demo-answer=yes
 ```
 
-Browser development: `npm run desktop:dev`, then open <http://127.0.0.1:5178>.
+Browser development: `pnpm desktop:dev`, then open <http://127.0.0.1:5178>.
 Open a project by entering its absolute local folder path. Threads, approvals, Changes,
 settings, and the embedded terminal use the desktop runner with separate browser dev state;
 coding turns still run through the logged-in Claude/Codex CLIs. The dev server binds only to
@@ -202,7 +202,7 @@ use `TYPESAFE_API_KEY` or the existing Jev configuration.
 Renderer edits hot-reload; restart the dev command after changing the main-process code.
 
 For Electron development, also run
-`MODEX_DEV_URL=http://127.0.0.1:5178 npm run desktop` in another shell.
+`MODEX_DEV_URL=http://127.0.0.1:5178 pnpm desktop` in another shell.
 
 ## Release notifications
 
@@ -238,9 +238,9 @@ sandbox-mode matrix, a macOS Seatbelt profile, and JSONL sessions.
 ## Tests
 
 ```sh
-npm test         # core (patch engine, policy, agent loop) + desktop (backends, runner, git, store)
-npx playwright install chromium # once, for the browser dev regression
-npm run test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
+pnpm test         # core (patch engine, policy, agent loop) + desktop (backends, runner, git, store)
+pnpm exec playwright install chromium # once, for the browser dev regression
+pnpm test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
 ```
 
 The desktop suite drives both CLI backends against scripted fake processes (Claude

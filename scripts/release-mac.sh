@@ -129,7 +129,7 @@ esac
 
 say "dependencies"
 for dep in node-pty electron electron-builder @electron/osx-sign; do
-  [ -f "$root/node_modules/$dep/package.json" ] || die "node_modules/$dep is missing; run \`npm ci\` in $root first"
+  [ -f "$root/node_modules/$dep/package.json" ] || die "node_modules/$dep is missing; run \`pnpm install --frozen-lockfile\` in $root first"
 done
 echo "node_modules complete"
 
@@ -177,9 +177,9 @@ if [ "$notarize" = true ]; then say "build, sign, notarize, staple"; else say "b
 export CSC_NAME="${MODEX_SIGN_IDENTITY#Developer ID Application: }"
 # The desktop build compiles against, and the bundle ships, @modex/core's dist/, which a fresh
 # checkout or worktree does not have yet.
-(cd "$root" && npm run build -w @modex/core)
-if [ "$notarize" = true ]; then (cd "$desktop" && npm run dist:release -- -c.mac.notarize=true)
-else (cd "$desktop" && npm run dist:release -- -c.mac.notarize=false); fi
+(cd "$root" && pnpm --filter @modex/core build)
+if [ "$notarize" = true ]; then (cd "$desktop" && pnpm run dist:release -c.mac.notarize=true)
+else (cd "$desktop" && pnpm run dist:release -c.mac.notarize=false); fi
 
 # electron-builder notarizes and staples only the app. The DMG is a separate download that
 # Gatekeeper assesses on its own, so it gets its own signature, notarization and ticket.
