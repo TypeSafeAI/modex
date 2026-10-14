@@ -585,7 +585,9 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   no remaining product or test patch beyond #144, #150, and #154. The
   [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
   comparison results and corrects historical runs left marked in progress.
-  Dirty source trees and probe artifacts remain preserved. The recovered
+  On 2026-10-14 Val approved removing those dirty source trees with the other unmerged
+  worktrees. Each is archived outside the repository with its commit bundle, uncommitted patch,
+  and untracked and ignored files. Each archive folder's README gives the restore steps. The recovered
   [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md)
   is a historical proposal: native identity-only sign-in shipped separately in
   #141. Repository authorization still needs a dedicated GitHub App owner and
@@ -708,7 +710,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   (15 skipped), 271 desktop E2E cases and seven site cases. The gate remains off by default.
 - **Retired worktrees.** None from this list awaits a disposition. All six were retired after
   their work landed, and their uncommitted work or unique commits were saved as patches outside
-  the repository first.
+  the repository first. On 2026-10-14, the guard pruned every merged worktree and branch, keeping
+  its recovery bundles. With Val's approval, 32 unmerged or dirty worktrees and 8 branches were
+  archived and then removed. These included recovered snapshots, closed PRs #145, #174, #177
+  and #182, and the `backup/*` branches. Each archive was verified before removal: bundle
+  verify, a patch reverse-applied on the live tree, and tar member counts. Only open-PR and
+  in-use worktrees remain.
   - `auth-retry` (2026-10-09): the retry and auth recovery work is on `main` via #104.
   - `finish-auth-approvals` (2026-10-09): reconciled in #107, with the auth fix in #104. Its
     remote branch stays because closed PR #68 references it.
