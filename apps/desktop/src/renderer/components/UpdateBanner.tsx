@@ -23,6 +23,7 @@ export function UpdateBanner({ update, installation, busy, error, run }: UpdateC
         : phase === "checking" ? "Checking the latest release…" : phase === "downloading" ? "Downloading the update…"
         : phase === "verifying" ? "Verifying the publisher and update…" : phase === "cancelling" ? "Cancelling download…"
         : "See what’s new and download the latest version.")}</span>
+      {phase === "error" && installation?.detail && <small className="update-banner-detail" data-testid="update-error-detail">{installation.detail}</small>}
       {phase === "downloading" && <progress aria-label="Update download" max={installation?.total || 1} value={installation?.received ?? 0} />}
     </div>
     <div className="update-banner-actions">

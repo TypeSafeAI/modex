@@ -11,7 +11,8 @@ on:
       - scripts/prepare-desktop-system.mjs
       - packages/core/**
       - package.json
-      - package-lock.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - tsconfig.base.json
 
 permissions:
@@ -38,18 +39,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
       - name: Configure Windows native compiler
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - run: npm ci
-      - run: npm run build -w @modex/core
-      - run: npm run build:main -w @modex/desktop
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @modex/core build
+      - run: pnpm --filter @modex/desktop build:main
       - name: Verify native runner
         env:
           MODEX_EXPECTED_PLATFORM: ${{ matrix.platform }}
@@ -82,7 +84,7 @@ jobs:
           CSC_LINK: ""
           WIN_CSC_LINK: ""
           MODEX_NATIVE_UPGRADE_ACCEPTANCE: "1"
-        run: npm run ${{ matrix.package }} -w @modex/desktop
+        run: pnpm --filter @modex/desktop ${{ matrix.package }}
       - name: Record installer checksums and acceptance status
         run: |
           node apps/desktop/scripts/record-native-packages.mjs ${{ matrix.platform }}
@@ -121,7 +123,7 @@ jobs:
           fi
       - name: Install pinned CLI tools for packaged identity probes
         timeout-minutes: 4
-        run: npm run prepare:native-clis -w @modex/desktop
+        run: pnpm --filter @modex/desktop prepare:native-clis
       - name: Exercise installed Debian and extracted AppImage
         if: runner.os == 'Linux'
         timeout-minutes: 7

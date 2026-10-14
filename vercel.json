@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm ci --workspace=@modex/site --include-workspace-root",
-  "buildCommand": "npm run site:build",
+  "installCommand": "COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm install --frozen-lockfile",
+  "buildCommand": "COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --filter @modex/site build",
   "outputDirectory": "apps/site/dist",
   "headers": [
     {
