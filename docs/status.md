@@ -548,7 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
-Nothing yet.
+- **Event journal, opt-in** (Routines Phase 0). With `MODEX_EVENT_JOURNAL=1`, Modex records every
+  thread event in `app/events.sqlite` (`node:sqlite`) with a durable cursor. It writes alongside
+  the state files, which stay authoritative. A real session replays from the journal to its exact
+  saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
 
 ## In flight
 
