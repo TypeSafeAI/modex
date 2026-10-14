@@ -9,4 +9,6 @@ export interface UpdateInstallState {
   received: number;
   total: number;
   message?: string;
+  /** Why the last update preparation failed, one bounded line, so the failure can be diagnosed. */
+  detail?: string;
 }

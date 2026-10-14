@@ -5,8 +5,8 @@ The existing [approval-card image](../screenshots/01-thread-approval.png) is a c
 For fresh captures, use the README's offline screenshot path from an isolated worktree:
 
 ```sh
-npm run build
-npm run screenshot -w @modex/desktop -- --screenshot=/tmp/modex-shots --demo-answer=yes
+pnpm build
+pnpm --filter @modex/desktop screenshot --screenshot=/tmp/modex-shots --demo-answer=yes
 ```
 
 This is an explicit reproduction command, not a claim it was run here. It seeds a throwaway demonstration rather than requiring a CLI login. Never change an ordinary project to full-access mode or launch live coding turns for marketing imagery.
@@ -25,7 +25,7 @@ The scripted mock backend and built-in heuristic ran without a model login, Type
 judge. Capture command:
 
 ```sh
-npm run screenshot -w @modex/desktop -- --screenshot=/tmp/modex-visual-refinement-final --demo-answer=yes
+pnpm --filter @modex/desktop screenshot --screenshot=/tmp/modex-visual-refinement-final --demo-answer=yes
 ```
 
 The approval image shows the request before it was answered; the completed image shows the scripted

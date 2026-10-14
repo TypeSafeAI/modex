@@ -3,14 +3,14 @@
 Run from the repository root in your session worktree:
 
 ```sh
-npm run dev:usage -w @modex/desktop
+pnpm --filter @modex/desktop dev:usage
 ```
 
 Open <http://127.0.0.1:8766>. This server binds to loopback and fails if the port is
 already occupied. Build the standalone page with:
 
 ```sh
-npm run build:usage -w @modex/desktop
+pnpm --filter @modex/desktop build:usage
 ```
 
 The output is `apps/desktop/dist/usage-preview/`. The normal desktop build also
@@ -68,9 +68,9 @@ message updates and Codex fork-replay handling against real sanitized records.
 ## Validation
 
 ```sh
-npm run typecheck -w @modex/desktop
-npm run build:usage -w @modex/desktop
-npm run build:main -w @modex/desktop
+pnpm --filter @modex/desktop typecheck
+pnpm --filter @modex/desktop build:usage
+pnpm --filter @modex/desktop build:main
 node --test apps/desktop/dist/test/usage-ledger.test.js
 ```
 

@@ -251,10 +251,10 @@ holds; evaluate Gemini CLI as the third backend when its headless approvals can 
 
 ## Verifying
 
-- Unit: `npm test -w @modex/desktop` covers the heuristic judge, the policy table, the fit
+- Unit: `pnpm --filter @modex/desktop test` covers the heuristic judge, the policy table, the fit
   arithmetic, the router with a fake Jev transport and with Jev failing, and the runner
   applying a route before a turn.
-- End to end: `npm run test:e2e` toggles Auto on the mock backend and checks the receipt.
+- End to end: `pnpm test:e2e` toggles Auto on the mock backend and checks the receipt.
 - Live: export `TYPESAFE_API_KEY`, start Modex, turn on Auto, send a request; the receipt
   reads "Jev 0.xx". Settings distinguishes configured transport from a successful explicit
   Test judge result; a routing receipt alone is not a claim that all provider capabilities

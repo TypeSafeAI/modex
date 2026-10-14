@@ -10,7 +10,7 @@
 
 Modex runs coding turns through installed Codex and Claude Code CLIs. Read the README for login and executable requirements. For development and documentation, use the offline mock engine; do not launch a real coding agent or approve an action merely to obtain a screenshot.
 
-Use npm and the repository's worktree convention. `scripts/worktree.sh new <name>` creates an isolated checkout; the primary checkout stays on main. Follow AGENTS.md for signing, CI, and cleanup rather than sharing another session's branch.
+Use pnpm and the repository's worktree convention. `scripts/worktree.sh new <name>` creates an isolated checkout; the primary checkout stays on main. Follow AGENTS.md for signing, CI, and cleanup rather than sharing another session's branch.
 
 ## Project map
 
@@ -28,9 +28,9 @@ Read [Auto routing](../auto-routing.md) before changing model selection. The opt
 ## Verification
 
 ```sh
-npm run build
-npm test
-npm run test:e2e
+pnpm build
+pnpm test
+pnpm test:e2e
 ```
 
 Run the existing platform-appropriate suite, preserve the macOS CI gate, and report exactly which commands ran. Offline tests use scripted processes; they do not establish live-provider behavior or code-signing readiness. Do not bypass signing, approvals, sandboxes, or required checks for documentation work.

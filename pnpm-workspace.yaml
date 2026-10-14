@@ -1,0 +1,13 @@
+packages:
+  - packages/*
+  - apps/*
+
+# electron-builder packages the desktop app's production dependencies straight from
+# node_modules and unpacks node-pty from the asar; a flat tree keeps that layout stable.
+nodeLinker: hoisted
+
+# Dependencies whose install scripts run (pnpm blocks all others): node-pty selects or builds
+# its native addon; electron-winstaller picks the 7z binary used for Windows installers.
+onlyBuiltDependencies:
+  - electron-winstaller
+  - node-pty

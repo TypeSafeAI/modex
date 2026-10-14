@@ -57,9 +57,9 @@ a missing credential stops the run rather than falling back to an unsigned build
   one. CI imports the `.p12` into its own temporary keychain on the search list
   (`CSC_KEYCHAIN`) before the script runs, so the script resolves and signs by hash there
   exactly as it does locally.
-- `npm run dist` is unchanged for contributors: it passes `identity=-` and turns hardened
-  runtime off, which is the ad-hoc build that CI's e2e and local demos use. `npm run
-  dist:release` is the signed path and expects the credentials below.
+- `pnpm --filter @modex/desktop dist` is unchanged for contributors: it passes `identity=-`
+  and turns hardened runtime off, which is the ad-hoc build that CI's e2e and local demos
+  use. `dist:release` is the signed path and expects the credentials below.
 
 ## Credentials, and where they live
 
@@ -161,7 +161,7 @@ rehearsal that gates the merge.
 
 1. In a `release-<ver>` worktree, bump the version, update `docs/status.md`, and write the
    review in `docs/reviews/`. Run `scripts/release-mac.sh`, then the packaged e2e:
-   `MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" npm run test:e2e`.
+   `MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" pnpm test:e2e`.
 2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
 3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
    `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, and runs

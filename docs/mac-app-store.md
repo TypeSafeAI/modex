@@ -97,13 +97,13 @@ From a release worktree on Apple Silicon:
 
 ```sh
 export MODEX_MAS_PROVISIONING_PROFILE="$HOME/Downloads/Modex_Mac_AppStore.provisionprofile"
-npm run dist:mas -w @modex/store-desktop
+pnpm --filter @modex/store-desktop dist:mas
 
 export APPLE_API_KEY="$HOME/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8"
 export APPLE_API_KEY_ID="<KEY_ID>"
 export APPLE_API_ISSUER="<ISSUER_ID>"
-npm run dist:mas:validate -w @modex/store-desktop
-npm run dist:mas:upload -w @modex/store-desktop
+pnpm --filter @modex/store-desktop dist:mas:validate
+pnpm --filter @modex/store-desktop dist:mas:upload
 ```
 
 The initial release-path implementation lacked a matching Mac Store profile and installer

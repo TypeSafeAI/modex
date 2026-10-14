@@ -11,10 +11,10 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "tsc -p tsconfig.main.json && node --test test/*.test.mjs",
     "start": "electron .",
-    "dist:preview": "npm run build && electron-builder --mac mas-dev --arm64 --publish never",
-    "dist:mas": "npm run build && node scripts/release-mas.mjs",
-    "dist:mas:validate": "npm run build && node scripts/release-mas.mjs --validate",
-    "dist:mas:upload": "npm run build && node scripts/release-mas.mjs --upload"
+    "dist:preview": "pnpm run build && electron-builder --mac mas-dev --arm64 --publish never",
+    "dist:mas": "pnpm run build && node scripts/release-mas.mjs",
+    "dist:mas:validate": "pnpm run build && node scripts/release-mas.mjs --validate",
+    "dist:mas:upload": "pnpm run build && node scripts/release-mas.mjs --upload"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",

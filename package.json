@@ -2,28 +2,34 @@
   "name": "modex-monorepo",
   "private": true,
   "version": "0.3.0",
-  "description": "Modex \u2014 an open, Codex-App-style desktop app that runs Claude Code and Codex through their CLIs.",
+  "description": "Modex — an open, Codex-App-style desktop app that runs Claude Code and Codex through their CLIs.",
   "license": "MIT",
   "type": "module",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
+  "packageManager": "pnpm@10.34.5",
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "pnpm": "^10.34.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^10.34.0",
+      "onFail": "error"
+    }
   },
   "scripts": {
-    "build": "npm run build -w @modex/core && npm run build -w @modex/desktop && npm run build -w @modex/site && npm run build -w @modex/store-desktop",
-    "test": "npm run test:worktrees && npm run test -w @modex/core && npm run test -w @modex/desktop && npm run test -w @modex/site && npm run test -w @modex/store-desktop",
+    "preinstall": "node scripts/require-pnpm.mjs",
+    "build": "pnpm --filter @modex/core build && pnpm --filter @modex/desktop build && pnpm --filter @modex/site build && pnpm --filter @modex/store-desktop build",
+    "test": "pnpm run test:worktrees && pnpm --filter @modex/core test && pnpm --filter @modex/desktop test && pnpm --filter @modex/site test && pnpm --filter @modex/store-desktop test",
     "test:worktrees": "node --test scripts/test/*.test.mjs",
     "worktrees:audit": "bash scripts/worktree.sh audit",
     "worktrees:prune": "bash scripts/worktree.sh prune",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "desktop": "npm run start -w @modex/desktop",
-    "desktop:dev": "npm run dev -w @modex/desktop",
-    "test:e2e": "npm run test:e2e -w @modex/desktop && npm run test:e2e -w @modex/site",
-    "site:dev": "npm run dev -w @modex/site",
-    "site:build": "npm run build -w @modex/site"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "desktop": "pnpm --filter @modex/desktop start",
+    "desktop:dev": "pnpm --filter @modex/desktop dev",
+    "test:e2e": "pnpm --filter @modex/desktop test:e2e && pnpm --filter @modex/site test:e2e",
+    "site:dev": "pnpm --filter @modex/site dev",
+    "site:build": "pnpm --filter @modex/site build"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

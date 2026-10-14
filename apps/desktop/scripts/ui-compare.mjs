@@ -4,8 +4,8 @@
 // plus an overlay with an opacity slider for pixel-level review. Reference images are kept out
 // of the repository; point this at wherever they live.
 //
-//   npm run ui:capture                 # writes test-results/ui/*.png + manifest.json
-//   npm run ui:compare -- ~/refs/codex # writes test-results/ui/compare.html
+//   pnpm run ui:capture                # writes test-results/ui/*.png + manifest.json
+//   pnpm run ui:compare ~/refs/codex   # writes test-results/ui/compare.html
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,7 +16,7 @@ const manifestPath = path.join(uiDir, "manifest.json");
 const refDir = process.argv[2] ? path.resolve(process.argv[2]) : process.env.MODEX_UI_REFERENCE ? path.resolve(process.env.MODEX_UI_REFERENCE) : null;
 
 if (!fs.existsSync(manifestPath)) {
-  console.error(`No captures at ${uiDir}. Run \`npm run ui:capture\` first.`);
+  console.error(`No captures at ${uiDir}. Run \`pnpm run ui:capture\` first.`);
   process.exit(1);
 }
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
