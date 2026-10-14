@@ -208,11 +208,13 @@ export class WorkspaceBrowser {
       if (visible && bounds) {
         if (![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite)) visible = false;
         else {
+          // Renderer rectangles are CSS pixels; native child views use device-independent pixels.
+          const zoom = this.window.webContents.getZoomFactor();
           const [width = 0, height = 0] = this.window.getContentSize();
-          const x = Math.max(0, Math.min(width, Math.round(bounds.x)));
-          const y = Math.max(0, Math.min(height, Math.round(bounds.y)));
-          const w = Math.max(0, Math.min(width - x, Math.round(bounds.width)));
-          const h = Math.max(0, Math.min(height - y, Math.round(bounds.height)));
+          const x = Math.max(0, Math.min(width, Math.round(bounds.x * zoom)));
+          const y = Math.max(0, Math.min(height, Math.round(bounds.y * zoom)));
+          const w = Math.max(0, Math.min(width - x, Math.round(bounds.width * zoom)));
+          const h = Math.max(0, Math.min(height - y, Math.round(bounds.height * zoom)));
           view.setBounds({ x, y, width: w, height: h });
           visible = w > 0 && h > 0;
         }
