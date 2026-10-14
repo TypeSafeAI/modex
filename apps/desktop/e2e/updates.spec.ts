@@ -1,6 +1,6 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
-import { launch, seedHome, tid } from "./support";
+import { launch, resizeWindow, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -58,8 +58,7 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: update banner ope
   await offer("999.0.2", false);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(restored).toContainText("Modex 999.0.2 is available");
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(900, 600));
-  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(900);
+  await resizeWindow(app, page, 900, 600);
   await restored.getByRole("link", { name: "View update" }).focus();
   await expect(restored.getByRole("link", { name: "View update" })).toBeFocused();
   await page.keyboard.press("Tab");

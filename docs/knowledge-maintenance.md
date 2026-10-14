@@ -55,7 +55,7 @@ entire MCP handshake without waiting for a server that has stopped responding.
 
 ## Verification
 
-Run `npm run build && npm test`, `npm run typecheck`, and `npm run test:e2e`.
+Run `pnpm build && pnpm test`, `pnpm typecheck`, and `pnpm test:e2e`.
 To include real-companion checks, set `MODEX_TEST_OPEN_KNOWLEDGE=1`. The new adapter
 integration and CLI-to-editor test use the runtime at
 `~/.modex/integrations/open-knowledge`, overridable with

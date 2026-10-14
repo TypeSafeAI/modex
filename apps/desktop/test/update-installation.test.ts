@@ -38,13 +38,41 @@ test("installation controller coalesces downloads and authenticates before expos
 test("failed publisher verification never becomes ready and removes both temporary archives", async () => {
   let fail = true;
   const h = harness({ verify: async () => { if (fail) throw new Error("wrong publisher"); } });
-  assert.equal((await h.service.download()).phase, "error");
+  const failed = await h.service.download();
+  assert.equal(failed.phase, "error");
+  assert.match(failed.message!, /could not be downloaded or verified/);
+  assert.equal(failed.detail, "wrong publisher", "the real reason travels with the generic message");
   assert.equal(h.events.includes("ready"), false);
   assert.deepEqual(h.counts(), { downloads: 1, downloadedClosed: 1, stagedClosed: 1, installs: 0 });
   await assert.rejects(h.service.install(), /not ready/i);
   fail = false;
-  assert.equal((await h.service.download()).phase, "ready");
+  const ready = await h.service.download();
+  assert.equal(ready.phase, "ready");
+  assert.equal(ready.detail, undefined, "a later success clears the old reason");
   await h.service.dispose();
+});
+
+test("a failure's detail is one bounded line, and a cancellation has none", async () => {
+  const long = harness({ stage: async () => { throw new Error(`Invalid package /private/update/verify-1/Modex.app/Contents/Resources/app.asar\n    at open ${"x".repeat(600)}`); } });
+  const failed = await long.service.download();
+  assert.equal(failed.phase, "error");
+  assert.ok(failed.detail!.startsWith("Invalid package /private/update/verify-1/Modex.app/Contents/Resources/app.asar at open "));
+  assert.ok(!failed.detail!.includes("\n") && failed.detail!.length <= 300);
+  await long.service.dispose();
+  let finish!: () => void;
+  let entered!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const verifying = new Promise<void>(resolve => { entered = resolve; });
+  const cancelled = harness({ verify: async () => { entered(); await pending; throw new Error("aborted mid-verification"); } });
+  const downloading = cancelled.service.download();
+  await verifying;
+  cancelled.service.cancel();
+  finish();
+  const after = await downloading;
+  assert.equal(after.phase, "available");
+  assert.equal(after.message, "Update preparation cancelled.");
+  assert.equal(after.detail, undefined, "a cancellation is not a failure to diagnose");
+  await cancelled.service.dispose();
 });
 
 test("cancelling during verification cannot publish its late result as ready", async () => {

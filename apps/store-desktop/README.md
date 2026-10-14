@@ -21,15 +21,15 @@ exact App Store Connect notes, build verification and submission state.
 From the repository root:
 
 ```sh
-npm install
-npm run build
-MODEX_HOME="$HOME/Library/Application Support/Modex Host Preview" npm run start -w @modex/desktop -- --desktop-host
+pnpm install
+pnpm build
+MODEX_HOME="$HOME/Library/Application Support/Modex Host Preview" pnpm --filter @modex/desktop start --desktop-host
 ```
 
 In a second terminal:
 
 ```sh
-npm run start -w @modex/store-desktop
+pnpm --filter @modex/store-desktop start
 ```
 
 The host above has an isolated workspace. Add the projects you want to use. In its
@@ -66,7 +66,7 @@ acceptance work.
 ## Local sandboxed MAS preview
 
 ```sh
-npm run dist:preview -w @modex/store-desktop
+pnpm --filter @modex/store-desktop dist:preview
 MODEX_STORE_SIGN_IDENTITY=<Developer-ID-certificate-SHA1> node apps/store-desktop/scripts/sign-preview.mjs
 ```
 
@@ -114,7 +114,7 @@ team, bundle identifier, distribution type and expiry before invoking electron-b
 
 ```sh
 export MODEX_MAS_PROVISIONING_PROFILE="$HOME/Downloads/Modex_Mac_AppStore.provisionprofile"
-npm run dist:mas -w @modex/store-desktop
+pnpm --filter @modex/store-desktop dist:mas
 ```
 
 The verified `.pkg` can be checked with App Store Connect before upload. Supply an App Store
@@ -124,8 +124,8 @@ Connect API key outside the repository for the network steps:
 export APPLE_API_KEY="$HOME/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8"
 export APPLE_API_KEY_ID="<KEY_ID>"
 export APPLE_API_ISSUER="<ISSUER_ID>"
-npm run dist:mas:validate -w @modex/store-desktop
-npm run dist:mas:upload -w @modex/store-desktop
+pnpm --filter @modex/store-desktop dist:mas:validate
+pnpm --filter @modex/store-desktop dist:mas:upload
 ```
 
 `--validate` and `--upload` use `xcrun altool` with an ephemeral key lookup directory; the key
@@ -137,7 +137,7 @@ requirements.
 
 ## Verification
 
-- `npm test` includes host pairing, pinning, persistence, event transport and revocation tests.
+- `pnpm test` includes host pairing, pinning, persistence, event transport and revocation tests.
 - The desktop Playwright suite includes a real host/client flow using the offline scripted
   engine: approval and file edit, terminal command, restart/reconnect with an unsent draft,
   and revocation. This source-mode test does not prove sandboxed execution or live model access.
