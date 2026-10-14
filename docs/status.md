@@ -540,10 +540,6 @@ checks but were removed from the draft before publication.
   counts as proof, so branches that merged `main` in before landing can be pruned.
 - **Haiku alias label.** The model picker now names `claude-haiku-5-5` as the current
   Haiku, matching what Claude Code 2.1.296 runs for `--model haiku`; it previously said 4-5.
-- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
-  carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
-  through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
-  `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
 
 The [local recovery record](reviews/2026-10-13-local-recovery.md) ties the recovered
 permission, Streamer Mode, Space/Knowledge, and readiness work to its delivery PRs. It
@@ -552,7 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
-Nothing yet.
+- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
+  carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
+  through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
+  `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
 
 ## In flight
 
