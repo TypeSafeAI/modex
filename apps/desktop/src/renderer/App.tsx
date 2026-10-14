@@ -852,7 +852,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
           />
         )}
         <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
-          {surface === "space" && spaceChatOpen && <header className="space-chat-header"><IconButton icon="minus" label="Minimize chat" size="md" onClick={() => { setSpaceChatOpen(false); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".space-chat-launcher")?.focus()); }} /><span>{thread?.title ?? "New chat"}</span><IconButton icon="expand" label="Open chat in Home" size="md" onClick={() => setSurface("chat")} /></header>}
+          {surface === "space" && spaceChatOpen && <header className="space-chat-header"><IconButton icon="minus" label="Minimize chat" size="md" onClick={() => { setSpaceChatOpen(false); requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".space-chat-launcher input")?.focus()); }} /><span>{thread?.title ?? "New chat"}</span><IconButton icon="expand" label="Open chat in Home" size="md" onClick={() => setSurface("chat")} /></header>}
           {surface === "chat" && <UpdateBanner {...updater} />}
           {pendingSends.map(record => <section key={record.id} className="notice" data-testid="pending-message" aria-label="Saved message awaiting send">
             <p>Your original message is saved separately from newer typing.</p>

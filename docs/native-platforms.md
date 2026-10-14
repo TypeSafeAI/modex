@@ -198,7 +198,8 @@ matching source, run, version, architecture, file sizes and hashes, plus the sig
 scenario receipts. It copies only the five verified installers and publishes their hashes
 and remaining acceptance limits into a draft release; private upgrade baselines are excluded.
 
-This workflow change has not yet run on an approved signed tag. It does not change the native
+This workflow first ran on an approved signed tag for v0.0.12 ([run 38465731604](https://github.com/TypeSafeAI/modex/actions/runs/38465731604)),
+whose Windows and Linux candidates passed but were not published. It does not change the native
 evidence or outstanding gates above. Windows installers remain unsigned, updates remain
 manual, and `installerAcceptance` stays `pending` until the remaining account/session checks
 have evidence. See [release signing](release-signing.md#candidate-attachment-checks).

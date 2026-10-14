@@ -21,6 +21,7 @@ _Last updated 2026-10-13._
 | v0.0.9 | 2026-10-08 | #137, #139, #144, #141, #142 | Graphite shell, Settings privacy, Pages/Knowledge, Sources, background turns and separate GitHub identity. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.9). |
 | v0.0.10 | 2026-10-09 | #148, #149, #150, #154, #151 | Agent-maintained Knowledge and Pages, compact resizable panels, approval policies, task retirement and shutdown recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.10). |
 | v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). |
+| v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). |
 
 Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
@@ -487,7 +488,42 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   before sending. Comments stay in the local Space store and do not alter page
   revisions. [Layout and interaction verification](reviews/2026-10-11-chats-spaces.md).
 
-## On main, unreleased
+## v0.0.12 release
+
+Published on 2026-10-13 from signed tag `v0.0.12` on `8b6adb6` (#201), macOS installers only, by
+Val's decision. [Release run 38465731604](https://github.com/TypeSafeAI/modex/actions/runs/38465731604)
+passed signing, notarization, stapling and the full packaged E2E suite. It also passed all
+three signed native updater scenarios on separate GitHub-hosted Macs, each using the published
+ZIP: upgrade with automatic relaunch, a failed native download, and an interrupted download.
+The independently downloaded DMG and ZIP passed checksum, signature, Gatekeeper, ticket,
+version and architecture checks. Their app payloads match, and the packaged suite passed again
+against the download. GitHub's latest release reports v0.0.12, and the shipped updater's own
+parser finds its ZIP and digest. The run's Windows and Linux candidates passed their native
+checks but were removed from the draft before publication.
+[Release ledger](reviews/2026-10-13-v0.0.12-release-review.md#publication).
+
+- **Automatic updates and durable drafts** (#181, #200, #201). Packaged Macs offer Download
+  update, verify the ZIP and its notarized Developer ID publisher, and restart with drafts
+  preserved; failed or uncertain restarts open saved drafts read-only. Earlier tagged runs
+  found that Electron could not stage an update's `app.asar` (#200), and that two harness
+  checks did not match real recovery behavior (#201). Users on v0.0.11 or earlier install
+  v0.0.12 manually once. The first published-to-published upgrade will be v0.0.12 to a later
+  release. [Behavior and limits](update-recovery.md).
+- **Approval rules** (#185). Complete commands are inspected before a rule can allow them;
+  compound and incomplete matches stay on Ask.
+- **Verified release candidates** (#186). The protected workflow binds every installer to the
+  signed tag, source and run, and verifies native reports before attaching to a draft. Its first
+  approved tagged execution is the run above.
+- **Space reference layout.** Knowledge guest bounds account for shell
+  zoom, and maintenance controls wrap within the available pane. Pages reserves room for
+  comments, keeps comment entry at the top and chat reachable, adds contextual selection
+  actions and inline Generate/Visualize prompts, and tightens menus, templates and page
+  lists to the supplied reference. The compact composer and generation cards retain drafts
+  per page; selection supports links and block conversion. Completed transcript work folds
+  behind its duration while failures and pending approvals remain visible. Generation stages
+  a page-aware request in the existing CLI chat. Contextual insertion follows the active
+  block; rendered selections support keyboard formatting. The overview adds sorting,
+  a page guide and feedback template. [Verification](reviews/2026-10-13-space-reference-fit.md).
 
 - **Held models get the pick's effort.** When a warm cache keeps a thread on a model one tier
   below Auto's pick, the turn runs at the effort the pick would have had, because an effort
@@ -509,26 +545,16 @@ seven site tests, with real OpenKnowledge enabled and no skips.
   through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
   `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
 
-Automatic updates and durable drafts (#181), verified multiplatform release candidates (#186)
-and the approval-rule follow-up (#185) are on `main` after v0.0.11; their status is under
-In flight.
-
 The [local recovery record](reviews/2026-10-13-local-recovery.md) ties the recovered
 permission, Streamer Mode, Space/Knowledge, and readiness work to its delivery PRs. It
 retains the integrated candidate's CI and native evidence separately from the published
 v0.0.11 artifacts, including the original CI failures and remaining acceptance limits.
 
-## In flight
+## On main, unreleased
 
-- **Desktop v0.0.12 preparation.** The next candidate combines signed macOS update
-  installation with native Windows/Linux installers. Published v0.0.11 remains unchanged
-  and requires manual installation of the first updater-enabled release. Windows signing
-  stays deferred, and Windows/Linux updates remain manual. Signed hosted updater scenarios,
-  exact tagged installer verification, account/session acceptance, and publication remain
-  open. Native Windows tests now avoid emergency cleanup after independent exit proof,
-  retaining fallback cleanup for incomplete cases and waiting for PTY exit after supervisor
-  failure. Hosted checks passed at `83e3340`; fresh combined-source checks follow the #195 merge.
-  [Candidate review](reviews/2026-10-13-v0.0.12-release-review.md).
+Nothing yet.
+
+## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
@@ -536,21 +562,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   an acceptance manifest. The combined recovery source passed local build/typechecks and
   1,405 unit tests (15 skipped). Native reports and all three installer hashes were verified
   on [the release-patch run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498).
-  The combined release workflow has not yet run on an approved signed tag.
-  Windows signing stays deferred; account/session and historical migration gaps remain.
+  The combined workflow first ran on an approved signed tag for v0.0.12 (run 38465731604);
+  its Windows and Linux candidates passed native checks but were not published. Windows
+  signing stays deferred; account/session and historical migration gaps remain.
   [Attachment checks](release-signing.md#candidate-attachment-checks).
-
-- **Automatic updates and durable drafts.** The unreleased desktop code connects verified download,
-  cancellation, restart preparation, and recovery for packaged Macs. Schema-2 draft storage
-  preserves independent text and files, pending originals, and owner-removal recovery.
-  Local build, workspace typechecks, 1,362 unit tests (15 skipped), 270 desktop E2E cases,
-  and seven site E2E cases passed, including a full rerun after hosted fixture corrections.
-  Coverage includes raw draft/attachment restoration,
-  owner removal, controller cancellation, and partial-shutdown reload/Quit. Download,
-  staging, and publisher checks are simulated in the controller UI tests. Three signed
-  hosted native scenarios and release approval remain open; published builds still update
-  manually. [Local acceptance](reviews/2026-10-12-updater-local-acceptance.md) and
-  [behavior and acceptance limits](update-recovery.md).
 
 - **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
   no remaining product or test patch beyond #144, #150, and #154. The
@@ -775,17 +790,16 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Ship automatic installation of updates.** Finish the in-flight acceptance and signed
-   release gates above. Published builds still require manual installation.
-2. **Publish Windows and Linux installers.** Run the prepared protected release pipeline
-   on an approved new signed tag, verify its draft assets, and complete release review. Candidate Actions artifacts are not releases. Provider-account acceptance,
+1. **Publish Windows and Linux installers.** The protected pipeline built and verified them for
+   v0.0.12 (run 38465731604), but Val chose macOS-only publication. Publish them from a
+   later signed tag after release review. Candidate Actions artifacts are not releases. Provider-account acceptance,
    KWallet6/full graphical sessions, and historical schema migration remain unproven;
    see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
-3. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
+2. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
    result written to a Space page. They follow a groundwork phase (a shared decision service
    and an event journal), and routines that change code wait for the approval gate decision.
    See the [routines specification](specs/2026-10-11-modex-routines-spec.md).
-4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
