@@ -136,7 +136,12 @@ test("an occupied port on a new interface does not move or disconnect the existi
     const first = await server.start();
     const pairing = decode(first.pairingUri!);
     const connected = await request(pairing.url, pairing.token, agent);
-    await new Promise<void>((resolve, reject) => { blocker.once("error", reject); blocker.listen(first.port, lan!, resolve); });
+    // Occupy the port on the LAN address. Another socket on the host may already hold it there
+    // (a hosted run hit EADDRINUSE); the port is then occupied either way, which is the point.
+    await new Promise<void>((resolve, reject) => {
+      blocker.once("error", (error: NodeJS.ErrnoException) => error.code === "EADDRINUSE" ? resolve() : reject(error));
+      blocker.listen(first.port, lan!, resolve);
+    });
     addresses = ["127.0.0.1", lan!];
     await server.refreshNetwork();
     const endpoints = server.status().endpoints!;
