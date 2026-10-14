@@ -559,6 +559,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
   through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
   `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
+- **Update failures say why.** When preparing an update fails, the banner adds the failure's
+  own reason under its generic message and the main process logs the full error. In v0.0.12's
+  first signed run the generic message alone hid Electron's `Invalid package …/app.asar`.
+  [Behavior](update-recovery.md#download-and-restart).
 
 ## In flight
 

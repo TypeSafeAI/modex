@@ -22,6 +22,12 @@ interface Options {
   verify?: typeof verifyMacUpdateBundle;
 }
 
+/** A failure's message as one line of at most 300 characters. */
+function failureDetail(error: unknown): string | undefined {
+  const text = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, 300) : undefined;
+}
+
 /** Main-owned download/verification lifecycle. No renderer-supplied path, hash or feed. */
 export class UpdateInstallation {
   private current: UpdateInstallState;
@@ -74,7 +80,7 @@ export class UpdateInstallation {
     let downloaded: Awaited<ReturnType<typeof downloadReleaseArchive>> | undefined;
     let staged: Awaited<ReturnType<typeof stageUpdateArchive>> | undefined;
     try {
-      this.publish({ phase: "checking", message: undefined, received: 0, total: 0 });
+      this.publish({ phase: "checking", message: undefined, detail: undefined, received: 0, total: 0 });
       signal.throwIfAborted();
       const release = await this.options.checker.check();
       signal.throwIfAborted();
@@ -100,10 +106,13 @@ export class UpdateInstallation {
       staged = undefined;
       if (this.abort?.signal === signal) this.abort = undefined;
       return this.publish({ phase: "ready", message: undefined });
-    } catch {
+    } catch (error) {
       if (this.abort?.signal === signal) this.abort = undefined;
+      // Keep the real reason: the generic message alone hid an Electron archive error in v0.0.12's first signed run.
+      const detail = signal.aborted ? undefined : failureDetail(error);
+      if (detail) console.error("[modex] update preparation failed:", error);
       return this.publish({ phase: signal.aborted ? (this.current.release ? "available" : "idle") : "error",
-        received: 0, message: signal.aborted ? "Update preparation cancelled." : "The update could not be downloaded or verified. Try again, or open the release page to update manually." });
+        received: 0, detail, message: signal.aborted ? "Update preparation cancelled." : "The update could not be downloaded or verified. Try again, or open the release page to update manually." });
     } finally {
       await Promise.all([downloaded?.dispose(), staged?.dispose()]);
     }
