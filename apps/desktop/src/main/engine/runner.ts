@@ -3,7 +3,7 @@ import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, LastTurn, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
-import { APPROVAL_POLICIES } from "../../shared/types.js";
+import { APPROVAL_POLICIES, BACKENDS } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
 import type { ApprovalRequest, Backend, TurnResult, TurnSink } from "./backends/types.js";
@@ -597,6 +597,10 @@ export class ThreadRunner {
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
+      } else if (result.status === "completed" && l.items.length === turnStart && !abort.signal.aborted) {
+        // The CLI ended the turn without a word: no reply, no tool, no notice. A card with Retry beats an idle thread
+        // that looks as if nothing was asked (2026-10-09: a resumed session's stale result ended a turn this way).
+        this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
       } else {
         if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
         this.setStatus(threadId, "idle");

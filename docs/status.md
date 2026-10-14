@@ -742,6 +742,16 @@ Nothing yet.
   The CI job also turns off the simulator's hardware keyboard before the first boot, so the
   software keyboard appears and the helper's fallback focus check (`app.keyboards`) can see it;
   local Simulator settings are left alone.
+- **A resumed Claude session could end a turn with no reply (fixed 2026-10-13).** When Modex
+  stops a turn while a background task is still running (Stop, or the 30-minute cap), the next
+  message's `claude --resume` first replays that stopped task as a turn of its own: a
+  `task_notification`, an `init`, and a success `result` with `num_turns` 0 and no text, and only
+  then the `init` of the turn that answers the message. Modex ended the turn on that result. The
+  message and its routing were persisted and nothing else; the thread went idle; the CLI did the
+  real work unheard, for an hour on 2026-10-09 (thread `52868298`). Reproduced outside Modex by
+  stopping a `claude -p` turn mid-background-task and resuming it (claude 2.1.296). The backend now
+  holds a result from a turn that never called the model until the real turn answers, or the idle
+  window passes; and a turn that ends with no items at all becomes a failure card with Retry.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before
