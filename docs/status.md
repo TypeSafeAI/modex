@@ -555,6 +555,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   that gap; its cause is now recorded in the
   [release review](reviews/2026-10-05-v0.0.7-release-review.md#hosted-candidate-checks).
   The update-banner spec's resize also goes through `resizeWindow`.
+- **pnpm only** (#196). The workspace installs with pnpm 10 from `pnpm-lock.yaml`, which
+  carries the same 417 resolved packages as the retired npm lockfile. npm and Yarn refuse
+  through `devEngines` and `packageManager`; a root `preinstall` guard stops other installers.
+  `nodeLinker: hoisted` keeps the flat `node_modules` that electron-builder packages.
 
 ## In flight
 

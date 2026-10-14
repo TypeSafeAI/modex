@@ -55,19 +55,20 @@ jobs:
           git tag -v "${GITHUB_REF_NAME}"
           [ "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "$GITHUB_SHA" ] || { echo "::error::signed tag does not match workflow source"; exit 1; }
 
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       - name: Verify tag, package version and checkout identity
         run: node scripts/verify-release-candidate.mjs identity
 
       - name: Install
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install browser for browser-dev e2e
-        run: npx playwright install chromium
+        run: pnpm exec playwright install chromium
         working-directory: apps/desktop
 
       - name: Stage the API key (mode 600, outside the checkout)
@@ -131,9 +132,9 @@ jobs:
       - name: E2E against the packaged app
         run: |
           # Store integration specs also launch the source client using development Electron.
-          npm run build -w @modex/store-desktop
+          pnpm --filter @modex/store-desktop build
           node -e "console.log(require('electron'))"
-          npm run test:e2e
+          pnpm test:e2e
         env:
           CI: "1"
           MODEX_TEST_OPEN_KNOWLEDGE: "1"
@@ -178,11 +179,12 @@ jobs:
         scenario: [upgrade, native-failure, interrupted]
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
           name: macos-native-update-fixtures
