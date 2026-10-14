@@ -123,8 +123,10 @@ test("Space visualization appends to the active project's attachment draft", asy
     });
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("Diagram");
     await page.getByRole("button", { name: "Visualize page", exact: true }).click();
+    await page.getByRole("textbox", { name: "Describe a visualization", exact: true }).fill("Show the page structure");
+    await page.getByRole("button", { name: "Continue in chat", exact: true }).click();
     await expect(tid(page, "space-chat")).toBeVisible();
-    await expect(tid(page, "composer-input")).toHaveValue(/Visualize for project B\n\nCreate an interactive visualization of this page\./);
+    await expect(tid(page, "composer-input")).toHaveValue(/Visualize for project B\n\nCreate an interactive visualization for this page: Show the page structure/);
     await expect(tid(page, "composer-input")).toHaveValue(/A page to visualize/);
     await expect(chips(page).first()).toContainText("B.md");
     await expect(tid(page, "thread-row")).toHaveCount(0);

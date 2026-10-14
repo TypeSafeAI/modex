@@ -129,6 +129,8 @@ test("automatic allow and never persist compact receipts; ask and project isolat
       // No Jev in this environment: the allow had no destructive check, and its receipt says so.
       if (decision === "allow") await expect(tid(approval, "receipt-meta")).toContainText("Jev not consulted");
       await expect(approval.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+      await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+      await tid(page, "turn-header").getByRole("button").click();
       await tid(approval, "item-toggle").click();
       await expect(tid(approval, "item-body")).toContainText("write the sample");
     }

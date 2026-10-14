@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "identity": {
+    "tag": "v0.0.12",
+    "version": "0.0.12",
+    "sourceSha": "8b6adb6d55d476da32052f3ec3ac4543ab37b3ac",
+    "runId": "38465731604"
+  },
+  "artifacts": [
+    {
+      "platform": "macos",
+      "name": "Modex-0.0.12-arm64.dmg",
+      "bytes": 132457110,
+      "sha256": "5d50103ae6c11cf254b5505fb37f8a49d08a6f418f9bcab7a131e4fe81f8ecc5"
+    },
+    {
+      "platform": "macos",
+      "name": "Modex-0.0.12-arm64.zip",
+      "bytes": 131706451,
+      "sha256": "8069d92e02cc01c2f0d63847e4f7e373d9b5f63d6a60fb9b1c17588e089fca08"
+    },
+    {
+      "platform": "win32",
+      "name": "Modex-0.0.12-windows-x64.exe",
+      "bytes": 117123790,
+      "sha256": "54008c1b9294820185384b5c91e7e116c3072fc5d382bae4c0aad017327a7330"
+    },
+    {
+      "platform": "linux",
+      "name": "Modex-0.0.12-linux-x86_64.AppImage",
+      "bytes": 129914137,
+      "sha256": "89c1c917af8431be0de127691671b8a91483cb36c6ffe1adc9e3ac16ef6d7cd9"
+    },
+    {
+      "platform": "linux",
+      "name": "Modex-0.0.12-linux-amd64.deb",
+      "bytes": 102425292,
+      "sha256": "5d46f2f95296e8bba4185369e319ecff32a667f458158f43221a7bc8274f61a4"
+    }
+  ],
+  "acceptance": {
+    "macos": {
+      "scenarios": [
+        "upgrade",
+        "native-failure",
+        "interrupted"
+      ],
+      "sourceVersion": "0.0.0",
+      "historicalMigrationVerified": false
+    },
+    "win32": {
+      "nativeChecksPassed": true,
+      "installerAcceptance": "pending",
+      "remaining": [
+        "complete CLI/account acceptance"
+      ]
+    },
+    "linux": {
+      "nativeChecksPassed": true,
+      "installerAcceptance": "pending",
+      "remaining": [
+        "KWallet6 and full graphical login session acceptance",
+        "complete CLI/account acceptance"
+      ]
+    }
+  }
+}

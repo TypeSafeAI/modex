@@ -131,6 +131,14 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "changes-file-path")).toHaveText("CONTRIBUTING.md");
   await expect(tid(page, "diff").locator('[data-line="add"]').first()).toContainText("# Contributing to Modex");
 
+  // Completed work is folded beneath the final answer and remains keyboard accessible.
+  await expect(gitStatusTool).not.toBeVisible();
+  const work = tid(page, "turn-header").getByRole("button");
+  await expect(work).toHaveAttribute("aria-expanded", "false");
+  await work.focus();
+  await page.keyboard.press("Enter");
+  await expect(gitStatusTool).toBeVisible();
+  await expect(work).toHaveAttribute("aria-expanded", "true");
   // The tool item expands to show its output.
   await items(page, "tool").filter({ hasText: "edit CONTRIBUTING.md" }).locator('[data-testid="item-toggle"]').click();
   await expect(tid(page, "tool-output")).toContainText("A CONTRIBUTING.md");
@@ -731,6 +739,8 @@ test("accessibility: information text meets AA contrast, keyboard focus is visib
   await card.getByRole("button", { name: "Deny" }).click();
   await expect(items(page, "assistant").last()).toContainText("Done", { timeout: 15_000 });
   await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+
+  await tid(page, "turn-header").getByRole("button").click();
 
   // Contrast of text that carries information, against the first opaque background behind it (WCAG 2 formula).
   const contrast = (l: ReturnType<typeof tid>) => l.first().evaluate((el) => {
