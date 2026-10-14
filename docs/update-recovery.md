@@ -17,6 +17,11 @@ publisher, bundle identity, version, architecture, and notarization checks. A ma
 alone does not authenticate the publisher. Release requests contain no prompts, files,
 account credentials, or draft text.
 
+If download or verification fails, the banner keeps its generic message, offers Download
+update again, and adds the failure's own reason as one short line (for example "Update
+archive checksum mismatch."). The full error is written to the main-process log. A
+cancelled download shows no reason.
+
 Restart waits for accepted commands, coding turns, approvals, discovery, follow-ups,
 model learning, terminals, and retirement to finish. It holds new work while saving composer
 and Pages drafts. Open Settings or Companion dialogs, pending attachment operations,

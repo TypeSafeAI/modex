@@ -100,6 +100,7 @@ test("failed publisher verification offers retry and never exposes an install ac
     await expect(banner).toContainText("Verifying the publisher and update…");
     await finishVerification(app, false);
     await expect(banner).toContainText("could not be downloaded or verified");
+    await expect(tid(banner, "update-error-detail")).toHaveText("Publisher verification failed");
     await expect(banner.getByRole("button", { name: "Restart to update", exact: true })).toHaveCount(0);
     await expect(banner.getByRole("link", { name: "View update" })).toHaveAttribute("href", "https://github.com/TypeSafeAI/modex/releases/tag/v999.0.0");
     await expect.poll(() => counts(app)).toEqual({ downloads: 1, downloadedDisposed: 1, stagedDisposed: 1, nativeCalls: 0 });
@@ -109,6 +110,7 @@ test("failed publisher verification offers retry and never exposes an install ac
     await expect(banner).toContainText("Verifying the publisher and update…");
     await finishVerification(app, true);
     await expect(banner.getByRole("button", { name: "Restart to update", exact: true })).toBeEnabled();
+    await expect(tid(banner, "update-error-detail")).toHaveCount(0);
     expect((await counts(app)).nativeCalls).toBe(0);
   } finally {
     await cleanup(app, home, repo);
