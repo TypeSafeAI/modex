@@ -74,6 +74,20 @@ Any file in a project or folder that is not a page shows in the tree as a file.
 - **Previews:** images (PNG, JPEG, GIF, WebP, SVG, AVIF up to 25 MB) show over
   `modex-notes://file/<id>`, which serves only image files of the notes folder, by id. Text files
   up to 1 MB show as text. Anything else opens in its own app or in Finder.
+- **Images in a page** can be named by a path relative to the page's file (`![](diagram.png)`,
+  `![](../assets/a.png)`), as Open Knowledge writes them. They load over
+  `modex-notes://page/<page id>/<path>` only when the file is an image inside the page's own
+  project, after following links, and outside dot folders. Anything else shows no image.
+- **Moving:** drag a row onto a folder, project or workspace where it may go; Move to… in a row's
+  menu does the same.
+
+## Watching the folder
+
+Space reads the tree and the pages every 1.5 seconds. The app watches the folder (`fs.watch`,
+recursive), and a read reuses the last look until an event arrives, a deletion awaits its second
+look, or 10 seconds pass. Every change Modex makes looks afresh. With 500 notes a read went from
+about 10 ms to 0.1 ms. Without a watcher (tests, or a folder that cannot be watched), every read
+looks again.
 
 ## Projects
 

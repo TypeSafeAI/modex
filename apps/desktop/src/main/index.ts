@@ -57,8 +57,7 @@ import { registerAttachmentCommands } from "./attachment-commands.js";
 import { AttachmentStore } from "./engine/attachments.js";
 import { LIMITS } from "../shared/attachments.js";
 import { ATTACHMENT_SCHEME, relFromUrl } from "../shared/attachments.js";
-/** Image previews of files in the notes folder (`modex-notes://file/<node id>`). */
-const NOTES_SCHEME = "modex-notes";
+import { NOTES_SCHEME, pageImageFromUrl } from "../shared/notes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -987,11 +986,16 @@ app.on("second-instance", (_event, args) => {
 app.whenReady().then(async () => {
   browserTools = new BrowserTools(home, () => win && !win.isDestroyed() && workspaceBrowser ? { window: win, browser: workspaceBrowser } : null);
   if (!nativeDraftFailure && !nativeStartup?.recovery) await browserTools.restore();
-  // Image previews of files in the notes folder, by id; only image files are ever served. An SVG
-  // opened on its own gets no scripts or subresources.
+  // Images from the notes folder: a file's preview by id, or an image a page names beside it. Only
+  // image files are ever served, and an SVG opened on its own gets no scripts or subresources.
   protocol.handle(NOTES_SCHEME, (request) => {
     let image: { data: Buffer; mime: string } | null = null;
-    try { const url = new URL(request.url); if (url.host === "file") image = store.space.readImage(decodeURIComponent(url.pathname.slice(1))); } catch { image = null; }
+    try {
+      const url = new URL(request.url);
+      const nearby = pageImageFromUrl(request.url);
+      if (url.host === "file") image = store.space.readImage(decodeURIComponent(url.pathname.slice(1)));
+      else if (nearby) image = store.space.readPageImage(nearby.pageId, nearby.relative);
+    } catch { image = null; }
     return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } }) : new Response("Not found", { status: 404 });
   });
   // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
@@ -1001,6 +1005,8 @@ app.whenReady().then(async () => {
     return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } }) : new Response("Not found", { status: 404 });
   });
   win = createWindow();
+  // Space polls the notes folder; watching it lets those polls skip the walk while nothing changed.
+  store.space.watch();
   if ((flag("desktop-host") || hostPreview) && !demo && !nativeDraftFailure && !nativeStartup?.recovery) await startDesktopHost();
   desktopHostActivation.ready();
   if (!demo && !process.env.MODEX_E2E && !nativeDraftFailure && !nativeStartup?.recovery) void pathReady.then(() => retirer.start());

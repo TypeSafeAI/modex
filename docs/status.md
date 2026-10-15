@@ -615,8 +615,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Files in your notes.** A project's or folder's menu offers **Import files…**, and files dragged
   in from Finder onto a project or folder are copied there (up to 50 at a time, 100 MB each;
   same names get a number). Clicking a file previews it: images and text files show in Space,
-  and anything else offers Open and Reveal in Finder. Next: dragging rows to move them, showing a
-  page's images by relative path, and picking up outside changes without a scan.
+  and anything else offers Open and Reveal in Finder. Drag a row onto a folder, project or
+  workspace to move it there. A page shows images beside it by relative path
+  (`![](assets/diagram.png)`, as Open Knowledge writes them), from inside its own project only.
+  Modex watches the notes folder, so Space's polls skip the walk while nothing changed.
 
 ## In flight
 

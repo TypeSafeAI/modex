@@ -49,6 +49,22 @@ test("files imported into a project are copied into its folder and preview in Sp
     await page.getByRole("button", { name: "Open archive.bin", exact: true }).click();
     await expect(preview.getByText("No preview for this kind of file")).toBeVisible();
     await page.keyboard.press("Escape");
+
+    // Dragging a row onto a folder moves it there.
+    await page.getByRole("button", { name: "Notes actions" }).click();
+    await page.getByRole("menuitem", { name: "New folder" }).click();
+    await page.getByRole("textbox", { name: "New folder name" }).fill("Assets");
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Open readme.txt", exact: true }).dragTo(page.getByRole("button", { name: "Assets", exact: true }));
+    await expect.poll(() => fs.existsSync(notes("Assets", "readme.txt"))).toBe(true);
+    expect(fs.existsSync(notes("readme.txt"))).toBe(false);
+
+    // A page shows an image beside it by relative path, as Open Knowledge writes them.
+    fs.writeFileSync(notes("Gallery.md"), "![diagram](diagram.png)\n");
+    await page.getByRole("button", { name: "Open Gallery", exact: true }).click();
+    const inline = tid(page, "space").getByRole("img", { name: "diagram" });
+    await expect(inline).toHaveAttribute("src", /^modex-notes:\/\/page\//);
+    await expect.poll(() => inline.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBe(1);
   } finally {
     await session.app.close();
     for (const p of [home, repo, dir]) fs.rmSync(p, { recursive: true, force: true });
