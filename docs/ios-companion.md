@@ -94,7 +94,17 @@ MODEX_IOS_CONFIGURATION=Release MODEX_IOS_DERIVED_DATA=/tmp/modex-ios-release-e2
 MODEX_IOS_LAN=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 # Also restart the Mac fixture on another port and then revoke the saved pairing:
 MODEX_IOS_LAN=1 MODEX_IOS_RECONNECT=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
+# On a Mac busy with other work, give every UI-test wait the room CI gives it (×4):
+MODEX_UI_TIMEOUT_SCALE=4 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 ```
+
+Every wait in the UI tests is a multiple of a base tuned on an idle developer Mac
+(`UITestBudget` in `UITests/XCUIElement+Ready.swift`); the CI job runs with
+`MODEX_UI_TIMEOUT_SCALE=4` because its shared runners take 5–30× longer per XCTest round trip.
+When the `iPhone companion` job fails, download its `iphone-test-results` artifact and run
+`Scripts/xctest-activity-times.py` on the runner's Session log (the script's header has the
+export commands) before changing any budget: it totals XCTest's own steps — idle waits, launches,
+SpringBoard interruption checks, snapshots — for comparison with a green run of the same job.
 
 The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
 fixture with the real thread runner and paired HTTPS API, then drives the simulator through
