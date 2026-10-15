@@ -8,7 +8,7 @@ const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const options = { cwd: "/repo", mode: "agent" as const, plan: false, model: "sonnet" };
 
 /** Starts a turn on a fake `claude` and waits for the prompt to reach its stdin. */
-async function start(timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {}, answers: ("yes" | "no" | "always")[] = ["yes"]) {
+async function start(timing: { backgroundIdleMs?: number; backgroundCapMs?: number; interruptGraceMs?: number } = {}, answers: ("yes" | "no" | "always")[] = ["yes"]) {
   const proc = new FakeProcess();
   const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, timing, scriptedClaudeQuery);
   const { sink, events } = collectSink(answers);
@@ -237,9 +237,26 @@ test("ClaudeBackend: an error result ends the turn at once even with background 
   t.proc.close(1);
 });
 
+for (const timer of ["idle", "cap"] as const) {
+  test(`ClaudeBackend: Stop cancels a held reply's ${timer} timer and waits for process close`, { timeout: 5000 }, async () => {
+    const t = await start({ backgroundIdleMs: 50, backgroundCapMs: 50, interruptGraceMs: 1000 });
+    if (timer === "cap") t.proc.emitLine(bashInBackground("tu-bg"));
+    t.proc.emitLine({ ...ok, num_turns: timer === "idle" ? 0 : 1 });
+    await tick(10);
+    t.abort.abort();
+    try {
+      await tick(100);
+      assert.equal(t.settled(), undefined, "Stop must not settle from an earlier reply's timer");
+      assert.equal(t.proc.stdin.writableEnded, false, "Stop keeps the prompt open until Claude replies or exits");
+    } finally { t.proc.close(null); }
+    assert.deepEqual(await t.run, { status: "interrupted" });
+  });
+}
+
 test("ClaudeBackend: Stop during the background wait kills Claude and reports interrupted", async () => {
-  // Default (long) timers: if Stop left one armed, this test file would not exit.
-  const t = await start();
+  // Default (long) background timers: if Stop left one armed, this test file would not exit. The fake ignores
+  // the interrupt, so a short grace gets to the kill.
+  const t = await start({ interruptGraceMs: 10 });
   t.proc.emitLine(bashInBackground("tu-bg"));
   t.proc.emitLine({ type: "system", subtype: "task_started", task_id: "bash-1", tool_use_id: "tu-bg", task_type: "local_bash", is_backgrounded: true });
   t.proc.emitLine(ok);

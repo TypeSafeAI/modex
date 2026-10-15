@@ -1,3 +1,4 @@
+import { AbortError } from "@anthropic-ai/claude-agent-sdk";
 import type { CanUseTool, Options, Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { LineBuffer } from "../src/main/engine/backends/types.js";
@@ -29,9 +30,10 @@ export class FakeProcess extends EventEmitter {
     if (this.exitCode !== null || this.killed && code !== null) return;
     this.exitCode = code ?? 0;
     this.stdout.end();
+    // Node's order: `exit` when the process ends, `close` once its stdio has closed too.
     setImmediate(() => {
-      this.emit("close", code);
       this.emit("exit", code, null);
+      this.emit("close", code);
     });
   }
   /** Waits until stdin has received a line matching `pred`. */
@@ -79,19 +81,26 @@ export function collectSink(answers: ("yes" | "no" | "always")[] = ["yes"]) {
   return { sink, events, requests };
 }
 
+type ControlLine = { type?: string; request_id?: string; request?: { subtype?: string; request_id?: string; tool_name?: string; tool_use_id?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] } };
+
 /**
- * Test double for Agent SDK `query()`: spawns the injected fake process, writes the user
- * message to stdin, yields stdout JSON (the same shapes the SDK surfaces), and answers
- * `control_request` lines through `canUseTool` so existing FakeProcess tests still drive
- * approvals, Stop, and background turns.
+ * Test double for Agent SDK `query()` that speaks to the injected fake process the way the SDK speaks
+ * to `claude`: the user message goes to stdin, stdout JSON comes back as messages, and `control_request`
+ * lines are answered through `canUseTool` as they arrive, out of band, without holding up the messages
+ * behind them. `control_cancel_request` aborts that request's signal, `interrupt()` writes an interrupt
+ * request to stdin, the prompt ending ends stdin, and a non-zero exit fails the iterator as the SDK's does.
+ * It skips the SDK's initialize handshake; `claude-sdk.test.ts` drives the real `query()`.
  */
 export function scriptedClaudeQuery(params: { prompt: string | AsyncIterable<SDKUserMessage>; options?: Options }): Query {
   const options = params.options ?? {};
   const pending: SDKMessage[] = [];
+  const requests = new Map<string, AbortController>();
   let wake: (() => void) | undefined;
   let done = false;
   let failure: Error | undefined;
+  let exitCode: number | null = null;
   let child: ChildProcess | undefined;
+  let seq = 0;
   const lines = new LineBuffer();
 
   const notify = () => { const w = wake; wake = undefined; w?.(); };
@@ -106,23 +115,27 @@ export function scriptedClaudeQuery(params: { prompt: string | AsyncIterable<SDK
     try { child?.stdin?.write(JSON.stringify(o) + "\n"); } catch { /* closed */ }
   };
 
-  const handleControl = async (msg: { request_id?: string; request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] } }) => {
+  const handleControl = async (msg: ControlLine) => {
     const req = msg.request;
     if (req?.subtype !== "can_use_tool" || !options.canUseTool) {
       write({ type: "control_response", response: { subtype: "error", request_id: msg.request_id, error: `unsupported control request ${req?.subtype ?? "?"}` } });
       return;
     }
+    const cancel = new AbortController();
+    requests.set(msg.request_id ?? "", cancel);
     try {
       const result = await options.canUseTool(req.tool_name ?? "tool", req.input ?? {}, {
-        signal: options.abortController?.signal ?? new AbortController().signal,
+        signal: cancel.signal,
         suggestions: req.permission_suggestions as Parameters<CanUseTool>[2]["suggestions"],
-        toolUseID: "",
+        toolUseID: req.tool_use_id ?? "",
         requestId: msg.request_id ?? "",
       });
       if (result == null) return;
       write({ type: "control_response", response: { subtype: "success", request_id: msg.request_id, response: result } });
     } catch (err) {
       write({ type: "control_response", response: { subtype: "error", request_id: msg.request_id, error: (err as Error).message } });
+    } finally {
+      requests.delete(msg.request_id ?? "");
     }
   };
 
@@ -142,34 +155,31 @@ export function scriptedClaudeQuery(params: { prompt: string | AsyncIterable<SDK
       return;
     }
     child.on("error", (err) => finish(err));
-    child.on("close", () => finish());
+    child.on("exit", (code) => { exitCode = code; });
+    child.on("close", () => finish(exitCode ? new Error(`Claude Code process exited with code ${exitCode}`) : undefined));
+    options.abortController?.signal.addEventListener("abort", () => finish(new AbortError("Claude Code process aborted by user")), { once: true });
     child.stderr?.on("data", (d: Buffer) => options.stderr?.(d.toString()));
     child.stdout?.on("data", (d: Buffer) => {
       lines.push(d, (line) => {
-        let msg: { type?: string; request_id?: string; request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] } };
-        try { msg = JSON.parse(line) as typeof msg; } catch { return; }
+        let msg: ControlLine;
+        try { msg = JSON.parse(line) as ControlLine; } catch { return; }
+        if (msg.type === "control_request") return void handleControl(msg);
+        if (msg.type === "control_cancel_request") return void requests.get(msg.request_id ?? "")?.abort();
         pending.push(msg as SDKMessage);
         notify();
       });
     });
-    let content: SDKUserMessage["message"]["content"] = typeof params.prompt === "string" ? params.prompt : "";
-    if (typeof params.prompt !== "string") {
-      const first = await params.prompt[Symbol.asyncIterator]().next();
-      if (!first.done) content = first.value.message.content;
-    }
-    write({ type: "user", message: { role: "user", content } });
+    if (typeof params.prompt === "string") return write({ type: "user", message: { role: "user", content: params.prompt } });
+    // Like the SDK: each prompt message goes to stdin, and the prompt ending ends stdin.
+    for await (const m of params.prompt) write({ type: "user", message: { role: "user", content: m.message.content } });
+    try { child.stdin?.end(); } catch { /* closed */ }
   };
   void start();
 
   const gen = (async function* () {
     for (;;) {
       if (pending.length) {
-        const msg = pending.shift()!;
-        if ((msg as { type?: string }).type === "control_request") {
-          await handleControl(msg as { request_id?: string; request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] } });
-          continue;
-        }
-        yield msg;
+        yield pending.shift()!;
         continue;
       }
       if (failure) throw failure;
@@ -179,7 +189,7 @@ export function scriptedClaudeQuery(params: { prompt: string | AsyncIterable<SDK
   })();
 
   return Object.assign(gen, {
-    interrupt: async () => { child?.kill("SIGTERM"); },
+    interrupt: async () => { write({ type: "control_request", request_id: `interrupt-${++seq}`, request: { subtype: "interrupt" } }); },
     close: () => { try { child?.stdin?.end(); } catch { /* closed */ } },
     rewindFiles: async () => ({ canRewind: false as const }),
     setPermissionMode: async () => {},

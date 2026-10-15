@@ -954,15 +954,23 @@ export class ThreadRunner {
       toolUpdate: (id, patch) => {
         if (active()) this.patchItem(threadId, scoped(id), { ...patch, ...(patch.args ? { args: redact(patch.args) } : {}) }, { persist: patch.status === "done" || patch.ok !== undefined });
       },
-      approval: (req) => {
+      approval: (req, cancelled) => {
+        const signal = cancelled && abort ? AbortSignal.any([cancelled, abort.signal]) : cancelled ?? abort?.signal;
         // Today's flow: a card the user answers. Rules can only add a receipt to it.
         const askUser = (decidedBy?: ApprovalReceipt) =>
           new Promise<ApprovalAnswer>((resolve) => {
-            if (!active() || l.abort?.signal.aborted) return resolve("no");
+            if (!active() || signal?.aborted) return resolve("no");
             const id = newId();
-            l.pending.set(id, resolve);
+            const withdraw = () => this.answer(threadId, id, "no");
+            l.pending.set(id, (answer) => {
+              signal?.removeEventListener("abort", withdraw);
+              resolve(answer);
+            });
             this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(decidedBy ? { decidedBy } : {}), at: at() });
             this.setStatus(threadId, "waiting");
+            // The backend withdrew the request: close the card as Stop does, so nothing waits on it.
+            signal?.addEventListener("abort", withdraw, { once: true });
+            if (signal?.aborted) withdraw();
           });
         const thread = this.o.store.thread(threadId);
         const project = thread ? this.o.store.project(thread.projectId) : undefined;
@@ -971,14 +979,14 @@ export class ThreadRunner {
         const byPolicy = (decidedBy?: ApprovalReceipt) => {
           const policy = this.o.store.thread(threadId)?.approvals;
           if (policyAnswer(policy, req.action, decidedBy) !== "yes") return askUser(decidedBy);
-          if (!active() || l.abort?.signal.aborted) return "no" as const;
+          if (!active() || signal?.aborted) return "no" as const;
           this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: "yes", decidedBy: policyReceipt(policy!), at: at() });
           return "yes" as const;
         };
         if (!thread || !project || !gateApplies(req.action, settings.approval_rules, settings.approval_gate, project.path)) return Promise.resolve(byPolicy());
-        return this.gateApproval(req, { thread, project, settings, active, signal: abort?.signal }).then((r) => {
+        return this.gateApproval(req, { thread, project, settings, active, signal }).then((r) => {
           if (r.ask) return byPolicy(r.decidedBy);
-          if (!active() || l.abort?.signal.aborted) return "no";
+          if (!active() || signal?.aborted) return "no";
           // Answered by a rule: the card lands already answered, and the thread never waits on it.
           if (r.decidedBy) {
             this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: r.answer, decidedBy: r.decidedBy, at: at() });
@@ -1029,8 +1037,12 @@ export class ThreadRunner {
     c: { thread: Thread; project: { path: string; name: string }; settings: Settings; active: () => boolean; signal?: AbortSignal },
   ): Promise<{ ask: true; decidedBy?: ApprovalReceipt } | { ask: false; answer: "yes" | "no"; decidedBy?: ApprovalReceipt }> {
     if (!c.active() || c.signal?.aborted) return { ask: false, answer: "no" };
+    let withdraw!: () => void;
+    const cancelled = new Promise<null>((resolve) => { withdraw = () => resolve(null); });
+    c.signal?.addEventListener("abort", withdraw, { once: true });
     try {
-      const jev = await this.router.jev().catch(() => ({ transport: null, model: "" }));
+      const jev = await Promise.race([this.router.jev().catch(() => ({ transport: null, model: "" })), cancelled]);
+      if (!jev || c.signal?.aborted) return { ask: false, answer: "no" };
       const d = await decideApproval(req.action, {
         rules: c.settings.approval_rules,
         config: c.settings.approval_gate,
@@ -1045,6 +1057,8 @@ export class ThreadRunner {
       return { ask: true, decidedBy };
     } catch {
       return c.signal?.aborted ? { ask: false, answer: "no" } : { ask: true };
+    } finally {
+      c.signal?.removeEventListener("abort", withdraw);
     }
   }
 

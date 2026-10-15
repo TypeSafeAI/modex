@@ -46,8 +46,8 @@ export class ClaudeBackend implements Backend {
   constructor(
     private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
     private readonly spawnImpl = cliSpawn,
-    /** How long a turn waits on background work; tests shorten these. */
-    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {},
+    /** How long a turn waits on background work, and Stop on a clean interrupt; tests shorten these. */
+    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number; interruptGraceMs?: number } = {},
     private readonly queryImpl: ClaudeQuery = query,
   ) {}
 
@@ -109,7 +109,6 @@ export class ClaudeBackend implements Backend {
       includePartialMessages: true,
       forwardSubagentText: true,
       persistSession: true,
-      permissionPrompts: "host",
       tools: { type: "preset", preset: "claude_code" },
       systemPrompt: { type: "preset", preset: "claude_code", ...(append ? { append } : {}) },
     };
@@ -159,10 +158,21 @@ export class ClaudeBackend implements Backend {
       let announced = false;
       let idleTimer: ReturnType<typeof setTimeout> | undefined;
       let capTimer: ReturnType<typeof setTimeout> | undefined;
-      let exit: { code: number | null; signal?: NodeJS.Signals | number } = { code: null };
+      let interruptTimer: ReturnType<typeof setTimeout> | undefined;
+      // Recorded on `exit`, which fires before the SDK reports the exit, so its error can be replaced with ours.
+      let exit: { code: number | null; signal?: NodeJS.Signals } = { code: null };
+      let markClosed: () => void = () => {};
+      const closed = new Promise<void>((r) => { markClosed = r; });
       let releasePrompt: (() => void) | undefined;
+      // Aborted only when Stop's grace runs out before Claude was launched; Stop itself interrupts first.
+      const sdkAbort = new AbortController();
+      // The SDK answers permission requests as they arrive, ahead of messages this loop has not reached yet,
+      // so a card waits (briefly) for its tool's row. Tool ids this loop has seen, and approvals waiting on one.
+      const seenTools = new Set<string>();
+      const toolWaiters = new Map<string, () => void>();
       const idleMs = this.timing.backgroundIdleMs ?? BACKGROUND_IDLE_MS;
       const capMs = this.timing.backgroundCapMs ?? BACKGROUND_CAP_MS;
+      const interruptMs = this.timing.interruptGraceMs ?? INTERRUPT_GRACE_MS;
       const settle = (r: TurnResult) => {
         releasePrompt?.();
         try { session?.close(); } catch { /* already closed */ }
@@ -175,7 +185,7 @@ export class ClaudeBackend implements Backend {
       const armIdle = () => {
         clearTimeout(idleTimer);
         idleTimer = undefined;
-        if (finished || !held || followUp || approvals > 0 || background.size > 0) return;
+        if (finished || signal.aborted || !held || followUp || approvals > 0 || background.size > 0) return;
         const done = held;
         idleTimer = setTimeout(() => settle(done), idleMs);
       };
@@ -223,6 +233,8 @@ export class ClaudeBackend implements Backend {
         agents.finish(signal.aborted || r.status === "interrupted");
         clearTimeout(idleTimer);
         clearTimeout(capTimer);
+        // Every way here has Claude gone or closing: `settle` closes the session, which escalates to a kill itself.
+        clearTimeout(interruptTimer);
         signal.removeEventListener("abort", onAbort);
         const out: TurnResult = signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, sdk, pid: child?.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
         const fastMode = fastModeOf(fast.state, fast.reason);
@@ -230,15 +242,42 @@ export class ClaudeBackend implements Backend {
       };
       // Turn settlement must not cancel escalation while the child is still alive.
       const terminate = () => {
-        if (!child || child.exitCode !== null || child.signalCode != null) return;
+        clearTimeout(interruptTimer);
+        // Not launched yet: nothing to wait for, so the SDK gives up and the turn ends. Otherwise the turn ends when
+        // Claude has really exited (its stream ends), so a resumed turn never races a CLI still writing the session.
+        if (!child) return sdkAbort.abort();
+        if (child.exitCode !== null || child.signalCode != null) return;
         killTimer ??= setTimeout(() => child?.kill("SIGKILL"), 1500);
         child.kill("SIGTERM");
       };
+      // Stop asks Claude to end the turn, so the session records the interruption and `--resume` picks up cleanly.
+      // Its `result` then settles the turn; a Claude that has not stopped within the grace window is killed.
       const onAbort = () => {
-        void session?.interrupt().catch(() => { /* closed */ });
-        terminate();
+        clearTimeout(idleTimer);
+        clearTimeout(capTimer);
+        void session?.interrupt().catch(() => { /* closed or not started */ });
+        interruptTimer ??= setTimeout(terminate, interruptMs);
       };
       signal.addEventListener("abort", onAbort, { once: true });
+      // A non-zero exit or a kill, reported as the CLI's own last stderr lines like any CLI failure.
+      const exitFailure = (sdkError?: string): TurnResult | undefined => {
+        if (exit.code === 0 || (exit.code === null && !exit.signal)) return undefined;
+        const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
+        const how = exit.code !== null ? `exited with code ${exit.code}` : `was terminated by ${exit.signal}`;
+        return { status: "failed", error: err || `${bin} ${how}`, detail: { exitCode: exit.code ?? undefined, signal: exit.signal, ...(sdkError ? { sdkError } : {}) } };
+      };
+      const toolSeen = (id: string, cancelled: AbortSignal) => new Promise<void>((r) => {
+        if (!id || seenTools.has(id) || cancelled.aborted) return r();
+        const done = () => {
+          clearTimeout(timer);
+          toolWaiters.delete(id);
+          cancelled.removeEventListener("abort", done);
+          r();
+        };
+        const timer = setTimeout(done, TOOL_ROW_WAIT_MS);
+        toolWaiters.set(id, done);
+        cancelled.addEventListener("abort", done, { once: true });
+      });
 
       const canUseTool: CanUseTool = async (toolName, input, toolOpts) => {
         const title = toolTitle(toolName, input);
@@ -252,7 +291,11 @@ export class ClaudeBackend implements Backend {
         // Cancel a held-result idle window so a prompt cannot be cut off while the user is deciding.
         armIdle();
         try {
-          const answer = await sink.approval(request);
+          await toolSeen(toolOpts.toolUseID, toolOpts.signal);
+          // null tells the SDK to leave a withdrawn request unanswered.
+          if (toolOpts.signal.aborted) return null;
+          const answer = await sink.approval(request, toolOpts.signal);
+          if (toolOpts.signal.aborted) return null;
           const allow = answer !== "no";
           if (!allow) return { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) };
           return {
@@ -284,22 +327,24 @@ export class ClaudeBackend implements Backend {
             ...sdk,
             cwd: opts.cwd,
             pathToClaudeCodeExecutable: bin,
-            abortController: abortControllerOf(signal),
+            abortController: sdkAbort,
             env,
             canUseTool,
             spawnClaudeCodeProcess: (spawnOpts) => {
+              // `spawnOpts.env` is `env` above with the SDK's own additions; PATH already leads with the CLI's folder.
               const launched = this.spawnImpl(spawnOpts.command, spawnOpts.args, {
                 cwd: spawnOpts.cwd ?? opts.cwd,
                 stdio: ["pipe", "pipe", "pipe"],
-                env: cliEnvironment(bin, spawnOpts.env),
+                env: spawnOpts.env,
               });
               if (!launched.stdin || !launched.stdout) throw new Error(`could not start ${bin}: stdio pipes were not created`);
               child = launched;
               launched.stderr?.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384); });
-              launched.on("error", (err: NodeJS.ErrnoException) => finish({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: err.code } }));
-              launched.on("close", (code, sig) => {
+              launched.on("error", (err: NodeJS.ErrnoException) => settle({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: err.code } }));
+              launched.on("exit", (code, sig) => { exit = { code, signal: sig ?? undefined }; });
+              launched.on("close", () => {
                 clearTimeout(killTimer);
-                exit = { code, signal: sig ?? undefined };
+                markClosed();
               });
               return launched as typeof launched & { stdin: NonNullable<ChildProcess["stdin"]>; stdout: NonNullable<ChildProcess["stdout"]> };
             },
@@ -312,8 +357,15 @@ export class ClaudeBackend implements Backend {
       void (async () => {
         try {
           for await (const raw of session!) {
-            if (finished || signal.aborted) return;
+            if (finished) return;
             const msg = raw as unknown as ClaudeMessage;
+            // After Stop nothing more reaches the thread. The interrupted turn's `result` ends the prompt, so Claude
+            // exits on end of input; its stream then ends (or the grace window kills it) and the code after this loop
+            // settles the turn once the process is gone.
+            if (signal.aborted) {
+              if (msg.type === "result") releasePrompt?.();
+              continue;
+            }
             // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
             if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
             if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
@@ -331,19 +383,35 @@ export class ClaudeBackend implements Backend {
             if (isApiErrorReply(msg)) continue;
             // Await so `background` and agent rows are current before idle/follow-up checks (and before the next message).
             await this.handle(msg, sink, { cwd: opts.cwd, started, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
+            // Sub-agent tool calls count too: their approval cards wait the same way.
+            if (msg.type === "assistant") {
+              for (const block of msg.message?.content ?? []) {
+                if (block.type !== "tool_use" || !block.id) continue;
+                seenTools.add(block.id);
+                toolWaiters.get(block.id)?.();
+              }
+            }
             if (msg.type === "system" && msg.subtype === "init" && held) followUp = true;
             armIdle();
           }
         } catch (err) {
           if (finished) return;
-          if (signal.aborted || err instanceof AbortError) return finish({ status: "interrupted" });
-          return finish({ status: "failed", error: (err as Error).message || String(err), detail: { spawnError: (err as Error).message } });
+          if (signal.aborted || err instanceof AbortError) {
+            if (child) await closed;
+            return finish({ status: "interrupted" });
+          }
+          // The SDK reports a failed exit in its own words; the CLI's stderr says what went wrong. Its last lines may trail `exit`.
+          await Promise.race([closed, new Promise((r) => setTimeout(r, 500))]);
+          if (finished) return;
+          const message = (err as Error).message || String(err);
+          return finish(exitFailure(message) ?? { status: "failed", error: message, detail: { sdkError: message } });
         }
         if (finished) return;
-        if (signal.aborted) return finish({ status: "interrupted" });
-        const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
-        const code = exit.code;
-        finish(code === 0 || code === null ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: exit.signal } });
+        if (signal.aborted) {
+          if (child) await closed;
+          return finish({ status: "interrupted" });
+        }
+        finish(exitFailure() ?? held ?? { status: "completed" });
       })();
     });
   }
@@ -496,13 +564,6 @@ function allowedToolsOf(opts: TurnOptions): string[] {
   ];
 }
 
-function abortControllerOf(signal: AbortSignal): AbortController {
-  const ac = new AbortController();
-  if (signal.aborted) ac.abort();
-  else signal.addEventListener("abort", () => ac.abort(), { once: true });
-  return ac;
-}
-
 async function captureAccount(session: Query | undefined, init: Record<string, unknown>): Promise<void> {
   if (!session) return;
   try {
@@ -613,6 +674,10 @@ function resultOf(msg: ClaudeMessage): TurnResult {
 export const BACKGROUND_IDLE_MS = 15_000;
 /** The longest a turn stays open after Claude's reply while background work is still reported running (or its follow-up turn has not replied). */
 export const BACKGROUND_CAP_MS = 30 * 60_000;
+/** How long Stop waits for Claude to end an interrupted turn before it is killed. */
+export const INTERRUPT_GRACE_MS = 1_500;
+/** The longest a permission card waits for its tool's row to reach the thread. */
+export const TOOL_ROW_WAIT_MS = 1_000;
 /** Task statuses after which a background task is no longer running. */
 const TERMINAL_TASK_STATUSES = new Set(["completed", "failed", "killed", "stopped", "cancelled", "canceled"]);
 
