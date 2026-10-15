@@ -756,6 +756,7 @@ test("CodexBackend reports the turn's usage from captured notifications and igno
       contextTokens: context.cacheRead + context.cacheWrite + context.uncached,
       outputTokens: final.total.outputTokens! - (first.total.outputTokens! - first.last.outputTokens!),
       calls: captured.length,
+      totals: captured.map((u) => codexCall(u.last)).reduce((t, c) => ({ input: t.input + c.uncached, cached: t.cached + c.cacheRead, cacheWrite: t.cacheWrite + c.cacheWrite }), { input: 0, cached: 0, cacheWrite: 0 }),
     });
   } finally { await backend.dispose(); }
 });

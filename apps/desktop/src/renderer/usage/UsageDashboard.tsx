@@ -1,5 +1,7 @@
 import { SecretOption, SecretInput } from "../streamer";
 import {
+  createContext,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -32,6 +34,8 @@ const routes = [
   { id: "sources", label: "Sources", icon: "database", section: "Manage" },
 ] as const;
 type View = (typeof routes)[number]["id"];
+/** True for the fixture preview; false when Modex shows the usage it recorded on this Mac. */
+const DemoContext = createContext(true);
 type NavSection = (typeof routes)[number]["section"];
 const paths: Record<string, ReactNode> = {
   chevron: <path d="m9 5 7 7-7 7" />,
@@ -162,13 +166,14 @@ function Panel({
   );
 }
 function Empty({ clear }: { clear?: () => void }) {
+  const demo = useContext(DemoContext);
   return (
     <div className="empty">
       <span className="empty-icon">
         <Icon name="search" />
       </span>
       <h3>No activity in this view</h3>
-      <p>Try another tool or date range to explore the sample ledger.</p>
+      <p>{demo ? "Try another tool or date range to explore the sample ledger." : "Try another tool or date range."}</p>
       {clear && (
         <button className="button secondary" onClick={clear}>
           Clear filters
@@ -489,7 +494,7 @@ const pageCopy: Record<View, { title: string; subtitle: string }> = {
     subtitle: "Understand the coverage and limitations behind your numbers.",
   },
 };
-export function UsageDashboard({ events }: { events: UsageEvent[] }) {
+export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; demo?: boolean }) {
   const [view, setView] = useState<View>("overview");
   const [collapsed, setCollapsed] = useState<Record<NavSection, boolean>>({
     Workspace: false,
@@ -592,16 +597,17 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "modex-usage-sample.csv";
+    link.download = demo ? "modex-usage-sample.csv" : "modex-usage.csv";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice(
       "CSV ready: " +
         visible.length +
-        " sample calls. Check your browser downloads.",
+        (demo ? " sample calls. Check your browser downloads." : " turns. Choose where to save it."),
     );
   };
   return (
+    <DemoContext.Provider value={demo}>
     <div className="usage-app">
       <a className="skip-link" href="#usage-main">
         Skip to usage
@@ -674,7 +680,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="demo-stamp">
+          {demo && <div className="demo-stamp">
             <span className="demo-kicker">
               <span />
               Interactive preview
@@ -686,7 +692,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
               {compact(events.length)} sample calls ·{" "}
               {new Set(events.map((event) => event.tool)).size} sources
             </span>
-          </div>
+          </div>}
           <button
             className="nav-link theme-switch"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -711,7 +717,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           </div>
           <div className="topbar-status">
             <span className="status-dot" />
-            Sample workspace<span className="avatar">M</span>
+            {demo ? "Sample workspace" : "This Mac"}<span className="avatar">M</span>
             <button
               className="icon-button mobile-theme"
               aria-label={
@@ -744,12 +750,18 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           </div>
           <div className="sample-banner">
             <Icon name="info" />
-            <p>
+            {demo ? <p>
               <strong>Demo Data.</strong> A fictional workspace with{" "}
               {events.length} calls across{" "}
               {new Set(events.map((event) => event.tool)).size} sources.
               Illustrative estimates; no accounts connected.
-            </p>
+            </p> : <p>
+              <strong>Recorded on this Mac.</strong>{" "}
+              {events.length
+                ? `${events.length} ${events.length === 1 ? "turn" : "turns"} from Claude Code and Codex threads in Modex.`
+                : "No usage yet. Each turn that calls a model adds a row here."}{" "}
+              Costs stay unpriced until Modex has a price table.
+            </p>}
             <button onClick={() => navigate("sources")}>
               View coverage
               <Icon name="arrow" />
@@ -1076,7 +1088,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                     Keep the gaps visible.
                   </h3>
                   <p>
-                    Demo prices show how estimates work. Unpriced calls still
+                    {demo ? "Demo prices show how estimates work. " : "Modex doesn’t price calls yet. "}Unpriced calls still
                     count as activity; they don’t silently become free usage.
                   </p>
                   <button
@@ -1171,7 +1183,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           {view === "models" && (
             <Panel
               title="Models"
-              detail="Token totals include cached input. Demo prices are illustrative, not current rates."
+              detail={demo ? "Token totals include cached input. Demo prices are illustrative, not current rates." : "Token totals include cached input. Calls are unpriced."}
             >
               {visible.length ? (
                 <div className="table-wrap">
@@ -1255,7 +1267,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
           {view === "projects" && (
             <Panel
               title="Working directories"
-              detail="Sample paths are retained for attribution. Unknown paths stay unattributed."
+              detail={demo ? "Sample paths are retained for attribution. Unknown paths stay unattributed." : "Modex projects, by name. Turns without a project stay unattributed."}
             >
               {visible.length ? (
                 <div className="project-grid">
@@ -1341,7 +1353,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                         <span className="account-icon">
                           <Icon name="users" />
                         </span>
-                        <span className="badge neutral">Sample</span>
+                        {demo && <span className="badge neutral">Sample</span>}
                         <h3>
                           {group.name === "unattributed"
                             ? "Unattributed usage"
@@ -1388,7 +1400,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
               </Panel>
               <Panel
                 title="Reading cost estimates"
-                detail="Demo rates illustrate the calculation; they are not current provider prices."
+                detail={demo ? "Demo rates illustrate the calculation; they are not current provider prices." : "Modex records tokens only; no rates are applied yet."}
               >
                 <div className="explanation-grid">
                   <div>
@@ -1428,19 +1440,19 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   <Icon name="check" />
                 </span>
                 <div>
-                  <h2>A complete demo. Clear boundaries.</h2>
+                  <h2>{demo ? "A complete demo. Clear boundaries." : "What Modex records"}</h2>
                   <p>
-                    {all.calls} synthetic calls · {all.sessions} sessions ·{" "}
+                    {all.calls} {demo ? "synthetic calls" : "recorded turns"} · {all.sessions} sessions ·{" "}
                     {new Set(events.map((event) => event.tool)).size} sources ·{" "}
                     {first && dateLabel(first, { year: "numeric" })}–
                     {last && dateLabel(last, { year: "numeric" })}
                   </p>
                 </div>
-                <span className="badge teal">Sample records</span>
+                <span className="badge teal">{demo ? "Sample records" : "On this Mac"}</span>
               </div>
               <Panel
-                title="Demo sources"
-                detail="Examples for exploring the dashboard, not connected integrations. Counts cover the full demo."
+                title={demo ? "Demo sources" : "Sources"}
+                detail={demo ? "Examples for exploring the dashboard, not connected integrations. Counts cover the full demo." : "Claude Code and Codex turns that run in Modex. Other tools are not imported."}
               >
                 <div className="table-wrap">
                   <table>
@@ -1476,7 +1488,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                                   ? group.unpriced === group.calls
                                     ? "Unpriced"
                                     : "Partial estimate"
-                                  : "Demo estimate"}
+                                  : demo ? "Demo estimate" : "Estimate"}
                               </span>
                             </td>
                           </tr>
@@ -1486,23 +1498,20 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   </table>
                 </div>
               </Panel>
-              <Panel title="What this demo shows">
+              <Panel title={demo ? "What this demo shows" : "What Modex records"}>
                 <div className="explanation-grid">
                   <div>
                     <Icon name="shield" />
                     <h3>No personal data</h3>
                     <p>
-                      Prompts, credentials, and personal transcripts are not
-                      part of this preview. No provider accounts are connected.
+                      {demo ? "Prompts, credentials, and personal transcripts are not part of this preview. No provider accounts are connected." : "Each row holds a turn's model, thread, project, account and token counts. Prompts, files and replies are never recorded."}
                     </p>
                   </div>
                   <div>
                     <Icon name="database" />
                     <h3>Gaps stay visible</h3>
                     <p>
-                      Unpriced calls and unattributed projects are intentional.
-                      The workload, model mix, and prices are fictional
-                      examples, not a benchmark or a prediction of your bill.
+                      {demo ? "Unpriced calls and unattributed projects are intentional. The workload, model mix, and prices are fictional examples, not a benchmark or a prediction of your bill." : "Turns from before Analytics, other tools, and prices are not recorded. Unattributed projects stay visible."}
                     </p>
                   </div>
                   <div>
@@ -1516,7 +1525,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   </div>
                 </div>
               </Panel>
-              <Panel
+              {demo && <Panel
                 title="GitHub Copilot"
                 detail="A demo source, ready to explore with the tool filter."
               >
@@ -1533,8 +1542,8 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                     About Copilot usage reporting ↗
                   </a>
                 </p>
-              </Panel>
-              <p className="attribution">
+              </Panel>}
+              {demo && <p className="attribution">
                 Demo scenarios expanded from synthetic fixtures in{" "}
                 <a
                   href="https://github.com/CompleteTech-LLC/ai-usage-ledger-skill"
@@ -1548,13 +1557,13 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
                   TypeSafe UI
                 </a>
                 .
-              </p>
+              </p>}
             </>
           )}
           <footer className="footer">
             <span>
               <Icon name="shield" />
-              Sample data stays in your browser
+              {demo ? "Sample data stays in your browser" : "Usage stays on this Mac"}
             </span>
             <span>
               Estimates in USD<span className="separator">·</span>Dates in UTC
@@ -1603,8 +1612,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             ))}
           </dl>
           <p className="panel-note">
-            Synthetic record. Cost uses an illustrative demo rate, not a current
-            price or charge.
+            {demo ? "Synthetic record. Cost uses an illustrative demo rate, not a current price or charge." : "Recorded by Modex when the turn ended, from the CLI’s own usage report. Not priced."}
           </p>
         </Dialog>
       )}
@@ -1638,8 +1646,7 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
             }}
           >
             <p>
-              Both dates are inclusive. Sample activity runs from January to
-              September 2026. Dates use UTC.
+              Both dates are inclusive.{demo ? " Sample activity runs from January to September 2026." : ""} Dates use UTC.
             </p>
             <label>
               Start date
@@ -1677,5 +1684,6 @@ export function UsageDashboard({ events }: { events: UsageEvent[] }) {
         </Dialog>
       )}
     </div>
+    </DemoContext.Provider>
   );
 }

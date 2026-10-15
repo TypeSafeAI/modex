@@ -27,6 +27,7 @@ import { EmptyState } from "./components/EmptyState";
 import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
+import { AnalyticsView } from "./components/AnalyticsView";
 import { Icon } from "./components/ui/Icon";
 import { IconButton } from "./components/ui/IconButton";
 import { useSelectionHistory } from "./history";
@@ -43,7 +44,7 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 
-export function App({ persistPreferences = true, spaceEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; suspended?: boolean } = {}) {
+export function App({ persistPreferences = true, spaceEnabled = true, analyticsEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; analyticsEnabled?: boolean; suspended?: boolean } = {}) {
   const updater = useUpdateState();
   const updateBlocked = ["preparing", "staged", "uncertain", "recovery"].includes(updater.installation?.phase ?? "");
   const updateBlockedRef = useRef(updateBlocked); updateBlockedRef.current = updateBlocked;
@@ -79,7 +80,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     window.addEventListener("modex:open-page", open);
     return () => window.removeEventListener("modex:open-page", open);
   }, []);
-  const [surface, setSurface] = useState<"chat" | "space">("chat");
+  const [surface, setSurface] = useState<"chat" | "space" | "analytics">("chat");
   const [spaceOpened, setSpaceOpened] = useState(false);
   const [spaceChatOpen, setSpaceChatOpen] = useState(false);
   const [state, setState] = useState<AppState | null>(null);
@@ -167,6 +168,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
   const knowledgeFocused = surface === "space" && knowledgeReady;
   const sidebarOpen = knowledgeFocused ? knowledgeSidebarOpen : layout.sidebar;
   const streamerMode = layout.streamerMode;
+  const showAnalytics = analyticsEnabled && layout.analytics;
+  // Hiding Analytics in Settings while it is open returns to Chat rather than leaving an unreachable surface.
+  useEffect(() => { if (!showAnalytics && surface === "analytics") setSurface("chat"); }, [showAnalytics, surface]);
   useStreamerRedaction(streamerMode);
   const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
@@ -775,7 +779,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (nativeHoldRef.current || updateBlockedRef.current || nativeLoading || nativeRecoveryError || suspended || showSettings || showCompanion || (surface === "space" && !eventTargetInSpaceChat(e))) return;
+      if (nativeHoldRef.current || updateBlockedRef.current || nativeLoading || nativeRecoveryError || suspended || showSettings || showCompanion || surface === "analytics" || (surface === "space" && !eventTargetInSpaceChat(e))) return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -859,12 +863,13 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
         onArchive={archiveThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
+      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
       <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
         {sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
+        {surface === "analytics" && <AnalyticsView active={!showSettings && !showCompanion} />}
         {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
@@ -940,7 +945,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
           visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
-          suspended={suspended || surface === "space" || showSettings || showCompanion}
+          suspended={suspended || surface !== "chat" || showSettings || showCompanion}
           onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
           onHideTerminal={() => closeTerminal(thread.id)} onFocusChat={() => requestAnimationFrame(() => inputRef.current?.focus())}
           terminal={terminals[thread.id] ? (<Suspense fallback={<div className="terminal-panel loading" role="status">Loading terminal…</div>}>
@@ -961,7 +966,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
           </div>
         )}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;

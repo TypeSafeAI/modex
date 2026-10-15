@@ -55,6 +55,11 @@ export function NotesTreeView({ tree, pages, selected, actions, newWorkspace }: 
     onBlur={() => void commit()} />;
   const toggle = (id: string) => setCollapsed(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
+  const startCreate = (kind: "folder" | "project", id: string) => {
+    setCollapsed(current => { const next = new Set(current); next.delete(id); return next; });
+    setEditing({ kind, id, value: "" });
+  };
+
   const row = (node: NotesNode): ReactNode => {
     const name = nameOf(node);
     const kids = children(node.id);
@@ -78,9 +83,9 @@ export function NotesTreeView({ tree, pages, selected, actions, newWorkspace }: 
         <NodeMenu label={`${name} actions`}>
           {(node.kind === "project" || node.kind === "folder") && <>
             <MenuItem onClick={() => void actions.createPage(node.id)}><Icon name="plus" />New page</MenuItem>
-            <MenuItem onClick={() => setEditing({ kind: "folder", id: node.id, value: "" })}><Icon name="folder" />New folder</MenuItem>
+            <MenuItem onClick={() => startCreate("folder", node.id)}><Icon name="folder" />New folder</MenuItem>
           </>}
-          {node.kind === "workspace" && <MenuItem onClick={() => setEditing({ kind: "project", id: node.id, value: "" })}><Icon name="folder" />New project</MenuItem>}
+          {node.kind === "workspace" && <MenuItem onClick={() => startCreate("project", node.id)}><Icon name="folder" />New project</MenuItem>}
           {node.kind === "file" && <MenuItem onClick={() => void actions.openFile(node.id)}><Icon name="expand" />Open</MenuItem>}
           {node.kind !== "note" && <MenuItem onClick={() => setEditing({ kind: "rename", id: node.id, value: name })}><Icon name="compose" />Rename</MenuItem>}
           {node.kind !== "workspace" && targetsFor(node).length > 0 && <>

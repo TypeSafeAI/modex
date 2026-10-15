@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # A PR's own run reports the required check, so other branches would only queue a second,
+  # identical macOS run beside it. main still runs after every merge.
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
