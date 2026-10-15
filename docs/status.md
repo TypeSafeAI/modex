@@ -566,6 +566,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## In flight
 
+- **Thread/project deletion during active turns.** A dedicated runner admission hold
+  lets deletion stop and drain its own turns while unrelated turns continue, without
+  weakening restart checks or the native draft preparation/adoption transaction.
+  Stop requests remain admitted during deletion for CLI force-stop recovery.
+
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and

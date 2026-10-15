@@ -145,6 +145,20 @@ export class ThreadRunner {
     return () => { if (this.restartHold === token) { this.restartHold = undefined; releaseBackground(); } };
   }
 
+  /** Freeze new admissions for draft-owner removal without requiring idle turns.
+   * Deletion stops and drains its own turn; unrelated turns may keep running.
+   * Structural work must settle before the renderer's owner snapshot is frozen.
+   */
+  holdForOwnerRemoval(): () => void {
+    this.assertNotRestarting();
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    if (this.creating.size || this.deleting.size || this.removingProjects.size) {
+      throw new Error("Let current worktree operations finish before removing a thread or project.");
+    }
+    const token = this.restartHold = Symbol();
+    return () => { if (this.restartHold === token) this.restartHold = undefined; };
+  }
+
   private assertNotRestarting(): void {
     if (this.restartHold) throw new Error("Modex is preparing to restart.");
   }

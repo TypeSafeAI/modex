@@ -86,9 +86,11 @@ test("restart refuses worktree creation and deletion already admitted before the
   const creating = h.runner.createThread(h.project.id, { worktree: true });
   try {
     assert.throws(() => h.runner.holdForRestart(), /finish/i);
+    assert.throws(() => h.runner.holdForOwnerRemoval(), /worktree operations/i);
     const thread = await creating;
     const removing = h.runner.deleteThread(thread.id, true);
     assert.throws(() => h.runner.holdForRestart(), /finish/i);
+    assert.throws(() => h.runner.holdForOwnerRemoval(), /worktree operations/i);
     finishDelete();
     await removing;
     h.runner.holdForRestart()();
