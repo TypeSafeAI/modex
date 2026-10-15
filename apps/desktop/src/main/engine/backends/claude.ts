@@ -10,6 +10,7 @@ import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
+import { isModelOutOfCredits } from "../../../shared/failures.js";
 
 /**
  * The stream-json user message content: plain text, or text plus base64 image blocks when images
@@ -246,6 +247,9 @@ export class ClaudeBackend implements Backend {
           if (msg.type === "system" && msg.subtype === "init") sawAssistant = false;
           if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
           if (msg.type === "result") return onResult(msg);
+          // An API refusal arrives as a synthetic assistant reply, then again as the failed result. The
+          // failure card shows it once; as a reply bubble it would also outlive a model fallback.
+          if (isApiErrorReply(msg)) return;
           // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
           const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
           if (msg.type === "control_request") {
@@ -457,7 +461,9 @@ interface ClaudeMessage {
   /** `system/background_tasks_changed`: every background task still running. */
   tasks?: { task_id?: string }[];
   session_id?: string;
-  message?: { id?: string; content?: ContentBlock[]; usage?: ClaudeUsage };
+  message?: { id?: string; model?: string; content?: ContentBlock[]; usage?: ClaudeUsage };
+  /** A synthetic assistant reply's API error class ("rate_limit", "billing_error", …). */
+  error?: unknown;
   /** `result`: the turn's token totals. */
   usage?: ClaudeUsage;
   event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
@@ -499,6 +505,13 @@ export function fastModeOf(state: string | undefined, reason: string | undefined
   if (state === "cooldown") return { on: false, why: "fast mode is cooling down after a rate limit" };
   if (!reason) return { on: false, why: "Claude Code reported fast mode off" };
   return { on: false, why: FAST_MODE_OFF[reason] ? `${FAST_MODE_OFF[reason]} (${reason})` : `Claude Code reported ${reason}` };
+}
+
+/** Claude Code's stand-in reply for a refused API call: model `<synthetic>`, plus an error class or a credit refusal. Exported for tests. */
+export function isApiErrorReply(msg: { type: string; parent_tool_use_id?: string | null; message?: { model?: string; content?: ContentBlock[] }; error?: unknown }): boolean {
+  if (msg.type !== "assistant" || msg.parent_tool_use_id || msg.message?.model !== "<synthetic>") return false;
+  if (typeof msg.error === "string" && msg.error) return true;
+  return (msg.message.content ?? []).some((block) => block.type === "text" && typeof block.text === "string" && isModelOutOfCredits(block.text));
 }
 
 /** A `result` message as a turn outcome. */

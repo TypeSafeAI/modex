@@ -22,13 +22,38 @@ const RULES: { code: FailureCode; test: RegExp }[] = [
     code: "auth",
     test: /could not be refreshed|sign in again|log ?in again|not logged in|not signed in|please run \/login|login (?:is )?required|logged out|unauthori[sz]ed|\b401\b|invalid api key|incorrect api key|authentication[_ ](?:error|failed|required)|invalid[_ ]token|token (?:has |is )?(?:expired|invalid)|oauth token|refresh token|api key is currently being used|no api key|not authenticated/i,
   },
-  { code: "rate_limited", test: /rate[ _-]?limit|too many requests|\b429\b|usage limit|hit your (?:usage )?limit|quota|out of credits|billing|overloaded|\b529\b|at capacity/i },
+  { code: "rate_limited", test: /rate[ _-]?limit|too many requests|\b429\b|usage limit|hit your (?:usage )?limit|quota|out of (?:usage )?credits|billing|overloaded|\b529\b|at capacity/i },
   {
     code: "network",
     test: /\bE(?:CONNRESET|CONNREFUSED|TIMEDOUT|NOTFOUND|AI_AGAIN|PIPE|HOSTUNREACH|NETUNREACH)\b|socket hang up|fetch failed|network|connection (?:reset|refused|closed|error|lost|failed)|stream disconnected|error sending request|timed out|\b50[234]\b|bad gateway|service unavailable|gateway timeout|\btls\b|certificate/i,
   },
   { code: "crashed", test: /app-server exited|exited with code|exited \(\d+\)|force-stopped|disposed|is not running|was killed|SIG(?:KILL|TERM|SEGV|ABRT)/i },
 ];
+
+/**
+ * The CLI refused the model for lack of usage credits before running anything, and asks for another
+ * model. Claude Code 2.1.300 says "You're out of usage credits. Switch to another model, or manage
+ * usage credits at …" (its session log tags the same reply `model_requires_usage_credits`).
+ */
+export function isModelOutOfCredits(message: string): boolean {
+  return /out of (?:usage )?credits|model_requires_usage_credits|requires usage credits/i.test(message);
+}
+
+/**
+ * The model Modex moves a turn to when `model` is out of usage credits, or undefined when it has
+ * none. One rung down the capability ladder: Fable falls back to Opus. Other models have no
+ * fallback, so their refusal still ends the turn with a failure card.
+ */
+export function creditFallbackModel(backend: BackendId, model: string): string | undefined {
+  if (backend === "claude" && /^(?:claude-)?fable/i.test(model.trim())) return "opus";
+  return undefined;
+}
+
+/** "fable" → "Fable", "claude-opus-5-5" → "Opus": the family name people see in the model menu. */
+export function modelFamilyName(model: string): string {
+  const family = /^(?:claude-)?([a-z]+)/i.exec(model.trim())?.[1];
+  return family ? family[0]!.toUpperCase() + family.slice(1).toLowerCase() : model;
+}
 
 export function classifyFailure(message: string): FailureCode {
   for (const rule of RULES) if (rule.test.test(message)) return rule.code;
@@ -68,8 +93,13 @@ export function describeFailure(input: FailureInput): TurnFailure {
       fix = { kind: "settings", label: "Open Settings" };
       break;
     case "rate_limited":
-      summary = `${name} is rate-limited or out of quota.`;
-      hint = "Wait a moment, or pick another model, then retry.";
+      if (isModelOutOfCredits(message)) {
+        summary = `${name} is out of usage credits for this model.`;
+        hint = "Pick another model, or add usage credits to your account, then retry.";
+      } else {
+        summary = `${name} is rate-limited or out of quota.`;
+        hint = "Wait a moment, or pick another model, then retry.";
+      }
       fix = { kind: "models", label: "Try another model" };
       break;
     case "network":
