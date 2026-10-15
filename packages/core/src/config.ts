@@ -97,9 +97,15 @@ export function applyOverrides(cfg: ModexConfig, overrides: string[]): ModexConf
     if (dot >= 0) {
       const head = key.slice(0, dot);
       const tail = key.slice(dot + 1);
-      const nested = (patch[head] as Record<string, unknown> | undefined) ?? {};
-      nested[tail] = value;
-      patch[head] = nested;
+      if (head !== "provider") continue;
+      const provider = (patch.provider as Record<string, unknown> | undefined) ?? {};
+      switch (tail) {
+        case "name": provider.name = value; break;
+        case "base_url": provider.base_url = value; break;
+        case "api_key_env": provider.api_key_env = value; break;
+        default: continue;
+      }
+      patch.provider = provider;
     } else {
       patch[key] = value;
     }

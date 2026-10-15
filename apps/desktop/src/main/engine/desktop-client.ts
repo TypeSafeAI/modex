@@ -34,6 +34,10 @@ export function parseDesktopInvitation(value: string): Invitation {
 export async function pinnedDesktopCertificate(port: number, fingerprint: string, timeoutMs = 5000): Promise<string> {
   if (!Number.isInteger(port) || port < 1024 || port > 65535 || !hex.test(fingerprint)) throw new Error("Invalid host identity.");
   return new Promise((resolve, reject) => {
+    // The host uses an app-owned self-signed certificate, so the invitation/discovery
+    // fingerprint is the trust root. The connection sends no data before the raw DER,
+    // validity window and loopback identity checks below succeed.
+    // codeql[js/disabling-certificate-validation]
     const socket = tls.connect({ host: "127.0.0.1", port, rejectUnauthorized: false, minVersion: "TLSv1.2" });
     const fail = (error: Error) => { socket.destroy(); reject(error); };
     socket.once("error", fail);
