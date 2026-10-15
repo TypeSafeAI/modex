@@ -17,8 +17,17 @@ const lan = Object.values(os.networkInterfaces()).flat().find((entry) => entry?.
 const source = { state: () => ({ version: 1 as const, projects: [], threads: [], settings: DEFAULT_SETTINGS }),
   items: () => [], status: () => "idle", send: async () => ({ ok: true }), answer: () => {} };
 const decode = (uri: string) => JSON.parse(Buffer.from(new URL(uri).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
-const request = (url: string, token: string, agent?: https.Agent) => new Promise<{ code: number; socket: unknown; fingerprint: string }>((resolve, reject) => {
-  const req = https.get(`${url}/v1/snapshot`, { rejectUnauthorized: false, agent, headers: { authorization: `Bearer ${token}` } }, (res) => {
+const pinnedAgent = (home: string, fingerprint: string, keepAlive = false) => new https.Agent({
+  keepAlive,
+  maxSockets: keepAlive ? 1 : undefined,
+  maxCachedSessions: 0,
+  ca: fs.readFileSync(path.join(home, "companion", "cert.pem")),
+  checkServerIdentity: (_host, cert) => crypto.createHash("sha256").update(cert.raw).digest("hex") === fingerprint
+    ? undefined
+    : new Error("The companion answered with a certificate other than the paired one."),
+});
+const request = (url: string, token: string, agent: https.Agent) => new Promise<{ code: number; socket: unknown; fingerprint: string }>((resolve, reject) => {
+  const req = https.get(`${url}/v1/snapshot`, { agent, headers: { authorization: `Bearer ${token}` } }, (res) => {
     const socket = res.socket as TLSSocket;
     const fingerprint = crypto.createHash("sha256").update(socket.getPeerCertificate(true).raw).digest("hex");
     res.resume();
@@ -36,9 +45,10 @@ test("each supported address has a reachable advertised listener; removing one p
     advertisements.set(ad.host, ad);
     return () => { advertisements.delete(ad.host); };
   });
-  const agent = new https.Agent({ keepAlive: true, maxSockets: 1 });
+  let agent: https.Agent | undefined;
   try {
     const initial = decode((await server.start()).pairingUri!);
+    agent = pinnedAgent(home, initial.fingerprint, true);
     assert.equal(advertisements.size, 2, "secondary LAN must be advertised and listening");
     const secondary = advertisements.get(lan!)!;
     const secondaryUrl = `https://${secondary.host}:${secondary.port}`;
@@ -53,7 +63,7 @@ test("each supported address has a reachable advertised listener; removing one p
     const second = await request(secondaryUrl, initial.token, agent);
     assert.equal(second.socket, first.socket);
     assert.equal(advertisements.size, 1);
-    await assert.rejects(request(initial.url, initial.token));
+    await assert.rejects(request(initial.url, initial.token, agent));
     const moved = decode(server.status().pairingUri!);
     assert.equal(moved.url, secondaryUrl);
     assert.equal(moved.token, initial.token);
@@ -64,9 +74,9 @@ test("each supported address has a reachable advertised listener; removing one p
     assert.equal(advertisements.size, 2);
     assert.equal((await request(secondaryUrl, initial.token, agent)).socket, first.socket);
     server.resetAccess();
-    for (const ad of advertisements.values()) assert.equal((await request(`https://${ad.host}:${ad.port}`, initial.token)).code, 401);
+    for (const ad of advertisements.values()) assert.equal((await request(`https://${ad.host}:${ad.port}`, initial.token, agent)).code, 401);
   } finally {
-    agent.destroy();
+    agent?.destroy();
     await server.stop();
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -77,10 +87,11 @@ test("a failed address does not prevent a healthy address from starting or recov
   const server = new CompanionServer(home, source, () => ["192.0.2.1", "127.0.0.1"], () => () => {});
   try {
     const pairing = decode((await server.start()).pairingUri!);
+    const agent = pinnedAgent(home, pairing.fingerprint);
     assert.match(pairing.url, /^https:\/\/127\.0\.0\.1:/);
-    assert.equal((await request(pairing.url, pairing.token)).code, 200);
+    assert.equal((await request(pairing.url, pairing.token, agent)).code, 200);
     await server.refreshNetwork();
-    assert.equal((await request(pairing.url, pairing.token)).code, 200);
+    assert.equal((await request(pairing.url, pairing.token, agent)).code, 200);
   } finally { await server.stop(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
@@ -121,8 +132,9 @@ test("the production listener never accepts the excluded loopback endpoint", { s
   const server = new CompanionServer(home, source, undefined, () => () => {});
   try {
     const pairing = decode((await server.start()).pairingUri!);
-    assert.equal((await request(pairing.url, pairing.token)).code, 200);
-    await assert.rejects(request(`https://127.0.0.1:${new URL(pairing.url).port}`, pairing.token));
+    const agent = pinnedAgent(home, pairing.fingerprint);
+    assert.equal((await request(pairing.url, pairing.token, agent)).code, 200);
+    await assert.rejects(request(`https://127.0.0.1:${new URL(pairing.url).port}`, pairing.token, agent));
   } finally { await server.stop(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
@@ -131,10 +143,11 @@ test("an occupied port on a new interface does not move or disconnect the existi
   let addresses = ["127.0.0.1"];
   const server = new CompanionServer(home, source, () => addresses, () => () => {});
   const blocker = net.createServer();
-  const agent = new https.Agent({ keepAlive: true, maxSockets: 1 });
+  let agent: https.Agent | undefined;
   try {
     const first = await server.start();
     const pairing = decode(first.pairingUri!);
+    agent = pinnedAgent(home, pairing.fingerprint, true);
     const connected = await request(pairing.url, pairing.token, agent);
     // Occupy the port on the LAN address. Another socket on the host may already hold it there
     // (a hosted run hit EADDRINUSE); the port is then occupied either way, which is the point.
@@ -150,9 +163,9 @@ test("an occupied port on a new interface does not move or disconnect the existi
     assert.equal(decode(endpoints[0]!.pairingUri).url, pairing.url);
     assert.equal((await request(pairing.url, pairing.token, agent)).socket, connected.socket);
     const secondary = decode(endpoints[1]!.pairingUri);
-    assert.equal((await request(secondary.url, secondary.token)).code, 200);
+    assert.equal((await request(secondary.url, secondary.token, agent)).code, 200);
   } finally {
-    agent.destroy(); await server.stop();
+    agent?.destroy(); await server.stop();
     if (blocker.listening) await new Promise<void>((resolve) => blocker.close(() => resolve()));
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -167,7 +180,8 @@ for (const shutdown of ["stop", "dispose"] as const) {
       published.add(ad.host); return () => { published.delete(ad.host); };
     });
     try {
-      await server.start();
+      const pairing = decode((await server.start()).pairingUri!);
+      const agent = pinnedAgent(home, pairing.fingerprint);
       let entered!: () => void;
       let release!: () => void;
       let pendingPort = 0;
@@ -187,7 +201,7 @@ for (const shutdown of ["stop", "dispose"] as const) {
       const stopping = server[shutdown]();
       release();
       await Promise.all([refreshing, stopping]);
-      await assert.rejects(request(`https://${lan!}:${pendingPort}`, "0".repeat(64)));
+      await assert.rejects(request(`https://${lan!}:${pendingPort}`, "0".repeat(64), agent));
       assert.equal(published.size, 0);
       assert.equal(server.status().pairingUri, undefined);
       await server.refreshNetwork();

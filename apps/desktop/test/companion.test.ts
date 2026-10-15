@@ -13,6 +13,17 @@ import { DEFAULT_SETTINGS } from "../src/main/engine/store.js";
 import type { CompanionAdvertisement } from "../src/main/engine/companion-discovery.js";
 import type { AppState, ApprovalAnswer, ThreadItem } from "../src/shared/types.js";
 
+function pinnedCompanionOptions(home: string, fingerprint: string) {
+  return {
+    rejectUnauthorized: true as const,
+    ca: fs.readFileSync(path.join(home, "companion", "cert.pem")),
+    checkServerIdentity: (_host: string, cert: { raw: Buffer }) =>
+      crypto.createHash("sha256").update(cert.raw).digest("hex") === fingerprint
+        ? undefined
+        : new Error("The companion answered with a certificate other than the paired one."),
+  };
+}
+
 test("companion preserves pairing across offline startup, network recovery and port changes", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-reconnect-"));
   let addresses = ["127.0.0.1"];
@@ -134,10 +145,10 @@ for (const revoke of ["resetAccess", "stop"] as const) {
       try {
         const pairing = await server.start();
         const data = new URL(pairing.pairingUri!).searchParams.get("data")!;
-        const credentials = JSON.parse(Buffer.from(data, "base64url").toString()) as { url: string; token: string };
+        const credentials = JSON.parse(Buffer.from(data, "base64url").toString()) as { url: string; token: string; fingerprint: string };
         const response = new Promise<number>((resolve, reject) => {
           req = https.request(`${credentials.url}/v1/threads/abcdef12/${action}`, {
-            method: "POST", rejectUnauthorized: false,
+            method: "POST", ...pinnedCompanionOptions(home, credentials.fingerprint),
             headers: { authorization: `Bearer ${credentials.token}`, "content-type": "application/json" },
           }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode!)); });
           req.on("error", (error: NodeJS.ErrnoException) => {
@@ -206,7 +217,7 @@ test("paired HTTPS companion reads live threads, sends a turn, and answers only 
     const data = new URL(pairing.pairingUri!).searchParams.get("data")!;
     const credentials = JSON.parse(Buffer.from(data, "base64url").toString()) as { url: string; token: string; fingerprint: string };
     const request = (route: string, method = "GET", body?: unknown, token = credentials.token) => new Promise<{ status: number; body: any; fingerprint: string }>((resolve, reject) => {
-      const req = https.request(`${credentials.url}${route}`, { method, rejectUnauthorized: false, headers: { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+      const req = https.request(`${credentials.url}${route}`, { method, ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
         const cert = (res.socket as TLSSocket).getPeerCertificate(true);
         const fingerprint = crypto.createHash("sha256").update(cert.raw).digest("hex");
         let text = "";
@@ -287,9 +298,9 @@ test("paired companion creates a local or worktree thread and starts its first t
   try {
     const pairing = await server.start();
     const data = new URL(pairing.pairingUri!).searchParams.get("data")!;
-    const credentials = JSON.parse(Buffer.from(data, "base64url").toString()) as { url: string; token: string };
+    const credentials = JSON.parse(Buffer.from(data, "base64url").toString()) as { url: string; token: string; fingerprint: string };
     const request = (body: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-      const req = https.request(`${credentials.url}/v1/threads`, { method: "POST", rejectUnauthorized: false, headers: { authorization: `Bearer ${credentials.token}`, "content-type": "application/json" } }, (res) => {
+      const req = https.request(`${credentials.url}/v1/threads`, { method: "POST", ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, "content-type": "application/json" } }, (res) => {
         let text = "";
         res.on("data", (chunk) => { text += chunk; });
         res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
@@ -332,9 +343,7 @@ test("companion reports archived threads and archives only a thread that is not 
   // Validation stays on and trusts only the companion's own certificate. It names no address, so, as on the phone, the
   // pairing link's fingerprint stands in for the host name.
   const request = (credentials: { url: string; token: string; fingerprint: string }, route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const ca = fs.readFileSync(path.join(home, "companion", "cert.pem"));
-    const checkServerIdentity = (_host: string, cert: { raw: Buffer }) => crypto.createHash("sha256").update(cert.raw).digest("hex") === credentials.fingerprint ? undefined : new Error("The companion answered with a certificate other than the paired one.");
-    const req = https.request(`${credentials.url}${route}`, { method, agent: false, rejectUnauthorized: true, ca, checkServerIdentity, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+    const req = https.request(`${credentials.url}${route}`, { method, agent: false, ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
       let text = "";
       res.on("data", (chunk) => { text += chunk; });
       res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
@@ -385,9 +394,9 @@ test("companion sets a thread's approval policy, and 'Always allow' answers the 
   }, () => ["127.0.0.1"]);
   try {
     const pairing = await server.start();
-    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string };
+    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
     const request = (route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-      const req = https.request(`${credentials.url}${route}`, { method, rejectUnauthorized: false, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+      const req = https.request(`${credentials.url}${route}`, { method, ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
         let text = "";
         res.on("data", (chunk) => { text += chunk; });
         res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
