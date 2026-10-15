@@ -86,8 +86,17 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Unit tests (core + desktop + site)
-        run: pnpm test
+      - name: Unit tests (core + desktop + site) with coverage
+        run: pnpm run test:coverage
+
+      - name: Upload coverage artifact
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-report-typescript
+          path: coverage/cobertura-coverage.xml
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Install browser for browser-dev e2e
         run: pnpm exec playwright install chromium
@@ -114,3 +123,24 @@ jobs:
             apps/site/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  upload-coverage-typescript:
+    name: Upload TypeScript coverage
+    needs: test
+    if: ${{ !cancelled() && needs.test.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
+      pull-requests: read
+    steps:
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-report-typescript
+
+      - uses: actions/upload-code-coverage@v1
+        with:
+          file: cobertura-coverage.xml
+          language: TypeScript
+          label: code-coverage-agent

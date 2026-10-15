@@ -1,0 +1,14 @@
+{
+  "reporter": ["text", "cobertura"],
+  "report-dir": "coverage",
+  "exclude": [
+    "**/test/**",
+    "**/tests/**",
+    "**/*.test.*",
+    "**/node_modules/**",
+    "**/scripts/**",
+    "**/e2e/**",
+    "**/*.config.*",
+    "**/*.d.ts"
+  ]
+}
