@@ -548,6 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Paired iPhone menu recovery.** The paired-flow test retries an ignored Workspace
+  options tap once within its existing deadline, only while the menu is absent.
+  It still requires the real Forget paired Mac item before proceeding.
+
 - **Notes hierarchy recovery.** Folder-title changes reserve names against their
   children; restored folders stay separate from newer same-named folders while
   retaining attachments. Interrupted restores use the same placement rules, and
@@ -564,6 +568,17 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   [Feature guide](images-plugins.md) and [implementation/verification ledger](superpowers/plans/2026-10-15-images-plugins.md).
   Live provider/plugin acceptance, human keyboard/VoiceOver acceptance and signed/notarized
   release verification remain open; offline fixtures do not establish those outcomes.
+
+- **Carriage-return title pastes.** Space accepts CR-only and mixed line endings
+  when splitting pasted titles from their body, avoiding a lost paste and parser
+  error while preserving the body text’s existing line endings.
+
+- **Pasting a chat report into Space.** Pasting several lines into a page title keeps the
+  first line, without its heading marker, as the title and moves the rest to the top of the
+  page. The title field used to flatten the lines into one and cut it at 200 characters.
+  Pasting into a block or importing a Markdown file drops ChatGPT's citation markers. Their
+  source IDs resolve only inside that ChatGPT conversation, and pages showed them as boxes.
+  Entity markers keep their visible name.
 
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
@@ -658,7 +673,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   (`![](assets/diagram.png)`, as Open Knowledge writes them), from inside its own project only.
   Modex watches the notes folder, so Space's polls skip the walk while nothing changed.
 
-## In flight
+- **Reliable native-window acceptance.** E2E launches retain distinct show and first-paint
+  observations in main before a test connects. Inactive windows also require visible,
+  matching native/renderer geometry unchanged for 200 ms; visibility alone never passes.
+  Failed setup closes the owned app without masking the original error.
 
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without
@@ -667,6 +685,8 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   that races a background request; a bounded timeout preserves all owners.
   Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
   routing and title updates from admitted turns also finish while new edits stay fenced.
+
+## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts

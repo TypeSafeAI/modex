@@ -29,7 +29,105 @@ private func completeForgetConfirmation(timeout: TimeInterval = 30,
     return false
 }
 
+// CI 38701902304 recorded the connected dashboard after an ignored options tap.
+// Retry the opener once, never toggling an already visible menu or extending the deadline.
+private func openWorkspaceMenu(timeout: TimeInterval,
+                               observation: TimeInterval,
+                               now: () -> Date = { Date() },
+                               isOpen: () -> Bool,
+                               prepare: (TimeInterval) -> Bool,
+                               tap: () -> Void,
+                               observe: (TimeInterval) -> Bool) -> Bool {
+    let deadline = now().addingTimeInterval(timeout)
+    for attempt in 0..<2 {
+        if isOpen() { return true }
+        let remaining = deadline.timeIntervalSince(now())
+        guard remaining > 0 else { return false }
+        let ready = prepare(remaining)
+        if isOpen() { return true }
+        guard ready, now() < deadline else { return false }
+        tap()
+        let remainingAfterTap = deadline.timeIntervalSince(now())
+        let wait = attempt == 0 ? min(observation, remainingAfterTap) : remainingAfterTap
+        if wait > 0, observe(wait) { return true }
+    }
+    return isOpen()
+}
+
 final class CompanionFlowTests: XCTestCase {
+    func testWorkspaceMenuRecoversIgnoredTap() {
+        var taps = 0
+        XCTAssertTrue(openWorkspaceMenu(timeout: 30, observation: 5,
+            isOpen: { taps == 2 }, prepare: { _ in true }, tap: { taps += 1 }, observe: { _ in taps == 2 }))
+        XCTAssertEqual(taps, 2)
+    }
+
+    func testWorkspaceMenuStopsAfterOpening() {
+        var taps = 0
+        XCTAssertTrue(openWorkspaceMenu(timeout: 30, observation: 5,
+            isOpen: { taps == 1 }, prepare: { _ in true }, tap: { taps += 1 }, observe: { _ in taps == 1 }))
+        XCTAssertEqual(taps, 1)
+    }
+
+    func testWorkspaceMenuRequiresMenuAfterTwoTaps() {
+        var taps = 0
+        XCTAssertFalse(openWorkspaceMenu(timeout: 30, observation: 5,
+            isOpen: { false }, prepare: { _ in true }, tap: { taps += 1 }, observe: { _ in false }))
+        XCTAssertEqual(taps, 2)
+    }
+
+    func testWorkspaceMenuDoesNotToggleDelayedMenu() {
+        var open = false
+        var taps = 0
+        XCTAssertTrue(openWorkspaceMenu(timeout: 30, observation: 5,
+            isOpen: { open }, prepare: { _ in open = true; return true },
+            tap: { taps += 1 }, observe: { _ in false }))
+        XCTAssertEqual(taps, 0)
+    }
+
+    func testWorkspaceMenuDoesNotToggleDuringRetryPreparation() {
+        var open = false
+        var taps = 0
+        XCTAssertTrue(openWorkspaceMenu(timeout: 30, observation: 5,
+            isOpen: { open }, prepare: { _ in if taps == 1 { open = true }; return true },
+            tap: { taps += 1 }, observe: { _ in false }))
+        XCTAssertEqual(taps, 1)
+    }
+
+    func testWorkspaceMenuDoesNotTapAfterDeadline() {
+        var time = Date(timeIntervalSince1970: 0)
+        var taps = 0
+        XCTAssertFalse(openWorkspaceMenu(timeout: 30, observation: 5, now: { time },
+            isOpen: { false }, prepare: { _ in time = time.addingTimeInterval(31); return true },
+            tap: { taps += 1 }, observe: { _ in false }))
+        XCTAssertEqual(taps, 0)
+    }
+
+    func testWorkspaceMenuDoesNotRetryAfterSlowObservation() {
+        var time = Date(timeIntervalSince1970: 0)
+        var taps = 0
+        XCTAssertFalse(openWorkspaceMenu(timeout: 30, observation: 5, now: { time },
+            isOpen: { false }, prepare: { _ in true }, tap: { taps += 1 },
+            observe: { _ in time = time.addingTimeInterval(31); return false }))
+        XCTAssertEqual(taps, 1)
+    }
+
+    func testWorkspaceMenuUsesRemainingBudgetAfterRetry() {
+        var time = Date(timeIntervalSince1970: 0)
+        var taps = 0
+        var budgets: [TimeInterval] = []
+        XCTAssertTrue(openWorkspaceMenu(timeout: 30, observation: 5, now: { time },
+            isOpen: { false }, prepare: { _ in true }, tap: { taps += 1 },
+            observe: { budget in
+                budgets.append(budget)
+                if taps == 1 { time = time.addingTimeInterval(budget); return false }
+                // The second tap's menu arrives seven seconds later, still inside the deadline.
+                return budget >= 7
+            }))
+        XCTAssertEqual(taps, 2)
+        XCTAssertEqual(budgets, [5, 25])
+    }
+
     func testForgetConfirmationRecoversAnIgnoredFirstTap() {
         let probe = ForgetConfirmationProbe()
         probe.dismissAfterTap = 2
@@ -259,7 +357,7 @@ final class CompanionFlowTests: XCTestCase {
             XCTAssertTrue(app.staticTexts["Mac connected"].appears(within: UITestBudget.seconds(60)))
             XCTAssertTrue(app.buttons["new-thread"].isEnabled)
         }
-        app.buttons["workspace-options"].tapWhenReady()
+        guard openForgetMenu(app) else { return }
         app.buttons["Forget paired Mac…"].tapWhenReady()
         let forgetConfirmation = app.alerts["Forget this Mac?"]
         forgetConfirmation.buttons["Cancel"].tapWhenReady()
@@ -285,10 +383,19 @@ final class CompanionFlowTests: XCTestCase {
         }
     }
 
-    private func forgetMac(_ app: XCUIApplication) {
+    private func openForgetMenu(_ app: XCUIApplication) -> Bool {
         let options = app.buttons["workspace-options"]
-        XCTAssertTrue(options.waitForExistence(timeout: UITestBudget.seconds(10)))
-        options.tapWhenReady()
+        let item = app.buttons["Forget paired Mac…"]
+        let opened = openWorkspaceMenu(timeout: UITestBudget.seconds(30), observation: UITestBudget.seconds(5),
+            isOpen: { item.exists },
+            prepare: { remaining in waitUntil(timeout: remaining) { item.exists || options.isReadyToTap } },
+            tap: { options.tap() }, observe: { item.waitForExistence(timeout: $0) })
+        XCTAssertTrue(opened, "Workspace options must present Forget paired Mac before continuing.")
+        return opened
+    }
+
+    private func forgetMac(_ app: XCUIApplication) {
+        guard openForgetMenu(app) else { return }
         app.buttons["Forget paired Mac…"].tapWhenReady()
         let confirmation = app.alerts["Forget this Mac?"]
         let forget = confirmation.buttons["Forget Mac"]
