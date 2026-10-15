@@ -330,7 +330,7 @@ test("companion reports archived threads and archives only a thread that is not 
   const server = new CompanionServer(home, { ...source, setArchived: (id, archived) => { calls.push(`${id}:${archived}`); } }, () => ["127.0.0.1"]);
   // No connection pooling: the second server below reuses the first one's port, and a kept-alive socket to the stopped server would be replayed into it.
   const request = (credentials: { url: string; token: string }, route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const req = https.request(`${credentials.url}${route}`, { method, agent: false, rejectUnauthorized: false, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+    const req = https.request(`${credentials.url}${route}`, { method, agent: false, rejectUnauthorized: true, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
       let text = "";
       res.on("data", (chunk) => { text += chunk; });
       res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
