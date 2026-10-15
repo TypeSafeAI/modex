@@ -52,8 +52,8 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
           <div className="titlebar-actions">
             <IconButton icon="terminal" label={showTerminal ? "Hide terminal" : "Show terminal"} shortcut="⌃`" size="md" className={showTerminal ? "on" : undefined} data-testid="terminal-toggle" aria-pressed={showTerminal} onClick={onToggleTerminal} />
             <ThreadMenu thread={thread} platform={platform} onRename={() => setRenameSignal((n) => n + 1)} onOpenPath={onOpenPath} onOpenTerminal={onOpenTerminal} onDelete={onDelete} onArchive={onArchive} />
-            <Tooltip label={showChanges ? "Hide workspace" : "Show workspace"} shortcut="⌘J">
-              <button className={`icon-btn md changes-toggle${showChanges ? " on" : ""}`} data-testid="changes-toggle" aria-label="Workspace" aria-pressed={showChanges} onClick={onToggleChanges}>
+            <Tooltip label={showChanges ? "Hide side panel" : "Show side panel"} shortcut="⌘J">
+              <button className={`icon-btn md changes-toggle${showChanges ? " on" : ""}`} data-testid="changes-toggle" aria-label="Side panel" aria-pressed={showChanges} onClick={onToggleChanges}>
                 <Icon name="changes" size={16} />
                 {changedCount > 0 && <span className="count-badge" data-testid="changes-count">{changedCount}</span>}
               </button>

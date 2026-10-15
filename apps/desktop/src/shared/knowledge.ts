@@ -10,6 +10,8 @@ export interface KnowledgeState {
   error: string | null;
   /** Connected to a server started elsewhere; disconnecting must leave it running. */
   external?: boolean;
+  /** Modex's notes folder, which can be the knowledge base too (docs/notes.md). */
+  notesFolder?: string;
 }
 
 export function knowledgeBusy(state: KnowledgeState): boolean {

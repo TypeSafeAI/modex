@@ -55,3 +55,4 @@
 .knowledge-topbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .titlebar .knowledge-topbar .space-breadcrumb { flex-shrink: 0; }
 .app:has(#knowledge-titlebar .knowledge-topbar) .sheet { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+.knowledge-notes-hint { margin: 10px 0 0; color: var(--text-3); font-size: 13px; }

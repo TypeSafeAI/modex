@@ -1,6 +1,47 @@
-import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
-import { launch, resizeWindow, seedHome } from "./support";
+import path from "node:path";
+import { appDir, launch, resizeWindow, seedHome, waitForWindowReady } from "./support";
+
+test("paint is captured before attachment and supports an inactive window without claiming a show event", async () => {
+  const { home, repo } = seedHome();
+  const executablePath = process.env.MODEX_PACKAGED_APP;
+  const app = await electron.launch({
+    executablePath, args: executablePath ? [] : [appDir], cwd: appDir,
+    env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    // Main must retain real paint before the test connects, independently of show.
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      return !!w && ((globalThis as { __modexE2EPainted?: Set<number> }).__modexE2EPainted?.has(w.id) ?? false);
+    })).toBe(true);
+    // Isolate missing-show evidence even if a delayed real show updates main's captured set.
+    await app.evaluate(() => { (globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown = new Set<number>(); });
+    await waitForWindowReady(app, page);
+    expect(await app.evaluate(() => [...((globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown ?? [])])).toEqual([]);
+    // Visibility and matching dimensions must not pass without either observation.
+    await app.evaluate(() => { (globalThis as { __modexE2EPainted?: Set<number> }).__modexE2EPainted?.clear(); });
+    await expect(waitForWindowReady(app, page, 500)).rejects.toThrow("the window must paint");
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("readiness stability restarts when matching native and renderer dimensions change together", async () => {
+  let samples = 0, width = 900, lastChange = Date.now();
+  const app = { evaluate: async () => {
+    if (samples++ < 6) { width++; lastChange = Date.now(); }
+    return { id: 1, shown: false, painted: true, visible: true, size: [width, 600] };
+  } } as unknown as ElectronApplication;
+  const page = { evaluate: async () => [width, 600] } as unknown as Page;
+  await waitForWindowReady(app, page, 3000);
+  expect(Date.now() - lastChange).toBeGreaterThanOrEqual(200);
+});
 
 test("layout sizing survives a delayed native restoration of launch bounds", async () => {
   const { home, repo } = seedHome();
@@ -145,6 +186,8 @@ test("closed windows ignore late native visibility notifications", async () => {
         for (const event of ["show", "hide", "minimize", "maximize", "restore"] as const) {
           try { window.emit(event); } catch (error) { errors.push((error as Error).message); }
         }
+        const state = globalThis as { __modexE2EShown?: Set<number>; __modexE2EPainted?: Set<number> };
+        if (state.__modexE2EShown?.has(window.id) || state.__modexE2EPainted?.has(window.id)) errors.push("closed window retained readiness evidence");
         resolve(errors);
       }));
       window.close();

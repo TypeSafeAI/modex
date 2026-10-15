@@ -66,7 +66,7 @@ test("Store browser guests belong to the client and hide while its host is disco
     const clickMenu = async (label = "New tab", delivered = true) => {
       const before = (await receipts()).length;
       const clicked = await client!.evaluate(({ Menu }, label) => {
-        const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Workspace")?.submenu;
+        const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Side panel")?.submenu;
         const item = menu?.items.find(item => item.label === label);
         if (!item) return false;
         item.click(); return true;
@@ -103,7 +103,7 @@ test("Store browser guests belong to the client and hide while its host is disco
     await expect(tools).toBeVisible();
     expect(await clickMenu()).toBe(true);
     await expect(tabs).toHaveCount(initialTabs + 4);
-    expect(await clickMenu("Hide workspace")).toBe(true);
+    expect(await clickMenu("Hide side panel")).toBe(true);
     await expect(tools).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(tools).toHaveCount(0);

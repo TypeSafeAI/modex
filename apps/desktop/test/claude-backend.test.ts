@@ -49,7 +49,7 @@ test("Claude attaches Pages and knowledge together with exact session tool allow
     assert.equal(args[args.indexOf("--append-system-prompt") + 1], `${knowledge.instructions}\n\n${pages.instructions}`);
     assert.deepEqual(args.slice(args.indexOf("--allowedTools") + 1), [
       ...["search", "read", "write", "edit", "history"].map(name => `mcp__modex_knowledge__${name}`),
-      ...["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert"].map(name => `mcp__modex_pages__${name}`),
+      ...["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert", "list", "create_folder", "move", "read_file"].map(name => `mcp__modex_pages__${name}`),
     ]);
     if (resume) assert.equal(args[args.indexOf("--resume") + 1], resume);
   }

@@ -59,6 +59,7 @@ import { registerAttachmentCommands } from "./attachment-commands.js";
 import { AttachmentStore } from "./engine/attachments.js";
 import { LIMITS } from "../shared/attachments.js";
 import { ATTACHMENT_SCHEME, relFromUrl } from "../shared/attachments.js";
+import { NOTES_SCHEME, pageImageFromUrl } from "../shared/notes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -81,6 +82,7 @@ fs.mkdirSync(home, { recursive: true });
 // Attachment thumbnails load from main over this scheme; registration must precede app ready.
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true } },
+  { scheme: NOTES_SCHEME, privileges: { standard: true, secure: true } },
   { scheme: CANVAS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   { scheme: ANALYTICS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
@@ -108,9 +110,22 @@ const pathReady = hydratePath(process.env).then(
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 const restartAdmission = new RestartAdmission();
-const knowledge = new KnowledgeService(home);
-const knowledgeAgents = new KnowledgeAgents({ knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true });
-const pagesAgents = new PagesAgents({ space: store.space, enabled: id => store.project(id)?.pagesMaintenance === true });
+const knowledge = new KnowledgeService(home, { notesFolder: () => store.space.root });
+const knowledgeAgents = new KnowledgeAgents({
+  knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true,
+  // A knowledge base that is the notes folder holds every project's notes; each project's agents stay in theirs.
+  scope: (id, folder) => {
+    let notes: string;
+    try { notes = fs.realpathSync(store.space.root); } catch { return undefined; }
+    const project = store.project(id);
+    return folder === notes && project ? store.space.linkProject(project).rel : undefined;
+  },
+});
+const pagesAgents = new PagesAgents({
+  space: store.space, notes: store.space, enabled: id => store.project(id)?.pagesMaintenance === true,
+  // Each project's agents work in that project's notes only (docs/pages-maintenance.md).
+  scope: id => { const project = store.project(id); if (!project) return undefined; const notes = store.space.linkProject(project); return { id: notes.id, rel: notes.rel }; },
+});
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
@@ -523,6 +538,8 @@ handle("knowledge:choose", async () => {
   return result.canceled || !result.filePaths[0] ? knowledge.snapshot() : knowledge.selectFolder(result.filePaths[0]);
 }, { localOnly: true });
 handle("knowledge:install", () => knowledge.install(), { localOnly: true });
+// One set of files: the knowledge base opens Modex's notes folder (made first if needed).
+handle("knowledge:useNotes", () => { store.space.list(); return knowledge.selectFolder(store.space.root); }, { localOnly: true });
 handle("knowledge:start", () => knowledge.start(), { localOnly: true });
 handle("knowledge:stop", async () => {
   knowledgeBrowser?.dispose(); knowledgeURL = null;
@@ -646,8 +663,22 @@ handle("notes:folder:create", ({ parentId, name }) => store.space.createFolder(p
 handle("notes:rename", ({ id, name }) => store.space.rename(id, name));
 handle("notes:move", ({ ids, targetId }) => { store.space.moveNodes(ids, targetId); return store.space.tree(); });
 handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.space.tree(); });
+handle("notes:workspaces", () => store.space.workspaces());
+handle("project:notes", ({ projectId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.linkProject(project); });
+handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
 handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
 handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
+handle("notes:import", async ({ targetId, paths }) => {
+  let sources = paths;
+  if (!sources) {
+    const picked = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], title: "Import files into your notes", buttonLabel: "Import" });
+    if (picked.canceled) return { imported: 0, errors: [] };
+    sources = picked.filePaths;
+  }
+  const result = store.space.importFiles(targetId, sources);
+  return { imported: result.imported.length, errors: result.errors };
+}, { localOnly: true });
+handle("notes:file:read", ({ id }) => store.space.readFile(id));
 
 handle("state:get", () => {
   const state = store.snapshot();
@@ -822,6 +853,17 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  if (process.env.MODEX_E2E) {
+    // Retain distinct show and first-paint observations before Playwright connects.
+    // Paint does not prove visibility; the harness also waits for settled native geometry.
+    const state = globalThis as { __modexE2EShown?: Set<number>; __modexE2EPainted?: Set<number> };
+    const shown = state.__modexE2EShown ??= new Set<number>();
+    const painted = state.__modexE2EPainted ??= new Set<number>();
+    let closed = false;
+    w.once("show", () => { if (!closed && !w.isDestroyed()) shown.add(w.id); });
+    w.once("ready-to-show", () => { if (!closed && !w.isDestroyed()) painted.add(w.id); });
+    w.once("closed", () => { closed = true; shown.delete(w.id); painted.delete(w.id); });
+  }
   w.webContents.on("did-start-navigation", details => {
     if (win === w && details.isMainFrame && !details.isSameDocument) invalidateNativeDocument();
   });
@@ -861,7 +903,8 @@ function createWindow(): BrowserWindow {
     if (saved?.fullscreen) w.setFullScreen(true);
     // Under test the window must not take the keyboard: Playwright drives it over CDP, and a test
     // window that becomes active swallows whatever the developer is typing elsewhere (it reached a
-    // real shell in the terminal panel). showInactive still emits "show", which the launch helper awaits.
+    // real shell in the terminal panel). The helper checks paint and settled native geometry
+    // as well: an inactive macOS window does not always emit "show".
     if (process.env.MODEX_E2E) w.showInactive();
     else w.show();
   });
@@ -968,6 +1011,18 @@ app.on("second-instance", (_event, args) => {
 app.whenReady().then(async () => {
   browserTools = new BrowserTools(home, () => win && !win.isDestroyed() && workspaceBrowser ? { window: win, browser: workspaceBrowser } : null);
   if (!nativeDraftFailure && !nativeStartup?.recovery) await browserTools.restore();
+  // Images from the notes folder: a file's preview by id, or an image a page names beside it. Only
+  // image files are ever served, and an SVG opened on its own gets no scripts or subresources.
+  protocol.handle(NOTES_SCHEME, (request) => {
+    let image: { data: Buffer; mime: string } | null = null;
+    try {
+      const url = new URL(request.url);
+      const nearby = pageImageFromUrl(request.url);
+      if (url.host === "file") image = store.space.readImage(decodeURIComponent(url.pathname.slice(1)));
+      else if (nearby) image = store.space.readPageImage(nearby.pageId, nearby.relative);
+    } catch { image = null; }
+    return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } }) : new Response("Not found", { status: 404 });
+  });
   // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
   protocol.handle(ATTACHMENT_SCHEME, (request) => {
     const rel = relFromUrl(request.url);
@@ -975,6 +1030,8 @@ app.whenReady().then(async () => {
     return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } }) : new Response("Not found", { status: 404 });
   });
   win = createWindow();
+  // Space polls the notes folder; watching it lets those polls skip the walk while nothing changed.
+  store.space.watch();
   if ((flag("desktop-host") || hostPreview) && !demo && !nativeDraftFailure && !nativeStartup?.recovery) await startDesktopHost();
   desktopHostActivation.ready();
   if (!demo && !process.env.MODEX_E2E && !nativeDraftFailure && !nativeStartup?.recovery) void pathReady.then(() => retirer.start());

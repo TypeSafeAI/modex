@@ -54,7 +54,7 @@ export function KnowledgeView({ active, onPages, onReadyChange }: { active: bool
     return () => { alive = false; clearInterval(timer); };
   }, []);
 
-  const run = async (channel: "knowledge:choose" | "knowledge:install" | "knowledge:start" | "knowledge:stop") => {
+  const run = async (channel: "knowledge:choose" | "knowledge:useNotes" | "knowledge:install" | "knowledge:start" | "knowledge:stop") => {
     if (operation.current) return;
     operation.current = true; setWorking(true); setError(null); setViewError(null);
     setState(current => current && ({ ...current, status: channel === "knowledge:install" ? "installing" : channel === "knowledge:start" ? "starting" : channel === "knowledge:stop" ? "stopping" : current.status }));
@@ -113,8 +113,10 @@ export function KnowledgeView({ active, onPages, onReadyChange }: { active: bool
       <section className="knowledge-folder" aria-label="Knowledge folder">
         <div className="knowledge-folder-icon"><Icon name="folder" size={23} /></div>
         <div><strong data-testid="knowledge-folder">{folderName ?? "Your folder. Your knowledge."}</strong><p title={state?.folder ?? undefined}>{state?.folder ?? "Choose a folder of Markdown files, or start with an empty one."}</p></div>
+        {state?.notesFolder && state.folder !== state.notesFolder && <button className="btn small" disabled={busy} data-testid="knowledge-use-notes" onClick={() => void run("knowledge:useNotes")}>Use your Modex notes</button>}
         <button className="btn small" disabled={busy || !state} aria-label="Choose knowledge folder" onClick={() => void run("knowledge:choose")}>{state?.folder ? "Change folder" : "Choose folder"}</button>
       </section>
+      {state?.notesFolder && state.folder === state.notesFolder && <p className="knowledge-notes-hint" data-testid="knowledge-uses-notes">This is your Modex notes folder: pages you write in Space and in the knowledge base are the same files.</p>}
       <div className="knowledge-launch">
         {state?.installed ? <button className="btn primary" disabled={busy || !state.folder} onClick={() => void run("knowledge:start")}>{state.status === "starting" ? "Opening knowledge base…" : "Open knowledge base"}<Icon name="arrow-right" size={16} /></button> : <button className="btn primary" disabled={busy || !state} onClick={() => void run("knowledge:install")}>{state?.status === "installing" ? "Installing Open Knowledge…" : "Install Open Knowledge"}<Icon name="download" size={16} /></button>}
         <p>{state?.installed ? "Your files stay in the folder you choose. Opening creates local Open Knowledge settings there." : "One-time download · Requires Node.js 24+ and Git. Installs a separate local companion."}</p>

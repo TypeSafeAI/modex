@@ -13,7 +13,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { UpdateRecoveryView } from "./components/UpdateRecoveryView";
 import { UpdateRestartView } from "./components/UpdateRestartView";
 import { useUpdateState } from "./useUpdateState";
-import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
+import type { AppState, BackendId, BridgeCommands, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, TurnFix } from "../shared/types";
 import { LIMITS } from "../shared/attachments";
 import { ComposerAttachments, type AttachmentActions } from "./composer-attachments";
 import { stageFiles, pickFiles } from "./attachments";
@@ -82,6 +82,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, []);
   const [surface, setSurface] = useState<"chat" | "space" | "analytics">("chat");
   const [spaceOpened, setSpaceOpened] = useState(false);
+  /** A project whose notes Space should show, from the sidebar's "Open notes". */
+  const [openProject, setOpenProject] = useState<{ projectId: string; nonce: number }>();
+  const [workspaces, setWorkspaces] = useState<BridgeCommands["notes:workspaces"]["res"]>();
   const [spaceChatOpen, setSpaceChatOpen] = useState(false);
   const [state, setState] = useState<AppState | null>(null);
   useLayoutEffect(() => { if (state) applyTheme(state.settings.theme, persistPreferences); }, [state?.settings.theme, persistPreferences]);
@@ -509,6 +512,16 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, [thread?.id, thread?.backend, thread?.model, models]);
   const project = useMemo(() => (thread ? state?.projects.find((p) => p.id === thread.projectId) ?? null : null), [state, thread]);
 
+  // Workspaces group the sidebar's projects; they change with projects and in Space, so read them then.
+  const projectKey = state?.projects.map(p => p.id).join(",") ?? "";
+  useEffect(() => {
+    if (!spaceEnabled || !projectKey) return;
+    let alive = true;
+    void bridge.invoke("notes:workspaces", undefined).then(value => { if (alive) setWorkspaces(value); }, () => { if (alive) setWorkspaces(undefined); });
+    return () => { alive = false; };
+  }, [projectKey, surface, spaceEnabled]);
+  const openNotes = (projectId: string) => { setOpenProject({ projectId, nonce: Date.now() }); setSpaceOpened(true); setSurface("space"); };
+  const moveToWorkspace = (projectId: string, workspaceId: string) => void act(async () => { setWorkspaces(await bridge.invoke("project:workspace", { projectId, workspaceId })); });
   const act = async <T,>(fn: () => Promise<T>, { retry = true }: { retry?: boolean } = {}): Promise<T | undefined> => {
     try {
       if (nativeHoldRef.current || nativeLoading || nativeRecoveryError) throw new Error("Wait for draft recovery to finish.");
@@ -727,7 +740,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (selected === t.id) setSelected(s.threads.find((x) => x.projectId === t.projectId)?.id ?? s.threads[0]?.id ?? null);
   });
   const removeProject = (projectId: string) => act(async () => {
-    if (!window.confirm("Remove this project from Modex? Files on disk are not touched.")) return;
+    if (!window.confirm(spaceEnabled ? "Remove this project from Modex? Files on disk are not touched, and its notes stay in Space." : "Remove this project from Modex? Files on disk are not touched.")) return;
     const removedThreads = state?.threads.filter((t) => t.projectId === projectId) ?? [];
     const s = await bridge.invoke("project:remove", { projectId });
     if (nativeRef.current) return; // Do not overwrite canonical adoption with the pre-await draft closure.
@@ -870,7 +883,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
         {surface === "analytics" && <AnalyticsView active={!showSettings && !showCompanion} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}
@@ -885,6 +898,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
             onRemoveProject={removeProject}
             unsent={unsent}
             agents={activeAgents}
+            {...(spaceEnabled ? { workspaces, onOpenNotes: openNotes, onMoveToWorkspace: moveToWorkspace } : {})}
           />
         )}
         <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
