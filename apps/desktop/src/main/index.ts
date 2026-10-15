@@ -639,6 +639,15 @@ handle("space:create", (input) => store.space.create(input));
 handle("space:save", (page) => store.space.save(page));
 handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
 handle("notes:settle", ({ id }) => store.space.settle(id));
+handle("notes:tree", (req) => { const tree = store.space.tree(); return req?.since === tree.version ? { unchanged: true as const, version: tree.version } : tree; });
+handle("notes:workspace:create", ({ name }) => store.space.createWorkspace(name));
+handle("notes:project:create", ({ workspaceId, name }) => store.space.createProject(workspaceId, name));
+handle("notes:folder:create", ({ parentId, name }) => store.space.createFolder(parentId, name));
+handle("notes:rename", ({ id, name }) => store.space.rename(id, name));
+handle("notes:move", ({ ids, targetId }) => { store.space.moveNodes(ids, targetId); return store.space.tree(); });
+handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.space.tree(); });
+handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
+handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
 
 handle("state:get", () => {
   const state = store.snapshot();

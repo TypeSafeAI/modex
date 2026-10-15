@@ -52,6 +52,6 @@ const stemKey = (name: string) => nameKey(name.replace(/\.md$/i, ""));
 export function uniqueName(stem: string, ext: string, taken: Iterable<string>): string {
   const used = new Set([...taken].map(stemKey));
   const candidate = (n: number) => n === 1 ? stem : `${truncateBytes(stem, MAX_STEM_BYTES - 4)} ${n}`;
-  for (let n = 1; n < 10_000; n++) if (!used.has(stemKey(candidate(n)))) return `${candidate(n)}${ext}`;
+  for (let n = 1; n < 10_000; n++) if (!used.has(stemKey(`${candidate(n)}${ext}`))) return `${candidate(n)}${ext}`;
   throw new Error("This folder has too many notes with that name.");
 }

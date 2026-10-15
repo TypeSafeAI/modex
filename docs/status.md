@@ -620,8 +620,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Pages tools behave as before. Edits, moves and new files made outside Modex (Finder, an editor,
   Open Knowledge) show in Space and in the page's history as "Outside Modex". The first launch
   moves `app/space.json` into the folder and never writes it again. A file is renamed to match its
-  title when the title loses focus. Workspaces, per-project notes and files come next.
-  [Notes folder](notes.md).
+  title when the title loses focus. [Notes folder](notes.md).
+- **Workspaces, projects and folders in Space.** Space's sidebar shows the notes folder as
+  Workspace › Project › Folder › pages and files. Create a workspace from Space options, and a
+  project, folder or page from a row's menu; rename, move (Move to…), reveal in Finder, and delete
+  what is empty. Each is a real folder on disk; a file opens in its default app. Tying each Modex
+  project to its own notes, and file import, come next.
 
 ## In flight
 

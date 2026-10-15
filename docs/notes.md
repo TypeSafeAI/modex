@@ -46,6 +46,23 @@ notes/
   Knowledge reserves `index.md`). Typing a title does not rename the file; Space renames it when
   the title loses focus.
 
+## The tree
+
+`notes:tree` lists the folder as workspaces, projects, folders, notes and files. A note node is
+its page. A folder with a folder note is shown once, as the folder, named by its page.
+
+- **Ids hold across renames and moves.** Workspaces and projects keep theirs in their marker
+  files. Other folders and plain files keep theirs in `.modex/index.json`, found again by path,
+  or by inode after a move in Finder.
+- **A typed folder name** that a folder cannot carry (a colon, say) is kept in the index. It is
+  shown while the folder keeps the name made from it; a rename in Finder wins.
+- **Placement rules:** workspaces sit at the top, projects in a workspace, and folders, notes and
+  files in a project or folder. Moving a folder into itself is refused, and so is deleting a
+  container that still holds anything.
+- **A page that moves** gets a version ("Moved page" or "Moved folder") before its file moves, so
+  the next read does not mistake the move for one made outside Modex. Notes inside a moved
+  folder keep their revisions.
+
 ## History and revisions
 
 The newest version in a page's history file is the page: its revision, favorite, place and trash

@@ -392,3 +392,9 @@
 .space-templates .space-template-guide { border-color: color-mix(in srgb, var(--accent) 50%, var(--border-pane)); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 14%, transparent); }
 .space-insert-menu kbd { margin-left: auto; max-width: 40px; overflow: hidden; text-overflow: ellipsis; border-radius: 8px; padding: 0 5px; background: var(--bg-row-hover); color: var(--text-4); font: 11px/16px var(--font-sans); }
 .space-actions-menu { scrollbar-color: var(--bg-row-hover) transparent; }
+/* The notes tree (NotesTree.tsx): a row's menu shows on hover or focus; names are edited in place. */
+.notes-tree { margin: 0; padding: 0; list-style: none; }
+.space-tree-menu { flex: none; opacity: 0; }
+.space-tree-row:hover .space-tree-menu, .space-tree-menu:focus-within, .space-tree-menu [aria-expanded="true"] { opacity: 1; }
+.space-tree-row:has(.space-tree-menu [aria-expanded="true"]) .space-tree-menu { opacity: 1; }
+.space-tree-edit { flex: 1; min-width: 0; height: 28px; margin: 1px 4px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text-1); background: var(--bg-input, var(--bg-main)); border: 1px solid var(--accent, var(--border-pane)); border-radius: 8px; outline: none; }

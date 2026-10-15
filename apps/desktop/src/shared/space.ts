@@ -15,6 +15,10 @@ export interface SpaceChangeContext { actor: string; summary: string; }
 export interface SpaceComment { id: string; pageId: string; text: string; quote: string; createdAt: string; }
 export interface SpacePageVersion extends SpaceChangeContext { page: SpacePage; /** Start of a coalesced human typing checkpoint. */ checkpointAt?: string; }
 
-export type CreateSpacePage = { title?: string; parentId?: string | null; markdown?: string };
+export type CreateSpacePage = {
+  title?: string; parentId?: string | null; markdown?: string;
+  /** A project or folder of the notes tree to create the page in; its folder note, if any, becomes the parent. */
+  containerId?: string;
+};
 
 export function pageTitle(page: Pick<SpacePage, "title">): string { return page.title.trim() || "Untitled page"; }
