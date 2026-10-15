@@ -3,8 +3,8 @@ import { parseSpaceBlocks } from "../../shared/space-markdown";
 import { pageImageUrl } from "../../shared/notes";
 
 /**
- * React escapes text; allow only explicit web/mail links, web images, and a page's own images by a
- * path relative to its file (served from the notes folder) in imported Markdown.
+ * React escapes text; allow only explicit web/mail links, web images, Images assets, and a page's own
+ * images by a path relative to its file (served from the notes folder) in imported Markdown.
  */
 export function safeBlocks(markdown: string, pageId?: string): Block[] {
   const clean = (block: Block): Block => ({ ...block,
@@ -13,7 +13,7 @@ export function safeBlocks(markdown: string, pageId?: string): Block[] {
       if (styles.link && !/^(https?:|mailto:)/i.test(styles.link.url.trim())) delete styles.link;
       return { ...span, styles };
     }),
-    props: block.type === "image" && !/^https?:\/\//i.test((block.props as { url: string }).url) ? localImage(block.props as { url: string }, pageId) : block.props,
+    props: block.type === "image" && !/^(https?:\/\/|modex-image:\/\/asset\/[a-f0-9-]{36}$)/i.test((block.props as { url: string }).url) ? localImage(block.props as { url: string }, pageId) : block.props,
     children: block.children.map(clean),
   });
   return parseSpaceBlocks(markdown).map(clean);

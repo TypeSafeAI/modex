@@ -249,7 +249,7 @@ export class CodexBackend implements Backend {
     }
     const pol = CodexBackend.policy(opts);
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
-    const config = { ...THREAD_CONFIG, ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
+    const config = { ...THREAD_CONFIG, ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
       tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}), ...(opts.pages ? { "mcp_servers.modex_pages": {
@@ -273,7 +273,7 @@ export class CodexBackend implements Backend {
     sink.session(threadId);
 
     const tid = threadId;
-    const context = [opts.knowledge?.instructions, opts.pages?.instructions, text].filter(value => value !== undefined).join("\n\n");
+    const context = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
     const input = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
     const agents = new AgentTracker(sink);
     const activities = new Set<string>();

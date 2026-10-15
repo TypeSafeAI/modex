@@ -555,6 +555,15 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Migration also reserves each folder note’s name before placing its children.
   Folder settlement records durable intent so interrupted directory and note
   renames finish before a read derives the hierarchy.
+- **Images and native Plugins.** Full desktop adds owned image assets, Chat/Space reuse,
+  plugin inventory/discovery/local sources and supported native CLI lifecycle commands.
+  Generation and revisions use an explicitly selected plugin skill through the normal CLI
+  runner, approvals and byte-validated registration. Drafts, cancellation and interrupted
+  jobs survive restart without automatic replay. Shutdown drains plugin commands and
+  ordinary close protects unacknowledged image prompts. Store/iPhone access stays gated.
+  [Feature guide](images-plugins.md) and [implementation/verification ledger](superpowers/plans/2026-10-15-images-plugins.md).
+  Live provider/plugin acceptance, human keyboard/VoiceOver acceptance and signed/notarized
+  release verification remain open; offline fixtures do not establish those outcomes.
 
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
@@ -654,6 +663,8 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without
   weakening restart checks or the native draft preparation/adoption transaction.
+  Deletion now briefly drains requests already in progress instead of refusing a click
+  that races a background request; a bounded timeout preserves all owners.
   Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
   routing and title updates from admitted turns also finish while new edits stay fenced.
 

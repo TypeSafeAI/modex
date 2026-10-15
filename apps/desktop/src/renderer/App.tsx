@@ -42,6 +42,8 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 
 // xterm is only loaded once a terminal is first opened.
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
+const ImagesView = lazy(() => import("./images/ImagesView").then(m => ({ default: m.ImagesView })));
+const PluginSurface = lazy(() => import("./plugins/PluginSurface").then(m => ({ default: m.PluginSurface })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 
 export function App({ persistPreferences = true, spaceEnabled = true, analyticsEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; analyticsEnabled?: boolean; suspended?: boolean } = {}) {
@@ -80,7 +82,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     window.addEventListener("modex:open-page", open);
     return () => window.removeEventListener("modex:open-page", open);
   }, []);
-  const [surface, setSurface] = useState<"chat" | "space" | "analytics">("chat");
+  const [surface, setSurface] = useState<"chat" | "space" | "analytics" | "images" | "plugins">("chat");
+  const [mediaFeatures, setMediaFeatures] = useState({ images: false, plugins: false });
+  const [imagesOpened, setImagesOpened] = useState(false);
+  useEffect(() => { let live = true; void bridge.invoke("features:media", undefined).then(features => { if (live) setMediaFeatures(features); }).catch(() => {}); return () => { live = false; }; }, []);
+  const openImages = () => { setImagesOpened(true); setSurface("images"); };
   const [spaceOpened, setSpaceOpened] = useState(false);
   /** A project whose notes Space should show, from the sidebar's "Open notes". */
   const [openProject, setOpenProject] = useState<{ projectId: string; nonce: number }>();
@@ -792,7 +798,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // ⌃` terminal. Inside the terminal, xterm consumes the ⌃-keys it sends to the shell, so they never get here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (nativeHoldRef.current || updateBlockedRef.current || nativeLoading || nativeRecoveryError || suspended || showSettings || showCompanion || surface === "analytics" || (surface === "space" && !eventTargetInSpaceChat(e))) return;
+      if (nativeHoldRef.current || updateBlockedRef.current || nativeLoading || nativeRecoveryError || suspended || showSettings || showCompanion || (surface !== "chat" && !(surface === "space" && eventTargetInSpaceChat(e)))) return;
       if (isTerminalToggle(e)) {
         e.preventDefault();
         if (thread) toggleTerminal(thread.id);
@@ -876,14 +882,24 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         onArchive={archiveThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
+      <Rail surface={surface} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins ? () => setSurface("plugins") : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
       <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
-        {sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
+        {(surface === "chat" || surface === "space") && sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
         {surface === "analytics" && <AnalyticsView active={!showSettings && !showCompanion} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
+        {imagesOpened && <Suspense fallback={<div role="status">Opening Images…</div>}><ImagesView active={surface === "images"} projects={state.projects} onPlugins={() => setSurface("plugins")} onOpenPage={id => { setOpenPage({ id }); setSpaceOpened(true); setSurface("space"); }} onUseInChat={async id => {
+          const key = thread?.id ?? draftKey;
+          if (!thread && !draft) throw new Error("Choose a project and open a chat before attaching an image.");
+          const staged = await bridge.invoke("images:stage", { id });
+          if (!staged.data) throw new Error("Image is unavailable.");
+          const bytes = Uint8Array.from(atob(staged.data), c => c.charCodeAt(0));
+          await attachmentActions(key).onFiles([new File([bytes], staged.name, { type: staged.mime })]);
+          setSurface("chat");
+        }} /></Suspense>}
+        {surface === "plugins" && <Suspense fallback={<div role="status">Opening Plugins…</div>}><PluginSurface projects={state.projects} onImages={openImages} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onOpenImages={mediaFeatures.images ? openImages : undefined} onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}

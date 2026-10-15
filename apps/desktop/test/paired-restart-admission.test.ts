@@ -16,7 +16,7 @@ function dispatcher(pathReady: Promise<void>) {
   assert.ok(start >= 0 && end > start && hostStart >= 0 && hostEnd > hostStart);
   const host = code.slice(hostStart + "invoke: ".length, hostEnd) + "\n}";
   const handlers = new Map<string, Function>(), nativeDocument = { frame: {}, epoch: 1, session: "native" };
-  const context: any = { restartAdmission: new RestartAdmission(), RESTART_CONTROL: new Set(["state:get"]), desktopCommands: new Map(),
+  const context: any = { media: undefined, mediaInitializationError: undefined, restartAdmission: new RestartAdmission(), RESTART_CONTROL: new Set(["state:get"]), desktopCommands: new Map(),
     OWNER_REMOVAL_CONTROL: new Set(["thread:delete", "project:remove"]), ownerRemoval: { allowsPersistence: () => false },
     SPAWNS: new Set(["thread:create"]), pathReady, documentEpoch: 1, shuttingDown: false, nativeDraftFailure: undefined,
     nativeStartup: undefined, ipcMain: { handle: (name: string, fn: Function) => handlers.set(name, fn) }, isTrustedTerminalSender: () => true, win: {},
@@ -66,18 +66,18 @@ test("paired access revoked while PATH yields cannot execute the handler", async
   h.restartAdmission.holdForRestart()();
 });
 
-test("only the pending fresh recovery Quit flush may persist a local page after service disposal", async () => {
+for (const channel of ["space:save", "images:saveDraft"]) test(`only the pending fresh recovery Quit flush may persist ${channel} after service disposal`, async () => {
   const h = dispatcher(Promise.resolve()), requests: RestartRequest[] = []; let writes = 0;
   h.currentDraftRecovery = () => ({ message: "Recovery required" });
   h.rendererPreflight.allowsPersistence = () => false;
   h.recoveryQuitPreflight = new DocumentRestartPreflight(() => h.nativeDocument, (_document, request) => requests.push(request));
-  h.register("space:save", () => ++writes);
+  h.register(channel, () => ++writes);
   const release = h.restartAdmission.holdForRestart(), pending = h.recoveryQuitPreflight.prepare(); void pending.catch(() => {});
   try {
-    await assert.rejects(h.hostInvoke("space:save", {}, () => true), /recovery|restart/i);
-    await h.handlers.get("space:save")({ senderFrame: h.nativeDocument.frame }, {}); assert.equal(writes, 1);
+    await assert.rejects(h.hostInvoke(channel, {}, () => true), /recovery|restart/i);
+    await h.handlers.get(channel)({ senderFrame: h.nativeDocument.frame }, {}); assert.equal(writes, 1);
     h.recoveryQuitPreflight.reply(h.nativeDocument, { id: requests[0]!.id, revision: 4 }); await pending;
-    await assert.rejects(h.handlers.get("space:save")({ senderFrame: h.nativeDocument.frame }, {}), /recovery|restart/i);
+    await assert.rejects(h.handlers.get(channel)({ senderFrame: h.nativeDocument.frame }, {}), /recovery|restart/i);
     assert.equal(writes, 1);
   } finally { h.recoveryQuitPreflight.release(); release(); }
 });
@@ -87,7 +87,7 @@ for (const command of ["create", "send"] as const) test(`Companion ${command} wa
   const start = source.indexOf("const companion = new CompanionServer("), end = source.indexOf("const companionView", start);
   assert.ok(start >= 0 && end > start);
   let finish!: () => void, touched = false, calls = 0, callbacks: any;
-  const context: any = { home: "/fixture", restartAdmission: new RestartAdmission(), nativeDraftFailure: undefined, nativeStartup: undefined,
+  const context: any = { media: undefined, mediaInitializationError: undefined, home: "/fixture", restartAdmission: new RestartAdmission(), nativeDraftFailure: undefined, nativeStartup: undefined,
     currentDraftRecovery: () => touched ? { outcome: "recovery", message: "Services stopped" } : null,
     pathReady: new Promise<void>(resolve => { finish = resolve; }),
     CompanionServer: class { constructor(_home: string, options: unknown) { callbacks = options; } },
