@@ -52,7 +52,14 @@ export class UsageLedger {
       uncachedCost: null,
     };
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.appendFileSync(this.file, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    const fd = fs.openSync(this.file, "a+", 0o600);
+    try {
+      const size = fs.fstatSync(fd).size;
+      const tail = Buffer.alloc(1);
+      const separated = size === 0 || (fs.readSync(fd, tail, 0, 1, size - 1) === 1 && tail[0] === 10);
+      // Preserve torn bytes, but keep the next valid event on its own record boundary.
+      fs.writeFileSync(fd, `${separated ? "" : "\n"}${JSON.stringify(event)}\n`);
+    } finally { fs.closeSync(fd); }
     return event;
   }
 

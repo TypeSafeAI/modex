@@ -17,6 +17,16 @@ export class WorkspaceAnalytics {
   private loaded = false;
   private disposed = false;
   private visibilityRequest = 0;
+  private readonly download = (event: Electron.Event, item: Electron.DownloadItem, contents: Electron.WebContents) => {
+    try {
+      if (this.disposed || !contents || contents.isDestroyed() || contents.getURL() !== `${ANALYTICS_ORIGIN}/index.html` ||
+          !item.getURL().startsWith(`blob:${ANALYTICS_ORIGIN}/`) || item.getMimeType() !== "text/csv" || item.getFilename() !== "modex-usage.csv") {
+        event.preventDefault();
+        return;
+      }
+      item.setSaveDialogOptions({ title: "Export usage CSV", defaultPath: "modex-usage.csv", filters: [{ name: "CSV", extensions: ["csv"] }] });
+    } catch { event.preventDefault(); }
+  };
 
   constructor(private window: BrowserWindow, private root: string, private ledger: Pick<UsageLedger, "list">) {}
 
@@ -27,6 +37,8 @@ export class WorkspaceAnalytics {
     isolated.protocol.handle(ANALYTICS_SCHEME, request => respondAnalytics(this.root, this.ledger, request));
     // Its own pages, inline data, and the blob: URLs its CSV export creates; nothing else.
     isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith(`${ANALYTICS_ORIGIN}/`) && !details.url.startsWith(`blob:${ANALYTICS_ORIGIN}/`) && !details.url.startsWith("data:") }));
+    // Install our narrow policy before WorkspaceBrowser installs its default deny policy.
+    isolated.on("will-download", this.download);
     this.browser = new WorkspaceBrowser(this.window, { partition: PARTITION, shortcuts: false, allowURL: url => url.startsWith(`${ANALYTICS_ORIGIN}/`), resolveURL: url => url });
     return this.browser;
   }
@@ -51,6 +63,7 @@ export class WorkspaceAnalytics {
     this.browser.dispose();
     this.browser = null;
     const isolated = session.fromPartition(PARTITION, { cache: false });
+    isolated.removeListener("will-download", this.download);
     isolated.protocol.unhandle(ANALYTICS_SCHEME);
     isolated.webRequest.onBeforeRequest(null);
   }
