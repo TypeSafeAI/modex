@@ -548,6 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Paired iPhone menu recovery.** The paired-flow test retries an ignored Workspace
+  options tap once within its existing deadline, only while the menu is absent.
+  It still requires the real Forget paired Mac item before proceeding.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
