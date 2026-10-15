@@ -591,6 +591,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## In flight
 
+- **Notes in folders** (Workspace › Project › Folder). Space notes move from `app/space.json` to
+  Markdown files under `MODEX_HOME/notes/`, with each Modex project getting its own notes, a
+  workspace level grouping projects in the sidebar, folders and files, and Open Knowledge able to
+  open the same folder. First slice: `NotesStore`, which keeps Space's page contract (ids,
+  revisions, history, trash, comments) over the files, records edits made outside Modex, and
+  migrates `space.json` once without writing it. Modex does not use it yet. [Notes folder](notes.md).
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without
   weakening restart checks or the native draft preparation/adoption transaction.
