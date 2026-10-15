@@ -263,3 +263,103 @@ test("a crash between the history and the note write is finished on the next rea
   assert.deepEqual([fresh.list()[0]!.markdown, fresh.list()[0]!.revision], ["after", 2]);
   assert.match(fs.readFileSync(path.join(project(root), "Crash.md"), "utf8"), /after$/, "the note file is rewritten to match");
 }));
+
+test("settling a folder title that matches a child preserves the hierarchy", () => withStore((store, root) => {
+  const parent = store.create({ title: "A" });
+  const child = store.create({ title: "B", parentId: parent.id, markdown: "child body" });
+  store.save({ ...store.list().find(p => p.id === parent.id)!, title: "B" });
+  assert.doesNotThrow(() => store.settle(parent.id));
+  for (const reader of [store, reopen(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.find(p => p.id === parent.id)?.parentId, null);
+    assert.equal(pages.find(p => p.id === parent.id)?.title, "B");
+    assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
+    assert.equal(pages.find(p => p.id === child.id)?.markdown, "child body");
+  }
+}));
+
+test("restoring a folder beside a replacement preserves both subtrees", () => withStore((store, root) => {
+  const parent = store.create({ title: "A" });
+  const child = store.create({ title: "B", parentId: parent.id });
+  store.trash(parent.id, true);
+  const replacement = store.create({ title: "A" });
+  const otherChild = store.create({ title: "C", parentId: replacement.id });
+  store.trash(parent.id, false);
+  for (const reader of [store, reopen(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.length, 4);
+    assert.equal(pages.find(p => p.id === parent.id)?.parentId, null);
+    assert.equal(pages.find(p => p.id === replacement.id)?.parentId, null);
+    assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
+    assert.equal(pages.find(p => p.id === otherChild.id)?.parentId, replacement.id);
+  }
+}));
+
+
+test("interrupted restore beside a replacement preserves both subtrees on recovery", () => withStore((store, root) => {
+  const parent = store.create({ title: "A" });
+  const child = store.create({ title: "B", parentId: parent.id });
+  store.trash(parent.id, true);
+  const replacement = store.create({ title: "A" });
+  const otherChild = store.create({ title: "C", parentId: replacement.id });
+  const link = fs.linkSync;
+  fs.linkSync = ((from, to) => {
+    if (String(from).includes(`${path.sep}.modex${path.sep}trash${path.sep}`)) throw new Error("injected restore interruption");
+    return link(from, to);
+  }) as typeof fs.linkSync;
+  try { assert.throws(() => store.trash(parent.id, false), /injected restore/); } finally { fs.linkSync = link; }
+  for (const reader of [reopen(root), reopen(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.length, 4);
+    assert.equal(pages.find(p => p.id === parent.id)?.parentId, null);
+    assert.equal(pages.find(p => p.id === replacement.id)?.parentId, null);
+    assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
+    assert.equal(pages.find(p => p.id === otherChild.id)?.parentId, replacement.id);
+  }
+}));
+
+for (const interruption of ["link", "unlink"] as const) test(`folder settlement recovers an interruption at ${interruption}`, () => withStore((store, root) => {
+  const parent = store.create({ title: "A", markdown: "parent body" });
+  const child = store.create({ title: "B", parentId: parent.id, markdown: "child body" });
+  store.save({ ...store.list().find(p => p.id === parent.id)!, title: "B" });
+  const original = interruption === "link" ? fs.linkSync : fs.unlinkSync;
+  const fail = () => { throw new Error("injected settlement interruption"); };
+  if (interruption === "link") fs.linkSync = fail;
+  else fs.unlinkSync = ((file) => {
+    if (path.basename(String(file)) === "A.md") fail();
+    return (original as typeof fs.unlinkSync)(file);
+  }) as typeof fs.unlinkSync;
+  try { assert.throws(() => store.settle(parent.id), /injected settlement/); }
+  finally {
+    if (interruption === "link") fs.linkSync = original as typeof fs.linkSync;
+    else fs.unlinkSync = original as typeof fs.unlinkSync;
+  }
+  for (const reader of [reopen(root), store, reopen(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.length, 2);
+    assert.equal(pages.find(p => p.id === parent.id)?.title, "B");
+    assert.equal(pages.find(p => p.id === parent.id)?.markdown, "parent body");
+    assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
+    assert.equal(pages.find(p => p.id === child.id)?.markdown, "child body");
+  }
+}));
+
+for (const basename of ["A.MD", "a.md"]) test(`folder settlement preserves the exact source basename ${basename}`, () => withStore((store, root) => {
+  const parent = store.create({ title: "A" });
+  const child = store.create({ title: "Child", parentId: parent.id });
+  fs.renameSync(path.join(project(root), "A", "A.md"), path.join(project(root), "A", basename));
+  const fresh = reopen(root);
+  fresh.save({ ...fresh.list().find(p => p.id === parent.id)!, title: "B" });
+  const lstat = fs.lstatSync;
+  // Enforce Linux's exact-name lookup even on a case-insensitive developer volume.
+  Object.defineProperty(fs, "lstatSync", { value: ((file, ...args) => {
+    const name = String(file);
+    if (name.endsWith(".md") && fs.existsSync(path.dirname(name)) &&
+        !fs.readdirSync(path.dirname(name)).includes(path.basename(name))) {
+      throw Object.assign(new Error("case-sensitive lookup"), { code: "ENOENT" });
+    }
+    return lstat(file, ...args);
+  }) as typeof fs.lstatSync });
+  try { fresh.settle(parent.id); } finally { Object.defineProperty(fs, "lstatSync", { value: lstat }); }
+  assert.equal(reopen(root).list().find(p => p.id === child.id)?.parentId, parent.id);
+}));

@@ -120,3 +120,115 @@ test("folders and files moved or renamed in Finder keep their ids; only empty co
   const work = store.tree().nodes.find(n => n.kind === "workspace")!;
   assert.throws(() => store.deleteEmpty(work.id), /default/);
 }));
+
+for (const change of ["project rename", "workspace rename", "project move"] as const) test(`default page creation follows a ${change}`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  if (change === "project rename") store.rename(project.id, "Journal");
+  else if (change === "workspace rename") store.rename(workspace.id, "Home");
+  else store.moveNodes([project.id], store.createWorkspace("Work").id);
+  const rel = store.tree().nodes.find(n => n.id === project.id)!.rel;
+  const reopened = new NotesStore(root);
+  const page = reopened.create({ title: "Next" });
+  assert.equal(reopened.tree().nodes.find(n => n.id === page.id)?.rel, `${rel}/Next.md`);
+  assert.equal(reopened.tree().nodes.filter(n => n.kind === "project").length, 1);
+}));
+
+for (const interruption of [null, "link", "unlink"] as const) test(`moving a folder avoids child collisions and recovers ${interruption ?? "without interruption"}`, () => withStore((store, root) => {
+  const parent = store.create({ title: "Parent", markdown: "parent body" });
+  const child = store.create({ title: "Parent 2", markdown: "child body", parentId: parent.id });
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!;
+  const destPage = store.create({ title: "Destination" });
+  store.create({ title: "Existing", parentId: destPage.id });
+  const dest = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === destPage.id)!;
+  store.createFolder(dest.id, "Parent");
+  const originalLink = fs.linkSync;
+  const originalUnlink = fs.unlinkSync;
+  if (interruption === "link") fs.linkSync = () => { throw new Error("injected folder move interruption"); };
+  if (interruption === "unlink") fs.unlinkSync = ((file) => {
+    if (path.basename(String(file)) === "Parent.md") throw new Error("injected folder move interruption");
+    return originalUnlink(file);
+  }) as typeof fs.unlinkSync;
+  try {
+    if (interruption) assert.throws(() => store.moveNodes([folder.id], dest.id), /injected folder move/);
+    else store.moveNodes([folder.id], dest.id);
+  } finally { fs.linkSync = originalLink; fs.unlinkSync = originalUnlink; }
+  for (const reader of [new NotesStore(root), store, new NotesStore(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.find(p => p.id === parent.id)?.parentId, destPage.id);
+    assert.equal(pages.find(p => p.id === parent.id)?.title, "Parent");
+    assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
+    assert.equal(pages.find(p => p.id === child.id)?.revision, 1);
+    assert.equal(pages.find(p => p.id === child.id)?.markdown, "child body");
+    assert.equal(reader.history(parent.id).at(-1)?.summary, "Moved folder");
+    assert.equal(reader.tree().nodes.find(n => n.id === folder.id)?.rel, `${dest.rel}/Parent 3`);
+  }
+  assert.ok(fs.existsSync(path.join(root, dest.rel, "Parent 3", "Parent 3.md")));
+}));
+
+for (const basename of ["Parent.MD", "parent.md"]) test(`moving a folder uses its exact folder note basename ${basename}`, () => withStore((store, root) => {
+  const parent = store.create({ title: "Parent" });
+  const child = store.create({ title: "Child", parentId: parent.id });
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!;
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  fs.renameSync(path.join(root, folder.rel, "Parent.md"), path.join(root, folder.rel, basename));
+  const dest = store.createFolder(project.id, "Destination");
+  store.createFolder(dest.id, "Parent");
+  const read = fs.readFileSync;
+  fs.readFileSync = ((file, ...args) => {
+    const name = String(file);
+    if (/\.md$/i.test(name) && fs.existsSync(path.dirname(name)) && !fs.readdirSync(path.dirname(name)).includes(path.basename(name))) {
+      throw Object.assign(new Error("exact filename required"), { code: "ENOENT" });
+    }
+    return read(file, ...args);
+  }) as typeof fs.readFileSync;
+  try { store.moveNodes([folder.id], dest.id); } finally { fs.readFileSync = read; }
+  const reopened = new NotesStore(root);
+  assert.equal(reopened.list().find(p => p.id === child.id)?.parentId, parent.id);
+  assert.equal(reopened.tree().nodes.find(n => n.id === folder.id)?.rel, `${dest.rel}/Parent 2`);
+}));
+
+for (const change of ["project rename", "workspace rename", "project move"] as const) test(`default project location recovers a crash after ${change}`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const other = store.createWorkspace("Work");
+  const expected = change === "project rename" ? "Personal/Journal" : change === "workspace rename" ? "Home/Notes" : "Work/Notes";
+  const internal = store as unknown as { writeIndex(index: unknown): void };
+  const write = internal.writeIndex.bind(store);
+  internal.writeIndex = index => {
+    if (fs.existsSync(path.join(root, expected))) throw new Error("crash before index");
+    write(index);
+  };
+  try {
+    assert.throws(() => {
+      if (change === "project rename") store.rename(project.id, "Journal");
+      else if (change === "workspace rename") store.rename(workspace.id, "Home");
+      else store.moveNodes([project.id], other.id);
+    }, /crash before index/);
+  } finally { internal.writeIndex = write; }
+  const reopened = new NotesStore(root);
+  const page = reopened.create({ title: "After" });
+  assert.equal(reopened.tree().nodes.find(n => n.id === page.id)?.rel, `${expected}/After.md`);
+  assert.ok(!fs.existsSync(path.join(root, "Personal/Notes")));
+}));
+
+test("folder move recovery retains external edits made after interruption", () => withStore((store, root) => {
+  const parent = store.create({ title: "Parent", markdown: "Original" });
+  store.create({ title: "Child", parentId: parent.id });
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!;
+  const dest = store.createFolder(project.id, "Dest");
+  store.createFolder(dest.id, "Parent");
+  const unlink = fs.unlinkSync;
+  fs.unlinkSync = ((file) => {
+    if (path.basename(String(file)) === "Parent.md") throw new Error("interrupted");
+    return unlink(file);
+  }) as typeof fs.unlinkSync;
+  try { assert.throws(() => store.moveNodes([folder.id], dest.id), /interrupted/); }
+  finally { fs.unlinkSync = unlink; }
+  const moved = path.join(root, dest.rel, "Parent 2/Parent 2.md");
+  fs.writeFileSync(moved, fs.readFileSync(moved, "utf8").replace("Original", "Human edit after crash"));
+  const reopened = new NotesStore(root);
+  assert.equal(reopened.list().find(p => p.id === parent.id)?.markdown, "Human edit after crash");
+  assert.ok(reopened.history(parent.id).some(v => v.actor === "external" && v.page.markdown === "Human edit after crash"));
+}));
