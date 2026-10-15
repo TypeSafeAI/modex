@@ -12,7 +12,7 @@ import type { NotesStore } from "./notes-store.js";
 type Turn = Pick<Thread, "id" | "projectId" | "mode" | "plan">;
 /** A project's own notes: its notes project's id and folder. Agents of that project see nothing outside it. */
 export type PagesScope = { id: string; rel: string };
-type Active = { turn: Turn; projectId: string; readOnly: boolean; available: boolean; scope?: PagesScope; changed(change: PagesChange): void };
+type Active = { turn: Turn; projectId: string; readOnly: boolean; available: boolean; scope?: PagesScope; error?: string; changed(change: PagesChange): void };
 type TreeNotes = Pick<NotesStore, "tree" | "pageRel" | "createFolder" | "moveNodes" | "readFile">;
 type Route = { token: string; active?: Active };
 export type PagesLease = { connection: PagesConnection; close(): Promise<void> };
@@ -74,7 +74,10 @@ export class PagesAgents {
     // Capture authority before the first await; Store mutates thread objects in place.
     const readOnly = turn.plan || turn.mode === "chat";
     const projectId = turn.projectId;
-    const scope = this.options.scope?.(projectId);
+    // A notes folder that cannot be read must not fail the turn. The lease stays attached and
+    // refuses every call, rather than running unscoped and showing other projects' notes.
+    let scope: PagesScope | undefined, error: string | undefined;
+    try { scope = this.options.scope?.(projectId); } catch (e) { error = (e as Error).message; }
     if (this.disposed) throw new Error("Pages agents are shutting down.");
     signal?.throwIfAborted();
     const base = await this.listen();
@@ -83,7 +86,7 @@ export class PagesAgents {
     const route = this.routes.get(turn.id) ?? { token: randomUUID() };
     if (route.active) throw new Error("Pages is already attached to this turn.");
     this.routes.set(turn.id, route);
-    const active: Active = { turn, projectId, readOnly, available: true, ...(scope ? { scope } : {}), changed };
+    const active: Active = { turn, projectId, readOnly, available: true, ...(scope ? { scope } : {}), ...(error ? { error } : {}), changed };
     route.active = active;
     return {
       connection: { url: `${base}/mcp/${route.token}`, instructions: pagesInstructions(this.writable(active)) },
@@ -117,6 +120,7 @@ export class PagesAgents {
   private call(active: Active | undefined, name: string, args: Record<string, unknown>): unknown {
     if (!active?.available) throw new Error("Pages access ended with this turn.");
     if (!this.options.enabled(active.projectId)) throw new Error("Agent notes access is disabled for this project. Enable it in Space.");
+    if (active.error) throw new Error(`This project's notes are unavailable: ${active.error}`);
     validate(name, args);
     const space = this.options.space;
     const notes = this.options.notes;

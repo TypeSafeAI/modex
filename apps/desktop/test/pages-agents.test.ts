@@ -227,3 +227,20 @@ test("scoped Pages revert refuses a historical parent in another project", async
     assert.equal(f.space.pageRel(child.id), rel);
   } finally { await client.close(); await lease.close(); await f.clean(); }
 });
+
+test("a notes folder that cannot be read leaves the turn running and refuses every Pages call", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pages-agent-"));
+  const space = new NotesStore(path.join(dir, "notes"));
+  space.create({ title: "Elsewhere", markdown: "another project's" });
+  const agents = new PagesAgents({ space, notes: space, enabled: () => true, scope: () => { throw new Error("The notes folder must be a real folder"); } });
+  const lease = await agents.prepare({ id: "thread", projectId: "project", mode: "agent", plan: false }, () => assert.fail("wrote"));
+  const client = new Client({ name: "test", version: "1" });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL(lease.connection.url)));
+    for (const [name, args] of [["search", { query: "" }], ["list", {}], ["create", { title: "x", markdown: "", summary: "Try" }]] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      assert.equal(result.isError, true, `${name} must not run unscoped`);
+      assert.match((result.content as { text: string }[])[0]!.text, /notes are unavailable: The notes folder must be a real folder/);
+    }
+  } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
