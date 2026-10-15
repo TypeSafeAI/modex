@@ -329,8 +329,12 @@ test("companion reports archived threads and archives only a thread that is not 
   const source = { state: () => state, items: () => [], status: () => status, send: async () => ({ ok: true }), answer: () => {} };
   const server = new CompanionServer(home, { ...source, setArchived: (id, archived) => { calls.push(`${id}:${archived}`); } }, () => ["127.0.0.1"]);
   // No connection pooling: the second server below reuses the first one's port, and a kept-alive socket to the stopped server would be replayed into it.
-  const request = (credentials: { url: string; token: string }, route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const req = https.request(`${credentials.url}${route}`, { method, agent: false, rejectUnauthorized: true, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+  // Validation stays on and trusts only the companion's own certificate. It names no address, so, as on the phone, the
+  // pairing link's fingerprint stands in for the host name.
+  const request = (credentials: { url: string; token: string; fingerprint: string }, route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const ca = fs.readFileSync(path.join(home, "companion", "cert.pem"));
+    const checkServerIdentity = (_host: string, cert: { raw: Buffer }) => crypto.createHash("sha256").update(cert.raw).digest("hex") === credentials.fingerprint ? undefined : new Error("The companion answered with a certificate other than the paired one.");
+    const req = https.request(`${credentials.url}${route}`, { method, agent: false, rejectUnauthorized: true, ca, checkServerIdentity, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
       let text = "";
       res.on("data", (chunk) => { text += chunk; });
       res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
@@ -338,7 +342,7 @@ test("companion reports archived threads and archives only a thread that is not 
     req.on("error", reject);
     req.end(body ? JSON.stringify(body) : undefined);
   });
-  const credentialsOf = (uri: string) => JSON.parse(Buffer.from(new URL(uri).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string };
+  const credentialsOf = (uri: string) => JSON.parse(Buffer.from(new URL(uri).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
   try {
     const credentials = credentialsOf((await server.start()).pairingUri!);
     const snapshot = await request(credentials, "/v1/snapshot");
