@@ -555,6 +555,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Migration also reserves each folder note’s name before placing its children.
   Folder settlement records durable intent so interrupted directory and note
   renames finish before a read derives the hierarchy.
+- **Coverage source inventory.** Unit coverage includes unexecuted production files
+  across core, desktop, site, Store desktop, and the release endpoint. Reports use
+  original source paths, omit generated duplicates, and do not claim browser or
+  native E2E coverage.
 
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.

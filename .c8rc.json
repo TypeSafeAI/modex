@@ -1,0 +1,34 @@
+{
+  "reporter": ["text", "cobertura"],
+  "report-dir": "coverage",
+  "exclude": [
+    "**/test/**",
+    "**/tests/**",
+    "**/*.test.*",
+    "**/node_modules/**",
+    "**/scripts/**",
+    "**/e2e/**",
+    "**/*.config.*",
+    "**/*.d.ts"
+  ],
+  "all": true,
+  "src": [
+    "packages/core/src",
+    "apps/desktop/src",
+    "apps/site/src",
+    "apps/site/server",
+    "apps/site/shared",
+    "apps/store-desktop/src",
+    "api"
+  ],
+  "include": [
+    "packages/core/src/**",
+    "apps/desktop/src/**",
+    "apps/site/src/**",
+    "apps/site/server/**",
+    "apps/site/shared/**",
+    "apps/store-desktop/src/**",
+    "api/**"
+  ],
+  "exclude-after-remap": true
+}
