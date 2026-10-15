@@ -178,3 +178,22 @@ test("the credit cooldown expires and allows Fable again", async t => {
     assert.deepEqual(h.seen.map(o => o.model), ["fable", "opus", "fable"]);
   } finally { await h.runner.dispose(); }
 });
+
+test("a pending credit refusal falls back while unrelated owner removal holds admission", async () => {
+  const h = await harness([refused, replies]);
+  const backend = h.runner.backend("claude"), run = backend.runTurn.bind(backend);
+  let entered!: () => void, finish!: () => void;
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  backend.runTurn = async (...args) => { entered(); await gate; return run(...args); };
+  const turn = h.runner.send(h.thread.id, "answer during removal");
+  let release: (() => void) | undefined;
+  try {
+    await ready;
+    release = h.runner.holdForOwnerRemoval();
+    finish(); await turn;
+    assert.deepEqual(h.seen.map(o => o.model), ["fable", "opus"]);
+    assert.equal(h.runner.status(h.thread.id), "idle");
+    assert.ok(h.runner.items(h.thread.id).some(i => i.kind === "assistant" && i.text === "done"));
+  } finally { finish(); release?.(); await turn; await h.runner.dispose(); }
+});

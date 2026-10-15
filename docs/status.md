@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-13._
+_Last updated 2026-10-15._
 
 ## Shipped
 
@@ -568,8 +568,6 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   the state files, which stay authoritative. A real session replays from the journal to its exact
   saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
 
-## In flight
-
 - **Fable falls back to Opus when out of usage credits.** When Claude Code refuses Fable for
   usage credits before anything ran, Modex reruns the turn on Opus in the same session, posts
   a warning that says so, and starts Fable turns on Opus for the next hour. A refusal after a
@@ -577,6 +575,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   refusal reply no longer shows as an assistant bubble, and the card now reads "out of usage
   credits" instead of "unknown". Empty fallback replies retain a Retry card, and Auto
   records the model that actually ran without learning a user override. Settings → General turns the fallback off; it is on by default.
+
+- **Thread/project deletion during active turns.** A dedicated runner admission hold
+  lets deletion stop and drain its own turns while unrelated turns continue, without
+  weakening restart checks or the native draft preparation/adoption transaction.
+  Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
+  routing and title updates from admitted turns also finish while new edits stay fenced.
+
+## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts

@@ -83,7 +83,7 @@ export interface RunnerOptions {
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
   private disposing = false;
-  private restartHold?: symbol;
+  private restartHold?: { kind: "restart" | "owner-removal" };
   private readonly background = new RestartAdmission();
   private readonly naming = new Map<string, AbortController>();
   /** `backend:model` → when the CLI last refused it for usage credits. */
@@ -146,8 +146,22 @@ export class ThreadRunner {
       throw new Error("Let current turns and worktree operations finish before restarting.");
     }
     const releaseBackground = this.background.holdForRestart();
-    const token = this.restartHold = Symbol();
+    const token = this.restartHold = { kind: "restart" as const };
     return () => { if (this.restartHold === token) { this.restartHold = undefined; releaseBackground(); } };
+  }
+
+  /** Freeze new admissions for draft-owner removal without requiring idle turns.
+   * Deletion stops and drains its own turn; unrelated turns may keep running.
+   * Structural work must settle before the renderer's owner snapshot is frozen.
+   */
+  holdForOwnerRemoval(): () => void {
+    this.assertNotRestarting();
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    if (this.creating.size || this.deleting.size || this.removingProjects.size) {
+      throw new Error("Let current worktree operations finish before removing a thread or project.");
+    }
+    const token = this.restartHold = { kind: "owner-removal" as const };
+    return () => { if (this.restartHold === token) this.restartHold = undefined; };
   }
 
   private assertNotRestarting(): void {
@@ -751,7 +765,9 @@ export class ThreadRunner {
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
-    this.assertNotRestarting();
+    // Already-admitted turns can finish routing and naming during owner removal.
+    // External edits remain fenced until the renderer adopts the canonical state.
+    if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals"].includes(key))) as ThreadPatch;
