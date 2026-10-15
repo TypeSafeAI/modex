@@ -488,6 +488,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "knowledge:reload": { req: undefined; res: BrowserSnapshot | null };
   "knowledge:external": { req: undefined; res: void };
   "knowledge:copy": { req: { pageId: string }; res: string };
+  /** Makes Modex's notes folder the knowledge base. */
+  "knowledge:useNotes": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "space:export": { req: { pageId: string }; res: string | null };
   "space:list": { req: undefined; res: import("./space.js").SpacePage[] };
   "space:comments": { req: { pageId: string }; res: import("./space.js").SpaceComment[] };
@@ -510,7 +512,17 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** Deletes an empty workspace, project or folder. */
   "notes:delete": { req: { id: string }; res: import("./notes.js").NotesTree };
   "notes:reveal": { req: { id: string }; res: void };
+  /** Each workspace and the Modex projects whose notes it holds, for grouping the chat sidebar. */
+  "notes:workspaces": { req: undefined; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
+  /** A Modex project's notes project, made the first time it is asked for. */
+  "project:notes": { req: { projectId: string }; res: import("./notes.js").NotesProject };
+  /** Moves a Modex project's notes into another workspace. */
+  "project:workspace": { req: { projectId: string; workspaceId: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
   "notes:open": { req: { id: string }; res: void };
+  /** Copies files into a project or folder; without paths, a picker opens. */
+  "notes:import": { req: { targetId: string; paths?: string[] }; res: { imported: number; errors: string[] } };
+  /** A text file's contents (UTF-8, up to 1 MB), for its preview. */
+  "notes:file:read": { req: { id: string }; res: string };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "updates:state": { req: undefined; res: import("./updates.js").UpdateInstallState };
   "updates:download": { req: undefined; res: import("./updates.js").UpdateInstallState };

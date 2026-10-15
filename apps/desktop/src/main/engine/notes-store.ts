@@ -16,6 +16,8 @@ const MAX_DEPTH = 30;
 const CHECKPOINT_MS = 30_000;
 /** A file must be missing on two scans this far apart before it counts as deleted outside Modex. */
 const MISSING_MS = 1_000;
+/** While the folder is watched, a read looks at it again at least this often, in case an event was missed. */
+const RELOOK_MS = 10_000;
 export const DEFAULT_WORKSPACE = "Personal";
 export const DEFAULT_PROJECT = "Notes";
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -32,11 +34,21 @@ interface IndexEntry {
 }
 interface Placed { rel: string; ino?: number; /** A folder's name as typed, when its folder name could not carry it. */ title?: string }
 interface NotesIndex {
-  version: 1; defaultProject: string; notes: Record<string, IndexEntry>;
+  version: 1; defaultProject: string; defaultProjectId?: string; notes: Record<string, IndexEntry>;
   /** Folders without a marker of their own, and plain files: where each id was last seen. */
   containers?: Record<string, Placed>; files?: Record<string, Placed>;
 }
-interface Marker { version: 1; id: string; title: string; order: number; default?: boolean; modexProjectId?: string | null }
+interface Marker {
+  version: 1; id: string; title: string; order: number; default?: boolean;
+  /** The Modex project these notes belong to; null once it is removed (the notes stay). */
+  modexProjectId?: string | null;
+  /** That project's folder, so adding it again finds these notes. */
+  codePath?: string;
+  detachedAt?: string;
+}
+/** A Modex project, as much of it as its notes need. */
+export interface LinkedProject { id: string; name: string; path: string }
+export interface NotesWorkspaceSummary { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }
 interface HistoryFile { version: 1; versions: SpacePageVersion[] }
 interface TrashManifest { version: 1; id: string; trashedAt: string; items: { id: string; original: string; rel: string }[] }
 export interface MigrationReceipt {
@@ -57,8 +69,14 @@ export interface NotesStoreOptions {
   legacySpaceFile?: string;
   /** Milliseconds since the epoch; tests move it. */
   now?: () => number;
+  /** Modex's projects: each gets its own notes project when the folder opens. */
+  projects?: () => LinkedProject[];
 }
 
+type Layout = { nodes: NotesNode[]; byId: Map<string, NotesNode>; truncated: boolean };
+/** The images Space previews from the notes folder, and the most it reads of one. */
+const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".svg": "image/svg+xml" };
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const sha256 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex");
 const preserved = (error: unknown) => new Error(`Space could not read saved pages. Your file has been preserved. ${(error as Error).message}`);
 const byCreation = (a: SpacePage, b: SpacePage) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
@@ -83,6 +101,10 @@ export class NotesStore implements SpacePagesStore {
   private readonly missing = new Map<string, number>();
   private readonly fileCache = new Map<string, LiveNote>();
   private readonly historyCache = new Map<string, { key: string; versions: SpacePageVersion[] }>();
+  private watcher: fs.FSWatcher | null = null;
+  /** Bumped by every change seen in the folder and by every change Modex starts. */
+  private generation = 0;
+  private lastLook: { state: State; generation: number; at: number; layout?: Layout } | null = null;
 
   constructor(root: string, private readonly options: NotesStoreOptions = {}) {
     this.root = path.resolve(root);
@@ -90,10 +112,10 @@ export class NotesStore implements SpacePagesStore {
     this.now = options.now ?? Date.now;
   }
 
-  list(): SpacePage[] { return [...this.load().pages.values()].sort(byCreation); }
+  list(): SpacePage[] { return [...this.peek().pages.values()].sort(byCreation); }
 
   comments(pageId: string): SpaceComment[] {
-    this.find(this.load(), pageId);
+    this.find(this.peek(), pageId);
     return this.readComments(pageId);
   }
 
@@ -113,7 +135,7 @@ export class NotesStore implements SpacePagesStore {
 
   /** Versions oldest first. */
   history(id: string): SpacePageVersion[] {
-    this.find(this.load(), id);
+    this.find(this.peek(), id);
     return [...(this.readHistory(id) ?? [])];
   }
 
@@ -251,8 +273,8 @@ export class NotesStore implements SpacePagesStore {
 
   /** Everything in the folder, for the sidebar. */
   tree(): NotesTree {
-    const state = this.load();
-    const { nodes, truncated } = this.layout(state);
+    const state = this.peek();
+    const { nodes, truncated } = this.peekLayout(state);
     const version = sha256(JSON.stringify([nodes.map(n => [n.id, n.rel, n.name]), [...state.pages.values()].map(p => [p.id, p.revision, p.trashedAt])])).slice(0, 16);
     return { version, nodes, truncated };
   }
@@ -358,17 +380,22 @@ export class NotesStore implements SpacePagesStore {
       }
       const ext = node.kind === "file" ? path.posix.extname(node.rel) : "";
       const base = path.posix.basename(node.rel);
-      const name = node.kind === "file" ? uniqueName(base.slice(0, base.length - ext.length), ext, this.names(into.rel)) : uniqueName(base, "", this.names(into.rel));
+      const folderNote = node.kind === "folder" && node.noteId ? fresh.live.get(node.noteId) : undefined;
+      const taken = [...this.names(into.rel), ...(folderNote ? this.names(node.rel).filter(name => nameKey(name) !== nameKey(path.posix.basename(folderNote.rel))) : [])];
+      const name = node.kind === "file" ? uniqueName(base.slice(0, base.length - ext.length), ext, taken) : uniqueName(base, "", taken);
       const rel = `${into.rel}/${name}`;
       if (node.kind === "folder" && node.noteId) {
         // The folder note goes with its folder; its parent becomes whatever the new place's folder note is.
         const page = this.find(fresh, node.noteId);
         const moved: SpacePage = { ...page, parentId: into.kind === "folder" ? into.noteId : null, updatedAt: this.iso(), revision: page.revision + 1 };
-        this.writeHistory(page.id, [...(this.readHistory(page.id) ?? []), { page: moved, actor: "human", summary: "Moved folder" }]);
-        moveNoClobber(this.abs(node.rel), this.abs(rel));
+        // Replay history and both filesystem changes before deriving parent IDs after a crash.
+        this.writeJson(path.join(this.meta, "settlement.json"), {
+          version: 1, from: node.rel, to: rel, note: path.posix.basename(folderNote!.rel),
+          move: { page: moved, actor: "human", summary: "Moved folder" },
+        });
+        this.finishSettlement();
         this.rebase(fresh, node.rel, rel);
-        if (name !== base) this.renameNote(fresh, moved, `${rel}/${base}.md`, `${rel}/${name}.md`);
-        else fresh.index.notes[page.id] = { ...fresh.index.notes[page.id]!, rel: `${rel}/${base}.md` };
+        fresh.index.notes[page.id] = { ...fresh.index.notes[page.id]!, rel: `${rel}/${name}.md` };
       } else {
         moveNoClobber(this.abs(node.rel), this.abs(rel));
         this.rebase(fresh, node.rel, rel);
@@ -378,10 +405,173 @@ export class NotesStore implements SpacePagesStore {
     }
   }
 
+  // ── Modex projects ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * The notes project of a Modex project. The first time, it is made in the default workspace,
+   * unless notes left by an earlier copy of the same project folder are there to link again.
+   */
+  linkProject(project: LinkedProject): NotesProject {
+    const nodes = this.layout(this.load()).nodes;
+    const projects = nodes.filter((n): n is NotesProject => n.kind === "project");
+    const linked = projects.find(p => p.modexProjectId === project.id);
+    if (linked) return linked;
+    for (const candidate of projects) {
+      const marker = this.readMarker(candidate.rel, "project");
+      if (marker && !marker.modexProjectId && marker.codePath === project.path) {
+        const { detachedAt: _gone, ...rest } = marker;
+        this.writeMarker(candidate.rel, "project", { ...rest, modexProjectId: project.id });
+        return this.layout(this.load()).byId.get(candidate.id) as NotesProject;
+      }
+    }
+    const workspace = nodes.find((n): n is NotesWorkspace => n.kind === "workspace" && n.isDefault) ?? nodes.find((n): n is NotesWorkspace => n.kind === "workspace");
+    if (!workspace) throw new Error("The notes folder has no workspace.");
+    const created = this.createProject(workspace.id, project.name, project.id);
+    const marker = this.readMarker(created.rel, "project")!;
+    this.writeMarker(created.rel, "project", { ...marker, codePath: project.path });
+    return created;
+  }
+
+  /** A removed Modex project leaves its notes where they are, ready to link again. */
+  detachProject(modexProjectId: string): void {
+    const node = this.projectFor(modexProjectId);
+    if (!node) return;
+    const marker = this.readMarker(node.rel, "project");
+    if (marker) this.writeMarker(node.rel, "project", { ...marker, modexProjectId: null, detachedAt: this.iso() });
+  }
+
+  projectFor(modexProjectId: string): NotesProject | undefined {
+    return this.peekLayout(this.peek()).nodes.find((n): n is NotesProject => n.kind === "project" && n.modexProjectId === modexProjectId);
+  }
+
+  /** Each workspace, and the Modex projects whose notes are in it, for grouping the chat sidebar. */
+  workspaces(): NotesWorkspaceSummary[] {
+    const nodes = this.peekLayout(this.peek()).nodes;
+    return nodes.filter((n): n is NotesWorkspace => n.kind === "workspace").map(w => ({
+      id: w.id, name: w.name, order: w.order, isDefault: w.isDefault,
+      modexProjectIds: nodes.filter((n): n is NotesProject => n.kind === "project" && n.parentId === w.id && n.modexProjectId !== null).map(p => p.modexProjectId!),
+    }));
+  }
+
+  /** A page's place in the folder (where a trashed page came from), for scoping a project's agents. */
+  pageRel(id: string): string | undefined {
+    const state = this.peek();
+    const entry = state.index.notes[id];
+    return state.live.get(id)?.rel ?? entry?.trash?.original ?? entry?.original ?? undefined;
+  }
+
+  /** A text file's contents: UTF-8, at most 1 MB. */
+  readFile(id: string): string {
+    const node = this.peekLayout(this.peek()).byId.get(id);
+    if (!node || node.kind !== "file") throw new Error("This file is no longer in your notes.");
+    if (node.preview !== "text") throw new Error("Only text files up to 1 MB can be read.");
+    const data = this.readPreviewBytes(node.rel, 1_048_576);
+    if (!data) throw new Error("Only regular text files up to 1 MB inside your notes can be read.");
+    try { return utf8.decode(data); } catch { throw new Error("This file is not UTF-8 text."); }
+  }
+
+  /**
+   * Copies files into a project or folder. Each is a regular file (no folders or links) of at most
+   * 100 MB, up to 50 at a time; a name already taken gets a suffix, and nothing is ever replaced.
+   * Markdown files become pages on the next read.
+   */
+  importFiles(targetId: string, sources: string[]): { imported: NotesNode[]; errors: string[] } {
+    const layout = this.layout(this.load());
+    const target = layout.byId.get(targetId);
+    if (!target || (target.kind !== "project" && target.kind !== "folder")) throw new Error("Choose a project or folder to import into.");
+    if (!Array.isArray(sources) || sources.length === 0) return { imported: [], errors: [] };
+    if (sources.length > 50) throw new Error("Import up to 50 files at a time.");
+    const errors: string[] = [];
+    const rels: string[] = [];
+    for (const source of sources) {
+      const label = typeof source === "string" ? path.basename(source) : "A file";
+      try {
+        if (typeof source !== "string" || !path.isAbsolute(source)) throw new Error("is not a local file");
+        const stat = fs.lstatSync(source);
+        if (!stat.isFile()) throw new Error("is not a regular file (folders and links are not imported)");
+        if (stat.size > 100 * 1024 * 1024) throw new Error("is larger than 100 MB");
+        // An extension a name could not carry (a colon, say) stays part of the stem, made safe with it.
+        const raw = path.extname(source);
+        const ext = /^\.[A-Za-z0-9_+-]{1,16}$/.test(raw) ? raw : "";
+        const stem = noteStem(path.basename(source, ext));
+        const rel = `${target.rel}/${uniqueName(stem, ext.toLowerCase() === ".md" ? ".md" : ext, this.names(target.rel))}`;
+        fs.copyFileSync(source, this.abs(rel), fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
+        rels.push(rel);
+      } catch (error) { errors.push(`${label} ${(error as Error).message.replace(/^[A-Z]+: /, "")}`); }
+    }
+    const after = this.layout(this.load());
+    return { imported: after.nodes.filter(node => rels.includes(node.rel)), errors };
+  }
+
+  /** An image file's bytes and type, for previews over `modex-notes://file/<id>`; nothing else is served. */
+  readImage(id: string): { data: Buffer; mime: string } | null {
+    const node = this.peekLayout(this.peek()).byId.get(id);
+    if (!node || node.kind !== "file" || node.preview !== "image") return null;
+    return this.readImageAt(node.rel);
+  }
+
+  /**
+   * An image a page names by a path relative to its own file (`![](assets/diagram.png)`), only when
+   * it lies inside the page's own project, after following any links, and outside dot folders.
+   */
+  readPageImage(pageId: string, relative: string): { data: Buffer; mime: string } | null {
+    const page = this.peek().live.get(pageId)?.rel;
+    if (!page || typeof relative !== "string" || relative.includes("\0")) return null;
+    const rel = path.posix.normalize(path.posix.join(path.posix.dirname(page), relative));
+    const project = page.split("/").slice(0, 2).join("/");
+    if (!rel.startsWith(`${project}/`) || rel.split("/").some(segment => segment.startsWith("."))) return null;
+    return this.readImageAt(rel, project);
+  }
+
+  private readImageAt(rel: string, project?: string): { data: Buffer; mime: string } | null {
+    const type = IMAGE_TYPES[path.posix.extname(rel).toLowerCase()];
+    if (!type) return null;
+    const data = this.readPreviewBytes(rel, MAX_IMAGE_BYTES, project);
+    return data ? { data, mime: type } : null;
+  }
+
+  /** Cached tree metadata is never permission to read: check the current path and opened file. */
+  private readPreviewBytes(rel: string, maxBytes: number, project?: string): Buffer | null {
+    let fd: number | undefined;
+    try {
+      const file = this.abs(rel);
+      if (!fs.lstatSync(file).isFile()) return null;
+      const root = fs.realpathSync(this.root);
+      const real = fs.realpathSync(file);
+      const inside = path.relative(root, real);
+      if (!inside || path.isAbsolute(inside) || inside.split(path.sep).some(segment => segment.startsWith("."))) return null;
+      const projectRel = project ?? rel.split("/").slice(0, 2).join("/");
+      const projectParts = projectRel.split("/");
+      if (projectParts.length !== 2) return null;
+      // A cached id belongs to its original project. Neither its workspace nor project
+      // may be replaced by a link that silently redefines that boundary.
+      for (let depth = 1; depth <= 2; depth++) {
+        if (!fs.lstatSync(path.join(root, ...projectParts.slice(0, depth))).isDirectory()) return null;
+      }
+      const projectRoot = path.join(root, ...projectParts);
+      if (fs.realpathSync(this.abs(projectRel)) !== projectRoot || !real.startsWith(`${projectRoot}${path.sep}`)) return null;
+      // A regular file can become a FIFO after lstat; never block before fstat can reject it.
+      fd = fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+      const stat = fs.fstatSync(fd);
+      const current = fs.lstatSync(file);
+      if (!stat.isFile() || !current.isFile() || current.dev !== stat.dev || current.ino !== stat.ino || fs.realpathSync(file) !== real || stat.size > maxBytes) return null;
+      // A bounded read also catches growth after fstat without allocating an unbounded file.
+      const data = Buffer.alloc(stat.size + 1);
+      let length = 0;
+      while (length < data.length) {
+        const read = fs.readSync(fd, data, length, data.length - length, null);
+        if (!read) break;
+        length += read;
+      }
+      return length > stat.size ? null : data.subarray(0, length);
+    } catch { return null; }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
+  }
+
   /** Where a node is on disk, for Reveal in Finder and Open. */
   pathOf(id: string): string {
-    const state = this.load();
-    const node = this.layout(state).byId.get(id);
+    const state = this.peek();
+    const node = this.peekLayout(state).byId.get(id);
     const live = state.live.get(id);
     if (node) return this.abs(node.rel);
     if (live) return this.abs(live.rel);
@@ -399,7 +589,7 @@ export class NotesStore implements SpacePagesStore {
   }
 
   /** The nodes in the folder, and each by id. Ids for folders and files without one are recorded as they are found. */
-  private layout(state: State): { nodes: NotesNode[]; byId: Map<string, NotesNode>; truncated: boolean } {
+  private layout(state: State): Layout {
     const index = state.index;
     const containers = { ...index.containers };
     const files = { ...index.files };
@@ -412,14 +602,34 @@ export class NotesStore implements SpacePagesStore {
     for (const [id, file] of state.live) if (this.isFolderNote(file.rel)) folderNotes.set(path.posix.dirname(file.rel), id);
     const seen = new Set<string>();
     let truncated = false;
-    const claim = (map: Record<string, Placed>, rel: string, ino: number): string => {
-      const known = Object.entries(map).find(([, p]) => p.rel === rel)?.[0]
-        ?? Object.entries(map).find(([oid, p]) => p.ino === ino && !seen.has(oid) && !fs.existsSync(this.abs(p.rel)))?.[0];
+    // Each map's ids by path and by inode, built once per layout: searching the whole map for every
+    // entry made a layout of a few thousand files take seconds.
+    type Ids = { map: Record<string, Placed>; byRel: Map<string, string>; byIno: Map<number, string[]> };
+    const addIno = (ids: Ids, ino: number, id: string) => { const list = ids.byIno.get(ino); if (list) list.push(id); else ids.byIno.set(ino, [id]); };
+    const idsOf = (map: Record<string, Placed>): Ids => {
+      const ids: Ids = { map, byRel: new Map(), byIno: new Map() };
+      for (const [id, p] of Object.entries(map)) {
+        if (!ids.byRel.has(p.rel)) ids.byRel.set(p.rel, id);
+        if (p.ino !== undefined) addIno(ids, p.ino, id);
+      }
+      return ids;
+    };
+    const claim = (ids: Ids, rel: string, ino: number): string => {
+      const { map } = ids;
+      const known = ids.byRel.get(rel)
+        ?? ids.byIno.get(ino)?.find(oid => map[oid]?.ino === ino && !seen.has(oid) && !fs.existsSync(this.abs(map[oid]!.rel)));
       const id = known ?? randomUUID();
-      if (!known || map[id]!.rel !== rel || map[id]!.ino !== ino) { map[id] = { ...map[id], rel, ino }; changed = true; }
+      const old = map[id];
+      if (!old || old.rel !== rel || old.ino !== ino) {
+        map[id] = { ...old, rel, ino }; changed = true;
+        if (old && ids.byRel.get(old.rel) === id) ids.byRel.delete(old.rel);
+        ids.byRel.set(rel, id);
+        if (old?.ino !== ino) addIno(ids, ino, id);
+      }
       seen.add(id);
       return id;
     };
+    const containerIds = idsOf(containers), fileIds = idsOf(files);
     const walk = (dirRel: string, level: number, parentId: string | null) => {
       let entries: fs.Dirent[];
       try { entries = fs.readdirSync(dirRel ? this.abs(dirRel) : this.root, { withFileTypes: true }); } catch { return; }
@@ -433,7 +643,7 @@ export class NotesStore implements SpacePagesStore {
           const kind: NotesNodeKind = level === 0 ? "workspace" : level === 1 ? "project" : "folder";
           if (kind === "workspace" || kind === "project") {
             const marker = this.readMarker(rel, kind);
-            const id = marker?.id ?? claim(containers, rel, ino);
+            const id = marker?.id ?? claim(containerIds, rel, ino);
             const order = marker?.order ?? Number.MAX_SAFE_INTEGER;
             const name = marker?.title || entry.name;
             nodes.push(kind === "workspace"
@@ -442,7 +652,7 @@ export class NotesStore implements SpacePagesStore {
             dirIds.set(rel, id);
             walk(rel, level + 1, id);
           } else {
-            const id = claim(containers, rel, ino);
+            const id = claim(containerIds, rel, ino);
             const noteId = folderNotes.get(rel) ?? null;
             const page = noteId ? state.pages.get(noteId) : undefined;
             const typed = containers[id]?.title;
@@ -462,9 +672,9 @@ export class NotesStore implements SpacePagesStore {
           continue;
         }
         const stat = fs.statSync(this.abs(rel));
-        const id = claim(files, rel, stat.ino);
+        const id = claim(fileIds, rel, stat.ino);
         const ext = path.posix.extname(entry.name).toLowerCase();
-        const preview = /^\.(png|jpe?g|gif|webp|svg|avif)$/.test(ext) ? "image" : /^\.(txt|md|json|csv|ya?ml|log|ts|js|tsx|jsx|css|html)$/.test(ext) && stat.size <= 1_048_576 ? "text" : null;
+        const preview = IMAGE_TYPES[ext] && stat.size <= MAX_IMAGE_BYTES ? "image" : /^\.(txt|md|json|csv|ya?ml|log|ts|js|tsx|jsx|css|html)$/.test(ext) && stat.size <= 1_048_576 ? "text" : null;
         nodes.push({ id, kind: "file", parentId, name: entry.name, rel, size: stat.size, preview } satisfies NotesFile);
       }
     };
@@ -473,8 +683,14 @@ export class NotesStore implements SpacePagesStore {
     for (const id of Object.keys(containers)) if (!seen.has(id)) { delete containers[id]; changed = true; }
     for (const id of Object.keys(files)) if (!seen.has(id)) { delete files[id]; changed = true; }
     if (changed) { index.containers = containers; index.files = files; this.writeIndex(index); }
-    nodes.sort((a, b) => (a.kind === "workspace" && b.kind === "workspace") || (a.kind === "project" && b.kind === "project") ? ((a as NotesWorkspace).order - (b as NotesWorkspace).order) || a.name.localeCompare(b.name) : 0);
-    return { nodes, byId: new Map(nodes.map(n => [n.id, n])), truncated };
+    // Siblings in order: workspaces and projects by their saved order, then name; the rest as the folder lists them.
+    const groups = new Map<string | null, NotesNode[]>();
+    for (const node of nodes) { const group = groups.get(node.parentId); if (group) group.push(node); else groups.set(node.parentId, [node]); }
+    const ordered = [...groups.values()].flatMap(group => {
+      const ranked = group.filter((n): n is NotesWorkspace | NotesProject => n.kind === "workspace" || n.kind === "project").sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
+      return [...ranked, ...group.filter(n => n.kind !== "workspace" && n.kind !== "project")];
+    });
+    return { nodes: ordered, byId: new Map(ordered.map(n => [n.id, n])), truncated };
   }
 
   /** A folder name for a workspace, project or folder title. */
@@ -498,13 +714,63 @@ export class NotesStore implements SpacePagesStore {
   private place(index: NotesIndex, node: NotesNode, rel: string): void {
     if (node.kind === "file") index.files = { ...index.files, [node.id]: { rel, ino: fs.statSync(this.abs(rel)).ino } };
     else if (node.kind === "folder" || !this.readMarker(rel, node.kind as "workspace" | "project")) index.containers = { ...index.containers, [node.id]: { ...index.containers?.[node.id], rel, ino: fs.statSync(this.abs(rel)).ino } };
+    if (index.defaultProject === node.rel || index.defaultProject.startsWith(`${node.rel}/`)) {
+      index.defaultProject = `${rel}${index.defaultProject.slice(node.rel.length)}`;
+    }
     // Notes inside a moved folder are found by their ids on the next read.
     for (const [id, entry] of Object.entries(index.notes)) if (entry.rel?.startsWith(`${node.rel}/`)) index.notes[id] = { ...entry, rel: `${rel}${entry.rel.slice(node.rel.length)}` };
   }
 
   // ── Reading and reconciling ──────────────────────────────────────────────────────────────
 
+  /**
+   * Watches the folder, so reads between changes reuse the last look instead of walking it again.
+   * Changes still look afresh, and so does a read every 10 seconds in case an event went missing.
+   */
+  watch(): void {
+    if (this.watcher) return;
+    try {
+      this.open();
+      this.watcher = fs.watch(this.root, { recursive: true }, () => { this.generation++; });
+      this.watcher.on("error", () => this.unwatch());
+      this.watcher.unref();
+    } catch (error) {
+      this.watcher = null;
+      console.error("[modex] notes folder is read on every look; it could not be watched:", (error as Error).message);
+    }
+  }
+
+  unwatch(): void {
+    this.watcher?.close();
+    this.watcher = null;
+    this.lastLook = null;
+  }
+
+  /** For a read: the last look, while the watched folder has not changed since and no deletion awaits its second look. */
+  private peek(): State {
+    const last = this.lastLook;
+    if (this.watcher && last && last.generation === this.generation && this.missing.size === 0 && this.now() - last.at < RELOOK_MS) return last.state;
+    const generation = this.generation;
+    const state = this.look();
+    this.lastLook = this.watcher ? { state, generation, at: this.now() } : null;
+    return state;
+  }
+
+  /** The tree for a read: laid out once per look while the folder is watched. */
+  private peekLayout(state: State): Layout {
+    const last = this.lastLook;
+    if (last?.state !== state) return this.layout(state);
+    return last.layout ??= this.layout(state);
+  }
+
+  /** For a change: always a fresh look, and the next read looks again. */
   private load(): State {
+    this.generation++;
+    this.lastLook = null;
+    return this.look();
+  }
+
+  private look(): State {
     this.open();
     this.finishSettlement();
     let state = this.refresh();
@@ -517,7 +783,7 @@ export class NotesStore implements SpacePagesStore {
   /** Replays the two-step folder/note rename without ever replacing another file. */
   private finishSettlement(): void {
     const journal = path.join(this.meta, "settlement.json");
-    let intent: { version: number; from: string; to: string; note: string };
+    let intent: { version: number; from: string; to: string; note: string; move?: SpacePageVersion };
     try { intent = JSON.parse(fs.readFileSync(journal, "utf8")); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
@@ -526,9 +792,17 @@ export class NotesStore implements SpacePagesStore {
     const safe = (rel: unknown): rel is string => typeof rel === "string" && rel.split("/").length >= 3 &&
       rel.split("/").every(part => part !== "" && part !== "." && part !== ".." && !part.includes("\\") && part !== ".modex");
     if (intent?.version !== 1 || !safe(intent.from) || !safe(intent.to) ||
-        path.posix.dirname(intent.from) !== path.posix.dirname(intent.to) ||
+        (!intent.move && path.posix.dirname(intent.from) !== path.posix.dirname(intent.to)) ||
+        intent.to.startsWith(`${intent.from}/`) ||
         typeof intent.note !== "string" || !/^[^/\\]+\.md$/i.test(intent.note) ||
         nameKey(stemOf(intent.note)) !== nameKey(path.posix.basename(intent.from))) throw preserved(new Error("Invalid folder rename intent."));
+    if (intent.move) {
+      validateHistory(intent.move.page.id, { version: 1, versions: [intent.move] });
+      const versions = this.readHistory(intent.move.page.id);
+      const latest = versions?.at(-1);
+      if (!versions || !latest || latest.page.revision > intent.move.page.revision) throw preserved(new Error("Invalid folder move history."));
+      if (latest.page.revision < intent.move.page.revision) this.writeHistory(intent.move.page.id, [...versions, intent.move]);
+    }
     const stat = (rel: string): fs.Stats | null => {
       // Never follow a link when replaying paths read from disk.
       let current = this.root;
@@ -546,6 +820,7 @@ export class NotesStore implements SpacePagesStore {
       if (!source.isDirectory() || (target && !same(source, target))) throw preserved(new Error("Folder rename destination is occupied."));
       if (intent.from !== intent.to) fs.renameSync(this.abs(intent.from), this.abs(intent.to));
       fsyncDir(path.dirname(this.abs(intent.to)));
+      if (path.posix.dirname(intent.from) !== path.posix.dirname(intent.to)) fsyncDir(path.dirname(this.abs(intent.from)));
     } else if (!target?.isDirectory()) throw preserved(new Error("Folder rename source is missing."));
     const from = `${intent.to}/${intent.note}`;
     const to = `${intent.to}/${path.posix.basename(intent.to)}.md`;
@@ -564,7 +839,10 @@ export class NotesStore implements SpacePagesStore {
     } else if (!newNote?.isFile()) throw preserved(new Error("Folder note rename source is missing."));
     const previous = this.readText(to);
     const parsed = parseNote(previous);
-    if (parsed.id && parsed.title === stemOf(to)) {
+    if (intent.move) {
+      const page = intent.move.page;
+      writeFileDurably(this.abs(to), formatNote({ id: page.id, title: parsed.title ?? page.title, stem: stemOf(to), body: parsed.body }, previous));
+    } else if (parsed.id && parsed.title === stemOf(to)) {
       writeFileDurably(this.abs(to), formatNote({ id: parsed.id, title: parsed.title, stem: stemOf(to), body: parsed.body }, previous));
     }
     fsyncDir(this.abs(intent.to));
@@ -770,6 +1048,9 @@ export class NotesStore implements SpacePagesStore {
     if (!receipt) this.migrate(stat !== null);
     this.opened = true;
     if (receipt) this.importChangesSince(receipt);
+    for (const project of this.options.projects?.() ?? []) {
+      try { this.linkProject(project); } catch (error) { console.error("[modex] notes for project", project.name, "unavailable:", error); }
+    }
   }
 
   private readReceipt(): MigrationReceipt | null {
@@ -1034,11 +1315,39 @@ export class NotesStore implements SpacePagesStore {
       for (const [id, entry] of Object.entries(data.notes)) {
         if (!ID.test(id) || !entry || (entry.rel !== null && typeof entry.rel !== "string") || (entry.hash !== null && typeof entry.hash !== "string")) throw new Error("Invalid notes index entry.");
       }
+      if (data.defaultProjectId !== undefined && (typeof data.defaultProjectId !== "string" || !ID.test(data.defaultProjectId))) throw new Error("Invalid default project identity.");
+      if (this.recoverDefaultProject(data)) this.writeIndex(data);
       return data;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, defaultProject: `${DEFAULT_WORKSPACE}/${DEFAULT_PROJECT}`, notes: {} };
       throw preserved(error);
     }
+  }
+
+  /** Persist identity before a move; its marker repairs a path whose index write was interrupted. */
+  private recoverDefaultProject(index: NotesIndex): boolean {
+    const current = this.readMarker(index.defaultProject, "project");
+    if (!index.defaultProjectId) {
+      if (!current) return false;
+      index.defaultProjectId = current.id;
+      return true;
+    }
+    if (current?.id === index.defaultProjectId) return false;
+    const directories = (rel: string): string[] => {
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(this.abs(rel), { withFileTypes: true }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+      return entries.filter(entry => !entry.name.startsWith(".") && entry.isDirectory() && !entry.isSymbolicLink())
+        .map(entry => rel ? `${rel}/${entry.name}` : entry.name);
+    };
+    const matches: string[] = [];
+    for (const workspace of directories("")) for (const project of directories(workspace)) {
+      if (this.readMarker(project, "project")?.id === index.defaultProjectId) matches.push(project);
+    }
+    if (matches.length > 1) throw new Error("The default project identity is duplicated.");
+    if (!matches.length) return false;
+    index.defaultProject = matches[0]!;
+    return true;
   }
 
   private writeIndex(index: NotesIndex): void { this.writeJson(path.join(this.meta, "index.json"), index); }

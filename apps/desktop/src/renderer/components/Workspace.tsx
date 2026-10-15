@@ -165,7 +165,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     return () => { resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("browser:show", { id: null }).catch(() => {}); };
   }, [current.id, current.kind, current.browser?.error, visible, suspended, full, streamerMode]);
   const browserPage = current.kind === "new" || current.kind === "browser";
-  return <aside ref={container} className="workspace" data-testid="workspace" hidden={!visible} aria-label="Workspace" data-full-view={full} data-page-kind={current.kind}>
+  return <aside ref={container} className="workspace" data-testid="workspace" hidden={!visible} aria-label="Side panel" data-full-view={full} data-page-kind={current.kind}>
     <header className="workspace-tabbar">
       <div className="workspace-tabs" role="tablist" aria-label="Workspace tabs">
         {tabs.map((tab) => <div key={tab.id} className={`workspace-tab${tab.id === current.id ? " selected" : ""}`}>
@@ -186,7 +186,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       </span>
       <span className="spacer" />
       <IconButton icon="expand" label={full ? "Exit full view" : "Full view"} data-testid="workspace-full" aria-pressed={full} size="md" onClick={() => setFull(!full)} />
-      <IconButton icon="tabs" label="Hide workspace" size="md" className="workspace-hide" onClick={onHide} />
+      <IconButton icon="tabs" label="Hide side panel" size="md" className="workspace-hide" onClick={onHide} />
     </header>
     <div className="workspace-pane" id={`workspace-pane-${thread.id}`} role="tabpanel" aria-labelledby={`workspace-tab-${current.id}`}>
       {tabs.filter(tab => tab.kind === "canvas").map(tab => <CanvasPanel key={tab.id} id={tab.id} thread={thread} visible={visible && current.id === tab.id} suspended={suspended} full={full} />)}

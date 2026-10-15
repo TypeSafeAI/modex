@@ -15,10 +15,15 @@ type Peer = { callTool(call: { name: string; arguments: Record<string, unknown> 
 type Options = {
   knowledge: Pick<KnowledgeService, "agentTarget" | "isAgentTarget">;
   enabled(projectId: string): boolean;
+  /**
+   * When the knowledge folder is Modex's notes folder: the project's notes, as a path inside it.
+   * That project's agents then read, write and search only there.
+   */
+  scope?(projectId: string, folder: string): string | undefined;
   connect?: (target: KnowledgeTarget, identity: string, signal?: AbortSignal) => Promise<Peer>;
 };
 type Turn = Pick<Thread, "id" | "projectId" | "mode" | "plan">;
-type Active = { turn: Turn; readOnly: boolean; target?: KnowledgeTarget; peer?: Peer; available: boolean; error?: string; changed: (change: KnowledgeChange) => void; pending: Set<Promise<unknown>> };
+type Active = { turn: Turn; readOnly: boolean; target?: KnowledgeTarget; peer?: Peer; available: boolean; error?: string; changed: (change: KnowledgeChange) => void; pending: Set<Promise<unknown>>; prefix?: string };
 type Route = { token: string; active?: Active };
 export type KnowledgeLease = { connection: KnowledgeConnection; warning?: string; close(): Promise<void> };
 
@@ -77,6 +82,7 @@ export class KnowledgeAgents {
   async prepare(turn: Turn, changed: Active["changed"], signal?: AbortSignal): Promise<KnowledgeLease> {
     if (this.disposed) throw new Error("Knowledge agents are shutting down.");
     const readOnly = turn.plan || turn.mode === "chat";
+    const projectId = turn.projectId;
     signal = signal ? AbortSignal.any([signal, this.shutdown.signal]) : this.shutdown.signal;
     const base = await this.listen();
     signal?.throwIfAborted();
@@ -90,6 +96,8 @@ export class KnowledgeAgents {
     try {
       active.target = await abortable(this.options.knowledge.agentTarget(), signal);
       signal?.throwIfAborted();
+      const prefix = this.options.scope?.(projectId, active.target.folder);
+      if (prefix) active.prefix = prefix;
       active.peer = await (this.options.connect ?? connect)(active.target, turn.id, signal);
     } catch (error) { active.error = (error as Error).message; }
     if (signal?.aborted) {
@@ -161,6 +169,11 @@ export class KnowledgeAgents {
     const mutation = name === "write" || name === "edit";
     if (mutation && !this.writable(active)) throw new Error("Knowledge maintenance is disabled for this project or this turn is read-only.");
     const target = active.target;
+    if (active.prefix) {
+      if (name === "search") return scopedSearch(target.content, active.prefix, args.query as string);
+      const doc = args.path as string;
+      if (!doc.startsWith(`${active.prefix}/`)) throw new Error("This page is outside this project's notes.");
+    }
     let upstream: { name: string; arguments: Record<string, unknown> };
     if (name === "search") {
       if ((args.query as string).length > 2000) throw new Error("Knowledge query is too long.");
@@ -220,4 +233,39 @@ export function knowledgeDocumentPath(content: string, input: unknown): string {
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
   return file;
+}
+
+/**
+ * Search confined to one project's notes, read straight from the folder: Markdown files under
+ * `prefix` whose title or text contains the query, without asking the knowledge server (whose
+ * results would span every project).
+ */
+function scopedSearch(content: string, prefix: string, query: string): CallToolResult {
+  if (query.length > 2000) throw new Error("Knowledge query is too long.");
+  const needle = query.toLowerCase();
+  const results: { path: string; title: string; excerpt: string }[] = [];
+  const walk = (dir: string, rel: string, depth: number) => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (results.length >= 20) return;
+      if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
+      const file = path.join(dir, entry.name);
+      const at = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) { if (depth < 30) walk(file, at, depth + 1); continue; }
+      if (!entry.isFile() || !/\.mdx?$/i.test(entry.name)) continue;
+      let text: string;
+      try { if (fs.statSync(file).size > 2 * 1024 * 1024) continue; text = fs.readFileSync(file, "utf8"); } catch { continue; }
+      const title = entry.name.replace(/\.mdx?$/i, "");
+      const index = text.toLowerCase().indexOf(needle);
+      if (needle && index < 0 && !title.toLowerCase().includes(needle)) continue;
+      results.push({ path: at, title, excerpt: text.slice(Math.max(0, index - 80), Math.max(0, index) + 160).trim() });
+    }
+  };
+  const directory = path.join(content, ...prefix.split("/"));
+  // The captured project path (or its workspace) may have become a link during the turn.
+  // Checking only directory entries below it would still read through that link.
+  if (fs.realpathSync(directory) !== directory) throw new Error("Knowledge document links are not allowed.");
+  walk(directory, prefix, 0);
+  return { content: [{ type: "text", text: JSON.stringify({ results }) }] };
 }

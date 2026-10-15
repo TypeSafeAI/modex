@@ -9,11 +9,15 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PagesAgents } from "../src/main/engine/pages-agents.js";
 import { NotesStore } from "../src/main/engine/notes-store.js";
 
-async function fixture() {
+async function fixture(scoped = false) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pages-agent-"));
   // The store Modex runs the Pages tools over: notes in a folder.
   const space = new NotesStore(path.join(dir, "notes")); let enabled = true; const receipts: unknown[] = [];
-  const agents = new PagesAgents({ space, enabled: () => enabled });
+  // Scoped like the app: each Modex project's agents work in that project's notes.
+  const agents = new PagesAgents({ space, enabled: () => enabled, ...(scoped ? {
+    notes: space,
+    scope: (id: string) => { const project = space.projectFor(id); return project ? { id: project.id, rel: project.rel } : undefined; },
+  } : {}) });
   const turn = { id: "thread", projectId: "project", mode: "agent" as "agent" | "chat", plan: false };
   const begin = async () => {
     const lease = await agents.prepare(turn, change => receipts.push(change));
@@ -32,7 +36,7 @@ async function fixture() {
 test("Pages MCP manages notes, organization, history and recovery through the real store", async () => {
   const f = await fixture(); const { lease, client, call } = await f.begin();
   try {
-    assert.deepEqual((await client.listTools()).tools.map(t => t.name), ["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert"]);
+    assert.deepEqual((await client.listTools()).tools.map(t => t.name), ["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert", "list", "create_folder", "move", "read_file"]);
     const parent = await call("create", { title: "Project", markdown: "# Parent", summary: "Create project" });
     let p = await call("create", { title: "Decision", markdown: "Human text\nOriginal", parentId: parent.id, summary: "Create note" });
     assert.equal((await call("search", { query: "Original" })).pages[0].id, p.id);
@@ -167,4 +171,77 @@ test("a delayed request cannot inherit a subsequent turn's authority", async () 
     assert.equal((await response).result.isError, true);
     assert.equal(f.space.list().length, 0);
   } finally { await first.client.close(); await first.lease.close(); await next?.close(); await f.clean(); }
+});
+
+test("a project's agents work in that project's notes only, with folders, and never see another project's", async () => {
+  const f = await fixture(true);
+  const mine = f.space.linkProject({ id: "project", name: "mine", path: "/code/mine" });
+  const theirs = f.space.linkProject({ id: "other", name: "theirs", path: "/code/theirs" });
+  const secret = f.space.create({ title: "Their secret", markdown: "keep out", containerId: theirs.id });
+  const { lease, client, call } = await f.begin();
+  const refused = async (name: string, args: Record<string, unknown>) => {
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true, name);
+    return (result.content as { text: string }[])[0]!.text;
+  };
+  try {
+    assert.equal((await call("search", { query: "" })).total, 0, "another project's notes are not even listed");
+    assert.match(await refused("read", { id: secret.id }), /outside this project/);
+    assert.match(await refused("edit", { id: secret.id, revision: 1, find: "keep", replace: "x", summary: "Try" }), /outside this project/);
+    assert.match(await refused("create", { title: "Child", markdown: "", parentId: secret.id, summary: "Try" }), /outside this project/);
+    const created = await call("create", { title: "Decision", markdown: "Ship it", summary: "Record decision" });
+    assert.ok(f.space.pageRel(created.id)!.startsWith(`${mine.rel}/`), "a new note lands in the project's own notes");
+    const folder = await call("create_folder", { name: "Decisions", summary: "Group decisions" });
+    await call("move", { id: created.id, targetId: folder.id, summary: "File decision" });
+    assert.ok(f.space.pageRel(created.id)!.startsWith(`${mine.rel}/Decisions/`));
+    assert.deepEqual((await call("list", { folderId: folder.id })).items.map((item: { id: string; kind: string }) => [item.id, item.kind]), [[created.id, "note"]]);
+    fs.writeFileSync(path.join(f.space.root, ...mine.rel.split("/"), "notes.txt"), "plain text");
+    const file = (await call("list", {})).items.find((item: { kind: string }) => item.kind === "file");
+    assert.equal((await call("read_file", { id: file.id })).text, "plain text");
+    assert.match(await refused("move", { id: created.id, targetId: theirs.id, summary: "Leak" }), /folder of this project/);
+    assert.match(await refused("list", { folderId: theirs.id }), /folder of this project/);
+    assert.equal((await call("search", { query: "Ship" })).pages[0].id, created.id);
+  } finally { await client.close(); await lease.close(); await f.clean(); }
+});
+
+test("scoped Pages revert refuses a historical parent in another project", async () => {
+  const f = await fixture(true);
+  const mine = f.space.linkProject({ id: "project", name: "mine", path: "/code/mine" });
+  const theirs = f.space.linkProject({ id: "other", name: "theirs", path: "/code/theirs" });
+  const parent = f.space.create({ title: "Other parent", containerId: theirs.id });
+  const child = f.space.create({ title: "Moved note", markdown: "Original", parentId: parent.id });
+  f.space.moveNodes([child.id], mine.id);
+  const { lease, client, call } = await f.begin();
+  try {
+    const current = await call("read", { id: child.id });
+    const rel = f.space.pageRel(child.id);
+    const result = await client.callTool({ name: "revert", arguments: { id: child.id, revision: current.revision, version: 1, summary: "Recover original" } });
+    assert.equal(result.isError, true);
+    assert.match((result.content as { text: string }[])[0]!.text, /outside this project's notes/);
+    assert.equal(f.space.pageRel(child.id), rel);
+    assert.deepEqual(f.space.list().find(p => p.id === child.id), current);
+    assert.equal(f.receipts.length, 0);
+    const edited = await call("edit", { id: child.id, revision: current.revision, find: "Original", replace: "Updated", summary: "Update" });
+    const recovered = await call("revert", { id: child.id, revision: edited.revision, version: current.revision, summary: "Recover local version" });
+    assert.equal(recovered.markdown, "Original");
+    assert.equal(f.space.pageRel(child.id), rel);
+  } finally { await client.close(); await lease.close(); await f.clean(); }
+});
+
+for (const failure of [new Error("The notes folder must be a real folder"), new Error(), "unreadable", "", null, undefined])
+test(`an unreadable notes scope refuses calls for ${String(failure) || "an empty string"}`, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pages-agent-"));
+  const space = new NotesStore(path.join(dir, "notes"));
+  space.create({ title: "Elsewhere", markdown: "another project's" });
+  const agents = new PagesAgents({ space, notes: space, enabled: () => true, scope: () => { throw failure; } });
+  const lease = await agents.prepare({ id: "thread", projectId: "project", mode: "agent", plan: false }, () => assert.fail("wrote"));
+  const client = new Client({ name: "test", version: "1" });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL(lease.connection.url)));
+    for (const [name, args] of [["search", { query: "" }], ["list", {}], ["create", { title: "x", markdown: "", summary: "Try" }]] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      assert.equal(result.isError, true, `${name} must not run unscoped`);
+      assert.match((result.content as { text: string }[])[0]!.text, /notes are unavailable: .+/);
+    }
+  } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });

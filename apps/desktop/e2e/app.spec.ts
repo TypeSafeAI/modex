@@ -396,9 +396,9 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   const tip = page.getByRole("tooltip", { name: "Project actions" });
   await expect(tip).toHaveText("Project actions");
   await expect(more).toHaveAttribute("aria-describedby", (await tip.getAttribute("id"))!);
-  // The ⋯ opens a Menu: focus lands on its item, Escape hands focus back.
+  // The ⋯ opens a Menu: focus lands on its first item (Open notes), Escape hands focus back.
   await page.keyboard.press("Enter");
-  await expect(tid(project, "project-remove")).toBeFocused();
+  await expect(tid(project, "project-notes")).toBeFocused();
   await expect(tid(project, "project-remove")).toHaveRole("menuitem");
   await page.keyboard.press("Escape");
   await expect(tid(project, "project-remove")).toHaveCount(0);
@@ -694,7 +694,7 @@ test("title bar: ⋯ menu (rename, open, copy, archive, delete), Changes icon wi
 
   // The Changes icon toggles the panel (⌘J does the same) and badges the number of changed files.
   const toggle = tid(page, "changes-toggle");
-  await expect(toggle).toHaveAccessibleName("Workspace");
+  await expect(toggle).toHaveAccessibleName("Side panel");
   const shown = (await toggle.getAttribute("aria-pressed")) === "true";
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", String(!shown));

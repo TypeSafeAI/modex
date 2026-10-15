@@ -77,6 +77,7 @@ export class StoreDemo {
       "knowledge:reload": unavailable,
       "knowledge:external": unavailable,
       "knowledge:copy": unavailable,
+      "knowledge:useNotes": unavailable,
       "knowledge:open": unavailable,
       "project:knowledge": unavailable,
       "project:pages": unavailable,
@@ -99,7 +100,12 @@ export class StoreDemo {
       "notes:move": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:delete": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:reveal": unavailable,
+      "notes:workspaces": () => [],
+      "project:notes": () => { throw new Error("Space is unavailable in the review demo."); },
+      "project:workspace": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:open": unavailable,
+      "notes:import": unavailable,
+      "notes:file:read": unavailable,
       "project:add": () => {
         const project = { id: this.nextId(), name: "Another demo project", path: "/Demo/Sample", addedAt: stamp() };
         this.state.projects.push(project); return project;

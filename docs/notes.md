@@ -63,6 +63,40 @@ its page. A folder with a folder note is shown once, as the folder, named by its
   the next read does not mistake the move for one made outside Modex. Notes inside a moved
   folder keep their revisions.
 
+## Files
+
+Any file in a project or folder that is not a page shows in the tree as a file.
+
+- **Importing** (a row's **Import files…**, or files dropped from Finder onto a project or folder)
+  copies regular files, never links or folders: up to 50 at a time and 100 MB each. A copy never
+  replaces anything; a file whose name is taken gets a number (`diagram 2.png`), and a file name
+  never matches a note or folder already there.
+- **Previews:** images (PNG, JPEG, GIF, WebP, SVG, AVIF up to 25 MB) show over
+  `modex-notes://file/<id>`, which serves only image files of the notes folder, by id. Text files
+  up to 1 MB show as text. Anything else opens in its own app or in Finder.
+- **Images in a page** can be named by a path relative to the page's file (`![](diagram.png)`,
+  `![](../assets/a.png)`), as Open Knowledge writes them. They load over
+  `modex-notes://page/<page id>/<path>` only when the file is an image inside the page's own
+  project, after following links, and outside dot folders. Anything else shows no image.
+- **Moving:** drag a row onto a folder, project or workspace where it may go; Move to… in a row's
+  menu does the same.
+
+## Watching the folder
+
+Space reads the tree and the pages every 1.5 seconds. The app watches the folder (`fs.watch`,
+recursive), and a read reuses the last look until an event arrives, a deletion awaits its second
+look, or 10 seconds pass. Every change Modex makes looks afresh. With 500 notes a read went from
+about 10 ms to 0.1 ms. Without a watcher (tests, or a folder that cannot be watched), every read
+looks again.
+
+## Projects
+
+Each Modex project has a notes project, made in the default workspace when the project is added
+(or, for projects added earlier, when notes first open). Its marker records the Modex project and
+its code folder. Removing the project from Modex keeps the notes and unlinks them; adding the
+same folder again links them back. Moving a project's notes to another workspace regroups it in
+the chat sidebar.
+
 ## History and revisions
 
 The newest version in a page's history file is the page: its revision, favorite, place and trash

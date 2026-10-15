@@ -1,18 +1,27 @@
 import type { Block } from "@create-markdown/core";
 import { parseSpaceBlocks } from "../../shared/space-markdown";
+import { pageImageUrl } from "../../shared/notes";
 
-/** React escapes text; allow only explicit web/mail links and web images in imported Markdown. */
-export function safeBlocks(markdown: string): Block[] {
+/**
+ * React escapes text; allow only explicit web/mail links, web images, Images assets, and a page's own
+ * images by a path relative to its file (served from the notes folder) in imported Markdown.
+ */
+export function safeBlocks(markdown: string, pageId?: string): Block[] {
   const clean = (block: Block): Block => ({ ...block,
     content: block.content.map(span => {
       const styles = { ...span.styles };
       if (styles.link && !/^(https?:|mailto:)/i.test(styles.link.url.trim())) delete styles.link;
       return { ...span, styles };
     }),
-    props: block.type === "image" && !/^(https?:\/\/|modex-image:\/\/asset\/[a-f0-9-]{36}$)/i.test((block.props as { url: string }).url) ? { ...block.props, url: "", alt: "Image URL must use HTTPS or HTTP" } : block.props,
+    props: block.type === "image" && !/^(https?:\/\/|modex-image:\/\/asset\/[a-f0-9-]{36}$)/i.test((block.props as { url: string }).url) ? localImage(block.props as { url: string }, pageId) : block.props,
     children: block.children.map(clean),
   });
   return parseSpaceBlocks(markdown).map(clean);
+}
+
+function localImage<T extends { url: string }>(props: T, pageId: string | undefined): T {
+  const url = pageId ? pageImageUrl(pageId, props.url) : null;
+  return url ? { ...props, url } : { ...props, url: "", alt: "Image URL must use HTTPS or HTTP, or a path beside this page" };
 }
 
 export const BLOCK_COMMANDS = [

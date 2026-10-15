@@ -548,6 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Paired iPhone menu recovery.** The paired-flow test retries an ignored Workspace
+  options tap once within its existing deadline, only while the menu is absent.
+  It still requires the real Forget paired Mac item before proceeding.
+
 - **Notes hierarchy recovery.** Folder-title changes reserve names against their
   children; restored folders stay separate from newer same-named folders while
   retaining attachments. Interrupted restores use the same placement rules, and
@@ -564,6 +568,17 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   [Feature guide](images-plugins.md) and [implementation/verification ledger](superpowers/plans/2026-10-15-images-plugins.md).
   Live provider/plugin acceptance, human keyboard/VoiceOver acceptance and signed/notarized
   release verification remain open; offline fixtures do not establish those outcomes.
+
+- **Carriage-return title pastes.** Space accepts CR-only and mixed line endings
+  when splitting pasted titles from their body, avoiding a lost paste and parser
+  error while preserving the body text’s existing line endings.
+
+- **Pasting a chat report into Space.** Pasting several lines into a page title keeps the
+  first line, without its heading marker, as the title and moves the rest to the top of the
+  page. The title field used to flatten the lines into one and cut it at 200 characters.
+  Pasting into a block or importing a Markdown file drops ChatGPT's citation markers. Their
+  source IDs resolve only inside that ChatGPT conversation, and pages showed them as boxes.
+  Entity markers keep their visible name.
 
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
@@ -633,10 +648,35 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Workspaces, projects and folders in Space.** Space's sidebar shows the notes folder as
   Workspace › Project › Folder › pages and files. Create a workspace from Space options, and a
   project, folder or page from a row's menu; rename, move (Move to…), reveal in Finder, and delete
-  what is empty. Each is a real folder on disk; a file opens in its default app. Tying each Modex
-  project to its own notes, and file import, come next.
+  what is empty. Folder moves reserve names against their children and replay interrupted folder-note
+  renames without overwriting intervening external edits; default page creation follows renamed or
+  moved default containers even if their index write was interrupted. Creating a project or
+  folder expands its container to show the editor. Each is a real folder on disk.
+- **Each project has its own notes.** Adding a project to Modex gives it a notes project in the
+  default workspace (existing projects get one when notes first open). The project's menu in the
+  chat sidebar offers **Open notes**, and with more than one workspace the sidebar groups projects
+  under them, with **Move to <workspace>**. Removing a project keeps its notes; adding the same
+  folder again links them back. The thread's right-hand panel is now called the **side panel**
+  ("Show side panel ⌘J"), so "workspace" means one thing.
+- **Agents work in their own project's notes.** With **Manage notes** on, a project's agents see and
+  change only that project's notes; another project's are not listed, read or changed. New
+  `modex_pages` tools list a folder, create folders, move notes within the project, and read text
+  files.
+- **The knowledge base can be your notes.** Space → Knowledge base offers **Use your Modex notes**:
+  Open Knowledge then opens the notes folder, and a page's menu offers **Open in knowledge base**
+  instead of copying it. Knowledge tools stay inside each project's notes there too.
+- **Files in your notes.** A project's or folder's menu offers **Import files…**, and files dragged
+  in from Finder onto a project or folder are copied there (up to 50 at a time, 100 MB each;
+  same names get a number). Clicking a file previews it: images and text files show in Space,
+  and anything else offers Open and Reveal in Finder. Drag a row onto a folder, project or
+  workspace to move it there. A page shows images beside it by relative path
+  (`![](assets/diagram.png)`, as Open Knowledge writes them), from inside its own project only.
+  Modex watches the notes folder, so Space's polls skip the walk while nothing changed.
 
-## In flight
+- **Reliable native-window acceptance.** E2E launches retain distinct show and first-paint
+  observations in main before a test connects. Inactive windows also require visible,
+  matching native/renderer geometry unchanged for 200 ms; visibility alone never passes.
+  Failed setup closes the owned app without masking the original error.
 
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without
@@ -645,6 +685,8 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   that races a background request; a bounded timeout preserves all owners.
   Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
   routing and title updates from admitted turns also finish while new edits stay fenced.
+
+## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts

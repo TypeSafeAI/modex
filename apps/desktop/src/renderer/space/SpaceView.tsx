@@ -1,8 +1,8 @@
 import { SecretInput } from "../streamer";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { pageTitle } from "../../shared/space";
-import { importMarkdownPage } from "../../shared/space-markdown";
+import { importMarkdownPage, splitTitlePaste } from "../../shared/space-markdown";
 import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
@@ -16,6 +16,8 @@ import { BLOCK_COMMANDS } from "./markdown";
 import { useSpace } from "./useSpace";
 import { useNotesTree } from "./useNotesTree";
 import { NotesTreeView, type NotesTreeActions } from "./NotesTree";
+import { FilePreview } from "./FilePreview";
+import type { NotesFile } from "../../shared/notes";
 import { restartDrafts } from "../restart-drafts";
 import "./space.css";
 
@@ -30,10 +32,20 @@ const TEMPLATES = [
   { title: "Blank page", description: "Make room for an idea", icon: "file" as const, markdown: "" },
 ];
 
-export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onOpenImages?: () => void; onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
+export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openProject, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onOpenImages?: () => void; onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; openProject?: { projectId: string; nonce: number }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
   const space = useSpace(active);
   const notes = useNotesTree(active);
   const [newWorkspace, setNewWorkspace] = useState(0);
+  /** A tree node to show once, from "Open notes"; a new object per request, cleared when a page opens. */
+  const [focusNode, setFocusNode] = useState<{ id: string }>();
+  // Consume in the parent: search and filters unmount the tree, but must not replay old requests.
+  const focusApplied = useCallback((request: { id: string }) => {
+    setFocusNode(current => current === request ? undefined : current);
+  }, []);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewing = previewId ? notes.tree?.nodes.find((n): n is NotesFile => n.id === previewId && n.kind === "file") : undefined;
+  // When the knowledge base is the notes folder, a page is already in it: offer Open, not Copy.
+  const [knowledgeNotes, setKnowledgeNotes] = useState<string | null>(null);
   const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("pages");
@@ -110,8 +122,18 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
   const run = async (operation: () => Promise<unknown>) => {
     try { restartDrafts.assertOpen(); setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
-  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
+  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setFocusNode(undefined); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
   useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
+  // "Open notes" from the chat sidebar: show that project in the tree, made the first time.
+  useEffect(() => {
+    if (!openProject) return;
+    void run(async () => {
+      const node = await bridge.invoke("project:notes", { projectId: openProject.projectId });
+      setView("pages"); setQuery(""); setSelected(null);
+      await notes.refresh();
+      setFocusNode({ id: node.id });
+    });
+  }, [openProject]);
   const create = async (title = "", markdown = "", parentId: string | null = null, containerId?: string) => {
     if (creating) return;
     setCreating(true);
@@ -147,6 +169,13 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
     remove: id => tree(() => bridge.invoke("notes:delete", { id })),
     reveal: id => run(() => bridge.invoke("notes:reveal", { id })),
     openFile: id => run(() => bridge.invoke("notes:open", { id })),
+    previewFile: id => setPreviewId(id),
+    importFiles: (containerId, paths) => tree(async () => {
+      const result = await bridge.invoke("notes:import", { targetId: containerId, ...(paths ? { paths } : {}) });
+      await space.refresh();
+      if (result.errors.length) throw new Error(`${result.imported ? `Imported ${result.imported}. ` : ""}${result.errors.join("; ")}`);
+      if (result.imported) setNotice(`Imported ${result.imported} ${result.imported === 1 ? "file" : "files"}`);
+    }),
   };
   const exportText = (p: SpacePage) => `# ${pageTitle(p)}\n\n${p.markdown}\n`;
   const download = (p: SpacePage) => void run(async () => {
@@ -154,6 +183,17 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
     if (await bridge.invoke("space:export", { pageId: p.id })) setNotice("Markdown exported");
   });
   const pick = (fn: () => void) => () => { setMenu(false); fn(); };
+  useEffect(() => {
+    if (!menu) return;
+    let alive = true;
+    void bridge.invoke("knowledge:state", undefined).then(state => { if (alive) setKnowledgeNotes(state.folder && state.folder === state.notesFolder ? state.folder : null); }, () => { if (alive) setKnowledgeNotes(null); });
+    return () => { alive = false; };
+  }, [menu]);
+  /** The page's file, relative to the notes folder (a folder note is Folder/Folder.md). */
+  const pagePath = (id: string): string | undefined => {
+    const node = notes.tree?.nodes.find(n => n.id === id || (n.kind === "folder" && n.noteId === id));
+    return node?.kind === "folder" ? `${node.rel}/${node.rel.split("/").at(-1)}.md` : node?.rel;
+  };
   const insertBlock = (source: string) => { setInsertOpen(false); setInsertRequest({ source, nonce: Date.now() }); };
   const beginGeneration = (kind: "write" | "visualize") => {
     setInsertOpen(false);
@@ -172,6 +212,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
   }
 
   return <div className="space-surface" data-testid="space" hidden={!active} inert={space.busy} aria-busy={space.busy}>
+    {previewing && <FilePreview file={previewing} onClose={() => setPreviewId(null)} onOpen={() => void treeActions.openFile(previewing.id)} onReveal={() => void treeActions.reveal(previewing.id)} />}
     {sidebarOpen && <aside className="space-sidebar" aria-label="Space pages">
       <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}><Icon name="file" />Import Markdown</MenuItem>{notes.tree && <MenuItem onClick={() => { setView("pages"); setQuery(""); setNewWorkspace(n => n + 1); setOptionsOpen(false); }}><Icon name="grid" />New workspace</MenuItem>}</Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
       <button className="space-new-page" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="review" />New page</button>
@@ -184,7 +225,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
       </nav>
       <div className="space-tree">
         <div className="space-tree-label">{query ? "Search results" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : notes.tree ? "Workspaces" : "Recents"}</div>
-        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
+        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} focus={focusNode} onFocusApplied={focusApplied} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
         {space.loaded && !visible.length && <p className="space-tree-empty">{query ? "No matching pages" : view === "favorites" ? "Star a page to keep it close." : view === "trash" ? "Nothing in the trash." : "Your next idea starts here."}</p>}
         <div className="space-tree-label space-collections-label">Spaces</div>
         <button className="space-knowledge-link space-tree-page" aria-label="Knowledge base" aria-current={view === "knowledge" ? "page" : undefined} onClick={() => selectView("knowledge")}><Icon name="files" /><span>Knowledge base</span></button>
@@ -210,7 +251,9 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
               <MenuSeparator />
               <MenuItem onClick={pick(() => void run(async () => { await bridge.invoke("clipboard:write", { text: exportText(page) }); setNotice("Markdown copied"); }))}><Icon name="space" />Copy Markdown</MenuItem>
               <MenuItem onClick={pick(() => download(page))}><Icon name="download" />Export Markdown</MenuItem>
-              <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await bridge.invoke("knowledge:copy", { pageId: page.id }); setNotice("Page copied to your knowledge base"); }))}><Icon name="folder" />Copy to knowledge base</MenuItem>
+              {knowledgeNotes
+                ? <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await space.settle(page.id); await notes.refresh(); const path = pagePath(page.id); if (!path) throw new Error("This page is not in the notes folder yet."); await bridge.invoke("knowledge:open", { folder: knowledgeNotes, path }); }))}><Icon name="folder" />Open in knowledge base</MenuItem>
+                : <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await bridge.invoke("knowledge:copy", { pageId: page.id }); setNotice("Page copied to your knowledge base"); }))}><Icon name="folder" />Copy to knowledge base</MenuItem>}
               <MenuItem onClick={pick(() => importInput.current?.click())}><Icon name="file" />Import Markdown</MenuItem>
               <MenuItem onClick={pick(() => setHistory(true))}><Icon name="history" />Version history</MenuItem>
               <MenuItem onClick={pick(() => setWide(!wide))}>{wide ? "Standard width" : "Full width"}</MenuItem>
@@ -246,9 +289,19 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
       <div className="space-page-body">
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>
         <article className="space-document" onMouseUp={() => { const selection = window.getSelection(); if (selection?.toString().trim()) setQuote(selection.toString().slice(0, 2000)); }} onSelect={event => { if (event.target instanceof HTMLTextAreaElement) setQuote(event.target.value.slice(event.target.selectionStart, event.target.selectionEnd).slice(0, 2000)); }}>
-          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} onBlur={() => void space.settle(page.id)} />
+          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} onBlur={() => void space.settle(page.id)} onPaste={event => {
+            // A text field flattens line breaks into spaces. Keep the first line as the
+            // title and move the rest to the top of the page, without chat citations.
+            const text = event.clipboardData.getData("text/plain");
+            if (!/[\r\n\uE200-\uE202]|^\s*#{1,6}[\t ]/.test(text)) return;
+            event.preventDefault();
+            const { title, body } = splitTitlePaste(text);
+            // Native insertion keeps undo, the selection and the length limit.
+            if (title) document.execCommand("insertText", false, title);
+            if (body) space.edit(page.id, { markdown: page.markdown.trim() ? `${body}\n\n${page.markdown}` : body });
+          }} />
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
-          <BlockEditor key={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
+          <BlockEditor key={page.id} pageId={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
             <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />
             {generation === "visualize" ? <Icon name="shapes" size={18} /> : <div className="space-generation-lines" aria-hidden="true"><i /><i /><i /></div>}
             <form onSubmit={event => { event.preventDefault(); if (!generationPrompt.trim()) return; ask(`${generation === "visualize" ? "Create an interactive visualization for this page" : "Write content for this page"}: ${generationPrompt}`); clearGeneration(); }}>

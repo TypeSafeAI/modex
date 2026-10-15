@@ -14,7 +14,7 @@ export function RepositoryOverview({ project, changes, onOpenChanges, onOpenFold
       {changes ? <span className="repository-overview-counts"><span className="additions">+{additions}</span><span className="deletions">−{deletions}</span></span> : <span className="repository-overview-muted">Loading…</span>}
     </button>
     <div className="repository-overview-rule" />
-    <div className="repository-overview-title">Workspace</div>
+    <div className="repository-overview-title">Repository</div>
     <button className="repository-overview-row" onClick={onOpenFolder}><Icon name="folder" size={16} /><span>Open folder</span></button>
     {changes?.branch && <div className="repository-overview-row repository-overview-muted" title={changes.branch}><Icon name="branch" size={16} /><span>{changes.branch}</span></div>}
   </aside>;

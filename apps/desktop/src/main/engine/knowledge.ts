@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { KNOWLEDGE_VERSION, knowledgeBusy, type KnowledgeState } from "../../shared/knowledge.js";
 import { pageTitle, type SpacePage } from "../../shared/space.js";
 
-type Options = { runtimeDir?: string; env?: NodeJS.ProcessEnv; startupTimeoutMs?: number };
+type Options = { runtimeDir?: string; env?: NodeJS.ProcessEnv; startupTimeoutMs?: number; /** Modex's notes folder, offered as a knowledge folder. */ notesFolder?: () => string };
 export interface KnowledgeTarget { folder: string; content: string; url: string }
 
 /** Owns a separate, pinned Open Knowledge CLI. Never imports or bundles its application code. */
@@ -40,7 +40,10 @@ export class KnowledgeService {
       const manifest = JSON.parse(fs.readFileSync(path.join(path.dirname(this.entry), "..", "package.json"), "utf8"));
       installed = manifest.version === KNOWLEDGE_VERSION && fs.statSync(this.entry).isFile();
     } catch { /* Optional companion is not installed yet. */ }
-    return { ...this.state, installed };
+    const notes = this.options.notesFolder?.();
+    let notesFolder: string | undefined;
+    if (notes) { try { notesFolder = fs.realpathSync(notes); } catch { notesFolder = notes; } }
+    return { ...this.state, installed, ...(notesFolder ? { notesFolder } : {}) };
   }
 
   private environment(): NodeJS.ProcessEnv {
@@ -266,6 +269,8 @@ export class KnowledgeService {
   }
 
   copyPage(page: Pick<SpacePage, "id" | "title" | "markdown">): string {
+    const notes = this.snapshot().notesFolder;
+    if (notes && this.state.folder === notes) throw new Error("Your notes are the knowledge base: this page is already in it. Use Open in knowledge base.");
     if (!this.state.folder) throw new Error("Choose a knowledge folder in Space → Knowledge base first.");
     if (!/^[a-z0-9-]{1,64}$/i.test(page.id) || typeof page.title !== "string" || page.title.length > 200 || typeof page.markdown !== "string" || page.markdown.length > 1_000_000) throw new Error("Invalid Space page.");
     const folder = this.contentFolder();

@@ -5,11 +5,11 @@ import type { Block } from "@create-markdown/core";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
 import { BLOCK_COMMANDS, safeBlocks } from "./markdown";
-import { joinMarkdown, splitMarkdown, toggleChecklist, type EditorBlock } from "../../shared/space-markdown";
+import { joinMarkdown, splitMarkdown, stripChatCitations, toggleChecklist, type EditorBlock } from "../../shared/space-markdown";
 
 const commandCaret = (source: string) => source.startsWith("```") ? 4 : undefined;
 
-export function BlockEditor({ markdown, onChange, insertRequest, onComment, onAsk, generation }: { markdown: string; onChange: (value: string) => void; insertRequest?: { source: string; nonce: number }; onComment?: (quote: string) => void; onAsk?: (instruction: string) => void; generation?: ReactNode }) {
+export function BlockEditor({ markdown, onChange, insertRequest, onComment, onAsk, generation, pageId }: { markdown: string; onChange: (value: string) => void; /** Resolves the page's own images by relative path. */ pageId?: string; insertRequest?: { source: string; nonce: number }; onComment?: (quote: string) => void; onAsk?: (instruction: string) => void; generation?: ReactNode }) {
   const [blocks, setBlocks] = useState(() => splitMarkdown(markdown));
   const [editing, setEditing] = useState<string | null>(() => markdown ? null : blocks[0]!.id);
   const [choice, setChoice] = useState(0);
@@ -300,7 +300,7 @@ export function BlockEditor({ markdown, onChange, insertRequest, onComment, onAs
             </button>)}
             {!commands.length && <p>No matching blocks. Try “heading” or “list”.</p>}
           </div>}
-        </> : <BlockPreview source={block.source} label={`Edit block ${index + 1}`} onEdit={() => focus(block.id)} onChange={source => update(block.id, source)} />}
+        </> : <BlockPreview source={block.source} pageId={pageId} label={`Edit block ${index + 1}`} onEdit={() => focus(block.id)} onChange={source => update(block.id, source)} />}
       </div>{generation && generationAnchor.current === block.id && generation}</Fragment>;
     })}
     <button aria-label="Add a block" className="space-add-block" onClick={() => insert(blocks.length - 1, "/")}><span>+</span> Add a block</button>
@@ -314,11 +314,21 @@ function BlockInput({ value, label, inputRef, ...events }: {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => { if (ref.current) { ref.current.style.height = "0px"; ref.current.style.height = `${ref.current.scrollHeight}px`; } }, [value]);
   const heading = value.match(/^(#{1,3}) /)?.[1]?.length;
-  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} spellCheck={!value.startsWith("```")} />;
+  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} onPaste={pasteWithoutCitations} spellCheck={!value.startsWith("```")} />;
 }
 
-function BlockPreview({ source, label, onEdit, onChange }: { source: string; label: string; onEdit: () => void; onChange: (value: string) => void }) {
-  const blocks = useMemo(() => safeBlocks(source), [source]);
+/** Chat citations paste as unreadable marker characters; insert the text without them. */
+function pasteWithoutCitations(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+  const text = event.clipboardData.getData("text/plain");
+  const clean = stripChatCitations(text);
+  if (clean === text) return;
+  event.preventDefault();
+  // Native insertion keeps undo and emits the normal change event.
+  document.execCommand("insertText", false, clean);
+}
+
+function BlockPreview({ source, pageId, label, onEdit, onChange }: { source: string; pageId?: string; label: string; onEdit: () => void; onChange: (value: string) => void }) {
+  const blocks = useMemo(() => safeBlocks(source, pageId), [source, pageId]);
   const change = useRef(onChange);
   change.current = onChange;
   // The Markdown renderer treats custom renderers as component types. Keep their
