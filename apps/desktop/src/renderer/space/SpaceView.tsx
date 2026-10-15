@@ -16,6 +16,8 @@ import { BLOCK_COMMANDS } from "./markdown";
 import { useSpace } from "./useSpace";
 import { useNotesTree } from "./useNotesTree";
 import { NotesTreeView, type NotesTreeActions } from "./NotesTree";
+import { FilePreview } from "./FilePreview";
+import type { NotesFile } from "../../shared/notes";
 import { restartDrafts } from "../restart-drafts";
 import "./space.css";
 
@@ -35,6 +37,8 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
   const notes = useNotesTree(active);
   const [newWorkspace, setNewWorkspace] = useState(0);
   const [focusNode, setFocusNode] = useState<string>();
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewing = previewId ? notes.tree?.nodes.find((n): n is NotesFile => n.id === previewId && n.kind === "file") : undefined;
   // When the knowledge base is the notes folder, a page is already in it: offer Open, not Copy.
   const [knowledgeNotes, setKnowledgeNotes] = useState<string | null>(null);
   const [history, setHistory] = useState(false);
@@ -160,6 +164,13 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
     remove: id => tree(() => bridge.invoke("notes:delete", { id })),
     reveal: id => run(() => bridge.invoke("notes:reveal", { id })),
     openFile: id => run(() => bridge.invoke("notes:open", { id })),
+    previewFile: id => setPreviewId(id),
+    importFiles: (containerId, paths) => tree(async () => {
+      const result = await bridge.invoke("notes:import", { targetId: containerId, ...(paths ? { paths } : {}) });
+      await space.refresh();
+      if (result.errors.length) throw new Error(`${result.imported ? `Imported ${result.imported}. ` : ""}${result.errors.join("; ")}`);
+      if (result.imported) setNotice(`Imported ${result.imported} ${result.imported === 1 ? "file" : "files"}`);
+    }),
   };
   const exportText = (p: SpacePage) => `# ${pageTitle(p)}\n\n${p.markdown}\n`;
   const download = (p: SpacePage) => void run(async () => {
@@ -196,6 +207,7 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
   }
 
   return <div className="space-surface" data-testid="space" hidden={!active} inert={space.busy} aria-busy={space.busy}>
+    {previewing && <FilePreview file={previewing} onClose={() => setPreviewId(null)} onOpen={() => void treeActions.openFile(previewing.id)} onReveal={() => void treeActions.reveal(previewing.id)} />}
     {sidebarOpen && <aside className="space-sidebar" aria-label="Space pages">
       <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}><Icon name="file" />Import Markdown</MenuItem>{notes.tree && <MenuItem onClick={() => { setView("pages"); setQuery(""); setNewWorkspace(n => n + 1); setOptionsOpen(false); }}><Icon name="grid" />New workspace</MenuItem>}</Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
       <button className="space-new-page" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="review" />New page</button>

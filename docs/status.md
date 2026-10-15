@@ -611,8 +611,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   files.
 - **The knowledge base can be your notes.** Space → Knowledge base offers **Use your Modex notes**:
   Open Knowledge then opens the notes folder, and a page's menu offers **Open in knowledge base**
-  instead of copying it. Knowledge tools stay inside each project's notes there too. File import
-  is next.
+  instead of copying it. Knowledge tools stay inside each project's notes there too.
+- **Files in your notes.** A project's or folder's menu offers **Import files…**, and files dragged
+  in from Finder onto a project or folder are copied there (up to 50 at a time, 100 MB each;
+  same names get a number). Clicking a file previews it: images and text files show in Space,
+  and anything else offers Open and Reveal in Finder. Next: dragging rows to move them, showing a
+  page's images by relative path, and picking up outside changes without a scan.
 
 ## In flight
 

@@ -104,6 +104,8 @@ export class StoreDemo {
       "project:notes": () => { throw new Error("Space is unavailable in the review demo."); },
       "project:workspace": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:open": unavailable,
+      "notes:import": unavailable,
+      "notes:file:read": unavailable,
       "project:add": () => {
         const project = { id: this.nextId(), name: "Another demo project", path: "/Demo/Sample", addedAt: stamp() };
         this.state.projects.push(project); return project;

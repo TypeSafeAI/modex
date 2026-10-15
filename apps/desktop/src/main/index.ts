@@ -57,6 +57,8 @@ import { registerAttachmentCommands } from "./attachment-commands.js";
 import { AttachmentStore } from "./engine/attachments.js";
 import { LIMITS } from "../shared/attachments.js";
 import { ATTACHMENT_SCHEME, relFromUrl } from "../shared/attachments.js";
+/** Image previews of files in the notes folder (`modex-notes://file/<node id>`). */
+const NOTES_SCHEME = "modex-notes";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -79,6 +81,7 @@ fs.mkdirSync(home, { recursive: true });
 // Attachment thumbnails load from main over this scheme; registration must precede app ready.
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true } },
+  { scheme: NOTES_SCHEME, privileges: { standard: true, secure: true } },
   { scheme: CANVAS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 // The scripted demo and screenshots must never discover a real Jev key or call the network.
@@ -661,6 +664,17 @@ handle("project:notes", ({ projectId }) => { const project = store.project(proje
 handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
 handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
 handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
+handle("notes:import", async ({ targetId, paths }) => {
+  let sources = paths;
+  if (!sources) {
+    const picked = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], title: "Import files into your notes", buttonLabel: "Import" });
+    if (picked.canceled) return { imported: 0, errors: [] };
+    sources = picked.filePaths;
+  }
+  const result = store.space.importFiles(targetId, sources);
+  return { imported: result.imported.length, errors: result.errors };
+}, { localOnly: true });
+handle("notes:file:read", ({ id }) => store.space.readFile(id));
 
 handle("state:get", () => {
   const state = store.snapshot();
@@ -973,6 +987,13 @@ app.on("second-instance", (_event, args) => {
 app.whenReady().then(async () => {
   browserTools = new BrowserTools(home, () => win && !win.isDestroyed() && workspaceBrowser ? { window: win, browser: workspaceBrowser } : null);
   if (!nativeDraftFailure && !nativeStartup?.recovery) await browserTools.restore();
+  // Image previews of files in the notes folder, by id; only image files are ever served. An SVG
+  // opened on its own gets no scripts or subresources.
+  protocol.handle(NOTES_SCHEME, (request) => {
+    let image: { data: Buffer; mime: string } | null = null;
+    try { const url = new URL(request.url); if (url.host === "file") image = store.space.readImage(decodeURIComponent(url.pathname.slice(1))); } catch { image = null; }
+    return image ? new Response(new Uint8Array(image.data), { headers: { "Content-Type": image.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } }) : new Response("Not found", { status: 404 });
+  });
   // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
   protocol.handle(ATTACHMENT_SCHEME, (request) => {
     const rel = relFromUrl(request.url);

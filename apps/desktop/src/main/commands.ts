@@ -68,6 +68,8 @@ export function registerCommands(handle: RegisterCommand, {
   handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
   handle("notes:reveal", () => { throw new Error("Reveal in Finder is available in the desktop app."); });
   handle("notes:open", () => { throw new Error("Opening files is available in the desktop app."); });
+  handle("notes:import", () => { throw new Error("Importing files is available in the desktop app."); });
+  handle("notes:file:read", ({ id }) => store.space.readFile(id));
   handle("state:get", () => {
     const state = store.snapshot();
     return { ...state, threads: state.threads.map((t) => ({ ...t, status: runner.status(t.id) })) };

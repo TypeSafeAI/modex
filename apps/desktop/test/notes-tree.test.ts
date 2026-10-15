@@ -120,3 +120,38 @@ test("folders and files moved or renamed in Finder keep their ids; only empty co
   const work = store.tree().nodes.find(n => n.kind === "workspace")!;
   assert.throws(() => store.deleteEmpty(work.id), /default/);
 }));
+
+test("importing files copies them into a folder without replacing anything, and Markdown becomes a page", () => withStore((store, root) => {
+  const outside = tmpdir("modex-import-src-");
+  try {
+    const project = store.tree().nodes.find(n => n.kind === "project")!;
+    const folder = store.createFolder(project.id, "Assets");
+    fs.writeFileSync(path.join(outside, "logo.png"), "png-bytes");
+    fs.writeFileSync(path.join(outside, "Brief.md"), "# Brief\nimported");
+    fs.writeFileSync(path.join(root, "Personal", "Notes", "Assets", "logo.png"), "already here");
+    fs.mkdirSync(path.join(outside, "a-folder"));
+    fs.symlinkSync(path.join(outside, "logo.png"), path.join(outside, "link.png"));
+    const result = store.importFiles(folder.id, [path.join(outside, "logo.png"), path.join(outside, "Brief.md"), path.join(outside, "a-folder"), path.join(outside, "link.png"), "relative.txt"]);
+    assert.deepEqual(result.imported.map(n => n.name).sort(), ["Brief", "logo 2.png"]);
+    assert.equal(result.errors.length, 3, "a folder, a link and a relative path are refused");
+    assert.equal(fs.readFileSync(path.join(root, "Personal", "Notes", "Assets", "logo.png"), "utf8"), "already here", "nothing is replaced");
+    assert.equal(fs.readFileSync(path.join(root, "Personal", "Notes", "Assets", "logo 2.png"), "utf8"), "png-bytes");
+    const brief = store.list().find(p => p.title === "Brief")!;
+    assert.equal(brief.markdown, "# Brief\nimported");
+    assert.throws(() => store.importFiles(store.tree().nodes.find(n => n.kind === "workspace")!.id, []), /project or folder/);
+    assert.throws(() => store.importFiles(folder.id, Array.from({ length: 51 }, (_, i) => path.join(outside, `${i}.txt`))), /50 files/);
+
+    fs.writeFileSync(path.join(outside, "mark.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+    fs.writeFileSync(path.join(outside, "big.png"), Buffer.alloc(25 * 1024 * 1024 + 1));
+    fs.writeFileSync(path.join(outside, "notes.v1:final"), "odd");
+    const more = store.importFiles(folder.id, ["mark.svg", "big.png", "notes.v1:final"].map(name => path.join(outside, name)));
+    assert.deepEqual(more.errors, []);
+    const byName = new Map(more.imported.map(n => [n.name, n]));
+    assert.equal(store.readImage(byName.get("mark.svg")!.id)?.mime, "image/svg+xml");
+    const big = byName.get("big.png")!;
+    assert.equal(big.kind === "file" ? big.preview : "not a file", null, "an image too large to preview is just a file");
+    assert.equal(store.readImage(byName.get("big.png")!.id), null);
+    assert.ok([...byName.keys()].some(name => !name.includes(":") && name.startsWith("notes")), "an extension a name cannot carry is made safe");
+    assert.equal(store.readImage(store.list().find(p => p.title === "Brief")!.id), null, "a page is never served as an image");
+  } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+}));

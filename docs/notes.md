@@ -63,6 +63,18 @@ its page. A folder with a folder note is shown once, as the folder, named by its
   the next read does not mistake the move for one made outside Modex. Notes inside a moved
   folder keep their revisions.
 
+## Files
+
+Any file in a project or folder that is not a page shows in the tree as a file.
+
+- **Importing** (a row's **Import files…**, or files dropped from Finder onto a project or folder)
+  copies regular files, never links or folders: up to 50 at a time and 100 MB each. A copy never
+  replaces anything; a file whose name is taken gets a number (`diagram 2.png`), and a file name
+  never matches a note or folder already there.
+- **Previews:** images (PNG, JPEG, GIF, WebP, SVG, AVIF up to 25 MB) show over
+  `modex-notes://file/<id>`, which serves only image files of the notes folder, by id. Text files
+  up to 1 MB show as text. Anything else opens in its own app or in Finder.
+
 ## Projects
 
 Each Modex project has a notes project, made in the default workspace when the project is added

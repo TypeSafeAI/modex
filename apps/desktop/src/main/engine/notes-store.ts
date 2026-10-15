@@ -449,6 +449,53 @@ export class NotesStore implements SpacePagesStore {
     try { return utf8.decode(fs.readFileSync(this.abs(node.rel))); } catch { throw new Error("This file is not UTF-8 text."); }
   }
 
+  /**
+   * Copies files into a project or folder. Each is a regular file (no folders or links) of at most
+   * 100 MB, up to 50 at a time; a name already taken gets a suffix, and nothing is ever replaced.
+   * Markdown files become pages on the next read.
+   */
+  importFiles(targetId: string, sources: string[]): { imported: NotesNode[]; errors: string[] } {
+    const layout = this.layout(this.load());
+    const target = layout.byId.get(targetId);
+    if (!target || (target.kind !== "project" && target.kind !== "folder")) throw new Error("Choose a project or folder to import into.");
+    if (!Array.isArray(sources) || sources.length === 0) return { imported: [], errors: [] };
+    if (sources.length > 50) throw new Error("Import up to 50 files at a time.");
+    const errors: string[] = [];
+    const rels: string[] = [];
+    for (const source of sources) {
+      const label = typeof source === "string" ? path.basename(source) : "A file";
+      try {
+        if (typeof source !== "string" || !path.isAbsolute(source)) throw new Error("is not a local file");
+        const stat = fs.lstatSync(source);
+        if (!stat.isFile()) throw new Error("is not a regular file (folders and links are not imported)");
+        if (stat.size > 100 * 1024 * 1024) throw new Error("is larger than 100 MB");
+        // An extension a name could not carry (a colon, say) stays part of the stem, made safe with it.
+        const raw = path.extname(source);
+        const ext = /^\.[A-Za-z0-9_+-]{1,16}$/.test(raw) ? raw : "";
+        const stem = noteStem(path.basename(source, ext));
+        const rel = `${target.rel}/${uniqueName(stem, ext.toLowerCase() === ".md" ? ".md" : ext, this.names(target.rel))}`;
+        fs.copyFileSync(source, this.abs(rel), fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
+        rels.push(rel);
+      } catch (error) { errors.push(`${label} ${(error as Error).message.replace(/^[A-Z]+: /, "")}`); }
+    }
+    const after = this.layout(this.load());
+    return { imported: after.nodes.filter(node => rels.includes(node.rel)), errors };
+  }
+
+  /** An image file's bytes and type, for previews over `modex-notes://file/<id>`; nothing else is served. */
+  readImage(id: string): { data: Buffer; mime: string } | null {
+    const node = this.layout(this.load()).byId.get(id);
+    if (!node || node.kind !== "file" || node.preview !== "image" || node.size > 25 * 1024 * 1024) return null;
+    const mime: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".svg": "image/svg+xml" };
+    const type = mime[path.posix.extname(node.rel).toLowerCase()];
+    if (!type) return null;
+    try {
+      const file = this.abs(node.rel);
+      if (!fs.lstatSync(file).isFile()) return null;
+      return { data: fs.readFileSync(file), mime: type };
+    } catch { return null; }
+  }
+
   /** Where a node is on disk, for Reveal in Finder and Open. */
   pathOf(id: string): string {
     const state = this.load();
@@ -535,7 +582,7 @@ export class NotesStore implements SpacePagesStore {
         const stat = fs.statSync(this.abs(rel));
         const id = claim(files, rel, stat.ino);
         const ext = path.posix.extname(entry.name).toLowerCase();
-        const preview = /^\.(png|jpe?g|gif|webp|svg|avif)$/.test(ext) ? "image" : /^\.(txt|md|json|csv|ya?ml|log|ts|js|tsx|jsx|css|html)$/.test(ext) && stat.size <= 1_048_576 ? "text" : null;
+        const preview = /^\.(png|jpe?g|gif|webp|svg|avif)$/.test(ext) && stat.size <= 25 * 1024 * 1024 ? "image" : /^\.(txt|md|json|csv|ya?ml|log|ts|js|tsx|jsx|css|html)$/.test(ext) && stat.size <= 1_048_576 ? "text" : null;
         nodes.push({ id, kind: "file", parentId, name: entry.name, rel, size: stat.size, preview } satisfies NotesFile);
       }
     };
