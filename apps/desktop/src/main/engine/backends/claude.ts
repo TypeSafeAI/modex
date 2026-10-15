@@ -336,6 +336,7 @@ export class ClaudeBackend implements Backend {
                 cwd: spawnOpts.cwd ?? opts.cwd,
                 stdio: ["pipe", "pipe", "pipe"],
                 env: spawnOpts.env,
+                signal: spawnOpts.signal,
               });
               if (!launched.stdin || !launched.stdout) throw new Error(`could not start ${bin}: stdio pipes were not created`);
               child = launched;

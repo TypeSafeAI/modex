@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { SpawnedProcess } from "@anthropic-ai/claude-agent-sdk";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
+import type { ClaudeQuery } from "../src/main/engine/backends/claude.js";
 import type { ApprovalRequest, TurnOptions } from "../src/main/engine/backends/types.js";
-import { collectSink } from "./fakeproc.js";
+import { collectSink, FakeProcess } from "./fakeproc.js";
 import { tmpdir } from "./helpers.js";
 
 // These tests drive the real Agent SDK `query()` — its initialize handshake, `canUseTool` routing, cancels,
@@ -144,6 +147,44 @@ test("Agent SDK: Stop interrupts Claude, which ends its turn and exits on end of
   const log = cli.log();
   assert.ok(log.some((e) => (e.in as { request?: { subtype?: string } } | undefined)?.request?.subtype === "interrupt"), "Claude was asked to stop");
   assert.ok(log.some((e) => e.stdin === "closed"), "Claude exited on its own, after its input ended");
+});
+
+test("Agent SDK: a launch deferred past Stop cannot leave a process running", { timeout: 10_000 }, async (t) => {
+  // The fake transport has no OS handle; keep Node alive through the SDK's unreferenced close grace.
+  const keepAlive = setTimeout(() => {}, 10_000);
+  t.after(() => clearTimeout(keepAlive));
+  const waiting = new FakeProcess();
+  t.after(() => waiting.kill());
+  let launch: (() => SpawnedProcess) | undefined;
+  let forwarded: AbortSignal | undefined;
+  const delayedQuery: ClaudeQuery = (params) => {
+    const factory = params.options?.spawnClaudeCodeProcess;
+    assert.ok(factory);
+    return query({ ...params, options: { ...params.options, spawnClaudeCodeProcess: (spawnOpts) => {
+      forwarded = spawnOpts.signal;
+      launch = () => factory({ ...spawnOpts, command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"] });
+      // Keep the real SDK waiting while the backend has no assigned process.
+      return waiting;
+    } } });
+  };
+  const ac = new AbortController();
+  const run = new ClaudeBackend("claude", undefined, { interruptGraceMs: 10 }, delayedQuery).runTurn("go", options, collectSink().sink, ac.signal);
+  const initialize: unknown = JSON.parse(await waiting.waitFor((line) => line.includes('"subtype":"initialize"')));
+  assert.ok(initialize && typeof initialize === "object" && "request_id" in initialize);
+  waiting.emitLine({ type: "control_response", response: { subtype: "success", request_id: initialize.request_id, response: { commands: [], models: [], account: {} } } });
+  ac.abort();
+  assert.deepEqual(await run, { status: "interrupted" });
+  assert.equal(forwarded?.aborted, true, "the SDK forwards cancellation after its close grace");
+  assert.ok(launch);
+  const child = launch();
+  t.after(() => child.kill("SIGKILL"));
+  const errors: Error[] = [];
+  child.on("error", (error: Error) => errors.push(error));
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(child.killed, true, "the already-aborted signal kills the delayed launch");
+  await exited;
+  assert.ok(errors.some((error) => error.name === "AbortError"));
 });
 
 test("Agent SDK: Stop kills a Claude that ignores the interrupt", async () => {

@@ -707,8 +707,9 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Claude Agent SDK ([fork PR #1](https://github.com/snowopsdev/modex/pull/1)).** Claude
   turns use pinned `@anthropic-ai/claude-agent-sdk` (`query()`) with the user's installed
   `claude`, preserving CLI login, CLAUDE.md, hooks, MCP servers, skills and background
-  work. Stop allows a graceful interrupt before signals and waits for process close;
-  withdrawn approvals dismiss their cards and cancel rule evaluation. CLI failures retain
+  work. Stop allows a graceful interrupt before signals and waits for process close.
+  Deferred launches inherit the SDK's cancellation signal so they cannot outlive Stop.
+  Withdrawn approvals dismiss their cards and cancel rule evaluation. CLI failures retain
   stderr and exit codes. Offline tests exercise the real SDK handshake, permissions,
   cancellation and shutdown. Packaged builds omit bundled native CLI packages. The
   [review evidence](reviews/2026-10-15-claude-sdk-review.md) records checks and the installed

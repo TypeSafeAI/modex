@@ -91,3 +91,31 @@ and the separately enabled Knowledge MCP case passed. Commands and complete logs
 saved outside the worktree under `/tmp/modex-upstream-*.log`. These checks use local
 scripted CLI executables through the shipped SDK. The signed-in Claude account's
 weekly limit still prevents live model acceptance; no upstream PR has been merged.
+
+## Codex review follow-up
+
+The upstream Codex review identified a deferred-launch race: Stop can exhaust its
+grace before the backend has a child, leaving only SDK cancellation to prevent a late
+launch. The process factory now forwards `spawnOpts.signal` to `cliSpawn`, including
+the SDK's graceful-close timing and an already-aborted signal.
+
+A regression uses the real SDK with a waiting transport, lets Stop settle without an
+assigned child, then invokes the production factory with the SDK's cancelled signal
+and a real Node child. Without the fix, that child remains alive. With the fix, it
+reports `AbortError` and exits. The fixture keeps the event loop alive while the SDK's
+unreferenced close grace runs; isolated checks pass on Node 22.22.3 and 24.14.0.
+Independent review found no material issues with the fix and reproduced the passing
+regression on Node 24.
+
+Local checks before pushing the follow-up:
+
+- Frozen install, workspace build and typechecks pass.
+- `pnpm test`: 1,597 passed, 19 skipped, zero failures.
+- Focused Claude backend/background/real-SDK cases: 51 passed, three live-model skips.
+- The real-SDK Electron lifecycle case passes again, covering approvals, withdrawal,
+  Stop and CLI failure. The other 13 earlier Electron cases were not rerun for this fix.
+
+The fork's earlier lockfile comment was already addressed in `13c6530`; the frozen
+install above reconfirms the exact SDK pin. Evidence for this follow-up is saved
+outside the worktree under `/tmp/modex-codex-comments-*.log`. Live model acceptance
+remains subject to the account limit documented above.
