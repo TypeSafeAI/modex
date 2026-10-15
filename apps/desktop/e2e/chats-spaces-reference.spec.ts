@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { appDir, seedHome, launch, tid, resizeWindow } from "./support.js";
+import { savedComments } from "./notes-support";
 
 test("reference chat rows stay still while their details open", async () => {
   const { home, repo } = seedHome({ theme: "graphite" });
@@ -147,7 +148,7 @@ test("chat page links clear the previous selection without losing that page's co
     await page.getByRole("button", { name: "Add comment", exact: true }).click();
     await page.getByRole("textbox", { name: "Comment", exact: true }).fill("Comment only on B");
     await page.getByRole("button", { name: "Post comment", exact: true }).click();
-    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(home, "app/space.json"), "utf8")).comments?.find((comment: { pageId: string }) => comment.pageId === next.id)?.quote).toBe("");
+    await expect.poll(() => savedComments(home, next.id)[0]?.quote).toBe("");
     await page.getByRole("button", { name: "Open Page A", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("Keep the draft for A");
     await expect(page.getByRole("complementary", { name: "Comments" }).locator("blockquote")).toHaveText("Quote only from page A");

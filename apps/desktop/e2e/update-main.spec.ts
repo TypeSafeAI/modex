@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { appDir, seedHome, tid } from "./support";
+import { blockNoteWrites, savedNotes, unblockNoteWrites } from "./notes-support";
 
 test("renderer reload after an updater partial drain opens read-only and ordinary Quit preserves saved bytes", async () => {
   test.skip(process.platform !== "darwin", "macOS updater main assembly");
@@ -57,7 +58,6 @@ test("actual main restart retains drafts after partial drain and retries fresh r
   let closed = false; app.on("close", () => { closed = true; });
   console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo, electronPid: app.process().pid }));
   const receipt = path.join(home, "app/update-recovery.json");
-  const space = path.join(home, "app/space.json");
   try {
     const page = await app.firstWindow(); await page.waitForLoadState("domcontentloaded");
     // Electron owns beforeunload. Playwright's default dismissal races that
@@ -68,12 +68,12 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     await page.getByRole("button", { name: "Space", exact: true }).click();
     await page.getByRole("button", { name: "New page", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Page title" })).toBeVisible();
-    fs.renameSync(space, `${space}.backup`); fs.mkdirSync(space);
+    blockNoteWrites(home);
     await page.getByRole("textbox", { name: "Page title" }).fill("Dirty page saved through main restart admission");
     await expect(page.getByLabel("Save status")).toHaveText("Not saved");
     await page.getByRole("button", { name: "Chat", exact: true }).click();
     await page.getByRole("button", { name: "Download update", exact: true }).click();
-    fs.rmdirSync(space); fs.renameSync(`${space}.backup`, space);
+    unblockNoteWrites(home);
     await page.getByRole("button", { name: "Restart to update", exact: true }).click();
     const panel = tid(page, "update-restart-status");
     await expect(panel).toContainText("could not finish preparing to restart");
@@ -94,7 +94,7 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     const proof = await app.evaluate(() => (globalThis as any).__updateMainFixture);
     expect(proof.nativeCalls).toBe(0); expect(proof.pageDisposals).toBe(1);
     expect(proof.pageSaves).toContainEqual({ held: true, title: "Dirty page saved through main restart admission" });
-    expect(JSON.parse(fs.readFileSync(space, "utf8")).pages[0].title).toBe("Dirty page saved through main restart admission");
+    expect(savedNotes(home)[0]?.title).toBe("Dirty page saved through main restart admission");
     expect(proof.prepared.some((reply: any) => reply.revision === saved.revision)).toBe(true);
     expect(proof.quitPrepared.filter((reply: any) => reply.revision === saved.revision)).toHaveLength(1);
     // Record the second fresh acknowledgment before the actual process exits.
