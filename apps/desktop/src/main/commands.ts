@@ -10,6 +10,7 @@ import { listWorkspaceFiles, readWorkspaceFile } from "./engine/workspace-files.
 import { saveSettings } from "./engine/settings-update.js";
 import { previewApproval, validateRules } from "./engine/approvals/preview.js";
 import { describeFailure } from "../shared/failures.js";
+import { UsageLedger } from "./engine/usage-ledger.js";
 
 export type CommandHandler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 export type RegisterCommand = <K extends keyof BridgeCommands>(channel: K, handler: CommandHandler<K>) => void;
@@ -113,6 +114,8 @@ export function registerCommands(handle: RegisterCommand, {
     jev: () => runner.router.jev(),
   }));
   handle("models:list", ({ backend }) => runner.listModels(backend));
+  handle("usage:list", (req) => new UsageLedger(store.dir).list(req ?? {}));
+  handle("analytics:show", () => null);
   handle("routing:status", () => runner.router.status());
   handle("routing:reset", () => {
     runner.router.fit.reset();

@@ -309,7 +309,7 @@ test("ClaudeBackend reports usage: first call, last call's context, each id once
   proc.emitLine({ type: "assistant", parent_tool_use_id: null, session_id: "s", message: { id: "m2", content: [], usage: tokens(40_500, 1_200, 2) } });
   proc.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s", usage: { output_tokens: 850 } });
   const result = await run;
-  assert.deepEqual(result.usage, { first: { cacheRead: 40_000, cacheWrite: 500, uncached: 3 }, contextTokens: 41_702, outputTokens: 850, calls: 2 });
+  assert.deepEqual(result.usage, { first: { cacheRead: 40_000, cacheWrite: 500, uncached: 3 }, contextTokens: 41_702, outputTokens: 850, calls: 2, totals: { input: 5, cached: 80_500, cacheWrite: 1_700 } });
 });
 
 test("ClaudeBackend usage spans the follow-up turn after background work", async () => {
@@ -326,7 +326,7 @@ test("ClaudeBackend usage spans the follow-up turn after background work", async
   proc.emitLine({ type: "assistant", message: { id: "a2", usage: tokens(30_100, 300, 1, 5), content: [{ type: "text", text: "Tests passed." }] } });
   proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "Done.", usage: { output_tokens: 60 } });
   const result = await run;
-  assert.deepEqual(result.usage, { first: { cacheRead: 30_000, cacheWrite: 100, uncached: 1 }, contextTokens: 30_401, outputTokens: 100, calls: 2 });
+  assert.deepEqual(result.usage, { first: { cacheRead: 30_000, cacheWrite: 100, uncached: 1 }, contextTokens: 30_401, outputTokens: 100, calls: 2, totals: { input: 2, cached: 60_100, cacheWrite: 400 } });
   proc.close(0);
 });
 
@@ -345,6 +345,7 @@ test("ClaudeBackend reads usage from a captured stream-json turn; a turn without
     contextTokens: last.cacheRead + last.cacheWrite + last.uncached,
     outputTokens: lines.find((l) => l.type === "result")!.usage!.output_tokens,
     calls: calls.length,
+    totals: calls.map((u) => claudeCall(u!)).reduce((t, c) => ({ input: t.input + c.uncached, cached: t.cached + c.cacheRead, cacheWrite: t.cacheWrite + c.cacheWrite }), { input: 0, cached: 0, cacheWrite: 0 }),
   });
   assert.ok(result.usage!.first.cacheRead > 0, "the captured resumed turn read the cache");
 

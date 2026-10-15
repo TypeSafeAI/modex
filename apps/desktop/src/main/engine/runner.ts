@@ -16,6 +16,7 @@ import { policyAnswer, policyReceipt } from "./approvals/policy.js";
 import type { SecretStore } from "./secrets.js";
 import { describeFailure } from "../../shared/failures.js";
 import type { PagesAgents, PagesLease } from "./pages-agents.js";
+import type { UsageLedger } from "./usage-ledger.js";
 import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
 import { AttachmentStore, type AttachmentDraft } from "./attachments.js";
 import { describeAttachments, type Attachment } from "../../shared/attachments.js";
@@ -54,6 +55,8 @@ interface Live {
 
 export interface RunnerOptions {
   pages?: Pick<PagesAgents, "prepare">;
+  /** Analytics' per-turn usage record. Optional: tests and demos run without one. */
+  usage?: Pick<UsageLedger, "record">;
   knowledge?: Pick<KnowledgeAgents, "prepare">;
   home: string;
   store: Store;
@@ -609,6 +612,7 @@ export class ThreadRunner {
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
+      this.recordUsage(thread, account, result);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
       } else if (result.status === "completed" && l.items.length === turnStart && !abort.signal.aborted) {
@@ -787,6 +791,17 @@ export class ThreadRunner {
   }
 
   /** Records what the backend's prompt cache was last built with, so Auto can avoid discarding it. */
+  /** One Analytics row for every turn that called a model, Auto or not. A ledger failure never changes a turn's outcome. */
+  private recordUsage(ran: Thread, account: string | undefined, result: TurnResult): void {
+    if (!this.o.usage || !result.usage) return;
+    try {
+      this.o.usage.record({
+        at: new Date().toISOString(), backend: ran.backend, model: ran.model, threadId: ran.id,
+        project: this.o.store.project(ran.projectId)?.name ?? "", account: account ?? "", usage: result.usage,
+      });
+    } catch (error) { console.error("[modex] usage record failed:", error); }
+  }
+
   private noteLastTurn(threadId: string, ran: Thread, fast: boolean, result: TurnResult): void {
     if (!result.usage && result.status !== "completed") return;
     const now = this.o.store.thread(threadId);

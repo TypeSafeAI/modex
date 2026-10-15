@@ -85,7 +85,7 @@ function StoreShell() {
         <button disabled={busy} onClick={() => void demo("leave")}>Leave demo</button>
         {error && <span role="alert">{error}</span>}
       </section>}
-      <App key={status.workspaceId ?? "host"} persistPreferences={!inDemo} spaceEnabled={false} suspended={!connected} />
+      <App key={status.workspaceId ?? "host"} persistPreferences={!inDemo} spaceEnabled={false} analyticsEnabled={false} suspended={!connected} />
     </div>}
     {!connected && <main className="host-connection" aria-labelledby="host-title">
       <div className="host-titlebar" />

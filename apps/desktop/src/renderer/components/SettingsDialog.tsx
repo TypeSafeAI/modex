@@ -16,6 +16,9 @@ interface Props {
   currentProjectId?: string;
   onSave: (patch: Partial<Settings>) => Promise<void>;
   onClose: () => void;
+  /** Whether Analytics shows in the rail. A layout preference: it applies at once, not on Save. */
+  analyticsInRail?: boolean;
+  onAnalyticsInRail?: (shown: boolean) => void;
 }
 
 const testIdentity = (test: RoutingTest) => {
@@ -33,7 +36,7 @@ const errorMessage = (err: unknown, fallback: string) =>
 const backendHealthText = (status: BackendHealth | undefined, failed: boolean) =>
   status ? `${status.version ? `v${status.version} · ` : ""}${status.detail}` : failed ? "Account check unavailable · retry" : "checking…";
 
-export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose }: Props) {
+export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose, analyticsInRail, onAnalyticsInRail }: Props) {
   const [section, setSection] = useState<"general" | "clis" | "routing" | "approvals" | "advanced">("routing");
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -324,6 +327,10 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <SecretInput data-testid="auto-retire" type="checkbox" checked={s.auto_retire} onChange={(e) => set("auto_retire", e.target.checked)} />
             <span>Finish worktree threads when their pull request merges<small> — removes the worktree and branch once nothing in them would be lost; the transcript stays as a read-only record</small></span>
           </label>
+          {onAnalyticsInRail && <label className="check">
+            <SecretInput data-testid="analytics-in-rail" type="checkbox" checked={analyticsInRail ?? true} onChange={(e) => onAnalyticsInRail(e.target.checked)} />
+            <span>Show Analytics in the rail<small> — token and cache use per turn, recorded on this Mac. Applies right away.</small></span>
+          </label>}
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <div className="connections-heading">
