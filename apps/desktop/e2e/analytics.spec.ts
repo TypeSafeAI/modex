@@ -29,6 +29,8 @@ test("Analytics opens from the rail with the usage recorded on this Mac, and Set
     expect(await app.evaluate(({ webContents }) => webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-analytics://app/"))!.executeJavaScript("[typeof window.modex, typeof require]"))).toEqual(["undefined", "undefined"]);
 
     await tid(page, "open-settings").click();
+    // Settings opens on Auto routing; the rail option is under General.
+    await tid(page, "settings-nav").getByRole("button", { name: "General", exact: true }).click();
     await tid(page, "analytics-in-rail").uncheck();
     await page.keyboard.press("Escape");
     await expect(tid(page, "rail-analytics")).toHaveCount(0);
