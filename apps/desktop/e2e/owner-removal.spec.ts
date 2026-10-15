@@ -113,3 +113,27 @@ test("uncertain owner pruning shows fresh read-only recovery and exits through o
   const receipt = test.info().outputPath("owner-removal-recovery.json"); fs.writeFileSync(receipt, JSON.stringify({ ...evidence, ordinaryQuit: true, recoveryUnchanged: true }));
   await test.info().attach("owner-removal-recovery", { path: receipt, contentType: "application/json" });
 });
+
+test("owner removal keeps unrelated thread updates delivered after canonical adoption", async () => {
+  const keep = await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p2", backend: "mock" }));
+  await page.reload();
+  await expect(tid(page, "context-branch")).toHaveText("main");
+  await app.evaluate(({ BrowserWindow }, thread) => {
+    const wc = BrowserWindow.getAllWindows()[0]!.webContents;
+    const send = wc.send.bind(wc);
+    wc.send = (channel, ...args) => {
+      send(channel, ...args);
+      if (channel === "drafts:remove-adopt") {
+        wc.send = send;
+        send("thread:event", { type: "thread", threadId: thread.id, thread: { ...thread, title: "Routed during adoption", model: "opus" } });
+        send("thread:event", { type: "status", threadId: thread.id, status: "waiting" });
+      }
+    };
+  }, keep);
+  await expect(async () => { await page.evaluate(() => window.modex!.invoke("project:remove", { projectId: "p1" })); }).toPass({ timeout: 10_000 });
+  const row = page.locator(`[data-testid="thread-row"][data-thread-id="${keep.id}"]`);
+  await expect(row).toContainText("Routed during adoption");
+  await expect(row).toHaveAttribute("data-status", "waiting");
+  await expect(row).toContainText("opus");
+  expect((await page.evaluate(() => window.modex!.invoke("state:get", undefined))).projects.some(project => project.id === "p1")).toBe(false);
+});

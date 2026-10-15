@@ -128,6 +128,8 @@ export class ClaudeBackend implements Backend {
       // Task ids the CLI's own `background_tasks_changed` list has named, so leaving that list ends them.
       const listed = new Set<string>();
       let finished = false;
+      // Whether the model has spoken since the last `system/init`: a `result` without that is not a reply to this turn.
+      let sawAssistant = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let stderr = "";
       // What the CLI said about itself at startup (build, model, where its key came from), for failure reports.
@@ -171,6 +173,17 @@ export class ClaudeBackend implements Backend {
         if (r.status === "failed") {
           if (background.size > 0) sink.notice("warn", `Claude reported an error while ${work(background.size)} ${background.size === 1 ? "was" : "were"} still running. The turn ends now, so that work may stop.`);
           return settle(r);
+        }
+        // `--resume` first replays the previous turn's stopped background task as a turn of its own: `task_notification`,
+        // `init`, then a success `result` with `num_turns` 0 and no text, and only then the `init` of the turn that answers
+        // this message. Ending on that result ended the turn with no reply while the CLI did the real work unheard
+        // (2026-10-09, thread 52868298; claude 2.1.296). A result from a turn that never called the model is held instead:
+        // the real turn's `init` marks it as a follow-up and its own result ends the turn; silence ends it on the idle window.
+        if (msg.num_turns === 0 || (msg.num_turns === undefined && !sawAssistant)) {
+          held = r;
+          followUp = false;
+          armIdle();
+          return;
         }
         if (background.size === 0) return settle(r);
         held = r;
@@ -230,6 +243,8 @@ export class ClaudeBackend implements Backend {
           // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
           if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
           if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
+          if (msg.type === "system" && msg.subtype === "init") sawAssistant = false;
+          if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
           if (msg.type === "result") return onResult(msg);
           // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
           const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });

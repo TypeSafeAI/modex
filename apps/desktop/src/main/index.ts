@@ -23,6 +23,7 @@ import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
+import { EventJournal } from "./engine/event-journal.js";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
 import fs from "node:fs";
 import os from "node:os";
@@ -133,7 +134,24 @@ const desktopHostActivation = createDesktopHostActivation({
 app.on("open-url", (event, url) => {
   if (desktopHostActivation.open(url)) event.preventDefault();
 });
+// Routines Phase 0 event journal, off by default (docs/event-journal.md). It records alongside the
+// authoritative state files; a failure turns the journal off and never affects a turn.
+let journal: EventJournal | undefined;
+if (process.env.MODEX_EVENT_JOURNAL === "1") {
+  try { journal = new EventJournal(path.join(home, "app", "events.sqlite")); }
+  catch (error) { console.error("[modex] event journal unavailable:", error); }
+}
+const journalEvent = (event: ThreadEvent): void => {
+  if (!journal) return;
+  try { journal.record(event); }
+  catch (error) {
+    console.error("[modex] event journal stopped:", error);
+    try { journal.close(); } catch { /* Already failing; the state files remain authoritative. */ }
+    journal = undefined;
+  }
+};
 const emit = (event: ThreadEvent): void => {
+  journalEvent(event);
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
   desktopHost?.broadcast("thread", event);
 };
@@ -414,6 +432,8 @@ function drainServices(): Promise<void> {
       () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
+    try { journal?.close(); } catch (error) { console.error("[modex] event journal close failed:", error); }
+    journal = undefined;
     const failure = results.find(result => result.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
     servicesDrained = true;

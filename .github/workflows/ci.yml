@@ -51,6 +51,10 @@ jobs:
             -destination "$MODEX_IOS_DESTINATION" -derivedDataPath "$MODEX_IOS_DERIVED_DATA" \
             -parallel-testing-enabled NO -only-testing:ModexCompanionTests CODE_SIGNING_ALLOWED=NO test
       - name: Paired iPhone end-to-end test
+        # Shared macOS runners take 5–30× longer than a developer Mac on each XCTest round trip, green
+        # runs included; every UI-test wait is this multiple of its base (UITestBudget, docs/ios-companion.md).
+        env:
+          MODEX_UI_TIMEOUT_SCALE: "4"
         run: apps/ios/ModexCompanion/Scripts/test-e2e.sh
       - name: Upload iPhone test results
         if: always()

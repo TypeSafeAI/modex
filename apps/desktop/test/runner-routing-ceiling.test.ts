@@ -54,7 +54,7 @@ test("learning-file write failures cannot block safe coding turns or turn a comp
   const model = { id: "gpt-6-luna", label: "Luna", efforts: ["high", "xhigh"], isDefault: true };
   const backend: Backend = {
     id: "codex", listModels: async () => [model], dispose: async () => {},
-    runTurn: async (_text, options) => { runs.push(options); return { status: "completed" }; },
+    runTurn: async (_text, options, sink) => { runs.push(options); sink.assistant("done"); return { status: "completed" }; },
   };
   const router = new Router({ home, policy: () => ({ ...DEFAULT_ROUTING, premium_turns_per_day: 1 }), transport: null,
     listModels: async () => ({ models: [model] }),

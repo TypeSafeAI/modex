@@ -3,7 +3,7 @@ import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, LastTurn, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
-import { APPROVAL_POLICIES } from "../../shared/types.js";
+import { APPROVAL_POLICIES, BACKENDS } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
 import type { ApprovalRequest, Backend, TurnResult, TurnSink } from "./backends/types.js";
@@ -80,7 +80,7 @@ export interface RunnerOptions {
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
   private disposing = false;
-  private restartHold?: symbol;
+  private restartHold?: { kind: "restart" | "owner-removal" };
   private readonly background = new RestartAdmission();
   private readonly naming = new Map<string, AbortController>();
   private readonly titleRuns = new Set<Promise<void>>();
@@ -141,7 +141,7 @@ export class ThreadRunner {
       throw new Error("Let current turns and worktree operations finish before restarting.");
     }
     const releaseBackground = this.background.holdForRestart();
-    const token = this.restartHold = Symbol();
+    const token = this.restartHold = { kind: "restart" as const };
     return () => { if (this.restartHold === token) { this.restartHold = undefined; releaseBackground(); } };
   }
 
@@ -155,7 +155,7 @@ export class ThreadRunner {
     if (this.creating.size || this.deleting.size || this.removingProjects.size) {
       throw new Error("Let current worktree operations finish before removing a thread or project.");
     }
-    const token = this.restartHold = Symbol();
+    const token = this.restartHold = { kind: "owner-removal" as const };
     return () => { if (this.restartHold === token) this.restartHold = undefined; };
   }
 
@@ -611,6 +611,10 @@ export class ThreadRunner {
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
+      } else if (result.status === "completed" && l.items.length === turnStart && !abort.signal.aborted) {
+        // The CLI ended the turn without a word: no reply, no tool, no notice. A card with Retry beats an idle thread
+        // that looks as if nothing was asked (2026-10-09: a resumed session's stale result ended a turn this way).
+        this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
       } else {
         if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
         this.setStatus(threadId, "idle");
@@ -742,7 +746,9 @@ export class ThreadRunner {
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
-    this.assertNotRestarting();
+    // Already-admitted turns can finish routing and naming during owner removal.
+    // External edits remain fenced until the renderer adopts the canonical state.
+    if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals"].includes(key))) as ThreadPatch;
