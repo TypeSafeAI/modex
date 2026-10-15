@@ -217,9 +217,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      # This job runs plain node scripts and never installs pnpm. setup-node@v5 otherwise reads
+      # packageManager (pnpm since #196) and fails looking for the pnpm executable to cache.
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false
       - uses: actions/download-artifact@v4
         with:
           name: macos-release-candidate
