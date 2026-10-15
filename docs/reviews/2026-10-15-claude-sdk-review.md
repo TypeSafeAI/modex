@@ -59,3 +59,35 @@ MODEX_CLAUDE_SMOKE=1 node --test dist/test/claude-sdk.test.js
 These opt-in cases use the user's CLI login and call a model. `MODEX_CLAUDE_BIN` selects
 an executable and `MODEX_CLAUDE_SMOKE_MODEL` selects a model (default `haiku`). Normal
 tests run the real SDK against local executable fixtures with no model calls.
+
+## Local acceptance before upstream submission
+
+Integrated upstream `6366cb5` (desktop 0.1.0 preparation and CodeQL corrections),
+preserving both independent In flight entries in `docs/status.md`. The SDK backend,
+runner and permission changes are unchanged from `e1f893e`, which the GitHub Codex
+review completed with no findings on October 15.
+
+On the combined candidate, frozen install, workspace build and typechecks pass.
+`pnpm test` passes 1,596 cases with 19 skips and zero failures.
+
+Fourteen targeted Electron cases pass locally: both subagent themes, Claude/Codex
+title generation and cancellation, Pages MCP, Knowledge MCP with the pinned companion,
+shutdown persistence, and the new real SDK acceptance flow. That flow verifies:
+
+- A tool row and approval card appear before a file is written; approving allows the
+  local CLI fixture to create the file in the throwaway project.
+- Withdrawing a pending request dismisses the card, leaves the turn running until its
+  reply, and sends no permission response back to the CLI.
+- Stop uses the SDK interrupt and the CLI closes stdin before the thread becomes idle.
+- A CLI exit with code 7 exposes its stderr in the UI and persists the exit code.
+
+The first acceptance run failed only because its persisted-JSON assertion assumed
+pretty printing. The formatting-independent assertion passes. Existing Claude fixtures
+now answer the SDK initialization handshake and ignore unrelated control messages;
+the shutdown fixture emits its final text only after receiving the user prompt.
+
+The focused Electron group passed 12 existing cases, the new SDK flow passed on rerun,
+and the separately enabled Knowledge MCP case passed. Commands and complete logs are
+saved outside the worktree under `/tmp/modex-upstream-*.log`. These checks use local
+scripted CLI executables through the shipped SDK. The signed-in Claude account's
+weekly limit still prevents live model acceptance; no upstream PR has been merged.

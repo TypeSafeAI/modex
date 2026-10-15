@@ -124,8 +124,18 @@ test("a CLI agent updates real knowledge outside its project and exposes a persi
   fs.writeFileSync(path.join(home, "app/knowledge.json"), JSON.stringify({ version: 1, folder: fs.realpathSync(folder) }));
   const cli = path.join(home, "knowledge-cli.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
+const { handleControl } = require('./claude-sdk.cjs');
 if (process.argv.includes('--version')) { console.log('2.1.289 (Claude Code)'); process.exit(0); }
-if (!process.argv.includes('--mcp-config')) { console.log(JSON.stringify({type:'result',result:'Knowledge test',is_error:false})); process.exit(0); }
+if (!process.argv.includes('--mcp-config')) {
+ require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+  const msg=JSON.parse(line);
+  if (handleControl(msg)) return;
+  if (msg.type !== 'user') return;
+  console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'Knowledge test'}]}}));
+  console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,result:'Knowledge test',num_turns:1}));
+  process.exit(0);
+ });
+} else {
 const config = JSON.parse(process.argv[process.argv.indexOf('--mcp-config')+1]);
 const url = config.mcpServers.modex_knowledge.url;
 const emit = x => console.log(JSON.stringify(x));
@@ -134,15 +144,19 @@ const rpc = async (method, params) => {
  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:++id,method,params})});
  const result=await response.json(); if(result.error||result.result?.isError) throw Error(JSON.stringify(result)); return result.result;
 };
-require('node:readline').createInterface({input:process.stdin}).once('line', async () => {
+ require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
+ const msg=JSON.parse(line);
+ if (handleControl(msg)) return;
+ if (msg.type !== 'user') return;
  try {
   await rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'claude-fixture',version:'1'}});
   await rpc('tools/call',{name:'search',arguments:{query:'Verified decision'}});
   await rpc('tools/call',{name:'write',arguments:{path:'Decision.md',content:'# Verified decision\\n\\nKeep inference in the coding CLIs.\\n',position:'replace',summary:'Record verified CLI architecture'}});
   emit({type:'assistant',message:{content:[{type:'text',text:'Updated Decision.md.'}]}});
-  emit({type:'result',is_error:false,result:'Updated Decision.md.'}); process.exit(0);
- } catch(error) {emit({type:'result',is_error:true,result:String(error)});process.exit(1);}
+  emit({type:'result',subtype:'success',is_error:false,result:'Updated Decision.md.',num_turns:1}); process.exit(0);
+ } catch(error) {emit({type:'result',is_error:true,result:String(error),errors:[]});process.exit(1);}
 });
+}
 `, { mode: 0o755 });
   const stateFile = path.join(home, "app/state.json");
   const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));

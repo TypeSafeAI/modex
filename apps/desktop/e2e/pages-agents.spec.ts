@@ -48,15 +48,28 @@ test("a CLI turn manages Pages through MCP and its persisted receipt opens the n
   const { home, repo } = seedHome({ default_backend: "claude", default_mode: "agent" });
   const cli = path.join(home, "pages-cli.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
+const { handleControl } = require('./claude-sdk.cjs');
 const fs=require('node:fs');
 if(process.argv.includes('--version')){console.log('2.1.289 (Claude Code)');process.exit(0);}
-if(!process.argv.includes('--mcp-config')){console.log(JSON.stringify({type:'result',result:'Notes',is_error:false}));process.exit(0);}
+if(!process.argv.includes('--mcp-config')){
+ require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+  const msg=JSON.parse(line);
+  if(handleControl(msg))return;
+  if(msg.type!=='user')return;
+  console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'Notes'}]}}));
+  console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,result:'Notes',num_turns:1}));
+  process.exit(0);
+ });
+} else {
 const url=JSON.parse(process.argv[process.argv.indexOf('--mcp-config')+1]).mcpServers.modex_pages.url;
 fs.writeFileSync(${JSON.stringify(path.join(home, "pages-url"))},url);
 let id=0;
 async function rpc(method,params){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:++id,method,params})});const result=await response.json();if(result.error||result.result?.isError)throw Error(JSON.stringify(result));return result.result;}
 async function call(name,args){return JSON.parse((await rpc('tools/call',{name,arguments:args})).content[0].text);}
-require('node:readline').createInterface({input:process.stdin}).once('line',async()=>{
+require('node:readline').createInterface({input:process.stdin}).on('line',async line=>{
+const msg=JSON.parse(line);
+if(handleControl(msg))return;
+if(msg.type!=='user')return;
 try {
  await rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'pages-cli-fixture',version:'1'}});
  await call('search',{query:'CLI note'});
@@ -71,9 +84,10 @@ try {
  const h=await call('history',{id:p.id}); if(h.versions.length<5) throw Error('Missing history');
  fs.writeFileSync(${JSON.stringify(path.join(home, "pages-id"))},p.id);
  console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'Notes complete.'}]}}));
- console.log(JSON.stringify({type:'result',is_error:false,result:'Notes complete.'}));process.exit(0);
-}catch(error){console.log(JSON.stringify({type:'result',is_error:true,result:String(error)}));process.exit(1);}
+ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,result:'Notes complete.',num_turns:1}));process.exit(0);
+}catch(error){console.log(JSON.stringify({type:'result',is_error:true,result:String(error),errors:[]}));process.exit(1);}
 });
+}
 `, { mode: 0o755 });
   const stateFile = path.join(home, "app/state.json"); const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
   state.projects[0].pagesMaintenance = true; state.settings.claude_bin = cli; fs.writeFileSync(stateFile, JSON.stringify(state));
