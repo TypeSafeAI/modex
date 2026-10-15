@@ -28,6 +28,8 @@ test("unique names compare without case and treat a note and a folder of one nam
   assert.equal(uniqueName("Plan", ".md", ["plan.MD"]), "Plan 2.md");
   assert.equal(uniqueName("Plan", ".md", ["Plan"]), "Plan 2.md", "a folder named Plan takes the note name");
   assert.equal(uniqueName("Plan", "", ["Plan.md", "Plan 2"]), "Plan 3");
+  assert.equal(uniqueName("logo", ".png", ["logo.png"]), "logo 2.png", "any extension, not only .md");
+  assert.equal(uniqueName("logo", ".png", ["logo"]), "logo.png", "a folder named logo does not take logo.png");
   assert.equal(nameKey("É"), nameKey("É"));
 });
 
