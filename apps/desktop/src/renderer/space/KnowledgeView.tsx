@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { SecretInput, useStreamerMode } from "../streamer";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { knowledgeBusy, type KnowledgeState } from "../../shared/knowledge";
@@ -6,7 +7,7 @@ import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import "./knowledge.css";
 
-export function KnowledgeView({ active, onPages }: { active: boolean; onPages: () => void }) {
+export function KnowledgeView({ active, onPages, onReadyChange }: { active: boolean; onPages: () => void; onReadyChange?: (ready: boolean) => void }) {
   const streamerMode = useStreamerMode();
   const [state, setState] = useState<KnowledgeState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +20,12 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
   const canvas = useRef<HTMLDivElement>(null);
   const busy = working || (state ? knowledgeBusy(state) : false);
   const ready = state?.status === "ready";
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => { setToolbarHost(document.getElementById("knowledge-titlebar")); }, []);
+  useLayoutEffect(() => {
+    onReadyChange?.(active && ready);
+    return () => onReadyChange?.(false);
+  }, [active, ready, onReadyChange]);
   const folderName = state?.folder?.split(/[\\/]/).filter(Boolean).at(-1);
 
   useEffect(() => {
@@ -84,8 +91,7 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
     try { setError(null); setViewError(null); await bridge.invoke(channel, undefined); }
     catch (err) { setError((err as Error).message); }
   };
-  return <main className="space-main knowledge-main" aria-label="Knowledge base">
-    <header className="space-topbar knowledge-topbar">
+  const toolbar = <header className="space-topbar knowledge-topbar">
       <div className="space-breadcrumb"><button onClick={onPages}>Space</button><Icon name="chevron-right" size={12} /><span>Knowledge base</span></div>
       <span className="spacer" />
       <button className="knowledge-maintenance-toggle" aria-expanded={maintenanceOpen} aria-controls="knowledge-maintenance" onClick={() => setMaintenanceOpen(open => !open)}>
@@ -93,7 +99,9 @@ export function KnowledgeView({ active, onPages }: { active: boolean; onPages: (
       </button>
       <span className={`knowledge-status${ready ? " ready" : ""}`} role="status">{state?.status === "installing" ? "Installing…" : state?.status === "starting" ? "Opening…" : state?.status === "stopping" ? "Stopping…" : ready ? (state?.external ? "Connected locally" : "Running locally") : "Local knowledge"}</span>
       {ready && <><button className="btn small" aria-label="Reload knowledge base" onClick={() => void extra("knowledge:reload")}><Icon name="restart" size={14} /></button><button className="btn small" aria-label="Open knowledge base in browser" onClick={() => void extra("knowledge:external")}><Icon name="globe" size={14} /></button><button className="btn small" disabled={busy} title={state?.external ? "Disconnect from this server and leave it running" : "Stop the server started by Modex"} onClick={() => void run("knowledge:stop")}>{state?.external ? "Disconnect" : "Stop"}</button></>}
-    </header>
+    </header>;
+  return <main className="space-main knowledge-main" aria-label="Knowledge base">
+    {active && ready && toolbarHost ? createPortal(toolbar, toolbarHost) : toolbar}
     <section id="knowledge-maintenance" className="knowledge-maintenance" aria-label="Agent maintenance settings" hidden={!maintenanceOpen}>
       <p>Agents can search your selected knowledge folder. Enable a project to save verified decisions, fixes, and procedures automatically. Chat and plan mode stay read-only. Changes include a page link and appear in its history.</p>
       {!projects.length && <p>Add a project in Home to enable automatic maintenance.</p>}

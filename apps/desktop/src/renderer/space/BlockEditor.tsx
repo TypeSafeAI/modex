@@ -29,14 +29,25 @@ export function BlockEditor({ markdown, onChange, insertRequest, onComment, onAs
     const block = blocks.find(block => block.id === id);
     if (block) activeBlock.current = block.id;
     const text = input ? input.value.slice(input.selectionStart, input.selectionEnd) : native?.toString() ?? "";
-    if (!block || !text.trim() || !editor.current) { setSelection(null); return; }
+    if (!block || !text || !editor.current) { setSelection(null); return; }
     // Formatting a rendered selection is safe when it maps unambiguously to the source.
-    const start = input ? input.selectionStart : block.source.indexOf(text);
+    let start = input ? input.selectionStart : block.source.indexOf(text);
+    const rendered = preview?.querySelector(".space-block-preview");
+    const range = native?.rangeCount ? native.getRangeAt(0) : null;
+    const withinBlock = rendered && range && rendered.contains(range.startContainer) && rendered.contains(range.endContainer);
+    // Plain paragraphs have exact DOM/source offsets, even when words repeat.
+    const exactText = withinBlock && rendered.textContent === block.source;
+    if (!input && exactText) {
+      const before = range.cloneRange();
+      before.selectNodeContents(rendered);
+      before.setEnd(range.startContainer, range.startOffset);
+      start = before.toString().length;
+    }
     // Escapes, code and link/HTML syntax do not have one-to-one rendered offsets.
     // Keep those selections available for comments/requests; format them in source editing.
     const syntax = block.source.replace(/^\s*[-*+]\s+\[[ xX]\]\s/gm, "");
     const plain = !/[\\`\[\]<>]/.test(syntax) && !/[*_~\n]/.test(text);
-    const mapped = input || (plain && start >= 0 && start === block.source.lastIndexOf(text));
+    const mapped = input || (withinBlock && (exactText || plain && start >= 0 && start === block.source.lastIndexOf(text)));
     const rect = input?.getBoundingClientRect() ?? (native?.rangeCount ? native.getRangeAt(0).getBoundingClientRect() : null);
     const editorTop = editor.current.getBoundingClientRect().top;
     setSelection({ id: block.id, text, start: mapped ? start : -1, end: mapped ? start + text.length : -1,
@@ -184,6 +195,17 @@ export function BlockEditor({ markdown, onChange, insertRequest, onComment, onAs
         return;
       }
       if (editing || (event.target as HTMLElement).closest(".space-format-bar") || selection.start < 0) return;
+      if (event.key === "Backspace" || event.key === "Delete") {
+        const block = blocks.find(block => block.id === selection.id);
+        if (!block) return;
+        event.preventDefault(); event.stopPropagation();
+        update(block.id, block.source.slice(0, selection.start) + block.source.slice(selection.end));
+        const caret = selection.start;
+        setSelection(null); setLinkURL(null); setEditPrompt(null);
+        window.getSelection()?.removeAllRanges();
+        focus(block.id, caret);
+        return;
+      }
       if (event.metaKey || event.ctrlKey) {
         const key = event.key.toLowerCase();
         if (["b", "i", "k"].includes(key)) {
