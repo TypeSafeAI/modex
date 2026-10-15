@@ -91,6 +91,15 @@ export class StoreDemo {
       "space:save": () => { throw new Error("Space is unavailable in the review demo."); },
       "space:trash": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:settle": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:tree": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:workspace:create": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:project:create": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:folder:create": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:rename": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:move": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:delete": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:reveal": unavailable,
+      "notes:open": unavailable,
       "project:add": () => {
         const project = { id: this.nextId(), name: "Another demo project", path: "/Demo/Sample", addedAt: stamp() };
         this.state.projects.push(project); return project;
