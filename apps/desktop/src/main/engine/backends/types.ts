@@ -108,6 +108,8 @@ export interface TurnUsage {
   outputTokens?: number;
   /** Model calls counted. */
   calls: number;
+  /** Input summed over every counted call: uncached, read from the cache, and written to it. For Analytics. */
+  totals?: { input: number; cached: number; cacheWrite: number };
 }
 
 export interface TurnResult {
