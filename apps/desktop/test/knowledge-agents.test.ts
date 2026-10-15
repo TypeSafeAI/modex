@@ -240,7 +240,7 @@ test("a knowledge base that is the notes folder keeps each project's agents in t
   const agents = new KnowledgeAgents({
     knowledge: { agentTarget: async () => target, isAgentTarget: () => true },
     enabled: () => true,
-    scope: (projectId, at) => (at === folder && projectId === "project" ? "Personal/mine" : undefined),
+    scope: projectId => (projectId === "project" ? { notes: folder, own: "Personal/mine" } : undefined),
     connect: async () => ({ callTool: async call => { calls.push(call); return { content: [{ type: "text" as const, text: "saved" }] }; }, close: async () => {} }),
   });
   const lease = await agents.prepare({ id: "thread", projectId: "project", mode: "agent", plan: false }, () => {});
@@ -272,7 +272,7 @@ test("scoped knowledge search refuses replaced project or workspace symlinks", a
   fs.writeFileSync(path.join(external, "Secret.md"), "External secret");
   fs.writeFileSync(path.join(external, "Mine", "Secret.md"), "External secret");
   const target = { folder: content, content, url: "http://127.0.0.1:9999" };
-  const agents = new KnowledgeAgents({ knowledge: { agentTarget: async () => target, isAgentTarget: () => true }, enabled: () => true, scope: () => prefix,
+  const agents = new KnowledgeAgents({ knowledge: { agentTarget: async () => target, isAgentTarget: () => true }, enabled: () => true, scope: () => ({ notes: content, own: prefix }),
     connect: async () => ({ callTool: async () => { throw new Error("Search must stay local"); }, close: async () => {} }) });
   const lease = await agents.prepare({ id: "thread", projectId: "mine", mode: "agent", plan: false }, () => {});
   const client = new Client({ name: "test", version: "1" });
@@ -292,4 +292,85 @@ test("scoped knowledge search refuses replaced project or workspace symlinks", a
       } finally { fs.unlinkSync(original); fs.renameSync(`${original}-saved`, original); }
     }
   } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+/** A notes folder with two projects in one workspace and a knowledge server that records calls. */
+async function notesFixture(content: (notes: string, root: string) => string, own: { rel: string | null } = { rel: "Personal/mine" }) {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-fence-")));
+  const notes = path.join(root, "notes");
+  fs.mkdirSync(path.join(notes, "Personal", "mine"), { recursive: true });
+  fs.mkdirSync(path.join(notes, "Personal", "theirs"), { recursive: true });
+  fs.mkdirSync(path.join(root, "Docs"));
+  fs.writeFileSync(path.join(notes, "Personal", "mine", "Plan.md"), "Ship the decision");
+  fs.writeFileSync(path.join(notes, "Personal", "theirs", "Secret.md"), "Their decision");
+  fs.writeFileSync(path.join(root, "Docs", "Guide.md"), "A decision guide");
+  const folder = content(notes, root);
+  const calls: { name: string }[] = [];
+  const target = { folder, content: folder, url: "http://127.0.0.1:9999" };
+  const agents = new KnowledgeAgents({
+    knowledge: { agentTarget: async () => target, isAgentTarget: () => true }, enabled: () => true,
+    scope: () => ({ notes, own: own.rel }),
+    connect: async () => ({ callTool: async call => { calls.push(call); return { content: [{ type: "text" as const, text: "ok" }] }; }, close: async () => {} }),
+  });
+  const lease = await agents.prepare({ id: "thread", projectId: "project", mode: "agent", plan: false }, () => {});
+  const client = new Client({ name: "test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(lease.connection.url)));
+  const search = async (query: string) => {
+    const result = await client.callTool({ name: "search", arguments: { query } });
+    if (result.isError) return result;
+    const text = (result.content as { text: string }[])[0]!.text;
+    return text.startsWith("{") ? JSON.parse(text).results.map((r: { path: string }) => r.path) : text;
+  };
+  const read = (docPath: string) => client.callTool({ name: "read", arguments: { path: docPath } });
+  return { root, notes, calls, own, search, read, clean: async () => { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(root, { recursive: true, force: true }); } };
+}
+
+test("a knowledge base set to a workspace of the notes folder keeps each project's agents in their own notes", async () => {
+  const f = await notesFixture(notes => path.join(notes, "Personal"));
+  try {
+    assert.deepEqual(await f.search("decision"), ["mine/Plan.md"]);
+    assert.match(JSON.stringify(await f.read("theirs/Secret.md")), /outside this project/);
+    assert.equal(f.calls.length, 0);
+    await f.read("mine/Plan.md");
+    assert.equal(f.calls.length, 1);
+  } finally { await f.clean(); }
+});
+
+test("a knowledge base that contains the notes folder reaches its other pages and only this project's notes", async () => {
+  const f = await notesFixture((_notes, root) => root);
+  try {
+    assert.deepEqual(await f.search("decision"), ["Docs/Guide.md", "notes/Personal/mine/Plan.md"], "pages outside the notes and this project's notes; not another project's");
+    assert.match(JSON.stringify(await f.read("notes/Personal/theirs/Secret.md")), /outside this project/);
+    await f.read("Docs/Guide.md");
+    await f.read("notes/Personal/mine/Plan.md");
+    assert.equal(f.calls.length, 2);
+  } finally { await f.clean(); }
+});
+
+test("a knowledge base inside another project's notes holds nothing this project may reach", async () => {
+  const f = await notesFixture(notes => path.join(notes, "Personal", "theirs"));
+  try {
+    assert.match(JSON.stringify(await f.search("decision")), /another project's notes/);
+    assert.match(JSON.stringify(await f.read("Secret.md")), /outside this project/);
+    assert.equal(f.calls.length, 0);
+  } finally { await f.clean(); }
+});
+
+test("a knowledge base unrelated to the notes folder is not fenced, and a moved project is followed mid-turn", async () => {
+  const unrelated = await notesFixture((_notes, root) => path.join(root, "Docs"));
+  try {
+    await unrelated.search("decision");
+    assert.equal(unrelated.calls.length, 1, "search goes to the knowledge server as before");
+  } finally { await unrelated.clean(); }
+  const f = await notesFixture(notes => notes);
+  try {
+    fs.mkdirSync(path.join(f.notes, "Work"));
+    fs.renameSync(path.join(f.notes, "Personal", "mine"), path.join(f.notes, "Work", "mine"));
+    f.own.rel = "Work/mine";
+    assert.deepEqual(await f.search("decision"), ["Work/mine/Plan.md"], "the fence follows the project's notes to their new workspace");
+    await f.read("Work/mine/Plan.md");
+    assert.equal(f.calls.length, 1);
+    f.own.rel = null;
+    assert.match(JSON.stringify(await f.read("Work/mine/Plan.md")), /outside this project/, "a project without notes reaches none");
+  } finally { await f.clean(); }
 });

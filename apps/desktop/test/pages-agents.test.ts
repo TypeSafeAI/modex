@@ -16,7 +16,7 @@ async function fixture(scoped = false) {
   // Scoped like the app: each Modex project's agents work in that project's notes.
   const agents = new PagesAgents({ space, enabled: () => enabled, ...(scoped ? {
     notes: space,
-    scope: (id: string) => { const project = space.projectFor(id); return project ? { id: project.id, rel: project.rel } : undefined; },
+    scope: (id: string) => { const project = space.projectFor(id); return project ? { id: project.id, rel: project.rel } : null; },
   } : {}) });
   const turn = { id: "thread", projectId: "project", mode: "agent" as "agent" | "chat", plan: false };
   const begin = async () => {
@@ -243,5 +243,45 @@ test(`an unreadable notes scope refuses calls for ${String(failure) || "an empty
       assert.equal(result.isError, true, `${name} must not run unscoped`);
       assert.match((result.content as { text: string }[])[0]!.text, /notes are unavailable: .+/);
     }
+  } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a project's agents follow its notes when they move to another workspace mid-turn", async () => {
+  const f = await fixture(true);
+  const mine = f.space.linkProject({ id: "project", name: "mine", path: "/code/mine" });
+  const kept = f.space.create({ title: "Kept", markdown: "before the move", containerId: mine.id });
+  const { lease, client, call } = await f.begin();
+  try {
+    assert.equal((await call("search", { query: "before" })).pages[0].id, kept.id);
+    const work = f.space.createWorkspace("Work");
+    f.space.moveNodes([mine.id], work.id);
+    assert.equal((await call("search", { query: "before" })).pages[0].id, kept.id, "search still finds the project's notes");
+    assert.equal((await call("read", { id: kept.id })).title, "Kept");
+    const created = await call("create", { title: "After", markdown: "after the move", summary: "Record" });
+    assert.ok(f.space.pageRel(created.id)!.startsWith("Work/"), "a new note lands where the project's notes now are");
+    assert.equal((await call("read", { id: created.id })).id, created.id, "and the agent can read what it just made");
+    assert.ok((await call("list", {})).items.some((item: { id: string }) => item.id === created.id));
+  } finally { await client.close(); await lease.close(); await f.clean(); }
+});
+
+test("a read-only turn never makes notes for a project that has none", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pages-agent-readonly-"));
+  const space = new NotesStore(path.join(dir, "notes"));
+  const made: boolean[] = [];
+  const agents = new PagesAgents({ space, notes: space, enabled: () => true, scope: (id, create) => {
+    made.push(create);
+    const project = create ? space.linkProject({ id, name: "fresh", path: "/code/fresh" }) : space.projectFor(id);
+    return project ? { id: project.id, rel: project.rel } : null;
+  } });
+  const lease = await agents.prepare({ id: "thread", projectId: "fresh", mode: "chat", plan: false }, () => {});
+  const client = new Client({ name: "test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(lease.connection.url)));
+  try {
+    const result = await client.callTool({ name: "search", arguments: { query: "" } });
+    assert.equal(result.isError, true);
+    assert.match((result.content as { text: string }[])[0]!.text, /no notes yet/);
+    assert.deepEqual(made, [false], "the read-only turn asked without creating");
+    assert.equal(space.projectFor("fresh"), undefined, "no notes project was made");
+    assert.ok(!fs.existsSync(path.join(space.root, "Personal", "fresh")));
   } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });

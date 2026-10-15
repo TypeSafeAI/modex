@@ -65,6 +65,8 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
     return { project: p, all, retired, archived, matches: q ? all.filter(matchesQuery) : all };
   });
   const noMatches = q && groups.every((g) => g.matches.length === 0 && g.retired.length === 0 && g.archived.length === 0);
+  // A search or the active-only filter hides a project with nothing to show.
+  const shown = (g: (typeof groups)[number]) => !((q || activeOnly) && g.matches.length === 0 && g.retired.length === 0 && g.archived.length === 0);
   // With one workspace the list stays as it always was; with several, each workspace heads its projects.
   const ordered = [...(workspaces ?? [])].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
   const grouped = ordered.length > 1;
@@ -111,7 +113,8 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
         {noMatches && <p className="side-hint" data-testid="search-empty">No threads match “{query.trim()}”.</p>}
         {(grouped ? ordered : [undefined]).map(workspace => {
           const members = groups.filter(group => !workspace || homeOf(group.project.id)?.id === workspace.id);
-          if (workspace && !members.length) return null;
+          // A workspace whose projects are all filtered out shows no empty header.
+          if (workspace && !members.some(shown)) return null;
           const folded = workspace ? Boolean(workspaceCollapsed[workspace.id]) && !q : false;
           const projects = folded ? [] : members.map(renderProject);
           if (!workspace) return projects;
@@ -127,8 +130,9 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
     </aside>
   );
 
-  function renderProject({ project: p, all, retired, archived, matches }: (typeof groups)[number]) {
-          if ((q || activeOnly) && matches.length === 0 && retired.length === 0 && archived.length === 0) return null;
+  function renderProject(group: (typeof groups)[number]) {
+          if (!shown(group)) return null;
+          const { project: p, all, retired, archived, matches } = group;
           const isCollapsed = !q && collapsed[p.id];
           const selectedIndex = matches.findIndex((t) => t.id === selected);
           const showAll = Boolean(q) || expanded[p.id] || selectedIndex >= THREADS_PER_PROJECT;
