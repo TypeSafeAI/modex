@@ -639,6 +639,15 @@ handle("space:create", (input) => store.space.create(input));
 handle("space:save", (page) => store.space.save(page));
 handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
 handle("notes:settle", ({ id }) => store.space.settle(id));
+handle("notes:tree", (req) => { const tree = store.space.tree(); return req?.since === tree.version ? { unchanged: true as const, version: tree.version } : tree; });
+handle("notes:workspace:create", ({ name }) => store.space.createWorkspace(name));
+handle("notes:project:create", ({ workspaceId, name }) => store.space.createProject(workspaceId, name));
+handle("notes:folder:create", ({ parentId, name }) => store.space.createFolder(parentId, name));
+handle("notes:rename", ({ id, name }) => store.space.rename(id, name));
+handle("notes:move", ({ ids, targetId }) => { store.space.moveNodes(ids, targetId); return store.space.tree(); });
+handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.space.tree(); });
+handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
+handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
 
 handle("state:get", () => {
   const state = store.snapshot();
@@ -813,6 +822,17 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  if (process.env.MODEX_E2E) {
+    // Retain distinct show and first-paint observations before Playwright connects.
+    // Paint does not prove visibility; the harness also waits for settled native geometry.
+    const state = globalThis as { __modexE2EShown?: Set<number>; __modexE2EPainted?: Set<number> };
+    const shown = state.__modexE2EShown ??= new Set<number>();
+    const painted = state.__modexE2EPainted ??= new Set<number>();
+    let closed = false;
+    w.once("show", () => { if (!closed && !w.isDestroyed()) shown.add(w.id); });
+    w.once("ready-to-show", () => { if (!closed && !w.isDestroyed()) painted.add(w.id); });
+    w.once("closed", () => { closed = true; shown.delete(w.id); painted.delete(w.id); });
+  }
   w.webContents.on("did-start-navigation", details => {
     if (win === w && details.isMainFrame && !details.isSameDocument) invalidateNativeDocument();
   });
@@ -852,7 +872,8 @@ function createWindow(): BrowserWindow {
     if (saved?.fullscreen) w.setFullScreen(true);
     // Under test the window must not take the keyboard: Playwright drives it over CDP, and a test
     // window that becomes active swallows whatever the developer is typing elsewhere (it reached a
-    // real shell in the terminal panel). showInactive still emits "show", which the launch helper awaits.
+    // real shell in the terminal panel). The helper checks paint and settled native geometry
+    // as well: an inactive macOS window does not always emit "show".
     if (process.env.MODEX_E2E) w.showInactive();
     else w.show();
   });

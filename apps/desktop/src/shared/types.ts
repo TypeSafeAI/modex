@@ -493,6 +493,19 @@ export interface BridgeCommands extends NativeDraftCommands {
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
   /** Renames a page's file to match its title once editing the title is done; typing never renames files. */
   "notes:settle": { req: { id: string }; res: import("./space.js").SpacePage };
+  /** The notes folder as a tree; `since` a version that still holds answers `unchanged`. */
+  "notes:tree": { req: { since?: string } | undefined; res: import("./notes.js").NotesTree | { unchanged: true; version: string } };
+  "notes:workspace:create": { req: { name: string }; res: import("./notes.js").NotesWorkspace };
+  "notes:project:create": { req: { workspaceId: string; name: string }; res: import("./notes.js").NotesProject };
+  "notes:folder:create": { req: { parentId: string; name: string }; res: import("./notes.js").NotesFolder };
+  /** Renames a workspace, project, folder or file; a page is renamed by its title. */
+  "notes:rename": { req: { id: string; name: string }; res: import("./notes.js").NotesNode };
+  /** Moves notes, folders and files into a project or folder, or projects into a workspace. */
+  "notes:move": { req: { ids: string[]; targetId: string }; res: import("./notes.js").NotesTree };
+  /** Deletes an empty workspace, project or folder. */
+  "notes:delete": { req: { id: string }; res: import("./notes.js").NotesTree };
+  "notes:reveal": { req: { id: string }; res: void };
+  "notes:open": { req: { id: string }; res: void };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "updates:state": { req: undefined; res: import("./updates.js").UpdateInstallState };
   "updates:download": { req: undefined; res: import("./updates.js").UpdateInstallState };
