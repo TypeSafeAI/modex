@@ -1945,9 +1945,11 @@ body,
 .page-summary .mono {
   font-size: var(--text-xs);
 }
-/* Each part after the first brings its own dot, so a wrapped line never ends on one. */
+/* Each part after the first brings its own dot, so a wrapped line never ends on one. The empty
+   alternative text keeps the dot out of accessible names ("Coverage", not "· Coverage"). */
 .page-summary > * + *::before {
   content: "·";
+  content: "·" / "";
   margin-right: 6px;
   color: var(--text-4);
 }

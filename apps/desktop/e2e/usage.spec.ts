@@ -35,7 +35,7 @@ test("collapsed navigation reopens for a destination and stays accessible on mob
   await expect(
     nav.getByRole("button", { name: "Sources", exact: true }),
   ).toBeHidden();
-  await page.getByRole("button", { name: "View coverage" }).click();
+  await page.getByRole("button", { name: "Coverage", exact: true }).click();
   await expect(manage).toHaveAttribute("aria-expanded", "true");
   await expect(
     nav.getByRole("button", { name: "Sources", exact: true }),
