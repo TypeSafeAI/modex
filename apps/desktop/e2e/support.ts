@@ -61,36 +61,6 @@ export async function launch(home: string): Promise<{ app: ElectronApplication; 
     cwd: appDir,
     env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(os.tmpdir(), "modex-e2e-no-jev-config.json") },
   });
-  // Electron 44 on macOS can paint and showInactive without emitting `show`.
-  // Observe native paint as well, then require visible, stable native/renderer
-  // geometry. isVisible alone can precede the window-server transition.
-  await app.evaluate(({ app: electronApp, BrowserWindow }) => {
-    type Win = ReturnType<typeof BrowserWindow.getAllWindows>[number];
-    const ready = ((globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown ??= new Set<number>());
-    const track = (w: Win) => {
-      w.once("show", () => ready.add(w.id));
-      w.once("ready-to-show", () => ready.add(w.id));
-    };
-    BrowserWindow.getAllWindows().forEach(track);
-    electronApp.on("browser-window-created", (_event, w) => track(w));
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState("domcontentloaded");
-  let stableSince: number | undefined;
-  try {
-    await expect.poll(async () => {
-      const native = await app.evaluate(({ BrowserWindow }) => {
-        const w = BrowserWindow.getAllWindows()[0];
-        return w ? { ready: (globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown?.has(w.id) ?? false,
-          visible: w.isVisible(), size: w.getContentSize() } : null;
-      });
-      const size = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
-      if (native?.ready && native.visible && native.size.every((value, index) => value === size[index])) stableSince ??= Date.now();
-      else stableSince = undefined;
-      return stableSince !== undefined && Date.now() - stableSince >= 200;
-    }, { intervals: [50], message: "the window must paint and settle visible native/renderer geometry" }).toBe(true);
-  } catch (error) { await app.close(); throw error; }
-  return { app, page };
   try {
     const page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");

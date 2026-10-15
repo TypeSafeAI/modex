@@ -548,6 +548,15 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Analytics export and recovery.** The native dashboard permits its own CSV
+  export through a save dialog while other downloads remain refused. A torn
+  usage-ledger tail no longer consumes the next recorded turn, and dashboard
+  asset requests reject directory symlinks as well as linked files.
+
+- **Analytics visibility during loading.** A delayed dashboard load cannot reopen
+  Analytics after Streamer Mode, a dialog, or navigation hides it. The latest
+  requested bounds win, and closing the window invalidates pending show requests.
+
 - **Paired iPhone menu recovery.** The paired-flow test retries an ignored Workspace
   options tap once within its existing deadline, only while the menu is absent.
   It still requires the real Forget paired Mac item before proceeding.
@@ -568,6 +577,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   [Feature guide](images-plugins.md) and [implementation/verification ledger](superpowers/plans/2026-10-15-images-plugins.md).
   Live provider/plugin acceptance, human keyboard/VoiceOver acceptance and signed/notarized
   release verification remain open; offline fixtures do not establish those outcomes.
+
+- **Coverage source inventory.** Unit coverage includes unexecuted production files
+  across core, desktop, site, Store desktop, and the release endpoint. Reports use
+  original source paths, omit generated duplicates, and do not claim browser or
+  native E2E coverage.
 
 - **Carriage-return title pastes.** Space accepts CR-only and mixed line endings
   when splitting pasted titles from their body, avoiding a lost paste and parser
@@ -661,7 +675,9 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Agents work in their own project's notes.** With **Manage notes** on, a project's agents see and
   change only that project's notes; another project's are not listed, read or changed. New
   `modex_pages` tools list a folder, create folders, move notes within the project, and read text
-  files.
+  files. Scope lookup failures keep the turn running while refusing Pages access, even when the
+  failure has no message. **Open notes** reveals its project once per request, including across
+  search and filter changes.
 - **The knowledge base can be your notes.** Space → Knowledge base offers **Use your Modex notes**:
   Open Knowledge then opens the notes folder, and a page's menu offers **Open in knowledge base**
   instead of copying it. Knowledge tools stay inside each project's notes there too.

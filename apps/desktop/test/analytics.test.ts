@@ -94,6 +94,7 @@ test("the analytics origin serves only the built dashboard and the recorded usag
     fs.writeFileSync(path.join(root, "notes.md"), "not a served type");
     fs.writeFileSync(path.join(outside, "secret.js"), "nope");
     fs.symlinkSync(path.join(outside, "secret.js"), path.join(root, "assets", "link.js"));
+    fs.symlinkSync(outside, path.join(root, "assets", "linked"), "junction");
     const rows = [{ id: "r1" }];
     const ledger = { list: () => rows as never };
     const get = (url: string, method = "GET") => respondAnalytics(root, ledger, new Request(url, { method }));
@@ -110,6 +111,7 @@ test("the analytics origin serves only the built dashboard and the recorded usag
       "modex-analytics://app/../" + path.basename(outside) + "/secret.js",
       "modex-analytics://app/%2e%2e/%2e%2e/etc/passwd",
       "modex-analytics://app/assets/link.js",
+      "modex-analytics://app/assets/linked/secret.js",
       "modex-analytics://app/notes.md",
       "modex-analytics://app/missing.js",
       "modex-analytics://other/index.html",
@@ -119,4 +121,15 @@ test("the analytics origin serves only the built dashboard and the recorded usag
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
   }
+});
+
+test("a torn ledger tail does not swallow the next recorded turn", () => {
+  const dir = tmpdir("modex-usage-tail-");
+  try {
+    const ledger = new UsageLedger(dir);
+    const first = ledger.record(turn());
+    fs.appendFileSync(ledger.file, '{"id":"torn","at":');
+    const next = new UsageLedger(dir).record(turn({ threadId: "after-crash" }));
+    assert.deepEqual(new UsageLedger(dir).list().map(row => row.id), [first.id, next.id]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

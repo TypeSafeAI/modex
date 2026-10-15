@@ -31,7 +31,13 @@ export async function respondAnalytics(root: string, ledger: Pick<UsageLedger, "
   const type = TYPES[path.extname(file)];
   if (!inside || inside.startsWith("..") || path.isAbsolute(inside) || !type) return notFound();
   try {
-    if (!(await fs.promises.lstat(file)).isFile()) return notFound();
+    let current = root;
+    const parts = inside.split(path.sep);
+    for (const [index, part] of parts.entries()) {
+      current = path.join(current, part);
+      const stat = await fs.promises.lstat(current);
+      if (stat.isSymbolicLink() || (index === parts.length - 1 ? !stat.isFile() : !stat.isDirectory())) return notFound();
+    }
     const body = await fs.promises.readFile(file);
     return new Response(body, { headers: { "content-type": type, "cache-control": "no-store", ...(type.startsWith("text/html") ? { "content-security-policy": ANALYTICS_CSP } : {}) } });
   } catch { return notFound(); }
