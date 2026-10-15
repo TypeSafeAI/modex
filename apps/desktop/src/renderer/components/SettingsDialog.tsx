@@ -324,6 +324,10 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <SecretInput data-testid="auto-retire" type="checkbox" checked={s.auto_retire} onChange={(e) => set("auto_retire", e.target.checked)} />
             <span>Finish worktree threads when their pull request merges<small> — removes the worktree and branch once nothing in them would be lost; the transcript stays as a read-only record</small></span>
           </label>
+          <label className="check">
+            <SecretInput data-testid="model-fallback" type="checkbox" checked={s.model_fallback} onChange={(e) => set("model_fallback", e.target.checked)} />
+            <span>Fall back to Opus when Fable is out of usage credits<small> — the turn runs on Opus instead of failing, and the thread says so; Modex skips Fable for an hour after a refusal</small></span>
+          </label>
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">
           <div className="connections-heading">
