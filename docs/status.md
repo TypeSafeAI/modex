@@ -548,14 +548,6 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
-- **Claude Agent SDK.** Claude turns go through `@anthropic-ai/claude-agent-sdk` (`query()`),
-  pointed at the user's installed `claude` executable so the existing CLI login, CLAUDE.md,
-  hooks, MCP servers and skills still apply. Streaming, thinking, tools, `canUseTool`
-  approvals, Stop/`interrupt()`, permission-mode mapping, model aliases, resume and
-  background-task waits stay on the same backend surface; Codex is unchanged. Packaged
-  builds omit the SDK's bundled native CLI (hundreds of MB) and keep using the discovered
-  `claude` on PATH.
-
 - **Analytics export and recovery.** The native dashboard permits its own CSV
   export through a save dialog while other downloads remain refused. A torn
   usage-ledger tail no longer consumes the next recorded turn, and dashboard
@@ -711,6 +703,16 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   routing and title updates from admitted turns also finish while new edits stay fenced.
 
 ## In flight
+
+- **Claude Agent SDK ([fork PR #1](https://github.com/snowopsdev/modex/pull/1)).** Claude
+  turns use pinned `@anthropic-ai/claude-agent-sdk` (`query()`) with the user's installed
+  `claude`, preserving CLI login, CLAUDE.md, hooks, MCP servers, skills and background
+  work. Stop allows a graceful interrupt before signals and waits for process close;
+  withdrawn approvals dismiss their cards and cancel rule evaluation. CLI failures retain
+  stderr and exit codes. Offline tests exercise the real SDK handshake, permissions,
+  cancellation and shutdown. Packaged builds omit bundled native CLI packages. The
+  [review evidence](reviews/2026-10-15-claude-sdk-review.md) records checks and the installed
+  Claude smoke limit; this migration has not landed on main.
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts

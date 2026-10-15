@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ClaudeBackend, denyMessage, fastModeOf, toolTitle, userContent } from "../src/main/engine/backends/claude.js";
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
-import { FakeProcess, fakeSpawn, collectSink, scriptedClaudeQuery } from "./fakeproc.js";
+import { FakeProcess, fakeSpawn, collectSink, flushClaude, scriptedClaudeQuery } from "./fakeproc.js";
 import { PNG_B64, tmpdir } from "./helpers.js";
 import { fileURLToPath } from "node:url";
 import { claudeCall } from "../src/main/engine/backends/usage.js";
@@ -79,7 +79,6 @@ test("ClaudeBackend.sessionOptions maps modes and plan onto Agent SDK permission
   assert.equal(a.includePartialMessages, true);
   assert.equal(a.forwardSubagentText, true);
   assert.equal(a.persistSession, true);
-  assert.equal(a.permissionPrompts, "host");
   assert.deepEqual(a.settingSources, ["user", "project", "local"]);
   assert.deepEqual(a.systemPrompt, { type: "preset", preset: "claude_code" });
   assert.deepEqual(a.tools, { type: "preset", preset: "claude_code" });
@@ -109,7 +108,7 @@ test("ClaudeBackend: streams deltas, tools, answers a permission request, resume
   proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Sure, " } } });
   proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "writing." } } });
   proc.emitLine({ type: "assistant", message: { content: [{ type: "thinking", thinking: "Plan: write it." }, { type: "text", text: "Sure, writing." }, { type: "tool_use", id: "tu1", name: "Write", input: { file_path: "/repo/probe.txt", content: "hi" } }] } });
-  proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Write", input: { file_path: "/repo/probe.txt", content: "hi" }, permission_suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }] } });
+  proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Write", tool_use_id: "tu1", input: { file_path: "/repo/probe.txt", content: "hi" }, permission_suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }] } });
   const resp = JSON.parse(await proc.waitFor((l) => l.includes("control_response"))) as { response: { request_id: string; response: { behavior: string; updatedPermissions?: unknown[] } } };
   assert.equal(resp.response.request_id, "r1");
   assert.equal(resp.response.response.behavior, "allow");
@@ -182,9 +181,9 @@ test("ClaudeBackend: a non-zero exit carries the exit code and stderr tail", asy
   assert.equal(r.detail?.bin, "claude");
 });
 
-test("ClaudeBackend: abort kills the process and reports interrupted", async () => {
+test("ClaudeBackend: abort kills a Claude that ignores the interrupt and reports interrupted", async () => {
   const proc = new FakeProcess();
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, {}, scriptedClaudeQuery);
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { interruptGraceMs: 10 }, scriptedClaudeQuery);
   const ac = new AbortController();
   const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collectSink().sink, ac.signal);
   await proc.waitFor((l) => l.includes('"type":"user"'));
@@ -192,6 +191,78 @@ test("ClaudeBackend: abort kills the process and reports interrupted", async () 
   const r = await run;
   assert.equal(r.status, "interrupted");
   assert.equal(proc.killed, true);
+});
+
+test("ClaudeBackend: Stop that Claude honours ends on the interrupted turn's result, without a kill", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { interruptGraceMs: 5_000 }, scriptedClaudeQuery);
+  const { sink, events } = collectSink();
+  const ac = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, sink, ac.signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  // Like the CLI, the fake exits once its input ends.
+  proc.stdin.on("finish", () => proc.close(0));
+  proc.emitLine({ type: "system", subtype: "init", session_id: "s" });
+  ac.abort();
+  await proc.waitFor((l) => l.includes('"subtype":"interrupt"'));
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "late" } } });
+  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, session_id: "s", num_turns: 1 });
+  assert.deepEqual(await run, { status: "interrupted" });
+  assert.equal(proc.killed, false, "a clean interrupt needs no signal");
+  assert.ok(!events.includes("delta:late"), "nothing reaches the thread after Stop");
+});
+
+test("ClaudeBackend: Stop with messages still in flight settles the turn", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { interruptGraceMs: 10 }, scriptedClaudeQuery);
+  const ac = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collectSink().sink, ac.signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  // A streamed token is already on the wire when the user presses Stop.
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } } });
+  ac.abort();
+  const r = await Promise.race([run, new Promise((res) => setTimeout(() => res("hung"), 2000))]);
+  assert.deepEqual(r, { status: "interrupted" });
+});
+
+test("ClaudeBackend: a permission request Claude withdraws aborts its approval and gets no answer", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { backgroundIdleMs: 20 }, scriptedClaudeQuery);
+  const { sink, events } = collectSink();
+  let withdrawn: AbortSignal | undefined;
+  const waiting = { ...sink, approval: (req: Parameters<typeof sink.approval>[0], cancelled?: AbortSignal) => {
+    events.push(`approval:${req.question}`);
+    withdrawn = cancelled;
+    return new Promise<"no">((r) => cancelled?.addEventListener("abort", () => r("no")));
+  } };
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, waiting, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  proc.emitLine({ type: "assistant", message: { content: [{ type: "tool_use", id: "tu1", name: "Bash", input: { command: "ls" } }] } });
+  proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", tool_use_id: "tu1", input: { command: "ls" } } });
+  while (!withdrawn) await flushClaude();
+  assert.equal(withdrawn.aborted, false);
+  proc.emitLine({ type: "control_cancel_request", request_id: "r1" });
+  while (!withdrawn.aborted) await flushClaude();
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "ok", num_turns: 1 });
+  const r = await run;
+  assert.equal(r.status, "completed");
+  assert.ok(!proc.written.some((l) => l.includes("control_response")), "a withdrawn request gets no answer");
+});
+
+test("ClaudeBackend: a launch error fails the turn and closes the session", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, {}, scriptedClaudeQuery);
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  let ended = false;
+  proc.stdin.on("finish", () => { ended = true; });
+  proc.emit("error", Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" }));
+  const r = await run;
+  assert.equal(r.status, "failed");
+  assert.match(r.error ?? "", /ENOENT\. Is Claude Code installed and on PATH\?/);
+  assert.equal(r.detail?.errno, "ENOENT");
+  await flushClaude();
+  assert.equal(ended, true, "the SDK session is closed, not left waiting on the prompt");
 });
 
 test("ClaudeBackend.sessionOptions passes reasoning effort and fast mode; models advertise the effort ladder", () => {
@@ -238,13 +309,16 @@ test("fastModeOf words each state; the latest init or result wins", async () => 
 test("Stop waits for the Claude process to close before settling", async () => {
   const proc = new FakeProcess();
   proc.kill = () => { proc.killed = true; return true; };
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, {}, scriptedClaudeQuery);
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { interruptGraceMs: 10 }, scriptedClaudeQuery);
   const abort = new AbortController();
   const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, abort.signal);
   let settled = false;
   void run.then(() => { settled = true; });
+  await proc.waitFor((l) => l.includes('"type":"user"'));
   abort.abort();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  // Stop asks first; a Claude that has not stopped within the grace window is killed.
+  await proc.waitFor((l) => l.includes('"subtype":"interrupt"'));
+  await new Promise((resolve) => setTimeout(resolve, 40));
   assert.equal(proc.killed, true);
   assert.equal(settled, false, "SIGTERM delivery is not process termination");
   proc.close(null);
