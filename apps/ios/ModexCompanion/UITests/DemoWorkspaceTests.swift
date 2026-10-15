@@ -335,6 +335,45 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertTrue(demo.waitForExistence(timeout: UITestBudget.seconds(10)), "Demo access must not save a pairing on relaunch.")
     }
 
+    func testDemoArchiveHidesThreadUntilShown() {
+        continueAfterFailure = false
+        let prompts = answerSystemAlertsDuringActions()
+        defer { removeUIInterruptionMonitor(prompts) }
+        let app = XCUIApplication()
+        app.launch()
+        defer { app.terminate() }
+        returnToWelcome(app)
+        app.open(URL(string: "modex://demo")!)
+        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: UITestBudget.seconds(10)))
+        let scroll = app.buttons["thread-demo-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: UITestBudget.seconds(10)))
+        let toggle = app.buttons["toggle-archived"]
+        XCTAssertFalse(toggle.exists, "Nothing is archived in a fresh demo.")
+        if !scroll.isReadyToTap { app.swipeUp() }
+        guard scroll.waitUntilReady() else { return }
+        scroll.press(forDuration: 1.0)
+        let archive = app.buttons["Archive"]
+        XCTAssertTrue(archive.waitForExistence(timeout: UITestBudget.seconds(10)), "Holding a thread offers Archive.")
+        archive.tap()
+        XCTAssertTrue(scroll.waitForNonExistence(timeout: UITestBudget.seconds(10)), "Archived threads are hidden by default.")
+        XCTAssertTrue(toggle.waitForExistence(timeout: UITestBudget.seconds(10)))
+        XCTAssertEqual(toggle.label, "Show archived (1)")
+        attachScreenshot(of: app, named: "Demo archived thread hidden")
+        toggle.tapWhenReady()
+        XCTAssertTrue(scroll.waitForExistence(timeout: UITestBudget.seconds(10)), "Show archived reveals the thread.")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Archived · Codex")).firstMatch.waitForExistence(timeout: UITestBudget.seconds(10)))
+        attachScreenshot(of: app, named: "Demo archived thread shown")
+        scroll.tapWhenReady()
+        let options = app.buttons["thread-options"]
+        XCTAssertTrue(options.waitForExistence(timeout: UITestBudget.seconds(10)))
+        options.tapWhenReady()
+        app.buttons["Unarchive thread"].tapWhenReady()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Demo · Codex")).firstMatch.waitForExistence(timeout: UITestBudget.seconds(10)), "Unarchiving clears the Archived label.")
+        XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
+        XCTAssertTrue(toggle.waitForNonExistence(timeout: UITestBudget.seconds(10)), "With nothing archived there is nothing to show.")
+        XCTAssertTrue(scroll.exists)
+    }
+
     // A preceding failed paired test can leave credentials behind. Reach welcome explicitly
     // before either demo entry path; the product correctly refuses demo URLs while paired.
     private func returnToWelcome(_ app: XCUIApplication) {
