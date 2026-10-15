@@ -1,6 +1,30 @@
-import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
-import { launch, resizeWindow, seedHome } from "./support";
+import path from "node:path";
+import { appDir, launch, resizeWindow, seedHome } from "./support";
+
+test("native show is recorded before the test attaches an observer", async () => {
+  const { home, repo } = seedHome();
+  const executablePath = process.env.MODEX_PACKAGED_APP;
+  const app = await electron.launch({
+    executablePath, args: executablePath ? [] : [appDir], cwd: appDir,
+    env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    // Deliberately never install the launch helper's observer. Main must retain
+    // the actual native notification, including when the test connects late.
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      return !!w && ((globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown?.has(w.id) ?? false);
+    })).toBe(true);
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
 
 test("layout sizing survives a delayed native restoration of launch bounds", async () => {
   const { home, repo } = seedHome();

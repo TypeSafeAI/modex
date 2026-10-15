@@ -597,6 +597,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   credits" instead of "unknown". Empty fallback replies retain a Retry card, and Auto
   records the model that actually ran without learning a user override. Settings → General turns the fallback off; it is on by default.
 
+- **Reliable native-window acceptance.** E2E launches retain the native show event in
+  main before a test connects, preventing missed-event startup timeouts without
+  substituting the earlier `isVisible()` state for a native notification.
+
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without
   weakening restart checks or the native draft preparation/adoption transaction.
