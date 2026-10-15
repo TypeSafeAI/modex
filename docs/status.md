@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-13._
+_Last updated 2026-10-15._
 
 ## Shipped
 
@@ -568,11 +568,17 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   the state files, which stay authoritative. A real session replays from the journal to its exact
   saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
 
-## In flight
-
 - **Reliable native-window acceptance.** E2E launches retain the native show event in
   main before a test connects, preventing missed-event startup timeouts without
   substituting the earlier `isVisible()` state for a native notification.
+
+- **Thread/project deletion during active turns.** A dedicated runner admission hold
+  lets deletion stop and drain its own turns while unrelated turns continue, without
+  weakening restart checks or the native draft preparation/adoption transaction.
+  Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
+  routing and title updates from admitted turns also finish while new edits stay fenced.
+
+## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
