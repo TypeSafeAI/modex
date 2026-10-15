@@ -627,9 +627,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   title when the title loses focus. Workspaces, per-project notes and files come next.
   [Notes folder](notes.md).
 
-- **Reliable native-window acceptance.** E2E launches retain the native show event in
-  main before a test connects, preventing missed-event startup timeouts without
-  substituting the earlier `isVisible()` state for a native notification.
+- **Reliable native-window acceptance.** E2E launches retain distinct show and first-paint
+  observations in main before a test connects. Inactive windows also require visible,
+  matching native/renderer geometry unchanged for 200 ms; visibility alone never passes.
+  Failed setup closes the owned app without masking the original error.
 
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without

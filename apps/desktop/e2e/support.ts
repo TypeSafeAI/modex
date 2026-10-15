@@ -61,18 +61,35 @@ export async function launch(home: string): Promise<{ app: ElectronApplication; 
     cwd: appDir,
     env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(os.tmpdir(), "modex-e2e-no-jev-config.json") },
   });
-  // Main records the actual native `show` when it creates the hidden window;
-  // attaching here can miss the event after electron.launch() has resolved.
-  // isVisible() is insufficient: macOS can report it before emitting `show`.
-  const page = await app.firstWindow();
-  await page.waitForLoadState("domcontentloaded");
-  // resizeWindow separately waits for native and renderer geometry to settle before layout measurements.
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0];
-    const shown = (globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown;
-    return { shown: !!w && (shown?.has(w.id) ?? false), windowId: w?.id, visible: w?.isVisible(), recorded: [...(shown ?? [])] };
-  }), { message: "the window never reported its native show" }).toMatchObject({ shown: true });
-  return { app, page };
+  try {
+    const page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await waitForWindowReady(app, page);
+    return { app, page };
+  } catch (error) {
+    try { await app.close(); } catch { /* Preserve the original readiness failure. */ }
+    throw error;
+  }
+}
+
+/** Inactive macOS windows can paint without a show event; neither paint nor visibility alone proves readiness. */
+export async function waitForWindowReady(app: ElectronApplication, page: Page, timeout?: number): Promise<void> {
+  let stableKey: string | undefined, stableSince: number | undefined;
+  await expect.poll(async () => {
+    const native = await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      if (!w || w.isDestroyed()) return null;
+      const state = globalThis as { __modexE2EShown?: Set<number>; __modexE2EPainted?: Set<number> };
+      return { id: w.id, shown: state.__modexE2EShown?.has(w.id) ?? false,
+        painted: state.__modexE2EPainted?.has(w.id) ?? false, visible: w.isVisible(), size: w.getContentSize() };
+    });
+    const size = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+    const valid = native && (native.shown || native.painted) && native.visible &&
+      native.size.every((value, index) => value > 0 && value === size[index]);
+    const key = valid ? `${native.id}:${native.size.join(":")}` : undefined;
+    if (key !== stableKey || !valid) { stableKey = key; stableSince = valid ? Date.now() : undefined; }
+    return { ready: stableSince !== undefined && Date.now() - stableSince >= 200, native, renderer: size };
+  }, { timeout, intervals: [50], message: "the window must paint and settle visible native/renderer geometry" }).toMatchObject({ ready: true });
 }
 
 /** Wait for native and renderer geometry to settle after macOS restores launch bounds. */
