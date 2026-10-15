@@ -42,3 +42,38 @@ test("Analytics opens from the rail with the usage recorded on this Mac, and Set
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("Analytics CSV export completes a native download containing recorded rows", async () => {
+  const { home, repo } = seedHome();
+  fs.writeFileSync(path.join(home, "app", "usage.jsonl"), `${JSON.stringify(row)}\n`, { mode: 0o600 });
+  const { app, page } = await launch(home);
+  try {
+    await tid(page, "rail-analytics").click();
+    await expect.poll(() => app.evaluate(({ webContents }) => {
+      const guest = webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-analytics://app/"));
+      return guest?.executeJavaScript("document.body.innerText") ?? "";
+    })).toContain("1 turn from Claude Code and Codex threads");
+    const target = path.join(home, "export.csv");
+    const result = await app.evaluate(async ({ webContents }, target) => {
+      const guest = webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-analytics://app/"))!;
+      return new Promise<string>(resolve => {
+        const timer = setTimeout(() => resolve("no download"), 10_000);
+        guest.session.once("will-download", (event, item) => {
+          if (event.defaultPrevented) { clearTimeout(timer); resolve("cancelled by policy"); return; }
+          item.setSavePath(target);
+          item.once("done", (_event, state) => { clearTimeout(timer); resolve(state); });
+        });
+        void guest.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Export CSV')).click()`, true);
+      });
+    }, target);
+    expect(result).toBe("completed");
+    const csv = fs.readFileSync(target, "utf8");
+    expect(csv).toContain("claude-code");
+    expect(csv).toContain("opus");
+    expect(csv).toContain("30500");
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});

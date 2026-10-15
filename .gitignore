@@ -19,3 +19,7 @@ apps/ios/ModexCompanion/build/
 .vercel/
 .playwright-cli/
 output/playwright/
+
+# Code coverage reports (generated locally and in CI; see .c8rc.json).
+coverage/
+.nyc_output/
