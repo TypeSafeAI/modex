@@ -434,6 +434,21 @@ export class NotesStore implements SpacePagesStore {
     }));
   }
 
+  /** A page's place in the folder (where a trashed page came from), for scoping a project's agents. */
+  pageRel(id: string): string | undefined {
+    const state = this.load();
+    const entry = state.index.notes[id];
+    return state.live.get(id)?.rel ?? entry?.trash?.original ?? entry?.original ?? undefined;
+  }
+
+  /** A text file's contents: UTF-8, at most 1 MB. */
+  readFile(id: string): string {
+    const node = this.layout(this.load()).byId.get(id);
+    if (!node || node.kind !== "file") throw new Error("This file is no longer in your notes.");
+    if (node.preview !== "text") throw new Error("Only text files up to 1 MB can be read.");
+    try { return utf8.decode(fs.readFileSync(this.abs(node.rel))); } catch { throw new Error("This file is not UTF-8 text."); }
+  }
+
   /** Where a node is on disk, for Reveal in Finder and Open. */
   pathOf(id: string): string {
     const state = this.load();

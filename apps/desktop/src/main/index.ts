@@ -107,7 +107,11 @@ const store = new Store(home);
 const restartAdmission = new RestartAdmission();
 const knowledge = new KnowledgeService(home);
 const knowledgeAgents = new KnowledgeAgents({ knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true });
-const pagesAgents = new PagesAgents({ space: store.space, enabled: id => store.project(id)?.pagesMaintenance === true });
+const pagesAgents = new PagesAgents({
+  space: store.space, notes: store.space, enabled: id => store.project(id)?.pagesMaintenance === true,
+  // Each project's agents work in that project's notes only (docs/pages-maintenance.md).
+  scope: id => { const project = store.project(id); if (!project) return undefined; const notes = store.space.linkProject(project); return { id: notes.id, rel: notes.rel }; },
+});
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,

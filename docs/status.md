@@ -604,7 +604,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   chat sidebar offers **Open notes**, and with more than one workspace the sidebar groups projects
   under them, with **Move to <workspace>**. Removing a project keeps its notes; adding the same
   folder again links them back. The thread's right-hand panel is now called the **side panel**
-  ("Show side panel ⌘J"), so "workspace" means one thing. File import is next.
+  ("Show side panel ⌘J"), so "workspace" means one thing.
+- **Agents work in their own project's notes.** With **Manage notes** on, a project's agents see and
+  change only that project's notes; another project's are not listed, read or changed. New
+  `modex_pages` tools list a folder, create folders, move notes within the project, and read text
+  files. File import is next.
 
 ## In flight
 
