@@ -22,7 +22,9 @@ const RULES: { code: FailureCode; test: RegExp }[] = [
     code: "auth",
     test: /could not be refreshed|sign in again|log ?in again|not logged in|not signed in|please run \/login|login (?:is )?required|logged out|unauthori[sz]ed|\b401\b|invalid api key|incorrect api key|authentication[_ ](?:error|failed|required)|invalid[_ ]token|token (?:has |is )?(?:expired|invalid)|oauth token|refresh token|api key is currently being used|no api key|not authenticated/i,
   },
-  { code: "rate_limited", test: /rate[ _-]?limit|too many requests|\b429\b|usage limit|hit your (?:usage )?limit|quota|out of credits|billing|overloaded|\b529\b|at capacity/i },
+  // Claude Code 2.1.300 says "You're out of usage credits. Switch to another model, or manage usage
+  // credits at …" when a model billed from usage credits has none left; the API says "credit balance is too low".
+  { code: "rate_limited", test: /rate[ _-]?limit|too many requests|\b429\b|usage limit|hit your (?:usage )?limit|quota|out of (?:usage )?credits|usage credits|credit balance is too low|billing|overloaded|\b529\b|at capacity/i },
   {
     code: "network",
     test: /\bE(?:CONNRESET|CONNREFUSED|TIMEDOUT|NOTFOUND|AI_AGAIN|PIPE|HOSTUNREACH|NETUNREACH)\b|socket hang up|fetch failed|network|connection (?:reset|refused|closed|error|lost|failed)|stream disconnected|error sending request|timed out|\b50[234]\b|bad gateway|service unavailable|gateway timeout|\btls\b|certificate/i,
@@ -68,8 +70,14 @@ export function describeFailure(input: FailureInput): TurnFailure {
       fix = { kind: "settings", label: "Open Settings" };
       break;
     case "rate_limited":
-      summary = `${name} is rate-limited or out of quota.`;
-      hint = "Wait a moment, or pick another model, then retry.";
+      // Out of credits does not pass with time: retrying the same model fails until credits are added.
+      if (/credit/i.test(message)) {
+        summary = `${name} is out of usage credits for this model.`;
+        hint = "Pick another model, or add usage credits to your account, then retry. Retrying on this model fails until then.";
+      } else {
+        summary = `${name} is rate-limited or out of quota.`;
+        hint = "Wait a moment, or pick another model, then retry.";
+      }
       fix = { kind: "models", label: "Try another model" };
       break;
     case "network":

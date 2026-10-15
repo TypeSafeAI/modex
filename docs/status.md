@@ -548,6 +548,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Out-of-credits failures point at another model.** Claude Code's "You're out of usage
+  credits. Switch to another model…" was classified as unknown, so its card had no hint or
+  fix, and Retry re-ran the same model into the same refusal. It is now a rate-limit failure
+  with its own summary, a hint that retrying this model fails until credits are added, and
+  the Try another model fix.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact

@@ -88,6 +88,16 @@ test("describeFailure: recoverable outages expose a contextual resolve action", 
   assert.equal(quota.code, "rate_limited");
   assert.deepEqual(quota.fix, { kind: "models", label: "Try another model" });
 
+  // Claude Code 2.1.300's own words (thread 67433e29, 2026-10-15): this was classified "unknown",
+  // so the card had no hint and no fix, and its Retry re-ran the same model into the same refusal.
+  const credits = describeFailure({ backend: "claude", message: "You're out of usage credits. Switch to another model, or manage usage credits at https://claude.ai/settings/usage?from=cc_cli_limit_message, to continue." });
+  assert.equal(credits.code, "rate_limited");
+  assert.equal(credits.summary, "Claude Code is out of usage credits for this model.");
+  assert.match(credits.hint ?? "", /Pick another model/);
+  assert.deepEqual(credits.fix, { kind: "models", label: "Try another model" });
+  assert.equal(classifyFailure("Your credit balance is too low to access the Anthropic API."), "rate_limited");
+  assert.equal(quota.summary, "Codex is rate-limited or out of quota.", "plain rate limits keep their wording");
+
   const network = describeFailure({ backend: "claude", message: "stream disconnected before completion: error sending request" });
   assert.deepEqual(network.fix, { kind: "retry", label: "Retry connection" });
 
