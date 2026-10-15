@@ -320,6 +320,58 @@ test("paired companion creates a local or worktree thread and starts its first t
   }
 });
 
+test("companion reports archived threads and archives only a thread that is not working", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-archive-"));
+  const calls: string[] = [];
+  let status = "idle";
+  const base = { projectId: "p1", backend: "mock", cwd: "/private/source", mode: "chat", model: "mock", plan: false, createdAt: "now", updatedAt: "now", status: "idle" };
+  const state = { projects: [{ id: "p1", name: "example", path: "/private/source", addedAt: "now" }], threads: [{ ...base, id: "abcdef12", title: "Put away", archived: { at: "2026-10-13T00:00:00.000Z" } }, { ...base, id: "feedbeef", title: "Working" }], version: 1, settings: {} } as AppState;
+  const source = { state: () => state, items: () => [], status: () => status, send: async () => ({ ok: true }), answer: () => {} };
+  const server = new CompanionServer(home, { ...source, setArchived: (id, archived) => { calls.push(`${id}:${archived}`); } }, () => ["127.0.0.1"]);
+  // No connection pooling: the second server below reuses the first one's port, and a kept-alive socket to the stopped server would be replayed into it.
+  // Validation stays on and trusts only the companion's own certificate. It names no address, so, as on the phone, the
+  // pairing link's fingerprint stands in for the host name.
+  const request = (credentials: { url: string; token: string; fingerprint: string }, route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const ca = fs.readFileSync(path.join(home, "companion", "cert.pem"));
+    const checkServerIdentity = (_host: string, cert: { raw: Buffer }) => crypto.createHash("sha256").update(cert.raw).digest("hex") === credentials.fingerprint ? undefined : new Error("The companion answered with a certificate other than the paired one.");
+    const req = https.request(`${credentials.url}${route}`, { method, agent: false, rejectUnauthorized: true, ca, checkServerIdentity, headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+      let text = "";
+      res.on("data", (chunk) => { text += chunk; });
+      res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
+    });
+    req.on("error", reject);
+    req.end(body ? JSON.stringify(body) : undefined);
+  });
+  const credentialsOf = (uri: string) => JSON.parse(Buffer.from(new URL(uri).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
+  try {
+    const credentials = credentialsOf((await server.start()).pairingUri!);
+    const snapshot = await request(credentials, "/v1/snapshot");
+    assert.equal(snapshot.body.threads[0].archived, true, "the phone learns which threads are put away");
+    assert.equal(snapshot.body.threads[1].archived, undefined, "working threads carry no flag at all");
+    assert.ok(!JSON.stringify(snapshot.body).includes("2026-10-13"), "only the fact, not the timestamp, leaves the Mac");
+    assert.equal((await request(credentials, "/v1/threads/abcdef12/archive", "POST", { archived: "yes" })).status, 400);
+    assert.equal((await request(credentials, "/v1/threads/abcdef12/archive", "POST", { archived: false })).status, 200);
+    status = "running";
+    assert.equal((await request(credentials, "/v1/threads/feedbeef/archive", "POST", { archived: true })).status, 409, "a working thread stays in the list until it finishes");
+    status = "waiting";
+    assert.equal((await request(credentials, "/v1/threads/feedbeef/archive", "POST", { archived: true })).status, 409, "nothing hidden may wait for an answer");
+    assert.equal((await request(credentials, "/v1/threads/feedbeef/archive", "POST", { archived: false })).status, 200, "bringing a thread back is always allowed");
+    status = "idle";
+    assert.equal((await request(credentials, "/v1/threads/feedbeef/archive", "POST", { archived: true })).status, 200);
+    assert.equal((await request(credentials, "/v1/threads/deadbeef/archive", "POST", { archived: true })).status, 404);
+    assert.deepEqual(calls, ["abcdef12:false", "feedbeef:false", "feedbeef:true"]);
+    await server.stop();
+    const older = new CompanionServer(home, source, () => ["127.0.0.1"]);
+    try {
+      const legacy = credentialsOf((await older.start()).pairingUri!);
+      assert.equal((await request(legacy, "/v1/threads/abcdef12/archive", "POST", { archived: true })).status, 501, "a Mac without archiving says so instead of failing");
+    } finally { await older.stop(); }
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("companion sets a thread's approval policy, and 'Always allow' answers the request after setting it", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-policy-"));
   const calls: string[] = [];

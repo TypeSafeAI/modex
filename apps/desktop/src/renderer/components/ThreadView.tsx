@@ -31,6 +31,8 @@ interface Props {
   onRetry: () => void;
   /** Applies a failure card's remedy: types the sign-in command into the thread's terminal, or opens Settings. */
   onFix: (fix: TurnFix) => void;
+  /** Brings an archived thread back to the working list; sending a message does the same. */
+  onUnarchive: () => void;
   models: ModelInfo[];
   modelsError?: string;
   onRetryModels?: () => void;
@@ -58,20 +60,21 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
   const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
   const suggestionKey = JSON.stringify([thread.id, thread.status, thread.plan, thread.mode, thread.auto, items.at(-1)?.id]);
   useEffect(() => {
-    if (thread.retired || thread.status !== "idle" || !items.length) return;
+    // A put-away thread is not asking for a next step; Jev is not consulted for it.
+    if (thread.retired || thread.archived || thread.status !== "idle" || !items.length) return;
     let alive = true;
     void bridge.invoke("thread:followup", { threadId: thread.id }).then((value) => {
       if (alive) setFollowUp({ key: suggestionKey, value });
     }).catch(() => { if (alive) setFollowUp(null); });
     return () => { alive = false; };
-  }, [suggestionKey, thread.retired]);
+  }, [suggestionKey, thread.retired, thread.archived]);
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
   const newestUser = useRef<string | undefined>(undefined);
@@ -157,6 +160,10 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         <button type="button" className="btn small" data-testid="saved-message-retry" onClick={onRetry}>Retry saved message</button>
       </div>}
 
+      {thread.archived && <div className="notice" data-testid="archived-notice">
+        <p>This thread is archived.{!thread.retired && " Sending a message brings it back."}</p>
+        <button type="button" className="btn small" data-testid="archived-restore" onClick={onUnarchive}>Unarchive</button>
+      </div>}
       {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
         text={text}
         onText={onText}

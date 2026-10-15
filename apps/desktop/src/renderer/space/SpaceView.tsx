@@ -28,7 +28,7 @@ const TEMPLATES = [
   { title: "Blank page", description: "Make room for an idea", icon: "file" as const, markdown: "" },
 ];
 
-export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen = false }: { sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
+export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
   const space = useSpace(active);
   const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -262,7 +262,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
       </form>}
     </main>
     </div>
-    {view === "knowledge" && <KnowledgeView active={active && !chatOpen} onPages={() => selectView("pages")} />}
+    {view === "knowledge" && <KnowledgeView onReadyChange={onKnowledgeReadyChange} active={active && !chatOpen} onPages={() => selectView("pages")} />}
     <SecretInput ref={importInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="Import Markdown file" hidden onChange={event => {
       const file = event.target.files?.[0]; event.target.value = "";
       if (!file || restartDrafts.frozen) return;

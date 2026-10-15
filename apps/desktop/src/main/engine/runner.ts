@@ -449,7 +449,11 @@ export class ThreadRunner {
     let release!: () => void;
     const reservation = new Promise<void>(resolve => { release = resolve; });
     l.run = reservation;
-    try { await this.runTurn(threadId, text, reuse, attachments, prepared); }
+    // A new message on an archived thread brings it back: an archived thread is never one that is working.
+    try {
+      this.unarchive(threadId);
+      await this.runTurn(threadId, text, reuse, attachments, prepared);
+    }
     finally { if (l.run === reservation) l.run = null; release(); }
   }
 
@@ -747,6 +751,31 @@ export class ThreadRunner {
     this.patchItem(threadId, itemId, { answer });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     resolve(answer);
+  }
+
+  /**
+   * Puts a thread away or brings it back. Archived threads leave the working lists on the Mac and the
+   * phone; the transcript stays. A thread that is working cannot be archived, so nothing hidden ever
+   * waits for an answer.
+   */
+  setArchived(threadId: string, archived: boolean): Thread {
+    this.assertNotRestarting();
+    if (typeof archived !== "boolean") throw new Error("Choose Archive or Unarchive.");
+    const thread = this.o.store.thread(threadId);
+    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+    const status = this.status(threadId);
+    if (archived && (status === "running" || status === "waiting")) throw new Error("Wait for this thread to finish before archiving it.");
+    if (Boolean(thread.archived) === archived) return { ...thread };
+    const t = this.o.store.updateThread(threadId, { archived: archived ? { at: new Date().toISOString() } : undefined });
+    this.o.emit({ threadId, type: "thread", thread: t });
+    return t;
+  }
+
+  private unarchive(threadId: string): void {
+    if (!this.o.store.thread(threadId)?.archived) return;
+    const t = this.o.store.updateThread(threadId, { archived: undefined });
+    this.o.emit({ threadId, type: "thread", thread: t });
   }
 
   updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {

@@ -159,7 +159,14 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout(persistPreferences);
   const showChanges = layout.changes;
-  const sidebarOpen = layout.sidebar;
+  const [knowledgeReady, setKnowledgeReady] = useState(false);
+  const [knowledgeSidebarOpen, setKnowledgeSidebarOpen] = useState(false);
+  const onKnowledgeReadyChange = useCallback((ready: boolean) => {
+    setKnowledgeReady(ready);
+    if (ready) setKnowledgeSidebarOpen(false);
+  }, []);
+  const knowledgeFocused = surface === "space" && knowledgeReady;
+  const sidebarOpen = knowledgeFocused ? knowledgeSidebarOpen : layout.sidebar;
   const streamerMode = layout.streamerMode;
   const showAnalytics = analyticsEnabled && layout.analytics;
   // Hiding Analytics in Settings while it is open returns to Chat rather than leaving an unreachable surface.
@@ -167,7 +174,10 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   useStreamerRedaction(streamerMode);
   const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
-  const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
+  const setSidebarOpen = (f: (v: boolean) => boolean) => {
+    if (knowledgeFocused) setKnowledgeSidebarOpen(f);
+    else setLayout((l) => ({ sidebar: f(l.sidebar) }));
+  };
   // The toast: what failed and, when the action can simply be run again, how.
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
@@ -685,6 +695,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
+  /** Archived threads leave the working list on every device; the selection stays so the row remains visible under Archived. */
+  const archiveThread = (t: Thread, archived: boolean) => act(async () => {
+    await bridge.invoke("thread:archive", { threadId: t.id, archived });
+    await refresh();
+  });
   const closeTerminal = (threadId: string) => {
     setTerminals((m) => ({ ...m, [threadId]: false }));
     inputRef.current?.focus();
@@ -815,7 +830,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
   };
 
-  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
+  const panels = usePanelSizing({ ...layout, sidebar: sidebarOpen }, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
   const openSpaceChat = (prompt?: string) => {
     if (nativeHoldRef.current) return;
     setSpaceChatOpen(true);
@@ -845,6 +860,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         onOpenPath={openPath}
         onOpenTerminal={openTerminal}
         onDelete={deleteThread}
+        onArchive={archiveThread}
         platform={bridge.platform}
       />
       <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
@@ -854,7 +870,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
         {surface === "analytics" && <AnalyticsView active={!showSettings && !showCompanion} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}
@@ -865,6 +881,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
             onNewChat={newChat}
             onNewThread={openDraft}
             onDeleteThread={deleteThread}
+            onArchiveThread={archiveThread}
             onRemoveProject={removeProject}
             unsent={unsent}
             agents={activeAgents}
@@ -896,6 +913,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               onUpdate={updateThread}
               onRetry={() => void retry()}
               onFix={applyFix}
+              onUnarchive={() => void archiveThread(thread, false)}
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
               onRetryModels={() => retryModels(thread.backend)}

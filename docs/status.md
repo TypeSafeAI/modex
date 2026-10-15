@@ -548,6 +548,18 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Delete selected Space text.** Backspace/Delete now removes a safely mapped
+  selection in rendered page text and places the editing caret at the deletion.
+  Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
+  selected occurrence. Source editing retains native textarea behavior.
+
+- **Knowledge editor spacing.** The running editor shares the window titlebar
+  and fills its content area without the surrounding sheet frame.
+  The editor fills the area beside the navigation rail and collapses the outer Space
+  sidebar when ready, avoiding two file navigators beside the document and chat.
+  The sidebar toggle can reopen it temporarily; returning to pages or Home restores
+  the saved sidebar preference. Setup and maintenance remain available.
+
 - **E2E launch waits for the native show.** The desktop e2e launch helper waits for each
   window's `show` event, recorded from a listener installed before the window exists, instead
   of `isVisible()`, which on macOS turns true as soon as the window is ordered front and before
@@ -573,6 +585,15 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   and replies are never recorded, and costs stay unpriced. The dashboard is its own document in a
   native view served from `modex-analytics://`, without the desktop bridge; Settings → General can
   hide the icon. The standalone preview keeps its Demo Data. [Analytics](analytics.md).
+- **Thread archiving on Mac and iPhone.** A thread can be put away from the Mac (sidebar row
+  menu, title bar ⋯ menu) or the phone (hold a thread, or the transcript's ⋯ menu). Archived
+  threads leave the working list: the Mac keeps them under **Archived (n)** per project, where
+  search still finds them; the phone hides them until **Show archived** is chosen, and forgets
+  that choice with the workspace. The transcript stays, a new message brings the thread back,
+  and a thread that is working or waiting for an approval cannot be archived. The paired API
+  adds `POST /v1/threads/:id/archive` and an `archived` flag on snapshot threads; an older Mac
+  answers the phone with 501. Companion build 6 does not include the phone side; it ships with
+  the next iPhone build.
 
 ## In flight
 

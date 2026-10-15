@@ -263,6 +263,7 @@ const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
   pullRequest: (id) => retirer.pullRequest(id),
   setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
+  setArchived: (id, archived) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.setArchived(id, archived); },
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
   create: (projectId, options) => restartAdmission.run(async () => {
@@ -697,6 +698,7 @@ handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(thread
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
+handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
   await runner.deleteThread(threadId, removeWorktree);
   return store.snapshot();
