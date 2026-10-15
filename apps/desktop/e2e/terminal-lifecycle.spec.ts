@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { resizeWindow, launch, seedHome, tid } from "./support";
 
-const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 function alive(pid: number): boolean {
   expect(Number.isSafeInteger(pid) && pid > 1).toBe(true);
   try { process.kill(pid, 0); return true; } catch { return false; }
@@ -46,21 +45,21 @@ for (const action of ["close", "thread deletion", "project removal", "quit"] as 
     const { home, repo } = seedHome();
     let app: ElectronApplication | undefined;
     let pid: number | undefined;
-    const pidFile = path.join(home, "terminal.pid");
-    const fixture = path.join(home, "terminal-worker.cjs");
-    fs.writeFileSync(fixture, `process.on('SIGHUP', () => {}); process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 100);`);
+    let pidFile: string | undefined;
     try {
       const launched = await launch(home);
       app = launched.app;
       console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo, electronPid: app.process().pid }));
       const page = launched.page;
       const thread = await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat", worktree: true }));
+      pidFile = path.join(thread.cwd, ".terminal-lifecycle.pid");
       const session = await page.evaluate((threadId) => window.modex!.invoke("terminal:open", { threadId, cols: 80, rows: 24 }), thread.id);
       await page.evaluate(({ threadId, sessionId, data }) => window.modex!.invoke("terminal:write", { threadId, sessionId, data }), {
-        threadId: thread.id, sessionId: session.sessionId, data: `${quote(process.execPath)} ${quote(fixture)}\r`,
+        threadId: thread.id, sessionId: session.sessionId,
+        data: "node -e \"process.on('SIGHUP',()=>{});process.on('SIGTERM',()=>{});require('node:fs').writeFileSync('.terminal-lifecycle.pid',String(process.pid));setInterval(()=>{},100)\"\r",
       });
       await expect.poll(() => {
-        const value = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
+        const value = pidFile && fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, "utf8")) : 0;
         if (!Number.isSafeInteger(value) || value <= 1) return false;
         pid = value;
         return true;

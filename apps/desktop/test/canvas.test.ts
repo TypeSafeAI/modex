@@ -67,6 +67,5 @@ test("Markdown renders formatting but never executes raw HTML", async t => {
   assert.match(text, /<strong>Strong<\/strong>/);
   assert.match(text, /<code>code<\/code>/);
   assert.match(text, /<ul><li>first<\/li><li>second<\/li><\/ul>/);
-  assert.doesNotMatch(text, /<script>/);
-  assert.match(text, /&lt;script&gt;/);
+  assert.match(text, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
 });

@@ -21,6 +21,17 @@ test("applyOverrides parses JSON values and dotted provider keys; invalid enums 
   assert.equal(cfg.model, "mock");
 });
 
+test("applyOverrides ignores unknown and prototype-sensitive provider keys", () => {
+  const cfg = defaultConfig({ MODEX_HOME: "/tmp/h" });
+  const out = applyOverrides(cfg, [
+    'provider.__proto__={"polluted":true}',
+    'provider.constructor={"polluted":true}',
+    'provider.future_key="ignored"',
+  ]);
+  assert.deepEqual(out.provider, cfg.provider);
+  assert.equal(({} as { polluted?: boolean }).polluted, undefined);
+});
+
 test("loadConfig layers ~/.modex/config.json and env overrides", () => {
   const home = tmpdir();
   fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ model: "from-file", sandbox_mode: "read-only" }));
