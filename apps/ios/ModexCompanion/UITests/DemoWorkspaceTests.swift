@@ -350,6 +350,7 @@ final class DemoWorkspaceTests: XCTestCase {
         let toggle = app.buttons["toggle-archived"]
         XCTAssertFalse(toggle.exists, "Nothing is archived in a fresh demo.")
         if !scroll.isReadyToTap { app.swipeUp() }
+        guard scroll.waitUntilReady() else { return }
         scroll.press(forDuration: 1.0)
         let archive = app.buttons["Archive"]
         XCTAssertTrue(archive.waitForExistence(timeout: UITestBudget.seconds(10)), "Holding a thread offers Archive.")

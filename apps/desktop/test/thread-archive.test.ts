@@ -101,3 +101,26 @@ test("an archived thread is only hidden: items, settings and retirement state ar
     assert.equal(restored.thread(thread.id)?.status, "idle", "an archived thread is never working");
   } finally { await runner.dispose(); }
 });
+
+test("a failed automatic unarchive releases admission so the thread can retry", async () => {
+  const h = harness([{ content: "recovered" }]);
+  const project = h.store.addProject(gitRepo());
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(project.id);
+  const update = h.store.updateThread.bind(h.store);
+  try {
+    runner.setArchived(thread.id, true);
+    h.store.updateThread = () => { throw new Error("injected archive write failure"); };
+    await assert.rejects(runner.send(thread.id, "first"), /injected archive write failure/);
+    h.store.updateThread = update;
+    // Restart admission also proves that no unresolved turn reservation survived.
+    runner.holdForRestart()();
+    await runner.send(thread.id, "retry");
+    assert.equal(runner.status(thread.id), "idle");
+    assert.equal(h.store.thread(thread.id)?.archived, undefined);
+    assert.ok(runner.items(thread.id).some(item => item.kind === "assistant" && item.text === "recovered"));
+  } finally {
+    h.store.updateThread = update;
+    await runner.dispose();
+  }
+});
