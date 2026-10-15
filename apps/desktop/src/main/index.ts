@@ -117,19 +117,25 @@ const restartAdmission = new RestartAdmission();
 const knowledge = new KnowledgeService(home, { notesFolder: () => store.space.root });
 const knowledgeAgents = new KnowledgeAgents({
   knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true,
-  // A knowledge base that is the notes folder holds every project's notes; each project's agents stay in theirs.
-  scope: (id, folder) => {
+  // A knowledge base that holds the notes folder, or part of it, holds other projects' notes too;
+  // each project's agents reach only theirs. Only a turn that may write makes a project's notes.
+  scope: (id, create) => {
     let notes: string;
     try { notes = fs.realpathSync(store.space.root); } catch { return undefined; }
-    const project = store.project(id);
-    return folder === notes && project ? store.space.linkProject(project).rel : undefined;
+    return { notes, own: projectNotes(id, create)?.rel ?? null };
   },
 });
 const pagesAgents = new PagesAgents({
   space: store.space, notes: store.space, enabled: id => store.project(id)?.pagesMaintenance === true,
   // Each project's agents work in that project's notes only (docs/pages-maintenance.md).
-  scope: id => { const project = store.project(id); if (!project) return undefined; const notes = store.space.linkProject(project); return { id: notes.id, rel: notes.rel }; },
+  scope: (id, create) => { const notes = projectNotes(id, create); return notes ? { id: notes.id, rel: notes.rel } : null; },
 });
+/** A Modex project's notes project; made (or linked again) only for a turn that may write. */
+function projectNotes(projectId: string, create: boolean) {
+  const project = store.project(projectId);
+  if (!project) return undefined;
+  return create ? store.space.linkProject(project) : store.space.projectFor(projectId);
+}
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,

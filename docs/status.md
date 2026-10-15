@@ -688,6 +688,16 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   workspace to move it there. A page shows images beside it by relative path
   (`![](assets/diagram.png)`, as Open Knowledge writes them), from inside its own project only.
   Modex watches the notes folder, so Space's polls skip the walk while nothing changed.
+- **Notes review fixes.** Knowledge tools keep each project's agents out of other projects' notes
+  whatever folder the knowledge base is: the notes folder, a workspace in it, a folder that holds
+  it, or a `content.dir` inside it. A path that lands in the notes folder must land in the project's
+  own notes, and search inside them is read locally without blocking the app. Both the Pages and
+  knowledge tools follow a project's notes when they move to another workspace mid-turn, and a
+  read-only turn no longer makes notes. A workspace or project folder copied in Finder becomes one
+  of its own instead of making the notes unreadable. A removed project's notes unlink at once;
+  writes in dot folders (`.ok`, `.git`, Modex's `.modex`) no longer make Space re-read the whole
+  folder; agent turns no longer walk it twice to find their project; and a workspace whose
+  projects a search hides shows no empty header.
 
 - **Reliable native-window acceptance.** E2E launches retain distinct show and first-paint
   observations in main before a test connects. Inactive windows also require visible,
