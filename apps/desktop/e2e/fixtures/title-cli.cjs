@@ -2,6 +2,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const readline = require("node:readline");
+const { handleControl } = require("./claude-sdk.cjs");
 const home = process.env.MODEX_HOME;
 const codex = process.argv.includes("app-server");
 const send = (message) => process.stdout.write(JSON.stringify(message) + "\n");
@@ -45,13 +46,14 @@ process.on("SIGTERM", () => {
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
   if (!codex) {
+    if (handleControl(message)) return;
     if (message.type !== "user") return;
     const naming = path.basename(process.cwd()).startsWith("modex-title-");
     const session_id = naming ? "title-session" : "coding-session";
     send({ type: "system", subtype: "init", session_id });
     run(message.message.content, process.cwd(), (text, fail) => {
       send({ type: "assistant", message: { content: [{ type: "text", text }] } });
-      send({ type: "result", subtype: fail ? "error" : "success", is_error: fail, session_id });
+      send({ type: "result", subtype: fail ? "error_during_execution" : "success", is_error: fail, errors: fail ? [text] : [], session_id, num_turns: 1 });
     }, session_id);
     return;
   }

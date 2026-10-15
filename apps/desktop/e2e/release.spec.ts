@@ -155,7 +155,7 @@ test("quitting waits for the CLI to stop and flushes the final transcript", asyn
   const stopped = path.join(home, "fixture-stopped");
   const pidFile = path.join(home, "fixture.pid");
   const cli = path.join(home, "claude-fixture.cjs");
-  fs.writeFileSync(cli, `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nprocess.on('SIGTERM', () => setTimeout(() => { fs.writeFileSync(${JSON.stringify(stopped)}, 'stopped'); process.exit(0); }, 300));\nrequire('node:readline').createInterface({input:process.stdin}).on('line', () => process.stdout.write(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'final shutdown text'}]}})+'\\n'));\nsetInterval(() => {}, 1000);\n`, { mode: 0o755 });
+  fs.writeFileSync(cli, `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nprocess.on('SIGTERM', () => setTimeout(() => { fs.writeFileSync(${JSON.stringify(stopped)}, 'stopped'); process.exit(0); }, 300));\nconst { handleControl } = require('./claude-sdk.cjs');\nrequire('node:readline').createInterface({input:process.stdin}).on('line', line => { const message = JSON.parse(line); if (handleControl(message) || message.type !== 'user') return; process.stdout.write(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'final shutdown text'}]}})+'\\n'); });\nsetInterval(() => {}, 1000);\n`, { mode: 0o755 });
   const file = path.join(home, "app/state.json");
   const state = JSON.parse(fs.readFileSync(file, "utf8"));
   state.settings.default_backend = "claude";

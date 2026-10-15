@@ -30,6 +30,7 @@ export function seedHome(settings: Record<string, unknown> = {}): { home: string
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-repo-"));
   seeded.add(home);
   seeded.add(repo);
+  fs.copyFileSync(path.join(appDir, "e2e/fixtures/claude-sdk.cjs"), path.join(home, "claude-sdk.cjs"));
   const env = { ...process.env, GIT_AUTHOR_NAME: "e2e", GIT_AUTHOR_EMAIL: "e2e@modex.local", GIT_COMMITTER_NAME: "e2e", GIT_COMMITTER_EMAIL: "e2e@modex.local" };
   fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({ name: "e2e-repo", private: true }, null, 2) + "\n");
   fs.writeFileSync(path.join(repo, "README.md"), "# e2e\n");
