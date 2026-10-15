@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { launch, seedHome, tid } from "./support";
+import { savedNotes } from "./notes-support";
 
 test("Pages notes access persists; open notes refresh and recover historical revisions", async () => {
   const { home, repo } = seedHome();
@@ -30,7 +31,7 @@ test("Pages notes access persists; open notes refresh and recover historical rev
     await first.page.getByText("Revision 1 · You · Created page", { exact: true }).click();
     await first.page.getByRole("button", { name: "Restore revision 1", exact: true }).click();
     await expect(first.page.getByText("Original human text", { exact: true }).first()).toBeVisible();
-    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(home, "app/space.json"), "utf8")).pages[0].revision).toBe(3);
+    await expect.poll(() => first.page.evaluate(() => window.modex!.invoke("space:list", undefined)).then(pages => pages[0]?.revision)).toBe(3);
   } finally { await first.app.close(); }
   const second = await launch(home);
   try {
@@ -84,7 +85,7 @@ try {
     await expect(link).toBeVisible(); await link.click();
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("CLI note");
     await expect(page.getByText("Human content. Verified decision.", { exact: true })).toBeVisible();
-    expect(fs.existsSync(path.join(repo, "space.json"))).toBe(false);
+    expect(fs.existsSync(path.join(repo, "space.json")) || fs.existsSync(path.join(repo, "notes"))).toBe(false);
     const url = fs.readFileSync(path.join(home, "pages-url"), "utf8");
     await expect.poll(async () => {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 99, method: "tools/call", params: { name: "search", arguments: { query: "" } } }) });
@@ -125,8 +126,7 @@ test("draft recovery locks editing and saves a copy without overwriting a concur
     await app.evaluate(() => (globalThis as any).__recover());
     await expect(tid(page, "space")).not.toHaveAttribute("inert", "");
     await expect(page.getByText("Agent version", { exact: true })).toBeVisible();
-    const pages = JSON.parse(fs.readFileSync(path.join(home, "app/space.json"), "utf8")).pages;
-    expect(pages.map((p: any) => p.markdown).sort()).toEqual(["Agent version", "Keep my draft"]);
+    expect(savedNotes(home).map(note => note.markdown).sort()).toEqual(["Agent version", "Keep my draft"]);
   } finally {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach(w => w.destroy()));
     await app.close();

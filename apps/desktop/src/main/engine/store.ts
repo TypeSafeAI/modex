@@ -1,5 +1,5 @@
 import { normalizeTheme } from "../../shared/theme.js";
-import { SpaceStore } from "./space-store.js";
+import { NotesStore } from "./notes-store.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -104,14 +104,15 @@ export function newId(): string {
 /** JSON-file persistence for the app shell: projects, threads, settings, and per-thread UI items. */
 export class Store {
   readonly dir: string;
-  readonly space: SpaceStore;
+  /** Space pages, as Markdown files under `home/notes/` (docs/notes.md); `app/space.json` is migrated once. */
+  readonly space: NotesStore;
   private state: AppState;
   private storageUncertain = false;
   private readonly directories = new Map<string, { dev: number; ino: number; real: string }>();
 
   constructor(readonly home: string) {
     this.dir = path.join(home, "app");
-    this.space = new SpaceStore(this.dir);
+    this.space = new NotesStore(path.join(home, "notes"), { legacySpaceFile: path.join(this.dir, "space.json") });
     fs.mkdirSync(path.join(this.dir, "threads"), { recursive: true });
     for (const directory of [this.dir, path.join(this.dir, "threads")]) {
       const stat = fs.lstatSync(directory);

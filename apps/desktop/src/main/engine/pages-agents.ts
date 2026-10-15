@@ -6,7 +6,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@model
 import type { Thread } from "../../shared/types.js";
 import type { PagesChange, PagesConnection } from "../../shared/pages.js";
 import { pageTitle } from "../../shared/space.js";
-import type { SpaceStore } from "./space-store.js";
+import type { SpacePagesStore } from "./space-store.js";
 
 type Turn = Pick<Thread, "id" | "projectId" | "mode" | "plan">;
 type Active = { turn: Turn; projectId: string; readOnly: boolean; available: boolean; changed(change: PagesChange): void };
@@ -44,7 +44,7 @@ export class PagesAgents {
   private readonly server: http.Server;
   private listening?: Promise<string>;
   private disposed = false;
-  constructor(private readonly options: { space: SpaceStore; enabled(projectId: string): boolean; updated?(): void }) {
+  constructor(private readonly options: { space: SpacePagesStore; enabled(projectId: string): boolean; updated?(): void }) {
     this.server = http.createServer((req, res) => { void this.handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); });
   }
   private listen(): Promise<string> {

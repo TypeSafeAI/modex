@@ -4,10 +4,46 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { CreateSpacePage, SpacePage, SpaceChangeContext, SpacePageVersion, SpaceComment } from "../../shared/space.js";
 
-interface SpaceDocument { version: 2; pages: SpacePage[]; history: SpacePageVersion[]; comments?: SpaceComment[]; }
+export interface SpaceDocument { version: 2; pages: SpacePage[]; history: SpacePageVersion[]; comments?: SpaceComment[]; }
+
+/** What every Space store offers the `space:*` commands and the Pages tools; ids and revisions, never paths. */
+export interface SpacePagesStore {
+  list(): SpacePage[];
+  comments(pageId: string): SpaceComment[];
+  addComment(pageId: string, text: string, quote: string): SpaceComment;
+  deleteComment(pageId: string, id: string): void;
+  history(id: string): SpacePageVersion[];
+  create(input: CreateSpacePage, change?: SpaceChangeContext): SpacePage;
+  save(input: SpacePage, change?: SpaceChangeContext): SpacePage;
+  trash(id: string, trash: boolean, revision?: number, change?: SpaceChangeContext): SpacePage[];
+  revert(id: string, expectedRevision: number, versionRevision: number, change?: SpaceChangeContext): SpacePage;
+}
+
+/**
+ * Reads and validates a `space.json` document; version 1 files gain a baseline version per page.
+ * Absent means empty. Anything unreadable throws, and the file is left as it is.
+ */
+export function readSpaceDocument(file: string): SpaceDocument {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!data || (data.version !== 1 && data.version !== 2) || !Array.isArray(data.pages)) throw new Error("Unsupported document format");
+    for (const page of data.pages) validate(page);
+    if (new Set(data.pages.map((page: SpacePage) => page.id)).size !== data.pages.length) throw new Error("Duplicate Space page id.");
+    if (data.version === 1) {
+      if ("history" in data) throw new Error("Unexpected version history in legacy document.");
+      return { version: 2, pages: data.pages, history: data.pages.map((page: SpacePage) => ({ page, actor: "unknown", summary: "Existing page before version history" })) };
+    }
+    validateHistory(data);
+    validateComments(data);
+    return data;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 2, pages: [], history: [] };
+    throw new Error(`Space could not read saved pages. Your file has been preserved. ${(error as Error).message}`);
+  }
+}
 
 /** Read before every mutation, validate before writing, and atomically replace the local document file. */
-export class SpaceStore {
+export class SpaceStore implements SpacePagesStore {
   private readonly file: string;
   constructor(private readonly dir: string) { this.file = path.join(dir, "space.json"); }
 
@@ -41,24 +77,7 @@ export class SpaceStore {
     return data.history.filter(version => version.page.id === id);
   }
 
-  private read(): SpaceDocument {
-    try {
-      const data = JSON.parse(fs.readFileSync(this.file, "utf8"));
-      if (!data || (data.version !== 1 && data.version !== 2) || !Array.isArray(data.pages)) throw new Error("Unsupported document format");
-      for (const page of data.pages) validate(page);
-      if (new Set(data.pages.map((page: SpacePage) => page.id)).size !== data.pages.length) throw new Error("Duplicate Space page id.");
-      if (data.version === 1) {
-        if ("history" in data) throw new Error("Unexpected version history in legacy document.");
-        return { version: 2, pages: data.pages, history: data.pages.map((page: SpacePage) => ({ page, actor: "unknown", summary: "Existing page before version history" })) };
-      }
-      validateHistory(data);
-      validateComments(data);
-      return data;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 2, pages: [], history: [] };
-      throw new Error(`Space could not read saved pages. Your file has been preserved. ${(error as Error).message}`);
-    }
-  }
+  private read(): SpaceDocument { return readSpaceDocument(this.file); }
 
   create(input: CreateSpacePage, change?: SpaceChangeContext): SpacePage {
     const data = this.read();
@@ -175,7 +194,7 @@ export class SpaceStore {
   }
 }
 
-function validateComment(comment: SpaceComment): void {
+export function validateComment(comment: SpaceComment): void {
   if (!comment || typeof comment.id !== "string" || !/^[a-z0-9-]{1,64}$/i.test(comment.id) || typeof comment.pageId !== "string" ||
       typeof comment.text !== "string" || !comment.text.trim() || comment.text.length > 10_000 ||
       typeof comment.quote !== "string" || comment.quote.length > 2_000 || typeof comment.createdAt !== "string" || !Number.isFinite(Date.parse(comment.createdAt))) {
@@ -194,7 +213,7 @@ function validateComments(data: SpaceDocument): void {
   }
 }
 
-function validate(page: SpacePage): void {
+export function validate(page: SpacePage): void {
   if (!page || typeof page !== "object" || typeof page.id !== "string" || !/^[a-z0-9-]{1,64}$/i.test(page.id)) throw new Error("Invalid Space page id.");
   if (typeof page.title !== "string" || page.title.length > 200) throw new Error("Page title must be at most 200 characters.");
   if (typeof page.markdown !== "string" || page.markdown.length > 1_000_000) throw new Error("A Space page can contain up to 1 MB of text.");
@@ -203,7 +222,7 @@ function validate(page: SpacePage): void {
       typeof page.createdAt !== "string" || typeof page.updatedAt !== "string" || (page.trashedAt !== null && typeof page.trashedAt !== "string")) throw new Error("Invalid Space page metadata.");
 }
 
-function validateChange(change: SpaceChangeContext): void {
+export function validateChange(change: SpaceChangeContext): void {
   if (!change || typeof change.actor !== "string" || !change.actor.trim() || change.actor.length > 200) throw new Error("Invalid Space change actor.");
   if (typeof change.summary !== "string" || !change.summary.trim() || change.summary.length > 2_000) throw new Error("Invalid Space change summary.");
 }

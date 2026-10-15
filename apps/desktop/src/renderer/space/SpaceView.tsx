@@ -106,7 +106,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
   const run = async (operation: () => Promise<unknown>) => {
     try { restartDrafts.assertOpen(); setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
-  const open = (id: string) => { if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
+  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
   useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
   const create = async (title = "", markdown = "", parentId: string | null = null) => {
     if (creating) return;
@@ -228,7 +228,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
       <div className="space-page-body">
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>
         <article className="space-document" onMouseUp={() => { const selection = window.getSelection(); if (selection?.toString().trim()) setQuote(selection.toString().slice(0, 2000)); }} onSelect={event => { if (event.target instanceof HTMLTextAreaElement) setQuote(event.target.value.slice(event.target.selectionStart, event.target.selectionEnd).slice(0, 2000)); }}>
-          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} />
+          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} onBlur={() => void space.settle(page.id)} />
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
             <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />

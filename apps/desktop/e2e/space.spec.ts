@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { appDir, launch, seedHome, tid } from "./support";
+import { blockNoteWrites, savedNotes, unblockNoteWrites } from "./notes-support";
 
 async function holdAppFrames(page: Page) {
   await page.evaluate(() => {
@@ -116,7 +117,7 @@ test("Space preserves dedented imported tasks and checks only the selected task"
     await page.getByRole("checkbox", { name: "Later task" }).check();
     await expect(page.getByRole("checkbox", { name: "Later task" })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: "Earlier task" })).not.toBeChecked();
-    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(home, "app", "space.json"), "utf8")).pages[0].markdown).toBe(source.replace("[ ] Later", "[x] Later"));
+    await expect.poll(() => savedNotes(home)[0]?.markdown).toBe(source.replace("[ ] Later", "[x] Later"));
   } finally { await app.close(); }
 });
 
@@ -217,10 +218,8 @@ test("Space reports save failures and retains text for retry; imported links sta
   try {
     await tid(page, "rail-space").click();
     await page.getByRole("button", { name: "New page", exact: true }).click();
-    // Replace the storage target with a directory to provoke a real filesystem write failure.
-    const file = path.join(home, "app", "space.json");
-    fs.renameSync(file, `${file}.backup`);
-    fs.mkdirSync(file);
+    // Refuse the page's version history to provoke a real filesystem write failure.
+    blockNoteWrites(home);
     await page.getByRole("textbox", { name: "Block 1" }).fill("Never lose this draft.");
     await expect(page.getByRole("status", { name: "Save status" })).toHaveText("Not saved");
     await expect(page.getByRole("textbox", { name: "Block 1" })).toHaveValue("Never lose this draft.");
@@ -231,10 +230,10 @@ test("Space reports save failures and retains text for retry; imported links sta
     }));
     await expect(page.getByRole("textbox", { name: "Block 1" })).toHaveValue("Never lose this draft.");
     await expect.poll(() => page.evaluate(() => window.modex.invoke("space:list", undefined).then(() => "ready", error => error.message))).not.toContain("shutting down");
-    fs.rmdirSync(file); fs.renameSync(`${file}.backup`, file);
+    unblockNoteWrites(home);
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(page.getByRole("status", { name: "Save status" })).toHaveText("Saved locally");
-    expect(fs.readFileSync(file, "utf8")).toContain("Never lose this draft.");
+    expect(savedNotes(home).map(note => note.markdown).join("\n")).toContain("Never lose this draft.");
     await page.getByLabel("Import Markdown file").setInputFiles({ name: "unsafe.md", mimeType: "text/markdown", buffer: Buffer.from("[Local file](file:///etc/passwd)\n\n[Run](javascript:alert)\n\n<script>alert(1)</script>") });
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("unsafe");
     await expect(tid(page, "space").locator('a[href^="file:"], a[href^="javascript:"], script')).toHaveCount(0);
@@ -262,7 +261,7 @@ test("editing imported Markdown preserves nested content and Enter keeps text af
     await expect(page.getByText("Keep this text", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Docs", exact: true })).toHaveAttribute("target", "_blank");
     await expect(page.getByRole("status", { name: "Save status" })).toHaveText("Saved locally");
-    const saved = JSON.parse(fs.readFileSync(path.join(home, "app", "space.json"), "utf8")).pages[0].markdown;
+    const saved = savedNotes(home)[0]!.markdown;
     expect(saved).toContain("  - child\n  - child two");
     expect(saved).toContain("![logo](https://example.com/logo.png)");
     expect(saved).toContain("Keep this text");
@@ -292,7 +291,7 @@ test("new-page autofocus preserves typing that has already started", async () =>
     await page.keyboard.insertText("the content");
     await expect(input).toHaveValue("Already editing the content");
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("");
-    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(home, "app", "space.json"), "utf8")).pages[0].markdown).toBe("Already editing the content");
+    await expect.poll(() => savedNotes(home)[0]?.markdown).toBe("Already editing the content");
   } finally { await app.close(); }
 });
 
