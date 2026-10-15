@@ -36,7 +36,17 @@ interface NotesIndex {
   /** Folders without a marker of their own, and plain files: where each id was last seen. */
   containers?: Record<string, Placed>; files?: Record<string, Placed>;
 }
-interface Marker { version: 1; id: string; title: string; order: number; default?: boolean; modexProjectId?: string | null }
+interface Marker {
+  version: 1; id: string; title: string; order: number; default?: boolean;
+  /** The Modex project these notes belong to; null once it is removed (the notes stay). */
+  modexProjectId?: string | null;
+  /** That project's folder, so adding it again finds these notes. */
+  codePath?: string;
+  detachedAt?: string;
+}
+/** A Modex project, as much of it as its notes need. */
+export interface LinkedProject { id: string; name: string; path: string }
+export interface NotesWorkspaceSummary { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }
 interface HistoryFile { version: 1; versions: SpacePageVersion[] }
 interface TrashManifest { version: 1; id: string; trashedAt: string; items: { id: string; original: string; rel: string }[] }
 export interface MigrationReceipt {
@@ -57,6 +67,8 @@ export interface NotesStoreOptions {
   legacySpaceFile?: string;
   /** Milliseconds since the epoch; tests move it. */
   now?: () => number;
+  /** Modex's projects: each gets its own notes project when the folder opens. */
+  projects?: () => LinkedProject[];
 }
 
 const sha256 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex");
@@ -374,6 +386,54 @@ export class NotesStore implements SpacePagesStore {
     }
   }
 
+  // ── Modex projects ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * The notes project of a Modex project. The first time, it is made in the default workspace,
+   * unless notes left by an earlier copy of the same project folder are there to link again.
+   */
+  linkProject(project: LinkedProject): NotesProject {
+    const nodes = this.layout(this.load()).nodes;
+    const projects = nodes.filter((n): n is NotesProject => n.kind === "project");
+    const linked = projects.find(p => p.modexProjectId === project.id);
+    if (linked) return linked;
+    for (const candidate of projects) {
+      const marker = this.readMarker(candidate.rel, "project");
+      if (marker && !marker.modexProjectId && marker.codePath === project.path) {
+        const { detachedAt: _gone, ...rest } = marker;
+        this.writeMarker(candidate.rel, "project", { ...rest, modexProjectId: project.id });
+        return this.layout(this.load()).byId.get(candidate.id) as NotesProject;
+      }
+    }
+    const workspace = nodes.find((n): n is NotesWorkspace => n.kind === "workspace" && n.isDefault) ?? nodes.find((n): n is NotesWorkspace => n.kind === "workspace");
+    if (!workspace) throw new Error("The notes folder has no workspace.");
+    const created = this.createProject(workspace.id, project.name, project.id);
+    const marker = this.readMarker(created.rel, "project")!;
+    this.writeMarker(created.rel, "project", { ...marker, codePath: project.path });
+    return created;
+  }
+
+  /** A removed Modex project leaves its notes where they are, ready to link again. */
+  detachProject(modexProjectId: string): void {
+    const node = this.projectFor(modexProjectId);
+    if (!node) return;
+    const marker = this.readMarker(node.rel, "project");
+    if (marker) this.writeMarker(node.rel, "project", { ...marker, modexProjectId: null, detachedAt: this.iso() });
+  }
+
+  projectFor(modexProjectId: string): NotesProject | undefined {
+    return this.layout(this.load()).nodes.find((n): n is NotesProject => n.kind === "project" && n.modexProjectId === modexProjectId);
+  }
+
+  /** Each workspace, and the Modex projects whose notes are in it, for grouping the chat sidebar. */
+  workspaces(): NotesWorkspaceSummary[] {
+    const nodes = this.layout(this.load()).nodes;
+    return nodes.filter((n): n is NotesWorkspace => n.kind === "workspace").map(w => ({
+      id: w.id, name: w.name, order: w.order, isDefault: w.isDefault,
+      modexProjectIds: nodes.filter((n): n is NotesProject => n.kind === "project" && n.parentId === w.id && n.modexProjectId !== null).map(p => p.modexProjectId!),
+    }));
+  }
+
   /** Where a node is on disk, for Reveal in Finder and Open. */
   pathOf(id: string): string {
     const state = this.load();
@@ -469,8 +529,14 @@ export class NotesStore implements SpacePagesStore {
     for (const id of Object.keys(containers)) if (!seen.has(id)) { delete containers[id]; changed = true; }
     for (const id of Object.keys(files)) if (!seen.has(id)) { delete files[id]; changed = true; }
     if (changed) { index.containers = containers; index.files = files; this.writeIndex(index); }
-    nodes.sort((a, b) => (a.kind === "workspace" && b.kind === "workspace") || (a.kind === "project" && b.kind === "project") ? ((a as NotesWorkspace).order - (b as NotesWorkspace).order) || a.name.localeCompare(b.name) : 0);
-    return { nodes, byId: new Map(nodes.map(n => [n.id, n])), truncated };
+    // Siblings in order: workspaces and projects by their saved order, then name; the rest as the folder lists them.
+    const groups = new Map<string | null, NotesNode[]>();
+    for (const node of nodes) groups.set(node.parentId, [...(groups.get(node.parentId) ?? []), node]);
+    const ordered = [...groups.values()].flatMap(group => {
+      const ranked = group.filter((n): n is NotesWorkspace | NotesProject => n.kind === "workspace" || n.kind === "project").sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
+      return [...ranked, ...group.filter(n => n.kind !== "workspace" && n.kind !== "project")];
+    });
+    return { nodes: ordered, byId: new Map(ordered.map(n => [n.id, n])), truncated };
   }
 
   /** A folder name for a workspace, project or folder title. */
@@ -708,6 +774,9 @@ export class NotesStore implements SpacePagesStore {
     if (!receipt) this.migrate(stat !== null);
     this.opened = true;
     if (receipt) this.importChangesSince(receipt);
+    for (const project of this.options.projects?.() ?? []) {
+      try { this.linkProject(project); } catch (error) { console.error("[modex] notes for project", project.name, "unavailable:", error); }
+    }
   }
 
   private readReceipt(): MigrationReceipt | null {

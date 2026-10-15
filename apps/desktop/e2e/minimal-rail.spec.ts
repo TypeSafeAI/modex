@@ -49,7 +49,7 @@ test("compact review gives the diff full width and retains context across tools"
   await page.getByRole("button", { name: "Filter changed files", exact: true }).click();
   await expect(tid(page, "review-filter")).toBeFocused();
   await tid(page, "workspace").screenshot({ path: info.outputPath("compact-review.png") });
-  await page.getByRole("button", { name: "Hide workspace", exact: true }).click();
+  await page.getByRole("button", { name: "Hide side panel", exact: true }).click();
   await tid(page, "changes-toggle").click();
   await expect(tid(page, "review-filter")).toHaveValue("notes");
   await expect(tid(page, "diff")).toContainText("Keep my selection");
@@ -125,7 +125,7 @@ test("large changesets stay bounded and keyboard tab closure restores focus", as
   await expect(reviewTab).toHaveAttribute("aria-selected", "true");
   await close.press("Enter");
   await expect(page.getByRole("tab", { name: "Review", exact: true })).toBeFocused();
-  await page.getByRole("button", { name: "Hide workspace", exact: true }).click();
+  await page.getByRole("button", { name: "Hide side panel", exact: true }).click();
   await tid(page, "changes-toggle").click();
   await expect.poll(() => tid(page, "changes-diff").evaluate((el) => el.scrollTop)).toBe(diffScroll);
   await expect.poll(() => tid(page, "review-tree").evaluate((el) => el.scrollTop)).toBe(treeScroll);

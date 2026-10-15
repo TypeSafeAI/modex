@@ -110,7 +110,7 @@ export class Store {
 
   constructor(readonly home: string) {
     this.dir = path.join(home, "app");
-    this.space = new NotesStore(path.join(home, "notes"), { legacySpaceFile: path.join(this.dir, "space.json") });
+    this.space = new NotesStore(path.join(home, "notes"), { legacySpaceFile: path.join(this.dir, "space.json"), projects: () => this.state.projects });
     fs.mkdirSync(path.join(this.dir, "threads"), { recursive: true });
     for (const directory of [this.dir, path.join(this.dir, "threads")]) {
       const stat = fs.lstatSync(directory);
@@ -277,6 +277,8 @@ export class Store {
     const project: Project = { id: newId(), name: path.basename(abs), path: abs, addedAt: new Date().toISOString() };
     this.state.projects.push(project);
     this.write();
+    // Notes never stand in the way of a project: a failure leaves it to be linked the next time notes open.
+    try { this.space.linkProject(project); } catch (error) { console.error("[modex] notes for", project.name, "unavailable:", error); }
     return project;
   }
 
@@ -285,6 +287,8 @@ export class Store {
     for (const t of this.state.threads.filter((t) => t.projectId === projectId)) this.deleteThreadFiles(t.id);
     this.state.threads = this.state.threads.filter((t) => t.projectId !== projectId);
     this.write();
+    // Its notes stay in Space, unlinked; adding the folder again links them back.
+    try { this.space.detachProject(projectId); } catch (error) { console.error("[modex] notes of a removed project:", error); }
   }
 
   setKnowledgeMaintenance(projectId: string, enabled: boolean): Project {

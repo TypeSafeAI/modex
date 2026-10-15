@@ -63,6 +63,14 @@ its page. A folder with a folder note is shown once, as the folder, named by its
   the next read does not mistake the move for one made outside Modex. Notes inside a moved
   folder keep their revisions.
 
+## Projects
+
+Each Modex project has a notes project, made in the default workspace when the project is added
+(or, for projects added earlier, when notes first open). Its marker records the Modex project and
+its code folder. Removing the project from Modex keeps the notes and unlinks them; adding the
+same folder again links them back. Moving a project's notes to another workspace regroups it in
+the chat sidebar.
+
 ## History and revisions
 
 The newest version in a page's history file is the page: its revision, favorite, place and trash

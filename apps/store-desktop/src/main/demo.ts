@@ -99,6 +99,9 @@ export class StoreDemo {
       "notes:move": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:delete": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:reveal": unavailable,
+      "notes:workspaces": () => [],
+      "project:notes": () => { throw new Error("Space is unavailable in the review demo."); },
+      "project:workspace": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:open": unavailable,
       "project:add": () => {
         const project = { id: this.nextId(), name: "Another demo project", path: "/Demo/Sample", addedAt: stamp() };

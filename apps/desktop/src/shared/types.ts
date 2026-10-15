@@ -502,6 +502,12 @@ export interface BridgeCommands extends NativeDraftCommands {
   /** Deletes an empty workspace, project or folder. */
   "notes:delete": { req: { id: string }; res: import("./notes.js").NotesTree };
   "notes:reveal": { req: { id: string }; res: void };
+  /** Each workspace and the Modex projects whose notes it holds, for grouping the chat sidebar. */
+  "notes:workspaces": { req: undefined; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
+  /** A Modex project's notes project, made the first time it is asked for. */
+  "project:notes": { req: { projectId: string }; res: import("./notes.js").NotesProject };
+  /** Moves a Modex project's notes into another workspace. */
+  "project:workspace": { req: { projectId: string; workspaceId: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
   "notes:open": { req: { id: string }; res: void };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "updates:state": { req: undefined; res: import("./updates.js").UpdateInstallState };

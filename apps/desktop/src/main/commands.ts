@@ -63,6 +63,9 @@ export function registerCommands(handle: RegisterCommand, {
   handle("notes:rename", ({ id, name }) => store.space.rename(id, name));
   handle("notes:move", ({ ids, targetId }) => { store.space.moveNodes(ids, targetId); return store.space.tree(); });
   handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.space.tree(); });
+  handle("notes:workspaces", () => store.space.workspaces());
+  handle("project:notes", ({ projectId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.linkProject(project); });
+  handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
   handle("notes:reveal", () => { throw new Error("Reveal in Finder is available in the desktop app."); });
   handle("notes:open", () => { throw new Error("Opening files is available in the desktop app."); });
   handle("state:get", () => {

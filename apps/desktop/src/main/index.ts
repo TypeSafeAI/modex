@@ -641,6 +641,9 @@ handle("notes:folder:create", ({ parentId, name }) => store.space.createFolder(p
 handle("notes:rename", ({ id, name }) => store.space.rename(id, name));
 handle("notes:move", ({ ids, targetId }) => { store.space.moveNodes(ids, targetId); return store.space.tree(); });
 handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.space.tree(); });
+handle("notes:workspaces", () => store.space.workspaces());
+handle("project:notes", ({ projectId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.linkProject(project); });
+handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
 handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
 handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
 

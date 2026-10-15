@@ -26,10 +26,19 @@ type Editing = { kind: "rename" | "folder" | "project"; id: string; value: strin
  * The notes folder as Workspace › Project › Folder › notes and files. A note opens its page; a folder
  * with a folder note opens that page; a file opens in its default app. Names are edited in place.
  */
-export function NotesTreeView({ tree, pages, selected, actions, newWorkspace }: { tree: NotesTree; pages: SpacePage[]; selected: string | null; actions: NotesTreeActions; newWorkspace: number }) {
+export function NotesTreeView({ tree, pages, selected, actions, newWorkspace, focusId }: { tree: NotesTree; pages: SpacePage[]; selected: string | null; actions: NotesTreeActions; newWorkspace: number; focusId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   useEffect(() => { if (newWorkspace) setEditing({ kind: "workspace", id: null, value: "" }); }, [newWorkspace]);
+  // A node asked for from elsewhere (a project's notes): open its ancestors and bring it into view.
+  useEffect(() => {
+    if (!focusId) return;
+    const chain = new Set<string>();
+    let node = tree.nodes.find(n => n.id === focusId);
+    while (node?.parentId) { chain.add(node.parentId); node = tree.nodes.find(n => n.id === node!.parentId); }
+    setCollapsed(current => new Set([...current].filter(id => !chain.has(id) && id !== focusId)));
+    requestAnimationFrame(() => document.querySelector(`[data-node-id="${CSS.escape(focusId)}"]`)?.scrollIntoView({ block: "nearest" }));
+  }, [focusId, tree]);
   const byPage = new Map(pages.map(page => [page.id, page]));
   const children = (id: string | null) => tree.nodes.filter(node => node.parentId === id);
   const nameOf = (node: NotesNode) => node.kind === "note" ? pageTitle(byPage.get(node.id) ?? { title: node.name }) : node.name;
@@ -69,8 +78,8 @@ export function NotesTreeView({ tree, pages, selected, actions, newWorkspace }: 
       else toggle(node.id);
     };
     const renaming = editing?.kind === "rename" && editing.id === node.id;
-    return <li key={node.id} data-kind={node.kind}>
-      <div className={`space-tree-row${current ? " selected" : ""}`}>
+    return <li key={node.id} data-kind={node.kind} data-node-id={node.id}>
+      <div className={`space-tree-row${current || focusId === node.id ? " selected" : ""}`}>
         {kids.length > 0 && <button className="space-tree-toggle" aria-label={`${open ? "Collapse" : "Expand"} ${name}`} aria-expanded={open} onClick={() => toggle(node.id)}><Icon name={open ? "chevron-down" : "chevron-right"} size={12} /></button>}
         {renaming ? field(`Rename ${name}`) : <button className="space-tree-page" data-testid={`notes-${node.kind}`} aria-label={node.kind === "note" || folderNote || node.kind === "file" ? `Open ${name}` : name} aria-expanded={node.kind === "note" || folderNote || node.kind === "file" ? undefined : open} aria-current={current ? "page" : undefined} onClick={activate}>
           <Icon name={icon} size={15} /><span>{name}</span>

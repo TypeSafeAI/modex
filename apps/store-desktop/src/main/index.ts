@@ -26,7 +26,7 @@ function trusted(event: IpcMainInvokeEvent): void {
   if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error("Untrusted desktop request.");
 }
 function updateWorkspaceMenu(): void {
-  const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Workspace")?.submenu;
+  const menu = Menu.getApplicationMenu()?.items.find(item => item.label === "Side panel")?.submenu;
   for (const item of menu?.items ?? []) item.enabled = !!demo || client.status().state === "connected";
 }
 function send(channel: string, value?: unknown): void { if (win && !win.isDestroyed()) win.webContents.send(channel, value); }
@@ -170,9 +170,9 @@ app.whenReady().then(() => {
   }
   // Keyboard handling stays with WorkspaceBrowser and the shared renderer. Native
   // accelerators would compete with those handlers (registerAccelerator is not macOS).
-  const shortcuts: [string, WorkspaceShortcut][] = [["New tab", "new"], ["New tab in full view", "full"], ["Files", "files"], ["Review", "review"], ["Address bar", "address"], ["Terminal", "terminal"], ["Hide workspace", "hide"]];
+  const shortcuts: [string, WorkspaceShortcut][] = [["New tab", "new"], ["New tab in full view", "full"], ["Files", "files"], ["Review", "review"], ["Address bar", "address"], ["Terminal", "terminal"], ["Hide side panel", "hide"]];
   const menu = Menu.getApplicationMenu() ?? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]);
-  menu.append(new MenuItem({ label: "Workspace", submenu: shortcuts.map(([label, shortcut]) => ({ label, enabled: false, click: () => {
+  menu.append(new MenuItem({ label: "Side panel", submenu: shortcuts.map(([label, shortcut]) => ({ label, enabled: false, click: () => {
     if ((!demo && client.status().state !== "connected") || !win || win.isDestroyed()) return;
     win.webContents.focus();
     send("workspace:shortcut", shortcut);

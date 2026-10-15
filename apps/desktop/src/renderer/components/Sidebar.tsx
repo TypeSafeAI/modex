@@ -26,12 +26,18 @@ interface Props {
   /** Threads holding unsent composer text; their rows carry a small pen glyph. */
   unsent?: Record<string, string>;
   agents?: ActiveAgent[];
+  /** Notes workspaces and the projects in each; with more than one, projects are grouped under them. */
+  workspaces?: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[];
+  /** Opens the project's notes in Space. */
+  onOpenNotes?: (projectId: string) => void;
+  onMoveToWorkspace?: (projectId: string, workspaceId: string) => void;
 }
 
 /** Threads shown per project before "Show more". */
 export const THREADS_PER_PROJECT = 5;
 
-export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onArchiveThread, onRemoveProject, unsent, agents = [] }: Props) {
+export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onArchiveThread, onRemoveProject, unsent, agents = [], workspaces, onOpenNotes, onMoveToWorkspace }: Props) {
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState<Record<string, boolean>>({});
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [retiredOpen, setRetiredOpen] = useState<Record<string, boolean>>({});
@@ -59,6 +65,10 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
     return { project: p, all, retired, archived, matches: q ? all.filter(matchesQuery) : all };
   });
   const noMatches = q && groups.every((g) => g.matches.length === 0 && g.retired.length === 0 && g.archived.length === 0);
+  // With one workspace the list stays as it always was; with several, each workspace heads its projects.
+  const ordered = [...(workspaces ?? [])].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+  const grouped = ordered.length > 1;
+  const homeOf = (projectId: string) => ordered.find(w => w.modexProjectIds.includes(projectId)) ?? ordered.find(w => w.isDefault) ?? ordered[0];
 
   return (
     <aside className="sidebar" data-testid="sidebar">
@@ -99,7 +109,25 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
         {activeOnly && groups.every(group => !group.matches.length) && <p className="side-hint">No active chats.</p>}
         {state.projects.length === 0 && <p className="side-hint">No projects yet. Open a folder to start a thread.</p>}
         {noMatches && <p className="side-hint" data-testid="search-empty">No threads match “{query.trim()}”.</p>}
-        {groups.map(({ project: p, all, retired, archived, matches }) => {
+        {(grouped ? ordered : [undefined]).map(workspace => {
+          const members = groups.filter(group => !workspace || homeOf(group.project.id)?.id === workspace.id);
+          if (workspace && !members.length) return null;
+          const folded = workspace ? Boolean(workspaceCollapsed[workspace.id]) && !q : false;
+          const projects = folded ? [] : members.map(renderProject);
+          if (!workspace) return projects;
+          return <section key={workspace.id} className="workspace-group" data-testid="workspace-group" aria-label={workspace.name}>
+            <button className="side-row workspace-toggle" data-testid="workspace-toggle" aria-expanded={!folded} onClick={() => setWorkspaceCollapsed(c => ({ ...c, [workspace.id]: !c[workspace.id] }))}>
+              <Icon name={folded ? "chevron-right" : "chevron-down"} size={12} className="side-row-icon" />
+              <span className="side-row-label">{workspace.name}</span>
+            </button>
+            {projects}
+          </section>;
+        })}
+      </nav>
+    </aside>
+  );
+
+  function renderProject({ project: p, all, retired, archived, matches }: (typeof groups)[number]) {
           if ((q || activeOnly) && matches.length === 0 && retired.length === 0 && archived.length === 0) return null;
           const isCollapsed = !q && collapsed[p.id];
           const selectedIndex = matches.findIndex((t) => t.id === selected);
@@ -118,6 +146,8 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
                   <IconButton icon="plus" label="New chat" shortcut="⌘N" reveal data-testid="project-new-thread" onClick={() => onNewThread(p.id)} />
                   <IconButton icon="branch" label="New chat in a git worktree" shortcut="⇧⌘N" reveal data-testid="project-new-worktree-thread" onClick={() => onNewThread(p.id, true)} />
                   <RowMenu label="Project actions" testId="project-menu">
+                    {onOpenNotes && <MenuItem data-testid="project-notes" onClick={() => onOpenNotes(p.id)}>Open notes</MenuItem>}
+                    {grouped && onMoveToWorkspace && ordered.filter(w => w.id !== homeOf(p.id)?.id).map(w => <MenuItem key={w.id} onClick={() => onMoveToWorkspace(p.id, w.id)}>Move to {w.name}</MenuItem>)}
                     <MenuItem data-testid="project-remove" className="danger" onClick={() => onRemoveProject(p.id)}>Remove project</MenuItem>
                   </RowMenu>
                 </span>
@@ -158,10 +188,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
               )}
             </section>
           );
-        })}
-      </nav>
-    </aside>
-  );
+  }
 }
 
 function ThreadRow({ thread: t, projectName, compact, selected, unsent, onSelect, onDelete, onArchive }: {
