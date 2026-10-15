@@ -232,7 +232,7 @@ accounts, and coverage views. Collapsible navigation and an oversized Demo Data 
 frame 471 synthetic calls across 11 sources, including GitHub Copilot. Filters,
 call details, CSV export, and both appearances work against the same fictional
 workspace; missing costs remain unpriced. This is not yet a desktop navigation entry
-or live usage collector. Run and provenance details: [usage preview](usage-preview.md).
+or live usage collector. Run and provenance details: [usage preview](analytics.md#the-standalone-preview).
 
 **Consistent themes and live agent activity.** The right workspace, review/browser controls,
 menus, status colors and typography now share Jev/OpenCoven tokens with the chat and sidebar.
@@ -579,6 +579,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   thread event in `app/events.sqlite` (`node:sqlite`) with a durable cursor. It writes alongside
   the state files, which stay authoritative. A real session replays from the journal to its exact
   saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
+- **Analytics in the rail.** The rail's Analytics icon opens the usage dashboard on what this Mac
+  actually used. Each turn that calls a model, Auto or not, records its tokens, cache reads and
+  writes, and output in `app/usage.jsonl`, by model, project, thread and account. Prompts, files
+  and replies are never recorded, and costs stay unpriced. The dashboard is its own document in a
+  native view served from `modex-analytics://`, without the desktop bridge; Settings → General can
+  hide the icon. The standalone preview keeps its Demo Data. [Analytics](analytics.md).
 - **Thread archiving on Mac and iPhone.** A thread can be put away from the Mac (sidebar row
   menu, title bar ⋯ menu) or the phone (hold a thread, or the transcript's ⋯ menu). Archived
   threads leave the working list: the Mac keeps them under **Archived (n)** per project, where

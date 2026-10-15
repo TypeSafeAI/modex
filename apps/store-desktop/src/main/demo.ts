@@ -178,6 +178,8 @@ export class StoreDemo {
       "models:list": () => ({ models: [{ id: "demo", label: "Scripted demo", isDefault: true, description: "No model request is sent." }] }),
       "backends:health": () => ({ claude: health, codex: health, mock: health }),
       "settings:update": patch => { this.state.settings = { ...this.state.settings, ...patch }; return this.state.settings; },
+      "usage:list": () => [],
+      "analytics:show": () => null,
       "routing:status": routing, "routing:reset": routing, "routing:clearKey": routing, "routing:setKey": unavailable,
       "routing:test": () => ({ ok: false, message: "Offline demo: no judge request was sent.", transport: "none", ms: 0 }),
       ...storeAccountCommands,
