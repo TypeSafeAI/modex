@@ -75,6 +75,8 @@ export interface Thread {
   approvals?: ApprovalPolicy;
   /** Set when the task finished: its PR merged and Modex removed the worktree and branch. The transcript stays, read-only. */
   retired?: { at: string; reason: "merged"; pr: number; url: string };
+  /** Set when the thread was put away, on the Mac or a phone. It leaves the working lists; the transcript stays and a new message brings it back. */
+  archived?: { at: string };
 }
 
 /** A CLI-reported delegated task. Unknown means the stream ended without a final state. */
@@ -514,6 +516,8 @@ export interface BridgeCommands extends NativeDraftCommands {
   "thread:stop": { req: { threadId: string }; res: void };
   "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
+  /** Puts a thread away or brings it back. Refused while the thread is working. */
+  "thread:archive": { req: { threadId: string; archived: boolean }; res: Thread };
   "routing:status": { req: undefined; res: RoutingStatus };
   "routing:reset": { req: undefined; res: RoutingStatus };
   /** Stores a hand-entered key (or op:// reference) in the OS keychain; never in state.json. */

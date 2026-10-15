@@ -673,7 +673,7 @@ test("transcript: follows new output while the reader is at the bottom, and stay
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1380, 880));
 });
 
-test("title bar: ⋯ menu (rename, open, copy, delete), Changes icon with a count, and no leftover header chrome", async () => {
+test("title bar: ⋯ menu (rename, open, copy, archive, delete), Changes icon with a count, and no leftover header chrome", async () => {
   await expect(tid(page, "sidebar")).toBeVisible();
   const id = await createThread(page, "Title bar check");
   // The old in-thread header and the pill row are gone; their jobs live in the strip, the chips and this menu.
@@ -683,7 +683,7 @@ test("title bar: ⋯ menu (rename, open, copy, delete), Changes icon with a coun
   // ⋯ lists the thread's actions; Rename puts the title into editing, and Enter saves it.
   await tid(page, "thread-menu-toggle").click();
   const menu = tid(page, "thread-actions");
-  await expect(menu.getByRole("menuitem")).toHaveText(["Rename", /Open (in Finder|folder)/, "Open terminal here", "Copy path", "Delete thread"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["Rename", /Open (in Finder|folder)/, "Open terminal here", "Copy path", "Archive thread", "Delete thread"]);
   await tid(page, "action-rename").click();
   const title = tid(page, "thread-title");
   await expect(title).toBeFocused();

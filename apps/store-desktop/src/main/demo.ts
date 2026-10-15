@@ -107,6 +107,8 @@ export class StoreDemo {
         if (thread.status !== "idle") return { ok: false, error: "Finish or stop this demo turn first." };
         if (typeof text !== "string" || !text.trim() || text.length > 100_000) return { ok: false, error: "Enter a shorter demo message." };
         if (!this.transcripts.get(threadId)!.length) { thread.title = text.trim().slice(0, 80); this.emit({ type: "thread", threadId, thread }); }
+        // As on the real runner: a new message brings an archived thread back.
+        if (thread.archived) { delete thread.archived; this.emit({ type: "thread", threadId, thread }); }
         this.append(thread, { id: this.nextId(), kind: "user", text, at: stamp() });
         this.run(thread, text); return { ok: true };
       },
@@ -130,6 +132,13 @@ export class StoreDemo {
       "thread:update": ({ threadId, patch }) => {
         const thread = this.thread(threadId);
         for (const key of ["title", "backend", "model", "mode", "plan", "effort", "auto"] as const) if (patch[key] !== undefined) Object.assign(thread, { [key]: patch[key] });
+        this.emit({ type: "thread", threadId, thread }); return thread;
+      },
+      "thread:archive": ({ threadId, archived }) => {
+        const thread = this.thread(threadId);
+        if (typeof archived !== "boolean") throw new Error("Choose Archive or Unarchive.");
+        if (archived && thread.status !== "idle") throw new Error("Wait for this demo thread to finish before archiving it.");
+        if (archived) thread.archived = { at: stamp() }; else delete thread.archived;
         this.emit({ type: "thread", threadId, thread }); return thread;
       },
       "thread:delete": ({ threadId }) => { this.thread(threadId); this.removeThread(threadId); return this.state; },

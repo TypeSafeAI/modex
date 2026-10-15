@@ -71,6 +71,8 @@ struct CompanionThread: Decodable, Identifiable, Equatable {
     var pr: PullRequestBadge? = nil
     /// Set once the Mac finished the task after its PR merged.
     var retiredPr: Int? = nil
+    /// Set when the thread was put away on the Mac or a phone. Hidden here unless archived threads are shown.
+    var archived: Bool? = nil
 
     struct PullRequestBadge: Decodable, Equatable {
         let number: Int
@@ -139,6 +141,8 @@ protocol CompanionClient {
     func answer(threadId: String, itemId: String, approve: Bool) async throws
     /// Sets the thread's standing answer to approvals: "ask", "always" or "yolo".
     func setApprovals(threadId: String, policy: String) async throws
+    /// Puts a thread away or brings it back. The Mac refuses while the thread is working.
+    func setArchived(threadId: String, archived: Bool) async throws
     func invalidate()
 }
 
@@ -147,6 +151,9 @@ extension CompanionClient {
     func pairingSnapshot() async throws -> CompanionSnapshot { try await snapshot(threadId: nil) }
     func setApprovals(threadId: String, policy: String) async throws {
         throw CompanionError.message("This Mac does not support approval settings. Update Modex on your Mac.")
+    }
+    func setArchived(threadId: String, archived: Bool) async throws {
+        throw CompanionError.message("This Mac does not support archiving threads. Update Modex on your Mac.")
     }
 }
 
@@ -232,6 +239,11 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
     func setApprovals(threadId: String, policy: String) async throws {
         let url = pairing.url.appending(path: "v1/threads/\(threadId)/policy")
         let _: OK = try await request(url, method: "POST", body: ["policy": policy])
+    }
+
+    func setArchived(threadId: String, archived: Bool) async throws {
+        let url = pairing.url.appending(path: "v1/threads/\(threadId)/archive")
+        let _: OK = try await request(url, method: "POST", body: ["archived": archived])
     }
 
     private struct OK: Decodable { let ok: Bool }

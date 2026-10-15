@@ -80,6 +80,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("thread:stop", ({ threadId }) => runner.stop(threadId));
   handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
   handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
+  handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
   handle("thread:delete", async ({ threadId, removeWorktree }) => {
     await runner.deleteThread(threadId, removeWorktree);
     return store.snapshot();
