@@ -7,11 +7,12 @@ import http from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { PagesAgents } from "../src/main/engine/pages-agents.js";
-import { SpaceStore } from "../src/main/engine/space-store.js";
+import { NotesStore } from "../src/main/engine/notes-store.js";
 
 async function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pages-agent-"));
-  const space = new SpaceStore(dir); let enabled = true; const receipts: unknown[] = [];
+  // The store Modex runs the Pages tools over: notes in a folder.
+  const space = new NotesStore(path.join(dir, "notes")); let enabled = true; const receipts: unknown[] = [];
   const agents = new PagesAgents({ space, enabled: () => enabled });
   const turn = { id: "thread", projectId: "project", mode: "agent" as "agent" | "chat", plan: false };
   const begin = async () => {
