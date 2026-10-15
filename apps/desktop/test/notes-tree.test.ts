@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { NotesStore } from "../src/main/engine/notes-store.js";
 import type { NotesFolder, NotesNode, NotesProject, NotesWorkspace } from "../src/shared/notes.js";
 import { pageImageFromUrl, pageImageUrl } from "../src/shared/notes.js";
@@ -231,3 +232,115 @@ test("a page's images beside it are served by relative path, only from inside it
     assert.equal(pageImageFromUrl("modex-notes://file/abc"), null);
   } finally { fs.rmSync(outside, { recursive: true, force: true }); }
 }));
+
+test("cached file previews revalidate current size and symlinks before reading", () => withStore((store, root) => {
+  const outside = tmpdir("modex-cached-read-");
+  try {
+    store.tree();
+    const dir = path.join(root, "Personal", "Notes");
+    fs.writeFileSync(path.join(dir, "text.txt"), "small");
+    fs.mkdirSync(path.join(dir, "assets"));
+    fs.writeFileSync(path.join(dir, "assets", "image.png"), "image");
+    store.watch();
+    const nodes = store.tree().nodes;
+    const text = nodes.find(n => n.name === "text.txt")!;
+    const image = nodes.find(n => n.name === "image.png")!;
+    // Keep the cached layout: no event-loop turn occurs between the change and read.
+    fs.writeFileSync(path.join(dir, "text.txt"), Buffer.alloc(1_048_577, 97));
+    assert.throws(() => store.readFile(text.id));
+    fs.writeFileSync(path.join(outside, "secret.txt"), "secret");
+    fs.unlinkSync(path.join(dir, "text.txt"));
+    fs.symlinkSync(path.join(outside, "secret.txt"), path.join(dir, "text.txt"));
+    assert.throws(() => store.readFile(text.id));
+    fs.writeFileSync(path.join(outside, "image.png"), "outside");
+    fs.renameSync(path.join(dir, "assets"), path.join(dir, "old-assets"));
+    fs.symlinkSync(outside, path.join(dir, "assets"));
+    assert.equal(store.readImage(image.id), null);
+  } finally { store.unwatch(); fs.rmSync(outside, { recursive: true, force: true }); }
+}));
+
+test("page images reject hidden directories reached through a visible alias", () => withStore((store, root) => {
+  const page = store.create({ title: "Aliases", markdown: "hello" });
+  const dir = path.join(root, "Personal", "Notes");
+  fs.mkdirSync(path.join(dir, ".hidden"));
+  fs.writeFileSync(path.join(dir, ".hidden", "secret.png"), "hidden");
+  fs.symlinkSync(path.join(dir, ".hidden"), path.join(dir, "visible"));
+  assert.equal(store.readPageImage(page.id, "visible/secret.png"), null);
+}));
+
+test("cached previews cannot follow aliases into another project", () => withStore((store, root) => {
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const other = store.createProject(workspace.id, "Other");
+  const page = store.create({ title: "Scoped", markdown: "hello" });
+  const dir = path.join(root, "Personal", "Notes");
+  const otherDir = path.join(root, other.rel);
+  fs.mkdirSync(path.join(dir, "assets"));
+  fs.writeFileSync(path.join(dir, "assets", "text.txt"), "own text");
+  fs.writeFileSync(path.join(dir, "assets", "image.png"), "own image");
+  fs.mkdirSync(path.join(otherDir, "assets"));
+  fs.writeFileSync(path.join(otherDir, "assets", "text.txt"), "other text");
+  fs.writeFileSync(path.join(otherDir, "assets", "image.png"), "other image");
+  store.watch();
+  try {
+    const nodes = store.tree().nodes;
+    const text = nodes.find(n => n.rel === "Personal/Notes/assets/text.txt")!;
+    const image = nodes.find(n => n.rel === "Personal/Notes/assets/image.png")!;
+    fs.renameSync(path.join(dir, "assets"), path.join(dir, "old-assets"));
+    fs.symlinkSync(path.join(otherDir, "assets"), path.join(dir, "assets"));
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+    fs.unlinkSync(path.join(dir, "assets"));
+    fs.renameSync(path.join(dir, "old-assets"), path.join(dir, "assets"));
+    // Replacing the project itself must not redefine its allowed root.
+    fs.renameSync(dir, `${dir}-original`);
+    fs.symlinkSync(otherDir, dir);
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+    fs.unlinkSync(dir);
+    fs.renameSync(`${dir}-original`, dir);
+    const mirror = path.join(root, "Mirror");
+    fs.mkdirSync(mirror);
+    fs.cpSync(otherDir, path.join(mirror, "Notes"), { recursive: true });
+    fs.renameSync(path.join(root, "Personal"), path.join(root, "Original"));
+    fs.symlinkSync(mirror, path.join(root, "Personal"));
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+  } finally { store.unwatch(); }
+}));
+
+
+test("a preview replaced by a FIFO at open cannot block the main process", { skip: process.platform === "win32" }, () => {
+  const home = tmpdir("modex-preview-fifo-");
+  try {
+    // A child bounds the regression: blocking open on a FIFO otherwise hangs the test runner.
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+      import fs from "node:fs";
+      import path from "node:path";
+      import { execFileSync } from "node:child_process";
+      import { NotesStore } from ${JSON.stringify(new URL("../src/main/engine/notes-store.js", import.meta.url).href)};
+      const store = new NotesStore(path.join(process.argv[1], "notes"));
+      store.tree();
+      const file = path.join(store.root, "Personal", "Notes", "image.png");
+      fs.writeFileSync(file, "image");
+      store.watch();
+      const image = store.tree().nodes.find(node => node.name === "image.png");
+      const open = fs.openSync;
+      fs.openSync = (target, ...args) => {
+        if (target === fs.realpathSync(file)) {
+          fs.openSync = open;
+          fs.unlinkSync(file);
+          execFileSync("mkfifo", [file]);
+        }
+        return open(target, ...args);
+      };
+      try { console.log(JSON.stringify(store.readImage(image.id))); }
+      finally { store.unwatch(); }
+    `, home], { encoding: "utf8", timeout: 5_000, killSignal: "SIGKILL" });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "null");
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

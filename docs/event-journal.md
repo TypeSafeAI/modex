@@ -53,3 +53,21 @@ These are needed before Phase 0's exit tests are complete:
   cursor instead of reloading state.
 - The paired desktop-and-phone sleep test with no gaps or duplicates.
 - A retention policy. The journal grows without bound while the flag is on.
+
+## Notes for the resume endpoint
+
+The journal's current behavior already settles four points:
+
+- **The cursor excludes what the client has.** A row is written once and never changed: merging
+  happens only in the pending batch, and `since()` flushes that batch before it reads. So a client
+  that keeps the highest `seq` it applied and asks for `since(seq)` misses nothing and gets
+  nothing twice.
+- **A snapshot needs a matching cursor.** A client that starts from a full state load takes
+  `latest()` and the snapshot in one synchronous step, with no `await` between them. An event
+  emitted after that step has a higher `seq`. An event whose change the snapshot already shows
+  may still arrive once more, and the next point makes that harmless.
+- **Applying an event twice must change nothing.** An `item_update` patch carries whole field
+  values, so applying it again leaves the item unchanged. An `item` event must be applied as an
+  upsert by item id. `replayItems` appends because it always starts from an empty transcript.
+- **Retention needs a reload answer.** Once old rows are pruned, a cursor below the oldest kept
+  row must get "reload state" rather than a partial page.

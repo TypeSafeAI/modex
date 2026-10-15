@@ -7,8 +7,21 @@ import type { MockStep } from "@modex/core";
 /** A 1×1 PNG, base64: the smallest real image for attachment tests. */
 export const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
+/** Folders this test process created; removed when it exits (node --test runs each file in its own process). */
+const created = new Set<string>();
+process.on("exit", () => {
+  // Leaked test homes and repos filled the disk (about 170,000 folders, 24 GB, by 2026-10-15).
+  if (process.env.MODEX_KEEP_TEST_TMP === "1") return;
+  for (const dir of created) {
+    try { fs.chmodSync(dir, 0o700); fs.rmSync(dir, { recursive: true, force: true }); } catch { /* Best effort: a read-only fixture can stay. */ }
+  }
+});
+
+/** A fresh temporary folder, removed when the test process exits. Set MODEX_KEEP_TEST_TMP=1 to keep it for debugging. */
 export function tmpdir(prefix = "modex-desktop-"): string {
-  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+  created.add(dir);
+  return dir;
 }
 
 /** A tiny git repo with one commit so worktrees and HEAD diffs work. */

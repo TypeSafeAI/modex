@@ -364,6 +364,12 @@ body[data-streamer-mode="true"] ::search-text { color: transparent; background-c
 .sheet > .main { grid-area: 1 / 2; }
 /* Keep Home mounted, with direct children for panel layout and workspace full view. */
 .sheet[data-surface="space"] > :is(.sidebar, .main, .workspace, .toast) { display: none; }
+.sheet[data-surface="analytics"] > :is(.sidebar, .main, .workspace, .toast, .panel-resizer) { display: none; }
+/* The dashboard is a native view over the canvas (workspace-analytics.ts); this only reserves its place. */
+.analytics-surface { grid-column: 1 / -1; grid-row: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.analytics-surface[hidden] { display: none; }
+.analytics-canvas { flex: 1; min-height: 0; }
+.analytics-note { margin: 0; padding: 10px 16px; color: var(--text-2); font-size: 13px; border-bottom: 1px solid var(--border-pane); }
 .main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); background-image: radial-gradient(ellipse 75% 40% at 50% -10%, var(--canvas-sheen), transparent); }
 .sidebar + .main { border-left: 1px solid var(--border-pane); }
 

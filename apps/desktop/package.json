@@ -72,6 +72,7 @@
       "!dist/src/main/commands.*",
       "dist/src/shared/**",
       "dist/renderer/**",
+      "dist/usage-preview/**",
       "demo/**",
       "package.json"
     ],

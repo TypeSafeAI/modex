@@ -456,7 +456,9 @@ export class NotesStore implements SpacePagesStore {
     const node = this.peekLayout(this.peek()).byId.get(id);
     if (!node || node.kind !== "file") throw new Error("This file is no longer in your notes.");
     if (node.preview !== "text") throw new Error("Only text files up to 1 MB can be read.");
-    try { return utf8.decode(fs.readFileSync(this.abs(node.rel))); } catch { throw new Error("This file is not UTF-8 text."); }
+    const data = this.readPreviewBytes(node.rel, 1_048_576);
+    if (!data) throw new Error("Only regular text files up to 1 MB inside your notes can be read.");
+    try { return utf8.decode(data); } catch { throw new Error("This file is not UTF-8 text."); }
   }
 
   /**
@@ -509,23 +511,52 @@ export class NotesStore implements SpacePagesStore {
     const rel = path.posix.normalize(path.posix.join(path.posix.dirname(page), relative));
     const project = page.split("/").slice(0, 2).join("/");
     if (!rel.startsWith(`${project}/`) || rel.split("/").some(segment => segment.startsWith("."))) return null;
-    try {
-      const real = fs.realpathSync(this.abs(rel));
-      const inside = fs.realpathSync(this.abs(project));
-      if (!real.startsWith(`${inside}${path.sep}`)) return null;
-    } catch { return null; }
-    return this.readImageAt(rel);
+    return this.readImageAt(rel, project);
   }
 
-  private readImageAt(rel: string): { data: Buffer; mime: string } | null {
+  private readImageAt(rel: string, project?: string): { data: Buffer; mime: string } | null {
     const type = IMAGE_TYPES[path.posix.extname(rel).toLowerCase()];
     if (!type) return null;
+    const data = this.readPreviewBytes(rel, MAX_IMAGE_BYTES, project);
+    return data ? { data, mime: type } : null;
+  }
+
+  /** Cached tree metadata is never permission to read: check the current path and opened file. */
+  private readPreviewBytes(rel: string, maxBytes: number, project?: string): Buffer | null {
+    let fd: number | undefined;
     try {
       const file = this.abs(rel);
-      const stat = fs.lstatSync(file);
-      if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return null;
-      return { data: fs.readFileSync(file), mime: type };
+      if (!fs.lstatSync(file).isFile()) return null;
+      const root = fs.realpathSync(this.root);
+      const real = fs.realpathSync(file);
+      const inside = path.relative(root, real);
+      if (!inside || path.isAbsolute(inside) || inside.split(path.sep).some(segment => segment.startsWith("."))) return null;
+      const projectRel = project ?? rel.split("/").slice(0, 2).join("/");
+      const projectParts = projectRel.split("/");
+      if (projectParts.length !== 2) return null;
+      // A cached id belongs to its original project. Neither its workspace nor project
+      // may be replaced by a link that silently redefines that boundary.
+      for (let depth = 1; depth <= 2; depth++) {
+        if (!fs.lstatSync(path.join(root, ...projectParts.slice(0, depth))).isDirectory()) return null;
+      }
+      const projectRoot = path.join(root, ...projectParts);
+      if (fs.realpathSync(this.abs(projectRel)) !== projectRoot || !real.startsWith(`${projectRoot}${path.sep}`)) return null;
+      // A regular file can become a FIFO after lstat; never block before fstat can reject it.
+      fd = fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+      const stat = fs.fstatSync(fd);
+      const current = fs.lstatSync(file);
+      if (!stat.isFile() || !current.isFile() || current.dev !== stat.dev || current.ino !== stat.ino || fs.realpathSync(file) !== real || stat.size > maxBytes) return null;
+      // A bounded read also catches growth after fstat without allocating an unbounded file.
+      const data = Buffer.alloc(stat.size + 1);
+      let length = 0;
+      while (length < data.length) {
+        const read = fs.readSync(fd, data, length, data.length - length, null);
+        if (!read) break;
+        length += read;
+      }
+      return length > stat.size ? null : data.subarray(0, length);
     } catch { return null; }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
   }
 
   /** Where a node is on disk, for Reveal in Finder and Open. */
