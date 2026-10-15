@@ -271,3 +271,57 @@ test("ClaudeBackend: the background cap kills a child that ignores SIGTERM", { t
   assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
   assert.notEqual(proc.exitCode, null);
 });
+
+// What `claude --resume` 2.1.296 emits first when the previous turn was stopped while a background task ran:
+// the stopped task replayed as a turn of its own, whose result (num_turns 0, no text) precedes the real turn.
+const replayed = { type: "result", subtype: "success", is_error: false, session_id: "sess-bg", result: "", num_turns: 0, duration_ms: 44 };
+
+test("ClaudeBackend: a resumed session's replayed result (num_turns 0, before any reply) does not end the turn", async () => {
+  const t = await start({ backgroundIdleMs: 200 });
+  t.proc.emitLine({ type: "system", subtype: "task_notification", task_id: "bash-old", status: "stopped" });
+  t.proc.emitLine({ type: "system", subtype: "init", session_id: "sess-bg" });
+  t.proc.emitLine(replayed);
+  t.proc.emitLine({ type: "system", subtype: "init", session_id: "sess-bg" });
+  await tick();
+  assert.equal(t.settled(), undefined, "a result from a turn that never called the model is not this turn's reply");
+  assert.equal(t.proc.stdin.writableEnded, false, "stdin stays open for the turn that answers the message");
+  t.proc.emitLine({ type: "assistant", message: { content: [{ type: "text", text: "second turn ok" }] } });
+  t.proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "sess-bg", result: "second turn ok", num_turns: 1, duration_ms: 1530 });
+  const r = await t.run;
+  assert.equal(r.status, "completed");
+  assert.ok(t.events.includes("assistant:second turn ok"), "the real reply reaches the thread");
+  assert.equal(t.proc.stdin.writableEnded, true);
+  t.proc.close(0);
+});
+
+test("ClaudeBackend: a replayed result that nothing follows ends the turn on the idle window", async () => {
+  const t = await start({ backgroundIdleMs: 20 });
+  t.proc.emitLine({ type: "system", subtype: "init", session_id: "sess-bg" });
+  t.proc.emitLine(replayed);
+  const r = await t.run;
+  assert.equal(r.status, "completed");
+  assert.equal(t.proc.stdin.writableEnded, true);
+  t.proc.close(0);
+});
+
+test("ClaudeBackend: without num_turns, a result before any assistant message is held and one after it ends the turn", async () => {
+  const t = await start({ backgroundIdleMs: 200 });
+  t.proc.emitLine({ type: "system", subtype: "init", session_id: "sess-bg" });
+  t.proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "sess-bg", result: "" });
+  await tick();
+  assert.equal(t.settled(), undefined);
+  t.proc.emitLine({ type: "system", subtype: "init", session_id: "sess-bg" });
+  t.proc.emitLine({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } });
+  t.proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "sess-bg", result: "hi" });
+  assert.equal((await t.run).status, "completed");
+  t.proc.close(0);
+});
+
+test("ClaudeBackend: an error result still ends the turn at once, model call or not", async () => {
+  const t = await start({ backgroundIdleMs: 200 });
+  t.proc.emitLine({ type: "system", subtype: "init", session_id: "sess-bg" });
+  t.proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, session_id: "sess-bg", result: "Invalid model", num_turns: 0 });
+  const r = await t.run;
+  assert.equal(r.status, "failed");
+  t.proc.close(1);
+});
