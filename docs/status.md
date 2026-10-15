@@ -588,15 +588,17 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   adds `POST /v1/threads/:id/archive` and an `archived` flag on snapshot threads; an older Mac
   answers the phone with 501. Companion build 6 does not include the phone side; it ships with
   the next iPhone build.
+- **Notes are Markdown files** (first slice of notes in folders). Space pages now live under
+  `MODEX_HOME/notes/` as one Markdown file per page, in Personal › Notes; a page with child pages
+  is a folder holding a note of the same name. Ids, revisions, history, trash, comments and the
+  Pages tools behave as before. Edits, moves and new files made outside Modex (Finder, an editor,
+  Open Knowledge) show in Space and in the page's history as "Outside Modex". The first launch
+  moves `app/space.json` into the folder and never writes it again. A file is renamed to match its
+  title when the title loses focus. Workspaces, per-project notes and files come next.
+  [Notes folder](notes.md).
 
 ## In flight
 
-- **Notes in folders** (Workspace › Project › Folder). Space notes move from `app/space.json` to
-  Markdown files under `MODEX_HOME/notes/`, with each Modex project getting its own notes, a
-  workspace level grouping projects in the sidebar, folders and files, and Open Knowledge able to
-  open the same folder. First slice: `NotesStore`, which keeps Space's page contract (ids,
-  revisions, history, trash, comments) over the files, records edits made outside Modex, and
-  migrates `space.json` once without writing it. Modex does not use it yet. [Notes folder](notes.md).
 - **Thread/project deletion during active turns.** A dedicated runner admission hold
   lets deletion stop and drain its own turns while unrelated turns continue, without
   weakening restart checks or the native draft preparation/adoption transaction.
