@@ -14,8 +14,12 @@ import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import { policyAnswer, policyReceipt } from "./approvals/policy.js";
 import type { SecretStore } from "./secrets.js";
-import { describeFailure } from "../../shared/failures.js";
+import { creditFallbackModel, describeFailure, isModelOutOfCredits, modelFamilyName } from "../../shared/failures.js";
+
+/** After a model is refused for usage credits, how long Modex starts its turns on the fallback instead. */
+export const CREDIT_SKIP_MS = 60 * 60_000;
 import type { PagesAgents, PagesLease } from "./pages-agents.js";
+import type { UsageLedger } from "./usage-ledger.js";
 import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
 import { AttachmentStore, type AttachmentDraft } from "./attachments.js";
 import { describeAttachments, type Attachment } from "../../shared/attachments.js";
@@ -54,6 +58,8 @@ interface Live {
 
 export interface RunnerOptions {
   pages?: Pick<PagesAgents, "prepare">;
+  /** Analytics' per-turn usage record. Optional: tests and demos run without one. */
+  usage?: Pick<UsageLedger, "record">;
   knowledge?: Pick<KnowledgeAgents, "prepare">;
   home: string;
   store: Store;
@@ -83,6 +89,8 @@ export class ThreadRunner {
   private restartHold?: { kind: "restart" | "owner-removal" };
   private readonly background = new RestartAdmission();
   private readonly naming = new Map<string, AbortController>();
+  /** `backend:model` → when the CLI last refused it for usage credits. */
+  private readonly outOfCredits = new Map<string, number>();
   private readonly titleRuns = new Set<Promise<void>>();
   private readonly deleting = new Set<string>();
   private readonly removingProjects = new Set<string>();
@@ -593,10 +601,10 @@ export class ThreadRunner {
         if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
         return { name: f.name, mime: f.mime, kind: f.kind, path: file };
       });
-      const result = await backend.runTurn(
+      const runOn = (ran: Thread) => backend.runTurn(
         describeAttachments(text, turnFiles),
         {
-          cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, account,
+          cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account,
           // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
           addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
           ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}),
@@ -604,6 +612,20 @@ export class ThreadRunner {
         sink,
         abort.signal,
       );
+      // A model refused for usage credits recently is refused again: start on its fallback instead.
+      const skip = this.recentCreditFallback(thread);
+      if (skip) thread = this.fallBack(threadId, thread, skip, routeId, false);
+      let replyStart = l.items.length;
+      let result = await runOn(thread);
+      const fallback = result.status === "failed" && !abort.signal.aborted ? this.creditFallback(thread, result.error, l.items.slice(turnStart)) : undefined;
+      if (fallback) {
+        const from = thread.model;
+        this.outOfCredits.set(`${thread.backend}:${from}`, Date.now());
+        thread = this.fallBack(threadId, thread, fallback, routeId, true);
+        replyStart = l.items.length;
+        result = await runOn(thread);
+        if (result.status === "failed") result = { ...result, recovery: [`${modelFamilyName(from)} was out of usage credits; retried on ${modelFamilyName(fallback)}.`, ...(result.recovery ?? [])] };
+      }
       // Record what ran, not what was asked for: the CLI can refuse fast mode (no usage credits, for one).
       const ranFast = result.fastMode ? result.fastMode.on : fast;
       if (fast && !ranFast && routeId) this.noteFastOff(threadId, routeId, result.fastMode?.why);
@@ -613,9 +635,10 @@ export class ThreadRunner {
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
+      this.recordUsage(thread, account, result);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
-      } else if (result.status === "completed" && l.items.length === turnStart && !abort.signal.aborted) {
+      } else if (result.status === "completed" && l.items.length === replyStart && !abort.signal.aborted) {
         // The CLI ended the turn without a word: no reply, no tool, no notice. A card with Retry beats an idle thread
         // that looks as if nothing was asked (2026-10-09: a resumed session's stale result ended a turn this way).
         this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
@@ -808,6 +831,44 @@ export class ThreadRunner {
     return t;
   }
 
+  /**
+   * The model to retry on when a turn failed only because its model is out of usage credits, or
+   * undefined. Only before anything ran: a reply, a tool or reasoning means the work has started
+   * and a second run could repeat it, so that turn keeps its failure card.
+   */
+  private creditFallback(thread: Thread, error: string | undefined, turnItems: ThreadItem[]): string | undefined {
+    if (!this.o.store.settings.model_fallback || !error || !isModelOutOfCredits(error)) return undefined;
+    if (turnItems.some((item) => item.kind === "assistant" || item.kind === "tool" || item.kind === "thinking")) return undefined;
+    const to = creditFallbackModel(thread.backend, thread.model);
+    return to && to !== thread.model ? to : undefined;
+  }
+
+  /** The fallback for a model that was refused for usage credits within CREDIT_SKIP_MS, or undefined. */
+  private recentCreditFallback(thread: Thread): string | undefined {
+    if (!this.o.store.settings.model_fallback) return undefined;
+    const key = `${thread.backend}:${thread.model}`;
+    const at = this.outOfCredits.get(key);
+    if (at === undefined) return undefined;
+    if (Date.now() - at >= CREDIT_SKIP_MS) { this.outOfCredits.delete(key); return undefined; }
+    return creditFallbackModel(thread.backend, thread.model);
+  }
+
+  /** Moves the thread to `to` for this turn and onward, and says so in the thread and on Auto's receipt. */
+  private fallBack(threadId: string, thread: Thread, to: string, routeId: string | undefined, refusedNow: boolean): Thread {
+    const from = modelFamilyName(thread.model), next = modelFamilyName(to);
+    // fromRouter: Modex made this switch, so Auto must not learn it as the user's preference.
+    this.updateThread(threadId, { model: to }, { fromRouter: true });
+    const why = refusedNow ? `${from} is out of usage credits, so this turn moved to ${next}.` : `${from} ran out of usage credits within the last hour, so this turn runs on ${next}.`;
+    this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `${why} Add usage credits to use ${from} again, or turn off the fallback in Settings.`, at: new Date().toISOString() });
+    const route = routeId ? this.slot(threadId).items.find((i) => i.id === routeId) : undefined;
+    if (route?.kind === "route") {
+      const actual = this.o.store.thread(threadId) ?? { ...thread, model: to };
+      this.router.noteFallback(actual, route.fast);
+      this.patchItem(threadId, route.id, { model: to, held: undefined, reasons: [...route.reasons, why] });
+    }
+    return this.o.store.thread(threadId) ?? { ...thread, model: to };
+  }
+
   /** Auto asked for fast mode and the CLI ran without it: the turn's receipt says so, and why. */
   private noteFastOff(threadId: string, routeId: string, why: string | undefined): void {
     const item = this.slot(threadId).items.find((i) => i.id === routeId);
@@ -816,6 +877,17 @@ export class ThreadRunner {
   }
 
   /** Records what the backend's prompt cache was last built with, so Auto can avoid discarding it. */
+  /** One Analytics row for every turn that called a model, Auto or not. A ledger failure never changes a turn's outcome. */
+  private recordUsage(ran: Thread, account: string | undefined, result: TurnResult): void {
+    if (!this.o.usage || !result.usage) return;
+    try {
+      this.o.usage.record({
+        at: new Date().toISOString(), backend: ran.backend, model: ran.model, threadId: ran.id,
+        project: this.o.store.project(ran.projectId)?.name ?? "", account: account ?? "", usage: result.usage,
+      });
+    } catch (error) { console.error("[modex] usage record failed:", error); }
+  }
+
   private noteLastTurn(threadId: string, ran: Thread, fast: boolean, result: TurnResult): void {
     if (!result.usage && result.status !== "completed") return;
     const now = this.o.store.thread(threadId);

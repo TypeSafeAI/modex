@@ -11,12 +11,14 @@ export type Layout = {
   changes: boolean;
   /** Opaque, fail-closed cover for screen sharing and livestreams. */
   streamerMode: boolean;
+  /** Analytics' icon in the rail (Settings → General). */
+  analytics: boolean;
 };
 
 export const LAYOUT_KEY = "modex.layout";
 /** Pre-layout key that stored only the sidebar as "open" | "closed"; read once and migrated. */
 export const LEGACY_SIDEBAR_KEY = "modex.sidebar";
-export const DEFAULT_LAYOUT: Layout = { sidebar: true, changes: true, streamerMode: false };
+export const DEFAULT_LAYOUT: Layout = { sidebar: true, changes: true, streamerMode: false, analytics: true };
 
 type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 
@@ -30,7 +32,7 @@ export function loadLayout(storage: Storage): Layout {
     saved = null;
   }
   if (saved && typeof saved === "object") {
-    for (const key of Object.keys(DEFAULT_LAYOUT) as ("sidebar" | "changes" | "streamerMode")[]) {
+    for (const key of Object.keys(DEFAULT_LAYOUT) as ("sidebar" | "changes" | "streamerMode" | "analytics")[]) {
       const v = (saved as Record<string, unknown>)[key];
       if (typeof v === "boolean") layout[key] = v;
     }

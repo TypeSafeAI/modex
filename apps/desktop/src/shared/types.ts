@@ -2,6 +2,7 @@ import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js"
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
+import type { UsageEvent } from "./usage.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -158,6 +159,8 @@ export interface Settings {
   approval_gate: ApprovalGateConfig;
   /** Retire a worktree thread once its pull request merged and nothing in the worktree would be lost. */
   auto_retire: boolean;
+  /** When a model is out of usage credits (Claude's Fable), run the turn on the next model down (Opus) instead of failing. */
+  model_fallback: boolean;
 }
 
 export type RuleDecision = "allow" | "ask" | "never";
@@ -537,6 +540,10 @@ export interface BridgeCommands extends NativeDraftCommands {
   "thread:stop": { req: { threadId: string }; res: void };
   "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
+  /** Analytics: recorded per-turn model usage, oldest first. ISO bounds are inclusive and optional. */
+  "usage:list": { req: { since?: string; until?: string } | undefined; res: UsageEvent[] };
+  /** Places the Analytics dashboard over `bounds`, or hides it without them. */
+  "analytics:show": { req: { bounds?: BrowserBounds }; res: { error?: string } | null };
   /** Puts a thread away or brings it back. Refused while the thread is working. */
   "thread:archive": { req: { threadId: string; archived: boolean }; res: Thread };
   "routing:status": { req: undefined; res: RoutingStatus };

@@ -306,6 +306,15 @@ export class Router {
     return { item, judgments, decision, source, questionSetVersion: QUESTION_SET_VERSION };
   }
 
+  /** A provider-selected fallback changes what ran, never the user's learned preference. */
+  noteFallback(thread: Thread, fast: boolean): void {
+    const tier = tierOf({ id: thread.model, label: thread.model });
+    const premium = tier === 3 || thread.effort === "xhigh" || thread.effort === "max";
+    try {
+      this.fit.recordFallback(thread.id, { backend: thread.backend, model: thread.model, effort: thread.effort, fast, tier, premium });
+    } catch { /* Learning persistence must not prevent a safe provider fallback. */ }
+  }
+
   noteOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage): void {
     try { this.fit.recordOutcome(threadId, outcome, usage); } catch { /* Learning persistence cannot change a coding turn's outcome. */ }
   }
