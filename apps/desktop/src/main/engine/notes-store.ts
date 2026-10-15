@@ -18,6 +18,18 @@ const CHECKPOINT_MS = 30_000;
 const MISSING_MS = 1_000;
 /** While the folder is watched, a read looks at it again at least this often, in case an event was missed. */
 const RELOOK_MS = 10_000;
+const MARKER_FILE = /^\.modex-(workspace|project)\.json$/;
+
+/**
+ * Whether a watched change (a path relative to the notes folder) can change the notes. Dot folders
+ * (Modex's own .modex, Open Knowledge's .ok, .git) are not notes, so their writes must not throw
+ * away the last look; workspace and project markers are. No name: assume it can.
+ */
+export function watchedChange(filename: string | Buffer | null | undefined): boolean {
+  if (!filename) return true;
+  const parts = String(filename).split(/[\\/]/);
+  return !parts.some(part => part.startsWith(".")) || MARKER_FILE.test(parts.at(-1) ?? "");
+}
 export const DEFAULT_WORKSPACE = "Personal";
 export const DEFAULT_PROJECT = "Notes";
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -412,6 +424,9 @@ export class NotesStore implements SpacePagesStore {
    * unless notes left by an earlier copy of the same project folder are there to link again.
    */
   linkProject(project: LinkedProject): NotesProject {
+    // Already linked: the last look answers, without walking the folder (this runs every agent turn).
+    const known = this.projectFor(project.id);
+    if (known) return known;
     const nodes = this.layout(this.load()).nodes;
     const projects = nodes.filter((n): n is NotesProject => n.kind === "project");
     const linked = projects.find(p => p.modexProjectId === project.id);
@@ -437,7 +452,10 @@ export class NotesStore implements SpacePagesStore {
     const node = this.projectFor(modexProjectId);
     if (!node) return;
     const marker = this.readMarker(node.rel, "project");
-    if (marker) this.writeMarker(node.rel, "project", { ...marker, modexProjectId: null, detachedAt: this.iso() });
+    if (!marker) return;
+    this.writeMarker(node.rel, "project", { ...marker, modexProjectId: null, detachedAt: this.iso() });
+    // A read before the watcher reports the write must not still show the link.
+    this.forget();
   }
 
   projectFor(modexProjectId: string): NotesProject | undefined {
@@ -455,9 +473,19 @@ export class NotesStore implements SpacePagesStore {
 
   /** A page's place in the folder (where a trashed page came from), for scoping a project's agents. */
   pageRel(id: string): string | undefined {
+    return this.pageRels().get(id);
+  }
+
+  /** Every page's place, from one look, for checking many pages at once. */
+  pageRels(): Map<string, string> {
     const state = this.peek();
-    const entry = state.index.notes[id];
-    return state.live.get(id)?.rel ?? entry?.trash?.original ?? entry?.original ?? undefined;
+    const rels = new Map<string, string>();
+    for (const id of state.pages.keys()) {
+      const entry = state.index.notes[id];
+      const rel = state.live.get(id)?.rel ?? entry?.trash?.original ?? entry?.original;
+      if (rel) rels.set(id, rel);
+    }
+    return rels;
   }
 
   /** A text file's contents: UTF-8, at most 1 MB. */
@@ -630,6 +658,7 @@ export class NotesStore implements SpacePagesStore {
       return id;
     };
     const containerIds = idsOf(containers), fileIds = idsOf(files);
+    const keepers = this.markerKeepers(index);
     const walk = (dirRel: string, level: number, parentId: string | null) => {
       let entries: fs.Dirent[];
       try { entries = fs.readdirSync(dirRel ? this.abs(dirRel) : this.root, { withFileTypes: true }); } catch { return; }
@@ -642,7 +671,14 @@ export class NotesStore implements SpacePagesStore {
           const ino = fs.statSync(this.abs(rel)).ino;
           const kind: NotesNodeKind = level === 0 ? "workspace" : level === 1 ? "project" : "folder";
           if (kind === "workspace" || kind === "project") {
-            const marker = this.readMarker(rel, kind);
+            let marker = this.readMarker(rel, kind);
+            // A folder copied in Finder carries its original's marker. The copy becomes its own
+            // workspace or project, linked to no Modex project (see keepers).
+            if (marker && keepers.get(marker.id) !== rel) {
+              const { detachedAt: _gone, ...rest } = marker;
+              marker = { ...rest, id: randomUUID(), default: false, ...(kind === "project" ? { modexProjectId: null } : {}) };
+              this.writeMarker(rel, kind, marker);
+            }
             const id = marker?.id ?? claim(containerIds, rel, ino);
             const order = marker?.order ?? Number.MAX_SAFE_INTEGER;
             const name = marker?.title || entry.name;
@@ -706,6 +742,30 @@ export class NotesStore implements SpacePagesStore {
     } catch { return null; }
   }
 
+  /**
+   * Which folder keeps each workspace or project id when copies share it: the default project's
+   * recorded place, otherwise the first in sorted order. Finder names a copy "… copy" or "… 2",
+   * which sorts after its original; default-project recovery chooses the same way.
+   */
+  private markerKeepers(index: NotesIndex): Map<string, string> {
+    const keepers = new Map<string, string>();
+    const dirs = (rel: string): string[] => {
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(rel ? this.abs(rel) : this.root, { withFileTypes: true }); } catch { return []; }
+      return entries.filter(entry => !entry.name.startsWith(".") && entry.isDirectory() && !entry.isSymbolicLink())
+        .sort((a, b) => a.name.localeCompare(b.name)).map(entry => rel ? `${rel}/${entry.name}` : entry.name);
+    };
+    const keep = (rel: string, kind: "workspace" | "project") => {
+      const id = this.readMarker(rel, kind)?.id;
+      if (id && (!keepers.has(id) || rel === index.defaultProject)) keepers.set(id, rel);
+    };
+    for (const workspace of dirs("")) {
+      keep(workspace, "workspace");
+      for (const project of dirs(workspace)) keep(project, "project");
+    }
+    return keepers;
+  }
+
   private writeMarker(dirRel: string, kind: "workspace" | "project", marker: Marker): void {
     writeFileDurably(this.abs(`${dirRel}/.modex-${kind}.json`), JSON.stringify(marker));
   }
@@ -731,7 +791,7 @@ export class NotesStore implements SpacePagesStore {
     if (this.watcher) return;
     try {
       this.open();
-      this.watcher = fs.watch(this.root, { recursive: true }, () => { this.generation++; });
+      this.watcher = fs.watch(this.root, { recursive: true }, (_event, filename) => { if (watchedChange(filename)) this.generation++; });
       this.watcher.on("error", () => this.unwatch());
       this.watcher.unref();
     } catch (error) {
@@ -765,9 +825,14 @@ export class NotesStore implements SpacePagesStore {
 
   /** For a change: always a fresh look, and the next read looks again. */
   private load(): State {
+    this.forget();
+    return this.look();
+  }
+
+  /** The next read looks at the folder again. */
+  private forget(): void {
     this.generation++;
     this.lastLook = null;
-    return this.look();
   }
 
   private look(): State {
@@ -1338,13 +1403,15 @@ export class NotesStore implements SpacePagesStore {
       try { entries = fs.readdirSync(this.abs(rel), { withFileTypes: true }); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
       return entries.filter(entry => !entry.name.startsWith(".") && entry.isDirectory() && !entry.isSymbolicLink())
+        .sort((a, b) => a.name.localeCompare(b.name))
         .map(entry => rel ? `${rel}/${entry.name}` : entry.name);
     };
     const matches: string[] = [];
     for (const workspace of directories("")) for (const project of directories(workspace)) {
       if (this.readMarker(project, "project")?.id === index.defaultProjectId) matches.push(project);
     }
-    if (matches.length > 1) throw new Error("The default project identity is duplicated.");
+    // A copy made in Finder shares the id; the first in sorted order is the default, as the tree
+    // walk decides, and the walk gives the copy an id of its own.
     if (!matches.length) return false;
     index.defaultProject = matches[0]!;
     return true;

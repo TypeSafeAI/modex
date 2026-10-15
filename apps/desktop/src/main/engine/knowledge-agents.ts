@@ -16,14 +16,17 @@ type Options = {
   knowledge: Pick<KnowledgeService, "agentTarget" | "isAgentTarget">;
   enabled(projectId: string): boolean;
   /**
-   * When the knowledge folder is Modex's notes folder: the project's notes, as a path inside it.
-   * That project's agents then read, write and search only there.
+   * Where Modex's notes are (a real path) and this project's notes inside them (relative), or
+   * `own: null` when it has none. Whatever folder the knowledge base is, a path that lands in the
+   * notes folder must land in the project's own notes. Asked at turn start (`create` when the turn
+   * may write) and again on every call, so moving the project's notes mid-turn is followed.
    */
-  scope?(projectId: string, folder: string): string | undefined;
+  scope?(projectId: string, create: boolean): KnowledgeFence | undefined;
   connect?: (target: KnowledgeTarget, identity: string, signal?: AbortSignal) => Promise<Peer>;
 };
 type Turn = Pick<Thread, "id" | "projectId" | "mode" | "plan">;
-type Active = { turn: Turn; readOnly: boolean; target?: KnowledgeTarget; peer?: Peer; available: boolean; error?: string; changed: (change: KnowledgeChange) => void; pending: Set<Promise<unknown>>; prefix?: string };
+export type KnowledgeFence = { notes: string; own: string | null };
+type Active = { turn: Turn; projectId: string; readOnly: boolean; target?: KnowledgeTarget; peer?: Peer; available: boolean; error?: string; changed: (change: KnowledgeChange) => void; pending: Set<Promise<unknown>> };
 type Route = { token: string; active?: Active };
 export type KnowledgeLease = { connection: KnowledgeConnection; warning?: string; close(): Promise<void> };
 
@@ -91,13 +94,13 @@ export class KnowledgeAgents {
     this.routes.set(turn.id, route);
     if (route.active) throw new Error("Knowledge is already attached to this thread's turn.");
     // Store mutates Thread in place. A mid-turn mode change may reduce authority, never grant it.
-    const active: Active = { turn, readOnly, changed, available: true, pending: new Set() };
+    const active: Active = { turn, projectId, readOnly, changed, available: true, pending: new Set() };
     route.active = active;
     try {
       active.target = await abortable(this.options.knowledge.agentTarget(), signal);
       signal?.throwIfAborted();
-      const prefix = this.options.scope?.(projectId, active.target.folder);
-      if (prefix) active.prefix = prefix;
+      // Makes the project's notes now if this turn may write, so a later call finds them.
+      this.options.scope?.(projectId, !readOnly);
       active.peer = await (this.options.connect ?? connect)(active.target, turn.id, signal);
     } catch (error) { active.error = (error as Error).message; }
     if (signal?.aborted) {
@@ -169,10 +172,10 @@ export class KnowledgeAgents {
     const mutation = name === "write" || name === "edit";
     if (mutation && !this.writable(active)) throw new Error("Knowledge maintenance is disabled for this project or this turn is read-only.");
     const target = active.target;
-    if (active.prefix) {
-      if (name === "search") return scopedSearch(target.content, active.prefix, args.query as string);
-      const doc = args.path as string;
-      if (!doc.startsWith(`${active.prefix}/`)) throw new Error("This page is outside this project's notes.");
+    const fence = this.fence(active, target.content);
+    if (fence) {
+      if (name === "search") return fencedSearch(target.content, fence, args.query as string);
+      if (!fence.allows(knowledgeDocumentPath(target.content, args.path))) throw new Error("This page is outside this project's notes.");
     }
     let upstream: { name: string; arguments: Record<string, unknown> };
     if (name === "search") {
@@ -196,6 +199,25 @@ export class KnowledgeAgents {
     const result = await active.peer.callTool(upstream);
     if (mutation && !result.isError) active.changed({ folder: target.folder, path: args.path as string, summary: args.summary as string });
     return result;
+  }
+  /**
+   * The project's fence for a knowledge base whose content folder overlaps Modex's notes, read
+   * fresh for each call. Undefined when the base and the notes are unrelated folders.
+   */
+  private fence(active: Active, content: string): Fence | undefined {
+    const scope = this.options.scope?.(active.projectId, false);
+    if (!scope) return undefined;
+    const notes = scope.notes;
+    if (!inside(notes, content) && !inside(content, notes)) return undefined;
+    let own: string | null = null;
+    if (scope.own) {
+      own = path.join(notes, ...scope.own.split("/"));
+      // The project's folder (or its workspace) may have become a link to somewhere else.
+      let real: string;
+      try { real = fs.realpathSync(own); } catch { throw new Error("This project's notes are missing from the notes folder."); }
+      if (real !== own) throw new Error("Knowledge document links are not allowed.");
+    }
+    return { notes, own, allows: file => !inside(notes, file) || (own !== null && inside(own, file)) };
   }
   async dispose(): Promise<void> {
     this.disposed = true;
@@ -235,37 +257,59 @@ export function knowledgeDocumentPath(content: string, input: unknown): string {
   return file;
 }
 
+type Fence = { notes: string; own: string | null; allows(file: string): boolean };
+
+/** `file` is `dir` or below it (both real, absolute paths). */
+function inside(dir: string, file: string): boolean {
+  return file === dir || file.startsWith(dir.endsWith(path.sep) ? dir : `${dir}${path.sep}`);
+}
+
+const SEARCH_RESULTS = 20, SEARCH_ENTRIES = 20_000, SEARCH_BYTES = 64 * 1024 * 1024;
+
 /**
- * Search confined to one project's notes, read straight from the folder: Markdown files under
- * `prefix` whose title or text contains the query, without asking the knowledge server (whose
- * results would span every project).
+ * Search for a knowledge base that overlaps Modex's notes, read straight from the folder: Markdown
+ * files whose title or text contains the query, skipping every project's notes but this one's. The
+ * knowledge server is not asked, since its results would span every project. Reads are async, so
+ * the main process keeps answering, and bounded in entries and bytes.
  */
-function scopedSearch(content: string, prefix: string, query: string): CallToolResult {
+async function fencedSearch(content: string, fence: Fence, query: string): Promise<CallToolResult> {
   if (query.length > 2000) throw new Error("Knowledge query is too long.");
+  // A content folder inside another project's notes holds nothing this project may read.
+  if (!fence.allows(content) && !(fence.own && inside(content, fence.own))) throw new Error("This knowledge base holds another project's notes.");
+  // The captured project path (or its workspace) may have become a link during the turn; the
+  // fence already refused that, and the content folder itself must still be what it was.
+  if (fs.realpathSync(content) !== content) throw new Error("Knowledge content folder changed.");
   const needle = query.toLowerCase();
   const results: { path: string; title: string; excerpt: string }[] = [];
-  const walk = (dir: string, rel: string, depth: number) => {
-    let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries) {
-      if (results.length >= 20) return;
+  let entries = 0, bytes = 0;
+  // A directory is worth entering when it is outside the notes, inside this project's notes, or on
+  // the way down to them.
+  const enter = (dir: string) => fence.allows(dir) || (fence.own !== null && inside(dir, fence.own));
+  const walk = async (dir: string, rel: string, depth: number): Promise<void> => {
+    let list: fs.Dirent[];
+    try { list = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of list) {
+      if (results.length >= SEARCH_RESULTS || entries >= SEARCH_ENTRIES || bytes >= SEARCH_BYTES) return;
+      entries++;
       if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
       const file = path.join(dir, entry.name);
-      const at = `${rel}/${entry.name}`;
-      if (entry.isDirectory()) { if (depth < 30) walk(file, at, depth + 1); continue; }
-      if (!entry.isFile() || !/\.mdx?$/i.test(entry.name)) continue;
+      const at = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) { if (depth < 30 && enter(file)) await walk(file, at, depth + 1); continue; }
+      if (!entry.isFile() || !/\.mdx?$/i.test(entry.name) || !fence.allows(file)) continue;
       let text: string;
-      try { if (fs.statSync(file).size > 2 * 1024 * 1024) continue; text = fs.readFileSync(file, "utf8"); } catch { continue; }
+      try {
+        const size = (await fs.promises.stat(file)).size;
+        if (size > 2 * 1024 * 1024) continue;
+        bytes += size;
+        text = await fs.promises.readFile(file, "utf8");
+      } catch { continue; }
       const title = entry.name.replace(/\.mdx?$/i, "");
       const index = text.toLowerCase().indexOf(needle);
       if (needle && index < 0 && !title.toLowerCase().includes(needle)) continue;
       results.push({ path: at, title, excerpt: text.slice(Math.max(0, index - 80), Math.max(0, index) + 160).trim() });
     }
   };
-  const directory = path.join(content, ...prefix.split("/"));
-  // The captured project path (or its workspace) may have become a link during the turn.
-  // Checking only directory entries below it would still read through that link.
-  if (fs.realpathSync(directory) !== directory) throw new Error("Knowledge document links are not allowed.");
-  walk(directory, prefix, 0);
+  await walk(content, "", 0);
   return { content: [{ type: "text", text: JSON.stringify({ results }) }] };
 }

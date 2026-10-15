@@ -13,7 +13,7 @@ type Turn = Pick<Thread, "id" | "projectId" | "mode" | "plan">;
 /** A project's own notes: its notes project's id and folder. Agents of that project see nothing outside it. */
 export type PagesScope = { id: string; rel: string };
 type Active = { turn: Turn; projectId: string; readOnly: boolean; available: boolean; scope?: PagesScope; error?: string; changed(change: PagesChange): void };
-type TreeNotes = Pick<NotesStore, "tree" | "pageRel" | "createFolder" | "moveNodes" | "readFile">;
+type TreeNotes = Pick<NotesStore, "tree" | "pageRels" | "createFolder" | "moveNodes" | "readFile">;
 type Route = { token: string; active?: Active };
 export type PagesLease = { connection: PagesConnection; close(): Promise<void> };
 const string = { type: "string" };
@@ -55,8 +55,12 @@ export class PagesAgents {
   private disposed = false;
   constructor(private readonly options: {
     space: SpacePagesStore; enabled(projectId: string): boolean; updated?(): void;
-    /** The project's own notes; without it, agents see every note (the store has no projects). */
-    scope?(projectId: string): PagesScope | undefined;
+    /**
+     * The project's own notes; without it, agents see every note (the store has no projects).
+     * `create` when the turn may write: a read-only turn never makes notes, and null means the
+     * project has none.
+     */
+    scope?(projectId: string, create: boolean): PagesScope | null | undefined;
     notes?: TreeNotes;
   }) {
     this.server = http.createServer((req, res) => { void this.handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); });
@@ -77,8 +81,11 @@ export class PagesAgents {
     // A notes folder that cannot be read must not fail the turn. The lease stays attached and
     // refuses every call, rather than running unscoped and showing other projects' notes.
     let scope: PagesScope | undefined, error: string | undefined;
-    try { scope = this.options.scope?.(projectId); }
-    catch (e) { error = e instanceof Error && e.message ? e.message : typeof e === "string" && e ? e : "The notes scope could not be resolved."; }
+    try {
+      const found = this.options.scope?.(projectId, !readOnly);
+      if (found === null) error = "this project has no notes yet";
+      else scope = found;
+    } catch (e) { error = e instanceof Error && e.message ? e.message : typeof e === "string" && e ? e : "The notes scope could not be resolved."; }
     if (this.disposed) throw new Error("Pages agents are shutting down.");
     signal?.throwIfAborted();
     const base = await this.listen();
@@ -128,12 +135,21 @@ export class PagesAgents {
     const scope = active.scope;
     const mutation = !["search", "read", "history", "list", "read_file"].includes(name);
     if (mutation && !this.writable(active)) throw new Error("This turn is read-only for Pages.");
-    const within = (rel: string | undefined) => !scope || (rel !== undefined && (rel === scope.rel || rel.startsWith(`${scope.rel}/`)));
-    const inScope = (pageId: string) => !scope || !notes || within(notes.pageRel(pageId));
+    // The notes project keeps its id when its notes move to another workspace, so its folder is
+    // found again on every call rather than kept from the start of the turn.
+    const nodes = scope && notes ? notes.tree().nodes : [];
+    let home = scope?.rel;
+    if (scope && notes) {
+      home = nodes.find(n => n.id === scope.id && n.kind === "project")?.rel;
+      if (home === undefined) throw new Error("This project's notes are no longer in the notes folder.");
+    }
+    const within = (rel: string | undefined) => !scope || (rel !== undefined && (rel === home || rel.startsWith(`${home}/`)));
+    // Every page's place, read once per call however many pages are checked.
+    let rels: Map<string, string> | undefined;
+    const inScope = (pageId: string) => !scope || !notes || within((rels ??= notes.pageRels()).get(pageId));
     const outside = () => new Error("This note is outside this project's notes.");
     if (name === "list" || name === "create_folder" || name === "move" || name === "read_file") {
       if (!notes || !scope) throw new Error("Folders are unavailable for this project's notes.");
-      const nodes = notes.tree().nodes;
       const container = (id: unknown) => {
         const node = nodes.find(n => n.id === (id ?? scope.id));
         if (!node || !within(node.rel) || (node.kind !== "project" && node.kind !== "folder")) throw new Error("Choose a folder of this project's notes.");
@@ -141,7 +157,8 @@ export class PagesAgents {
       };
       if (name === "list") {
         const folder = container(args.folderId);
-        const children = nodes.filter(n => n.parentId === folder.id).map(n => ({ id: n.id, kind: n.kind, name: n.kind === "note" ? pageTitle(space.list().find(p => p.id === n.id) ?? { title: n.name }) : n.name, ...(n.kind === "folder" && n.noteId ? { noteId: n.noteId } : {}), ...(n.kind === "file" ? { size: n.size, readable: n.preview === "text" } : {}) }));
+        const pages = new Map(space.list().map(p => [p.id, p]));
+        const children = nodes.filter(n => n.parentId === folder.id).map(n => ({ id: n.id, kind: n.kind, name: n.kind === "note" ? pageTitle(pages.get(n.id) ?? { title: n.name }) : n.name, ...(n.kind === "folder" && n.noteId ? { noteId: n.noteId } : {}), ...(n.kind === "file" ? { size: n.size, readable: n.preview === "text" } : {}) }));
         const offset = args.offset as number ?? 0;
         return { folderId: folder.id, items: children.slice(offset, offset + 100), nextOffset: offset + 100 < children.length ? offset + 100 : null };
       }
