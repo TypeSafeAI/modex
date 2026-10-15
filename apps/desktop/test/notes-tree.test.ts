@@ -456,3 +456,77 @@ test("folder move recovery retains external edits made after interruption", () =
   assert.equal(reopened.list().find(p => p.id === parent.id)?.markdown, "Human edit after crash");
   assert.ok(reopened.history(parent.id).some(v => v.actor === "external" && v.page.markdown === "Human edit after crash"));
 }));
+
+
+test("layout keeps shared-inode file aliases distinct when one moves before or after the other", () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const dir = path.join(root, project.rel);
+  fs.writeFileSync(path.join(dir, "a.txt"), "shared bytes");
+  fs.linkSync(path.join(dir, "a.txt"), path.join(dir, "b.txt"));
+  const initial = store.tree().nodes;
+  const a = named(initial, "a.txt"), b = named(initial, "b.txt");
+  assert.notEqual(a.id, b.id, "hard-linked paths are separate tree nodes");
+  assert.equal(fs.statSync(path.join(dir, "a.txt")).ino, fs.statSync(path.join(dir, "b.txt")).ino);
+
+  // The moved alias sorts before the still-existing path. Its inode must not steal that path's id.
+  fs.renameSync(path.join(dir, "b.txt"), path.join(dir, "0.txt"));
+  const movedFirst = new NotesStore(root).tree().nodes;
+  assert.equal(named(movedFirst, "0.txt").id, b.id);
+  assert.equal(named(movedFirst, "a.txt").id, a.id);
+  // Now the moved alias sorts after the other alias, which has already claimed its own id.
+  fs.renameSync(path.join(dir, "a.txt"), path.join(dir, "z.txt"));
+  for (const reader of [new NotesStore(root), store, new NotesStore(root)]) {
+    const nodes = reader.tree().nodes;
+    assert.equal(named(nodes, "0.txt").id, b.id);
+    assert.equal(named(nodes, "z.txt").id, a.id);
+    assert.equal(new Set(nodes.map(node => node.id)).size, nodes.length);
+  }
+}));
+
+test("layout prioritizes a replaced indexed path without reusing its id for the relocated old inode", () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const dir = path.join(root, project.rel);
+  const original = path.join(dir, "a.txt"), relocated = path.join(dir, "z.txt");
+  fs.writeFileSync(original, "old file");
+  const id = named(store.tree().nodes, "a.txt").id;
+  const oldInode = fs.statSync(original).ino;
+  fs.renameSync(original, relocated);
+  fs.writeFileSync(original, "replacement");
+  assert.equal(fs.statSync(relocated).ino, oldInode);
+  assert.notEqual(fs.statSync(original).ino, oldInode);
+
+  const nodes = store.tree().nodes;
+  assert.equal(named(nodes, "a.txt").id, id, "an existing indexed path takes precedence over inode matching");
+  const movedId = named(nodes, "z.txt").id;
+  assert.notEqual(movedId, id, "the stale inode bucket must not claim the same id twice");
+  for (const reader of [new NotesStore(root), store]) {
+    const again = reader.tree().nodes;
+    assert.equal(named(again, "a.txt").id, id);
+    assert.equal(named(again, "z.txt").id, movedId);
+    assert.equal(new Set(again.map(node => node.id)).size, again.length);
+    assert.equal(reader.readFile(id), "replacement");
+    assert.equal(reader.readFile(movedId), "old file");
+  }
+}));
+
+test("layout preserves folder and file ids across repeated external renames and restarts", () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const folder = store.createFolder(project.id, "Drafts");
+  let folderRel = folder.rel, filename = "a.txt";
+  fs.writeFileSync(path.join(root, folderRel, filename), "retained bytes");
+  const fileId = named(store.tree().nodes, filename).id;
+  for (const [nextFolder, nextFile] of [["Final", "z.txt"], ["Drafts", "a.txt"], ["Archived", "final.txt"]] as const) {
+    const nextRel = `${project.rel}/${nextFolder}`;
+    fs.renameSync(path.join(root, folderRel), path.join(root, nextRel));
+    fs.renameSync(path.join(root, nextRel, filename), path.join(root, nextRel, nextFile));
+    folderRel = nextRel; filename = nextFile;
+    const reopened = new NotesStore(root);
+    const nodes = reopened.tree().nodes;
+    assert.equal(nodes.find(node => node.id === folder.id)?.rel, folderRel);
+    const file = nodes.find(node => node.id === fileId);
+    assert.equal(file?.rel, `${folderRel}/${filename}`);
+    assert.equal(file?.parentId, folder.id);
+    assert.equal(reopened.readFile(fileId), "retained bytes");
+    assert.equal(new Set(nodes.map(node => node.id)).size, nodes.length);
+  }
+}));

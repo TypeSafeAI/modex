@@ -1,5 +1,5 @@
 import { SecretInput } from "../streamer";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { pageTitle } from "../../shared/space";
 import { importMarkdownPage, splitTitlePaste } from "../../shared/space-markdown";
@@ -38,6 +38,10 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
   const [newWorkspace, setNewWorkspace] = useState(0);
   /** A tree node to show once, from "Open notes"; a new object per request, cleared when a page opens. */
   const [focusNode, setFocusNode] = useState<{ id: string }>();
+  // Consume in the parent: search and filters unmount the tree, but must not replay old requests.
+  const focusApplied = useCallback((request: { id: string }) => {
+    setFocusNode(current => current === request ? undefined : current);
+  }, []);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const previewing = previewId ? notes.tree?.nodes.find((n): n is NotesFile => n.id === previewId && n.kind === "file") : undefined;
   // When the knowledge base is the notes folder, a page is already in it: offer Open, not Copy.
@@ -221,7 +225,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
       </nav>
       <div className="space-tree">
         <div className="space-tree-label">{query ? "Search results" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : notes.tree ? "Workspaces" : "Recents"}</div>
-        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} focus={focusNode} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
+        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} focus={focusNode} onFocusApplied={focusApplied} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
         {space.loaded && !visible.length && <p className="space-tree-empty">{query ? "No matching pages" : view === "favorites" ? "Star a page to keep it close." : view === "trash" ? "Nothing in the trash." : "Your next idea starts here."}</p>}
         <div className="space-tree-label space-collections-label">Spaces</div>
         <button className="space-knowledge-link space-tree-page" aria-label="Knowledge base" aria-current={view === "knowledge" ? "page" : undefined} onClick={() => selectView("knowledge")}><Icon name="files" /><span>Knowledge base</span></button>

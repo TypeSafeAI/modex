@@ -31,7 +31,7 @@ type Editing = { kind: "rename" | "folder" | "project"; id: string; value: strin
  * The notes folder as Workspace › Project › Folder › notes and files. A note opens its page; a folder
  * with a folder note opens that page; a file opens in its default app. Names are edited in place.
  */
-export function NotesTreeView({ tree, pages, selected, actions, newWorkspace, focus }: { tree: NotesTree; pages: SpacePage[]; selected: string | null; actions: NotesTreeActions; newWorkspace: number; focus?: { id: string } }) {
+export function NotesTreeView({ tree, pages, selected, actions, newWorkspace, focus, onFocusApplied }: { tree: NotesTree; pages: SpacePage[]; selected: string | null; actions: NotesTreeActions; newWorkspace: number; focus?: { id: string }; onFocusApplied: (request: { id: string }) => void }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -50,7 +50,8 @@ export function NotesTreeView({ tree, pages, selected, actions, newWorkspace, fo
     while (node?.parentId) { chain.add(node.parentId); node = tree.nodes.find(n => n.id === node!.parentId); }
     setCollapsed(current => new Set([...current].filter(id => !chain.has(id) && id !== focus.id)));
     requestAnimationFrame(() => document.querySelector(`[data-node-id="${CSS.escape(focus.id)}"]`)?.scrollIntoView({ block: "nearest" }));
-  }, [focus, tree]);
+    onFocusApplied(focus);
+  }, [focus, tree, onFocusApplied]);
   const byPage = new Map(pages.map(page => [page.id, page]));
   const children = (id: string | null) => tree.nodes.filter(node => node.parentId === id);
   const nameOf = (node: NotesNode) => node.kind === "note" ? pageTitle(byPage.get(node.id) ?? { title: node.name }) : node.name;

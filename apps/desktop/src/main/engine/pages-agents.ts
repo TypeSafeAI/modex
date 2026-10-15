@@ -77,7 +77,8 @@ export class PagesAgents {
     // A notes folder that cannot be read must not fail the turn. The lease stays attached and
     // refuses every call, rather than running unscoped and showing other projects' notes.
     let scope: PagesScope | undefined, error: string | undefined;
-    try { scope = this.options.scope?.(projectId); } catch (e) { error = (e as Error).message; }
+    try { scope = this.options.scope?.(projectId); }
+    catch (e) { error = e instanceof Error && e.message ? e.message : typeof e === "string" && e ? e : "The notes scope could not be resolved."; }
     if (this.disposed) throw new Error("Pages agents are shutting down.");
     signal?.throwIfAborted();
     const base = await this.listen();

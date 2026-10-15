@@ -50,3 +50,55 @@ test("each project has notes, and a second workspace groups the sidebar's projec
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("Open notes consumes its focus across polls and remounts, and accepts a fresh request", async () => {
+  const { home, repo } = seedHome();
+  const project = path.basename(repo);
+  const { app, page } = await launch(home);
+  try {
+    await page.evaluate(() => {
+      const original = Element.prototype.scrollIntoView;
+      const observed = window as unknown as { notesFocusCalls: string[] };
+      observed.notesFocusCalls = [];
+      Element.prototype.scrollIntoView = function (...args) {
+        if (this.matches("[data-node-id]")) observed.notesFocusCalls.push(this.getAttribute("data-node-id")!);
+        return original.apply(this, args);
+      };
+    });
+    const focusCalls = () => page.evaluate(() => (window as unknown as { notesFocusCalls: string[] }).notesFocusCalls.length);
+    const openNotes = async () => {
+      await tid(page, "rail-chat").click();
+      await tid(page, "project-menu").click();
+      await tid(page, "project-notes").click();
+      await expect(tid(page, "space")).toBeVisible();
+    };
+    await openNotes();
+    await expect.poll(focusCalls).toBe(1);
+    // A real filesystem change makes the next poll publish a new tree.
+    fs.writeFileSync(path.join(home, "notes", "Personal", project, "Polling.md"), "# Polling\n");
+    await expect(page.getByRole("button", { name: "Open Polling", exact: true })).toBeVisible();
+    expect(await focusCalls()).toBe(1);
+    await page.getByRole("button", { name: "Search pages", exact: true }).click();
+    const search = page.getByRole("searchbox", { name: "Search pages", exact: true });
+    await search.fill("Polling");
+    await expect(page.getByRole("list", { name: "Workspaces" })).toHaveCount(0);
+    await search.fill("");
+    await expect(page.getByRole("list", { name: "Workspaces" })).toBeVisible();
+    // Waiting for frames ensures a replayed scroll callback would already have run.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(await focusCalls()).toBe(1);
+    await page.getByRole("button", { name: "Space options" }).click();
+    await page.getByRole("menuitem", { name: "Favorites", exact: true }).click();
+    await expect(page.getByRole("list", { name: "Workspaces" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Pages", exact: true }).click();
+    await expect(page.getByRole("list", { name: "Workspaces" })).toBeVisible();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(await focusCalls()).toBe(1);
+    await openNotes();
+    await expect.poll(focusCalls).toBe(2);
+    await page.getByRole("button", { name: "Open Polling", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("Polling");
+    const projectRow = page.getByRole("button", { name: project, exact: true }).locator("..");
+    await expect(projectRow).not.toHaveClass(/selected/);
+  } finally { await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
+});
