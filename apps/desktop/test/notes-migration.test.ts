@@ -152,3 +152,49 @@ test("the plan places a page whose parent is missing at the top level and warns"
   assert.deepEqual(plan.notes.map(n => n.rel), ["Personal/Notes/Index note.md", "Personal/Notes/Orphan 2.md", "Personal/Notes/Untitled.md"]);
   assert.equal(plan.warnings.length, 1);
 });
+
+test("interrupted migration into an existing folder reuses the published parent", () => {
+  let parentId = "", childId = "";
+  const h = legacyHome(space => {
+    const parent = space.create({ title: "A", markdown: "original parent" });
+    parentId = parent.id;
+    childId = space.create({ title: "B", parentId }).id;
+  });
+  try {
+    fs.mkdirSync(h.root);
+    const rename = fs.renameSync;
+    fs.renameSync = ((from, to) => {
+      if (to === path.join(project(h.root), "A", "B.md")) throw new Error("injected child publication failure");
+      return rename(from, to);
+    }) as typeof fs.renameSync;
+    try { assert.throws(() => open(h).list(), /injected child/); } finally { fs.renameSync = rename; }
+    const parentFile = path.join(project(h.root), "A", "A.md");
+    fs.writeFileSync(parentFile, fs.readFileSync(parentFile, "utf8").replace("original parent", "external parent edit"));
+    for (const reader of [open(h), open(h)]) {
+      const pages = reader.list();
+      assert.equal(pages.length, 2);
+      assert.equal(pages.find(p => p.id === parentId)?.parentId, null);
+      assert.equal(pages.find(p => p.id === parentId)?.markdown, "external parent edit");
+      assert.equal(pages.find(p => p.id === childId)?.parentId, parentId);
+    }
+  } finally { fs.rmSync(h.home, { recursive: true, force: true }); }
+});
+
+
+test("migration reserves the folder note name against identically named children", () => {
+  let parentId = "", childId = "";
+  const h = legacyHome(space => {
+    parentId = space.create({ title: "Plan", markdown: "parent body" }).id;
+    childId = space.create({ title: "Plan", markdown: "child body", parentId }).id;
+  });
+  try {
+    for (const reader of [open(h), open(h)]) {
+      const pages = reader.list();
+      assert.equal(pages.length, 2);
+      assert.equal(pages.find(p => p.id === parentId)?.parentId, null);
+      assert.equal(pages.find(p => p.id === parentId)?.markdown, "parent body");
+      assert.equal(pages.find(p => p.id === childId)?.parentId, parentId);
+      assert.equal(pages.find(p => p.id === childId)?.markdown, "child body");
+    }
+  } finally { fs.rmSync(h.home, { recursive: true, force: true }); }
+});

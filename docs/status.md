@@ -548,6 +548,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Notes hierarchy recovery.** Folder-title changes reserve names against their
+  children; restored folders stay separate from newer same-named folders while
+  retaining attachments. Interrupted restores use the same placement rules, and
+  migration resumes under already-published parents without overwriting them.
+  Migration also reserves each folder note’s name before placing its children.
+  Folder settlement records durable intent so interrupted directory and note
+  renames finish before a read derives the hierarchy.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
@@ -616,7 +624,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Workspaces, projects and folders in Space.** Space's sidebar shows the notes folder as
   Workspace › Project › Folder › pages and files. Create a workspace from Space options, and a
   project, folder or page from a row's menu; rename, move (Move to…), reveal in Finder, and delete
-  what is empty. Each is a real folder on disk; a file opens in its default app.
+  what is empty. Folder moves reserve names against their children and replay interrupted folder-note
+  renames without overwriting intervening external edits; default page creation follows renamed or
+  moved default containers even if their index write was interrupted. Creating a project or
+  folder expands its container to show the editor. Each is a real folder on disk.
 - **Each project has its own notes.** Adding a project to Modex gives it a notes project in the
   default workspace (existing projects get one when notes first open). The project's menu in the
   chat sidebar offers **Open notes**, and with more than one workspace the sidebar groups projects

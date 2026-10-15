@@ -203,3 +203,27 @@ test("a project's agents work in that project's notes only, with folders, and ne
     assert.equal((await call("search", { query: "Ship" })).pages[0].id, created.id);
   } finally { await client.close(); await lease.close(); await f.clean(); }
 });
+
+test("scoped Pages revert refuses a historical parent in another project", async () => {
+  const f = await fixture(true);
+  const mine = f.space.linkProject({ id: "project", name: "mine", path: "/code/mine" });
+  const theirs = f.space.linkProject({ id: "other", name: "theirs", path: "/code/theirs" });
+  const parent = f.space.create({ title: "Other parent", containerId: theirs.id });
+  const child = f.space.create({ title: "Moved note", markdown: "Original", parentId: parent.id });
+  f.space.moveNodes([child.id], mine.id);
+  const { lease, client, call } = await f.begin();
+  try {
+    const current = await call("read", { id: child.id });
+    const rel = f.space.pageRel(child.id);
+    const result = await client.callTool({ name: "revert", arguments: { id: child.id, revision: current.revision, version: 1, summary: "Recover original" } });
+    assert.equal(result.isError, true);
+    assert.match((result.content as { text: string }[])[0]!.text, /outside this project's notes/);
+    assert.equal(f.space.pageRel(child.id), rel);
+    assert.deepEqual(f.space.list().find(p => p.id === child.id), current);
+    assert.equal(f.receipts.length, 0);
+    const edited = await call("edit", { id: child.id, revision: current.revision, find: "Original", replace: "Updated", summary: "Update" });
+    const recovered = await call("revert", { id: child.id, revision: edited.revision, version: current.revision, summary: "Recover local version" });
+    assert.equal(recovered.markdown, "Original");
+    assert.equal(f.space.pageRel(child.id), rel);
+  } finally { await client.close(); await lease.close(); await f.clean(); }
+});

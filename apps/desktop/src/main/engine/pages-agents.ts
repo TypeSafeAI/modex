@@ -185,7 +185,12 @@ export class PagesAgents {
       if (name === "trash" || name === "restore") {
         const pages = space.trash(page.id, name === "trash", args.revision as number, change);
         page = pages.find(p => p.id === page!.id)!;
-      } else if (name === "revert") page = space.revert(page.id, args.revision as number, args.version as number, change);
+      } else if (name === "revert") {
+        // Recovery also restores the old parent, which may now belong to another project.
+        const version = space.history(page.id).find(v => v.page.revision === args.version);
+        if (version?.page.parentId && !inScope(version.page.parentId)) throw outside();
+        page = space.revert(page.id, args.revision as number, args.version as number, change);
+      }
       else if (name === "edit") {
         const find = args.find as string;
         if (find ? page.markdown.indexOf(find) < 0 || page.markdown.indexOf(find) !== page.markdown.lastIndexOf(find) : page.markdown !== "") throw new Error("Find text must match exactly once. Read the note and choose unique text.");

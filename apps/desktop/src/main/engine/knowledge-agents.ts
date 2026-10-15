@@ -262,6 +262,10 @@ function scopedSearch(content: string, prefix: string, query: string): CallToolR
       results.push({ path: at, title, excerpt: text.slice(Math.max(0, index - 80), Math.max(0, index) + 160).trim() });
     }
   };
-  walk(path.join(content, ...prefix.split("/")), prefix, 0);
+  const directory = path.join(content, ...prefix.split("/"));
+  // The captured project path (or its workspace) may have become a link during the turn.
+  // Checking only directory entries below it would still read through that link.
+  if (fs.realpathSync(directory) !== directory) throw new Error("Knowledge document links are not allowed.");
+  walk(directory, prefix, 0);
   return { content: [{ type: "text", text: JSON.stringify({ results }) }] };
 }

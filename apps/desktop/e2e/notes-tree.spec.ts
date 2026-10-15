@@ -17,10 +17,15 @@ test("workspaces, projects and folders made in Space are folders on disk, and pe
     await expect(page.getByRole("button", { name: "TypeSafeAI", exact: true })).toBeVisible();
     expect(fs.existsSync(notes("TypeSafeAI", ".modex-workspace.json"))).toBe(true);
 
+    // New child actions must expose their editor even when the container is collapsed.
+    await page.getByRole("button", { name: "TypeSafeAI", exact: true }).click();
+    await expect(page.getByRole("button", { name: "TypeSafeAI", exact: true })).toHaveAttribute("aria-expanded", "false");
     await page.getByRole("button", { name: "TypeSafeAI actions" }).click();
     await page.getByRole("menuitem", { name: "New project" }).click();
     await page.getByRole("textbox", { name: "New project name" }).fill("modex");
     await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "modex", exact: true }).click();
+    await expect(page.getByRole("button", { name: "modex", exact: true })).toHaveAttribute("aria-expanded", "false");
     await page.getByRole("button", { name: "modex actions" }).click();
     await page.getByRole("menuitem", { name: "New folder" }).click();
     await page.getByRole("textbox", { name: "New folder name" }).fill("Design");
