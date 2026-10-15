@@ -26,7 +26,7 @@ Use **Page actions → Version history** to inspect previous content and restore
 
 If your unsaved draft conflicts with an agent edit, the editor keeps your text and reports the conflict. **Save drafts as copies and reload** preserves those drafts as new top-level notes and loads the saved versions. The editor is locked while those copies are saved.
 
-Notes and their journal are stored atomically in `MODEX_HOME/app/space.json`. The first change upgrades an older version-1 file to version 2 and preserves existing notes as baseline versions. Older Modex builds cannot read version 2; keep a backup if you need to downgrade. Notes can still be exported as Markdown.
+Notes are Markdown files under `MODEX_HOME/notes/`, with their version history kept beside them in `notes/.modex/` ([Notes folder](notes.md)). Agents still work only through `modex_pages`, by page id and revision; an agent never edits the files directly. The first launch moves the pages of `MODEX_HOME/app/space.json` into the folder and leaves that file as it was, so an older Modex still opens it; pages an older build changes there come back under "Recovered from earlier Modex". Notes can still be exported as Markdown.
 
 ## Access boundary
 

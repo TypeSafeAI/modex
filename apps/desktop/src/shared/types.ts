@@ -491,6 +491,8 @@ export interface BridgeCommands extends NativeDraftCommands {
   "space:create": { req: import("./space.js").CreateSpacePage; res: import("./space.js").SpacePage };
   "space:save": { req: import("./space.js").SpacePage; res: import("./space.js").SpacePage };
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
+  /** Renames a page's file to match its title once editing the title is done; typing never renames files. */
+  "notes:settle": { req: { id: string }; res: import("./space.js").SpacePage };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "updates:state": { req: undefined; res: import("./updates.js").UpdateInstallState };
   "updates:download": { req: undefined; res: import("./updates.js").UpdateInstallState };

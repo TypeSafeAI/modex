@@ -557,6 +557,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Analytics after Streamer Mode, a dialog, or navigation hides it. The latest
   requested bounds win, and closing the window invalidates pending show requests.
 
+- **Notes hierarchy recovery.** Folder-title changes reserve names against their
+  children; restored folders stay separate from newer same-named folders while
+  retaining attachments. Interrupted restores use the same placement rules, and
+  migration resumes under already-published parents without overwriting them.
+  Migration also reserves each folder note’s name before placing its children.
+  Folder settlement records durable intent so interrupted directory and note
+  renames finish before a read derives the hierarchy.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
@@ -615,6 +623,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   refusal reply no longer shows as an assistant bubble, and the card now reads "out of usage
   credits" instead of "unknown". Empty fallback replies retain a Retry card, and Auto
   records the model that actually ran without learning a user override. Settings → General turns the fallback off; it is on by default.
+- **Notes are Markdown files** (first slice of notes in folders). Space pages now live under
+  `MODEX_HOME/notes/` as one Markdown file per page, in Personal › Notes; a page with child pages
+  is a folder holding a note of the same name. Ids, revisions, history, trash, comments and the
+  Pages tools behave as before. Edits, moves and new files made outside Modex (Finder, an editor,
+  Open Knowledge) show in Space and in the page's history as "Outside Modex". The first launch
+  moves `app/space.json` into the folder and never writes it again. A file is renamed to match its
+  title when the title loses focus. Workspaces, per-project notes and files come next.
+  [Notes folder](notes.md).
 
 ## In flight
 

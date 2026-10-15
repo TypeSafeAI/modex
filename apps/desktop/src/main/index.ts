@@ -638,6 +638,7 @@ handle("space:comment:delete", ({ pageId, id }) => store.space.deleteComment(pag
 handle("space:create", (input) => store.space.create(input));
 handle("space:save", (page) => store.space.save(page));
 handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
+handle("notes:settle", ({ id }) => store.space.settle(id));
 
 handle("state:get", () => {
   const state = store.snapshot();

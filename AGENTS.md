@@ -28,7 +28,9 @@ itself driving one of them.
   job require fresh merge proof and a verified recovery bundle before deleting local work.
   Do not bypass this with force removal, branch force-deletion, or manual directory deletion.
   `scripts/worktree.sh audit` reports eligibility; `schedule status` reports the local job.
-  Remote refs and recovery archives are never pruned automatically.
+  These tools never delete remote branches or recovery archives. GitHub deletes a PR's
+  branch itself when the PR merges (`delete_branch_on_merge`, on since 2026-10-15) and moves
+  PRs stacked on it to its base, so put follow-up work on a new branch.
 - Modex's own worktree threads (`⑂`) honour this convention: when a project ships
   `scripts/worktree.sh`, Modex calls `new modex-<thread id>` / `remove …` on it, so threads on
   this repo land in `.worktrees/` like any other session. Projects without the script get a

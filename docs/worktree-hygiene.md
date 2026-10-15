@@ -70,8 +70,10 @@ Each run fetches the GitHub default branch without pruning refs and reads PRs th
 
 Git removes the worktree without force. Another fresh check precedes local branch deletion,
 which compares the expected SHA. If that final check fails, the branch and archive remain.
-Remote branches are never deleted. Stale registrations, locks, stashes, and archives are
-never swept automatically.
+These tools never delete remote branches. GitHub deletes a PR's head branch when the PR
+merges (repository setting `delete_branch_on_merge`, on since 2026-10-15); merge proof reads
+the merged PR over REST, so it never needs that branch. Stale registrations, locks, stashes,
+and archives are never swept automatically.
 
 The generated-data allowlist covers root `node_modules/` and `node_modules/`, `dist/`,
 `test-results/`, and `playwright-report/` under the known app and core package directories.

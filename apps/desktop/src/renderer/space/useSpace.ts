@@ -56,6 +56,12 @@ export function useSpace(active = true) {
     return inFlight.current;
   }, []);
 
+  /** Once a title is done (it lost focus, or another page opened), the note's file takes its name. */
+  const settle = useCallback(async (id: string) => {
+    // Best effort: the title is already saved in the note, so a rename that fails loses nothing.
+    try { await flush(); await bridge.invoke("notes:settle", { id }); } catch { /* The file keeps its name until the next settle. */ }
+  }, [flush]);
+
   useEffect(() => {
     if (!loaded) return;
     return restartDrafts.register("pages", async () => {
@@ -116,5 +122,5 @@ export function useSpace(active = true) {
       await load();
     } finally { mutating.current = false; setBusy(false); }
   };
-  return { pages, loaded, error, saving, busy, edit, create, trash, flush, refresh: load, preserveDrafts, retry: () => loaded ? flush() : load() };
+  return { pages, loaded, error, saving, busy, edit, create, trash, flush, settle, refresh: load, preserveDrafts, retry: () => loaded ? flush() : load() };
 }
