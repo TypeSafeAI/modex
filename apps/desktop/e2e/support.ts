@@ -16,9 +16,20 @@ export const mockScript = path.join(appDir, "demo", "mock-script.json");
  * A throwaway MODEX_HOME with one git project and no threads, on the offline mock backend in Chat mode.
  * `settings` is merged over the seeded settings (e.g. approval rules).
  */
+/** Seeded homes and repos; removed when the Playwright worker exits. MODEX_KEEP_TEST_TMP=1 keeps them. */
+const seeded = new Set<string>();
+process.on("exit", () => {
+  if (process.env.MODEX_KEEP_TEST_TMP === "1") return;
+  for (const dir of seeded) {
+    try { fs.chmodSync(dir, 0o700); fs.rmSync(dir, { recursive: true, force: true }); } catch { /* Best effort. */ }
+  }
+});
+
 export function seedHome(settings: Record<string, unknown> = {}): { home: string; repo: string } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-home-"));
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-repo-"));
+  seeded.add(home);
+  seeded.add(repo);
   const env = { ...process.env, GIT_AUTHOR_NAME: "e2e", GIT_AUTHOR_EMAIL: "e2e@modex.local", GIT_COMMITTER_NAME: "e2e", GIT_COMMITTER_EMAIL: "e2e@modex.local" };
   fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({ name: "e2e-repo", private: true }, null, 2) + "\n");
   fs.writeFileSync(path.join(repo, "README.md"), "# e2e\n");
