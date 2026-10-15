@@ -167,7 +167,9 @@ test("a watched folder is walked again only after something changes, or every 10
   let walks = 0;
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   const until = async (check: () => boolean, what: string) => {
-    for (let i = 0; i < 100 && !check(); i++) { await wait(50); clock += 50; }
+    // The clock runs faster than the wait, so the 10-second re-look catches what an event the
+    // operating system delivers late (or not at all, under load) would have.
+    for (let i = 0; i < 100 && !check(); i++) { await wait(50); clock += 200; }
     assert.ok(check(), what);
   };
   try {

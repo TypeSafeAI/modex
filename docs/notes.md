@@ -121,6 +121,9 @@ The folder is yours: Finder, an editor or Open Knowledge can change it.
 - **A deleted file** goes to Trash after two looks at least a second apart, so a save that renames
   or a `git checkout` is not a deletion. Restoring it writes it back from its history.
 - **A copy** made in Finder gets its own id the next time Modex saves it; the original keeps its.
+- **A copied workspace or project folder** carries its original's marker. The folder that comes
+  first in name order (the original, since Finder names copies "… copy" or "… 2") keeps the id and
+  any Modex project link; the copy gets an id of its own and is linked to none.
 
 Notes larger than 2 MB, files that are not UTF-8, links, and anything inside a dot folder (`.git`,
 `.ok`, `.modex`) are not pages.
