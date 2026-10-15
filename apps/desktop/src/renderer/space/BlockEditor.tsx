@@ -5,7 +5,7 @@ import type { Block } from "@create-markdown/core";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
 import { BLOCK_COMMANDS, safeBlocks } from "./markdown";
-import { joinMarkdown, splitMarkdown, toggleChecklist, type EditorBlock } from "../../shared/space-markdown";
+import { joinMarkdown, splitMarkdown, stripChatCitations, toggleChecklist, type EditorBlock } from "../../shared/space-markdown";
 
 const commandCaret = (source: string) => source.startsWith("```") ? 4 : undefined;
 
@@ -314,7 +314,17 @@ function BlockInput({ value, label, inputRef, ...events }: {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => { if (ref.current) { ref.current.style.height = "0px"; ref.current.style.height = `${ref.current.scrollHeight}px`; } }, [value]);
   const heading = value.match(/^(#{1,3}) /)?.[1]?.length;
-  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} spellCheck={!value.startsWith("```")} />;
+  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} onPaste={pasteWithoutCitations} spellCheck={!value.startsWith("```")} />;
+}
+
+/** Chat citations paste as unreadable marker characters; insert the text without them. */
+function pasteWithoutCitations(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+  const text = event.clipboardData.getData("text/plain");
+  const clean = stripChatCitations(text);
+  if (clean === text) return;
+  event.preventDefault();
+  // Native insertion keeps undo and emits the normal change event.
+  document.execCommand("insertText", false, clean);
 }
 
 function BlockPreview({ source, label, onEdit, onChange }: { source: string; label: string; onEdit: () => void; onChange: (value: string) => void }) {

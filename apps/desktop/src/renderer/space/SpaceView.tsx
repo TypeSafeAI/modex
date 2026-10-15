@@ -2,7 +2,7 @@ import { SecretInput } from "../streamer";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { pageTitle } from "../../shared/space";
-import { importMarkdownPage } from "../../shared/space-markdown";
+import { importMarkdownPage, splitTitlePaste } from "../../shared/space-markdown";
 import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
@@ -228,7 +228,17 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
       <div className="space-page-body">
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>
         <article className="space-document" onMouseUp={() => { const selection = window.getSelection(); if (selection?.toString().trim()) setQuote(selection.toString().slice(0, 2000)); }} onSelect={event => { if (event.target instanceof HTMLTextAreaElement) setQuote(event.target.value.slice(event.target.selectionStart, event.target.selectionEnd).slice(0, 2000)); }}>
-          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} onBlur={() => void space.settle(page.id)} />
+          <SecretInput ref={titleInput} className="space-title" aria-label="Page title" placeholder="Untitled page" maxLength={200} value={page.title} onChange={e => space.edit(page.id, { title: e.target.value })} onBlur={() => void space.settle(page.id)} onPaste={event => {
+            // A text field flattens line breaks into spaces. Keep the first line as the
+            // title and move the rest to the top of the page, without chat citations.
+            const text = event.clipboardData.getData("text/plain");
+            if (!/[\r\n\uE200-\uE202]|^\s*#{1,6}[\t ]/.test(text)) return;
+            event.preventDefault();
+            const { title, body } = splitTitlePaste(text);
+            // Native insertion keeps undo, the selection and the length limit.
+            if (title) document.execCommand("insertText", false, title);
+            if (body) space.edit(page.id, { markdown: page.markdown.trim() ? `${body}\n\n${page.markdown}` : body });
+          }} />
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
             <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />

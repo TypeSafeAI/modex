@@ -316,3 +316,33 @@ test("Space continues numbered lists and renders URL images", async () => {
     await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
   } finally { await app.close(); }
 });
+
+test("pasting a chat report into the title splits off the body and drops citation markers", async () => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  const cite = "citeturn20search6turn5view0";
+  const paste = (field: ReturnType<Page["getByRole"]>, text: string) => field.evaluate((element: HTMLElement, value: string) => {
+    element.focus();
+    const data = new DataTransfer();
+    data.setData("text/plain", value);
+    element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+  try {
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: /^Blank page/ }).click();
+    const title = page.getByRole("textbox", { name: "Page title" });
+    await expect(title).toBeFocused();
+    await paste(title, `# Graph-First Plan\n\n## Executive summary\n\nA claim. ${cite}\n`);
+    await expect(title).toHaveValue("Graph-First Plan");
+    const saved = () => page.evaluate(() => window.modex.invoke("space:list", undefined).then(pages => pages.find(p => p.title === "Graph-First Plan")?.markdown));
+    await expect.poll(saved).toBe("## Executive summary\n\nA claim.");
+
+    await page.getByRole("button", { name: "Add a block", exact: true }).click();
+    const block = page.getByRole("textbox", { name: "Block 3", exact: true });
+    await block.focus();
+    await page.keyboard.press("ControlOrMeta+a");
+    await paste(block, `More context. ${cite}`);
+    await expect(block).toHaveValue("More context.");
+    await expect.poll(saved).toBe("## Executive summary\n\nA claim.\n\nMore context.");
+  } finally { await app.close(); }
+});
