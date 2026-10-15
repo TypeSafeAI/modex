@@ -1,7 +1,8 @@
 # Images and Plugins implementation ledger
 
 Implemented in the owned `images-plugins` worktree and reconciled with `origin/main`
-at `8035e164`, retaining Analytics, the Fable credit fallback and the Notes migration. This feature is unreleased.
+at `f52e033`, retaining Analytics, the Fable credit fallback, the Notes migration and the
+Notes workspace tree. This feature is unreleased.
 
 ## Delivered
 
@@ -34,7 +35,7 @@ releases the reversible hold without deleting owners. App restart remains strict
 ## Verification
 
 - Full `pnpm build`, desktop main/renderer typecheck and `pnpm test` passed on the
-  integrated implementation: 1,529 passed, 16 platform-specific skips, no failures.
+  integrated implementation: 1,534 passed, 16 platform-specific skips, no failures.
 - Focused feature/deletion, Analytics and Composer recovery Electron flows: 13 passed.
   Companion pairing and ordinary shutdown passed separately. New delayed/rejected image
   draft-save close regressions: 2 passed.
@@ -46,12 +47,17 @@ releases the reversible hold without deleting owners. App restart remains strict
 - Notes/image insertion and reference protection, Space resizing and updater recovery passed
   12 focused Electron checks. The updater test also asserts image prompt bytes after partial
   drain, vetoed Quit and final Quit (2 tests passed).
-- Final CI-parity E2E passed with Knowledge opt-in enabled: 306 desktop tests and
-  7 site tests, with zero failures.
+- Final CI-parity E2E passed with Knowledge opt-in enabled: 307 desktop tests and
+  7 site tests, with zero failures. The site suite used its supported port override after
+  another process occupied the default port.
 - Earlier local shutdown stalls did not reproduce in the fresh Companion/relaunch runs.
   A superseded full run was intentionally stopped after 95 passes to integrate review fixes.
   One final-unit attempt hit `kill EPERM` in unchanged Knowledge cleanup; its isolated
   11-test recheck and the subsequent complete unit rerun passed without code changes.
+- Notes workspace-tree integration passed independent review: page IDs, revision checks,
+  image references, navigation and capability gates remain compatible.
+- GitHub checks passed on `e898519` before the subsequent Notes workspace-tree merge;
+  required CI must pass again on the integrated head before landing.
 - Screenshots of the Images and Plugins surfaces were inspected during implementation.
 
 The Electron launch helper observes native paint plus visible, settled native/renderer

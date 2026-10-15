@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { CreateSpacePage, SpaceChangeContext, SpaceComment, SpacePage, SpacePageVersion } from "../../shared/space.js";
+import { canContain, type NotesFile, type NotesFolder, type NotesNode, type NotesNodeKind, type NotesProject, type NotesTree, type NotesWorkspace } from "../../shared/notes.js";
 import { nameKey, noteStem, uniqueName } from "../../shared/notes-names.js";
 import { formatNote, parseNote, type ParsedNote } from "./notes-frontmatter.js";
 import { fsyncDir, moveNoClobber, writeFileDurably } from "./durable-file.js";
@@ -29,7 +30,13 @@ interface IndexEntry {
   /** Where a note deleted outside Modex lived, so a restore writes it back there. */
   original?: string;
 }
-interface NotesIndex { version: 1; defaultProject: string; notes: Record<string, IndexEntry> }
+interface Placed { rel: string; ino?: number; /** A folder's name as typed, when its folder name could not carry it. */ title?: string }
+interface NotesIndex {
+  version: 1; defaultProject: string; notes: Record<string, IndexEntry>;
+  /** Folders without a marker of their own, and plain files: where each id was last seen. */
+  containers?: Record<string, Placed>; files?: Record<string, Placed>;
+}
+interface Marker { version: 1; id: string; title: string; order: number; default?: boolean; modexProjectId?: string | null }
 interface HistoryFile { version: 1; versions: SpacePageVersion[] }
 interface TrashManifest { version: 1; id: string; trashedAt: string; items: { id: string; original: string; rel: string }[] }
 export interface MigrationReceipt {
@@ -113,11 +120,19 @@ export class NotesStore implements SpacePagesStore {
   create(input: CreateSpacePage, change?: SpaceChangeContext): SpacePage {
     const state = this.load();
     const now = this.iso();
-    const page: SpacePage = { id: randomUUID(), parentId: input.parentId ?? null, title: input.title ?? "", markdown: input.markdown ?? "", favorite: false, createdAt: now, updatedAt: now, trashedAt: null, revision: 1 };
+    let dir: string | null = null;
+    let parentId = input.parentId ?? null;
+    if (input.containerId !== undefined) {
+      const container = this.layout(state).byId.get(input.containerId);
+      if (!container || (container.kind !== "project" && container.kind !== "folder")) throw new Error("Choose a project or folder for the new page.");
+      dir = container.rel;
+      parentId = container.kind === "folder" ? container.noteId : null;
+    }
+    const page: SpacePage = { id: randomUUID(), parentId, title: input.title ?? "", markdown: input.markdown ?? "", favorite: false, createdAt: now, updatedAt: now, trashedAt: null, revision: 1 };
     validate(page);
     this.validateParent(page, state.pages);
     const version = this.version(page, change, "Created page");
-    const dir = this.dirFor(state, page.parentId, state.index.defaultProject);
+    dir ??= this.dirFor(state, page.parentId, state.index.defaultProject);
     const rel = `${dir}/${uniqueName(noteStem(page.title), ".md", this.names(dir))}`;
     this.writeHistory(page.id, [version]);
     this.writeNoteAt(state, page, rel);
@@ -230,6 +245,261 @@ export class NotesStore implements SpacePagesStore {
     }
     this.writeIndex(state.index);
     return page;
+  }
+
+  // ── The tree: workspaces, projects, folders and files ────────────────────────────────────
+
+  /** Everything in the folder, for the sidebar. */
+  tree(): NotesTree {
+    const state = this.load();
+    const { nodes, truncated } = this.layout(state);
+    const version = sha256(JSON.stringify([nodes.map(n => [n.id, n.rel, n.name]), [...state.pages.values()].map(p => [p.id, p.revision, p.trashedAt])])).slice(0, 16);
+    return { version, nodes, truncated };
+  }
+
+  createWorkspace(name: string): NotesWorkspace {
+    const state = this.load();
+    const stem = this.containerName(name);
+    const dir = uniqueName(stem, "", this.names(""));
+    const order = Math.max(-1, ...this.layout(state).nodes.filter(n => n.kind === "workspace").map(n => (n as NotesWorkspace).order)) + 1;
+    fs.mkdirSync(this.abs(dir));
+    this.writeMarker(dir, "workspace", { version: 1, id: randomUUID(), title: name.trim(), order });
+    return this.layout(this.load()).byId.get(this.readMarker(dir, "workspace")!.id) as NotesWorkspace;
+  }
+
+  createProject(workspaceId: string, name: string, modexProjectId: string | null = null): NotesProject {
+    const state = this.load();
+    const workspace = this.layout(state).byId.get(workspaceId);
+    if (!workspace || workspace.kind !== "workspace") throw new Error("Choose a workspace for the project.");
+    const dir = `${workspace.rel}/${uniqueName(this.containerName(name), "", this.names(workspace.rel))}`;
+    const order = Math.max(-1, ...this.layout(state).nodes.filter(n => n.kind === "project" && n.parentId === workspaceId).map(n => (n as NotesProject).order)) + 1;
+    fs.mkdirSync(this.abs(dir));
+    this.writeMarker(dir, "project", { version: 1, id: randomUUID(), title: name.trim(), order, modexProjectId });
+    return this.layout(this.load()).byId.get(this.readMarker(dir, "project")!.id) as NotesProject;
+  }
+
+  createFolder(parentId: string, name: string): NotesFolder {
+    const state = this.load();
+    const layout = this.layout(state);
+    const parent = layout.byId.get(parentId);
+    if (!parent || !canContain(parent.kind, "folder")) throw new Error("Choose a project or folder for the new folder.");
+    const dir = `${parent.rel}/${uniqueName(this.containerName(name), "", this.names(parent.rel))}`;
+    fs.mkdirSync(this.abs(dir));
+    const id = randomUUID();
+    state.index.containers = { ...state.index.containers, [id]: { rel: dir, ino: fs.statSync(this.abs(dir)).ino, title: name.trim() } };
+    this.writeIndex(state.index);
+    return this.layout(this.load()).byId.get(id) as NotesFolder;
+  }
+
+  /**
+   * Renames a workspace, project, folder or file. A folder with a folder note is renamed through its
+   * page, so the two stay one name; a page itself is renamed by its title.
+   */
+  rename(id: string, name: string): NotesNode {
+    const state = this.load();
+    const node = this.layout(state).byId.get(id);
+    if (state.pages.has(id) || node?.kind === "note") throw new Error("Rename a page by editing its title.");
+    if (!node) throw new Error("This item is no longer in your notes.");
+    if (typeof name !== "string" || !name.trim() || name.length > 200) throw new Error("A name needs 1 to 200 characters.");
+    if (node.kind === "folder" && node.noteId) {
+      const page = this.find(state, node.noteId);
+      this.settle(this.save({ ...page, title: name.trim() }, { actor: "human", summary: "Renamed folder" }).id);
+      return this.layout(this.load()).byId.get(id)!;
+    }
+    const parent = path.posix.dirname(node.rel) === "." ? "" : path.posix.dirname(node.rel);
+    const ext = node.kind === "file" ? path.posix.extname(node.rel) : "";
+    const stem = node.kind === "file" ? noteStem(name.trim().replace(new RegExp(`${ext.replace(".", "\\.")}$`, "i"), "")) : this.containerName(name);
+    const own = path.posix.basename(node.rel);
+    const next = `${parent ? `${parent}/` : ""}${uniqueName(stem, ext, this.names(parent).filter(n => nameKey(n) !== nameKey(own)))}`;
+    if (next !== node.rel) {
+      if (nameKey(next) === nameKey(node.rel)) fs.renameSync(this.abs(node.rel), this.abs(next));
+      else moveNoClobber(this.abs(node.rel), this.abs(next));
+    }
+    if (node.kind === "workspace" || node.kind === "project") {
+      const marker = this.readMarker(next, node.kind);
+      if (marker) this.writeMarker(next, node.kind, { ...marker, title: name.trim() });
+    }
+    this.place(state.index, node, next);
+    if (node.kind === "folder") state.index.containers = { ...state.index.containers, [id]: { ...state.index.containers![id]!, title: name.trim() } };
+    this.writeIndex(state.index);
+    return this.layout(this.load()).byId.get(id)!;
+  }
+
+  /**
+   * Moves notes, folders and files into a project or folder, or projects into a workspace. A page
+   * that moves gets a version first, so the next read never mistakes it for a move made outside Modex.
+   */
+  moveNodes(ids: string[], targetId: string): void {
+    const state = this.load();
+    const layout = this.layout(state);
+    const target = layout.byId.get(targetId);
+    if (!target) throw new Error("Choose where to move these.");
+    for (const id of ids) {
+      const node = layout.byId.get(id);
+      if (!node) throw new Error("This item is no longer in your notes.");
+      if (!canContain(target.kind, node.kind)) throw new Error(`A ${node.kind} cannot go into a ${target.kind}.`);
+      if (target.rel === node.rel || target.rel.startsWith(`${node.rel}/`)) throw new Error("A folder cannot be moved inside itself.");
+    }
+    for (const id of ids) {
+      const now = this.layout(this.load());
+      const node = now.byId.get(id)!;
+      const into = now.byId.get(targetId)!;
+      const fresh = this.load();
+      if (node.kind === "note") {
+        const page = this.find(fresh, node.id);
+        if (page.trashedAt) throw new Error("Restore this page before moving it.");
+        const parentId = into.kind === "folder" ? into.noteId : null;
+        const rel = `${into.rel}/${uniqueName(stemOf(node.rel), ".md", this.names(into.rel))}`;
+        const moved: SpacePage = { ...page, parentId, updatedAt: this.iso(), revision: page.revision + 1 };
+        this.writeHistory(page.id, [...(this.readHistory(page.id) ?? []), { page: moved, actor: "human", summary: "Moved page" }]);
+        this.renameNote(fresh, moved, node.rel, rel);
+        this.writeIndex(fresh.index);
+        continue;
+      }
+      const ext = node.kind === "file" ? path.posix.extname(node.rel) : "";
+      const base = path.posix.basename(node.rel);
+      const name = node.kind === "file" ? uniqueName(base.slice(0, base.length - ext.length), ext, this.names(into.rel)) : uniqueName(base, "", this.names(into.rel));
+      const rel = `${into.rel}/${name}`;
+      if (node.kind === "folder" && node.noteId) {
+        // The folder note goes with its folder; its parent becomes whatever the new place's folder note is.
+        const page = this.find(fresh, node.noteId);
+        const moved: SpacePage = { ...page, parentId: into.kind === "folder" ? into.noteId : null, updatedAt: this.iso(), revision: page.revision + 1 };
+        this.writeHistory(page.id, [...(this.readHistory(page.id) ?? []), { page: moved, actor: "human", summary: "Moved folder" }]);
+        moveNoClobber(this.abs(node.rel), this.abs(rel));
+        this.rebase(fresh, node.rel, rel);
+        if (name !== base) this.renameNote(fresh, moved, `${rel}/${base}.md`, `${rel}/${name}.md`);
+        else fresh.index.notes[page.id] = { ...fresh.index.notes[page.id]!, rel: `${rel}/${base}.md` };
+      } else {
+        moveNoClobber(this.abs(node.rel), this.abs(rel));
+        this.rebase(fresh, node.rel, rel);
+      }
+      this.place(fresh.index, node, rel);
+      this.writeIndex(fresh.index);
+    }
+  }
+
+  /** Where a node is on disk, for Reveal in Finder and Open. */
+  pathOf(id: string): string {
+    const state = this.load();
+    const node = this.layout(state).byId.get(id);
+    const live = state.live.get(id);
+    if (node) return this.abs(node.rel);
+    if (live) return this.abs(live.rel);
+    throw new Error("This item is no longer in your notes.");
+  }
+
+  /** A workspace's or project's own folder, never anything above it. */
+  deleteEmpty(id: string): void {
+    const node = this.layout(this.load()).byId.get(id);
+    if (!node || (node.kind !== "workspace" && node.kind !== "project" && node.kind !== "folder")) throw new Error("Only an empty workspace, project or folder can be deleted.");
+    if (node.kind === "workspace" && (node as NotesWorkspace).isDefault) throw new Error("The default workspace stays; rename it instead.");
+    const entries = fs.readdirSync(this.abs(node.rel)).filter(n => !n.startsWith(".modex-") && n !== ".DS_Store");
+    if (entries.length) throw new Error("Move or trash what is inside first.");
+    fs.rmSync(this.abs(node.rel), { recursive: true });
+  }
+
+  /** The nodes in the folder, and each by id. Ids for folders and files without one are recorded as they are found. */
+  private layout(state: State): { nodes: NotesNode[]; byId: Map<string, NotesNode>; truncated: boolean } {
+    const index = state.index;
+    const containers = { ...index.containers };
+    const files = { ...index.files };
+    let changed = false;
+    const nodes: NotesNode[] = [];
+    const dirIds = new Map<string, string>();
+    const noteRels = new Map<string, string>();
+    for (const [id, file] of state.live) noteRels.set(file.rel, id);
+    const folderNotes = new Map<string, string>();
+    for (const [id, file] of state.live) if (this.isFolderNote(file.rel)) folderNotes.set(path.posix.dirname(file.rel), id);
+    const seen = new Set<string>();
+    let truncated = false;
+    const claim = (map: Record<string, Placed>, rel: string, ino: number): string => {
+      const known = Object.entries(map).find(([, p]) => p.rel === rel)?.[0]
+        ?? Object.entries(map).find(([oid, p]) => p.ino === ino && !seen.has(oid) && !fs.existsSync(this.abs(p.rel)))?.[0];
+      const id = known ?? randomUUID();
+      if (!known || map[id]!.rel !== rel || map[id]!.ino !== ino) { map[id] = { ...map[id], rel, ino }; changed = true; }
+      seen.add(id);
+      return id;
+    };
+    const walk = (dirRel: string, level: number, parentId: string | null) => {
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dirRel ? this.abs(dirRel) : this.root, { withFileTypes: true }); } catch { return; }
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        if (nodes.length >= 10_000) { truncated = true; return; }
+        if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
+        const rel = dirRel ? `${dirRel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          const ino = fs.statSync(this.abs(rel)).ino;
+          const kind: NotesNodeKind = level === 0 ? "workspace" : level === 1 ? "project" : "folder";
+          if (kind === "workspace" || kind === "project") {
+            const marker = this.readMarker(rel, kind);
+            const id = marker?.id ?? claim(containers, rel, ino);
+            const order = marker?.order ?? Number.MAX_SAFE_INTEGER;
+            const name = marker?.title || entry.name;
+            nodes.push(kind === "workspace"
+              ? { id, kind, parentId: null, name, rel, order, isDefault: Boolean(marker?.default) }
+              : { id, kind, parentId: parentId!, name, rel, order, isDefault: Boolean(marker?.default), modexProjectId: marker?.modexProjectId ?? null });
+            dirIds.set(rel, id);
+            walk(rel, level + 1, id);
+          } else {
+            const id = claim(containers, rel, ino);
+            const noteId = folderNotes.get(rel) ?? null;
+            const page = noteId ? state.pages.get(noteId) : undefined;
+            const typed = containers[id]?.title;
+            // A typed name stands while the folder still has the name made from it; a rename in Finder wins.
+            const name = page?.title.trim() || (typed && noteStem(typed) === entry.name ? typed : entry.name);
+            nodes.push({ id, kind: "folder", parentId: parentId!, name, rel, noteId });
+            dirIds.set(rel, id);
+            walk(rel, level + 1, id);
+          }
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const noteId = noteRels.get(rel);
+        if (noteId) {
+          if (folderNotes.get(dirRel) === noteId) continue;
+          nodes.push({ id: noteId, kind: "note", parentId, name: state.pages.get(noteId)?.title.trim() || stemOf(rel), rel });
+          continue;
+        }
+        const stat = fs.statSync(this.abs(rel));
+        const id = claim(files, rel, stat.ino);
+        const ext = path.posix.extname(entry.name).toLowerCase();
+        const preview = /^\.(png|jpe?g|gif|webp|svg|avif)$/.test(ext) ? "image" : /^\.(txt|md|json|csv|ya?ml|log|ts|js|tsx|jsx|css|html)$/.test(ext) && stat.size <= 1_048_576 ? "text" : null;
+        nodes.push({ id, kind: "file", parentId, name: entry.name, rel, size: stat.size, preview } satisfies NotesFile);
+      }
+    };
+    walk("", 0, null);
+    // Ids for folders and files that are gone stay out of the index.
+    for (const id of Object.keys(containers)) if (!seen.has(id)) { delete containers[id]; changed = true; }
+    for (const id of Object.keys(files)) if (!seen.has(id)) { delete files[id]; changed = true; }
+    if (changed) { index.containers = containers; index.files = files; this.writeIndex(index); }
+    nodes.sort((a, b) => (a.kind === "workspace" && b.kind === "workspace") || (a.kind === "project" && b.kind === "project") ? ((a as NotesWorkspace).order - (b as NotesWorkspace).order) || a.name.localeCompare(b.name) : 0);
+    return { nodes, byId: new Map(nodes.map(n => [n.id, n])), truncated };
+  }
+
+  /** A folder name for a workspace, project or folder title. */
+  private containerName(name: string): string {
+    if (typeof name !== "string" || !name.trim() || name.length > 200) throw new Error("A name needs 1 to 200 characters.");
+    return noteStem(name);
+  }
+
+  private readMarker(dirRel: string, kind: "workspace" | "project"): Marker | null {
+    try {
+      const marker = JSON.parse(fs.readFileSync(this.abs(`${dirRel}/.modex-${kind}.json`), "utf8")) as Marker;
+      return marker?.version === 1 && typeof marker.id === "string" && ID.test(marker.id) ? marker : null;
+    } catch { return null; }
+  }
+
+  private writeMarker(dirRel: string, kind: "workspace" | "project", marker: Marker): void {
+    writeFileDurably(this.abs(`${dirRel}/.modex-${kind}.json`), JSON.stringify(marker));
+  }
+
+  /** Records where a moved or renamed folder or file now is. */
+  private place(index: NotesIndex, node: NotesNode, rel: string): void {
+    if (node.kind === "file") index.files = { ...index.files, [node.id]: { rel, ino: fs.statSync(this.abs(rel)).ino } };
+    else if (node.kind === "folder" || !this.readMarker(rel, node.kind as "workspace" | "project")) index.containers = { ...index.containers, [node.id]: { ...index.containers?.[node.id], rel, ino: fs.statSync(this.abs(rel)).ino } };
+    // Notes inside a moved folder are found by their ids on the next read.
+    for (const [id, entry] of Object.entries(index.notes)) if (entry.rel?.startsWith(`${node.rel}/`)) index.notes[id] = { ...entry, rel: `${rel}${entry.rel.slice(node.rel.length)}` };
   }
 
   // ── Reading and reconciling ──────────────────────────────────────────────────────────────

@@ -14,6 +14,8 @@ import { BlockEditor } from "./BlockEditor";
 import { PageComments, type CommentDraft } from "./PageComments";
 import { BLOCK_COMMANDS } from "./markdown";
 import { useSpace } from "./useSpace";
+import { useNotesTree } from "./useNotesTree";
+import { NotesTreeView, type NotesTreeActions } from "./NotesTree";
 import { restartDrafts } from "../restart-drafts";
 import "./space.css";
 
@@ -30,6 +32,8 @@ const TEMPLATES = [
 
 export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onOpenImages?: () => void; onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
   const space = useSpace(active);
+  const notes = useNotesTree(active);
+  const [newWorkspace, setNewWorkspace] = useState(0);
   const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("pages");
@@ -108,11 +112,12 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
   };
   const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
   useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
-  const create = async (title = "", markdown = "", parentId: string | null = null) => {
+  const create = async (title = "", markdown = "", parentId: string | null = null, containerId?: string) => {
     if (creating) return;
     setCreating(true);
     await run(async () => {
-      const result = await space.create({ title, markdown, parentId });
+      const result = await space.create({ title, markdown, parentId, ...(containerId ? { containerId } : {}) });
+      void notes.refresh();
       focusCreatedTitle.current = result.id;
       setView("pages"); setQuery(""); open(result.id);
     });
@@ -130,6 +135,19 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 3500); return () => clearTimeout(timer); }, [notice]);
 
   const selectView = (value: View) => { setView(value); setQuery(""); setSelected(null); };
+  const tree = (action: () => Promise<unknown>) => run(() => notes.act(action));
+  const treeActions: NotesTreeActions = {
+    openPage: id => { setView("pages"); setQuery(""); open(id); },
+    createPage: containerId => create("", "", null, containerId),
+    createFolder: (parentId, name) => tree(() => bridge.invoke("notes:folder:create", { parentId, name })),
+    createProject: (workspaceId, name) => tree(() => bridge.invoke("notes:project:create", { workspaceId, name })),
+    createWorkspace: name => tree(() => bridge.invoke("notes:workspace:create", { name })),
+    rename: (id, name) => tree(async () => { await space.flush(); await bridge.invoke("notes:rename", { id, name }); await space.refresh(); }),
+    move: (id, targetId) => tree(async () => { await space.flush(); await bridge.invoke("notes:move", { ids: [id], targetId }); await space.refresh(); }),
+    remove: id => tree(() => bridge.invoke("notes:delete", { id })),
+    reveal: id => run(() => bridge.invoke("notes:reveal", { id })),
+    openFile: id => run(() => bridge.invoke("notes:open", { id })),
+  };
   const exportText = (p: SpacePage) => `# ${pageTitle(p)}\n\n${p.markdown}\n`;
   const download = (p: SpacePage) => void run(async () => {
     await space.flush();
@@ -155,7 +173,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
 
   return <div className="space-surface" data-testid="space" hidden={!active} inert={space.busy} aria-busy={space.busy}>
     {sidebarOpen && <aside className="space-sidebar" aria-label="Space pages">
-      <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}><Icon name="file" />Import Markdown</MenuItem></Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
+      <div className="space-sidebar-title"><strong>Space</strong><span className="spacer" /><span className="space-sidebar-options"><IconButton ref={optionsTrigger} icon="more" label="Space options" size="md" aria-expanded={optionsOpen} aria-haspopup="menu" onClick={() => setOptionsOpen(value => !value)} /><Menu open={optionsOpen} onClose={() => setOptionsOpen(false)} anchorRef={optionsTrigger} label="Space options" placement="bottom-end"><MenuItem onClick={() => { selectView("favorites"); setOptionsOpen(false); }}>Favorites</MenuItem><MenuItem onClick={() => { selectView("knowledge"); setOptionsOpen(false); }}>Knowledge base</MenuItem><MenuItem onClick={() => { setMaintenance(value => !value); setOptionsOpen(false); }}>Agent notes</MenuItem><MenuItem onClick={() => { importInput.current?.click(); setOptionsOpen(false); }}><Icon name="file" />Import Markdown</MenuItem>{notes.tree && <MenuItem onClick={() => { setView("pages"); setQuery(""); setNewWorkspace(n => n + 1); setOptionsOpen(false); }}><Icon name="grid" />New workspace</MenuItem>}</Menu></span><IconButton icon="search" label="Search pages" size="md" aria-pressed={searching} onClick={() => { setSearching(value => !value); setQuery(""); }} /></div>
       <button className="space-new-page" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="review" />New page</button>
       {searching && <label className="space-search"><Icon name="search" /><SecretInput autoFocus type="search" aria-label="Search pages" placeholder="Search pages" value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} /></label>}
       <nav className="space-views" aria-label="Page collections">
@@ -165,8 +183,8 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenC
         <button aria-current={!page && view === "images" ? "page" : undefined} onClick={() => onOpenImages ? onOpenImages() : selectView("images")}><Icon name="image" />Images</button>
       </nav>
       <div className="space-tree">
-        <div className="space-tree-label">{query ? "Search results" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : "Recents"}</div>
-        {(view === "pages" || view === "all") && !query ? <PageTree pages={live} parentId={null} selected={selected} onSelect={open} /> : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
+        <div className="space-tree-label">{query ? "Search results" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : notes.tree ? "Workspaces" : "Recents"}</div>
+        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
         {space.loaded && !visible.length && <p className="space-tree-empty">{query ? "No matching pages" : view === "favorites" ? "Star a page to keep it close." : view === "trash" ? "Nothing in the trash." : "Your next idea starts here."}</p>}
         <div className="space-tree-label space-collections-label">Spaces</div>
         <button className="space-knowledge-link space-tree-page" aria-label="Knowledge base" aria-current={view === "knowledge" ? "page" : undefined} onClick={() => selectView("knowledge")}><Icon name="files" /><span>Knowledge base</span></button>
