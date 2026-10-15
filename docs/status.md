@@ -548,6 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Analytics visibility during loading.** A delayed dashboard load cannot reopen
+  Analytics after Streamer Mode, a dialog, or navigation hides it. The latest
+  requested bounds win, and closing the window invalidates pending show requests.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact

@@ -16,6 +16,7 @@ export class WorkspaceAnalytics {
   private browser: WorkspaceBrowser | null = null;
   private loaded = false;
   private disposed = false;
+  private visibilityRequest = 0;
 
   constructor(private window: BrowserWindow, private root: string, private ledger: Pick<UsageLedger, "list">) {}
 
@@ -32,9 +33,12 @@ export class WorkspaceAnalytics {
 
   /** Places the dashboard over `bounds`, or hides it when there are none. */
   async show(bounds?: BrowserBounds): Promise<{ error?: string } | null> {
+    const request = ++this.visibilityRequest;
     if (!bounds) { this.browser?.show(null); return null; }
     const browser = this.ensure();
     if (!this.loaded) { await browser.command(VIEW, "navigate", `${ANALYTICS_ORIGIN}/index.html`); this.loaded = true; }
+    // Navigation can outlive a hide, resize, or disposal; only the latest request may show.
+    if (this.disposed || request !== this.visibilityRequest) return null;
     browser.show(VIEW, bounds);
     const state = await browser.command(VIEW, "state");
     return state?.error ? { error: state.error } : null;
@@ -42,6 +46,7 @@ export class WorkspaceAnalytics {
 
   dispose(): void {
     this.disposed = true;
+    this.visibilityRequest++;
     if (!this.browser) return;
     this.browser.dispose();
     this.browser = null;
