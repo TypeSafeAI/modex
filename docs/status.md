@@ -548,6 +548,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Carriage-return title pastes.** Space accepts CR-only and mixed line endings
+  when splitting pasted titles from their body, avoiding a lost paste and parser
+  error while preserving the body text’s existing line endings.
+
 - **Pasting a chat report into Space.** Pasting several lines into a page title keeps the
   first line, without its heading marker, as the title and moves the rest to the top of the
   page. The title field used to flatten the lines into one and cut it at 200 characters.
