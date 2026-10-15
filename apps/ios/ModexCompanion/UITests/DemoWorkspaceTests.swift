@@ -350,10 +350,14 @@ final class DemoWorkspaceTests: XCTestCase {
         let toggle = app.buttons["toggle-archived"]
         XCTAssertFalse(toggle.exists, "Nothing is archived in a fresh demo.")
         if !scroll.isReadyToTap { app.swipeUp() }
-        guard scroll.waitUntilReady() else { return }
-        scroll.press(forDuration: 1.0)
         let archive = app.buttons["Archive"]
-        XCTAssertTrue(archive.waitForExistence(timeout: UITestBudget.seconds(10)), "Holding a thread offers Archive.")
+        var presses = 0
+        // The first attempt arrives as a tap on purpose, as a slow simulator delivers it, so the recovery runs every time.
+        XCTAssertTrue(pressForMenu(scroll, item: archive, in: app) { row, duration in
+            presses += 1
+            if presses == 1 { row.tap() } else { row.press(forDuration: duration) }
+        }, "Holding a thread offers Archive.")
+        XCTAssertGreaterThan(presses, 1)
         archive.tap()
         XCTAssertTrue(scroll.waitForNonExistence(timeout: UITestBudget.seconds(10)), "Archived threads are hidden by default.")
         XCTAssertTrue(toggle.waitForExistence(timeout: UITestBudget.seconds(10)))
@@ -410,6 +414,20 @@ final class DemoWorkspaceTests: XCTestCase {
                 initiated = true
                 if let tap { tap(thread) } else { thread.tap() }
             })
+    }
+
+    /// Long-presses `row` until its context menu shows `item`. On a loaded simulator the press can arrive as a
+    /// tap, and the row opens its thread instead: CI run 38677984502 failed with the transcript on screen and no
+    /// menu. Going back and pressing longer recovers; the menu itself is still required.
+    private func pressForMenu(_ row: XCUIElement, item: XCUIElement, in app: XCUIApplication,
+                              press: ((XCUIElement, TimeInterval) -> Void)? = nil) -> Bool {
+        for duration in [1.0, 2.0, 3.0] {
+            guard row.waitUntilReady(timeout: UITestBudget.seconds(10)) else { return false }
+            if let press { press(row, duration) } else { row.press(forDuration: duration) }
+            if item.waitForExistence(timeout: UITestBudget.seconds(5)) { return true }
+            if app.buttons["Back to threads"].exists, !backToDemoThreads(app) { return false }
+        }
+        return false
     }
 
     private func backToDemoThreads(_ app: XCUIApplication, timeout: TimeInterval = UITestBudget.seconds(30),
