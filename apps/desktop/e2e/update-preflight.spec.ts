@@ -2,6 +2,7 @@ import { test, expect, type ElectronApplication } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { launch, seedHome, tid } from "./support";
+import { blockNoteWrites, savedNotes, unblockNoteWrites } from "./notes-support";
 
 // Exercise the production preload and renderer barrier. No native update is staged.
 function prepare(app: ElectronApplication, id: string) {
@@ -49,7 +50,6 @@ test("open Settings and failed Space saves refuse preparation without discarding
   const seeded = seedHome(); const home = fs.realpathSync(seeded.home), repo = seeded.repo;
   const { app, page } = await launch(home);
   console.log(JSON.stringify({ fixtureHome: home, fixtureRepo: repo, electronPid: app.process().pid }));
-  const file = path.join(home, "app", "space.json");
   try {
     await tid(page, "open-settings").click();
     expect((await prepare(app, "settings")).error).toMatch(/dialog/i);
@@ -60,20 +60,20 @@ test("open Settings and failed Space saves refuse preparation without discarding
     await page.getByRole("button", { name: "Space", exact: true }).click();
     await page.getByRole("button", { name: "New page", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Page title" })).toBeVisible();
-    fs.renameSync(file, `${file}.backup`); fs.mkdirSync(file);
+    blockNoteWrites(home);
     await page.getByRole("textbox", { name: "Page title" }).fill("Unsaved Space title");
     await expect(page.getByLabel("Save status")).toHaveText("Not saved");
     expect((await prepare(app, "space")).error).toBeTruthy();
     await release(app, "space");
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("Unsaved Space title");
-    fs.rmdirSync(file); fs.renameSync(`${file}.backup`, file);
+    unblockNoteWrites(home);
     const ready = await prepare(app, "space-retry");
     expect(ready.error).toBeUndefined();
-    expect(JSON.parse(fs.readFileSync(file, "utf8")).pages[0].title).toBe("Unsaved Space title");
+    expect(savedNotes(home)[0]?.title).toBe("Unsaved Space title");
     await release(app, "space-retry");
   } finally {
     for (const id of ["settings", "space", "space-retry"]) await release(app, id);
-    if (fs.existsSync(`${file}.backup`)) { fs.rmSync(file, { recursive: true, force: true }); fs.renameSync(`${file}.backup`, file); }
+    try { unblockNoteWrites(home); } catch { /* Not blocked. */ }
     await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -98,9 +98,9 @@ test("a Markdown import finishes after a refused restart releases editing", asyn
     await expect.poll(() => page.evaluate(() => typeof (window as unknown as { finishImport?: unknown }).finishImport)).toBe("function");
     expect((await prepare(app, "import")).error).toMatch(/Space action/);
     await page.evaluate(() => (window as unknown as { finishImport: () => void }).finishImport());
-    expect(fs.existsSync(path.join(home, "app", "space.json"))).toBe(false);
+    expect(savedNotes(home)).toEqual([]);
     await release(app, "import");
     await expect(page.getByRole("textbox", { name: "Page title" })).toHaveValue("Preserved import");
-    expect(JSON.parse(fs.readFileSync(path.join(home, "app", "space.json"), "utf8")).pages[0].markdown).toContain("Keep this text.");
+    expect(savedNotes(home)[0]?.markdown).toContain("Keep this text.");
   } finally { await release(app, "import"); await app.close(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); }
 });
