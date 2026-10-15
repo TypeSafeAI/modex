@@ -6,7 +6,7 @@ import { canContain, type NotesFile, type NotesFolder, type NotesNode, type Note
 import { nameKey, noteStem, uniqueName } from "../../shared/notes-names.js";
 import { formatNote, parseNote, type ParsedNote } from "./notes-frontmatter.js";
 import { fsyncDir, moveNoClobber, writeFileDurably } from "./durable-file.js";
-import { planMigration } from "./notes-migration.js";
+import { planMigration, type PlannedNote } from "./notes-migration.js";
 import { readSpaceDocument, validate, validateChange, validateComment, type SpaceDocument, type SpacePagesStore } from "./space-store.js";
 
 const ID = /^[a-z0-9-]{1,64}$/i;
@@ -229,12 +229,16 @@ export class NotesStore implements SpacePagesStore {
     const dir = path.posix.dirname(live.rel);
     if (this.isFolderNote(live.rel)) {
       const parent = path.posix.dirname(dir);
-      const name = nameKey(path.posix.basename(dir)) === nameKey(stem) ? stem : uniqueName(stem, "", this.names(parent).filter(n => nameKey(n) !== nameKey(path.posix.basename(dir))));
+      // The folder name also becomes its note's basename: reserve against both siblings and children.
+      const name = uniqueName(stem, "", [
+        ...this.names(parent).filter(n => nameKey(n) !== nameKey(path.posix.basename(dir))),
+        ...this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))),
+      ]);
       const target = `${parent}/${name}`;
-      if (target !== dir) fs.renameSync(this.abs(dir), this.abs(target));
-      this.rebase(state, dir, target);
-      const from = `${target}/${path.posix.basename(live.rel)}`;
-      this.renameNote(state, page, from, `${target}/${name}.md`);
+      // Publish intent before either rename; readers finish both before deriving parent IDs.
+      this.writeJson(path.join(this.meta, "settlement.json"), { version: 1, from: dir, to: target, note: path.posix.basename(live.rel) });
+      this.finishSettlement();
+      return this.find(this.load(), id);
     } else {
       const name = uniqueName(stem, ".md", this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))));
       this.renameNote(state, page, live.rel, `${dir}/${name}`);
@@ -502,11 +506,70 @@ export class NotesStore implements SpacePagesStore {
 
   private load(): State {
     this.open();
+    this.finishSettlement();
     let state = this.refresh();
     // Completing a move a crash interrupted changes the tree; read it once more.
     if (state === null) state = this.refresh();
     if (state === null) throw preserved(new Error("Notes kept changing while Modex read them."));
     return state;
+  }
+
+  /** Replays the two-step folder/note rename without ever replacing another file. */
+  private finishSettlement(): void {
+    const journal = path.join(this.meta, "settlement.json");
+    let intent: { version: number; from: string; to: string; note: string };
+    try { intent = JSON.parse(fs.readFileSync(journal, "utf8")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw preserved(error);
+    }
+    const safe = (rel: unknown): rel is string => typeof rel === "string" && rel.split("/").length >= 3 &&
+      rel.split("/").every(part => part !== "" && part !== "." && part !== ".." && !part.includes("\\") && part !== ".modex");
+    if (intent?.version !== 1 || !safe(intent.from) || !safe(intent.to) ||
+        path.posix.dirname(intent.from) !== path.posix.dirname(intent.to) ||
+        typeof intent.note !== "string" || !/^[^/\\]+\.md$/i.test(intent.note) ||
+        nameKey(stemOf(intent.note)) !== nameKey(path.posix.basename(intent.from))) throw preserved(new Error("Invalid folder rename intent."));
+    const stat = (rel: string): fs.Stats | null => {
+      // Never follow a link when replaying paths read from disk.
+      let current = this.root;
+      for (const part of rel.split("/")) {
+        current = path.join(current, part);
+        try { if (fs.lstatSync(current).isSymbolicLink()) throw new Error("Folder rename crosses a symbolic link."); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+      }
+      return fs.lstatSync(current);
+    };
+    const same = (a: fs.Stats, b: fs.Stats) => a.dev === b.dev && a.ino === b.ino;
+    const source = stat(intent.from);
+    const target = stat(intent.to);
+    if (source) {
+      if (!source.isDirectory() || (target && !same(source, target))) throw preserved(new Error("Folder rename destination is occupied."));
+      if (intent.from !== intent.to) fs.renameSync(this.abs(intent.from), this.abs(intent.to));
+      fsyncDir(path.dirname(this.abs(intent.to)));
+    } else if (!target?.isDirectory()) throw preserved(new Error("Folder rename source is missing."));
+    const from = `${intent.to}/${intent.note}`;
+    const to = `${intent.to}/${path.posix.basename(intent.to)}.md`;
+    const oldNote = stat(from);
+    const newNote = stat(to);
+    if (oldNote) {
+      if (!oldNote.isFile() || (newNote && !same(oldNote, newNote))) throw preserved(new Error("Folder note rename destination is occupied."));
+      if (from !== to) {
+        if (nameKey(from) === nameKey(to)) fs.renameSync(this.abs(from), this.abs(to));
+        else {
+          if (!newNote) fs.linkSync(this.abs(from), this.abs(to));
+          fsyncDir(this.abs(intent.to));
+          fs.unlinkSync(this.abs(from));
+        }
+      }
+    } else if (!newNote?.isFile()) throw preserved(new Error("Folder note rename source is missing."));
+    const previous = this.readText(to);
+    const parsed = parseNote(previous);
+    if (parsed.id && parsed.title === stemOf(to)) {
+      writeFileDurably(this.abs(to), formatNote({ id: parsed.id, title: parsed.title, stem: stemOf(to), body: parsed.body }, previous));
+    }
+    fsyncDir(this.abs(intent.to));
+    fs.unlinkSync(journal);
+    fsyncDir(this.meta);
   }
 
   /** The current pages, after recording what changed on disk. Null when it moved files and must read again. */
@@ -533,15 +596,14 @@ export class NotesStore implements SpacePagesStore {
         moved = true;
       }
     }
-    for (const [id, entry] of Object.entries(index.notes)) {
+    const restoring: State = { index, live, pages: new Map() };
+    for (const [id, versions] of histories) if (versions?.length) restoring.pages.set(id, versions.at(-1)!.page);
+    const restoreOrder = Object.entries(index.notes).sort(([, a], [, b]) =>
+      depth(a.trash?.original ?? "") - depth(b.trash?.original ?? ""));
+    for (const [id, entry] of restoreOrder) {
       const latest = histories.get(id)?.at(-1)?.page;
       if (entry.trash?.batch && latest && latest.trashedAt === null && !live.has(id) && fs.existsSync(this.trashAbs(entry.trash.batch, entry.trash.rel))) {
-        const original = entry.trash.original;
-        const dir = path.posix.dirname(original);
-        const target = `${dir}/${uniqueName(stemOf(original), ".md", this.names(dir))}`;
-        moveNoClobber(this.trashAbs(entry.trash.batch, entry.trash.rel), this.abs(target));
-        this.dropFromManifest(entry.trash.batch, id);
-        index.notes[id] = { rel: target, hash: entry.hash };
+        this.restoreFile(restoring, latest);
         moved = true;
       }
     }
@@ -746,11 +808,14 @@ export class NotesStore implements SpacePagesStore {
       return;
     }
     // A folder that exists without a receipt (made by hand, or by a crashed setup): add the pages next to what is there.
-    const existing = new Set(this.scan().map(file => file.parsed.id).filter((id): id is string => Boolean(id)));
-    this.build(this.root, { ...doc, pages: doc.pages.filter(page => !existing.has(page.id)) }, digest, dir => this.names(dir));
+    const existing = new Map<string, PlannedNote>();
+    for (const file of this.scan()) if (file.parsed.id && !existing.has(file.parsed.id)) {
+      existing.set(file.parsed.id, { id: file.parsed.id, rel: file.rel, folder: this.isFolderNote(file.rel), trashed: false });
+    }
+    this.build(this.root, doc, digest, dir => this.names(dir), existing);
   }
 
-  private build(target: string, doc: SpaceDocument, digest: string | null, taken: (dirRel: string) => string[]): void {
+  private build(target: string, doc: SpaceDocument, digest: string | null, taken: (dirRel: string) => string[], existing: ReadonlyMap<string, PlannedNote> = new Map()): void {
     const at = (rel: string) => path.join(target, ...rel.split("/"));
     const meta = path.join(target, ".modex");
     for (const dir of ["history", "comments", "trash"]) fs.mkdirSync(path.join(meta, dir), { recursive: true, mode: 0o700 });
@@ -760,7 +825,7 @@ export class NotesStore implements SpacePagesStore {
     if (!fs.existsSync(workspaceMarker)) writeFileDurably(workspaceMarker, JSON.stringify({ version: 1, id: randomUUID(), title: DEFAULT_WORKSPACE, order: 0, default: true }));
     const projectMarker = at(`${projectRel}/.modex-project.json`);
     if (!fs.existsSync(projectMarker)) writeFileDurably(projectMarker, JSON.stringify({ version: 1, id: randomUUID(), title: DEFAULT_PROJECT, order: 0, modexProjectId: null, default: true }));
-    const plan = planMigration(doc.pages, projectRel, taken);
+    const plan = planMigration(doc.pages, projectRel, taken, existing);
     const pages = new Map(doc.pages.map(page => [page.id, page]));
     let index: NotesIndex = { version: 1, defaultProject: projectRel, notes: {} };
     try { index = { ...index, ...JSON.parse(fs.readFileSync(path.join(meta, "index.json"), "utf8")) as NotesIndex }; } catch { /* A new folder starts empty. */ }
@@ -768,15 +833,19 @@ export class NotesStore implements SpacePagesStore {
     const batch = "migrated";
     for (const note of plan.notes) {
       const page = pages.get(note.id)!;
-      writeFileDurably(path.join(meta, "history", `${note.id}.json`), JSON.stringify({ version: 1, versions: doc.history.filter(v => v.page.id === note.id) } satisfies HistoryFile));
+      const retained = existing.has(note.id);
+      const historyFile = path.join(meta, "history", `${note.id}.json`);
+      if (!retained || !fs.existsSync(historyFile)) writeFileDurably(historyFile, JSON.stringify({ version: 1, versions: doc.history.filter(v => v.page.id === note.id) } satisfies HistoryFile));
       const comments = (doc.comments ?? []).filter(c => c.pageId === note.id);
       if (comments.length) writeFileDurably(path.join(meta, "comments", `${note.id}.json`), JSON.stringify(comments));
       const file = note.trashed ? path.join(meta, "trash", batch, ...note.rel.split("/")) : at(note.rel);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       const text = formatNote({ id: note.id, title: page.title, stem: stemOf(note.rel), body: page.markdown });
-      writeFileDurably(file, text);
-      const updated = new Date(page.updatedAt);
-      if (Number.isFinite(updated.getTime())) fs.utimesSync(file, updated, updated);
+      if (!retained) {
+        writeFileDurably(file, text);
+        const updated = new Date(page.updatedAt);
+        if (Number.isFinite(updated.getTime())) fs.utimesSync(file, updated, updated);
+      }
       index.notes[note.id] = note.trashed
         ? { rel: null, hash: sha256(text), trash: { batch, rel: note.rel, original: note.rel } }
         : { rel: note.rel, hash: sha256(text), ino: fs.statSync(file).ino };
@@ -852,15 +921,25 @@ export class NotesStore implements SpacePagesStore {
   private restoreFile(state: State, page: SpacePage): void {
     const entry = state.index.notes[page.id];
     const original = entry?.trash?.original || entry?.original || entry?.rel || `${state.index.defaultProject}/${noteStem(page.title)}.md`;
-    let dir = path.posix.dirname(original);
-    // The parent folder may have been restored under another name, or not at all.
-    if (page.parentId !== null) {
-      const parent = state.live.get(page.parentId);
-      if (parent) dir = this.isFolderNote(parent.rel) ? path.posix.dirname(parent.rel) : this.dirFor(state, page.parentId, state.index.defaultProject);
-      if (this.isFolderNote(original) && parent) dir = `${dir}/${path.posix.basename(path.posix.dirname(original))}`;
+    const folder = this.isFolderNote(original);
+    let dir = folder ? path.posix.dirname(path.posix.dirname(original)) : path.posix.dirname(original);
+    // Resolve against the restored parent, then allocate a distinct folder for a folder note.
+    if (page.parentId !== null && state.live.has(page.parentId)) {
+      dir = this.dirFor(state, page.parentId, state.index.defaultProject);
     }
+    let target: string;
+    if (folder) {
+      const originalName = path.posix.basename(path.posix.dirname(original));
+      const originalDir = `${dir}/${originalName}`;
+      // Trash leaves non-note attachments behind. Reuse that folder only if no live notes occupy it.
+      const reusable = fs.existsSync(this.abs(originalDir)) && fs.lstatSync(this.abs(originalDir)).isDirectory()
+        && !fs.existsSync(this.abs(`${originalDir}/${originalName}.md`))
+        && ![...state.live.values()].some(file => file.rel.startsWith(`${originalDir}/`));
+      const name = reusable ? originalName : uniqueName(originalName, "", this.names(dir));
+      dir = `${dir}/${name}`;
+      target = `${dir}/${name}.md`;
+    } else target = `${dir}/${uniqueName(stemOf(original), ".md", this.names(dir))}`;
     fs.mkdirSync(this.abs(dir), { recursive: true });
-    const target = `${dir}/${uniqueName(stemOf(original), ".md", this.names(dir))}`;
     const source = entry?.trash?.batch ? this.trashAbs(entry.trash.batch, entry.trash.rel) : null;
     if (source && fs.existsSync(source)) {
       moveNoClobber(source, this.abs(target));

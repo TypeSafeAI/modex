@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { DEFAULT_LAYOUT, LAYOUT_KEY, LEGACY_SIDEBAR_KEY, loadLayout, saveLayout } from "../src/shared/layout.js";
 import { DEFAULT_SIZE, initialBounds, readWindowState, WINDOW_STATE_FILE, writeWindowState } from "../src/main/engine/window-state.js";
+import { tmpdir } from "./helpers.js";
 
 const memory = (init: Record<string, string> = {}) => {
   const m = new Map(Object.entries(init));
@@ -14,14 +14,14 @@ const memory = (init: Record<string, string> = {}) => {
 test("layout: defaults, round trip, and bad data falls back per field", () => {
   const s = memory();
   assert.deepEqual(loadLayout(s), DEFAULT_LAYOUT);
-  saveLayout(s, { sidebar: false, changes: false, streamerMode: true });
-  assert.deepEqual(loadLayout(s), { sidebar: false, changes: false, streamerMode: true });
+  saveLayout(s, { sidebar: false, changes: false, streamerMode: true, analytics: false });
+  assert.deepEqual(loadLayout(s), { sidebar: false, changes: false, streamerMode: true, analytics: false });
   assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: "{not json" })), DEFAULT_LAYOUT);
-  assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: JSON.stringify({ changes: "no", sidebar: false }) })), { sidebar: false, changes: true, streamerMode: false });
+  assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: JSON.stringify({ changes: "no", sidebar: false }) })), { sidebar: false, changes: true, streamerMode: false, analytics: true }, "a layout saved before Analytics shows it");
 });
 
 test("layout: migrates the old sidebar key, and the new key wins once written", () => {
-  assert.deepEqual(loadLayout(memory({ [LEGACY_SIDEBAR_KEY]: "closed" })), { sidebar: false, changes: true, streamerMode: false });
+  assert.deepEqual(loadLayout(memory({ [LEGACY_SIDEBAR_KEY]: "closed" })), { sidebar: false, changes: true, streamerMode: false, analytics: true });
   assert.deepEqual(loadLayout(memory({ [LEGACY_SIDEBAR_KEY]: "open" })), DEFAULT_LAYOUT);
   const s = memory({ [LEGACY_SIDEBAR_KEY]: "closed" });
   saveLayout(s, { ...loadLayout(s), sidebar: true });
@@ -32,7 +32,7 @@ const display = { x: 0, y: 0, width: 1728, height: 1079 };
 const min = { width: 900, height: 600 };
 
 test("window state: saved bounds are restored on a display that still shows them", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-ws-"));
+  const home = tmpdir("modex-ws-");
   assert.equal(readWindowState(home), null);
   writeWindowState(home, { x: 100, y: 60, width: 1200, height: 800, maximized: true, fullscreen: false });
   const saved = readWindowState(home);
@@ -43,7 +43,7 @@ test("window state: saved bounds are restored on a display that still shows them
 });
 
 test("window state: no file, corrupt file, or an unplugged display falls back to the default size, unpositioned", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-ws-"));
+  const home = tmpdir("modex-ws-");
   fs.writeFileSync(path.join(home, WINDOW_STATE_FILE), "{");
   assert.equal(readWindowState(home), null);
   fs.writeFileSync(path.join(home, WINDOW_STATE_FILE), JSON.stringify({ x: "1", y: 0, width: 10, height: 10 }));

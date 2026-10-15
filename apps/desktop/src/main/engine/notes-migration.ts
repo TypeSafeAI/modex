@@ -10,7 +10,7 @@ export interface MigrationPlan { notes: PlannedNote[]; warnings: string[] }
  * holds its own folder note (`Plan/Plan.md`); a leaf becomes `Name.md`. Names are made safe and unique
  * per folder, next to what `taken` reports already on disk. Parents come before their children.
  */
-export function planMigration(pages: SpacePage[], projectRel: string, taken: (dirRel: string) => string[] = () => []): MigrationPlan {
+export function planMigration(pages: SpacePage[], projectRel: string, taken: (dirRel: string) => string[] = () => [], existing: ReadonlyMap<string, PlannedNote> = new Map()): MigrationPlan {
   const byId = new Map(pages.map(page => [page.id, page]));
   const children = new Map<string | null, SpacePage[]>();
   const warnings: string[] = [];
@@ -37,8 +37,15 @@ export function planMigration(pages: SpacePage[], projectRel: string, taken: (di
       visited.add(page.id);
       const stem = noteStem(page.title);
       const folder = (children.get(page.id)?.length ?? 0) > 0;
-      if (folder) {
+      const published = existing.get(page.id);
+      if (published) {
+        if (folder && !published.folder) throw new Error("An existing parent note must be a folder note before migration can continue.");
+        notes.push(published);
+        place(page.id, published.rel.slice(0, published.rel.lastIndexOf("/")));
+      } else if (folder) {
         const dir = claim(dirRel, stem, "");
+        // Reserve the folder note before placing children with the same title.
+        used.set(`${dirRel}/${dir}`, [...taken(`${dirRel}/${dir}`), `${dir}.md`]);
         notes.push({ id: page.id, rel: `${dirRel}/${dir}/${dir}.md`, folder: true, trashed: page.trashedAt !== null });
         place(page.id, `${dirRel}/${dir}`);
       } else {

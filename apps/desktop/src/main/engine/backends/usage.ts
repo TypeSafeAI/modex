@@ -28,6 +28,7 @@ export class UsageMeter {
   private last?: CallInput;
   private calls = 0;
   private output?: number;
+  private readonly sum = { input: 0, cached: 0, cacheWrite: 0 };
 
   call(input: CallInput, id?: string): void {
     if (id !== undefined) {
@@ -37,6 +38,9 @@ export class UsageMeter {
     this.calls++;
     this.first ??= input;
     this.last = input;
+    this.sum.input += input.uncached;
+    this.sum.cached += input.cacheRead;
+    this.sum.cacheWrite += input.cacheWrite;
   }
 
   /** Adds output tokens the CLI reported for part of the turn. */
@@ -48,7 +52,7 @@ export class UsageMeter {
   usage(): TurnUsage | undefined {
     if (!this.first || !this.last) return undefined;
     const { cacheRead, cacheWrite, uncached } = this.last;
-    return { first: { ...this.first }, contextTokens: cacheRead + cacheWrite + uncached, ...(this.output !== undefined ? { outputTokens: this.output } : {}), calls: this.calls };
+    return { first: { ...this.first }, contextTokens: cacheRead + cacheWrite + uncached, ...(this.output !== undefined ? { outputTokens: this.output } : {}), calls: this.calls, totals: { ...this.sum } };
   }
 }
 
