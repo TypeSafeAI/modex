@@ -355,3 +355,18 @@ test("ClaudeBackend reads usage from a captured stream-json turn; a turn without
   bare.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s" });
   assert.deepEqual(await none, { status: "completed" });
 });
+
+test("ClaudeBackend drops the CLI's synthetic credit refusal reply and fails the turn with its words", async () => {
+  const proc = new FakeProcess();
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const { sink, events } = collectSink();
+  const run = backend.runTurn("hi", { cwd: "/repo", mode: "chat", plan: false, model: "fable" }, sink, new AbortController().signal);
+  await proc.waitFor((l) => l.includes('"type":"user"'));
+  const refusal = "You're out of usage credits. Switch to another model, or manage usage credits at https://claude.ai/settings/usage?from=cc_cli_limit_message, to continue.";
+  proc.emitLine({ type: "assistant", error: "rate_limit", message: { id: "m1", model: "<synthetic>", content: [{ type: "text", text: refusal }] }, session_id: "s" });
+  proc.emitLine({ type: "result", subtype: "success", is_error: true, result: refusal, num_turns: 1, session_id: "s" });
+  const result = await run;
+  assert.equal(result.status, "failed");
+  assert.equal(result.error, refusal);
+  assert.ok(!events.some((e) => e.startsWith("assistant:")), "no reply bubble for the refusal");
+});

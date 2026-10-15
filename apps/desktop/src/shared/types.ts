@@ -159,6 +159,8 @@ export interface Settings {
   approval_gate: ApprovalGateConfig;
   /** Retire a worktree thread once its pull request merged and nothing in the worktree would be lost. */
   auto_retire: boolean;
+  /** When a model is out of usage credits (Claude's Fable), run the turn on the next model down (Opus) instead of failing. */
+  model_fallback: boolean;
 }
 
 export type RuleDecision = "allow" | "ask" | "never";
