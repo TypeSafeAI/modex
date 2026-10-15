@@ -563,6 +563,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   own reason under its generic message and the main process logs the full error. In v0.0.12's
   first signed run the generic message alone hid Electron's `Invalid package …/app.asar`.
   [Behavior](update-recovery.md#download-and-restart).
+- **Event journal, opt-in** (Routines Phase 0). With `MODEX_EVENT_JOURNAL=1`, Modex records every
+  thread event in `app/events.sqlite` (`node:sqlite`) with a durable cursor. It writes alongside
+  the state files, which stay authoritative. A real session replays from the journal to its exact
+  saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
 - **Thread archiving on Mac and iPhone.** A thread can be put away from the Mac (sidebar row
   menu, title bar ⋯ menu) or the phone (hold a thread, or the transcript's ⋯ menu). Archived
   threads leave the working list: the Mac keeps them under **Archived (n)** per project, where
@@ -590,7 +594,9 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   no remaining product or test patch beyond #144, #150, and #154. The
   [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
   comparison results and corrects historical runs left marked in progress.
-  Dirty source trees and probe artifacts remain preserved. The recovered
+  On 2026-10-14 Val approved removing those dirty source trees with the other unmerged
+  worktrees. Each is archived outside the repository with its commit bundle, uncommitted patch,
+  and untracked and ignored files. Each archive folder's README gives the restore steps. The recovered
   [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md)
   is a historical proposal: native identity-only sign-in shipped separately in
   #141. Repository authorization still needs a dedicated GitHub App owner and
@@ -713,7 +719,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   (15 skipped), 271 desktop E2E cases and seven site cases. The gate remains off by default.
 - **Retired worktrees.** None from this list awaits a disposition. All six were retired after
   their work landed, and their uncommitted work or unique commits were saved as patches outside
-  the repository first.
+  the repository first. On 2026-10-14, the guard pruned every merged worktree and branch, keeping
+  its recovery bundles. With Val's approval, 32 unmerged or dirty worktrees and 8 branches were
+  archived and then removed. These included recovered snapshots, closed PRs #145, #174, #177
+  and #182, and the `backup/*` branches. Each archive was verified before removal: bundle
+  verify, a patch reverse-applied on the live tree, and tar member counts. Only open-PR and
+  in-use worktrees remain.
   - `auth-retry` (2026-10-09): the retry and auth recovery work is on `main` via #104.
   - `finish-auth-approvals` (2026-10-09): reconciled in #107, with the auth fix in #104. Its
     remote branch stays because closed PR #68 references it.
@@ -765,6 +776,40 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   The CI job also turns off the simulator's hardware keyboard before the first boot, so the
   software keyboard appears and the helper's fallback focus check (`app.keyboards`) can see it;
   local Simulator settings are left alone.
+- **A resumed Claude session could end a turn with no reply (fixed 2026-10-13).** When Modex
+  stops a turn while a background task is still running (Stop, or the 30-minute cap), the next
+  message's `claude --resume` first replays that stopped task as a turn of its own: a
+  `task_notification`, an `init`, and a success `result` with `num_turns` 0 and no text, and only
+  then the `init` of the turn that answers the message. Modex ended the turn on that result. The
+  message and its routing were persisted and nothing else; the thread went idle; the CLI did the
+  real work unheard, for an hour on 2026-10-09 (thread `52868298`). Reproduced outside Modex by
+  stopping a `claude -p` turn mid-background-task and resuming it (claude 2.1.296). The backend now
+  holds a result from a turn that never called the model until the real turn answers, or the idle
+  window passes; and a turn that ends with no items at all becomes a failure card with Retry.
+- **`iPhone companion` CI flakes, root cause (2026-10-13).** Eight failures in three days (runs
+  38370101202 and 38216764305 on `main`, six on branches) each named a different line: a
+  screenshot timeout, "not ready to tap within 30 s; last frame none" three times, typed text cut
+  off at "Please su", a failed app termination, and two ignored-first-tap assertions. The Session
+  logs of three red runs and the green run from the same morning (38386254082) tell one story:
+  GitHub's shared `macos-latest` runners spend 5–30× longer than a developer Mac on every XCTest
+  round trip, red or green. Single steps reached 15–28 s for "wait for app to idle" (100–135 of
+  them per run), 25–34 s per app launch, 16–22 s for the SpringBoard "interrupting elements"
+  check before a tap, and 5–9 s per accessibility snapshot. A run went red whenever one such step
+  crossed one of the suite's fixed 10, 20 or 30 s budgets; today's `main` failure was a screenshot
+  attachment hitting XCTest's own 30 s after every assertion in the test had passed. The earlier
+  rounds (above) each fixed the step that failed last and the failure moved. Now every budget is
+  `UITestBudget.seconds(base)`, multiplied by `MODEX_UI_TIMEOUT_SCALE` (×4 in CI, forwarded with
+  xcodebuild's `TEST_RUNNER_` prefix in `Scripts/test-e2e.sh`), screenshots are best-effort
+  evidence (`attachScreenshot`, an expected failure when the simulator cannot deliver one), and
+  `Scripts/xctest-activity-times.py` totals a Session log's XCTest steps so the next report starts
+  from the same numbers. A green run is unchanged by the scale: a budget only matters once it is
+  exceeded. Steps XCTest bounds itself (launch, terminate, event synthesis) are outside the scale;
+  one of the eight (a 2026-10-12 "Failed to terminate") was of that kind. A loaded developer Mac
+  (load 577 on 16 cores during the run) shows a different bottleneck: snapshots stayed at 0.2 s,
+  but single "wait for app to idle" steps inside `tap()` reached 86 s while the app's 2.5 s
+  polling and spinner kept it busy, and the unscaled demo test still passed in 187 s because
+  those waits never touch the suite's budgets. The CI runners are slow in the snapshot path,
+  which is the one the budgets measure.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before
