@@ -277,13 +277,37 @@ async function pollFor(check: () => Promise<boolean>, description: string, timeo
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
+async function writeNativeProcessFixture(dir: string): Promise<string> {
+  const script = path.join(dir, "native-cli.cjs");
+  await writeFile(path.join(dir, "worker.cjs"), `
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const dir = process.argv[2];
+    process.on('SIGTERM', () => {});
+    fs.writeFileSync(path.join(dir, 'worker.pid'), String(process.pid));
+    let ticks = 0;
+    setInterval(() => fs.writeFileSync(path.join(dir, 'heartbeat'), String(++ticks)), 10);
+  `);
+  await writeFile(script, `
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { spawn } = require('node:child_process');
+    const dir = process.argv[2];
+    const exitOnTerm = process.argv[3] === 'exit';
+    fs.writeFileSync(path.join(dir, 'leader.pid'), String(process.pid));
+    process.on('SIGTERM', () => {
+      fs.writeFileSync(path.join(dir, 'terminated'), 'yes');
+      if (exitOnTerm) process.exit(0);
+    });
+    spawn(process.execPath, [path.join(dir, 'worker.cjs'), dir], { stdio: exitOnTerm ? 'ignore' : 'inherit' });
+    setInterval(() => {}, 1000);
+  `);
+  return script;
+}
 for (const leader of ["ignore", "exit"] as const) test(`native timeout retains mutation fence and kills descendants when leader handles TERM with ${leader}`, { skip: process.platform === "win32", timeout: 10_000 }, async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "modex-plugin-timeout-"));
-  const script = path.join(dir, "native-cli.cjs");
+  const script = await writeNativeProcessFixture(dir);
   const receipt = (name: string) => path.join(dir, name);
-  const worker = `const fs = require('node:fs'); process.on('SIGTERM', () => {}); fs.writeFileSync(${JSON.stringify(receipt("worker.pid"))}, String(process.pid)); let ticks = 0; setInterval(() => fs.writeFileSync(${JSON.stringify(receipt("heartbeat"))}, String(++ticks)), 10);`;
-  const program = `const fs = require('node:fs'); const {spawn} = require('node:child_process'); fs.writeFileSync(${JSON.stringify(receipt("leader.pid"))}, String(process.pid)); process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(receipt("terminated"))}, 'yes'); ${leader === "exit" ? "process.exit(0);" : ""} }); spawn(process.execPath, ['-e', ${JSON.stringify(worker)}], {stdio: ${JSON.stringify(leader === "exit" ? "ignore" : "inherit")}}); setInterval(() => {}, 1000);`;
-  await writeFile(script, program);
   t.after(async () => {
     for (const name of ["leader.pid", "worker.pid"]) { try { process.kill(Number(await readFile(receipt(name), "utf8")), "SIGKILL"); } catch {} }
     await rm(dir, { recursive: true, force: true });
@@ -291,7 +315,7 @@ for (const leader of ["ignore", "exit"] as const) test(`native timeout retains m
   const runNative = createNativePluginExecution({ timeoutMs: 1_500, terminationGraceMs: 250 });
   const service = new PluginService({
     resolve: () => ({ bin: process.execPath, cwd: dir, env: process.env }), busy: () => false,
-    execute: (target, argv) => argv.at(-1) === "--help" ? Promise.resolve(argv.length === 2 ? "Commands:\n  remove Remove\n  list List" : "--json --available") : runNative(target, [script]),
+    execute: (target, argv) => argv.at(-1) === "--help" ? Promise.resolve(argv.length === 2 ? "Commands:\n  remove Remove\n  list List" : "--json --available") : runNative(target, [script, dir, leader]),
   });
   let settled = false;
   const pending = service.mutate({ context: codex, action: "remove", id: "draw@studio" }).finally(() => { settled = true; });
@@ -310,11 +334,8 @@ for (const leader of ["ignore", "exit"] as const) test(`native timeout retains m
 
 for (const leader of ["ignore", "exit"] as const) test(`service disposal retains mutation fence and kills descendants when leader handles TERM with ${leader}`, { skip: process.platform === "win32", timeout: 10_000 }, async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "modex-plugin-timeout-"));
-  const script = path.join(dir, "native-cli.cjs");
+  const script = await writeNativeProcessFixture(dir);
   const receipt = (name: string) => path.join(dir, name);
-  const worker = `const fs = require('node:fs'); process.on('SIGTERM', () => {}); fs.writeFileSync(${JSON.stringify(receipt("worker.pid"))}, String(process.pid)); let ticks = 0; setInterval(() => fs.writeFileSync(${JSON.stringify(receipt("heartbeat"))}, String(++ticks)), 10);`;
-  const program = `const fs = require('node:fs'); const {spawn} = require('node:child_process'); fs.writeFileSync(${JSON.stringify(receipt("leader.pid"))}, String(process.pid)); process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(receipt("terminated"))}, 'yes'); ${leader === "exit" ? "process.exit(0);" : ""} }); spawn(process.execPath, ['-e', ${JSON.stringify(worker)}], {stdio: ${JSON.stringify(leader === "exit" ? "ignore" : "inherit")}}); setInterval(() => {}, 1000);`;
-  await writeFile(script, program);
   t.after(async () => {
     for (const name of ["leader.pid", "worker.pid"]) { try { process.kill(Number(await readFile(receipt(name), "utf8")), "SIGKILL"); } catch {} }
     await rm(dir, { recursive: true, force: true });
@@ -322,7 +343,7 @@ for (const leader of ["ignore", "exit"] as const) test(`service disposal retains
   const runNative = createNativePluginExecution({ timeoutMs: 60_000, terminationGraceMs: 250 });
   const service = new PluginService({
     resolve: () => ({ bin: process.execPath, cwd: dir, env: process.env }), busy: () => false,
-    execute: (target, argv, stdin, signal) => argv.at(-1) === "--help" ? Promise.resolve(argv.length === 2 ? "Commands:\n  remove Remove\n  list List" : "--json --available") : runNative(target, [script], stdin, signal),
+    execute: (target, argv, stdin, signal) => argv.at(-1) === "--help" ? Promise.resolve(argv.length === 2 ? "Commands:\n  remove Remove\n  list List" : "--json --available") : runNative(target, [script, dir, leader], stdin, signal),
   });
   let settled = false;
   const pending = service.mutate({ context: codex, action: "remove", id: "draw@studio" }).finally(() => { settled = true; });

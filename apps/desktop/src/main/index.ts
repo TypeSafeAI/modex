@@ -183,7 +183,7 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
 const usageLedger = new UsageLedger(store.dir);
-const runner = new ThreadRunner({ beforeSend: thread => media?.beforeSend(thread), imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => media?.jobs.prepare(thread, signal) ?? Promise.resolve(undefined) }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const runner = new ThreadRunner({ beforeSend: thread => media?.beforeSend(thread), imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
 let mediaInitializationError: string | undefined;
 try { media = new Media({ home, store, runner: () => runner, window: () => win, pathReady, offline: Boolean(demo || process.env.MODEX_E2E), changed: kind => {
   if (win && !win.isDestroyed()) win.webContents.send("media:event", { kind });
