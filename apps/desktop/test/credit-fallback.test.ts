@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Router } from "../src/main/engine/routing/router.js";
+import { Fit } from "../src/main/engine/routing/fit.js";
 import { Store } from "../src/main/engine/store.js";
 import { CREDIT_SKIP_MS, ThreadRunner } from "../src/main/engine/runner.js";
 import { isApiErrorReply } from "../src/main/engine/backends/claude.js";
@@ -39,7 +41,7 @@ test("the CLI's synthetic refusal reply is recognised; real replies and other sy
 type Step = (sink: TurnSink) => TurnResult;
 const claudeBackend = (steps: Step[], seen: TurnOptions[]): Backend => ({
   id: "claude",
-  listModels: async () => [{ id: "fable", label: "Fable", isDefault: true }, { id: "opus", label: "Opus" }],
+  listModels: async () => [{ id: "fable", label: "Fable", isDefault: true, efforts: ["low", "medium", "high"], defaultEffort: "medium" }, { id: "opus", label: "Opus", efforts: ["low", "medium", "high"], defaultEffort: "medium" }],
   dispose: async () => {},
   async runTurn(_text, opts, sink) {
     seen.push(opts);
@@ -56,7 +58,10 @@ async function harness(steps: Step[], settings: { model_fallback?: boolean } = {
   if (settings.model_fallback !== undefined) store.updateSettings({ model_fallback: settings.model_fallback });
   const project = store.addProject(gitRepo());
   const seen: TurnOptions[] = [];
-  const runner = new ThreadRunner({ home, store, emit: () => {}, backends: { claude: claudeBackend(steps, seen) } });
+  const backend = claudeBackend(steps, seen);
+  const router = new Router({ home, policy: () => store.settings.routing,
+    listModels: async () => ({ models: await backend.listModels() }), transport: null });
+  const runner = new ThreadRunner({ home, store, emit: () => {}, router, backends: { claude: backend } });
   const thread = await runner.createThread(project.id, { backend: "claude", model: "fable" });
   return { store, runner, seen, thread };
 }
@@ -118,4 +123,58 @@ test("when Opus fails too, the card says the fallback was tried", async () => {
     const card = runner.items(thread.id).find((i) => i.kind === "notice" && i.failure);
     assert.deepEqual(card?.kind === "notice" ? card.failure?.recovery : undefined, ["Fable was out of usage credits; retried on Opus."]);
   } finally { await runner.dispose(); }
+});
+
+for (const cached of [false, true]) test(`an empty fallback reply produces a retry card (cached=${cached})`, async () => {
+  const empty: Step = () => ({ status: "completed" });
+  const h = await harness(cached ? [refused, replies, empty] : [refused, empty]);
+  try {
+    if (cached) { await h.runner.send(h.thread.id, "prime"); h.runner.updateThread(h.thread.id, { model: "fable" }); }
+    await h.runner.send(h.thread.id, "answer me");
+    assert.equal(h.runner.status(h.thread.id), "error");
+    assert.ok(h.runner.items(h.thread.id).some(i => i.kind === "notice" && i.failure && /without replying/.test(i.text)));
+  } finally { await h.runner.dispose(); }
+});
+
+test("Auto attributes fallback outcome to Opus without teaching a user override", async () => {
+  const h = await harness([refused, replies]);
+  try {
+    const router = h.runner.router;
+    h.store.updateSettings({ routing: { ...h.store.settings.routing, posture: "quality", allow_fast: false, max_effort: "high" } });
+    h.runner.updateThread(h.thread.id, { auto: true });
+    await h.runner.send(h.thread.id, "design a complex architecture");
+    assert.deepEqual(h.seen.map(o => o.model), ["fable", "opus"]);
+    const fit = new Fit(router.fit.file);
+    const record = fit.latest(h.thread.id)!;
+    assert.equal(record.model, "opus");
+    assert.equal(record.tier, 2);
+    assert.equal(record.premium, false);
+    assert.equal(record.outcome, "completed");
+    assert.equal(fit.premiumToday(), 0);
+    assert.equal(fit.recordOverride(h.thread.id, 2), undefined);
+    assert.equal(fit.snapshot().tasks[record.task]?.overridesDown, 0);
+  } finally { await h.runner.dispose(); }
+});
+
+test("an aborted credit refusal never starts the fallback", async () => {
+  let stop = () => {};
+  const h = await harness([() => { stop(); return { status: "failed", error: REFUSAL }; }]);
+  stop = () => h.runner.stop(h.thread.id);
+  try {
+    await h.runner.send(h.thread.id, "cancel me");
+    assert.deepEqual(h.seen.map(o => o.model), ["fable"]);
+    assert.equal(h.store.thread(h.thread.id)?.model, "fable");
+  } finally { await h.runner.dispose(); }
+});
+
+test("the credit cooldown expires and allows Fable again", async t => {
+  const h = await harness([refused, replies, replies]);
+  try {
+    await h.runner.send(h.thread.id, "first");
+    h.runner.updateThread(h.thread.id, { model: "fable" });
+    const future = Date.now() + CREDIT_SKIP_MS + 1;
+    t.mock.method(Date, "now", () => future);
+    await h.runner.send(h.thread.id, "after cooldown");
+    assert.deepEqual(h.seen.map(o => o.model), ["fable", "opus", "fable"]);
+  } finally { await h.runner.dispose(); }
 });

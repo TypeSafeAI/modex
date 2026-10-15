@@ -575,7 +575,8 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   a warning that says so, and starts Fable turns on Opus for the next hour. A refusal after a
   reply, tool or reasoning keeps its failure card, so no work runs twice. The CLI's synthetic
   refusal reply no longer shows as an assistant bubble, and the card now reads "out of usage
-  credits" instead of "unknown". Settings → General turns the fallback off; it is on by default.
+  credits" instead of "unknown". Empty fallback replies retain a Retry card, and Auto
+  records the model that actually ran without learning a user override. Settings → General turns the fallback off; it is on by default.
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
@@ -784,6 +785,30 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   stopping a `claude -p` turn mid-background-task and resuming it (claude 2.1.296). The backend now
   holds a result from a turn that never called the model until the real turn answers, or the idle
   window passes; and a turn that ends with no items at all becomes a failure card with Retry.
+- **`iPhone companion` CI flakes, root cause (2026-10-13).** Eight failures in three days (runs
+  38370101202 and 38216764305 on `main`, six on branches) each named a different line: a
+  screenshot timeout, "not ready to tap within 30 s; last frame none" three times, typed text cut
+  off at "Please su", a failed app termination, and two ignored-first-tap assertions. The Session
+  logs of three red runs and the green run from the same morning (38386254082) tell one story:
+  GitHub's shared `macos-latest` runners spend 5–30× longer than a developer Mac on every XCTest
+  round trip, red or green. Single steps reached 15–28 s for "wait for app to idle" (100–135 of
+  them per run), 25–34 s per app launch, 16–22 s for the SpringBoard "interrupting elements"
+  check before a tap, and 5–9 s per accessibility snapshot. A run went red whenever one such step
+  crossed one of the suite's fixed 10, 20 or 30 s budgets; today's `main` failure was a screenshot
+  attachment hitting XCTest's own 30 s after every assertion in the test had passed. The earlier
+  rounds (above) each fixed the step that failed last and the failure moved. Now every budget is
+  `UITestBudget.seconds(base)`, multiplied by `MODEX_UI_TIMEOUT_SCALE` (×4 in CI, forwarded with
+  xcodebuild's `TEST_RUNNER_` prefix in `Scripts/test-e2e.sh`), screenshots are best-effort
+  evidence (`attachScreenshot`, an expected failure when the simulator cannot deliver one), and
+  `Scripts/xctest-activity-times.py` totals a Session log's XCTest steps so the next report starts
+  from the same numbers. A green run is unchanged by the scale: a budget only matters once it is
+  exceeded. Steps XCTest bounds itself (launch, terminate, event synthesis) are outside the scale;
+  one of the eight (a 2026-10-12 "Failed to terminate") was of that kind. A loaded developer Mac
+  (load 577 on 16 cores during the run) shows a different bottleneck: snapshots stayed at 0.2 s,
+  but single "wait for app to idle" steps inside `tap()` reached 86 s while the app's 2.5 s
+  polling and spinner kept it busy, and the unscaled demo test still passed in 187 s because
+  those waits never touch the suite's budgets. The CI runners are slow in the snapshot path,
+  which is the one the budgets measure.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before

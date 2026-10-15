@@ -594,12 +594,14 @@ export class ThreadRunner {
       // A model refused for usage credits recently is refused again: start on its fallback instead.
       const skip = this.recentCreditFallback(thread);
       if (skip) thread = this.fallBack(threadId, thread, skip, routeId, false);
+      let replyStart = l.items.length;
       let result = await runOn(thread);
       const fallback = result.status === "failed" && !abort.signal.aborted ? this.creditFallback(thread, result.error, l.items.slice(turnStart)) : undefined;
       if (fallback) {
         const from = thread.model;
         this.outOfCredits.set(`${thread.backend}:${from}`, Date.now());
         thread = this.fallBack(threadId, thread, fallback, routeId, true);
+        replyStart = l.items.length;
         result = await runOn(thread);
         if (result.status === "failed") result = { ...result, recovery: [`${modelFamilyName(from)} was out of usage credits; retried on ${modelFamilyName(fallback)}.`, ...(result.recovery ?? [])] };
       }
@@ -614,7 +616,7 @@ export class ThreadRunner {
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
-      } else if (result.status === "completed" && l.items.length === turnStart && !abort.signal.aborted) {
+      } else if (result.status === "completed" && l.items.length === replyStart && !abort.signal.aborted) {
         // The CLI ended the turn without a word: no reply, no tool, no notice. A card with Retry beats an idle thread
         // that looks as if nothing was asked (2026-10-09: a resumed session's stale result ended a turn this way).
         this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
@@ -810,7 +812,11 @@ export class ThreadRunner {
     const why = refusedNow ? `${from} is out of usage credits, so this turn moved to ${next}.` : `${from} ran out of usage credits within the last hour, so this turn runs on ${next}.`;
     this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `${why} Add usage credits to use ${from} again, or turn off the fallback in Settings.`, at: new Date().toISOString() });
     const route = routeId ? this.slot(threadId).items.find((i) => i.id === routeId) : undefined;
-    if (route?.kind === "route") this.patchItem(threadId, route.id, { model: to, reasons: [...route.reasons, why] });
+    if (route?.kind === "route") {
+      const actual = this.o.store.thread(threadId) ?? { ...thread, model: to };
+      this.router.noteFallback(actual, route.fast);
+      this.patchItem(threadId, route.id, { model: to, held: undefined, reasons: [...route.reasons, why] });
+    }
     return this.o.store.thread(threadId) ?? { ...thread, model: to };
   }
 

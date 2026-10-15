@@ -10,6 +10,32 @@ import XCTest
 // button that was on screen at (201, 354)). A plain loop lets every evaluation run to completion, and
 // it reads the frame, which never records a failure, before it asks whether the element is hittable.
 
+/// How much slower the simulator host is than the developer Mac the base budgets were tuned on.
+///
+/// Every wait in these tests is `UITestBudget.seconds(base)`. GitHub's shared `macos-latest` runners
+/// take 5–30× longer than a developer Mac on each XCTest round trip, and that is the same on green
+/// runs as on red ones: the Session logs of CI runs 38370101202, 38386816197 and 38215609174 (failed)
+/// and 38386254082 (passed, same morning) all show idle waits of 15–28 s, app launches of 25–34 s,
+/// SpringBoard interruption checks of 16–22 s per tap and accessibility snapshots of 5–9 s. A run
+/// went red whenever one of those steps happened to cross a fixed 10, 20 or 30 s budget, so eight
+/// failures in three days named eight different lines. CI sets `MODEX_UI_TIMEOUT_SCALE` (through
+/// xcodebuild's `TEST_RUNNER_` prefix; see Scripts/test-e2e.sh). A green run is unchanged by a larger
+/// scale: a budget only matters once it is exceeded.
+enum UITestBudget {
+    static let scale: Double = {
+        let raw = ProcessInfo.processInfo.environment["MODEX_UI_TIMEOUT_SCALE"]
+        let value = min(max(raw.flatMap(Double.init) ?? 1, 1), 10)
+        // The runner's log (and so the uploaded Session log) shows which scale a run used.
+        NSLog("UITestBudget: scale ×%@ (MODEX_UI_TIMEOUT_SCALE=%@)", value.formatted(), raw ?? "unset")
+        return value
+    }()
+
+    static func seconds(_ base: TimeInterval) -> TimeInterval { base * scale }
+
+    /// Appended to timeout failure messages so a report names the scale that was in effect.
+    static var note: String { scale == 1 ? "" : " (budget scale ×\(scale.formatted()))" }
+}
+
 /// Polls `condition` until it holds or `timeout` passes. Every evaluation runs to completion.
 @discardableResult
 func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
@@ -64,6 +90,23 @@ extension XCTestCase {
             return false
         }
     }
+
+    /// Attaches a screenshot as evidence, best effort. XCTest gives the screenshot request a fixed
+    /// 30 s, and on a loaded simulator that expires: CI run 38370101202 failed the demo test this way
+    /// after every one of its assertions had passed (Session log: "Creating future for 'requesting
+    /// screenshot' with timeout 30.00" … "reporting timed out failure"). An attachment is not a product
+    /// assertion, so a missed one is recorded as an expected failure and the test goes on.
+    func attachScreenshot(of app: XCUIApplication, named name: String) {
+        var screenshot: XCUIScreenshot?
+        XCTExpectFailure("Screenshot capture is best-effort on a loaded simulator", options: .nonStrict()) {
+            screenshot = app.screenshot()
+        }
+        guard let screenshot, screenshot.image.size.width > 0 else { return }
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
 }
 
 extension XCUIApplication {
@@ -77,7 +120,7 @@ extension XCUIApplication {
 
 extension XCUIElement {
     /// Taps once the element is ready; see `waitUntilReady`.
-    func tapWhenReady(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
+    func tapWhenReady(timeout: TimeInterval = UITestBudget.seconds(30), file: StaticString = #filePath, line: UInt = #line) {
         guard waitUntilReady(timeout: timeout, file: file, line: line) else { return }
         tap()
     }
@@ -87,7 +130,7 @@ extension XCUIElement {
     /// Takes at least three samples even on a simulator where one sample outlasts `timeout`. Records one
     /// failure and returns false when the deadline passes first.
     @discardableResult
-    func waitUntilReady(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) -> Bool {
+    func waitUntilReady(timeout: TimeInterval = UITestBudget.seconds(30), file: StaticString = #filePath, line: UInt = #line) -> Bool {
         let deadline = Date(timeIntervalSinceNow: timeout)
         var previous: CGRect?
         var samples = 0
@@ -98,7 +141,7 @@ extension XCUIElement {
             previous = frame
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
         } while Date() < deadline || samples < 3
-        XCTFail("\(self) was not ready to tap within \(Int(timeout)) s; last frame \(previous.map { "\($0)" } ?? "none").", file: file, line: line)
+        XCTFail("\(self) was not ready to tap within \(Int(timeout)) s\(UITestBudget.note); last frame \(previous.map { "\($0)" } ?? "none").", file: file, line: line)
         return false
     }
 
@@ -119,7 +162,7 @@ extension XCUIElement {
     /// until the field reports keyboard focus. Keystrokes also reach the simulator after `typeText`
     /// returns, so the caller's next tap must wait for the last one to arrive: CI run 37936899163 sent
     /// "Sh" and left "ip it" in the draft.
-    func typeTextWhenReady(_ text: String, in app: XCUIApplication, timeout: TimeInterval = 30,
+    func typeTextWhenReady(_ text: String, in app: XCUIApplication, timeout: TimeInterval = UITestBudget.seconds(30),
                            file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date(timeIntervalSinceNow: timeout)
         var taps = 0
@@ -127,7 +170,7 @@ extension XCUIElement {
             taps += 1
             guard waitUntilReady(timeout: max(1, deadline.timeIntervalSinceNow), file: file, line: line) else { return }
             tap()
-            if waitUntil(timeout: min(8, max(1, deadline.timeIntervalSinceNow)), { hasKeyboardFocus(in: app) }) { break }
+            if waitUntil(timeout: min(UITestBudget.seconds(8), max(1, deadline.timeIntervalSinceNow)), { hasKeyboardFocus(in: app) }) { break }
             guard taps < 3, Date() < deadline else {
                 XCTFail("\(self) did not take keyboard focus after \(taps) taps.", file: file, line: line)
                 return
