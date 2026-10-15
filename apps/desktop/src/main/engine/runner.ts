@@ -433,8 +433,10 @@ export class ThreadRunner {
     const reservation = new Promise<void>(resolve => { release = resolve; });
     l.run = reservation;
     // A new message on an archived thread brings it back: an archived thread is never one that is working.
-    this.unarchive(threadId);
-    try { await this.runTurn(threadId, text, reuse, attachments, prepared); }
+    try {
+      this.unarchive(threadId);
+      await this.runTurn(threadId, text, reuse, attachments, prepared);
+    }
     finally { if (l.run === reservation) l.run = null; release(); }
   }
 
