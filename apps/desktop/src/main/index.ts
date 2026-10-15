@@ -782,7 +782,7 @@ handle("settings:update", async (patch) => {
     ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
   });
   win?.setBackgroundColor(THEMES[settings.theme].background);
-  if (settings.theme !== previousTheme) void knowledgeBrowser?.refreshAppearance();
+  if (settings.theme !== previousTheme) { void knowledgeBrowser?.refreshAppearance(); void workspaceAnalytics?.refreshAppearance(); }
   return settings;
 });
 handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
@@ -907,9 +907,10 @@ function createWindow(): BrowserWindow {
   w.on("closed", () => { knowledgeView.dispose(); if (knowledgeBrowser === knowledgeView) { knowledgeBrowser = null; knowledgeURL = null; } });
   // The built usage dashboard sits beside the renderer (dist/usage-preview); main serves it to its own session.
   const analyticsRoot = path.join(here, "..", "..", "usage-preview");
-  let analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger);
+  const analyticsTheme = () => store.settings.theme;
+  let analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger, analyticsTheme);
   workspaceAnalytics = analytics;
-  w.webContents.on("did-start-navigation", () => { analytics.dispose(); analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger); workspaceAnalytics = analytics; });
+  w.webContents.on("did-start-navigation", () => { analytics.dispose(); analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger, analyticsTheme); workspaceAnalytics = analytics; });
   w.on("closed", () => { analytics.dispose(); if (workspaceAnalytics === analytics) workspaceAnalytics = null; });
   w.webContents.on("did-start-navigation", () => browser.dispose());
   w.on("closed", () => { browser.dispose(); if (workspaceBrowser === browser) workspaceBrowser = null; });

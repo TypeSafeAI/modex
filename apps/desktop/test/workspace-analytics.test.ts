@@ -6,7 +6,7 @@ import { EventEmitter } from "node:events";
 import ts from "typescript";
 import type { BrowserBounds } from "../src/shared/browser.js";
 
-function fixture() {
+function fixture(theme?: () => string) {
   const navigations: (() => void)[] = [];
   const shown: (BrowserBounds | null)[] = [];
   let disposed = false;
@@ -26,12 +26,13 @@ function fixture() {
     electron: { session: { fromPartition: () => profile } },
     "./workspace-browser.js": { WorkspaceBrowser: Browser },
     "./engine/analytics-assets.js": { ANALYTICS_ORIGIN: "modex-analytics://app", ANALYTICS_SCHEME: "modex-analytics", respondAnalytics() {} },
+    "../shared/theme.js": { THEMES: { graphite: { background: "#0f0f11" }, jev: { background: "#0b0f1b" }, coven: { background: "#1c1b1d" } }, normalizeTheme: (value: unknown) => (value === "jev" || value === "coven" ? value : "graphite") },
   };
   vm.runInNewContext(`(function(require,exports){${code}\n})`)((id: string) => {
     assert.ok(id in dependencies, `Unexpected dependency: ${id}`);
     return dependencies[id];
   }, exports);
-  const analytics = new exports.WorkspaceAnalytics({}, "/unused", {});
+  const analytics = new exports.WorkspaceAnalytics({}, "/unused", {}, theme);
   return { analytics, navigations, shown, profile, isDisposed: () => disposed };
 }
 const bounds = { x: 0, y: 0, width: 640, height: 480 };
@@ -101,4 +102,16 @@ test("Analytics permits only its own CSV blob and removes its download policy on
   }
   f.analytics.dispose();
   assert.equal(f.profile.listenerCount("will-download"), 0);
+});
+
+test("Analytics wears the app's theme, and falls back to Graphite", () => {
+  let theme = "jev";
+  const { analytics } = fixture(() => theme);
+  assert.equal(analytics.appearance().background, "#0b0f1b");
+  assert.match(analytics.appearance().script, /dataset\.theme = "jev"/);
+  theme = "coven";
+  assert.match(analytics.appearance().script, /"coven"/, "a theme change is read when the view next styles");
+  theme = "</script><script>alert(1)";
+  assert.match(analytics.appearance().script, /"graphite"/, "an unknown theme never reaches the page");
+  assert.equal(fixture().analytics.appearance().background, "#0f0f11");
 });
