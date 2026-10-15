@@ -211,7 +211,7 @@ const ownerRemoval = new OwnerRemoval({
     });
   },
   // Do not hold TaskRetirer here: retirement itself runs inside its sweep.
-  holds: [() => restartAdmission.holdForRestart(), () => runner.holdForRestart(), () => nativeDrafts!.holdForOwnerRemoval()],
+  holds: [() => restartAdmission.holdForRestart(), () => runner.holdForOwnerRemoval(), () => nativeDrafts!.holdForOwnerRemoval()],
   prune: (scope, revision) => nativeDrafts!.pruneEmptyOwner(scope, revision),
   snapshot: () => store.snapshot(),
   requiresRecovery: () => Boolean(nativeDrafts?.requiresRecovery),
@@ -318,8 +318,10 @@ function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, opti
     const preparationSave = restartAdmission.held && channel === "space:save" && event
       && nativeDocument?.frame === event.senderFrame && nativeDocument.epoch === epoch
       && (rendererPreflight.allowsPersistence(nativeDocument) || ownerRemoval.allowsPersistence(nativeDocument));
+    // Deletion drains a running CLI; another Stop must still be able to force it.
+    const removalStop = channel === "thread:stop" && ownerRemoval.active;
     const recoveryRead = channel === "drafts:open" && Boolean(currentDraftRecovery());
-    return RESTART_CONTROL.has(channel) || OWNER_REMOVAL_CONTROL.has(channel) || preparationSave || recoveryRead || recoveryPersistence() ? run() : restartAdmission.run(run);
+    return RESTART_CONTROL.has(channel) || OWNER_REMOVAL_CONTROL.has(channel) || preparationSave || removalStop || recoveryRead || recoveryPersistence() ? run() : restartAdmission.run(run);
   };
   if (!options.localOnly) desktopCommands.set(channel, (payload, authorized) => invoke(payload as BridgeCommands[K]["req"], undefined, authorized));
   ipcMain.handle(channel, (event, req) => invoke(req as BridgeCommands[K]["req"], event));

@@ -53,6 +53,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
   const [nativeHold, setNativeHold] = useState(false);
   const nativeHoldRef = useRef(false);
   const ownerRemovalHeld = useRef(false);
+  const ownerRemovalEvents = useRef<Extract<ThreadEvent, { type: "thread" }>[]>([]);
   const [nativeRecoveryError, setNativeRecoveryError] = useState<string | null>(null);
   const [readOnlyRecovery, setReadOnlyRecovery] = useState<NativeDraftReadOnlyOpen | null>(null);
   const [pendingSends, setPendingSends] = useState<PendingSendView[]>([]);
@@ -261,8 +262,21 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     releaseEditors: () => restartDrafts.release(),
     freezeAttachments: () => attachmentDrafts.freezeForOwnerRemoval() !== null,
     releaseAttachments: () => attachmentDrafts.resumeAfterRecovery(),
-    held: value => { ownerRemovalHeld.current = value; holdNative(value); },
+    held: value => {
+      ownerRemovalHeld.current = value;
+      if (!value) {
+        const pending = ownerRemovalEvents.current.splice(0).reverse();
+        setState(current => current ? { ...current, threads: current.threads.map(thread => {
+          const update = pending.find(event => event.threadId === thread.id);
+          return update ? { ...thread, ...update.thread, status: thread.status } : thread;
+        }) } : current);
+      }
+      holdNative(value);
+    },
     apply: (saved, current) => {
+      // Main sends events and adoption over the same ordered channel. Earlier
+      // events are in this snapshot; later events must survive until release.
+      ownerRemovalEvents.current = [];
       const restored = Object.fromEntries([...saved.threads.map(row => [row.threadId, row.text]), ...saved.projects.map(row => [row.key, row.text])]);
       // Synchronous refs must describe the canonical snapshot before the queue
       // adopts it. React state alone leaves a stale autosave/selection window.
@@ -352,7 +366,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     return bridge.onEvent((e: ThreadEvent) => {
       // Retirement publishes its Store event inside the held operation. Its
       // canonical Store snapshot is adopted with drafts by the second handshake.
-      if (ownerRemovalHeld.current && e.type === "thread") return;
+      if (ownerRemovalHeld.current && e.type === "thread") { ownerRemovalEvents.current.push(e); return; }
       if (e.type === "item" || e.type === "item_update") {
         loadingItems.current.get(e.threadId)?.push(e);
         setItems((m) => ({ ...m, [e.threadId]: applyItemEvent(m[e.threadId] ?? [], e) }));
