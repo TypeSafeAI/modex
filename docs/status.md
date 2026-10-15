@@ -548,6 +548,15 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Analytics export and recovery.** The native dashboard permits its own CSV
+  export through a save dialog while other downloads remain refused. A torn
+  usage-ledger tail no longer consumes the next recorded turn, and dashboard
+  asset requests reject directory symlinks as well as linked files.
+
+- **Analytics visibility during loading.** A delayed dashboard load cannot reopen
+  Analytics after Streamer Mode, a dialog, or navigation hides it. The latest
+  requested bounds win, and closing the window invalidates pending show requests.
+
 - **Paired iPhone menu recovery.** The paired-flow test retries an ignored Workspace
   options tap once within its existing deadline, only while the menu is absent.
   It still requires the real Forget paired Mac item before proceeding.
