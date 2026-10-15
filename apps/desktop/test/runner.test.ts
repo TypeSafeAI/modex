@@ -1330,3 +1330,18 @@ test("retry does not normalize malformed persisted attachment metadata to an emp
   try { await assert.rejects(fresh.retry(thread.id), /attachment/i); }
   finally { await fresh.dispose(); }
 });
+
+test("a turn that ends without a single item becomes a failure card with Retry, not an idle silence", async () => {
+  const h = harness();
+  const silent: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn() { return { status: "completed" }; } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: silent } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  runner.updateThread(thread.id, { title: "Quiet" });
+  await runner.send(thread.id, "hello");
+  const last = runner.items(thread.id).at(-1)!;
+  assert.equal(last.kind, "notice");
+  assert.match((last as { text: string }).text, /ended the turn without replying/);
+  assert.equal(h.store.thread(thread.id)?.status, "error");
+  assert.deepEqual(statusesOf(h.events).slice(-2), ["running", "error"]);
+  await runner.dispose();
+});

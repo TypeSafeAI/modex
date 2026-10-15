@@ -15,7 +15,8 @@ function harness(backend: Partial<Backend> = {}, beforeDeleteThread?: (id: strin
   const project = store.addProject(repo);
   const runner = new ThreadRunner({ home, store, emit: () => {}, beforeDeleteThread,
     router: new Router({ home, policy: () => store.settings.routing, listModels: async () => ({ models: [] }), transport: null }),
-    backends: { mock: { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "completed" }), ...backend } },
+    // A completed turn always carries at least one item; a silent completion is a failure card.
+    backends: { mock: { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, _options, sink) => { sink.assistant("done"); return { status: "completed" }; }, ...backend } },
   });
   return { runner, store, project, close: async () => {
     await runner.dispose();
