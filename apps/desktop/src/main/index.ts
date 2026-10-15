@@ -813,6 +813,17 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  if (process.env.MODEX_E2E) {
+    // Retain distinct show and first-paint observations before Playwright connects.
+    // Paint does not prove visibility; the harness also waits for settled native geometry.
+    const state = globalThis as { __modexE2EShown?: Set<number>; __modexE2EPainted?: Set<number> };
+    const shown = state.__modexE2EShown ??= new Set<number>();
+    const painted = state.__modexE2EPainted ??= new Set<number>();
+    let closed = false;
+    w.once("show", () => { if (!closed && !w.isDestroyed()) shown.add(w.id); });
+    w.once("ready-to-show", () => { if (!closed && !w.isDestroyed()) painted.add(w.id); });
+    w.once("closed", () => { closed = true; shown.delete(w.id); painted.delete(w.id); });
+  }
   w.webContents.on("did-start-navigation", details => {
     if (win === w && details.isMainFrame && !details.isSameDocument) invalidateNativeDocument();
   });
@@ -852,7 +863,8 @@ function createWindow(): BrowserWindow {
     if (saved?.fullscreen) w.setFullScreen(true);
     // Under test the window must not take the keyboard: Playwright drives it over CDP, and a test
     // window that becomes active swallows whatever the developer is typing elsewhere (it reached a
-    // real shell in the terminal panel). showInactive still emits "show", which the launch helper awaits.
+    // real shell in the terminal panel). The helper checks paint and settled native geometry
+    // as well: an inactive macOS window does not always emit "show".
     if (process.env.MODEX_E2E) w.showInactive();
     else w.show();
   });
