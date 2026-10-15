@@ -602,14 +602,34 @@ export class NotesStore implements SpacePagesStore {
     for (const [id, file] of state.live) if (this.isFolderNote(file.rel)) folderNotes.set(path.posix.dirname(file.rel), id);
     const seen = new Set<string>();
     let truncated = false;
-    const claim = (map: Record<string, Placed>, rel: string, ino: number): string => {
-      const known = Object.entries(map).find(([, p]) => p.rel === rel)?.[0]
-        ?? Object.entries(map).find(([oid, p]) => p.ino === ino && !seen.has(oid) && !fs.existsSync(this.abs(p.rel)))?.[0];
+    // Each map's ids by path and by inode, built once per layout: searching the whole map for every
+    // entry made a layout of a few thousand files take seconds.
+    type Ids = { map: Record<string, Placed>; byRel: Map<string, string>; byIno: Map<number, string[]> };
+    const addIno = (ids: Ids, ino: number, id: string) => { const list = ids.byIno.get(ino); if (list) list.push(id); else ids.byIno.set(ino, [id]); };
+    const idsOf = (map: Record<string, Placed>): Ids => {
+      const ids: Ids = { map, byRel: new Map(), byIno: new Map() };
+      for (const [id, p] of Object.entries(map)) {
+        if (!ids.byRel.has(p.rel)) ids.byRel.set(p.rel, id);
+        if (p.ino !== undefined) addIno(ids, p.ino, id);
+      }
+      return ids;
+    };
+    const claim = (ids: Ids, rel: string, ino: number): string => {
+      const { map } = ids;
+      const known = ids.byRel.get(rel)
+        ?? ids.byIno.get(ino)?.find(oid => map[oid]?.ino === ino && !seen.has(oid) && !fs.existsSync(this.abs(map[oid]!.rel)));
       const id = known ?? randomUUID();
-      if (!known || map[id]!.rel !== rel || map[id]!.ino !== ino) { map[id] = { ...map[id], rel, ino }; changed = true; }
+      const old = map[id];
+      if (!old || old.rel !== rel || old.ino !== ino) {
+        map[id] = { ...old, rel, ino }; changed = true;
+        if (old && ids.byRel.get(old.rel) === id) ids.byRel.delete(old.rel);
+        ids.byRel.set(rel, id);
+        if (old?.ino !== ino) addIno(ids, ino, id);
+      }
       seen.add(id);
       return id;
     };
+    const containerIds = idsOf(containers), fileIds = idsOf(files);
     const walk = (dirRel: string, level: number, parentId: string | null) => {
       let entries: fs.Dirent[];
       try { entries = fs.readdirSync(dirRel ? this.abs(dirRel) : this.root, { withFileTypes: true }); } catch { return; }
@@ -623,7 +643,7 @@ export class NotesStore implements SpacePagesStore {
           const kind: NotesNodeKind = level === 0 ? "workspace" : level === 1 ? "project" : "folder";
           if (kind === "workspace" || kind === "project") {
             const marker = this.readMarker(rel, kind);
-            const id = marker?.id ?? claim(containers, rel, ino);
+            const id = marker?.id ?? claim(containerIds, rel, ino);
             const order = marker?.order ?? Number.MAX_SAFE_INTEGER;
             const name = marker?.title || entry.name;
             nodes.push(kind === "workspace"
@@ -632,7 +652,7 @@ export class NotesStore implements SpacePagesStore {
             dirIds.set(rel, id);
             walk(rel, level + 1, id);
           } else {
-            const id = claim(containers, rel, ino);
+            const id = claim(containerIds, rel, ino);
             const noteId = folderNotes.get(rel) ?? null;
             const page = noteId ? state.pages.get(noteId) : undefined;
             const typed = containers[id]?.title;
@@ -652,7 +672,7 @@ export class NotesStore implements SpacePagesStore {
           continue;
         }
         const stat = fs.statSync(this.abs(rel));
-        const id = claim(files, rel, stat.ino);
+        const id = claim(fileIds, rel, stat.ino);
         const ext = path.posix.extname(entry.name).toLowerCase();
         const preview = IMAGE_TYPES[ext] && stat.size <= MAX_IMAGE_BYTES ? "image" : /^\.(txt|md|json|csv|ya?ml|log|ts|js|tsx|jsx|css|html)$/.test(ext) && stat.size <= 1_048_576 ? "text" : null;
         nodes.push({ id, kind: "file", parentId, name: entry.name, rel, size: stat.size, preview } satisfies NotesFile);
@@ -665,7 +685,7 @@ export class NotesStore implements SpacePagesStore {
     if (changed) { index.containers = containers; index.files = files; this.writeIndex(index); }
     // Siblings in order: workspaces and projects by their saved order, then name; the rest as the folder lists them.
     const groups = new Map<string | null, NotesNode[]>();
-    for (const node of nodes) groups.set(node.parentId, [...(groups.get(node.parentId) ?? []), node]);
+    for (const node of nodes) { const group = groups.get(node.parentId); if (group) group.push(node); else groups.set(node.parentId, [node]); }
     const ordered = [...groups.values()].flatMap(group => {
       const ranked = group.filter((n): n is NotesWorkspace | NotesProject => n.kind === "workspace" || n.kind === "project").sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
       return [...ranked, ...group.filter(n => n.kind !== "workspace" && n.kind !== "project")];
