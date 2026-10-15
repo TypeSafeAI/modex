@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { NotesStore } from "../src/main/engine/notes-store.js";
 import type { NotesFolder, NotesNode, NotesProject, NotesWorkspace } from "../src/shared/notes.js";
+import { pageImageFromUrl, pageImageUrl } from "../src/shared/notes.js";
 import { tmpdir } from "./helpers.js";
 
 function withStore(run: (store: NotesStore, root: string) => void): void {
@@ -120,6 +122,228 @@ test("folders and files moved or renamed in Finder keep their ids; only empty co
   const work = store.tree().nodes.find(n => n.kind === "workspace")!;
   assert.throws(() => store.deleteEmpty(work.id), /default/);
 }));
+
+test("importing files copies them into a folder without replacing anything, and Markdown becomes a page", () => withStore((store, root) => {
+  const outside = tmpdir("modex-import-src-");
+  try {
+    const project = store.tree().nodes.find(n => n.kind === "project")!;
+    const folder = store.createFolder(project.id, "Assets");
+    fs.writeFileSync(path.join(outside, "logo.png"), "png-bytes");
+    fs.writeFileSync(path.join(outside, "Brief.md"), "# Brief\nimported");
+    fs.writeFileSync(path.join(root, "Personal", "Notes", "Assets", "logo.png"), "already here");
+    fs.mkdirSync(path.join(outside, "a-folder"));
+    fs.symlinkSync(path.join(outside, "logo.png"), path.join(outside, "link.png"));
+    const result = store.importFiles(folder.id, [path.join(outside, "logo.png"), path.join(outside, "Brief.md"), path.join(outside, "a-folder"), path.join(outside, "link.png"), "relative.txt"]);
+    assert.deepEqual(result.imported.map(n => n.name).sort(), ["Brief", "logo 2.png"]);
+    assert.equal(result.errors.length, 3, "a folder, a link and a relative path are refused");
+    assert.equal(fs.readFileSync(path.join(root, "Personal", "Notes", "Assets", "logo.png"), "utf8"), "already here", "nothing is replaced");
+    assert.equal(fs.readFileSync(path.join(root, "Personal", "Notes", "Assets", "logo 2.png"), "utf8"), "png-bytes");
+    const brief = store.list().find(p => p.title === "Brief")!;
+    assert.equal(brief.markdown, "# Brief\nimported");
+    assert.throws(() => store.importFiles(store.tree().nodes.find(n => n.kind === "workspace")!.id, []), /project or folder/);
+    assert.throws(() => store.importFiles(folder.id, Array.from({ length: 51 }, (_, i) => path.join(outside, `${i}.txt`))), /50 files/);
+
+    fs.writeFileSync(path.join(outside, "mark.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+    fs.writeFileSync(path.join(outside, "big.png"), Buffer.alloc(25 * 1024 * 1024 + 1));
+    fs.writeFileSync(path.join(outside, "notes.v1:final"), "odd");
+    const more = store.importFiles(folder.id, ["mark.svg", "big.png", "notes.v1:final"].map(name => path.join(outside, name)));
+    assert.deepEqual(more.errors, []);
+    const byName = new Map(more.imported.map(n => [n.name, n]));
+    assert.equal(store.readImage(byName.get("mark.svg")!.id)?.mime, "image/svg+xml");
+    const big = byName.get("big.png")!;
+    assert.equal(big.kind === "file" ? big.preview : "not a file", null, "an image too large to preview is just a file");
+    assert.equal(store.readImage(byName.get("big.png")!.id), null);
+    assert.ok([...byName.keys()].some(name => !name.includes(":") && name.startsWith("notes")), "an extension a name cannot carry is made safe");
+    assert.equal(store.readImage(store.list().find(p => p.title === "Brief")!.id), null, "a page is never served as an image");
+  } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+}));
+
+test("a watched folder is walked again only after something changes, or every 10 seconds", async () => {
+  const home = tmpdir("modex-notes-watch-");
+  const root = path.join(home, "notes");
+  let clock = Date.parse("2026-10-15T09:00:00Z");
+  const store = new NotesStore(root, { now: () => clock });
+  const readdir = fs.readdirSync;
+  let walks = 0;
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const until = async (check: () => boolean, what: string) => {
+    for (let i = 0; i < 100 && !check(); i++) { await wait(50); clock += 50; }
+    assert.ok(check(), what);
+  };
+  try {
+    store.create({ title: "First", markdown: "one" });
+    store.watch();
+    (fs as unknown as { readdirSync: unknown }).readdirSync = (dir: fs.PathLike, ...rest: unknown[]) => { if (String(dir) === root) walks++; return (readdir as (...args: unknown[]) => unknown)(dir, ...rest); };
+    // Modex's own first writes arrive as events too; once they have, reads stop walking.
+    await until(() => { walks = 0; store.tree(); store.list(); return walks === 0; }, "reads settle on the last look");
+    store.tree(); store.list(); store.history(store.list()[0]!.id);
+    assert.equal(walks, 0, "nothing changed, so nothing is walked");
+
+    store.create({ title: "Second", markdown: "two" });
+    assert.ok(store.list().some(p => p.title === "Second"), "a change made in Modex shows at once");
+
+    fs.writeFileSync(path.join(root, "Personal", "Notes", "Outside.md"), "# Outside\nfrom an editor");
+    await until(() => store.list().some(p => p.title === "Outside"), "an edit outside Modex is seen once its event arrives");
+
+    fs.rmSync(path.join(root, "Personal", "Notes", "First.md"));
+    await until(() => store.list().find(p => p.title === "First")?.trashedAt != null, "a file deleted outside goes to Trash after its second look");
+
+    await until(() => { walks = 0; store.list(); return walks === 0; }, "reads settle again");
+    clock += 10_001;
+    store.list();
+    assert.ok(walks > 0, "a read looks again after 10 seconds even without an event");
+  } finally {
+    (fs as unknown as { readdirSync: unknown }).readdirSync = readdir;
+    store.unwatch();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a page's images beside it are served by relative path, only from inside its project", () => withStore((store, root) => {
+  const outside = tmpdir("modex-page-image-");
+  try {
+    const project = store.tree().nodes.find(n => n.kind === "project")!;
+    const folder = store.createFolder(project.id, "Design");
+    const page = store.create({ title: "Spec", markdown: "![diagram](assets/diagram.png)", containerId: folder.id });
+    const dir = path.join(root, "Personal", "Notes", "Design");
+    fs.mkdirSync(path.join(dir, "assets"));
+    fs.writeFileSync(path.join(dir, "assets", "diagram.png"), "png");
+    fs.writeFileSync(path.join(root, "Personal", "Notes", "shared.png"), "shared");
+    fs.writeFileSync(path.join(dir, "notes.txt"), "text");
+    fs.mkdirSync(path.join(dir, ".hidden"));
+    fs.writeFileSync(path.join(dir, ".hidden", "x.png"), "hidden");
+    fs.writeFileSync(path.join(outside, "secret.png"), "secret");
+    fs.symlinkSync(path.join(outside, "secret.png"), path.join(dir, "link.png"));
+    fs.symlinkSync(outside, path.join(dir, "out"));
+    const other = store.createProject(store.tree().nodes.find(n => n.kind === "workspace")!.id, "Other");
+    fs.writeFileSync(path.join(root, "Personal", "Other", "theirs.png"), "theirs");
+
+    assert.equal(store.readPageImage(page.id, "assets/diagram.png")?.data.toString(), "png");
+    assert.equal(store.readPageImage(page.id, "../shared.png")?.data.toString(), "shared", "up a folder, still in the project");
+    for (const relative of ["../../Other/theirs.png", "../../../outside.png", "notes.txt", ".hidden/x.png", "link.png", "out/secret.png", "missing.png", "/etc/hosts"]) {
+      assert.equal(store.readPageImage(page.id, relative), null, relative);
+    }
+    assert.equal(store.readPageImage("no-such-page", "assets/diagram.png"), null);
+    assert.ok(other);
+
+    const url = pageImageUrl(page.id, "../assets dir/a%20b.png")!;
+    assert.deepEqual(pageImageFromUrl(url), { pageId: page.id, relative: "../assets dir/a b.png" }, "a `..` and encoded names survive the URL");
+    for (const external of ["https://example.com/a.png", "file:///etc/hosts", "/abs.png", "#frag", "", "data:image/png;base64,AA"]) assert.equal(pageImageUrl(page.id, external), null, external);
+    assert.equal(pageImageFromUrl("modex-notes://file/abc"), null);
+  } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+}));
+
+test("cached file previews revalidate current size and symlinks before reading", () => withStore((store, root) => {
+  const outside = tmpdir("modex-cached-read-");
+  try {
+    store.tree();
+    const dir = path.join(root, "Personal", "Notes");
+    fs.writeFileSync(path.join(dir, "text.txt"), "small");
+    fs.mkdirSync(path.join(dir, "assets"));
+    fs.writeFileSync(path.join(dir, "assets", "image.png"), "image");
+    store.watch();
+    const nodes = store.tree().nodes;
+    const text = nodes.find(n => n.name === "text.txt")!;
+    const image = nodes.find(n => n.name === "image.png")!;
+    // Keep the cached layout: no event-loop turn occurs between the change and read.
+    fs.writeFileSync(path.join(dir, "text.txt"), Buffer.alloc(1_048_577, 97));
+    assert.throws(() => store.readFile(text.id));
+    fs.writeFileSync(path.join(outside, "secret.txt"), "secret");
+    fs.unlinkSync(path.join(dir, "text.txt"));
+    fs.symlinkSync(path.join(outside, "secret.txt"), path.join(dir, "text.txt"));
+    assert.throws(() => store.readFile(text.id));
+    fs.writeFileSync(path.join(outside, "image.png"), "outside");
+    fs.renameSync(path.join(dir, "assets"), path.join(dir, "old-assets"));
+    fs.symlinkSync(outside, path.join(dir, "assets"));
+    assert.equal(store.readImage(image.id), null);
+  } finally { store.unwatch(); fs.rmSync(outside, { recursive: true, force: true }); }
+}));
+
+test("page images reject hidden directories reached through a visible alias", () => withStore((store, root) => {
+  const page = store.create({ title: "Aliases", markdown: "hello" });
+  const dir = path.join(root, "Personal", "Notes");
+  fs.mkdirSync(path.join(dir, ".hidden"));
+  fs.writeFileSync(path.join(dir, ".hidden", "secret.png"), "hidden");
+  fs.symlinkSync(path.join(dir, ".hidden"), path.join(dir, "visible"));
+  assert.equal(store.readPageImage(page.id, "visible/secret.png"), null);
+}));
+
+test("cached previews cannot follow aliases into another project", () => withStore((store, root) => {
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const other = store.createProject(workspace.id, "Other");
+  const page = store.create({ title: "Scoped", markdown: "hello" });
+  const dir = path.join(root, "Personal", "Notes");
+  const otherDir = path.join(root, other.rel);
+  fs.mkdirSync(path.join(dir, "assets"));
+  fs.writeFileSync(path.join(dir, "assets", "text.txt"), "own text");
+  fs.writeFileSync(path.join(dir, "assets", "image.png"), "own image");
+  fs.mkdirSync(path.join(otherDir, "assets"));
+  fs.writeFileSync(path.join(otherDir, "assets", "text.txt"), "other text");
+  fs.writeFileSync(path.join(otherDir, "assets", "image.png"), "other image");
+  store.watch();
+  try {
+    const nodes = store.tree().nodes;
+    const text = nodes.find(n => n.rel === "Personal/Notes/assets/text.txt")!;
+    const image = nodes.find(n => n.rel === "Personal/Notes/assets/image.png")!;
+    fs.renameSync(path.join(dir, "assets"), path.join(dir, "old-assets"));
+    fs.symlinkSync(path.join(otherDir, "assets"), path.join(dir, "assets"));
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+    fs.unlinkSync(path.join(dir, "assets"));
+    fs.renameSync(path.join(dir, "old-assets"), path.join(dir, "assets"));
+    // Replacing the project itself must not redefine its allowed root.
+    fs.renameSync(dir, `${dir}-original`);
+    fs.symlinkSync(otherDir, dir);
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+    fs.unlinkSync(dir);
+    fs.renameSync(`${dir}-original`, dir);
+    const mirror = path.join(root, "Mirror");
+    fs.mkdirSync(mirror);
+    fs.cpSync(otherDir, path.join(mirror, "Notes"), { recursive: true });
+    fs.renameSync(path.join(root, "Personal"), path.join(root, "Original"));
+    fs.symlinkSync(mirror, path.join(root, "Personal"));
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+  } finally { store.unwatch(); }
+}));
+
+
+test("a preview replaced by a FIFO at open cannot block the main process", { skip: process.platform === "win32" }, () => {
+  const home = tmpdir("modex-preview-fifo-");
+  try {
+    // A child bounds the regression: blocking open on a FIFO otherwise hangs the test runner.
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+      import fs from "node:fs";
+      import path from "node:path";
+      import { execFileSync } from "node:child_process";
+      import { NotesStore } from ${JSON.stringify(new URL("../src/main/engine/notes-store.js", import.meta.url).href)};
+      const store = new NotesStore(path.join(process.argv[1], "notes"));
+      store.tree();
+      const file = path.join(store.root, "Personal", "Notes", "image.png");
+      fs.writeFileSync(file, "image");
+      store.watch();
+      const image = store.tree().nodes.find(node => node.name === "image.png");
+      const open = fs.openSync;
+      fs.openSync = (target, ...args) => {
+        if (target === fs.realpathSync(file)) {
+          fs.openSync = open;
+          fs.unlinkSync(file);
+          execFileSync("mkfifo", [file]);
+        }
+        return open(target, ...args);
+      };
+      try { console.log(JSON.stringify(store.readImage(image.id))); }
+      finally { store.unwatch(); }
+    `, home], { encoding: "utf8", timeout: 5_000, killSignal: "SIGKILL" });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "null");
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
 
 for (const change of ["project rename", "workspace rename", "project move"] as const) test(`default page creation follows a ${change}`, () => withStore((store, root) => {
   const project = store.tree().nodes.find(n => n.kind === "project")!;

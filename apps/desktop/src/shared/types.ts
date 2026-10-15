@@ -514,6 +514,10 @@ export interface BridgeCommands extends NativeDraftCommands {
   /** Moves a Modex project's notes into another workspace. */
   "project:workspace": { req: { projectId: string; workspaceId: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
   "notes:open": { req: { id: string }; res: void };
+  /** Copies files into a project or folder; without paths, a picker opens. */
+  "notes:import": { req: { targetId: string; paths?: string[] }; res: { imported: number; errors: string[] } };
+  /** A text file's contents (UTF-8, up to 1 MB), for its preview. */
+  "notes:file:read": { req: { id: string }; res: string };
   "updates:check": { req: undefined; res: ReleaseUpdate | null };
   "updates:state": { req: undefined; res: import("./updates.js").UpdateInstallState };
   "updates:download": { req: undefined; res: import("./updates.js").UpdateInstallState };
