@@ -36,7 +36,8 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
   const space = useSpace(active);
   const notes = useNotesTree(active);
   const [newWorkspace, setNewWorkspace] = useState(0);
-  const [focusNode, setFocusNode] = useState<string>();
+  /** A tree node to show once, from "Open notes"; a new object per request, cleared when a page opens. */
+  const [focusNode, setFocusNode] = useState<{ id: string }>();
   const [previewId, setPreviewId] = useState<string | null>(null);
   const previewing = previewId ? notes.tree?.nodes.find((n): n is NotesFile => n.id === previewId && n.kind === "file") : undefined;
   // When the knowledge base is the notes folder, a page is already in it: offer Open, not Copy.
@@ -117,7 +118,7 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
   const run = async (operation: () => Promise<unknown>) => {
     try { restartDrafts.assertOpen(); setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
-  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
+  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setFocusNode(undefined); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
   useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
   // "Open notes" from the chat sidebar: show that project in the tree, made the first time.
   useEffect(() => {
@@ -126,7 +127,7 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
       const node = await bridge.invoke("project:notes", { projectId: openProject.projectId });
       setView("pages"); setQuery(""); setSelected(null);
       await notes.refresh();
-      setFocusNode(node.id);
+      setFocusNode({ id: node.id });
     });
   }, [openProject]);
   const create = async (title = "", markdown = "", parentId: string | null = null, containerId?: string) => {
@@ -220,7 +221,7 @@ export function SpaceView({ sidebarOpen, active, openPage, openProject, onOpenCh
       </nav>
       <div className="space-tree">
         <div className="space-tree-label">{query ? "Search results" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : notes.tree ? "Workspaces" : "Recents"}</div>
-        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} focusId={focusNode} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
+        {(view === "pages" || view === "all") && !query ? (notes.tree ? <NotesTreeView tree={notes.tree} pages={live} selected={selected} actions={treeActions} newWorkspace={newWorkspace} focus={focusNode} /> : <PageTree pages={live} parentId={null} selected={selected} onSelect={open} />) : visible.map(p => <button className="space-tree-page" key={p.id} onClick={() => view === "trash" ? undefined : open(p.id)} disabled={view === "trash"} aria-label={`Open ${pageTitle(p)}`}><Icon name="page" /><span>{pageTitle(p)}</span></button>)}
         {space.loaded && !visible.length && <p className="space-tree-empty">{query ? "No matching pages" : view === "favorites" ? "Star a page to keep it close." : view === "trash" ? "Nothing in the trash." : "Your next idea starts here."}</p>}
         <div className="space-tree-label space-collections-label">Spaces</div>
         <button className="space-knowledge-link space-tree-page" aria-label="Knowledge base" aria-current={view === "knowledge" ? "page" : undefined} onClick={() => selectView("knowledge")}><Icon name="files" /><span>Knowledge base</span></button>
