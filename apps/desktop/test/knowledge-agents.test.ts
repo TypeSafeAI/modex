@@ -260,3 +260,36 @@ test("a knowledge base that is the notes folder keeps each project's agents in t
     assert.equal(calls.length, 1, "inside the project, tools reach the server as before");
   } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(folder, { recursive: true, force: true }); }
 });
+
+test("scoped knowledge search refuses replaced project or workspace symlinks", async () => {
+  const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-scope-links-")));
+  const content = path.join(folder, "notes");
+  const prefix = "Personal/Mine";
+  fs.mkdirSync(path.join(content, prefix), { recursive: true });
+  fs.writeFileSync(path.join(content, prefix, "Decision.md"), "My decision");
+  const external = path.join(folder, "external");
+  fs.mkdirSync(path.join(external, "Mine"), { recursive: true });
+  fs.writeFileSync(path.join(external, "Secret.md"), "External secret");
+  fs.writeFileSync(path.join(external, "Mine", "Secret.md"), "External secret");
+  const target = { folder: content, content, url: "http://127.0.0.1:9999" };
+  const agents = new KnowledgeAgents({ knowledge: { agentTarget: async () => target, isAgentTarget: () => true }, enabled: () => true, scope: () => prefix,
+    connect: async () => ({ callTool: async () => { throw new Error("Search must stay local"); }, close: async () => {} }) });
+  const lease = await agents.prepare({ id: "thread", projectId: "mine", mode: "agent", plan: false }, () => {});
+  const client = new Client({ name: "test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(lease.connection.url)));
+  try {
+    const good = await client.callTool({ name: "search", arguments: { query: "decision" } });
+    assert.notEqual(good.isError, true);
+    assert.match(JSON.stringify(good), /My decision/);
+    for (const rel of [prefix, "Personal"]) {
+      const original = path.join(content, rel);
+      fs.renameSync(original, `${original}-saved`);
+      fs.symlinkSync(external, original, "junction");
+      try {
+        const result = await client.callTool({ name: "search", arguments: { query: "secret" } });
+        assert.equal(result.isError, true, rel);
+        assert.doesNotMatch(JSON.stringify(result), /External secret/);
+      } finally { fs.unlinkSync(original); fs.renameSync(`${original}-saved`, original); }
+    }
+  } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(folder, { recursive: true, force: true }); }
+});

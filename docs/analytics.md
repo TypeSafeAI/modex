@@ -1,6 +1,40 @@
-# Usage dashboard preview
+# Analytics
 
-Run from the repository root in your session worktree:
+Analytics shows how much model usage your Modex threads spend: tokens, cache reads and writes, and output, by
+model, project, thread and account. Open it from the **Analytics** icon in the rail, next to Chat and Space.
+**Settings → General → Show Analytics in the rail** hides the icon; the change applies right away.
+
+## What is recorded
+
+Each turn that called a model adds one row to `MODEX_HOME/app/usage.jsonl` (file mode 0600, one JSON object per
+line). A row holds the time, the tool (`claude-code` or `codex`), the model the thread asked for (`default` when the
+CLI chose), the thread id, the project name, the Codex account binding when there is one, and the turn's token
+counts. Prompts, files and replies are never recorded.
+
+- **Counts come from the CLIs' own usage reports**, through the same per-turn meter Auto routing uses
+  (`backends/usage.ts`). A Claude call is counted once per message id; Codex reports are taken only for the
+  thread's own turn. Input, cache reads and cache writes are summed over every call in the turn. Output includes
+  reasoning, as both CLIs report it.
+- **Every turn is recorded**, Auto or not, including a stopped turn that already called a model. A turn that never
+  reached a model adds nothing.
+- **Costs are unpriced.** Modex has no price table, so `cost` stays null and the dashboard shows calls as
+  unpriced rather than free.
+- **Recording is best-effort.** A failed write is logged and never changes the turn. Reading skips lines that
+  don't parse, so a torn last line after a crash costs one row.
+- Usage from before this release, from other tools, and from outside Modex is not imported.
+
+## How it is shown
+
+The dashboard is its own document in a native view over the Analytics surface, so its styles and the app's never
+meet. Main serves it from the built page (`dist/usage-preview`, packaged with the app) on `modex-analytics://app/`
+in an in-memory session, with the rows at `usage.json`; every other request from that session is refused, and the
+page has no access to the desktop bridge. It refreshes every 15 seconds while visible. Like the knowledge base, the
+view hides under dialogs and menus and while Streamer Mode is on.
+
+## The standalone preview
+
+The same dashboard runs on its fictional fixture data outside the app, with a **Demo Data** stamp. Run from the
+repository root in your session worktree:
 
 ```sh
 pnpm --filter @modex/desktop dev:usage
@@ -14,9 +48,8 @@ pnpm --filter @modex/desktop build:usage
 ```
 
 The output is `apps/desktop/dist/usage-preview/`. The normal desktop build also
-builds this entry point, so CI checks the preview bundle. It uses the existing
+builds this entry point, so CI checks the bundle. It uses the existing
 React and Vite dependencies, without the desktop bridge or Electron processes.
-It is not included in the packaged desktop app or its navigation yet.
 
 ## What works
 
@@ -61,9 +94,8 @@ Dialogs support Escape; focus moves to the heading after a navigation change.
   assets. Their SIL Open Font License is retained in `usage/public/licenses/OFL.txt`.
 - The brand mark reuses Modex's existing `BrandMark` component.
 
-Live log collection, account connections, subscription billing, and provider
-quotas are not implemented. Before adding collection, validate duplicate Claude
-message updates and Codex fork-replay handling against real sanitized records.
+Importing other tools' logs, account connections, subscription billing, and provider
+quotas are not implemented.
 
 ## Validation
 
@@ -71,8 +103,14 @@ message updates and Codex fork-replay handling against real sanitized records.
 pnpm --filter @modex/desktop typecheck
 pnpm --filter @modex/desktop build:usage
 pnpm --filter @modex/desktop build:main
-node --test apps/desktop/dist/test/usage-ledger.test.js
+node --test apps/desktop/dist/test/usage-ledger.test.js apps/desktop/dist/test/analytics.test.js
+pnpm --filter @modex/desktop exec playwright test e2e/analytics.spec.ts e2e/usage.spec.ts
 ```
+
+`analytics.test.ts` covers the recorded row's shape, tool mapping and summed input, torn-line and date
+filtering, recording for every turn without failing one, and that the analytics origin serves only the built page
+and `usage.json` (no traversal, symlinks or other types). `e2e/analytics.spec.ts` opens Analytics from the rail on a
+seeded row, checks the live banner without a Demo stamp and no bridge in the page, and hides it from Settings.
 
 The focused tests cover inclusive UTC filtering, token/cost aggregation, missing
 prices, partial cost labels, CSV escaping, and demo session/account consistency.
