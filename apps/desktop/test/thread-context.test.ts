@@ -29,7 +29,7 @@ test("maps PR lifecycle and constructs trusted links from the configured GitHub 
   for (const [patch, state] of [[{}, "open"], [{ draft: true }, "draft"], [{ state: "closed" }, "closed"], [{ state: "closed", merged_at: "2026-10-06T00:00:00Z" }, "merged"]] as const) {
     const reader = new ThreadContextReader({ query: async (args) => {
       assert.ok(args.includes("--hostname"));
-      assert.ok(args.includes("github.com"));
+      assert.equal(args[args.indexOf("--hostname") + 1], "github.com");
       assert.match(args[1]!, /head=TypeSafeAI%3Arelease%2Fsidebar/);
       assert.match(args[1]!, /state=all/);
       return JSON.stringify([pull({ ...patch, html_url: "https://attacker.invalid" })]);
