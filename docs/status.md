@@ -710,6 +710,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## In flight
 
+- **Desktop v0.1.0 preparation.** The first minor release ships everything under "On main,
+  unreleased": Markdown notes in workspaces and projects with per-project agent scope, files in
+  notes, Images and native Plugins (Val's decision), Analytics and thread archiving. It is the
+  first published-to-published automatic update, from v0.0.12. A signed rehearsal and the full
+  test suite passed locally. Notarization, the packaged E2E on the signed tag, the hosted native
+  updater scenarios, independent download checks and publication remain.
+  [Candidate review](reviews/2026-10-15-v0.1.0-release-review.md).
+
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and
