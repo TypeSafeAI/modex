@@ -59,6 +59,8 @@ test("owner removal retains another project's raw draft, attachments and configu
   await expect(tid(page, "composer-attachments")).toContainText("keep.txt");
   await selectProject("p1");
   await expect.poll(() => { try { return recovery().drafts.draft.projectId; } catch { return null; } }).toBe("p1");
+  await expect.poll(() => recovery().drafts.projects.find((row: any) => row.projectId === "p2"))
+    .toMatchObject({ text: raw, attachments: [expect.objectContaining({ name: "keep.txt" })] });
   const before = recovery().drafts, other = before.projects.find((row: any) => row.projectId === "p2"), settings = before.draft;
   await page.evaluate(() => window.modex!.invoke("project:remove", { projectId: "p1" }));
   await expect(tid(page, "draft-view")).toHaveAttribute("data-project-id", "p2");
@@ -77,13 +79,16 @@ test("automatic owner retirement adopts the actual retired-thread event without 
   await page.locator(`[data-testid="thread-row"][data-thread-id="${thread.id}"] .thread-main`).click();
   await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", thread.id);
   await expect.poll(() => { try { return recovery().drafts.selectedThreadId; } catch { return null; } }).toBe(thread.id);
-  const retired = await app.evaluate(async (_electron, cwd) => {
+  await app.evaluate(async (_electron, cwd) => {
     const cp = process.getBuiltinModule("node:child_process"), fixture = (globalThis as any).__ownerRemovalFixture;
     const headSha = cp.execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
     fixture.pullRequest = { state: "merged", number: 7, url: "https://example.test/pr/7", headSha };
-    return fixture.retirer.sweep();
   }, thread.cwd);
-  expect(retired).toEqual([thread.id]); expect(fs.existsSync(thread.cwd)).toBe(false);
+  // Retirement retries on its next sweep when an admitted renderer request is
+  // still settling. Exercise that contract instead of requiring the first sweep.
+  await expect.poll(() => app.evaluate(() => (globalThis as any).__ownerRemovalFixture.retirer.sweep()))
+    .toEqual([thread.id]);
+  expect(fs.existsSync(thread.cwd)).toBe(false);
   await expect(tid(page, "update-recovery")).toHaveCount(0);
   await expect(tid(page, "composer-input")).toBeEditable();
   expect(recovery().drafts.threads.some((row: any) => row.threadId === thread.id)).toBe(false);
@@ -112,4 +117,28 @@ test("uncertain owner pruning shows fresh read-only recovery and exits through o
   expect(fs.readFileSync(path.join(home, "app/update-recovery.json"))).toEqual(bytes);
   const receipt = test.info().outputPath("owner-removal-recovery.json"); fs.writeFileSync(receipt, JSON.stringify({ ...evidence, ordinaryQuit: true, recoveryUnchanged: true }));
   await test.info().attach("owner-removal-recovery", { path: receipt, contentType: "application/json" });
+});
+
+test("owner removal keeps unrelated thread updates delivered after canonical adoption", async () => {
+  const keep = await page.evaluate(() => window.modex!.invoke("thread:create", { projectId: "p2", backend: "mock" }));
+  await page.reload();
+  await expect(tid(page, "context-branch")).toHaveText("main");
+  await app.evaluate(({ BrowserWindow }, thread) => {
+    const wc = BrowserWindow.getAllWindows()[0]!.webContents;
+    const send = wc.send.bind(wc);
+    wc.send = (channel, ...args) => {
+      send(channel, ...args);
+      if (channel === "drafts:remove-adopt") {
+        wc.send = send;
+        send("thread:event", { type: "thread", threadId: thread.id, thread: { ...thread, title: "Routed during adoption", model: "opus" } });
+        send("thread:event", { type: "status", threadId: thread.id, status: "waiting" });
+      }
+    };
+  }, keep);
+  await expect(async () => { await page.evaluate(() => window.modex!.invoke("project:remove", { projectId: "p1" })); }).toPass({ timeout: 10_000 });
+  const row = page.locator(`[data-testid="thread-row"][data-thread-id="${keep.id}"]`);
+  await expect(row).toContainText("Routed during adoption");
+  await expect(row).toHaveAttribute("data-status", "waiting");
+  await expect(row).toContainText("opus");
+  expect((await page.evaluate(() => window.modex!.invoke("state:get", undefined))).projects.some(project => project.id === "p1")).toBe(false);
 });
