@@ -158,12 +158,22 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout(persistPreferences);
   const showChanges = layout.changes;
-  const sidebarOpen = layout.sidebar;
+  const [knowledgeReady, setKnowledgeReady] = useState(false);
+  const [knowledgeSidebarOpen, setKnowledgeSidebarOpen] = useState(false);
+  const onKnowledgeReadyChange = useCallback((ready: boolean) => {
+    setKnowledgeReady(ready);
+    if (ready) setKnowledgeSidebarOpen(false);
+  }, []);
+  const knowledgeFocused = surface === "space" && knowledgeReady;
+  const sidebarOpen = knowledgeFocused ? knowledgeSidebarOpen : layout.sidebar;
   const streamerMode = layout.streamerMode;
   useStreamerRedaction(streamerMode);
   const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
-  const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
+  const setSidebarOpen = (f: (v: boolean) => boolean) => {
+    if (knowledgeFocused) setKnowledgeSidebarOpen(f);
+    else setLayout((l) => ({ sidebar: f(l.sidebar) }));
+  };
   // The toast: what failed and, when the action can simply be run again, how.
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
@@ -816,7 +826,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
   };
 
-  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
+  const panels = usePanelSizing({ ...layout, sidebar: sidebarOpen }, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
   const openSpaceChat = (prompt?: string) => {
     if (nativeHoldRef.current) return;
     setSpaceChatOpen(true);
@@ -855,7 +865,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}

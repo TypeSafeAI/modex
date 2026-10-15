@@ -44,3 +44,14 @@
   .knowledge-status { margin-left: auto; }
   .knowledge-maintenance { max-height: min(180px, 30vh); }
 }
+
+/* The running editor shares the window toolbar instead of stacking two headers. */
+#knowledge-titlebar { display: none; }
+#knowledge-titlebar:has(.knowledge-topbar) { display: flex; flex: 1; min-width: 0; }
+.titlebar:has(.knowledge-topbar) .titlebar-nav { width: auto; padding-right: 8px; }
+.titlebar .knowledge-topbar { width: 100%; min-width: 0; height: var(--titlebar-h); padding: 0 8px 0 0; flex-wrap: nowrap; border: 0; background: transparent; }
+.knowledge-topbar button { cursor: pointer; }
+.knowledge-topbar button:disabled { cursor: default; opacity: .45; }
+.knowledge-topbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.titlebar .knowledge-topbar .space-breadcrumb { flex-shrink: 0; }
+.app:has(#knowledge-titlebar .knowledge-topbar) .sheet { margin: 0; border: 0; border-radius: 0; box-shadow: none; }

@@ -3,9 +3,73 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { appDir, launch, seedHome, tid } from "./support";
+import { appDir, launch, resizeWindow, seedHome, tid } from "./support";
 
 const screenshots = path.join(appDir, ".probes", "space");
+
+test("running Knowledge shares the titlebar and fills its content frame", async ({}, testInfo) => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  try {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("knowledge:state");
+      ipcMain.handle("knowledge:state", () => ({ status: "ready", installed: true, folder: "/knowledge", url: "http://127.0.0.1:12345", error: null, external: true }));
+      ipcMain.removeHandler("knowledge:show");
+      ipcMain.handle("knowledge:show", (_event, { bounds }) => { (globalThis as any).__knowledgeBounds = bounds; return null; });
+    });
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Knowledge base", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "Space pages" })).toHaveCount(0);
+    await expect(page.getByRole("separator", { name: "Resize sidebar" })).toHaveCount(0);
+    const canvas = tid(page, "knowledge-canvas");
+    const toolbar = tid(page, "titlebar").locator(".knowledge-topbar");
+    await expect(toolbar).toBeVisible();
+    for (const theme of ["graphite", "jev", "coven"]) {
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+      for (const width of [900, 1440]) {
+        await resizeWindow(app, page, width, 900);
+        const title = (await tid(page, "titlebar").boundingBox())!;
+        const rail = (await page.locator(".rail").boundingBox())!;
+        const box = (await canvas.boundingBox())!;
+        expect(box.y).toBe(title.y + title.height);
+        expect(box.x).toBe(rail.x + rail.width);
+        expect(box.x + box.width).toBe(width);
+        expect(box.y + box.height).toBe(900);
+        await expect.poll(() => app.evaluate(() => (globalThis as any).__knowledgeBounds)).toEqual(box);
+        const buttons = await toolbar.getByRole("button").all();
+        let right = (await tid(page, "sidebar-toggle").boundingBox())!.x + 28;
+        for (const button of buttons) {
+          const b = (await button.boundingBox())!;
+          expect(b.x).toBeGreaterThanOrEqual(right);
+          expect(b.y).toBeGreaterThanOrEqual(0);
+          expect(b.y + b.height).toBeLessThanOrEqual(title.height);
+          expect(b.x + b.width).toBeLessThanOrEqual(width);
+          right = b.x + b.width;
+        }
+      }
+    }
+    await page.screenshot({ path: testInfo.outputPath("knowledge-compact-shell.png") });
+    await toolbar.getByRole("button", { name: "Agent maintenance" }).click();
+    await expect(page.getByRole("checkbox", { name: /Maintain knowledge/ })).toBeVisible();
+    await toolbar.getByRole("button", { name: "Agent maintenance" }).click();
+    await tid(page, "sidebar-toggle").click();
+    await expect(page.getByRole("complementary", { name: "Space pages" })).toBeVisible();
+    expect((await canvas.boundingBox())!.y).toBe((await tid(page, "titlebar").boundingBox())!.height);
+    await tid(page, "sidebar-toggle").click();
+    await expect(page.getByRole("complementary", { name: "Space pages" })).toHaveCount(0);
+    await tid(page, "rail-chat").click();
+    await expect(toolbar).toHaveCount(0);
+    await expect(tid(page, "composer-input")).toBeVisible();
+    await expect(tid(page, "sidebar")).toBeVisible();
+    await tid(page, "rail-space").click();
+    await expect(toolbar).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Space pages" })).toHaveCount(0);
+    await toolbar.getByRole("button", { name: "Space", exact: true }).click();
+    await expect(toolbar).toHaveCount(0);
+    await expect(canvas).toBeHidden();
+    await expect(page.getByRole("complementary", { name: "Space pages" })).toBeVisible();
+  } finally { await app.close(); }
+});
 
 test("Knowledge automatic maintenance is opt-in per project and persists across launches", async () => {
   const { home, repo } = seedHome();
@@ -291,6 +355,7 @@ test("real Open Knowledge installs, edits local files, hides for privacy, and st
     const editor = guest.locator('.tiptap[contenteditable="true"]').filter({ hasText: "Welcome to Modex knowledge" });
     await expect(editor).toBeVisible();
     const visibleGuest = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.some(view => view.getVisible()));
+    await tid(page, "sidebar-toggle").click();
     const divider = (await page.getByRole("separator", { name: "Resize sidebar" }).boundingBox())!;
     const x = divider.x + divider.width / 2;
     const y = divider.y + divider.height / 2;
