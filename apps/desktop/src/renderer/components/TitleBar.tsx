@@ -24,6 +24,8 @@ interface Props {
   onOpenPath: (path: string) => void;
   onOpenTerminal: (path: string) => void;
   onDelete: (thread: Thread) => void;
+  /** Puts the thread away (true) or brings it back (false). */
+  onArchive: (thread: Thread, archived: boolean) => void;
   platform: string;
 }
 
@@ -32,7 +34,7 @@ interface Props {
  * lights, back/forward through selected threads, and the sidebar toggle. Right, over the thread: its
  * title (double-click to rename) and the thread's status and Changes controls.
  */
-export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, platform }: Props) {
+export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, onArchive, platform }: Props) {
   const [renameSignal, setRenameSignal] = useState(0);
   return (
     <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar">
@@ -41,6 +43,7 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
         <IconButton icon="arrow-right" label="Forward" size="md" data-testid="nav-forward" disabled={!canForward} onClick={onForward} />
         <IconButton icon="sidebar" label={sidebarOpen ? "Hide sidebar" : "Show sidebar"} size="md" data-testid="sidebar-toggle" aria-pressed={sidebarOpen} onClick={onToggleSidebar} />
       </div>
+      <div id="knowledge-titlebar" />
       {thread && (
         <div className="titlebar-main">
           <Icon name="folder" size={16} className="titlebar-folder" />
@@ -48,7 +51,7 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
           <span className="spacer" />
           <div className="titlebar-actions">
             <IconButton icon="terminal" label={showTerminal ? "Hide terminal" : "Show terminal"} shortcut="⌃`" size="md" className={showTerminal ? "on" : undefined} data-testid="terminal-toggle" aria-pressed={showTerminal} onClick={onToggleTerminal} />
-            <ThreadMenu thread={thread} platform={platform} onRename={() => setRenameSignal((n) => n + 1)} onOpenPath={onOpenPath} onOpenTerminal={onOpenTerminal} onDelete={onDelete} />
+            <ThreadMenu thread={thread} platform={platform} onRename={() => setRenameSignal((n) => n + 1)} onOpenPath={onOpenPath} onOpenTerminal={onOpenTerminal} onDelete={onDelete} onArchive={onArchive} />
             <Tooltip label={showChanges ? "Hide workspace" : "Show workspace"} shortcut="⌘J">
               <button className={`icon-btn md changes-toggle${showChanges ? " on" : ""}`} data-testid="changes-toggle" aria-label="Workspace" aria-pressed={showChanges} onClick={onToggleChanges}>
                 <Icon name="changes" size={16} />
@@ -62,8 +65,8 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
   );
 }
 
-/** The thread's ⋯ menu: rename, where it runs (open, copy), and delete. */
-function ThreadMenu({ thread, platform, onRename, onOpenPath, onOpenTerminal, onDelete }: { thread: Thread; platform: string; onRename: () => void; onOpenPath: (p: string) => void; onOpenTerminal: (p: string) => void; onDelete: (t: Thread) => void }) {
+/** The thread's ⋯ menu: rename, where it runs (open, copy), archive, and delete. */
+function ThreadMenu({ thread, platform, onRename, onOpenPath, onOpenTerminal, onDelete, onArchive }: { thread: Thread; platform: string; onRename: () => void; onOpenPath: (p: string) => void; onOpenTerminal: (p: string) => void; onDelete: (t: Thread) => void; onArchive: (t: Thread, archived: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const pick = (fn: () => void) => () => { setOpen(false); fn(); };
@@ -77,6 +80,7 @@ function ThreadMenu({ thread, platform, onRename, onOpenPath, onOpenTerminal, on
         <MenuItem data-testid="action-open-terminal" onClick={pick(() => onOpenTerminal(thread.cwd))}>Open terminal here</MenuItem>
         <MenuItem data-testid="action-copy-path" onClick={pick(() => void navigator.clipboard.writeText(thread.cwd))}>Copy path</MenuItem>
         <MenuSeparator />
+        <MenuItem data-testid="action-archive" disabled={!thread.archived && (thread.status === "running" || thread.status === "waiting")} onClick={pick(() => onArchive(thread, !thread.archived))}>{thread.archived ? "Unarchive thread" : "Archive thread"}</MenuItem>
         <MenuItem data-testid="action-delete" className="danger" onClick={pick(() => onDelete(thread))}>Delete thread</MenuItem>
       </Menu>
     </span>

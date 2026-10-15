@@ -167,10 +167,16 @@ struct CompanionRootView: View {
                         }
                     }
                 }
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("PROJECTS").font(.caption.weight(.bold)).tracking(1.7).foregroundStyle(Palette.muted)
                     Spacer()
-                    Text("\(model.snapshot.threads.count) \(model.snapshot.threads.count == 1 ? "thread" : "threads")").font(.caption).foregroundStyle(Palette.muted)
+                    if model.archivedThreadCount > 0 {
+                        // Archived threads are hidden by default; this is the one place that reveals them.
+                        Button(model.showArchived ? "Hide archived" : "Show archived (\(model.archivedThreadCount))") { model.showArchived.toggle() }
+                            .font(.caption.weight(.semibold)).foregroundStyle(Palette.accent)
+                            .accessibilityIdentifier("toggle-archived")
+                    }
+                    Text("\(model.visibleThreadCount) \(model.visibleThreadCount == 1 ? "thread" : "threads")").font(.caption).foregroundStyle(Palette.muted)
                 }
                 if model.snapshot.projects.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -183,19 +189,28 @@ struct CompanionRootView: View {
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
                         ForEach(model.snapshot.projects) { project in
-                            let threads = model.snapshot.threads.filter { $0.projectId == project.id }
+                            let threads = model.visibleThreads(in: project.id)
+                            let hidden = model.showArchived ? 0 : model.snapshot.threads.filter { $0.projectId == project.id && $0.archived == true }.count
                             VStack(alignment: .leading, spacing: 14) {
                                 Label(project.name, systemImage: "folder")
                                     .font(.headline).foregroundStyle(.white)
                                     .fixedSize(horizontal: false, vertical: true)
                                 if threads.isEmpty {
-                                    Text("No threads yet. Start with a question or a task.")
+                                    Text(hidden > 0 ? "\(hidden) archived \(hidden == 1 ? "thread" : "threads") hidden." : "No threads yet. Start with a question or a task.")
                                         .font(.subheadline).foregroundStyle(Palette.muted)
                                 }
                                 ForEach(threads) { thread in
                                     NavigationLink(value: thread.id) { ThreadRow(thread: thread) }
                                         .buttonStyle(.plain)
                                         .accessibilityIdentifier("thread-\(thread.id)")
+                                        .contextMenu {
+                                            Button {
+                                                Task { _ = await model.setArchived(thread.archived != true, threadId: thread.id) }
+                                            } label: {
+                                                Label(thread.archived == true ? "Unarchive" : "Archive", systemImage: thread.archived == true ? "tray.and.arrow.up" : "archivebox")
+                                            }
+                                            .disabled(!model.connected || !canArchive(thread))
+                                        }
                                 }
                                 Button { newThreadRequest = NewThreadRequest(projectId: project.id) } label: {
                                     Label("New thread", systemImage: "plus")
@@ -294,7 +309,7 @@ private struct ThreadRow: View {
                 .overlay(Image(systemName: thread.status == "waiting" ? "hand.raised" : "bubble.left.and.text.bubble.right").foregroundStyle(Palette.accent))
             VStack(alignment: .leading, spacing: 5) {
                 Text(thread.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
-                Text("\(thread.backend.capitalized) · \(thread.status == "waiting" ? "Approval needed" : thread.status.capitalized)\(taskSummary(thread).map { " · \($0)" } ?? "")")
+                Text("\(thread.archived == true ? "Archived · " : "")\(thread.backend.capitalized) · \(thread.status == "waiting" ? "Approval needed" : thread.status.capitalized)\(taskSummary(thread).map { " · \($0)" } ?? "")")
                     .font(.system(size: 12)).foregroundStyle(thread.status == "waiting" ? Palette.accent : Palette.muted)
             }
             Spacer(minLength: 0)
@@ -304,6 +319,11 @@ private struct ThreadRow: View {
         .background(Palette.raised.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.line, lineWidth: 1))
     }
+}
+
+/// An archived thread can always come back; a working one stays listed until it finishes.
+private func canArchive(_ thread: CompanionThread) -> Bool {
+    thread.archived == true || thread.status == "idle" || thread.status == "error"
 }
 
 /// "Worktree · PR #12 open", "Finished · PR #12 merged", or nil for a plain checkout.
@@ -338,9 +358,26 @@ private struct ThreadDetailView: View {
                     .accessibilityLabel("Back to threads")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(thread.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    Text("\(model.isDemo ? "Demo · " : "")\(thread.backend.capitalized) · \(currentStatus.capitalized)\(taskSummary(current).map { " · \($0)" } ?? "")").font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(2)
+                    Text("\(model.isDemo ? "Demo · " : "")\(current.archived == true ? "Archived · " : "")\(thread.backend.capitalized) · \(currentStatus.capitalized)\(taskSummary(current).map { " · \($0)" } ?? "")").font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(2)
                 }
                 Spacer()
+                Menu {
+                    Button {
+                        let archived = current.archived != true
+                        Task {
+                            // Archived threads are hidden by default, so leave the transcript once the Mac confirmed.
+                            if await model.setArchived(archived, threadId: thread.id), archived, !model.showArchived { dismiss() }
+                        }
+                    } label: {
+                        Label(current.archived == true ? "Unarchive thread" : "Archive thread", systemImage: current.archived == true ? "tray.and.arrow.up" : "archivebox")
+                    }
+                    .disabled(!model.connected || !canArchive(current))
+                } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold))
+                        .frame(width: 30, height: 30).background(Palette.surface, in: Circle())
+                }
+                .accessibilityLabel("Thread options")
+                .accessibilityIdentifier("thread-options")
                 Menu {
                     Button { Task { await model.setApprovals("ask") } } label: { Label("Ask each time", systemImage: policy == "ask" ? "checkmark" : "hand.raised") }
                     Button { Task { await model.setApprovals("always") } } label: { Label("Always allow", systemImage: policy == "always" ? "checkmark" : "checkmark.shield") }

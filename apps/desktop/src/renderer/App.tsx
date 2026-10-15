@@ -53,6 +53,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
   const [nativeHold, setNativeHold] = useState(false);
   const nativeHoldRef = useRef(false);
   const ownerRemovalHeld = useRef(false);
+  const ownerRemovalEvents = useRef<Extract<ThreadEvent, { type: "thread" }>[]>([]);
   const [nativeRecoveryError, setNativeRecoveryError] = useState<string | null>(null);
   const [readOnlyRecovery, setReadOnlyRecovery] = useState<NativeDraftReadOnlyOpen | null>(null);
   const [pendingSends, setPendingSends] = useState<PendingSendView[]>([]);
@@ -157,12 +158,22 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout(persistPreferences);
   const showChanges = layout.changes;
-  const sidebarOpen = layout.sidebar;
+  const [knowledgeReady, setKnowledgeReady] = useState(false);
+  const [knowledgeSidebarOpen, setKnowledgeSidebarOpen] = useState(false);
+  const onKnowledgeReadyChange = useCallback((ready: boolean) => {
+    setKnowledgeReady(ready);
+    if (ready) setKnowledgeSidebarOpen(false);
+  }, []);
+  const knowledgeFocused = surface === "space" && knowledgeReady;
+  const sidebarOpen = knowledgeFocused ? knowledgeSidebarOpen : layout.sidebar;
   const streamerMode = layout.streamerMode;
   useStreamerRedaction(streamerMode);
   const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
-  const setSidebarOpen = (f: (v: boolean) => boolean) => setLayout((l) => ({ sidebar: f(l.sidebar) }));
+  const setSidebarOpen = (f: (v: boolean) => boolean) => {
+    if (knowledgeFocused) setKnowledgeSidebarOpen(f);
+    else setLayout((l) => ({ sidebar: f(l.sidebar) }));
+  };
   // The toast: what failed and, when the action can simply be run again, how.
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
@@ -261,8 +272,21 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     releaseEditors: () => restartDrafts.release(),
     freezeAttachments: () => attachmentDrafts.freezeForOwnerRemoval() !== null,
     releaseAttachments: () => attachmentDrafts.resumeAfterRecovery(),
-    held: value => { ownerRemovalHeld.current = value; holdNative(value); },
+    held: value => {
+      ownerRemovalHeld.current = value;
+      if (!value) {
+        const pending = ownerRemovalEvents.current.splice(0).reverse();
+        setState(current => current ? { ...current, threads: current.threads.map(thread => {
+          const update = pending.find(event => event.threadId === thread.id);
+          return update ? { ...thread, ...update.thread, status: thread.status } : thread;
+        }) } : current);
+      }
+      holdNative(value);
+    },
     apply: (saved, current) => {
+      // Main sends events and adoption over the same ordered channel. Earlier
+      // events are in this snapshot; later events must survive until release.
+      ownerRemovalEvents.current = [];
       const restored = Object.fromEntries([...saved.threads.map(row => [row.threadId, row.text]), ...saved.projects.map(row => [row.key, row.text])]);
       // Synchronous refs must describe the canonical snapshot before the queue
       // adopts it. React state alone leaves a stale autosave/selection window.
@@ -352,7 +376,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     return bridge.onEvent((e: ThreadEvent) => {
       // Retirement publishes its Store event inside the held operation. Its
       // canonical Store snapshot is adopted with drafts by the second handshake.
-      if (ownerRemovalHeld.current && e.type === "thread") return;
+      if (ownerRemovalHeld.current && e.type === "thread") { ownerRemovalEvents.current.push(e); return; }
       if (e.type === "item" || e.type === "item_update") {
         loadingItems.current.get(e.threadId)?.push(e);
         setItems((m) => ({ ...m, [e.threadId]: applyItemEvent(m[e.threadId] ?? [], e) }));
@@ -667,6 +691,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
+  /** Archived threads leave the working list on every device; the selection stays so the row remains visible under Archived. */
+  const archiveThread = (t: Thread, archived: boolean) => act(async () => {
+    await bridge.invoke("thread:archive", { threadId: t.id, archived });
+    await refresh();
+  });
   const closeTerminal = (threadId: string) => {
     setTerminals((m) => ({ ...m, [threadId]: false }));
     inputRef.current?.focus();
@@ -797,7 +826,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     if (next) { setLayout({ sidebar: true }); selectThread(next.id); }
   };
 
-  const panels = usePanelSizing(layout, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
+  const panels = usePanelSizing({ ...layout, sidebar: sidebarOpen }, surface === "chat" && showChanges && Boolean(thread), state?.settings.theme === "graphite");
   const openSpaceChat = (prompt?: string) => {
     if (nativeHoldRef.current) return;
     setSpaceChatOpen(true);
@@ -827,6 +856,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
         onOpenPath={openPath}
         onOpenTerminal={openTerminal}
         onDelete={deleteThread}
+        onArchive={archiveThread}
         platform={bridge.platform}
       />
       <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
@@ -835,7 +865,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}
@@ -846,6 +876,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
             onNewChat={newChat}
             onNewThread={openDraft}
             onDeleteThread={deleteThread}
+            onArchiveThread={archiveThread}
             onRemoveProject={removeProject}
             unsent={unsent}
             agents={activeAgents}
@@ -877,6 +908,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
               onUpdate={updateThread}
               onRetry={() => void retry()}
               onFix={applyFix}
+              onUnarchive={() => void archiveThread(thread, false)}
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
               onRetryModels={() => retryModels(thread.backend)}

@@ -45,14 +45,14 @@ final class DemoWorkspaceTests: XCTestCase {
         defer { app.terminate() }
         returnToWelcome(app)
         app.open(URL(string: "modex://demo")!)
-        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: UITestBudget.seconds(10)))
         var openingAttempts = 0
         XCTAssertTrue(openDemoThread(app) { thread in
             openingAttempts += 1
             if openingAttempts > 1 { thread.tap() }
         }, "An ignored first thread action must recover to the actual thread.")
         XCTAssertEqual(openingAttempts, 2)
-        XCTAssertTrue(app.buttons["Back to threads"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Back to threads"].waitForExistence(timeout: UITestBudget.seconds(10)))
         var attempts = 0
         XCTAssertTrue(backToDemoThreads(app) { back in
             attempts += 1
@@ -229,6 +229,21 @@ final class DemoWorkspaceTests: XCTestCase {
         XCTAssertEqual(reads, 1)
     }
 
+    // `attachScreenshot` depends on this: a recorded-but-expected failure must not end the test even
+    // when the test has asked to stop at the first failure.
+    func testBestEffortEvidenceDoesNotStopTheTest() {
+        continueAfterFailure = false
+        var reached = false
+        XCTExpectFailure("Simulated screenshot timeout", options: .nonStrict()) { XCTFail("Failed to get screenshot: simulated") }
+        reached = true
+        XCTAssertTrue(reached)
+    }
+
+    func testBudgetScaleIsAtLeastOne() {
+        XCTAssertGreaterThanOrEqual(UITestBudget.scale, 1)
+        XCTAssertEqual(UITestBudget.seconds(10), 10 * UITestBudget.scale)
+    }
+
     func testDemoWorkspaceNeedsNoMac() {
         continueAfterFailure = false
         let prompts = answerSystemAlertsDuringActions()
@@ -240,64 +255,64 @@ final class DemoWorkspaceTests: XCTestCase {
         if !demo.isReadyToTap { app.swipeUp() }
         demo.tapWhenReady()
 
-        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10), "The demo must say it is not a paired Mac.")
+        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: UITestBudget.seconds(10)), "The demo must say it is not a paired Mac.")
         XCTAssertEqual(app.staticTexts["demo-status"].label, "Demo workspace · not connected to a Mac")
         let thread = app.buttons["thread-demo-launch"]
-        XCTAssertTrue(thread.waitForExistence(timeout: 10))
-        capture(app, name: "Demo workspace")
+        XCTAssertTrue(thread.waitForExistence(timeout: UITestBudget.seconds(10)))
+        attachScreenshot(of: app, named: "Demo workspace")
         XCTAssertTrue(openDemoThread(app), "Opening the demo thread must reach its destination.")
 
         let approval = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "approve-")).firstMatch
-        XCTAssertTrue(approval.waitForExistence(timeout: 10), "The demo approval should appear.")
+        XCTAssertTrue(approval.waitForExistence(timeout: UITestBudget.seconds(10)), "The demo approval should appear.")
         approval.tapWhenReady()
         let confirmation = app.sheets["Approve this action?"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        XCTAssertTrue(confirmation.waitForExistence(timeout: UITestBudget.seconds(10)))
         XCTAssertTrue(confirmation.staticTexts["This is the demo. Nothing runs on a Mac; your answer is only recorded here."].exists)
         confirmation.buttons["Approve once"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 10))
-        capture(app, name: "Demo approval")
+        XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: UITestBudget.seconds(10)))
+        attachScreenshot(of: app, named: "Demo approval")
 
         let input = app.inputField("followup-input")
-        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        XCTAssertTrue(input.waitForExistence(timeout: UITestBudget.seconds(10)))
         input.typeTextWhenReady("Ship it", in: app)
         app.buttons["send-followup"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.appears(within: 20), "The demo must answer a follow-up.")
-        capture(app, name: "Demo follow-up")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Ship it\"")).firstMatch.appears(within: UITestBudget.seconds(20)), "The demo must answer a follow-up.")
+        attachScreenshot(of: app, named: "Demo follow-up")
         XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["new-thread"].tapWhenReady()
         let newInput = app.inputField("new-thread-input")
-        XCTAssertTrue(newInput.waitForExistence(timeout: 10))
+        XCTAssertTrue(newInput.waitForExistence(timeout: UITestBudget.seconds(10)))
         XCTAssertTrue(app.staticTexts["Creates a demo thread with scripted replies. Location and provider choices are simulated; nothing runs on a Mac."].exists)
         app.segmentedControls.buttons["Worktree"].tapWhenReady()
         app.segmentedControls.buttons["Claude"].tapWhenReady()
         newInput.typeTextWhenReady("Review from phone", in: app)
         app.buttons["new-thread-commands"].tapWhenReady()
         let search = app.textFields["Find a skill or command"]
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        XCTAssertTrue(search.waitForExistence(timeout: UITestBudget.seconds(10)))
         search.typeTextWhenReady("demo-review", in: app)
         let skill = app.staticTexts["/demo-review"]
-        XCTAssertTrue(skill.waitForExistence(timeout: 10))
+        XCTAssertTrue(skill.waitForExistence(timeout: UITestBudget.seconds(10)))
         skill.tapWhenReady()
-        XCTAssertTrue(search.waitForNonExistence(timeout: 10))
-        XCTAssertTrue(newInput.waitForExistence(timeout: 10))
+        XCTAssertTrue(search.waitForNonExistence(timeout: UITestBudget.seconds(10)))
+        XCTAssertTrue(newInput.waitForExistence(timeout: UITestBudget.seconds(10)))
         XCTAssertEqual(newInput.value as? String, "Review from phone /demo-review ")
         app.buttons["create-thread"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Review from phone /demo-review\"")).firstMatch.appears(within: 20))
-        capture(app, name: "Demo thread with a skill")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Got it: \"Review from phone /demo-review\"")).firstMatch.appears(within: UITestBudget.seconds(20)))
+        attachScreenshot(of: app, named: "Demo thread with a skill")
         XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["workspace-options"].tapWhenReady()
         app.buttons["Reset demo workspace"].tapWhenReady()
-        XCTAssertTrue(thread.waitForExistence(timeout: 10))
+        XCTAssertTrue(thread.waitForExistence(timeout: UITestBudget.seconds(10)))
         XCTAssertTrue(openDemoThread(app), "Opening the reset demo thread must reach its destination.")
-        XCTAssertTrue(approval.waitForExistence(timeout: 10), "Reset must restore the pending approval.")
+        XCTAssertTrue(approval.waitForExistence(timeout: UITestBudget.seconds(10)), "Reset must restore the pending approval.")
         app.buttons["deny-launch-approval"].tapWhenReady()
-        XCTAssertTrue(app.staticTexts["Denied"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Denied"].waitForExistence(timeout: UITestBudget.seconds(10)))
         XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
 
         app.buttons["workspace-options"].tapWhenReady()
-        XCTAssertTrue(app.buttons["Pair with your Mac…"].waitForExistence(timeout: 5), "Pairing must stay reachable from the demo.")
+        XCTAssertTrue(app.buttons["Pair with your Mac…"].waitForExistence(timeout: UITestBudget.seconds(5)), "Pairing must stay reachable from the demo.")
         let leave = app.buttons["Leave demo workspace"]
         let welcome = app.buttons["pair-button"]
         let menuPresented = { app.buttons["Pair with your Mac…"].exists && leave.exists }
@@ -311,34 +326,73 @@ final class DemoWorkspaceTests: XCTestCase {
             },
             isReady: { leave.isReadyToTap },
             tap: { initiated = true; leave.tap() }), "Leaving the demo must activate the menu action and reach the welcome screen.")
-        XCTAssertTrue(app.buttons["pair-button"].waitForExistence(timeout: 10), "Leaving the demo returns to the welcome screen.")
+        XCTAssertTrue(app.buttons["pair-button"].waitForExistence(timeout: UITestBudget.seconds(10)), "Leaving the demo returns to the welcome screen.")
         XCTAssertTrue(demo.exists)
         app.open(URL(string: "modex://demo")!)
-        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: 10), "The review QR URL must open the same offline workspace.")
+        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: UITestBudget.seconds(10)), "The review QR URL must open the same offline workspace.")
         app.terminate()
         app.launch()
-        XCTAssertTrue(demo.waitForExistence(timeout: 10), "Demo access must not save a pairing on relaunch.")
+        XCTAssertTrue(demo.waitForExistence(timeout: UITestBudget.seconds(10)), "Demo access must not save a pairing on relaunch.")
+    }
+
+    func testDemoArchiveHidesThreadUntilShown() {
+        continueAfterFailure = false
+        let prompts = answerSystemAlertsDuringActions()
+        defer { removeUIInterruptionMonitor(prompts) }
+        let app = XCUIApplication()
+        app.launch()
+        defer { app.terminate() }
+        returnToWelcome(app)
+        app.open(URL(string: "modex://demo")!)
+        XCTAssertTrue(app.staticTexts["demo-status"].waitForExistence(timeout: UITestBudget.seconds(10)))
+        let scroll = app.buttons["thread-demo-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: UITestBudget.seconds(10)))
+        let toggle = app.buttons["toggle-archived"]
+        XCTAssertFalse(toggle.exists, "Nothing is archived in a fresh demo.")
+        if !scroll.isReadyToTap { app.swipeUp() }
+        guard scroll.waitUntilReady() else { return }
+        scroll.press(forDuration: 1.0)
+        let archive = app.buttons["Archive"]
+        XCTAssertTrue(archive.waitForExistence(timeout: UITestBudget.seconds(10)), "Holding a thread offers Archive.")
+        archive.tap()
+        XCTAssertTrue(scroll.waitForNonExistence(timeout: UITestBudget.seconds(10)), "Archived threads are hidden by default.")
+        XCTAssertTrue(toggle.waitForExistence(timeout: UITestBudget.seconds(10)))
+        XCTAssertEqual(toggle.label, "Show archived (1)")
+        attachScreenshot(of: app, named: "Demo archived thread hidden")
+        toggle.tapWhenReady()
+        XCTAssertTrue(scroll.waitForExistence(timeout: UITestBudget.seconds(10)), "Show archived reveals the thread.")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Archived · Codex")).firstMatch.waitForExistence(timeout: UITestBudget.seconds(10)))
+        attachScreenshot(of: app, named: "Demo archived thread shown")
+        scroll.tapWhenReady()
+        let options = app.buttons["thread-options"]
+        XCTAssertTrue(options.waitForExistence(timeout: UITestBudget.seconds(10)))
+        options.tapWhenReady()
+        app.buttons["Unarchive thread"].tapWhenReady()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Demo · Codex")).firstMatch.waitForExistence(timeout: UITestBudget.seconds(10)), "Unarchiving clears the Archived label.")
+        XCTAssertTrue(backToDemoThreads(app), "Back must reach the demo dashboard before another action.")
+        XCTAssertTrue(toggle.waitForNonExistence(timeout: UITestBudget.seconds(10)), "With nothing archived there is nothing to show.")
+        XCTAssertTrue(scroll.exists)
     }
 
     // A preceding failed paired test can leave credentials behind. Reach welcome explicitly
     // before either demo entry path; the product correctly refuses demo URLs while paired.
     private func returnToWelcome(_ app: XCUIApplication) {
         let demo = app.buttons["demo-button"]
-        if !demo.waitForExistence(timeout: 5) {
+        if !demo.waitForExistence(timeout: UITestBudget.seconds(5)) {
             let options = app.buttons["workspace-options"]
-            XCTAssertTrue(options.waitForExistence(timeout: 10))
+            XCTAssertTrue(options.waitForExistence(timeout: UITestBudget.seconds(10)))
             options.tapWhenReady()
-            if app.buttons["Leave demo workspace"].waitForExistence(timeout: 2) {
+            if app.buttons["Leave demo workspace"].waitForExistence(timeout: UITestBudget.seconds(2)) {
                 app.buttons["Leave demo workspace"].tapWhenReady()
             } else {
                 app.buttons["Forget paired Mac…"].tapWhenReady()
                 app.alerts["Forget this Mac?"].buttons["Forget Mac"].tapWhenReady()
             }
         }
-        XCTAssertTrue(demo.waitForExistence(timeout: 15))
+        XCTAssertTrue(demo.waitForExistence(timeout: UITestBudget.seconds(15)))
     }
 
-    private func openDemoThread(_ app: XCUIApplication, timeout: TimeInterval = 30,
+    private func openDemoThread(_ app: XCUIApplication, timeout: TimeInterval = UITestBudget.seconds(30),
                                 tap: ((XCUIElement) -> Void)? = nil) -> Bool {
         let thread = app.buttons["thread-demo-launch"]
         let opened = { !thread.exists && app.buttons["Back to threads"].isReadyToTap }
@@ -358,7 +412,7 @@ final class DemoWorkspaceTests: XCTestCase {
             })
     }
 
-    private func backToDemoThreads(_ app: XCUIApplication, timeout: TimeInterval = 30,
+    private func backToDemoThreads(_ app: XCUIApplication, timeout: TimeInterval = UITestBudget.seconds(30),
                                    tap: ((XCUIElement) -> Void)? = nil) -> Bool {
         let back = app.buttons["Back to threads"]
         let dashboard = { app.staticTexts["demo-status"].exists && app.buttons["workspace-options"].isReadyToTap && !back.exists }
@@ -376,12 +430,5 @@ final class DemoWorkspaceTests: XCTestCase {
                 initiated = true
                 if let tap { tap(back) } else { back.tap() }
             })
-    }
-
-    private func capture(_ app: XCUIApplication, name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
     }
 }

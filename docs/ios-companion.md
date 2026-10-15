@@ -21,8 +21,8 @@ Claude and Codex coding turns continue to run through their CLIs on the Mac.
    left on.
 
 The listener is off until enabled. It exposes only a small paired API: snapshots, thread
-creation, provider-scoped command discovery, sending a follow-up, and answering an unanswered
-approval once. It omits project paths, skill paths, backend session
+creation, provider-scoped command discovery, sending a follow-up, answering an unanswered
+approval once, and archiving or unarchiving a thread. It omits project paths, skill paths, backend session
 handles, settings, and tool arguments from snapshots. The iPhone offers only Approve once and
 Deny, with an extra confirmation before approval. The Mac certificate and token live under
 `~/.modex/companion/` with owner-only permissions, outside the repository and app bundle.
@@ -39,6 +39,15 @@ The skill and command picker shows each skill's complete description, wrapped, w
 above it. Descriptions are read from the skill's frontmatter on the Mac; the user's home folder
 and the project folder are replaced with `~` and `<project>` before they leave the Mac, and
 skill file paths are never sent.
+
+A thread can be archived from the Mac (the thread's ⋯ menu or its sidebar row) or from the
+phone (hold a thread on the dashboard, or the ⋯ menu above its transcript). Archived threads
+leave the working lists on both devices. On the Mac they wait under **Archived (n)** in their
+project; on the phone they are hidden until **Show archived** is chosen, and that choice is
+forgotten with the workspace. The transcript stays, and sending a message to an archived thread
+brings it back. A thread that is working or waiting for an approval cannot be archived, so
+nothing hidden ever waits for an answer. The snapshot carries only the fact (`archived: true`),
+not when it happened.
 
 Threads on a worktree show their pull request number and state ("Worktree · PR #12 open").
 When the PR merges and nothing in the worktree would be lost, the Mac retires the task and the
@@ -94,7 +103,17 @@ MODEX_IOS_CONFIGURATION=Release MODEX_IOS_DERIVED_DATA=/tmp/modex-ios-release-e2
 MODEX_IOS_LAN=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 # Also restart the Mac fixture on another port and then revoke the saved pairing:
 MODEX_IOS_LAN=1 MODEX_IOS_RECONNECT=1 apps/ios/ModexCompanion/Scripts/test-e2e.sh
+# On a Mac busy with other work, give every UI-test wait the room CI gives it (×4):
+MODEX_UI_TIMEOUT_SCALE=4 apps/ios/ModexCompanion/Scripts/test-e2e.sh
 ```
+
+Every wait in the UI tests is a multiple of a base tuned on an idle developer Mac
+(`UITestBudget` in `UITests/XCUIElement+Ready.swift`); the CI job runs with
+`MODEX_UI_TIMEOUT_SCALE=4` because its shared runners take 5–30× longer per XCTest round trip.
+When the `iPhone companion` job fails, download its `iphone-test-results` artifact and run
+`Scripts/xctest-activity-times.py` on the runner's Session log (the script's header has the
+export commands) before changing any budget: it totals XCTest's own steps — idle waits, launches,
+SpringBoard interruption checks, snapshots — for comparison with a green run of the same job.
 
 The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
 fixture with the real thread runner and paired HTTPS API, then drives the simulator through

@@ -513,13 +513,54 @@ import XCTest
     }
 
     func testThreadsDecodeTheirApprovalPolicyAndPullRequestStatus() throws {
-        let json = #"{"id":"abcdef12","projectId":"p","title":"T","backend":"claude","status":"idle","updatedAt":"now","approvals":"yolo","worktree":true,"pr":{"number":7,"state":"merged"},"retiredPr":7}"#
+        let json = #"{"id":"abcdef12","projectId":"p","title":"T","backend":"claude","status":"idle","updatedAt":"now","approvals":"yolo","worktree":true,"pr":{"number":7,"state":"merged"},"retiredPr":7,"archived":true}"#
         let thread = try JSONDecoder().decode(CompanionThread.self, from: Data(json.utf8))
         XCTAssertEqual(thread.approvalPolicy, "yolo")
         XCTAssertEqual(thread.pr, CompanionThread.PullRequestBadge(number: 7, state: "merged"))
         XCTAssertEqual(thread.retiredPr, 7)
+        XCTAssertEqual(thread.archived, true)
         let old = try JSONDecoder().decode(CompanionThread.self, from: Data(#"{"id":"a","projectId":"p","title":"T","backend":"codex","status":"idle","updatedAt":"now"}"#.utf8))
         XCTAssertEqual(old.approvalPolicy, "ask", "an older Mac that sends no policy means ask")
+        XCTAssertNil(old.archived, "an older Mac archives nothing")
+    }
+
+    func testArchivedThreadsStayHiddenUntilShownAndArchivingGoesThroughTheMac() async {
+        let (model, client) = fixture()
+        client.archivedIds = ["b"]
+        await model.refresh()
+        XCTAssertFalse(model.showArchived, "Archived threads are hidden by default.")
+        XCTAssertEqual(model.archivedThreadCount, 1)
+        XCTAssertEqual(model.visibleThreadCount, 1)
+        XCTAssertEqual(model.visibleThreads(in: "p").map(\.id), ["a"])
+        XCTAssertEqual(model.snapshot.threads.count, 2, "The Mac still sends archived threads so they can be shown without another request.")
+        model.showArchived = true
+        XCTAssertEqual(model.visibleThreads(in: "p").map(\.id), ["a", "b"])
+        XCTAssertEqual(model.visibleThreadCount, 2)
+        model.showArchived = false
+
+        let archived1 = await model.setArchived(true, threadId: "a")
+
+        XCTAssertTrue(archived1)
+        var calls = await client.calls
+        XCTAssertEqual(calls.last, "archive:a:true")
+        XCTAssertEqual(model.visibleThreads(in: "p"), [], "The Mac's answer hides the newly archived thread at once.")
+        XCTAssertEqual(model.archivedThreadCount, 2)
+        let archived2 = await model.setArchived(false, threadId: "b")
+        XCTAssertTrue(archived2)
+        calls = await client.calls
+        XCTAssertEqual(calls.last, "archive:b:false")
+        XCTAssertEqual(model.visibleThreads(in: "p").map(\.id), ["b"])
+        XCTAssertNil(model.error)
+
+        client.archiveFailure = CompanionError.message("Wait for this thread to finish before archiving it.")
+        let archived3 = await model.setArchived(true, threadId: "b")
+        XCTAssertFalse(archived3)
+        XCTAssertEqual(model.error, "Wait for this thread to finish before archiving it.")
+        XCTAssertEqual(model.visibleThreads(in: "p").map(\.id), ["b"], "A refusal changes nothing.")
+
+        model.showArchived = true
+        model.disconnect()
+        XCTAssertFalse(model.showArchived, "A new workspace starts with archived threads hidden again.")
     }
 
     func testDisconnectResetsApprovalAndIgnoresItsLateError() async {
@@ -669,6 +710,8 @@ private actor ControlledClient: CompanionClient {
     private(set) var snapshotRequests = 0
     private(set) var pairingSnapshotRequests = 0
     nonisolated(unsafe) var snapshotFailure: Error?
+    nonisolated(unsafe) var archiveFailure: Error?
+    nonisolated(unsafe) var archivedIds: Set<String> = []
     nonisolated(unsafe) var createdThread: CompanionThread?
     nonisolated(unsafe) var createdProjectId: String?
     nonisolated(unsafe) var createdText: String?
@@ -690,10 +733,15 @@ private actor ControlledClient: CompanionClient {
         if let createdThread {
             return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: [createdThread], items: [])
         }
-        return makeSnapshot(threadId)
+        return makeSnapshot(threadId, archived: archivedIds)
     }
     func send(threadId: String, text: String) async throws {
         if !sends.isEmpty { try await sends.removeFirst().value() }
+    }
+    func setArchived(threadId: String, archived: Bool) async throws {
+        calls.append("archive:\(threadId):\(archived)")
+        if let archiveFailure { throw archiveFailure }
+        if archived { archivedIds.insert(threadId) } else { archivedIds.remove(threadId) }
     }
     func answer(threadId: String, itemId: String, approve: Bool) async throws {
         calls.append("answer:\(itemId)")
@@ -714,8 +762,8 @@ private actor ControlledClient: CompanionClient {
     }
 }
 
-private func makeSnapshot(_ threadId: String?) -> CompanionSnapshot {
-    let threads = ["a", "b"].map { CompanionThread(id: $0, projectId: "p", title: "Thread \($0)", backend: "mock", status: "idle", updatedAt: "2026-10-04T00:00:00Z") }
+private func makeSnapshot(_ threadId: String?, archived: Set<String> = []) -> CompanionSnapshot {
+    let threads = ["a", "b"].map { CompanionThread(id: $0, projectId: "p", title: "Thread \($0)", backend: "mock", status: "idle", updatedAt: "2026-10-04T00:00:00Z", archived: archived.contains($0) ? true : nil) }
     let items = threadId.map { [CompanionItem(id: "item-\($0)", kind: "assistant", text: "Thread \($0)", title: nil, question: nil, detail: nil, answer: nil, status: nil, level: nil, at: "2026-10-04T00:00:00Z")] } ?? []
     return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: threads, items: items)
 }
@@ -762,6 +810,51 @@ private func makeSnapshot(_ threadId: String?) -> CompanionSnapshot {
         XCTAssertFalse(model.hasWorkspace)
         XCTAssertNil(model.pairing)
         XCTAssertTrue(model.snapshot.threads.isEmpty)
+    }
+
+    func testDemoArchivesAndRestoresThreadsWithoutAMac() async {
+        let model = CompanionModel(store: EmptyPairingStore(), discovery: RecordingDiscovery(), makeClient: { _ in
+            XCTFail("The demo must not create a network client.")
+            return UnreachableClient()
+        })
+        await model.startDemo()
+        model.stopPolling()
+        let project = DemoCompanionClient.projectId
+        let scroll = DemoCompanionClient.scrollThreadId
+        XCTAssertEqual(model.archivedThreadCount, 0)
+        XCTAssertEqual(model.visibleThreads(in: project).count, 3)
+
+        let archived4 = await model.setArchived(true, threadId: DemoCompanionClient.launchThreadId)
+
+        XCTAssertFalse(archived4, "A thread waiting for an answer cannot be put away.")
+        XCTAssertNotNil(model.error)
+        model.error = nil
+        XCTAssertEqual(model.archivedThreadCount, 0)
+
+        let archived5 = await model.setArchived(true, threadId: scroll)
+
+        XCTAssertTrue(archived5)
+        XCTAssertNil(model.error)
+        XCTAssertEqual(model.archivedThreadCount, 1)
+        XCTAssertFalse(model.visibleThreads(in: project).contains { $0.id == scroll }, "Archived demo threads are hidden by default too.")
+        model.showArchived = true
+        XCTAssertTrue(model.visibleThreads(in: project).contains { $0.id == scroll })
+        let archived6 = await model.setArchived(false, threadId: scroll)
+        XCTAssertTrue(archived6)
+        XCTAssertNil(model.snapshot.threads.first { $0.id == scroll }?.archived)
+
+        let archived7 = await model.setArchived(true, threadId: scroll)
+
+        XCTAssertTrue(archived7)
+        await model.select(scroll)
+        model.draft = "Bring it back"
+        await model.send()
+        XCTAssertEqual(model.draft, "")
+        XCTAssertNil(model.snapshot.threads.first { $0.id == scroll }?.archived, "A new message brings an archived thread back, as on the Mac.")
+        XCTAssertEqual(model.archivedThreadCount, 0)
+
+        model.disconnect()
+        XCTAssertFalse(model.showArchived)
     }
 
     func testDemoThreadCreationAndSkillsNeedNoMac() async throws {

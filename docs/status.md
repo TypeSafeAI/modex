@@ -548,6 +548,18 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Delete selected Space text.** Backspace/Delete now removes a safely mapped
+  selection in rendered page text and places the editing caret at the deletion.
+  Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
+  selected occurrence. Source editing retains native textarea behavior.
+
+- **Knowledge editor spacing.** The running editor shares the window titlebar
+  and fills its content area without the surrounding sheet frame.
+  The editor fills the area beside the navigation rail and collapses the outer Space
+  sidebar when ready, avoiding two file navigators beside the document and chat.
+  The sidebar toggle can reopen it temporarily; returning to pages or Home restores
+  the saved sidebar preference. Setup and maintenance remain available.
+
 - **E2E launch waits for the native show.** The desktop e2e launch helper waits for each
   window's `show` event, recorded from a listener installed before the window exists, instead
   of `isVisible()`, which on macOS turns true as soon as the window is ordered front and before
@@ -567,8 +579,23 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   thread event in `app/events.sqlite` (`node:sqlite`) with a durable cursor. It writes alongside
   the state files, which stay authoritative. A real session replays from the journal to its exact
   saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
+- **Thread archiving on Mac and iPhone.** A thread can be put away from the Mac (sidebar row
+  menu, title bar ⋯ menu) or the phone (hold a thread, or the transcript's ⋯ menu). Archived
+  threads leave the working list: the Mac keeps them under **Archived (n)** per project, where
+  search still finds them; the phone hides them until **Show archived** is chosen, and forgets
+  that choice with the workspace. The transcript stays, a new message brings the thread back,
+  and a thread that is working or waiting for an approval cannot be archived. The paired API
+  adds `POST /v1/threads/:id/archive` and an `archived` flag on snapshot threads; an older Mac
+  answers the phone with 501. Companion build 6 does not include the phone side; it ships with
+  the next iPhone build.
 
 ## In flight
+
+- **Thread/project deletion during active turns.** A dedicated runner admission hold
+  lets deletion stop and drain its own turns while unrelated turns continue, without
+  weakening restart checks or the native draft preparation/adoption transaction.
+  Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
+  routing and title updates from admitted turns also finish while new edits stay fenced.
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
@@ -767,6 +794,40 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   The CI job also turns off the simulator's hardware keyboard before the first boot, so the
   software keyboard appears and the helper's fallback focus check (`app.keyboards`) can see it;
   local Simulator settings are left alone.
+- **A resumed Claude session could end a turn with no reply (fixed 2026-10-13).** When Modex
+  stops a turn while a background task is still running (Stop, or the 30-minute cap), the next
+  message's `claude --resume` first replays that stopped task as a turn of its own: a
+  `task_notification`, an `init`, and a success `result` with `num_turns` 0 and no text, and only
+  then the `init` of the turn that answers the message. Modex ended the turn on that result. The
+  message and its routing were persisted and nothing else; the thread went idle; the CLI did the
+  real work unheard, for an hour on 2026-10-09 (thread `52868298`). Reproduced outside Modex by
+  stopping a `claude -p` turn mid-background-task and resuming it (claude 2.1.296). The backend now
+  holds a result from a turn that never called the model until the real turn answers, or the idle
+  window passes; and a turn that ends with no items at all becomes a failure card with Retry.
+- **`iPhone companion` CI flakes, root cause (2026-10-13).** Eight failures in three days (runs
+  38370101202 and 38216764305 on `main`, six on branches) each named a different line: a
+  screenshot timeout, "not ready to tap within 30 s; last frame none" three times, typed text cut
+  off at "Please su", a failed app termination, and two ignored-first-tap assertions. The Session
+  logs of three red runs and the green run from the same morning (38386254082) tell one story:
+  GitHub's shared `macos-latest` runners spend 5–30× longer than a developer Mac on every XCTest
+  round trip, red or green. Single steps reached 15–28 s for "wait for app to idle" (100–135 of
+  them per run), 25–34 s per app launch, 16–22 s for the SpringBoard "interrupting elements"
+  check before a tap, and 5–9 s per accessibility snapshot. A run went red whenever one such step
+  crossed one of the suite's fixed 10, 20 or 30 s budgets; today's `main` failure was a screenshot
+  attachment hitting XCTest's own 30 s after every assertion in the test had passed. The earlier
+  rounds (above) each fixed the step that failed last and the failure moved. Now every budget is
+  `UITestBudget.seconds(base)`, multiplied by `MODEX_UI_TIMEOUT_SCALE` (×4 in CI, forwarded with
+  xcodebuild's `TEST_RUNNER_` prefix in `Scripts/test-e2e.sh`), screenshots are best-effort
+  evidence (`attachScreenshot`, an expected failure when the simulator cannot deliver one), and
+  `Scripts/xctest-activity-times.py` totals a Session log's XCTest steps so the next report starts
+  from the same numbers. A green run is unchanged by the scale: a budget only matters once it is
+  exceeded. Steps XCTest bounds itself (launch, terminate, event synthesis) are outside the scale;
+  one of the eight (a 2026-10-12 "Failed to terminate") was of that kind. A loaded developer Mac
+  (load 577 on 16 cores during the run) shows a different bottleneck: snapshots stayed at 0.2 s,
+  but single "wait for app to idle" steps inside `tap()` reached 86 s while the app's 2.5 s
+  polling and spinner kept it busy, and the unscaled demo test still passed in 187 s because
+  those waits never touch the suite's budgets. The CI runners are slow in the snapshot path,
+  which is the one the budgets measure.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before

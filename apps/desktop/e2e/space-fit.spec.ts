@@ -25,6 +25,48 @@ test("embedded knowledge bounds follow shell zoom", async () => {
   } finally { await app.close(); }
 });
 
+test("Backspace and Delete remove the selected rendered text and preserve the editing caret", async () => {
+  const { home } = seedHome();
+  let { app, page } = await launch(home);
+  try {
+    await tid(page, "rail-space").click();
+    const cases = [
+      { source: "Keep repeat middle repeat end", text: "repeat", start: 19, key: "Backspace" },
+      { source: "Keep repeat middle repeat end", text: "repeat", start: 5, key: "Delete" },
+      { source: "Keep spaces", text: " ", start: 4, key: "Backspace" },
+      { source: "Last text", text: "Last text", start: 0, key: "Delete" },
+    ];
+    for (const [index, item] of cases.entries()) {
+      await page.getByLabel("Import Markdown file").setInputFiles({ name: `delete-${index}.md`, mimeType: "text/markdown", buffer: Buffer.from(item.source) });
+      const preview = page.getByLabel("Edit block 1", { exact: true });
+      await preview.evaluate((el, { start, length }) => {
+        (el as HTMLElement).focus();
+        const text = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode()!;
+        const range = document.createRange(); range.setStart(text, start); range.setEnd(text, start + length);
+        const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+        el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      }, { start: item.start, length: item.text.length });
+      await expect(page.getByRole("toolbar", { name: "Text formatting" })).toBeVisible();
+      await page.keyboard.press(item.key);
+      const input = page.getByRole("textbox", { name: "Block 1", exact: true });
+      const expected = item.source.slice(0, item.start) + item.source.slice(item.start + item.text.length);
+      await expect(input).toHaveValue(expected);
+      await expect(input).toBeFocused();
+      expect(await input.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd])).toEqual([item.start, item.start]);
+      await expect(page.getByRole("toolbar", { name: "Text formatting" })).toHaveCount(0);
+      await page.keyboard.insertText("replacement");
+      const saved = expected.slice(0, item.start) + "replacement" + expected.slice(item.start);
+      await expect(input).toHaveValue(saved);
+      await expect.poll(() => page.evaluate(title => window.modex.invoke("space:list", undefined).then(pages => pages.find(p => p.title === title)?.markdown), `delete-${index}`)).toBe(saved);
+    }
+    await app.close();
+    ({ app, page } = await launch(home));
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Open delete-3", exact: true }).click();
+    await expect(page.getByLabel("Edit block 1", { exact: true })).toHaveText("replacement");
+  } finally { await app.close(); }
+});
+
 test("page comments reserve document space and keep compact entry and chat visible", async () => {
   const { home } = seedHome();
   const { app, page } = await launch(home);

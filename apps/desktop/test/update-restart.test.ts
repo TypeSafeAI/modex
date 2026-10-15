@@ -15,7 +15,8 @@ function harness(backend: Partial<Backend> = {}, beforeDeleteThread?: (id: strin
   const project = store.addProject(repo);
   const runner = new ThreadRunner({ home, store, emit: () => {}, beforeDeleteThread,
     router: new Router({ home, policy: () => store.settings.routing, listModels: async () => ({ models: [] }), transport: null }),
-    backends: { mock: { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "completed" }), ...backend } },
+    // A completed turn always carries at least one item; a silent completion is a failure card.
+    backends: { mock: { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, _options, sink) => { sink.assistant("done"); return { status: "completed" }; }, ...backend } },
   });
   return { runner, store, project, close: async () => {
     await runner.dispose();
@@ -37,6 +38,8 @@ test("restart hold blocks direct runner admission and cancelled preflight restor
     await assert.rejects(h.runner.removeProject(h.project.id), /restart/i);
     await assert.rejects(h.runner.followUp(thread.id), /restart/i);
     assert.throws(() => h.runner.updateThread(thread.id, { title: "late edit" }), /restart/i);
+    assert.throws(() => h.runner.updateThread(thread.id, { model: "late" }, { fromRouter: true }), /restart/i);
+    assert.throws(() => h.runner.updateThread(thread.id, { title: "late" }, { automaticTitle: true }), /restart/i);
     assert.match((await h.runner.listModels("mock")).error!, /restart/i);
     assert.equal(h.store.items(thread.id).length, 0);
     release();
@@ -86,9 +89,11 @@ test("restart refuses worktree creation and deletion already admitted before the
   const creating = h.runner.createThread(h.project.id, { worktree: true });
   try {
     assert.throws(() => h.runner.holdForRestart(), /finish/i);
+    assert.throws(() => h.runner.holdForOwnerRemoval(), /worktree operations/i);
     const thread = await creating;
     const removing = h.runner.deleteThread(thread.id, true);
     assert.throws(() => h.runner.holdForRestart(), /finish/i);
+    assert.throws(() => h.runner.holdForOwnerRemoval(), /worktree operations/i);
     finishDelete();
     await removing;
     h.runner.holdForRestart()();
@@ -141,4 +146,33 @@ test("background model learning finishes its persisted notice before restart", a
     h.runner.holdForRestart()();
     assert.ok(h.store.items(thread.id).some(item => item.kind === "notice" && item.text.includes("you chose tier 2")));
   } finally { finish(); await h.close(); }
+});
+
+test("owner removal lets an admitted Auto turn finish routing while refusing new edits", async () => {
+  let ranModel: string | undefined;
+  const h = harness({ runTurn: async (_text, opts) => { ranModel = opts.model; return { status: "completed" }; } });
+  let entered!: () => void, finish!: () => void;
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  const route = h.runner.router.route.bind(h.runner.router);
+  h.runner.router.route = async (...args) => {
+    const receipt = await route(...args);
+    receipt.decision.model = "routed-model";
+    receipt.item.model = "routed-model";
+    entered(); await gate;
+    return receipt;
+  };
+  const thread = await h.runner.createThread(h.project.id, { auto: true });
+  const turn = h.runner.send(thread.id, "hello");
+  let release: (() => void) | undefined;
+  try {
+    await ready;
+    release = h.runner.holdForOwnerRemoval();
+    assert.throws(() => h.runner.updateThread(thread.id, { model: "external-edit" }), /restart|remov/i);
+    await assert.rejects(h.runner.createThread(h.project.id), /restart|remov/i);
+    finish(); await turn;
+    assert.equal(ranModel, "routed-model");
+    assert.equal(h.store.thread(thread.id)?.model, "routed-model");
+    assert.equal(h.runner.items(thread.id).some(item => item.kind === "notice" && /routing failed|routing stopped/i.test(item.text)), false);
+  } finally { finish(); release?.(); await turn; await h.close(); }
 });

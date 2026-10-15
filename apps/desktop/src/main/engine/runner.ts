@@ -3,7 +3,7 @@ import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, LastTurn, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
-import { APPROVAL_POLICIES } from "../../shared/types.js";
+import { APPROVAL_POLICIES, BACKENDS } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
 import type { ApprovalRequest, Backend, TurnResult, TurnSink } from "./backends/types.js";
@@ -80,7 +80,7 @@ export interface RunnerOptions {
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
   private disposing = false;
-  private restartHold?: symbol;
+  private restartHold?: { kind: "restart" | "owner-removal" };
   private readonly background = new RestartAdmission();
   private readonly naming = new Map<string, AbortController>();
   private readonly titleRuns = new Set<Promise<void>>();
@@ -141,8 +141,22 @@ export class ThreadRunner {
       throw new Error("Let current turns and worktree operations finish before restarting.");
     }
     const releaseBackground = this.background.holdForRestart();
-    const token = this.restartHold = Symbol();
+    const token = this.restartHold = { kind: "restart" as const };
     return () => { if (this.restartHold === token) { this.restartHold = undefined; releaseBackground(); } };
+  }
+
+  /** Freeze new admissions for draft-owner removal without requiring idle turns.
+   * Deletion stops and drains its own turn; unrelated turns may keep running.
+   * Structural work must settle before the renderer's owner snapshot is frozen.
+   */
+  holdForOwnerRemoval(): () => void {
+    this.assertNotRestarting();
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    if (this.creating.size || this.deleting.size || this.removingProjects.size) {
+      throw new Error("Let current worktree operations finish before removing a thread or project.");
+    }
+    const token = this.restartHold = { kind: "owner-removal" as const };
+    return () => { if (this.restartHold === token) this.restartHold = undefined; };
   }
 
   private assertNotRestarting(): void {
@@ -432,7 +446,11 @@ export class ThreadRunner {
     let release!: () => void;
     const reservation = new Promise<void>(resolve => { release = resolve; });
     l.run = reservation;
-    try { await this.runTurn(threadId, text, reuse, attachments, prepared); }
+    // A new message on an archived thread brings it back: an archived thread is never one that is working.
+    try {
+      this.unarchive(threadId);
+      await this.runTurn(threadId, text, reuse, attachments, prepared);
+    }
     finally { if (l.run === reservation) l.run = null; release(); }
   }
 
@@ -597,6 +615,10 @@ export class ThreadRunner {
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
+      } else if (result.status === "completed" && l.items.length === turnStart && !abort.signal.aborted) {
+        // The CLI ended the turn without a word: no reply, no tool, no notice. A card with Retry beats an idle thread
+        // that looks as if nothing was asked (2026-10-09: a resumed session's stale result ended a turn this way).
+        this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
       } else {
         if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
         this.setStatus(threadId, "idle");
@@ -727,8 +749,35 @@ export class ThreadRunner {
     resolve(answer);
   }
 
-  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
+  /**
+   * Puts a thread away or brings it back. Archived threads leave the working lists on the Mac and the
+   * phone; the transcript stays. A thread that is working cannot be archived, so nothing hidden ever
+   * waits for an answer.
+   */
+  setArchived(threadId: string, archived: boolean): Thread {
     this.assertNotRestarting();
+    if (typeof archived !== "boolean") throw new Error("Choose Archive or Unarchive.");
+    const thread = this.o.store.thread(threadId);
+    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    if (this.deleting.has(threadId)) throw new Error("This thread is being deleted.");
+    const status = this.status(threadId);
+    if (archived && (status === "running" || status === "waiting")) throw new Error("Wait for this thread to finish before archiving it.");
+    if (Boolean(thread.archived) === archived) return { ...thread };
+    const t = this.o.store.updateThread(threadId, { archived: archived ? { at: new Date().toISOString() } : undefined });
+    this.o.emit({ threadId, type: "thread", thread: t });
+    return t;
+  }
+
+  private unarchive(threadId: string): void {
+    if (!this.o.store.thread(threadId)?.archived) return;
+    const t = this.o.store.updateThread(threadId, { archived: undefined });
+    this.o.emit({ threadId, type: "thread", thread: t });
+  }
+
+  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
+    // Already-admitted turns can finish routing and naming during owner removal.
+    // External edits remain fenced until the renderer adopts the canonical state.
+    if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals"].includes(key))) as ThreadPatch;
