@@ -12,7 +12,7 @@ test("Codex configures Pages alongside knowledge on start and fresh resume", asy
       const run = backend.runTurn("go", opts, collectSink().sink, new AbortController().signal);
       await proc.waitFor(l => l.includes('"turn/start"'));
       const opening = seen.find(s => s.method === (resume ? "thread/resume" : "thread/start"));
-      const names = ["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert"];
+      const names = ["search", "read", "create", "edit", "update", "trash", "restore", "history", "revert", "list", "create_folder", "move", "read_file"];
       const config = opening?.params.config as Record<string, unknown>;
       assert.deepEqual(config["mcp_servers.modex_pages"], { url: pages.url, enabled_tools: names, tools: Object.fromEntries(names.map(name => [name, { approval_mode: "approve" }])) });
       assert.ok(config["mcp_servers.modex_knowledge"]);

@@ -77,6 +77,7 @@ export class StoreDemo {
       "knowledge:reload": unavailable,
       "knowledge:external": unavailable,
       "knowledge:copy": unavailable,
+      "knowledge:useNotes": unavailable,
       "knowledge:open": unavailable,
       "project:knowledge": unavailable,
       "project:pages": unavailable,

@@ -608,7 +608,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Agents work in their own project's notes.** With **Manage notes** on, a project's agents see and
   change only that project's notes; another project's are not listed, read or changed. New
   `modex_pages` tools list a folder, create folders, move notes within the project, and read text
-  files. File import is next.
+  files.
+- **The knowledge base can be your notes.** Space → Knowledge base offers **Use your Modex notes**:
+  Open Knowledge then opens the notes folder, and a page's menu offers **Open in knowledge base**
+  instead of copying it. Knowledge tools stay inside each project's notes there too. File import
+  is next.
 
 ## In flight
 

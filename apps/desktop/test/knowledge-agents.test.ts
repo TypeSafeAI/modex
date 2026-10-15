@@ -228,3 +228,35 @@ test("delayed knowledge requests cannot use the next turn's lease", async () => 
     assert.equal(f.calls.length, 0);
   } finally { await first.client.close(); await first.lease.close(); await next?.client.close(); await next?.lease.close(); await f.clean(); }
 });
+
+test("a knowledge base that is the notes folder keeps each project's agents in that project's notes", async () => {
+  const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-notes-")));
+  fs.mkdirSync(path.join(folder, "Personal", "mine"), { recursive: true });
+  fs.mkdirSync(path.join(folder, "Personal", "theirs"), { recursive: true });
+  fs.writeFileSync(path.join(folder, "Personal", "mine", "Plan.md"), "Ship the decision");
+  fs.writeFileSync(path.join(folder, "Personal", "theirs", "Secret.md"), "Their decision");
+  const calls: { name: string }[] = [];
+  const target = { folder, content: folder, url: "http://127.0.0.1:9999" };
+  const agents = new KnowledgeAgents({
+    knowledge: { agentTarget: async () => target, isAgentTarget: () => true },
+    enabled: () => true,
+    scope: (projectId, at) => (at === folder && projectId === "project" ? "Personal/mine" : undefined),
+    connect: async () => ({ callTool: async call => { calls.push(call); return { content: [{ type: "text" as const, text: "saved" }] }; }, close: async () => {} }),
+  });
+  const lease = await agents.prepare({ id: "thread", projectId: "project", mode: "agent", plan: false }, () => {});
+  const client = new Client({ name: "test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(lease.connection.url)));
+  try {
+    const search = await client.callTool({ name: "search", arguments: { query: "decision" } });
+    const found = JSON.parse((search.content as { text: string }[])[0]!.text).results;
+    assert.deepEqual(found.map((r: { path: string }) => r.path), ["Personal/mine/Plan.md"], "search reads only this project's notes");
+    const outside = await client.callTool({ name: "read", arguments: { path: "Personal/theirs/Secret.md" } });
+    assert.equal(outside.isError, true);
+    assert.match(JSON.stringify(outside), /outside this project/);
+    const write = await client.callTool({ name: "write", arguments: { path: "Personal/theirs/Secret.md", content: "x", position: "replace", summary: "Leak" } });
+    assert.equal(write.isError, true);
+    assert.equal(calls.length, 0, "nothing outside the project reaches the knowledge server, search included");
+    await client.callTool({ name: "read", arguments: { path: "Personal/mine/Plan.md" } });
+    assert.equal(calls.length, 1, "inside the project, tools reach the server as before");
+  } finally { await client.close(); await lease.close(); await agents.dispose(); fs.rmSync(folder, { recursive: true, force: true }); }
+});

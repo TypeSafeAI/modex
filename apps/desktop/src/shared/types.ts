@@ -480,6 +480,8 @@ export interface BridgeCommands extends NativeDraftCommands {
   "knowledge:reload": { req: undefined; res: BrowserSnapshot | null };
   "knowledge:external": { req: undefined; res: void };
   "knowledge:copy": { req: { pageId: string }; res: string };
+  /** Makes Modex's notes folder the knowledge base. */
+  "knowledge:useNotes": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "space:export": { req: { pageId: string }; res: string | null };
   "space:list": { req: undefined; res: import("./space.js").SpacePage[] };
   "space:comments": { req: { pageId: string }; res: import("./space.js").SpaceComment[] };

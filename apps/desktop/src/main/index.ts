@@ -105,8 +105,17 @@ const pathReady = hydratePath(process.env).then(
 process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 const restartAdmission = new RestartAdmission();
-const knowledge = new KnowledgeService(home);
-const knowledgeAgents = new KnowledgeAgents({ knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true });
+const knowledge = new KnowledgeService(home, { notesFolder: () => store.space.root });
+const knowledgeAgents = new KnowledgeAgents({
+  knowledge, enabled: id => store.project(id)?.knowledgeMaintenance === true,
+  // A knowledge base that is the notes folder holds every project's notes; each project's agents stay in theirs.
+  scope: (id, folder) => {
+    let notes: string;
+    try { notes = fs.realpathSync(store.space.root); } catch { return undefined; }
+    const project = store.project(id);
+    return folder === notes && project ? store.space.linkProject(project).rel : undefined;
+  },
+});
 const pagesAgents = new PagesAgents({
   space: store.space, notes: store.space, enabled: id => store.project(id)?.pagesMaintenance === true,
   // Each project's agents work in that project's notes only (docs/pages-maintenance.md).
@@ -522,6 +531,8 @@ handle("knowledge:choose", async () => {
   return result.canceled || !result.filePaths[0] ? knowledge.snapshot() : knowledge.selectFolder(result.filePaths[0]);
 }, { localOnly: true });
 handle("knowledge:install", () => knowledge.install(), { localOnly: true });
+// One set of files: the knowledge base opens Modex's notes folder (made first if needed).
+handle("knowledge:useNotes", () => { store.space.list(); return knowledge.selectFolder(store.space.root); }, { localOnly: true });
 handle("knowledge:start", () => knowledge.start(), { localOnly: true });
 handle("knowledge:stop", async () => {
   knowledgeBrowser?.dispose(); knowledgeURL = null;
