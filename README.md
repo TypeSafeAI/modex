@@ -9,8 +9,9 @@
 [![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
 
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
-repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
-stream-json and `codex app-server`), using existing CLI logins or app-owned ChatGPT sign-in.
+repositories. It drives **Claude Code** through the official Agent SDK (which launches
+your installed `claude` executable) and **Codex** through `codex app-server`, using existing
+CLI logins or app-owned ChatGPT sign-in.
 App-owned sign-in is under review; see [its acceptance gates](docs/chatgpt-signin.md).
 It never calls a model
 API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
@@ -30,8 +31,9 @@ modex/
 
 - **Two backends, one UI.** Every thread picks **Codex** or **Claude** in the composer. Codex
   threads talk to `codex app-server` (the same JSON-RPC protocol the official Codex App uses);
-  Claude threads talk to `claude -p --output-format stream-json` with permission prompts routed
-  over stdio. The model picker works like the Codex App's: a popover listing exactly the models
+  Claude threads talk to the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`), which runs the
+  user's `claude` executable so CLAUDE.md, hooks, MCP servers and skills still load, and maps
+  permission prompts to in-process `canUseTool` callbacks. The model picker works like the Codex App's: a popover listing exactly the models
   the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
   row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
   free-text entry.
@@ -243,8 +245,8 @@ pnpm exec playwright install chromium # once, for the browser dev regression
 pnpm test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
 ```
 
-The desktop suite drives both CLI backends against scripted fake processes (Claude
-`control_request`/`control_response`, Codex JSON-RPC requests, notifications, and approval
+The desktop suite drives both CLI backends against scripted fake processes (Claude Agent SDK
+`canUseTool` / permission prompts, Codex JSON-RPC requests, notifications, and approval
 server-requests) and the runner end to end with the offline engine: approvals pause and resume
 a turn, denial leaves the tree untouched, `Stop` interrupts, two threads run concurrently, and
 worktree threads are created and removed. The e2e suite (`apps/desktop/e2e/app.spec.ts`)

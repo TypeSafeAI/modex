@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
-import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
+import { FakeProcess, fakeSpawn, collectSink, flushClaude, scriptedClaudeQuery } from "./fakeproc.js";
 import type { ToolStart, ToolUpdate } from "../src/main/engine/backends/types.js";
 
 function recording() {
@@ -17,7 +17,7 @@ const options = { cwd: "/repo", mode: "agent" as const, plan: false, model: "" }
 
 test("Claude tracks concurrent background agents without treating the launch receipt as completion", async () => {
   const proc = new FakeProcess();
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, {}, scriptedClaudeQuery);
   const { sink, tools, events } = recording();
   const run = backend.runTurn("go", options, sink, new AbortController().signal);
   await proc.waitFor((line) => line.includes('"user"'));
@@ -30,36 +30,42 @@ test("Claude tracks concurrent background agents without treating the launch rec
     proc.emitLine({ type: "system", subtype: "task_started", task_id: "shell", task_type: "local_bash", description: "Watch logs" });
     proc.emitLine({ type: "system", subtype: "task_started", task_id: "ambient", task_type: "local_agent", description: "Internal", ambient: true });
     proc.emitLine({ type: "assistant", parent_tool_use_id: "a", message: { content: [{ type: "text", text: "child response" }, { type: "tool_use", id: "read", name: "Read", input: { file_path: "src/a.ts" } }] } });
+    await flushClaude();
     assert.equal(tools.size, 2);
     assert.equal(tools.get("agent:a")?.args?.description, "Review a");
     assert.equal(tools.get("agent:a")?.agent?.state, "running");
     assert.match(tools.get("agent:a")?.agent?.detail ?? "", /read src\/a.ts/);
     assert.equal(events.some((e) => e.includes("child response")), false, "child text must not complete the parent's streamed answer");
     proc.emitLine({ type: "system", subtype: "task_notification", task_id: "task-a", status: "completed", summary: "Looks good" });
+    await flushClaude();
     assert.equal(tools.get("agent:a")?.agent?.state, "completed");
     assert.equal(tools.get("agent:b")?.agent?.state, "running");
     proc.emitLine({ type: "system", subtype: "task_progress", task_id: "task-b", description: "Review b", summary: "Checking retry handling" });
+    await flushClaude();
     assert.equal(tools.get("agent:b")?.agent?.detail, "Checking retry handling");
     proc.emitLine({ type: "system", subtype: "task_updated", task_id: "task-b", patch: { status: "failed", error: "No capacity" } });
+    await flushClaude();
     assert.equal(tools.get("agent:b")?.agent?.state, "failed");
     assert.equal(tools.get("agent:b")?.ok, false);
   } finally {
     // The background shell holds the turn open until it ends (see claude-background.test.ts).
     proc.emitLine({ type: "system", subtype: "task_notification", task_id: "shell", status: "completed" });
-    proc.emitLine({ type: "result", is_error: false });
+    proc.emitLine({ type: "result", is_error: false, num_turns: 1 });
+    proc.close(0);
     await run;
   }
 });
 
 test("Claude foreground Task completes with its result; missing final agent state remains unknown", async () => {
   const proc = new FakeProcess();
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, {}, scriptedClaudeQuery);
   const { sink, tools } = recording();
   const run = backend.runTurn("go", options, sink, new AbortController().signal);
   await proc.waitFor((line) => line.includes('"user"'));
   for (const id of ["a", "b"]) proc.emitLine({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "Task", input: { description: id, run_in_background: false } }] } });
   proc.emitLine({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "a", content: "finished" }] } });
-  proc.emitLine({ type: "result", is_error: false });
+  proc.emitLine({ type: "result", is_error: false, num_turns: 1 });
+  proc.close(0);
   await run;
   assert.equal(tools.get("agent:a")?.agent?.state, "completed");
   assert.equal(tools.get("agent:b")?.agent?.state, "unknown");

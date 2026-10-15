@@ -548,6 +548,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Claude Agent SDK.** Claude turns go through `@anthropic-ai/claude-agent-sdk` (`query()`),
+  pointed at the user's installed `claude` executable so the existing CLI login, CLAUDE.md,
+  hooks, MCP servers and skills still apply. Streaming, thinking, tools, `canUseTool`
+  approvals, Stop/`interrupt()`, permission-mode mapping, model aliases, resume and
+  background-task waits stay on the same backend surface; Codex is unchanged. Packaged
+  builds omit the SDK's bundled native CLI (hundreds of MB) and keep using the discovered
+  `claude` on PATH.
+
 - **Analytics export and recovery.** The native dashboard permits its own CSV
   export through a save dialog while other downloads remain refused. A torn
   usage-ledger tail no longer consumes the next recorded turn, and dashboard

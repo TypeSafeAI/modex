@@ -343,7 +343,7 @@ export interface ModelInfo {
 
 export const BACKENDS: { id: BackendId; label: string; hint: string }[] = [
   { id: "codex", label: "Codex", hint: "OpenAI Codex CLI (codex app-server) — uses your `codex login`" },
-  { id: "claude", label: "Claude", hint: "Claude Code CLI (claude -p) — uses your `claude` login" },
+  { id: "claude", label: "Claude", hint: "Claude Agent SDK (your `claude` login)" },
 ];
 
 export interface AppState {

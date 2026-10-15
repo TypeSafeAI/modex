@@ -1,3 +1,5 @@
+import { AbortError, query } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, EffortLevel, McpHttpServerConfig, Options, PermissionMode, Query, SDKUserMessage, SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
@@ -6,14 +8,17 @@ import fs from "node:fs";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, shortJson, stderrTail } from "./types.js";
+import { shortJson, stderrTail } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
 import { isModelOutOfCredits } from "../../../shared/failures.js";
 
+/** Filesystem sources whose CLAUDE.md, hooks, MCP servers and skills should load, matching Claude Code CLI defaults. */
+export const CLAUDE_SETTING_SOURCES: SettingSource[] = ["user", "project", "local"];
+
 /**
- * The stream-json user message content: plain text, or text plus base64 image blocks when images
+ * The user message content: plain text, or text plus base64 image blocks when images
  * are attached. Other files are already named by path in the text. Exported for tests.
  */
 export function userContent(text: string, attachments: TurnAttachment[] = []): string | Record<string, unknown>[] {
@@ -25,11 +30,14 @@ export function userContent(text: string, attachments: TurnAttachment[] = []): s
   ];
 }
 
+/** Injectable `query()` so tests can drive a scripted fake process instead of the real SDK subprocess. */
+export type ClaudeQuery = typeof query;
+
 /**
- * Drives the Claude Code CLI (`claude -p`) over its stream-json protocol:
- * newline-delimited JSON in both directions, token deltas via --include-partial-messages,
- * and permission prompts delivered as `control_request` messages that we answer on stdin.
- * No HTTP API is used — the user's `claude` login is the credential.
+ * Drives Claude Code through the official Agent SDK (`query()`), pointing at the
+ * user's installed `claude` executable so the existing CLI login is the credential.
+ * Permission prompts arrive as `canUseTool` callbacks (the SDK's replacement for
+ * stdio `control_request` / `control_response`). No HTTP inference API is used.
  */
 export class ClaudeBackend implements Backend {
   readonly id = "claude" as const;
@@ -40,6 +48,7 @@ export class ClaudeBackend implements Backend {
     private readonly spawnImpl = cliSpawn,
     /** How long a turn waits on background work; tests shorten these. */
     private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {},
+    private readonly queryImpl: ClaudeQuery = query,
   ) {}
 
   /** `claude --effort` levels (from `claude --help`); no default so the CLI's own setting applies. */
@@ -71,33 +80,39 @@ export class ClaudeBackend implements Backend {
       // Retain main's exit-code checks and CLI version reporting.
       if (account.loggedIn === true && result.code === 0) return report("authenticated", `Signed in · ${source} · model access unverified`);
       if (account.loggedIn === false && result.code === 1) return report("signed-out", "Signed out · run claude auth login");
-    } catch { /* Older CLIs do not provide structured account status. */ }
+    } catch { /* Older CLIs do not provide structured account status. */
+    }
     return report("unknown", "Account status unavailable · check in Claude CLI");
   }
 
   async dispose(): Promise<void> {}
 
-  /** CLI argv for a turn. Exported for tests. */
-  static args(opts: TurnOptions): string[] {
-    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio"];
-    if (opts.plan) args.push("--permission-mode", "plan");
-    else if (opts.mode === "chat") args.push("--permission-mode", "manual", "--disallowedTools", "Edit", "Write", "NotebookEdit");
-    else if (opts.mode === "agent") args.push("--permission-mode", "acceptEdits");
-    else args.push("--permission-mode", "bypassPermissions");
-    if (opts.model) args.push("--model", opts.model);
-    if (opts.effort) args.push("--effort", opts.effort);
-    // Fast mode is a settings key in Claude Code; `--settings` accepts inline JSON for this session only.
-    if (opts.fast) args.push("--settings", JSON.stringify({ fastMode: true }));
-    if (opts.resume) args.push("--resume", opts.resume);
-    for (const d of opts.addDirs ?? []) args.push("--add-dir", d);
-    if (opts.knowledge || opts.pages || opts.images) args.push("--mcp-config", JSON.stringify({ mcpServers: {
-      ...(opts.images ? { modex_images: { type: "http", url: opts.images.url } } : {}),
-      ...(opts.knowledge ? { modex_knowledge: { type: "http", url: opts.knowledge.url } } : {}),
-      ...(opts.pages ? { modex_pages: { type: "http", url: opts.pages.url } } : {}),
-    } }), "--append-system-prompt", [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions].filter(Boolean).join("\n\n"),
-    "--allowedTools", ...(opts.images ? ["mcp__modex_images__register"] : []), ...(opts.knowledge ? KNOWLEDGE_TOOLS.map(name => `mcp__modex_knowledge__${name}`) : []),
-    ...(opts.pages ? PAGES_TOOLS.map(name => `mcp__modex_pages__${name}`) : []));
-    return args;
+  /** Agent SDK `query()` options for a turn. Exported for tests. */
+  static sessionOptions(opts: TurnOptions): Options {
+    const permissionMode = permissionModeOf(opts);
+    const mcp = mcpServersOf(opts);
+    const allowed = allowedToolsOf(opts);
+    const append = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions].filter(Boolean).join("\n\n");
+    const effort = opts.effort && (ClaudeBackend.EFFORTS as string[]).includes(opts.effort) ? opts.effort as EffortLevel : undefined;
+    return {
+      permissionMode,
+      ...(permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
+      ...(opts.mode === "chat" && !opts.plan ? { disallowedTools: ["Edit", "Write", "NotebookEdit"] } : {}),
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(effort ? { effort } : {}),
+      ...(opts.fast ? { settings: { fastMode: true } } : {}),
+      ...(opts.resume ? { resume: opts.resume } : {}),
+      ...(opts.addDirs?.length ? { additionalDirectories: opts.addDirs } : {}),
+      ...(mcp ? { mcpServers: mcp } : {}),
+      ...(allowed.length ? { allowedTools: allowed } : {}),
+      settingSources: [...CLAUDE_SETTING_SOURCES],
+      includePartialMessages: true,
+      forwardSubagentText: true,
+      persistSession: true,
+      permissionPrompts: "host",
+      tools: { type: "preset", preset: "claude_code" },
+      systemPrompt: { type: "preset", preset: "claude_code", ...(append ? { append } : {}) },
+    };
   }
 
   generateTitle(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null> {
@@ -107,16 +122,10 @@ export class ClaudeBackend implements Backend {
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     if (signal.aborted) return Promise.resolve({ status: "interrupted" });
     return new Promise((resolve) => {
-      let child: ChildProcess;
+      let child: ChildProcess | undefined;
+      let session: Query | undefined;
       let bin = "claude";
-      const argv = ClaudeBackend.args(opts);
-      try {
-        bin = this.bin;
-        child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin) });
-      } catch (err) {
-        return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv, spawnError: (err as Error).message } });
-      }
-      const lines = new LineBuffer();
+      const sdk = ClaudeBackend.sessionOptions(opts);
       const started = new Map<string, number>();
       // Extended-thinking blocks are keyed by content-block index within the current assistant message.
       const thinking = new Map<number, string>();
@@ -140,24 +149,27 @@ export class ClaudeBackend implements Backend {
       // Whether fast mode serves this session, from the latest `system/init` or `result` that says.
       let fast: { state?: string; reason?: string } = {};
       // Background work (Bash or Agent with run_in_background) outlives the `result` that ends the model's
-      // reply. When it finishes, the CLI starts a follow-up turn by itself, and that turn's permission
-      // prompts are answered on stdin. Closing stdin at the first `result` failed every later prompt with
-      // "Tool permission request failed: AbortError: Stream closed". So a successful `result` that arrives
-      // while work is outstanding is held, and the turn ends at the first `result` with nothing outstanding.
+      // reply. When it finishes, Claude starts a follow-up turn by itself. Closing the query at the first
+      // `result` would drop later permission prompts, so a successful `result` that arrives while work is
+      // outstanding is held, and the turn ends at the first `result` with nothing outstanding.
       let held: TurnResult | null = null;
-      // The CLI has begun a follow-up turn since `held` (it announces each turn with `system/init`); its own `result` will come.
+      // Claude has begun a follow-up turn since `held` (it announces each turn with `system/init`); its own `result` will come.
       let followUp = false;
       let approvals = 0;
       let announced = false;
       let idleTimer: ReturnType<typeof setTimeout> | undefined;
       let capTimer: ReturnType<typeof setTimeout> | undefined;
+      let exit: { code: number | null; signal?: NodeJS.Signals | number } = { code: null };
+      let releasePrompt: (() => void) | undefined;
       const idleMs = this.timing.backgroundIdleMs ?? BACKGROUND_IDLE_MS;
       const capMs = this.timing.backgroundCapMs ?? BACKGROUND_CAP_MS;
       const settle = (r: TurnResult) => {
-        child.stdin?.end();
+        releasePrompt?.();
+        try { session?.close(); } catch { /* already closed */ }
+        try { child?.stdin?.end(); } catch { /* closed */ }
         finish(r);
       };
-      // Once the work has drained, the CLI normally starts its follow-up turn at once. If it stays quiet
+      // Once the work has drained, Claude normally starts its follow-up turn at once. If it stays quiet
       // for `idleMs` (and no prompt is waiting on the user), the held reply stands. Every message re-arms
       // this, so no message, `system/status` included, can leave a drained turn waiting for nothing.
       const armIdle = () => {
@@ -178,7 +190,7 @@ export class ClaudeBackend implements Backend {
         }
         // `--resume` first replays the previous turn's stopped background task as a turn of its own: `task_notification`,
         // `init`, then a success `result` with `num_turns` 0 and no text, and only then the `init` of the turn that answers
-        // this message. Ending on that result ended the turn with no reply while the CLI did the real work unheard
+        // this message. Ending on that result ended the turn with no reply while Claude did the real work unheard
         // (2026-10-09, thread 52868298; claude 2.1.296). A result from a turn that never called the model is held instead:
         // the real turn's `init` marks it as a follow-up and its own result ends the turn; silence ends it on the idle window.
         if (msg.num_turns === 0 || (msg.num_turns === undefined && !sawAssistant)) {
@@ -196,7 +208,7 @@ export class ClaudeBackend implements Backend {
           const one = background.size === 1;
           sink.notice("info", `Claude is still running ${work(background.size)}; this turn continues when ${one ? "it finishes" : "they finish"}. Stop ends ${one ? "it" : "them"}.`);
         }
-        // The wait is bounded: a task that never reports an end must not hold the turn (and the CLI) open forever.
+        // The wait is bounded: a task that never reports an end must not hold the turn (and Claude) open forever.
         capTimer ??= setTimeout(() => {
           const still = background.size > 0 ? `still reported ${work(background.size)} running` : "had not finished the turn its background work started";
           sink.notice("warn", `Claude ${still} ${duration(capMs)} after its reply. Modex ended the turn and stopped Claude.`);
@@ -207,77 +219,137 @@ export class ClaudeBackend implements Backend {
       const finish = (r: TurnResult) => {
         if (finished) return;
         finished = true;
+        releasePrompt?.();
         agents.finish(signal.aborted || r.status === "interrupted");
         clearTimeout(idleTimer);
         clearTimeout(capTimer);
         signal.removeEventListener("abort", onAbort);
-        const out: TurnResult = signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
+        const out: TurnResult = signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, sdk, pid: child?.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
         const fastMode = fastModeOf(fast.state, fast.reason);
         resolve(withUsage(fastMode ? { ...out, fastMode } : out, meter));
       };
-      const write = (o: unknown) => {
-        try {
-          child.stdin?.write(JSON.stringify(o) + "\n");
-        } catch {
-          /* closed */
-        }
-      };
       // Turn settlement must not cancel escalation while the child is still alive.
       const terminate = () => {
-        if (child.exitCode !== null || child.signalCode != null) return;
-        killTimer ??= setTimeout(() => child.kill("SIGKILL"), 1500);
+        if (!child || child.exitCode !== null || child.signalCode != null) return;
+        killTimer ??= setTimeout(() => child?.kill("SIGKILL"), 1500);
         child.kill("SIGTERM");
       };
-      const onAbort = terminate;
+      const onAbort = () => {
+        void session?.interrupt().catch(() => { /* closed */ });
+        terminate();
+      };
       signal.addEventListener("abort", onAbort, { once: true });
 
-      child.on("error", (err) => finish({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: (err as NodeJS.ErrnoException).code } }));
-      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
-      child.stdout?.on("data", (d: Buffer) =>
-        lines.push(d, (line) => {
-          if (finished || signal.aborted) return;
-          let msg: ClaudeMessage;
-          try {
-            msg = JSON.parse(line) as ClaudeMessage;
-          } catch {
-            return;
-          }
-          // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
-          if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
-          if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
-          if (msg.type === "system" && msg.subtype === "init") sawAssistant = false;
-          if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
-          if (msg.type === "result") return onResult(msg);
-          // An API refusal arrives as a synthetic assistant reply, then again as the failed result. The
-          // failure card shows it once; as a reply bubble it would also outlive a model fallback.
-          if (isApiErrorReply(msg)) return;
-          // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
-          const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
-          if (msg.type === "control_request") {
-            approvals++;
-            void handled.finally(() => {
-              approvals--;
-              armIdle();
-            });
-          }
-          if (msg.type === "system" && msg.subtype === "init" && held) followUp = true;
+      const canUseTool: CanUseTool = async (toolName, input, toolOpts) => {
+        const title = toolTitle(toolName, input);
+        const request: ApprovalRequest = {
+          question: `Allow ${toolName}: ${title}?`,
+          detail: shortJson(input),
+          canAlways: Boolean(toolOpts.suggestions?.length) && toolOpts.suppressAlwaysAllowRule !== true,
+          action: { backend: "claude", tool: toolName, title, cwd: opts.cwd, input },
+        };
+        approvals++;
+        // Cancel a held-result idle window so a prompt cannot be cut off while the user is deciding.
+        armIdle();
+        try {
+          const answer = await sink.approval(request);
+          const allow = answer !== "no";
+          if (!allow) return { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) };
+          return {
+            behavior: "allow",
+            updatedInput: input,
+            ...(answer === "always" && toolOpts.suggestions?.length ? { updatedPermissions: toolOpts.suggestions } : {}),
+          };
+        } finally {
+          approvals--;
           armIdle();
-        }),
-      );
-      child.on("close", (code, sig) => {
-        clearTimeout(killTimer);
-        signal.removeEventListener("abort", onAbort);
+        }
+      };
+
+      async function* prompt(): AsyncIterable<SDKUserMessage> {
+        yield {
+          type: "user",
+          message: { role: "user", content: userContent(text, opts.attachments) as SDKUserMessage["message"]["content"] },
+          parent_tool_use_id: null,
+        };
+        await new Promise<void>((r) => { releasePrompt = r; });
+      }
+
+      try {
+        bin = this.bin;
+        const env = { ...cliEnvironment(bin), CLAUDE_AGENT_SDK_CLIENT_APP: "modex" };
+        session = this.queryImpl({
+          prompt: prompt(),
+          options: {
+            ...sdk,
+            cwd: opts.cwd,
+            pathToClaudeCodeExecutable: bin,
+            abortController: abortControllerOf(signal),
+            env,
+            canUseTool,
+            spawnClaudeCodeProcess: (spawnOpts) => {
+              const launched = this.spawnImpl(spawnOpts.command, spawnOpts.args, {
+                cwd: spawnOpts.cwd ?? opts.cwd,
+                stdio: ["pipe", "pipe", "pipe"],
+                env: cliEnvironment(bin, spawnOpts.env),
+              });
+              if (!launched.stdin || !launched.stdout) throw new Error(`could not start ${bin}: stdio pipes were not created`);
+              child = launched;
+              launched.stderr?.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384); });
+              launched.on("error", (err: NodeJS.ErrnoException) => finish({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: err.code } }));
+              launched.on("close", (code, sig) => {
+                clearTimeout(killTimer);
+                exit = { code, signal: sig ?? undefined };
+              });
+              return launched as typeof launched & { stdin: NonNullable<ChildProcess["stdin"]>; stdout: NonNullable<ChildProcess["stdout"]> };
+            },
+          },
+        });
+      } catch (err) {
+        return finish({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, sdk, spawnError: (err as Error).message } });
+      }
+
+      void (async () => {
+        try {
+          for await (const raw of session!) {
+            if (finished || signal.aborted) return;
+            const msg = raw as unknown as ClaudeMessage;
+            // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
+            if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
+            if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
+            if (msg.type === "system" && msg.subtype === "init") {
+              sawAssistant = false;
+              void captureAccount(session, init);
+            }
+            if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
+            if (msg.type === "result") {
+              onResult(msg);
+              continue;
+            }
+            // An API refusal arrives as a synthetic assistant reply, then again as the failed result. The
+            // failure card shows it once; as a reply bubble it would also outlive a model fallback.
+            if (isApiErrorReply(msg)) continue;
+            // Await so `background` and agent rows are current before idle/follow-up checks (and before the next message).
+            await this.handle(msg, sink, { cwd: opts.cwd, started, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
+            if (msg.type === "system" && msg.subtype === "init" && held) followUp = true;
+            armIdle();
+          }
+        } catch (err) {
+          if (finished) return;
+          if (signal.aborted || err instanceof AbortError) return finish({ status: "interrupted" });
+          return finish({ status: "failed", error: (err as Error).message || String(err), detail: { spawnError: (err as Error).message } });
+        }
+        if (finished) return;
         if (signal.aborted) return finish({ status: "interrupted" });
         const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
-        finish(code === 0 ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
-      });
-
-      write({ type: "user", message: { role: "user", content: userContent(text, opts.attachments) } });
+        const code = exit.code;
+        finish(code === 0 || code === null ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: exit.signal } });
+      })();
     });
   }
 
   /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<void> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
@@ -394,38 +466,56 @@ export class ClaudeBackend implements Backend {
         }
         return;
       }
-      case "control_request": {
-        const req = msg.request;
-        if (req?.subtype !== "can_use_tool") {
-          ctx.write({ type: "control_response", response: { subtype: "error", request_id: msg.request_id, error: `unsupported control request ${req?.subtype ?? "?"}` } });
-          return;
-        }
-        const tool = req.tool_name ?? "tool";
-        const title = toolTitle(tool, req.input ?? {});
-        const request: ApprovalRequest = {
-          question: `Allow ${req.tool_name}: ${title}?`,
-          detail: shortJson(req.input ?? {}),
-          canAlways: Boolean(req.permission_suggestions?.length),
-          action: { backend: "claude", tool, title, cwd: ctx.cwd, input: req.input ?? {} },
-        };
-        const answer = await sink.approval(request);
-        const allow = answer !== "no";
-        ctx.write({
-          type: "control_response",
-          response: {
-            subtype: "success",
-            request_id: msg.request_id,
-            response: allow
-              ? { behavior: "allow", updatedInput: req.input ?? {}, ...(answer === "always" && req.permission_suggestions?.length ? { updatedPermissions: req.permission_suggestions } : {}) }
-              : { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) },
-          },
-        });
-        return;
-      }
       default:
         return;
     }
   }
+}
+
+function permissionModeOf(opts: TurnOptions): PermissionMode {
+  if (opts.plan) return "plan";
+  if (opts.mode === "chat") return "default";
+  if (opts.mode === "agent") return "acceptEdits";
+  return "bypassPermissions";
+}
+
+function mcpServersOf(opts: TurnOptions): Record<string, McpHttpServerConfig> | undefined {
+  if (!opts.knowledge && !opts.pages && !opts.images) return undefined;
+  return {
+    ...(opts.images ? { modex_images: { type: "http" as const, url: opts.images.url } } : {}),
+    ...(opts.knowledge ? { modex_knowledge: { type: "http" as const, url: opts.knowledge.url } } : {}),
+    ...(opts.pages ? { modex_pages: { type: "http" as const, url: opts.pages.url } } : {}),
+  };
+}
+
+function allowedToolsOf(opts: TurnOptions): string[] {
+  return [
+    ...(opts.images ? ["mcp__modex_images__register"] : []),
+    ...(opts.knowledge ? KNOWLEDGE_TOOLS.map((name) => `mcp__modex_knowledge__${name}`) : []),
+    ...(opts.pages ? PAGES_TOOLS.map((name) => `mcp__modex_pages__${name}`) : []),
+  ];
+}
+
+function abortControllerOf(signal: AbortSignal): AbortController {
+  const ac = new AbortController();
+  if (signal.aborted) ac.abort();
+  else signal.addEventListener("abort", () => ac.abort(), { once: true });
+  return ac;
+}
+
+async function captureAccount(session: Query | undefined, init: Record<string, unknown>): Promise<void> {
+  if (!session) return;
+  try {
+    const info = await session.accountInfo();
+    if (info && typeof info === "object") {
+      Object.assign(init, {
+        ...(info.apiKeySource ? { apiKeySource: info.apiKeySource } : {}),
+        ...(info.subscriptionType ? { subscriptionType: info.subscriptionType } : {}),
+        ...(info.tokenSource ? { tokenSource: info.tokenSource } : {}),
+        ...(info.apiProvider ? { apiProvider: info.apiProvider } : {}),
+      });
+    }
+  } catch { /* Scripted tests and older CLIs have no accountInfo(). */ }
 }
 
 interface ContentBlock {
@@ -468,8 +558,6 @@ interface ClaudeMessage {
   /** `result`: the turn's token totals. */
   usage?: ClaudeUsage;
   event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
-  request_id?: string;
-  request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] };
   is_error?: boolean;
   result?: unknown;
   /** `result` extras and `system/init` facts, kept for failure reports. */

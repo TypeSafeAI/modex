@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { TurnResult } from "../src/main/engine/backends/types.js";
-import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
+import { FakeProcess, fakeSpawn, collectSink, scriptedClaudeQuery } from "./fakeproc.js";
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const options = { cwd: "/repo", mode: "agent" as const, plan: false, model: "sonnet" };
@@ -10,7 +10,7 @@ const options = { cwd: "/repo", mode: "agent" as const, plan: false, model: "son
 /** Starts a turn on a fake `claude` and waits for the prompt to reach its stdin. */
 async function start(timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {}, answers: ("yes" | "no" | "always")[] = ["yes"]) {
   const proc = new FakeProcess();
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, timing);
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, timing, scriptedClaudeQuery);
   const { sink, events } = collectSink(answers);
   const abort = new AbortController();
   let settled: TurnResult | undefined;
@@ -26,7 +26,7 @@ const ok = { type: "result", subtype: "success", is_error: false, session_id: "s
 test("ClaudeBackend: background work keeps the turn and stdin open past the first result", async () => {
   const proc = new FakeProcess();
   const { spawn } = fakeSpawn(proc);
-  const backend = new ClaudeBackend("claude", spawn);
+  const backend = new ClaudeBackend("claude", spawn, {}, scriptedClaudeQuery);
   const { sink, events } = collectSink(["yes"]);
   let settled = false;
   const run = backend.runTurn("run the suite in the background", { cwd: "/repo", mode: "agent", plan: false, model: "sonnet" }, sink, new AbortController().signal);
@@ -201,7 +201,7 @@ test("ClaudeBackend: system/status after the held result cannot strand the turn"
 
 test("ClaudeBackend: a permission prompt waiting on the user is never cut off by the idle window", async () => {
   const proc = new FakeProcess();
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { backgroundIdleMs: 20 });
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { backgroundIdleMs: 20 }, scriptedClaudeQuery);
   const { sink, events } = collectSink();
   let answer: (a: "yes") => void = () => {};
   const slow = { ...sink, approval: (req: Parameters<typeof sink.approval>[0]) => { events.push(`approval:${req.question}`); return new Promise<"yes">((r) => (answer = r)); } };
@@ -260,7 +260,7 @@ test("ClaudeBackend: the background cap kills a child that ignores SIGTERM", { t
     if (signal === "SIGKILL") proc.close(null);
     return true;
   }) as typeof proc.kill;
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { backgroundCapMs: 30 });
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { backgroundCapMs: 30 }, scriptedClaudeQuery);
   const { sink } = collectSink();
   const run = backend.runTurn("go", options, sink, new AbortController().signal);
   await proc.waitFor((line) => line.includes('"type":"user"'));

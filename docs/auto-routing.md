@@ -239,7 +239,7 @@ Modex has a backend for. Surveyed on 2026-09-25:
 | CLI | headless protocol | approvals | model / effort control | verdict |
 | --- | --- | --- | --- | --- |
 | **Codex** (`codex app-server`) | JSON-RPC over stdio, streaming items | server→client requests | `model`, `effort`, `serviceTierForTurn` per turn; live `model/list` with efforts and service tiers | shipped; the richest surface |
-| **Claude Code** (`claude -p`) | stream-json in/out | `control_request` on stdio | `--model`, `--effort low…max`, fast mode via settings | shipped |
+| **Claude Code** (Agent SDK → installed `claude`) | typed SDK messages (`query()`) | `canUseTool` callback | `model`, `effort`, `settings.fastMode` | shipped |
 | Gemini CLI | `-p --output-format stream-json` | `--approval-mode default/auto_edit/yolo/plan` (no per-call prompt channel found) | `-m` | good next candidate once its permission prompts can be answered from a host |
 | GitHub Copilot CLI | `-p` | `--allow-all-tools` only | `--model` (incl. `auto`) | possible for chat/plan modes; no interactive approval path yet |
 | opencode (installed build) | `-p -f json` | none | none in headless | not a fit for agent mode |
