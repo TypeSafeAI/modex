@@ -570,6 +570,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## In flight
 
+- **Reliable native-window acceptance.** E2E launches retain the native show event in
+  main before a test connects, preventing missed-event startup timeouts without
+  substituting the earlier `isVisible()` state for a native notification.
+
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and

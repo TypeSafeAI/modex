@@ -801,6 +801,14 @@ function createWindow(): BrowserWindow {
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  if (process.env.MODEX_E2E) {
+    // Retain the native notification before Playwright can connect. isVisible()
+    // can become true before macOS emits show, so it is not equivalent evidence.
+    const state = globalThis as { __modexE2EShown?: Set<number> };
+    const shown = state.__modexE2EShown ??= new Set<number>();
+    w.once("show", () => { shown.add(w.id); });
+    w.once("closed", () => { shown.delete(w.id); });
+  }
   w.webContents.on("did-start-navigation", details => {
     if (win === w && details.isMainFrame && !details.isSameDocument) invalidateNativeDocument();
   });
