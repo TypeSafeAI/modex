@@ -87,10 +87,16 @@ test("importing Markdown copied from a chat drops its citation markers", () => {
 });
 
 test("a multi-line title paste keeps the first line as the title and the rest as the body", () => {
-  for (const newline of ["\n", "\r\n"]) {
+  for (const newline of ["\n", "\r\n", "\r"]) {
     assert.deepEqual(splitTitlePaste(`${newline}# Graph-First Plan${newline}${newline}## Executive summary${newline}${newline}Text. ${cite("turn5view0")}${newline}`),
       { title: "Graph-First Plan", body: `## Executive summary${newline}${newline}Text.` });
   }
   assert.deepEqual(splitTitlePaste("Just a title"), { title: "Just a title", body: "" });
   assert.deepEqual(splitTitlePaste("Title\n    code stays indented"), { title: "Title", body: "    code stays indented" });
+});
+
+
+test("title paste accepts mixed line endings and an empty carriage-return paste", () => {
+  assert.deepEqual(splitTitlePaste("\r# Title\rBody\r\nNext\nLast"), { title: "Title", body: "Body\r\nNext\nLast" });
+  assert.deepEqual(splitTitlePaste("\r"), { title: "", body: "" });
 });

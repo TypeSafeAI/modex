@@ -116,8 +116,8 @@ export function stripChatCitations(text: string): string {
  */
 export function splitTitlePaste(text: string): { title: string; body: string } {
   const clean = stripChatCitations(text);
-  const first = clean.match(/^(?:[\t ]*\r?\n)*([^\r\n]*)(?:\r?\n|$)/)!;
-  return { title: first[1]!.replace(/^#{1,6}[\t ]+/, "").trim(), body: clean.slice(first[0].length).replace(/^(?:[\t ]*\r?\n)+/, "").trimEnd() };
+  const first = clean.match(/^(?:[\t ]*(?:\r\n?|\n))*([^\r\n]*)(?:(?:\r\n?|\n)|$)/)!;
+  return { title: first[1]!.replace(/^#{1,6}[\t ]+/, "").trim(), body: clean.slice(first[0].length).replace(/^(?:[\t ]*(?:\r\n?|\n))+/, "").trimEnd() };
 }
 
 /** Extract an imported page title without changing Markdown indentation in its body. */
