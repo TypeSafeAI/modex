@@ -559,6 +559,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Migration also reserves each folder note’s name before placing its children.
   Folder settlement records durable intent so interrupted directory and note
   renames finish before a read derives the hierarchy.
+- **Coverage source inventory.** Unit coverage includes unexecuted production files
+  across core, desktop, site, Store desktop, and the release endpoint. Reports use
+  original source paths, omit generated duplicates, and do not claim browser or
+  native E2E coverage.
 
 - **Carriage-return title pastes.** Space accepts CR-only and mixed line endings
   when splitting pasted titles from their body, avoiding a lost paste and parser
