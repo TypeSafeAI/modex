@@ -548,6 +548,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Coverage source inventory.** Unit coverage includes unexecuted production files
+  across core, desktop, site, Store desktop, and the release endpoint. Reports use
+  original source paths, omit generated duplicates, and do not claim browser or
+  native E2E coverage.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
