@@ -548,6 +548,13 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Pasting a chat report into Space.** Pasting several lines into a page title keeps the
+  first line, without its heading marker, as the title and moves the rest to the top of the
+  page. The title field used to flatten the lines into one and cut it at 200 characters.
+  Pasting into a block or importing a Markdown file drops ChatGPT's citation markers. Their
+  source IDs resolve only inside that ChatGPT conversation, and pages showed them as boxes.
+  Entity markers keep their visible name.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact

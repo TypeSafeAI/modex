@@ -93,8 +93,36 @@ export function toggleChecklist(source: string, index: number, checked: boolean)
   lines[token.line - 1] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\])/i, `$1${checked ? "x" : " "}$2`);
   return lines.join("\n");
 }
+/**
+ * ChatGPT copies its rich references as private-use markers: U+E200, a kind,
+ * U+E202-separated arguments, then U+E201. Citation IDs such as `turn5view0`
+ * resolve only inside that ChatGPT conversation, so a pasted citation is
+ * dropped with the space before it. An entity keeps its visible name.
+ */
+export function stripChatCitations(text: string): string {
+  if (!/[\uE200-\uE202]/.test(text)) return text;
+  return text.replace(/([ \t]*)\uE200([^\uE200-\uE202]*)((?:\uE202[^\uE200-\uE202]*)*)\uE201/g, (_, space: string, kind: string, args: string) => {
+    if (kind !== "entity") return "";
+    try {
+      const name = (JSON.parse(args.slice(1)) as unknown[])[1];
+      return typeof name === "string" && name ? space + name : "";
+    } catch { return ""; }
+  }).replace(/[\uE200-\uE202]/g, "");
+}
+
+/**
+ * A page title is one line. A multi-line paste keeps its first non-empty line,
+ * without a leading heading marker, as title text, and the rest as body Markdown.
+ */
+export function splitTitlePaste(text: string): { title: string; body: string } {
+  const clean = stripChatCitations(text);
+  const first = clean.match(/^(?:[\t ]*\r?\n)*([^\r\n]*)(?:\r?\n|$)/)!;
+  return { title: first[1]!.replace(/^#{1,6}[\t ]+/, "").trim(), body: clean.slice(first[0].length).replace(/^(?:[\t ]*\r?\n)+/, "").trimEnd() };
+}
+
 /** Extract an imported page title without changing Markdown indentation in its body. */
-export function importMarkdownPage(markdown: string, filename: string): { title: string; markdown: string } {
+export function importMarkdownPage(file: string, filename: string): { title: string; markdown: string } {
+  const markdown = stripChatCitations(file);
   const heading = markdown.match(/^# ([^\r\n]+)\r?\n/);
   return { title: (heading?.[1] ?? filename.replace(/\.(md|markdown|txt)$/i, "")).slice(0, 200), markdown: heading ? markdown.slice(heading[0].length).replace(/^(?:[\t ]*\r?\n)+/, "") : markdown };
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { importMarkdownPage, joinMarkdown, splitMarkdown, toggleChecklist, parseSpaceBlocks } from "../src/shared/space-markdown.js";
+import { importMarkdownPage, joinMarkdown, splitMarkdown, splitTitlePaste, stripChatCitations, toggleChecklist, parseSpaceBlocks } from "../src/shared/space-markdown.js";
 
 test("importing an H1 title preserves code and list indentation in the body", () => {
   for (const newline of ["\n", "\r\n"]) {
@@ -70,4 +70,27 @@ test("Space renders every list item after a leading indent and keeps checklist e
   visit(parseSpaceBlocks(source));
   assert.deepEqual(tasks, ["Earlier task", "Later task"]);
   assert.equal(toggleChecklist(source, tasks.indexOf("Later task"), true), source.replace("[ ] Later", "[x] Later"));
+});
+
+const cite = (...ids: string[]) => `\uE200cite${ids.map(id => `\uE202${id}`).join("")}\uE201`;
+
+test("chat citations are removed with the space before them; entities keep their name", () => {
+  assert.equal(stripChatCitations(`useful context for agents. ${cite("turn20search6", "turn5view0")}\n\nNext ${cite("turn16view1")} line.`), "useful context for agents.\n\nNext line.");
+  assert.equal(stripChatCitations(`Built by \uE200entity\uE202["company","OpenAI",""]\uE201 in 2025.`), "Built by OpenAI in 2025.");
+  assert.equal(stripChatCitations(`Broken \uE200entity\uE202not json\uE201 marker \uE200cite`), "Broken marker cite");
+  const plain = "No markers here.\n\n    indented code\n";
+  assert.equal(stripChatCitations(plain), plain);
+});
+
+test("importing Markdown copied from a chat drops its citation markers", () => {
+  assert.deepEqual(importMarkdownPage(`# Report\n\n## Summary\n\nA claim. ${cite("turn1search2")}\n`, "report.md"), { title: "Report", markdown: "## Summary\n\nA claim.\n" });
+});
+
+test("a multi-line title paste keeps the first line as the title and the rest as the body", () => {
+  for (const newline of ["\n", "\r\n"]) {
+    assert.deepEqual(splitTitlePaste(`${newline}# Graph-First Plan${newline}${newline}## Executive summary${newline}${newline}Text. ${cite("turn5view0")}${newline}`),
+      { title: "Graph-First Plan", body: `## Executive summary${newline}${newline}Text.` });
+  }
+  assert.deepEqual(splitTitlePaste("Just a title"), { title: "Just a title", body: "" });
+  assert.deepEqual(splitTitlePaste("Title\n    code stays indented"), { title: "Title", body: "    code stays indented" });
 });
