@@ -2,7 +2,7 @@ import { storeAccountCommands } from "./account.js";
 import { DEMO_ATTACHMENTS_UNAVAILABLE } from "./attachments.js";
 import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, type AppState, type BridgeCommands, type RoutingStatus, type TerminalEvent, type TerminalSnapshot, type Thread, type ThreadEvent, type ThreadItem } from "../../../desktop/src/shared/types.js";
 
-type Handlers = { [K in keyof BridgeCommands]: (request: BridgeCommands[K]["req"]) => BridgeCommands[K]["res"] };
+type Handlers = { [K in Exclude<keyof BridgeCommands, keyof import("../../../desktop/src/shared/images.js").ImageCommands | keyof import("../../../desktop/src/shared/plugins.js").PluginCommands>]: (request: BridgeCommands[K]["req"]) => BridgeCommands[K]["res"] };
 const unavailable = () => { throw new Error("This is an offline demo. Leave the demo and connect your Mac to use accounts, external pages or system tools."); };
 const stamp = () => new Date().toISOString();
 const original = "# Demo project\n\nWelcome to Modex.\n";
@@ -201,8 +201,10 @@ export class StoreDemo {
 
   invoke(channel: string, payload?: unknown): unknown {
     if (this.disposed) throw new Error("The demo workspace has ended.");
+    if (channel === "features:media") return { images: false, plugins: false };
+    if (channel.startsWith("images:") || channel.startsWith("imageJobs:") || channel.startsWith("plugins:")) throw new Error("Images and Plugins require the full desktop app.");
     if (!Object.hasOwn(this.handlers, channel)) throw new Error("Unknown demo action.");
-    const handler = this.handlers[channel as keyof BridgeCommands] as (value: unknown) => unknown;
+    const handler = this.handlers[channel as keyof typeof this.handlers] as (value: unknown) => unknown;
     // Keep callers and emitted objects from mutating internal state outside a command.
     return structuredClone(handler(structuredClone(payload)));
   }

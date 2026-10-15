@@ -142,3 +142,48 @@ test("owner removal keeps unrelated thread updates delivered after canonical ado
   await expect(row).toContainText("opus");
   expect((await page.evaluate(() => window.modex!.invoke("state:get", undefined))).projects.some(project => project.id === "p1")).toBe(false);
 });
+
+test("thread deletion drains its active target while an unrelated turn stays active and drafts remain usable", async () => {
+  const script = path.join(home, "owner-removal-active-script.json");
+  fs.writeFileSync(script, JSON.stringify({ steps: [
+    { tool_calls: [{ name: "write_file", arguments: { path: "approval.txt", content: "Requires explicit approval" } }] },
+    { content: "Finished." },
+  ] }));
+  const { target, keep } = await page.evaluate(async script => {
+    await window.modex!.invoke("settings:update", { mock_script: script, auto_retire: false });
+    const target = await window.modex!.invoke("thread:create", { projectId: "p1", backend: "mock", mode: "chat", auto: false });
+    const keep = await window.modex!.invoke("thread:create", { projectId: "p2", backend: "mock", mode: "chat", auto: false });
+    return { target, keep };
+  }, script);
+  await page.reload();
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await selectProject("p2");
+  const draft = "Keep this unrelated draft while deleting a running thread.";
+  await tid(page, "composer-input").fill(draft);
+  for (const thread of [target, keep]) {
+    expect(await page.evaluate(threadId => window.modex!.invoke("thread:send", { threadId, text: "Write the approval fixture." }), thread.id)).toEqual({ ok: true });
+  }
+  // Both statuses come from real MockBackend approval requests, not injected events.
+  await expect.poll(() => page.evaluate(async ids => {
+    const state = await window.modex!.invoke("state:get", undefined);
+    return ids.map(id => state.threads.find(thread => thread.id === id)?.status);
+  }, [target.id, keep.id])).toEqual(["waiting", "waiting"]);
+
+  await page.evaluate(threadId => window.modex!.invoke("thread:delete", { threadId }), target.id);
+
+  const state = await page.evaluate(() => window.modex!.invoke("state:get", undefined));
+  expect(state.threads.some(thread => thread.id === target.id)).toBe(false);
+  expect(state.threads.find(thread => thread.id === keep.id)?.status).toBe("waiting");
+  await expect(page.locator(`[data-testid="thread-row"][data-thread-id="${target.id}"]`)).toHaveCount(0);
+  await expect(page.locator(`[data-testid="thread-row"][data-thread-id="${keep.id}"]`)).toHaveAttribute("data-status", "waiting");
+  await expect(tid(page, "update-recovery")).toHaveCount(0);
+  await expect(tid(page, "draft-view")).toHaveAttribute("data-project-id", "p2");
+  await expect(tid(page, "composer-input")).toBeEditable();
+  await expect(tid(page, "composer-input")).toHaveValue(draft);
+  const edited = `${draft} Still editable.`;
+  await tid(page, "composer-input").fill(edited);
+  await expect.poll(() => recovery().drafts.projects.find((row: any) => row.projectId === "p2")?.text).toBe(edited);
+  expect(fs.existsSync(path.join(repo, "approval.txt"))).toBe(false);
+  expect(fs.existsSync(path.join(repo, "other", "approval.txt"))).toBe(false);
+  await page.evaluate(threadId => window.modex!.invoke("thread:stop", { threadId }), keep.id);
+});

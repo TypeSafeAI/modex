@@ -35,3 +35,31 @@ test("failed and reentrant commands remain accounted for until their work settle
   });
   admission.holdForRestart()();
 });
+
+test("owner removal fences new requests and waits for admitted work without weakening restart", async () => {
+  const admission = new RestartAdmission();
+  let finish!: () => void;
+  const running = admission.run(() => new Promise<void>(resolve => { finish = resolve; }));
+  assert.throws(() => admission.holdForRestart(), /finish/);
+  const pending = admission.holdForOwnerRemoval();
+  assert.equal(admission.held, true);
+  let ready = false;
+  const holding = Promise.resolve(pending).then(release => { ready = true; return release; });
+  await assert.rejects(admission.run(() => assert.fail("new request admitted")), /restart/);
+  assert.equal(ready, false);
+  finish(); await running;
+  const release = await holding;
+  assert.equal(admission.held, true);
+  release(); assert.equal(admission.held, false);
+});
+
+test("owner removal timeout releases only its fence and leaves admitted work running", async () => {
+  const admission = new RestartAdmission();
+  let finish!: () => void;
+  const running = admission.run(() => new Promise<void>(resolve => { finish = resolve; }));
+  await assert.rejects(Promise.resolve(admission.holdForOwnerRemoval(10)), /did not finish/);
+  assert.equal(admission.held, false);
+  assert.throws(() => admission.holdForRestart(), /finish/);
+  finish(); await running;
+  admission.holdForRestart()();
+});

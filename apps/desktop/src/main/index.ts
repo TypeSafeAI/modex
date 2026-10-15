@@ -1,3 +1,6 @@
+import { imageFixtureBackend } from "./engine/images/fixture.js";
+import { Media } from "./media.js";
+import { IMAGE_SCHEME } from "../shared/images.js";
 import { NativeDrafts } from "./engine/native-drafts.js";
 import { OwnerRemoval } from "./engine/owner-removal.js";
 import type { DraftRemovalScope } from "../shared/native-drafts.js";
@@ -80,6 +83,7 @@ const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : proc
 fs.mkdirSync(home, { recursive: true });
 // Attachment thumbnails load from main over this scheme; registration must precede app ready.
 protocol.registerSchemesAsPrivileged([
+  { scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } },
   { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true } },
   { scheme: CANVAS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   { scheme: ANALYTICS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -154,7 +158,9 @@ const journalEvent = (event: ThreadEvent): void => {
     journal = undefined;
   }
 };
+let media: Media | undefined;
 const emit = (event: ThreadEvent): void => {
+  media?.onEvent(event);
   journalEvent(event);
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
   desktopHost?.broadcast("thread", event);
@@ -177,7 +183,11 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
 const usageLedger = new UsageLedger(store.dir);
-const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const runner = new ThreadRunner({ beforeSend: thread => media?.beforeSend(thread), imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => media?.jobs.prepare(thread, signal) ?? Promise.resolve(undefined) }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+let mediaInitializationError: string | undefined;
+try { media = new Media({ home, store, runner: () => runner, window: () => win, pathReady, offline: Boolean(demo || process.env.MODEX_E2E), changed: kind => {
+  if (win && !win.isDestroyed()) win.webContents.send("media:event", { kind });
+} }); } catch (error) { mediaInitializationError = (error as Error).message; }
 let nativeDrafts: NativeDrafts | undefined;
 let nativeDraftFailure: string | undefined;
 let nativeStartup: ReturnType<typeof readUpdateStartup> | undefined;
@@ -216,7 +226,7 @@ const ownerRemoval = new OwnerRemoval({
     });
   },
   // Do not hold TaskRetirer here: retirement itself runs inside its sweep.
-  holds: [() => restartAdmission.holdForRestart(), () => runner.holdForOwnerRemoval(), () => nativeDrafts!.holdForOwnerRemoval()],
+  holds: [() => restartAdmission.holdForOwnerRemoval(), () => runner.holdForOwnerRemoval(), () => nativeDrafts!.holdForOwnerRemoval()],
   prune: (scope, revision) => nativeDrafts!.pruneEmptyOwner(scope, revision),
   snapshot: () => store.snapshot(),
   requiresRecovery: () => Boolean(nativeDrafts?.requiresRecovery),
@@ -302,7 +312,7 @@ const OWNER_REMOVAL_CONTROL = new Set<string>(["thread:delete", "project:remove"
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, options: { localOnly?: boolean } = {}): void {
   const invoke = (req: BridgeCommands[K]["req"], event?: NativeIPCEvent, authorized?: () => boolean) => {
     const epoch = documentEpoch;
-    const recoveryPersistence = () => Boolean(channel === "space:save" && restartAdmission.held && event && nativeDocument
+    const recoveryPersistence = () => Boolean((channel === "space:save" || channel === "images:saveDraft") && restartAdmission.held && event && nativeDocument
       && nativeDocument.frame === event.senderFrame && nativeDocument.epoch === epoch && recoveryQuitPreflight.allowsPersistence(nativeDocument));
     const check = () => {
       if (shuttingDown) throw new Error("Modex is shutting down.");
@@ -320,7 +330,7 @@ function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, opti
       return fn(req, event);
     };
     // Claim admission before PATH or any other asynchronous operation can yield.
-    const preparationSave = restartAdmission.held && channel === "space:save" && event
+    const preparationSave = restartAdmission.held && (channel === "space:save" || channel === "images:saveDraft") && event
       && nativeDocument?.frame === event.senderFrame && nativeDocument.epoch === epoch
       && (rendererPreflight.allowsPersistence(nativeDocument) || ownerRemoval.allowsPersistence(nativeDocument));
     // Deletion drains a running CLI; another Stop must still be able to force it.
@@ -330,6 +340,13 @@ function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>, opti
   };
   if (!options.localOnly) desktopCommands.set(channel, (payload, authorized) => invoke(payload as BridgeCommands[K]["req"], undefined, authorized));
   ipcMain.handle(channel, (event, req) => invoke(req as BridgeCommands[K]["req"], event));
+}
+
+if (media) media.register((channel, fn) => handle(channel, fn, { localOnly: true }));
+else {
+  handle("features:media", () => ({ images: true, plugins: true }), { localOnly: true });
+  const channels: (keyof BridgeCommands)[] = ["images:list", "images:get", "images:import", "images:pick", "images:update", "images:delete", "images:export", "images:reveal", "images:attachment", "images:stage", "images:insert", "images:capabilities", "images:bind", "images:unbind", "images:draft", "images:saveDraft", "imageJobs:list", "imageJobs:submit", "imageJobs:cancel", "imageJobs:retry", "imageJobs:items", "imageJobs:answer", "plugins:list", "plugins:details", "plugins:sources", "plugins:mutate", "plugins:source:mutate", "plugins:importLocal"];
+  for (const channel of channels) handle(channel, () => { throw new Error(mediaInitializationError ?? "Media storage is unavailable; saved files have been preserved."); }, { localOnly: true });
 }
 
 function nativeFor(request: { session: string }, event?: NativeIPCEvent): NativeDrafts {
@@ -434,7 +451,7 @@ function drainServices(): Promise<void> {
   modexAccount.cancel(); chatgpt.cancel(); claudeLogin.cancel(); retirer.stop();
   drainingServices = (async () => {
     // Start every disposer even if another throws before returning its promise.
-    const operations = [() => pagesAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
+    const operations = [() => media?.dispose(), () => pagesAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
       () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
@@ -465,7 +482,7 @@ if (automaticUpdates) {
   const native = new MacUpdateHandoff(autoUpdater, state => restartCoordinator?.observeNative(state));
   restartCoordinator = new UpdateRestartCoordinator({
     currentVersion: app.getVersion(), recovery: nativeDrafts!.recovery, native,
-    holds: [() => restartAdmission.holdForRestart(), () => runner.holdForRestart(), () => terminals.holdForRestart(),
+    holds: [() => { if (media?.jobs.busy()) throw new Error("Finish or cancel image jobs before restarting."); return () => {}; }, () => restartAdmission.holdForRestart(), () => runner.holdForRestart(), () => terminals.holdForRestart(),
       () => retirer.holdForRestart(), () => nativeDrafts!.holdForRestart(), () => {
         // Guest content has its own editor state. Closing it is an explicit user
         // decision; app draft persistence cannot acknowledge unsaved guest forms.
@@ -628,7 +645,7 @@ handle("space:export", async ({ pageId }) => {
   const title = page.title.trim() || "Untitled page";
   const result = await dialog.showSaveDialog(win!, { title: "Export Markdown", defaultPath: `${title.replace(/[^\p{L}\p{N}\s_-]/gu, "").trim() || "Untitled page"}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] });
   if (result.canceled || !result.filePath) return null;
-  await fs.promises.writeFile(result.filePath, `# ${title}\n\n${page.markdown}\n`, { mode: 0o600 });
+  await fs.promises.writeFile(result.filePath, `# ${title}\n\n${await (media ? media.exportMarkdown(page.markdown, result.filePath) : page.markdown.includes("modex-image:") ? Promise.reject(new Error(mediaInitializationError)) : Promise.resolve(page.markdown))}\n`, { mode: 0o600 });
   return result.filePath;
 }, { localOnly: true });
 handle("space:list", () => store.space.list());
@@ -960,6 +977,7 @@ app.whenReady().then(async () => {
   browserTools = new BrowserTools(home, () => win && !win.isDestroyed() && workspaceBrowser ? { window: win, browser: workspaceBrowser } : null);
   if (!nativeDraftFailure && !nativeStartup?.recovery) await browserTools.restore();
   // Serves staged and sent attachments to the renderer's <img>; anything outside the root is a 404.
+  protocol.handle(IMAGE_SCHEME, request => media?.response(request.url) ?? new Response(null, { status: 404 }));
   protocol.handle(ATTACHMENT_SCHEME, (request) => {
     const rel = relFromUrl(request.url);
     const image = rel ? attachments.readImage(rel) : null;

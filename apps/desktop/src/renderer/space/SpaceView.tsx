@@ -28,7 +28,7 @@ const TEMPLATES = [
   { title: "Blank page", description: "Make room for an idea", icon: "file" as const, markdown: "" },
 ];
 
-export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
+export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onOpenImages?: () => void; onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
   const space = useSpace(active);
   const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -162,7 +162,7 @@ export function SpaceView({ sidebarOpen, active, openPage, onOpenChat, chatOpen 
         <button aria-label="All pages" aria-current={!page && view === "all" ? "page" : undefined} onClick={() => selectView("all")}><Icon name="library" />All</button>
         <button aria-current={!page && view === "pages" ? "page" : undefined} onClick={() => selectView("pages")}><Icon name="page" />Pages</button>
         <button aria-current={!page && view === "sites" ? "page" : undefined} onClick={() => selectView("sites")}><Icon name="grid" />Sites</button>
-        <button aria-current={!page && view === "images" ? "page" : undefined} onClick={() => selectView("images")}><Icon name="image" />Images</button>
+        <button aria-current={!page && view === "images" ? "page" : undefined} onClick={() => onOpenImages ? onOpenImages() : selectView("images")}><Icon name="image" />Images</button>
       </nav>
       <div className="space-tree">
         <div className="space-tree-label">{query ? "Search results" : view === "trash" ? "Trash" : view === "favorites" ? "Favorites" : "Recents"}</div>

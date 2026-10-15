@@ -90,11 +90,12 @@ export class ClaudeBackend implements Backend {
     if (opts.fast) args.push("--settings", JSON.stringify({ fastMode: true }));
     if (opts.resume) args.push("--resume", opts.resume);
     for (const d of opts.addDirs ?? []) args.push("--add-dir", d);
-    if (opts.knowledge || opts.pages) args.push("--mcp-config", JSON.stringify({ mcpServers: {
+    if (opts.knowledge || opts.pages || opts.images) args.push("--mcp-config", JSON.stringify({ mcpServers: {
+      ...(opts.images ? { modex_images: { type: "http", url: opts.images.url } } : {}),
       ...(opts.knowledge ? { modex_knowledge: { type: "http", url: opts.knowledge.url } } : {}),
       ...(opts.pages ? { modex_pages: { type: "http", url: opts.pages.url } } : {}),
-    } }), "--append-system-prompt", [opts.knowledge?.instructions, opts.pages?.instructions].filter(Boolean).join("\n\n"),
-    "--allowedTools", ...(opts.knowledge ? KNOWLEDGE_TOOLS.map(name => `mcp__modex_knowledge__${name}`) : []),
+    } }), "--append-system-prompt", [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions].filter(Boolean).join("\n\n"),
+    "--allowedTools", ...(opts.images ? ["mcp__modex_images__register"] : []), ...(opts.knowledge ? KNOWLEDGE_TOOLS.map(name => `mcp__modex_knowledge__${name}`) : []),
     ...(opts.pages ? PAGES_TOOLS.map(name => `mcp__modex_pages__${name}`) : []));
     return args;
   }

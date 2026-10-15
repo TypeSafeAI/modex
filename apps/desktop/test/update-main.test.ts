@@ -39,7 +39,7 @@ function fixture(t: TestContext, overrides: Record<string, unknown> = {}) {
     win: { isDestroyed: () => false, webContents: { isDestroyed: () => false, send: (channel: string, state: any) => { assert.equal(channel, "updates:state"); states.push(state); } } },
     nativeDrafts: { recovery, holdForRestart: hold("drafts") }, restartAdmission: admission,
     runner: { holdForRestart: hold("runner") }, terminals: { holdForRestart: hold("terminals") }, retirer: { holdForRestart: hold("retirer") },
-    workspaceBrowser: null, workspaceCanvas: null, knowledgeBrowser: null,
+    media: { jobs: { busy: () => false } }, workspaceBrowser: null, workspaceCanvas: null, knowledgeBrowser: null,
     rendererPreflight: { prepare: async () => { calls.push("prepare"); return recovery.saveDrafts({ threads: [], projects: [], selectedThreadId: null, draft: null }); },
       assertPrepared: () => { calls.push("assert"); }, release: () => { calls.push("release-renderer"); } },
     drainServices: async () => { calls.push("drain"); }, currentDraftRecovery: () => null, ...overrides };
@@ -99,4 +99,16 @@ test("state reports process recovery even without native drafts or an enabled in
   const h = fixture(t, { nativeDrafts: undefined, currentDraftRecovery: () => ({ outcome: "recovery", message: "Restart recovery required." }) });
   assert.equal(h.context.updateState().phase, "recovery"); assert.equal(h.context.updateState().canRestart, false);
   assert.equal(h.context.updateState().message, "Restart recovery required.");
+});
+
+
+test("main refuses restart while image jobs are active before acquiring service holds", async t => {
+  const h = fixture(t, { media: { jobs: { busy: () => true } } }), install = h.context.installation as UpdateInstallation;
+  await install.download();
+  assert.equal((await install.install()).phase, "ready");
+  assert.match(install.state().message!, /image jobs/i);
+  assert.equal(h.admission.held, false);
+  assert.equal(h.holds.size, 0);
+  assert.equal(h.calls.includes("prepare"), false);
+  assert.equal(h.calls.includes("drain"), false);
 });

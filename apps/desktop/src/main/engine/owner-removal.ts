@@ -7,7 +7,7 @@ type Request<State> = RestartRequest & ({ phase: "prepare"; scope: DraftRemovalS
 interface OwnerRemovalOptions<Document extends object, State> {
   current(): Document | null | undefined;
   send(document: Document, request: Request<State>): void;
-  holds: (() => () => void)[];
+  holds: (() => (() => void) | Promise<() => void>)[];
   prune(scope: DraftRemovalScope, revision: number): { drafts: ComposerRecovery; revision: number };
   snapshot(): State;
   requiresRecovery(): boolean;
@@ -41,12 +41,17 @@ export class OwnerRemoval<Document extends object, State> {
 
   async run(scope: DraftRemovalScope, remove: () => Promise<void>): Promise<void> {
     if (this.operation) throw new Error("Owner removal is already in progress.");
-    if (!this.options.current()) throw new Error("Open the workspace before removing this project or thread.");
+    const document = this.options.current();
+    if (!document) throw new Error("Open the workspace before removing this project or thread.");
     const operation: NonNullable<OwnerRemoval<Document, State>["operation"]> = this.operation = { scope: { ...scope } };
     const releases: (() => void)[] = [];
     let published = false, adopted = false, recovery = false;
     try {
-      for (const hold of this.options.holds) releases.push(hold());
+      for (const hold of this.options.holds) {
+        const release = hold();
+        releases.push(typeof release === "function" ? release : await release);
+        if (this.options.current() !== document) throw new Error("The workspace changed while preparing owner removal. Try again.");
+      }
       const revision = await this.prepare.prepare();
       this.prepare.assertPrepared();
       const result = this.options.prune(operation.scope, revision); published = true;

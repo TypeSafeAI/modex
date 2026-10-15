@@ -133,6 +133,11 @@ contextBridge.exposeInMainWorld("modex", {
       return "";
     }
   },
+  onMediaEvent: (cb) => {
+    const listener = (_event, value) => cb(value);
+    ipcRenderer.on("media:event", listener);
+    return () => ipcRenderer.removeListener("media:event", listener);
+  },
   onEvent: (cb) => {
     const listener = (_e, event) => cb(event);
     ipcRenderer.on("thread:event", listener);

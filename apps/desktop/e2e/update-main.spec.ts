@@ -65,6 +65,11 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     page.on("dialog", dialog => { if (dialog.type() !== "beforeunload") void dialog.dismiss(); });
     await expect(tid(page, "composer-input")).toBeVisible();
     await tid(page, "composer-input").fill("  Main-owned restart preserves this draft 😀\n");
+    // Seed before Images first mounts, so its renderer loads this nonempty draft.
+    await page.evaluate(() => window.modex.invoke("images:saveDraft", { prompt: "Image recovery draft", capabilityId: "", referenceIds: [] }));
+    await tid(page, "rail-images").click();
+    await expect(page.getByRole("heading", { name: "Images", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Chat", exact: true }).click();
     await page.getByRole("button", { name: "Space", exact: true }).click();
     await page.getByRole("button", { name: "New page", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Page title" })).toBeVisible();
@@ -78,6 +83,7 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     const panel = tid(page, "update-restart-status");
     await expect(panel).toContainText("could not finish preparing to restart");
     const before = fs.readFileSync(receipt), saved = JSON.parse(before.toString());
+    expect(JSON.parse(fs.readFileSync(path.join(home, "images/jobs.json"), "utf8")).draft.prompt).toBe("Image recovery draft");
     expect(saved.drafts.projects[0].text).toBe("  Main-owned restart preserves this draft 😀\n"); expect(saved.attempt).toBeNull();
     expect(await page.evaluate(async () => {
       try { await window.modex!.invoke("thread:create", { projectId: "p1" }); return "allowed"; }
@@ -91,6 +97,7 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     await expect.poll(() => page.evaluate(() => (globalThis as any).__closeVetoed)).toBe(true);
     await expect(page.getByRole("button", { name: "Quit Modex", exact: true })).toBeEnabled();
     expect(fs.readFileSync(receipt)).toEqual(before);
+    expect(JSON.parse(fs.readFileSync(path.join(home, "images/jobs.json"), "utf8")).draft.prompt).toBe("Image recovery draft");
     const proof = await app.evaluate(() => (globalThis as any).__updateMainFixture);
     expect(proof.nativeCalls).toBe(0); expect(proof.pageDisposals).toBe(1);
     expect(proof.pageSaves).toContainEqual({ held: true, title: "Dirty page saved through main restart admission" });
@@ -105,6 +112,7 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     const exited = app.waitForEvent("close");
     await page.getByRole("button", { name: "Quit Modex", exact: true }).click(); await exited;
     expect(fs.readFileSync(receipt)).toEqual(before);
+    expect(JSON.parse(fs.readFileSync(path.join(home, "images/jobs.json"), "utf8")).draft.prompt).toBe("Image recovery draft");
     const final = JSON.parse(fs.readFileSync(path.join(home, "final-evidence.json"), "utf8"));
     const evidenceFile = test.info().outputPath("main-restart-evidence.json");
     fs.mkdirSync(path.dirname(evidenceFile), { recursive: true });

@@ -80,6 +80,7 @@ export interface TurnAttachment {
 export interface TurnOptions {
   /** Images travel inline (base64 or local path); the prompt text already names the other files by path. */
   attachments?: TurnAttachment[];
+  images?: import("../../../shared/images.js").ImagesConnection;
   pages?: import("../../../shared/pages.js").PagesConnection;
   knowledge?: import("../../../shared/knowledge.js").KnowledgeConnection;
   cwd: string;

@@ -274,6 +274,13 @@ update installation and public Windows/Linux installers still need their release
 evidence. Modex has no HTTP-API execution mode;
 if a CLI is not installed or logged in, the thread says so.
 
+## Images and Plugins (unreleased)
+
+The full desktop app includes local image imports and a native Claude Code/Codex plugin manager.
+Compatible image skills can generate and revise images through the existing CLI runner, with
+approvals and saved job history. See [Images and Plugins](docs/images-plugins.md) for supported
+formats, native scope behavior, local imports, and acceptance limits.
+
 ## License
 
 MIT
