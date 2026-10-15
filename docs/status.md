@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-13._
+_Last updated 2026-10-15._
 
 ## Shipped
 
@@ -232,7 +232,7 @@ accounts, and coverage views. Collapsible navigation and an oversized Demo Data 
 frame 471 synthetic calls across 11 sources, including GitHub Copilot. Filters,
 call details, CSV export, and both appearances work against the same fictional
 workspace; missing costs remain unpriced. This is not yet a desktop navigation entry
-or live usage collector. Run and provenance details: [usage preview](usage-preview.md).
+or live usage collector. Run and provenance details: [usage preview](analytics.md#the-standalone-preview).
 
 **Consistent themes and live agent activity.** The right workspace, review/browser controls,
 menus, status colors and typography now share Jev/OpenCoven tokens with the chat and sidebar.
@@ -548,6 +548,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 ## On main, unreleased
 
+- **Notes hierarchy recovery.** Folder-title changes reserve names against their
+  children; restored folders stay separate from newer same-named folders while
+  retaining attachments. Interrupted restores use the same placement rules, and
+  migration resumes under already-published parents without overwriting them.
+  Migration also reserves each folder note’s name before placing its children.
+  Folder settlement records durable intent so interrupted directory and note
+  renames finish before a read derives the hierarchy.
+
 - **Delete selected Space text.** Backspace/Delete now removes a safely mapped
   selection in rendered page text and places the editing caret at the deletion.
   Plain paragraphs use DOM offsets so repeated words and spaces delete the exact
@@ -579,6 +587,12 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   thread event in `app/events.sqlite` (`node:sqlite`) with a durable cursor. It writes alongside
   the state files, which stay authoritative. A real session replays from the journal to its exact
   saved transcript. The resume endpoint and retention come next. [Event journal](event-journal.md).
+- **Analytics in the rail.** The rail's Analytics icon opens the usage dashboard on what this Mac
+  actually used. Each turn that calls a model, Auto or not, records its tokens, cache reads and
+  writes, and output in `app/usage.jsonl`, by model, project, thread and account. Prompts, files
+  and replies are never recorded, and costs stay unpriced. The dashboard is its own document in a
+  native view served from `modex-analytics://`, without the desktop bridge; Settings → General can
+  hide the icon. The standalone preview keeps its Demo Data. [Analytics](analytics.md).
 - **Thread archiving on Mac and iPhone.** A thread can be put away from the Mac (sidebar row
   menu, title bar ⋯ menu) or the phone (hold a thread, or the transcript's ⋯ menu). Archived
   threads leave the working list: the Mac keeps them under **Archived (n)** per project, where
@@ -588,6 +602,18 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   adds `POST /v1/threads/:id/archive` and an `archived` flag on snapshot threads; an older Mac
   answers the phone with 501. Companion build 6 does not include the phone side; it ships with
   the next iPhone build.
+- **One CI run per PR push.** `CI` runs on `push` only for `main`; every other branch is tested by
+  its pull request's run, which reports the required `unit + e2e (macOS)` check. Before, each
+  push to a PR branch queued two identical macOS runs, and on 2026-10-15 about 30 runs waited
+  for 2–3 hosted macOS runners. A branch pushed without a PR gets no CI until one is opened.
+
+- **Fable falls back to Opus when out of usage credits.** When Claude Code refuses Fable for
+  usage credits before anything ran, Modex reruns the turn on Opus in the same session, posts
+  a warning that says so, and starts Fable turns on Opus for the next hour. A refusal after a
+  reply, tool or reasoning keeps its failure card, so no work runs twice. The CLI's synthetic
+  refusal reply no longer shows as an assistant bubble, and the card now reads "out of usage
+  credits" instead of "unknown". Empty fallback replies retain a Retry card, and Auto
+  records the model that actually ran without learning a user override. Settings → General turns the fallback off; it is on by default.
 - **Notes are Markdown files** (first slice of notes in folders). Space pages now live under
   `MODEX_HOME/notes/` as one Markdown file per page, in Personal › Notes; a page with child pages
   is a folder holding a note of the same name. Ids, revisions, history, trash, comments and the
@@ -598,7 +624,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 - **Workspaces, projects and folders in Space.** Space's sidebar shows the notes folder as
   Workspace › Project › Folder › pages and files. Create a workspace from Space options, and a
   project, folder or page from a row's menu; rename, move (Move to…), reveal in Finder, and delete
-  what is empty. Each is a real folder on disk; a file opens in its default app.
+  what is empty. Folder moves reserve names against their children and replay interrupted folder-note
+  renames without overwriting intervening external edits; default page creation follows renamed or
+  moved default containers even if their index write was interrupted. Creating a project or
+  folder expands its container to show the editor. Each is a real folder on disk.
 - **Each project has its own notes.** Adding a project to Modex gives it a notes project in the
   default workspace (existing projects get one when notes first open). The project's menu in the
   chat sidebar offers **Open notes**, and with more than one workspace the sidebar groups projects

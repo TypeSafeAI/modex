@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { NotesStore } from "../src/main/engine/notes-store.js";
 import type { NotesFolder, NotesNode, NotesProject, NotesWorkspace } from "../src/shared/notes.js";
 import { pageImageFromUrl, pageImageUrl } from "../src/shared/notes.js";
@@ -230,4 +231,228 @@ test("a page's images beside it are served by relative path, only from inside it
     for (const external of ["https://example.com/a.png", "file:///etc/hosts", "/abs.png", "#frag", "", "data:image/png;base64,AA"]) assert.equal(pageImageUrl(page.id, external), null, external);
     assert.equal(pageImageFromUrl("modex-notes://file/abc"), null);
   } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+}));
+
+test("cached file previews revalidate current size and symlinks before reading", () => withStore((store, root) => {
+  const outside = tmpdir("modex-cached-read-");
+  try {
+    store.tree();
+    const dir = path.join(root, "Personal", "Notes");
+    fs.writeFileSync(path.join(dir, "text.txt"), "small");
+    fs.mkdirSync(path.join(dir, "assets"));
+    fs.writeFileSync(path.join(dir, "assets", "image.png"), "image");
+    store.watch();
+    const nodes = store.tree().nodes;
+    const text = nodes.find(n => n.name === "text.txt")!;
+    const image = nodes.find(n => n.name === "image.png")!;
+    // Keep the cached layout: no event-loop turn occurs between the change and read.
+    fs.writeFileSync(path.join(dir, "text.txt"), Buffer.alloc(1_048_577, 97));
+    assert.throws(() => store.readFile(text.id));
+    fs.writeFileSync(path.join(outside, "secret.txt"), "secret");
+    fs.unlinkSync(path.join(dir, "text.txt"));
+    fs.symlinkSync(path.join(outside, "secret.txt"), path.join(dir, "text.txt"));
+    assert.throws(() => store.readFile(text.id));
+    fs.writeFileSync(path.join(outside, "image.png"), "outside");
+    fs.renameSync(path.join(dir, "assets"), path.join(dir, "old-assets"));
+    fs.symlinkSync(outside, path.join(dir, "assets"));
+    assert.equal(store.readImage(image.id), null);
+  } finally { store.unwatch(); fs.rmSync(outside, { recursive: true, force: true }); }
+}));
+
+test("page images reject hidden directories reached through a visible alias", () => withStore((store, root) => {
+  const page = store.create({ title: "Aliases", markdown: "hello" });
+  const dir = path.join(root, "Personal", "Notes");
+  fs.mkdirSync(path.join(dir, ".hidden"));
+  fs.writeFileSync(path.join(dir, ".hidden", "secret.png"), "hidden");
+  fs.symlinkSync(path.join(dir, ".hidden"), path.join(dir, "visible"));
+  assert.equal(store.readPageImage(page.id, "visible/secret.png"), null);
+}));
+
+test("cached previews cannot follow aliases into another project", () => withStore((store, root) => {
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const other = store.createProject(workspace.id, "Other");
+  const page = store.create({ title: "Scoped", markdown: "hello" });
+  const dir = path.join(root, "Personal", "Notes");
+  const otherDir = path.join(root, other.rel);
+  fs.mkdirSync(path.join(dir, "assets"));
+  fs.writeFileSync(path.join(dir, "assets", "text.txt"), "own text");
+  fs.writeFileSync(path.join(dir, "assets", "image.png"), "own image");
+  fs.mkdirSync(path.join(otherDir, "assets"));
+  fs.writeFileSync(path.join(otherDir, "assets", "text.txt"), "other text");
+  fs.writeFileSync(path.join(otherDir, "assets", "image.png"), "other image");
+  store.watch();
+  try {
+    const nodes = store.tree().nodes;
+    const text = nodes.find(n => n.rel === "Personal/Notes/assets/text.txt")!;
+    const image = nodes.find(n => n.rel === "Personal/Notes/assets/image.png")!;
+    fs.renameSync(path.join(dir, "assets"), path.join(dir, "old-assets"));
+    fs.symlinkSync(path.join(otherDir, "assets"), path.join(dir, "assets"));
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+    fs.unlinkSync(path.join(dir, "assets"));
+    fs.renameSync(path.join(dir, "old-assets"), path.join(dir, "assets"));
+    // Replacing the project itself must not redefine its allowed root.
+    fs.renameSync(dir, `${dir}-original`);
+    fs.symlinkSync(otherDir, dir);
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+    fs.unlinkSync(dir);
+    fs.renameSync(`${dir}-original`, dir);
+    const mirror = path.join(root, "Mirror");
+    fs.mkdirSync(mirror);
+    fs.cpSync(otherDir, path.join(mirror, "Notes"), { recursive: true });
+    fs.renameSync(path.join(root, "Personal"), path.join(root, "Original"));
+    fs.symlinkSync(mirror, path.join(root, "Personal"));
+    assert.throws(() => store.readFile(text.id));
+    assert.equal(store.readImage(image.id), null);
+    assert.equal(store.readPageImage(page.id, "assets/image.png"), null);
+  } finally { store.unwatch(); }
+}));
+
+
+test("a preview replaced by a FIFO at open cannot block the main process", { skip: process.platform === "win32" }, () => {
+  const home = tmpdir("modex-preview-fifo-");
+  try {
+    // A child bounds the regression: blocking open on a FIFO otherwise hangs the test runner.
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+      import fs from "node:fs";
+      import path from "node:path";
+      import { execFileSync } from "node:child_process";
+      import { NotesStore } from ${JSON.stringify(new URL("../src/main/engine/notes-store.js", import.meta.url).href)};
+      const store = new NotesStore(path.join(process.argv[1], "notes"));
+      store.tree();
+      const file = path.join(store.root, "Personal", "Notes", "image.png");
+      fs.writeFileSync(file, "image");
+      store.watch();
+      const image = store.tree().nodes.find(node => node.name === "image.png");
+      const open = fs.openSync;
+      fs.openSync = (target, ...args) => {
+        if (target === fs.realpathSync(file)) {
+          fs.openSync = open;
+          fs.unlinkSync(file);
+          execFileSync("mkfifo", [file]);
+        }
+        return open(target, ...args);
+      };
+      try { console.log(JSON.stringify(store.readImage(image.id))); }
+      finally { store.unwatch(); }
+    `, home], { encoding: "utf8", timeout: 5_000, killSignal: "SIGKILL" });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "null");
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+for (const change of ["project rename", "workspace rename", "project move"] as const) test(`default page creation follows a ${change}`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  if (change === "project rename") store.rename(project.id, "Journal");
+  else if (change === "workspace rename") store.rename(workspace.id, "Home");
+  else store.moveNodes([project.id], store.createWorkspace("Work").id);
+  const rel = store.tree().nodes.find(n => n.id === project.id)!.rel;
+  const reopened = new NotesStore(root);
+  const page = reopened.create({ title: "Next" });
+  assert.equal(reopened.tree().nodes.find(n => n.id === page.id)?.rel, `${rel}/Next.md`);
+  assert.equal(reopened.tree().nodes.filter(n => n.kind === "project").length, 1);
+}));
+
+for (const interruption of [null, "link", "unlink"] as const) test(`moving a folder avoids child collisions and recovers ${interruption ?? "without interruption"}`, () => withStore((store, root) => {
+  const parent = store.create({ title: "Parent", markdown: "parent body" });
+  const child = store.create({ title: "Parent 2", markdown: "child body", parentId: parent.id });
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!;
+  const destPage = store.create({ title: "Destination" });
+  store.create({ title: "Existing", parentId: destPage.id });
+  const dest = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === destPage.id)!;
+  store.createFolder(dest.id, "Parent");
+  const originalLink = fs.linkSync;
+  const originalUnlink = fs.unlinkSync;
+  if (interruption === "link") fs.linkSync = () => { throw new Error("injected folder move interruption"); };
+  if (interruption === "unlink") fs.unlinkSync = ((file) => {
+    if (path.basename(String(file)) === "Parent.md") throw new Error("injected folder move interruption");
+    return originalUnlink(file);
+  }) as typeof fs.unlinkSync;
+  try {
+    if (interruption) assert.throws(() => store.moveNodes([folder.id], dest.id), /injected folder move/);
+    else store.moveNodes([folder.id], dest.id);
+  } finally { fs.linkSync = originalLink; fs.unlinkSync = originalUnlink; }
+  for (const reader of [new NotesStore(root), store, new NotesStore(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.find(p => p.id === parent.id)?.parentId, destPage.id);
+    assert.equal(pages.find(p => p.id === parent.id)?.title, "Parent");
+    assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
+    assert.equal(pages.find(p => p.id === child.id)?.revision, 1);
+    assert.equal(pages.find(p => p.id === child.id)?.markdown, "child body");
+    assert.equal(reader.history(parent.id).at(-1)?.summary, "Moved folder");
+    assert.equal(reader.tree().nodes.find(n => n.id === folder.id)?.rel, `${dest.rel}/Parent 3`);
+  }
+  assert.ok(fs.existsSync(path.join(root, dest.rel, "Parent 3", "Parent 3.md")));
+}));
+
+for (const basename of ["Parent.MD", "parent.md"]) test(`moving a folder uses its exact folder note basename ${basename}`, () => withStore((store, root) => {
+  const parent = store.create({ title: "Parent" });
+  const child = store.create({ title: "Child", parentId: parent.id });
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!;
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  fs.renameSync(path.join(root, folder.rel, "Parent.md"), path.join(root, folder.rel, basename));
+  const dest = store.createFolder(project.id, "Destination");
+  store.createFolder(dest.id, "Parent");
+  const read = fs.readFileSync;
+  fs.readFileSync = ((file, ...args) => {
+    const name = String(file);
+    if (/\.md$/i.test(name) && fs.existsSync(path.dirname(name)) && !fs.readdirSync(path.dirname(name)).includes(path.basename(name))) {
+      throw Object.assign(new Error("exact filename required"), { code: "ENOENT" });
+    }
+    return read(file, ...args);
+  }) as typeof fs.readFileSync;
+  try { store.moveNodes([folder.id], dest.id); } finally { fs.readFileSync = read; }
+  const reopened = new NotesStore(root);
+  assert.equal(reopened.list().find(p => p.id === child.id)?.parentId, parent.id);
+  assert.equal(reopened.tree().nodes.find(n => n.id === folder.id)?.rel, `${dest.rel}/Parent 2`);
+}));
+
+for (const change of ["project rename", "workspace rename", "project move"] as const) test(`default project location recovers a crash after ${change}`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const other = store.createWorkspace("Work");
+  const expected = change === "project rename" ? "Personal/Journal" : change === "workspace rename" ? "Home/Notes" : "Work/Notes";
+  const internal = store as unknown as { writeIndex(index: unknown): void };
+  const write = internal.writeIndex.bind(store);
+  internal.writeIndex = index => {
+    if (fs.existsSync(path.join(root, expected))) throw new Error("crash before index");
+    write(index);
+  };
+  try {
+    assert.throws(() => {
+      if (change === "project rename") store.rename(project.id, "Journal");
+      else if (change === "workspace rename") store.rename(workspace.id, "Home");
+      else store.moveNodes([project.id], other.id);
+    }, /crash before index/);
+  } finally { internal.writeIndex = write; }
+  const reopened = new NotesStore(root);
+  const page = reopened.create({ title: "After" });
+  assert.equal(reopened.tree().nodes.find(n => n.id === page.id)?.rel, `${expected}/After.md`);
+  assert.ok(!fs.existsSync(path.join(root, "Personal/Notes")));
+}));
+
+test("folder move recovery retains external edits made after interruption", () => withStore((store, root) => {
+  const parent = store.create({ title: "Parent", markdown: "Original" });
+  store.create({ title: "Child", parentId: parent.id });
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!;
+  const dest = store.createFolder(project.id, "Dest");
+  store.createFolder(dest.id, "Parent");
+  const unlink = fs.unlinkSync;
+  fs.unlinkSync = ((file) => {
+    if (path.basename(String(file)) === "Parent.md") throw new Error("interrupted");
+    return unlink(file);
+  }) as typeof fs.unlinkSync;
+  try { assert.throws(() => store.moveNodes([folder.id], dest.id), /interrupted/); }
+  finally { fs.unlinkSync = unlink; }
+  const moved = path.join(root, dest.rel, "Parent 2/Parent 2.md");
+  fs.writeFileSync(moved, fs.readFileSync(moved, "utf8").replace("Original", "Human edit after crash"));
+  const reopened = new NotesStore(root);
+  assert.equal(reopened.list().find(p => p.id === parent.id)?.markdown, "Human edit after crash");
+  assert.ok(reopened.history(parent.id).some(v => v.actor === "external" && v.page.markdown === "Human edit after crash"));
 }));

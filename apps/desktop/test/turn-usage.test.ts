@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { claudeCall, codexCall, UsageMeter, withUsage } from "../src/main/engine/backends/usage.js";
 
-test("UsageMeter keeps the first call, sizes the context from the last, and counts each id once", () => {
+test("UsageMeter keeps the first call, sizes the context from the last, sums every call, and counts each id once", () => {
   const meter = new UsageMeter();
   assert.equal(meter.usage(), undefined, "no call, no usage");
   meter.call({ cacheRead: 40_000, cacheWrite: 1_000, uncached: 5 }, "msg_1");
@@ -10,7 +10,7 @@ test("UsageMeter keeps the first call, sizes the context from the last, and coun
   meter.call({ cacheRead: 41_000, cacheWrite: 2_000, uncached: 3 }, "msg_2");
   meter.addOutput(700);
   meter.addOutput(300);
-  assert.deepEqual(meter.usage(), { first: { cacheRead: 40_000, cacheWrite: 1_000, uncached: 5 }, contextTokens: 43_003, outputTokens: 1_000, calls: 2 });
+  assert.deepEqual(meter.usage(), { first: { cacheRead: 40_000, cacheWrite: 1_000, uncached: 5 }, contextTokens: 43_003, outputTokens: 1_000, calls: 2, totals: { input: 8, cached: 81_000, cacheWrite: 3_000 } });
 });
 
 test("calls without an id always count; unusable output values are ignored", () => {
@@ -20,7 +20,7 @@ test("calls without an id always count; unusable output values are ignored", () 
   meter.addOutput(Number.NaN);
   meter.addOutput(-4);
   meter.addOutput("12");
-  assert.deepEqual(meter.usage(), { first: { cacheRead: 0, cacheWrite: 0, uncached: 10 }, contextTokens: 10, calls: 2 });
+  assert.deepEqual(meter.usage(), { first: { cacheRead: 0, cacheWrite: 0, uncached: 10 }, contextTokens: 10, calls: 2, totals: { input: 20, cached: 0, cacheWrite: 0 } });
 });
 
 test("Claude and Codex usage shapes map to the same split", () => {
@@ -34,5 +34,5 @@ test("withUsage attaches usage only when a call was seen", () => {
   const meter = new UsageMeter();
   assert.deepEqual(withUsage({ status: "completed" }, meter), { status: "completed" });
   meter.call({ cacheRead: 1, cacheWrite: 2, uncached: 3 });
-  assert.deepEqual(withUsage({ status: "interrupted" }, meter), { status: "interrupted", usage: { first: { cacheRead: 1, cacheWrite: 2, uncached: 3 }, contextTokens: 6, calls: 1 } });
+  assert.deepEqual(withUsage({ status: "interrupted" }, meter), { status: "interrupted", usage: { first: { cacheRead: 1, cacheWrite: 2, uncached: 3 }, contextTokens: 6, calls: 1, totals: { input: 3, cached: 1, cacheWrite: 2 } } });
 });
