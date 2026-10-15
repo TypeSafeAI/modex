@@ -124,6 +124,18 @@ export class Fit {
     return undefined;
   }
 
+  /** Correct an unspent route after a provider refuses its model, without learning an override. */
+  recordFallback(threadId: string, actual: Pick<RouteRecord, "backend" | "model" | "effort" | "fast" | "tier" | "premium">): void {
+    const route = this.open(threadId);
+    if (!route) return;
+    this.premiumToday();
+    if (route.at.slice(0, 10) === this.state.premium.day) {
+      this.state.premium.count = Math.max(0, this.state.premium.count + Number(actual.premium) - Number(route.premium));
+    }
+    Object.assign(route, actual, { held: false });
+    this.write();
+  }
+
   recordOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage): void {
     const r = this.open(threadId);
     if (!r) return;

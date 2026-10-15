@@ -16,6 +16,8 @@ import { CANVAS_SCHEME } from "../shared/canvas.js";
 import { KnowledgeService } from "./engine/knowledge.js";
 import { PagesAgents } from "./engine/pages-agents.js";
 import { KnowledgeAgents } from "./engine/knowledge-agents.js";
+import { UsageLedger } from "./engine/usage-ledger.js";
+import { ANALYTICS_SCHEME, WorkspaceAnalytics } from "./workspace-analytics.js";
 import { WorkspaceBrowser } from "./workspace-browser.js";
 import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
@@ -80,6 +82,7 @@ fs.mkdirSync(home, { recursive: true });
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true } },
   { scheme: CANVAS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  { scheme: ANALYTICS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 // The scripted demo and screenshots must never discover a real Jev key or call the network.
 if (demo) {
@@ -118,6 +121,7 @@ let workspaceCanvas: WorkspaceCanvas | null = null;
 let workspaceBrowser: WorkspaceBrowser | null = null;
 let browserTools: BrowserTools | null = null;
 let knowledgeBrowser: WorkspaceBrowser | null = null;
+let workspaceAnalytics: WorkspaceAnalytics | null = null;
 let knowledgeURL: string | null = null;
 let shuttingDown = false;
 let servicesTouched = false;
@@ -172,7 +176,8 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // Install preservation before any cleanup. NativeDrafts replays sealed ownership
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
-const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const usageLedger = new UsageLedger(store.dir);
+const runner = new ThreadRunner({ home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
 let nativeDrafts: NativeDrafts | undefined;
 let nativeDraftFailure: string | undefined;
 let nativeStartup: ReturnType<typeof readUpdateStartup> | undefined;
@@ -753,6 +758,8 @@ const claudeLogin = new ClaudeLogin();
 SPAWNS.add("claude:login");
 handle("claude:login", () => claudeLogin.run(resolveCli("claude", sessionCliSettings.claude_bin)));
 handle("claude:cancelLogin", () => claudeLogin.cancel());
+handle("usage:list", (req) => usageLedger.list(req ?? {}), { localOnly: true });
+handle("analytics:show", ({ bounds }) => workspaceAnalytics?.show(bounds) ?? null, { localOnly: true });
 handle("routing:status", () => runner.router.status());
 handle("routing:reset", () => {
   runner.router.fit.reset();
@@ -830,6 +837,12 @@ function createWindow(): BrowserWindow {
   knowledgeBrowser = knowledgeView; knowledgeURL = null;
   w.webContents.on("did-start-navigation", () => { knowledgeView.dispose(); knowledgeURL = null; });
   w.on("closed", () => { knowledgeView.dispose(); if (knowledgeBrowser === knowledgeView) { knowledgeBrowser = null; knowledgeURL = null; } });
+  // The built usage dashboard sits beside the renderer (dist/usage-preview); main serves it to its own session.
+  const analyticsRoot = path.join(here, "..", "..", "usage-preview");
+  let analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger);
+  workspaceAnalytics = analytics;
+  w.webContents.on("did-start-navigation", () => { analytics.dispose(); analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger); workspaceAnalytics = analytics; });
+  w.on("closed", () => { analytics.dispose(); if (workspaceAnalytics === analytics) workspaceAnalytics = null; });
   w.webContents.on("did-start-navigation", () => browser.dispose());
   w.on("closed", () => { browser.dispose(); if (workspaceBrowser === browser) workspaceBrowser = null; });
   if (devUrl) void w.loadURL(devUrl);
