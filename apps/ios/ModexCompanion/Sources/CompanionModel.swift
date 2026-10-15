@@ -17,6 +17,8 @@ import SwiftUI
     @Published private(set) var isPairing = false
     /// True while showing the offline scripted workspace. It never coexists with a saved pairing.
     @Published private(set) var isDemo = false
+    /// Archived threads stay hidden on the phone until asked for. Hidden again with every new workspace.
+    @Published var showArchived = false
 
     private var api: (any CompanionClient)?
     private let store: any PairingStorage
@@ -45,6 +47,14 @@ import SwiftUI
 
     /// Whether there is a workspace to show: a paired Mac or the demo.
     var hasWorkspace: Bool { pairing != nil || isDemo }
+
+    /// Threads the dashboard lists for a project: archived ones only while they are shown.
+    func visibleThreads(in projectId: String) -> [CompanionThread] {
+        snapshot.threads.filter { $0.projectId == projectId && (showArchived || $0.archived != true) }
+    }
+
+    var visibleThreadCount: Int { snapshot.threads.filter { showArchived || $0.archived != true }.count }
+    var archivedThreadCount: Int { snapshot.threads.filter { $0.archived == true }.count }
 
     func startPolling() {
         guard pollTask == nil, api != nil else { return }
@@ -114,6 +124,7 @@ import SwiftUI
                 draft = ""
                 newThreadDraft = ""
                 drafts = [:]
+                showArchived = false
             } else if let selectedThreadId, !first.threads.contains(where: { $0.id == selectedThreadId }) {
                 // A rescan of the same pinned Mac keeps unsent work, except for a deleted thread.
                 self.selectedThreadId = nil
@@ -150,6 +161,7 @@ import SwiftUI
         draft = ""
         newThreadDraft = ""
         drafts = [:]
+        showArchived = false
         connected = true
         connectionError = nil
         error = nil
@@ -172,6 +184,7 @@ import SwiftUI
         draft = ""
         newThreadDraft = ""
         drafts = [:]
+        showArchived = false
         snapshot = CompanionSnapshot(projects: [], threads: [], items: [])
         error = nil
         connectionError = nil
@@ -353,6 +366,21 @@ import SwiftUI
             await refresh()
         } catch {
             if connection == connectionRevision, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+        }
+    }
+
+    /// Puts a thread away or brings it back. True once the Mac confirmed and the workspace refreshed.
+    func setArchived(_ archived: Bool, threadId: String) async -> Bool {
+        guard let api else { return false }
+        let connection = connectionRevision
+        do {
+            try await api.setArchived(threadId: threadId, archived: archived)
+            guard connection == connectionRevision else { return false }
+            await refresh()
+            return connection == connectionRevision
+        } catch {
+            if connection == connectionRevision, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+            return false
         }
     }
 

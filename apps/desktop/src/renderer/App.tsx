@@ -691,6 +691,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
+  /** Archived threads leave the working list on every device; the selection stays so the row remains visible under Archived. */
+  const archiveThread = (t: Thread, archived: boolean) => act(async () => {
+    await bridge.invoke("thread:archive", { threadId: t.id, archived });
+    await refresh();
+  });
   const closeTerminal = (threadId: string) => {
     setTerminals((m) => ({ ...m, [threadId]: false }));
     inputRef.current?.focus();
@@ -851,6 +856,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
         onOpenPath={openPath}
         onOpenTerminal={openTerminal}
         onDelete={deleteThread}
+        onArchive={archiveThread}
         platform={bridge.platform}
       />
       <Rail surface={surface} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
@@ -870,6 +876,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
             onNewChat={newChat}
             onNewThread={openDraft}
             onDeleteThread={deleteThread}
+            onArchiveThread={archiveThread}
             onRemoveProject={removeProject}
             unsent={unsent}
             agents={activeAgents}
@@ -901,6 +908,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, suspended 
               onUpdate={updateThread}
               onRetry={() => void retry()}
               onFix={applyFix}
+              onUnarchive={() => void archiveThread(thread, false)}
               models={models[thread.backend]?.models ?? []}
               modelsError={models[thread.backend]?.error}
               onRetryModels={() => retryModels(thread.backend)}

@@ -79,6 +79,16 @@ actor DemoCompanionClient: CompanionClient {
         return [CompanionCommand(id: "skill:demo-review", title: "demo-review", detail: "Demo skill · scripted reply only", insertion: "\(prefix)demo-review ", kind: "skill")]
     }
 
+    func setArchived(threadId: String, archived: Bool) async throws {
+        guard let index = entries.firstIndex(where: { $0.thread.id == threadId }) else {
+            throw CompanionError.message("That demo thread is no longer available.")
+        }
+        if archived, entries[index].thread.status != "idle" {
+            throw CompanionError.message("Wait for this demo thread to finish before archiving it.")
+        }
+        entries[index].thread.archived = archived ? true : nil
+    }
+
     func send(threadId: String, text: String) async throws {
         guard let index = entries.firstIndex(where: { $0.thread.id == threadId }) else {
             throw CompanionError.message("That demo thread is no longer available.")
@@ -86,6 +96,8 @@ actor DemoCompanionClient: CompanionClient {
         guard entries[index].thread.status == "idle" else {
             throw CompanionError.message("Wait for this demo thread to finish before sending a follow-up.")
         }
+        // Like the Mac: a new message brings an archived thread back.
+        entries[index].thread.archived = nil
         append(CompanionItem(id: nextId("user"), kind: "user", text: text, title: nil, question: nil, detail: nil, answer: nil, status: nil, level: nil, at: Self.stamp(.now)), to: index, status: "running")
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
@@ -134,7 +146,7 @@ actor DemoCompanionClient: CompanionClient {
     private func append(_ item: CompanionItem, to index: Int, status: String) {
         entries[index].items.append(item)
         let thread = entries[index].thread
-        entries[index].thread = CompanionThread(id: thread.id, projectId: thread.projectId, title: thread.title, backend: thread.backend, status: status, updatedAt: item.at)
+        entries[index].thread = CompanionThread(id: thread.id, projectId: thread.projectId, title: thread.title, backend: thread.backend, status: status, updatedAt: item.at, archived: thread.archived)
     }
 
     private func nextId(_ kind: String) -> String {
