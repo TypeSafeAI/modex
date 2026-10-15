@@ -1,3 +1,5 @@
+import type { PluginCommands } from "./plugins.js";
+import type { ImageCommands } from "./images.js";
 import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
@@ -45,6 +47,8 @@ export interface LastTurn {
 }
 
 export interface Thread {
+  pluginRevision?: number;
+  imageJobId?: string;
   id: string;
   projectId: string;
   title: string;
@@ -413,6 +417,7 @@ export interface ModexBridge {
   onUpdateState?(cb: (state: import("./updates.js").UpdateInstallState) => void): () => void;
   onWorkspaceShortcut?(cb: (shortcut: WorkspaceShortcut) => void): () => void;
   invoke<K extends keyof BridgeCommands>(channel: K, payload: BridgeCommands[K]["req"]): Promise<BridgeCommands[K]["res"]>;
+  onMediaEvent?(cb: (event: { kind: "images" | "jobs" | "plugins" }) => void): () => void;
   onEvent(cb: (event: ThreadEvent) => void): () => void;
   onTerminalEvent(cb: (event: TerminalEvent) => void): () => void;
   platform: string;
@@ -468,7 +473,7 @@ export interface CompanionStatus {
 
 export interface ReleaseUpdate { version: string; url: string; }
 
-export interface BridgeCommands extends NativeDraftCommands {
+export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
   "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };

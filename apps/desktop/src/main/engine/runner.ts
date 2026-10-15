@@ -57,6 +57,10 @@ interface Live {
 }
 
 export interface RunnerOptions {
+  beforeSend?(thread: Thread): void;
+  imageBackend?: Backend;
+  imageOutcome?(jobId: string, status: string): void;
+  images?: { prepare(thread: Thread, signal: AbortSignal): Promise<import("./images/agent.js").ImagesLease | undefined> };
   pages?: Pick<PagesAgents, "prepare">;
   /** Analytics' per-turn usage record. Optional: tests and demos run without one. */
   usage?: Pick<UsageLedger, "record">;
@@ -225,6 +229,15 @@ export class ThreadRunner {
     const result = this.background.run(() => this.router.followUp({ thread, text: user.text, items: [...l.items], project: { name: project?.name ?? "" } }, abort.signal));
     l.followUp = { key, abort, result };
     return result;
+  }
+
+  /** Main-owned image execution: a fresh thread in a dedicated job directory, with normal approvals. */
+  async createImageThread(directory: string, jobId: string, backend: BackendId, account?: string): Promise<Thread> {
+    this.assertNotRestarting();
+    const project = this.o.store.addProject(path.dirname(directory));
+    const thread = await this.createThread(project.id, { backend, mode: "agent", auto: false });
+    this.o.store.updateThread(thread.id, { cwd: directory, imageJobId: jobId, title: "Image generation", titleSource: "manual", approvals: "ask", ...(account ? { codexAccount: account } : {}) });
+    return this.o.store.thread(thread.id)!;
   }
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
@@ -447,6 +460,7 @@ export class ThreadRunner {
 
   private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
     this.assertThreadAvailable(threadId);
+    this.o.beforeSend?.(this.o.store.thread(threadId)!);
     const l = this.slot(threadId);
     if (l.run) throw new Error("This thread is still working. Stop it or wait for it to finish.");
     // Publish admission before runTurn's synchronous prefix can emit or invoke
@@ -567,17 +581,21 @@ export class ThreadRunner {
       l.abort = null;
       return;
     }
-    const backend = this.backends[thread.backend];
+    const backend = thread.imageJobId && this.o.imageBackend ? this.o.imageBackend : this.backends[thread.backend];
     l.backend = thread.backend;
     const turnStart = l.items.length;
     let knowledge: KnowledgeLease | undefined;
     let pages: PagesLease | undefined;
+    let images: import("./images/agent.js").ImagesLease | undefined;
     const revokeConnections = () => {
       void pages?.close().catch(() => {});
+      void images?.close().catch(() => {});
       void knowledge?.close().catch(() => {});
     };
     abort.signal.addEventListener("abort", revokeConnections, { once: true });
     try {
+      this.o.beforeSend?.(thread);
+      if (thread.imageJobId && this.o.images) images = await this.o.images.prepare(thread, abort.signal);
       // Prepare Pages first: snapshot the turn's read-only ceiling before knowledge setup awaits.
       // Always attach its stable route, including when the project's setting currently disables it.
       if (thread.backend !== "mock" && this.o.pages) {
@@ -607,7 +625,7 @@ export class ThreadRunner {
           cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account,
           // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
           addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
-          ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}),
+          ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
         },
         sink,
         abort.signal,
@@ -626,6 +644,7 @@ export class ThreadRunner {
         result = await runOn(thread);
         if (result.status === "failed") result = { ...result, recovery: [`${modelFamilyName(from)} was out of usage credits; retried on ${modelFamilyName(fallback)}.`, ...(result.recovery ?? [])] };
       }
+      if (thread.imageJobId) this.o.imageOutcome?.(thread.imageJobId, result.status);
       // Record what ran, not what was asked for: the CLI can refuse fast mode (no usage credits, for one).
       const ranFast = result.fastMode ? result.fastMode.on : fast;
       if (fast && !ranFast && routeId) this.noteFastOff(threadId, routeId, result.fastMode?.why);
@@ -657,6 +676,7 @@ export class ThreadRunner {
     } finally {
       abort.signal.removeEventListener("abort", revokeConnections);
       await Promise.all([
+        images?.close().catch(err => sink.notice("warn", `Images connection could not close: ${(err as Error).message}`)),
         pages?.close().catch(err => sink.notice("warn", `Pages connection could not close: ${(err as Error).message}`)),
         knowledge?.close().catch(err => sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`)),
       ]);

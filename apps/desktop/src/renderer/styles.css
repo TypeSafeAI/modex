@@ -479,7 +479,8 @@ a.thread-pr:hover { text-decoration: underline; }
 .attachment-chip { position: relative; display: inline-flex; align-items: center; gap: 8px; max-width: 260px; height: 36px; padding: 0 8px 0 5px; border: 1px solid var(--border-pane); border-radius: var(--radius-row); background: var(--bg-sunken); color: var(--text-1); font: inherit; font-size: var(--text-xs); line-height: 15px; text-align: left; }
 .attachment-chip.openable { cursor: pointer; }
 .attachment-chip.openable:hover { border-color: var(--border-strong); background: var(--bg-row-hover); }
-.attachment-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.attachment-content { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.attachment-content:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .attachment-thumb, .attachment-glyph { width: 26px; height: 26px; flex: none; border-radius: 6px; background: var(--bg-row-selected); }
 .attachment-thumb { object-fit: cover; }
 .attachment-glyph { display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); }
@@ -841,3 +842,5 @@ button.turn-label { display: flex; align-items: center; gap: 6px; width: 100%; p
 button.turn-label:hover { color: var(--text-2); }
 
 .turn-content :is(.approval, .failure) { width: 100%; }
+
+.sheet:is([data-surface="images"], [data-surface="plugins"]) > :is(.sidebar, .main, .workspace) { display: none; }

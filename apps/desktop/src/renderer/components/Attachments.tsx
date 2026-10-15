@@ -9,6 +9,9 @@ import { Icon } from "./ui/Icon";
  * In the composer each chip has a remove button; in the transcript a click reveals the file in its folder.
  */
 export function AttachmentChips({ attachments, onRemove, onOpen, testId = "attachments" }: { attachments: Attachment[]; onRemove?: (a: Attachment) => void; onOpen?: (a: Attachment) => void; testId?: string }) {
+  const [notice, setNotice] = useState<string | null>(null);
+  const [media, setMedia] = useState(false);
+  useEffect(() => { let live = true; if (onOpen) void bridge.invoke("features:media", undefined).then(value => { if (live) setMedia(value.images); }).catch(() => {}); return () => { live = false; }; }, [Boolean(onOpen)]);
   if (!attachments.length) return null;
   return (
     <div className="attachments" data-testid={testId}>
@@ -19,6 +22,8 @@ export function AttachmentChips({ attachments, onRemove, onOpen, testId = "attac
           data-testid="attachment-chip"
           data-kind={a.kind}
           title={a.name}
+        >
+          <span className="attachment-content"
           role={onOpen ? "button" : undefined}
           tabIndex={onOpen ? 0 : undefined}
           onClick={onOpen ? () => onOpen(a) : undefined}
@@ -31,6 +36,8 @@ export function AttachmentChips({ attachments, onRemove, onOpen, testId = "attac
             <span className="attachment-name">{a.name}</span>
             <span className="attachment-size">{formatBytes(a.size)}</span>
           </span>
+          </span>
+          {onOpen && media && a.kind === "image" && <button className="attachment-remove" aria-label={`Save ${a.name} to Images`} onClick={e => { e.stopPropagation(); void bridge.invoke("images:attachment", { attachment: a }).then(() => setNotice("Saved to Images."), err => setNotice(err.message)); }}><Icon name="download" size={12} /></button>}
           {onRemove && (
             <button type="button" className="attachment-remove" data-testid="attachment-remove" aria-label={`Remove ${a.name}`} onClick={(e) => { e.stopPropagation(); onRemove(a); }}>
               <Icon name="close" size={12} />
@@ -38,6 +45,7 @@ export function AttachmentChips({ attachments, onRemove, onOpen, testId = "attac
           )}
         </span>
       ))}
+      {notice && <span role="status">{notice}</span>}
     </div>
   );
 }

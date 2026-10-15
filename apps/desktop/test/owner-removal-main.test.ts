@@ -16,7 +16,7 @@ function fixture() {
   assert.ok(start >= 0 && end > start, "main must install the owner-removal transaction");
   const messages: { channel: string; request: any }[] = [], handlers = new Map<string, Function>(), events: string[] = [], frame = {};
   const admission = new RestartAdmission();
-  const context: any = { OwnerRemoval, restartAdmission: admission, nativeDocument: { frame, epoch: 1, session: "session" }, documentEpoch: 1,
+  const context: any = { media: undefined, mediaInitializationError: undefined, OwnerRemoval, restartAdmission: admission, nativeDocument: { frame, epoch: 1, session: "session" }, documentEpoch: 1,
     nativeDraftFailure: undefined, nativeDrafts: { requiresRecovery: false,
       holdForOwnerRemoval: () => { events.push("native-hold"); return () => { events.push("native-release"); }; },
       pruneEmptyOwner: () => { events.push("prune"); return { revision: 4, drafts: { threads: [], projects: [], selectedThreadId: null, draft: null } }; } },
@@ -127,4 +127,30 @@ test("actual main keeps Stop available during owner removal but blocks it during
   const release = h.admission.holdForRestart();
   try { await assert.rejects(h.invoke("thread:stop"), /restart/i); }
   finally { release(); }
+});
+
+test("main deletion waits for already-admitted requests before asking to freeze drafts", async () => {
+  const h = fixture();
+  let finish!: () => void;
+  const running = h.admission.run(() => new Promise<void>(resolve => { finish = resolve; }));
+  const deletion = h.invoke("thread:delete");
+  assert.equal(h.owner.active, true);
+  assert.equal(h.admission.held, true);
+  assert.equal(h.messages.length, 0);
+  finish(); await running; await h.tick();
+  h.reply("prepare", 3); await h.tick(); h.reply("adopt", 4); await deletion;
+  assert.equal(h.admission.held, false);
+  assert.ok(h.events.includes("remove"));
+});
+
+test("main deletion refuses a replaced renderer while draining requests", async () => {
+  const h = fixture();
+  let finish!: () => void;
+  const running = h.admission.run(() => new Promise<void>(resolve => { finish = resolve; }));
+  const deletion = h.invoke("thread:delete");
+  h.context.nativeDocument = { frame: {}, epoch: 2, session: "replacement" };
+  finish(); await running;
+  await assert.rejects(deletion, /workspace changed/);
+  assert.equal(h.admission.held, false);
+  assert.equal(h.events.includes("remove"), false);
 });

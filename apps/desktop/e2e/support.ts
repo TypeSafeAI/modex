@@ -61,25 +61,35 @@ export async function launch(home: string): Promise<{ app: ElectronApplication; 
     cwd: appDir,
     env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(os.tmpdir(), "modex-e2e-no-jev-config.json") },
   });
-  // Record each window's native `show` from the moment the main process starts, before any window
-  // exists, so the one-time event cannot be missed (an `isVisible()` check cannot stand in for it:
-  // on macOS it turns true as soon as the window is ordered front, 35–50 ms before the window server
-  // reports the window visible and Electron emits `show`; the v0.0.7 release run resized the window
-  // inside that gap and the renderer never saw the new size). showInactive still emits `show`.
+  // Electron 44 on macOS can paint and showInactive without emitting `show`.
+  // Observe native paint as well, then require visible, stable native/renderer
+  // geometry. isVisible alone can precede the window-server transition.
   await app.evaluate(({ app: electronApp, BrowserWindow }) => {
     type Win = ReturnType<typeof BrowserWindow.getAllWindows>[number];
-    const shown = ((globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown ??= new Set<number>());
-    const track = (w: Win) => w.once("show", () => { shown.add(w.id); });
+    const ready = ((globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown ??= new Set<number>());
+    const track = (w: Win) => {
+      w.once("show", () => ready.add(w.id));
+      w.once("ready-to-show", () => ready.add(w.id));
+    };
     BrowserWindow.getAllWindows().forEach(track);
     electronApp.on("browser-window-created", (_event, w) => track(w));
   });
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
-  // resizeWindow separately waits for native and renderer geometry to settle before layout measurements.
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0];
-    return w ? (globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown?.has(w.id) ?? false : false;
-  }), { message: "the window never reported its native show" }).toBe(true);
+  let stableSince: number | undefined;
+  try {
+    await expect.poll(async () => {
+      const native = await app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows()[0];
+        return w ? { ready: (globalThis as { __modexE2EShown?: Set<number> }).__modexE2EShown?.has(w.id) ?? false,
+          visible: w.isVisible(), size: w.getContentSize() } : null;
+      });
+      const size = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+      if (native?.ready && native.visible && native.size.every((value, index) => value === size[index])) stableSince ??= Date.now();
+      else stableSince = undefined;
+      return stableSince !== undefined && Date.now() - stableSince >= 200;
+    }, { intervals: [50], message: "the window must paint and settle visible native/renderer geometry" }).toBe(true);
+  } catch (error) { await app.close(); throw error; }
   return { app, page };
 }
 

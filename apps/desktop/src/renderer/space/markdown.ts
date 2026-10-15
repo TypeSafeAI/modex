@@ -9,7 +9,7 @@ export function safeBlocks(markdown: string): Block[] {
       if (styles.link && !/^(https?:|mailto:)/i.test(styles.link.url.trim())) delete styles.link;
       return { ...span, styles };
     }),
-    props: block.type === "image" && !/^https?:\/\//i.test((block.props as { url: string }).url) ? { ...block.props, url: "", alt: "Image URL must use HTTPS or HTTP" } : block.props,
+    props: block.type === "image" && !/^(https?:\/\/|modex-image:\/\/asset\/[a-f0-9-]{36}$)/i.test((block.props as { url: string }).url) ? { ...block.props, url: "", alt: "Image URL must use HTTPS or HTTP" } : block.props,
     children: block.children.map(clean),
   });
   return parseSpaceBlocks(markdown).map(clean);
