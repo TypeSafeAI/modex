@@ -588,6 +588,10 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   adds `POST /v1/threads/:id/archive` and an `archived` flag on snapshot threads; an older Mac
   answers the phone with 501. Companion build 6 does not include the phone side; it ships with
   the next iPhone build.
+- **One CI run per PR push.** `CI` runs on `push` only for `main`; every other branch is tested by
+  its pull request's run, which reports the required `unit + e2e (macOS)` check. Before, each
+  push to a PR branch queued two identical macOS runs, and on 2026-10-15 about 30 runs waited
+  for 2–3 hosted macOS runners. A branch pushed without a PR gets no CI until one is opened.
 
 ## In flight
 
