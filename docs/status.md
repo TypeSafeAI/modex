@@ -733,6 +733,9 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   and each view's title with its filters and Export CSV. Every view fits the window down to the
   900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
   standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
+- **Agents restore notes only into their own project.** A note trashed in one project whose
+  folder was then dragged into another project can no longer be restored there by the first
+  project's agent (#241)
 
 ## In flight
 
