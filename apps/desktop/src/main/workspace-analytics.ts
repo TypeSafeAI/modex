@@ -3,10 +3,13 @@ import { WorkspaceBrowser } from "./workspace-browser.js";
 import { ANALYTICS_ORIGIN, ANALYTICS_SCHEME, respondAnalytics } from "./engine/analytics-assets.js";
 import type { BrowserBounds } from "../shared/browser.js";
 import type { UsageLedger } from "./engine/usage-ledger.js";
+import { THEMES, normalizeTheme, type Theme } from "../shared/theme.js";
 
 export { ANALYTICS_SCHEME } from "./engine/analytics-assets.js";
 const PARTITION = "modex-analytics";
 const VIEW = "analytics";
+/** The app's sheet corner (--radius-sheet, 12px) less its 1px border, so the view sits flush. */
+const SHEET_RADIUS = 11;
 
 /**
  * Analytics in its own in-memory session. `modex-analytics://app/` serves the built usage dashboard
@@ -28,7 +31,21 @@ export class WorkspaceAnalytics {
     } catch { event.preventDefault(); }
   };
 
-  constructor(private window: BrowserWindow, private root: string, private ledger: Pick<UsageLedger, "list">) {}
+  constructor(private window: BrowserWindow, private root: string, private ledger: Pick<UsageLedger, "list">, private theme: () => Theme = () => "graphite") {}
+
+  /**
+   * The dashboard wears the app's theme: its page reads Modex's tokens under `data-theme`, and the
+   * view's background matches the canvas before the page paints.
+   */
+  appearance(): { background: string; css: string; script: string } {
+    const theme = normalizeTheme(this.theme());
+    return { background: THEMES[theme].background, css: ":root{}", script: `document.documentElement.dataset.theme = ${JSON.stringify(theme)};` };
+  }
+
+  /** Applies a theme change to an open dashboard. */
+  async refreshAppearance(): Promise<void> {
+    await this.browser?.refreshAppearance();
+  }
 
   private ensure(): WorkspaceBrowser {
     if (this.browser) return this.browser;
@@ -39,7 +56,7 @@ export class WorkspaceAnalytics {
     isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith(`${ANALYTICS_ORIGIN}/`) && !details.url.startsWith(`blob:${ANALYTICS_ORIGIN}/`) && !details.url.startsWith("data:") }));
     // Install our narrow policy before WorkspaceBrowser installs its default deny policy.
     isolated.on("will-download", this.download);
-    this.browser = new WorkspaceBrowser(this.window, { partition: PARTITION, shortcuts: false, allowURL: url => url.startsWith(`${ANALYTICS_ORIGIN}/`), resolveURL: url => url });
+    this.browser = new WorkspaceBrowser(this.window, { partition: PARTITION, shortcuts: false, allowURL: url => url.startsWith(`${ANALYTICS_ORIGIN}/`), resolveURL: url => url, appearance: () => this.appearance(), radius: SHEET_RADIUS });
     return this.browser;
   }
 

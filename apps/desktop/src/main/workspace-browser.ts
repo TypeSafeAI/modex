@@ -16,7 +16,7 @@ export class WorkspaceBrowser {
   get hasOpenPages(): boolean { return this.views.size > 0; }
   private fullView = false;
   private shown: { id: string | null; bounds?: BrowserBounds; fullView: boolean } = { id: null, fullView: false };
-  constructor(private window: BrowserWindow, private options: { partition?: string; resolveURL?: (input: string) => string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string } } = {}) {}
+  constructor(private window: BrowserWindow, private options: { partition?: string; resolveURL?: (input: string) => string; allowURL?: (url: string) => boolean; shortcuts?: boolean; appearance?: () => { background: string; css: string; script?: string }; /** Corner radius, to sit flush in a rounded pane. */ radius?: number } = {}) {}
   ownsFrame(frame: WebFrameMain | null): boolean {
     try { return Boolean(frame && !frame.isDestroyed() && [...this.views.values()].some(({ view }) => !view.webContents.isDestroyed() && view.webContents.mainFrame === frame.top)); }
     catch { return false; }
@@ -190,6 +190,7 @@ export class WorkspaceBrowser {
       contents.on("render-process-gone", () => { if (entry) { entry.navigation++; entry.frameNavigations.clear(); entry.error = "This page stopped responding. Reload to try again."; } });
       contents.on("destroyed", () => { entry?.frameNavigations.clear(); });
       view.setBackgroundColor(this.options.appearance?.().background ?? "#101010");
+      if (this.options.radius) view.setBorderRadius(this.options.radius);
       view.setVisible(false);
       this.window.contentView.addChildView(view);
     }

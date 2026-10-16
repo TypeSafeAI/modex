@@ -9,7 +9,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { BrandMark } from "../components/BrandMark";
 import {
   compact,
   costLabel,
@@ -226,6 +225,25 @@ function Dialog({
     </dialog>
   );
 }
+/** An element's size in pixels, so a chart draws at the size it is shown rather than scaling. */
+function useSize<T extends HTMLElement>() {
+  // A callback ref: the element can mount later (after an empty state) and is measured then.
+  const [element, ref] = useState<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (!element) return;
+    const update = () => {
+      const width = Math.round(element.clientWidth), height = Math.round(element.clientHeight);
+      setSize((current) => (current.width === width && current.height === height ? current : { width, height }));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return [ref, size] as const;
+}
+
 function Chart({
   events,
   metric,
@@ -233,6 +251,7 @@ function Chart({
   events: UsageEvent[];
   metric: "tokens" | "cost" | "calls";
 }) {
+  const [box, size] = useSize<HTMLDivElement>();
   const months = [
     ...new Set(events.map((event) => event.at.slice(0, 7))),
   ].sort();
@@ -241,8 +260,8 @@ function Chart({
     summarize(events.filter((event) => event.at.startsWith(month))),
   );
   const max = Math.max(...totals.map((total) => total[metric]), 0) || 1;
-  const height = 208,
-    width = 800,
+  const height = Math.max(size.height, 120),
+    width = Math.max(size.width, 320),
     left = 48,
     bottom = 32,
     top = 15,
@@ -254,8 +273,10 @@ function Chart({
   if (!events.length) return <Empty />;
   return (
     <>
-      <div className="usage-chart">
+      <div className="usage-chart" ref={box}>
         <svg
+          width={width}
+          height={height}
           viewBox={"0 0 " + width + " " + height}
           role="img"
           aria-label={
@@ -509,38 +530,11 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
   const [query, setQuery] = useState("");
   const [project, setProject] = useState<string | null>(null);
   const [metric, setMetric] = useState<"tokens" | "cost" | "calls">("tokens");
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("modex-usage-theme") === "light"
-        ? "light"
-        : "dark";
-    } catch {
-      return "dark";
-    }
-  });
   const [selected, setSelected] = useState<UsageEvent | null>(null);
   const [custom, setCustom] = useState(false);
   const [notice, setNotice] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const previousView = useRef(view);
-  useLayoutEffect(() => {
-    const root = document.documentElement;
-    root.classList.add("theme-changing");
-    root.dataset.theme = theme;
-    void root.offsetHeight;
-    const frame = requestAnimationFrame(() =>
-      root.classList.remove("theme-changing"),
-    );
-    try {
-      localStorage.setItem("modex-usage-theme", theme);
-    } catch {
-      /* The view also works without persistence. */
-    }
-    return () => {
-      cancelAnimationFrame(frame);
-      root.classList.remove("theme-changing");
-    };
-  }, [theme]);
   useEffect(() => {
     if (previousView.current !== view) {
       heading.current?.focus();
@@ -613,19 +607,9 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
         Skip to usage
       </a>
       <aside className="sidebar">
-        <a
-          className="brand"
-          href="#overview"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("overview");
-          }}
-        >
-          <BrandMark />
-          <span>
-            modex<span className="brand-byline">by TypeSafe</span>
-          </span>
-        </a>
+        <div className="sidebar-head">
+          <h2 className="sidebar-title">Analytics</h2>
+        </div>
         <nav aria-label="Usage navigation">
           {(["Workspace", "Manage"] as const).map((section) => (
             <div className="nav-group" key={section}>
@@ -693,168 +677,122 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
               {new Set(events.map((event) => event.tool)).size} sources
             </span>
           </div>}
-          <button
-            className="nav-link theme-switch"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            <Icon name={theme === "dark" ? "sun" : "moon"} />
-            {theme === "dark" ? "Light appearance" : "Dark appearance"}
-            <span className="keycap">◐</span>
-          </button>
-          <div className="sidebar-foot">
-            <span>Modex Usage</span>
-            <span className="mono">Preview</span>
-          </div>
+          <p className="sidebar-foot">
+            <Icon name="shield" />
+            {demo ? "Sample data stays in your browser" : "Usage stays on this Mac"}
+          </p>
         </div>
       </aside>
       <div className="workspace">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <Icon name="pulse" />
-            <span>Workspace</span>
-            <span className="slash">/</span>
-            <strong>{routes.find((route) => route.id === view)?.label}</strong>
-          </div>
-          <div className="topbar-status">
-            <span className="status-dot" />
-            {demo ? "Sample workspace" : "This Mac"}<span className="avatar">M</span>
-            <button
-              className="icon-button mobile-theme"
-              aria-label={
-                theme === "dark"
-                  ? "Use light appearance"
-                  : "Use dark appearance"
-              }
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              <Icon name={theme === "dark" ? "sun" : "moon"} />
-            </button>
-          </div>
-        </header>
         <main id="usage-main" className="main">
           <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                <span />
-                USAGE & INSIGHTS
-              </div>
+            <div className="page-title">
               <h1 tabIndex={-1} ref={heading}>
-                {pageCopy[view].title}
+                {routes.find((route) => route.id === view)?.label}
               </h1>
-              <p>{pageCopy[view].subtitle}</p>
+              <p className="page-summary">
+                <span>
+                  {demo
+                    ? `Demo data: ${events.length} fictional calls across ${new Set(events.map((event) => event.tool)).size} sources.`
+                    : events.length
+                      ? `Recorded on this Mac: ${events.length} ${events.length === 1 ? "turn" : "turns"} from Claude Code and Codex threads in Modex.`
+                      : "Recorded on this Mac: no usage yet. Each turn that calls a model adds a row here."}
+                </span>
+                <span className="mono">{range} UTC</span>
+                <button className="text-button" onClick={() => navigate("sources")}>
+                  Coverage
+                </button>
+              </p>
             </div>
-            <button className="button primary" onClick={exportRows}>
-              <Icon name="download" />
-              Export CSV
-            </button>
-          </div>
-          <div className="sample-banner">
-            <Icon name="info" />
-            {demo ? <p>
-              <strong>Demo Data.</strong> A fictional workspace with{" "}
-              {events.length} calls across{" "}
-              {new Set(events.map((event) => event.tool)).size} sources.
-              Illustrative estimates; no accounts connected.
-            </p> : <p>
-              <strong>Recorded on this Mac.</strong>{" "}
-              {events.length
-                ? `${events.length} ${events.length === 1 ? "turn" : "turns"} from Claude Code and Codex threads in Modex.`
-                : "No usage yet. Each turn that calls a model adds a row here."}{" "}
-              Costs stay unpriced until Modex has a price table.
-            </p>}
-            <button onClick={() => navigate("sources")}>
-              View coverage
-              <Icon name="arrow" />
-            </button>
-          </div>
-          <div className="filterbar">
+            <div className="page-actions">
             <div className="filters">
-              <label className="select-control">
-                <Icon name="calendar" />
-                <span className="sr-only">Date range</span>
-                <select
-                  aria-label="Date range"
-                  value={period}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value === "custom") {
-                      setCustom(true);
-                      return;
-                    }
-                    setPeriod(value);
-                    const until =
-                      value === "all"
-                        ? ""
-                        : new Date(
-                            Date.UTC(
-                              Number(value.slice(0, 4)),
-                              Number(value.slice(5, 7)),
-                              0,
-                            ),
-                          )
-                            .toISOString()
-                            .slice(0, 10);
-                    setFilters((current) => ({
-                      ...current,
-                      since: value === "all" ? "" : value + "-01",
-                      until,
-                    }));
-                  }}
-                >
-                  <SecretOption value="all">All time</SecretOption>
-                  {months.map((month) => (
-                    <SecretOption key={month} value={month}>
-                      {dateLabel(month + "-01", {
-                        day: undefined,
-                        year: "numeric",
-                      })}
-                    </SecretOption>
-                  ))}
-                  <SecretOption value="custom">
-                    Custom range{period === "custom" ? " · applied" : "…"}
-                  </SecretOption>
-                </select>
-              </label>
-              <label className="select-control">
-                <Icon name="layers" />
-                <span className="sr-only">Tool</span>
-                <select
-                  aria-label="Tool"
-                  value={filters.tool}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      tool: event.target.value,
-                    }))
-                  }
-                >
-                  <SecretOption value="all">All tools</SecretOption>
-                  {[...new Set(events.map((event) => event.tool))]
-                    .sort()
-                    .map((tool) => (
-                      <SecretOption key={tool} value={tool}>
-                        {toolName(tool)}
+                <label className="select-control">
+                  <Icon name="calendar" />
+                  <span className="sr-only">Date range</span>
+                  <select
+                    aria-label="Date range"
+                    value={period}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "custom") {
+                        setCustom(true);
+                        return;
+                      }
+                      setPeriod(value);
+                      const until =
+                        value === "all"
+                          ? ""
+                          : new Date(
+                              Date.UTC(
+                                Number(value.slice(0, 4)),
+                                Number(value.slice(5, 7)),
+                                0,
+                              ),
+                            )
+                              .toISOString()
+                              .slice(0, 10);
+                      setFilters((current) => ({
+                        ...current,
+                        since: value === "all" ? "" : value + "-01",
+                        until,
+                      }));
+                    }}
+                  >
+                    <SecretOption value="all">All time</SecretOption>
+                    {months.map((month) => (
+                      <SecretOption key={month} value={month}>
+                        {dateLabel(month + "-01", {
+                          day: undefined,
+                          year: "numeric",
+                        })}
                       </SecretOption>
                     ))}
-                </select>
-              </label>
-              {period === "custom" && (
-                <button className="text-button" onClick={() => setCustom(true)}>
-                  Edit dates
-                </button>
-              )}
-              {(period !== "all" || filters.tool !== "all") && (
-                <button className="text-button" onClick={clear}>
-                  Reset
-                </button>
-              )}
+                    <SecretOption value="custom">
+                      Custom range{period === "custom" ? " · applied" : "…"}
+                    </SecretOption>
+                  </select>
+                </label>
+                <label className="select-control">
+                  <Icon name="layers" />
+                  <span className="sr-only">Tool</span>
+                  <select
+                    aria-label="Tool"
+                    value={filters.tool}
+                    onChange={(event) =>
+                      setFilters((current) => ({
+                        ...current,
+                        tool: event.target.value,
+                      }))
+                    }
+                  >
+                    <SecretOption value="all">All tools</SecretOption>
+                    {[...new Set(events.map((event) => event.tool))]
+                      .sort()
+                      .map((tool) => (
+                        <SecretOption key={tool} value={tool}>
+                          {toolName(tool)}
+                        </SecretOption>
+                      ))}
+                  </select>
+                </label>
+                {period === "custom" && (
+                  <button className="text-button" onClick={() => setCustom(true)}>
+                    Edit dates
+                  </button>
+                )}
+                {(period !== "all" || filters.tool !== "all") && (
+                  <button className="text-button" onClick={clear}>
+                    Reset
+                  </button>
+                )}
+              </div>
+              <button className="button" onClick={exportRows}>
+                <Icon name="download" />
+                Export CSV
+              </button>
             </div>
-            <span className="date-caption mono">
-              {range}
-              <span>UTC</span>
-            </span>
           </div>
-
+          <div className="view-body" data-view={view}>
           {view === "overview" && (
             <>
               <div className="metrics">
@@ -933,7 +871,7 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
                   </div>
                 </article>
               </div>
-              <div className="overview-grid">
+              <div className="overview-row overview-top">
                 <Panel
                   title="Usage over time"
                   detail="Monthly activity across your selected tools"
@@ -1025,6 +963,8 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
                     Reasoning is included in output tokens.
                   </p>
                 </Panel>
+              </div>
+              <div className="overview-row overview-bottom">
                 <Panel
                   title="Tools at a glance"
                   detail="Ranked by token volume"
@@ -1075,31 +1015,6 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
                     {!tools.length && <Empty clear={clear} />}
                   </div>
                 </Panel>
-                <Panel
-                  title="A note on your numbers"
-                  detail="Useful context, alongside the totals"
-                  className="insight-panel"
-                >
-                  <div className="insight-icon">
-                    <Icon name="shield" />
-                  </div>
-                  <h3>
-                    Explore the patterns. <br />
-                    Keep the gaps visible.
-                  </h3>
-                  <p>
-                    {demo ? "Demo prices show how estimates work. " : "Modex doesn’t price calls yet. "}Unpriced calls still
-                    count as activity; they don’t silently become free usage.
-                  </p>
-                  <button
-                    className="text-button"
-                    onClick={() => navigate("accounts")}
-                  >
-                    Understand your costs
-                    <Icon name="arrow" />
-                  </button>
-                </Panel>
-              </div>
               <Panel
                 title="Recent activity"
                 detail={
@@ -1126,6 +1041,7 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
                   <Empty clear={clear} />
                 )}
               </Panel>
+              </div>
             </>
           )}
 
@@ -1560,20 +1476,7 @@ export function UsageDashboard({ events, demo = true }: { events: UsageEvent[]; 
               </p>}
             </>
           )}
-          <footer className="footer">
-            <span>
-              <Icon name="shield" />
-              {demo ? "Sample data stays in your browser" : "Usage stays on this Mac"}
-            </span>
-            <span>
-              Estimates in USD<span className="separator">·</span>Dates in UTC
-              <span className="separator">·</span>
-              <a href="https://ui.jev.works" target="_blank" rel="noreferrer">
-                TypeSafe UI
-                <Icon name="arrow" />
-              </a>
-            </span>
-          </footer>
+          </div>
         </main>
       </div>
       {notice && (
