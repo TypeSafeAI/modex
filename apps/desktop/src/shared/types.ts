@@ -427,7 +427,7 @@ export interface ModexBridge {
   pickFiles?(): Promise<File[]>;
   attachmentThumbnail?(rel: string, signal: AbortSignal): Promise<Blob>;
   /** Optional host transport: refresh snapshots after reconnect without discarding drafts. */
-  onReconnect?(cb: () => void): () => void;
+  onReconnect?(cb: (info?: { resumed: boolean }) => void): () => void;
 }
 
 export interface BackendHealth {
