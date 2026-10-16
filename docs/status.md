@@ -739,6 +739,9 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   iPhone companion fetches only the transcript items that changed. A cursor the journal no longer
   covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
   sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
+- **Agents restore notes only into their own project.** A note trashed in one project whose
+  folder was then dragged into another project can no longer be restored there by the first
+  project's agent (#241).
 
 ## In flight
 
