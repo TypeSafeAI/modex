@@ -733,6 +733,12 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   and each view's title with its filters and Export CSV. Every view fits the window down to the
   900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
   standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
+- **The event journal resumes paired desktops and the phone** (Routines Phase 0). With
+  `MODEX_EVENT_JOURNAL=1`, a paired desktop that reconnects after sleep receives only the thread
+  events after its last cursor, and keeps its loaded transcripts instead of reloading them. The
+  iPhone companion fetches only the transcript items that changed. A cursor the journal no longer
+  covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
+  sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
 
 ## In flight
 

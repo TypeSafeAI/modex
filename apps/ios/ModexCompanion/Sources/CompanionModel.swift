@@ -27,6 +27,9 @@ import SwiftUI
     private var discoveredURLs: [URL] = []
     private var retrySavedEndpoint = false
     private var pollTask: Task<Void, Never>?
+    /// The journal cursor `snapshot.items` was read at, and for which thread. Cleared whenever those
+    /// items are replaced, so a delta only ever merges into the transcript it was computed against.
+    private var journal: (cursor: JournalCursor, threadId: String)?
     private var drafts: [String: String] = [:]
     private var connectionRevision = 0
     private var refreshRevision = 0
@@ -191,6 +194,7 @@ import SwiftUI
     }
 
     private func invalidateConnection() {
+        journal = nil
         connectionRevision += 1
         refreshRevision += 1
         sendOperation = nil
@@ -208,6 +212,7 @@ import SwiftUI
     func select(_ threadId: String) async {
         if let selectedThreadId { drafts[selectedThreadId] = draft }
         if selectedThreadId != threadId {
+            journal = nil
             snapshot = CompanionSnapshot(projects: snapshot.projects, threads: snapshot.threads, items: [], defaultBackend: snapshot.defaultBackend, autoByDefault: snapshot.autoByDefault)
         }
         selectedThreadId = threadId
@@ -235,12 +240,17 @@ import SwiftUI
         defer { if candidate != nil && !adopted { client.invalidate() } }
         let connection = connectionRevision
         let threadId = selectedThreadId
+        let after = journal.flatMap { $0.threadId == threadId ? $0.cursor : nil }
         refreshRevision += 1
         let request = refreshRevision
         do {
-            let result = try await client.snapshot(threadId: threadId)
+            let response = try await client.snapshot(threadId: threadId, after: after)
             guard connection == connectionRevision, request == refreshRevision,
                   threadId == selectedThreadId, !Task.isCancelled else { return }
+            // Only the newest request applies, so `snapshot.items` is still what `after` describes.
+            let items = response.delta && after != nil ? CompanionSnapshot.merge(snapshot.items, changed: response.items) : response.items
+            journal = threadId.flatMap { id in response.journal.map { (cursor: $0, threadId: id) } }
+            let result = CompanionSnapshot(projects: response.projects, threads: response.threads, items: items, defaultBackend: response.defaultBackend, autoByDefault: response.autoByDefault)
             if let candidate {
                 // Save a new address only after the original pinned certificate and token succeed.
                 try store.save(candidate)
@@ -255,6 +265,7 @@ import SwiftUI
             retrySavedEndpoint = false
             if connectionError != nil { connectionError = nil }
             if let selectedThreadId, !result.threads.contains(where: { $0.id == selectedThreadId }) {
+                journal = nil
                 self.selectedThreadId = nil
                 draft = ""
                 drafts.removeValue(forKey: selectedThreadId)

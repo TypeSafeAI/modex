@@ -105,6 +105,9 @@ export class DesktopClient extends EventEmitter {
   private timer?: ReturnType<typeof setTimeout>;
   private retryDelay = 500;
   private authorization?: AbortController;
+  /** The host's journal and the newest cursor applied; a reconnect resumes after it. Memory only. */
+  private journal?: { id: string; cursor: number };
+  private suspended = false;
   private state: DesktopConnectionStatus = { state: "unpaired", detail: "Connect to your Modex host to open the workspace." };
 
   constructor(private readonly save: (credentials: DesktopCredentials | undefined) => void) { super(); }
@@ -157,6 +160,20 @@ export class DesktopClient extends EventEmitter {
     void this.connect(this.generation);
   }
 
+  /** The Mac is going to sleep: close the event stream now instead of waiting for it to time out. */
+  suspend(): void {
+    if (!this.credentials || (this.state.state !== "connected" && this.state.state !== "connecting" && this.state.state !== "offline")) return;
+    this.dispose();
+    this.suspended = true;
+    this.update({ state: "offline", detail: "Waiting for your Mac host. Your pairing and draft are kept." });
+  }
+
+  /** Awake again: reopen events, resuming after the last cursor when the host keeps a journal. */
+  resume(): void {
+    if (!this.suspended || !this.credentials) return;
+    this.start(this.credentials);
+  }
+
   /** Revalidate the saved pin and reopen events. Never resubmit a workspace action. */
   retry(): void {
     if (this.state.state !== "recovery" || !this.credentials) throw new Error("There is no saved connection waiting for recovery.");
@@ -174,11 +191,13 @@ export class DesktopClient extends EventEmitter {
     this.save(undefined);
     this.dispose();
     this.credentials = undefined;
+    this.journal = undefined;
     this.update({ state: "unpaired", detail: "Connect again with a new link from your Modex host." });
   }
 
   dispose(): void {
     ++this.generation;
+    this.suspended = false;
     this.authorization?.abort();
     this.authorization = undefined;
     clearTimeout(this.timer);
@@ -194,6 +213,7 @@ export class DesktopClient extends EventEmitter {
     try { this.save(undefined); } catch { /* A persisted revoked token cannot regain host access. */ } finally {
       this.dispose();
       this.credentials = undefined;
+      this.journal = undefined;
       this.update({ state: "unpaired", detail: "Your Mac removed this desktop's access. Create a new connection link in the host." });
     }
   }
@@ -238,7 +258,9 @@ export class DesktopClient extends EventEmitter {
     try {
       const ca = await pinnedDesktopCertificate(credentials.port, credentials.fingerprint);
       if (generation !== this.generation) return;
-      const req = https.get({ hostname: "127.0.0.1", port: credentials.port, path: "/events", ca, rejectUnauthorized: true, headers: { Authorization: `Bearer ${credentials.token}` } }, (res) => {
+      // Only a host that named its journal is asked to resume; older hosts accept no query.
+      const path = this.journal ? `/events?${new URLSearchParams({ journal: this.journal.id, after: String(this.journal.cursor) })}` : "/events";
+      const req = https.get({ hostname: "127.0.0.1", port: credentials.port, path, ca, rejectUnauthorized: true, headers: { Authorization: `Bearer ${credentials.token}` } }, (res) => {
         if (generation !== this.generation) { res.destroy(); return; }
         if (res.statusCode === 401) { res.destroy(); this.revoked(); return; }
         if (res.statusCode === 409) { res.destroy(); this.recover("protocol"); return; }
@@ -258,18 +280,30 @@ export class DesktopClient extends EventEmitter {
             buffer = buffer.slice(end + 2);
             const kind = frame.match(/^event: (.+)$/m)?.[1];
             const data = frame.match(/^data: (.+)$/m)?.[1];
+            const seq = Number(frame.match(/^id: (\d{1,15})$/m)?.[1] ?? NaN);
             if (!kind || !data) continue;
             try {
               const value = JSON.parse(data) as Record<string, unknown>;
               if (kind === "revoked") { this.revoked(); return; }
               if (kind === "connected") {
                 if (value?.protocol !== DESKTOP_PROTOCOL) { this.recover("protocol"); return; }
+                const journal = value.journal as { id?: unknown; cursor?: unknown; resumed?: unknown } | undefined;
+                const valid = !!journal && typeof journal.id === "string" && /^[\w-]{1,64}$/.test(journal.id) && Number.isSafeInteger(journal.cursor) && (journal.cursor as number) >= 0;
+                const resumed = valid && journal.resumed === true && this.journal?.id === journal.id;
+                this.journal = valid ? { id: journal.id as string, cursor: journal.cursor as number } : undefined;
                 this.ca = ca;
                 this.retryDelay = 500;
                 this.update({ state: "connected", detail: "Connected to your Mac host" });
                 if (generation !== this.generation) return;
-                this.emit("connected");
-              } else if (this.state.state === "connected" && (kind === "thread" || kind === "terminal")) this.emit(kind, value);
+                this.emit("connected", { resumed });
+              } else if (this.state.state === "connected" && (kind === "thread" || kind === "terminal")) {
+                if (kind === "thread" && this.journal && Number.isSafeInteger(seq)) {
+                  // Each cursor applies once, across reconnects too.
+                  if (seq <= this.journal.cursor) continue;
+                  this.journal.cursor = seq;
+                }
+                this.emit(kind, value);
+              }
             } catch { res.destroy(); }
           }
         });
