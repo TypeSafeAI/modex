@@ -29,7 +29,8 @@ import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
 import { EventJournal } from "./engine/event-journal.js";
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
+import { RoutinePages, RoutineScheduler, validateRoutine } from "./engine/routines.js";
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem, powerMonitor, powerSaveBlocker } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -306,9 +307,43 @@ const retirer = new TaskRetirer({
   inspect: (cwd) => gitx.worktreeState(cwd),
   retire: (id, pr) => runner.retireThread(id, pr),
 });
+// Routines Phase 1 (docs/routines.md): read-only Chat or Plan turns on a timer, with or without a window.
+const routineBlockers = new Map<string, number>();
+const routines = new RoutineScheduler(home, {
+  project: (id) => store.project(id),
+  createThread: (projectId, routine) => restartAdmission.run(async () => {
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    await pathReady;
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    return runner.createRoutineThread(projectId, routine);
+  }),
+  // Admission covers starting the turn, as for any send; the run itself is awaited outside it.
+  sendUnattended: async (id, text) => {
+    let turn: Promise<{ completed: boolean }> | undefined;
+    await restartAdmission.run(async () => {
+      if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+      turn = runner.sendUnattended(id, text);
+      turn.catch(() => { /* Awaited below. */ });
+    });
+    return turn!;
+  },
+  stop: (id) => runner.stop(id),
+  items: (id) => runner.items(id),
+  status: (id) => runner.status(id),
+  addNotice: (id, level, text) => runner.addNotice(id, level, text),
+  pages: new RoutinePages(store.space),
+  // Keep a windowless Modex from being suspended by App Nap while a run works.
+  runStarted: (run) => { routineBlockers.set(run.id, powerSaveBlocker.start("prevent-app-suspension")); },
+  runEnded: (run) => {
+    const blocker = routineBlockers.get(run.id);
+    routineBlockers.delete(run.id);
+    if (blocker !== undefined && powerSaveBlocker.isStarted(blocker)) powerSaveBlocker.stop(blocker);
+  },
+});
 const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
   journal: () => journal,
+  routineRuns: () => routines.list().runs,
   pullRequest: (id) => retirer.pullRequest(id),
   setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
   setArchived: (id, archived) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.setArchived(id, archived); },
@@ -486,6 +521,8 @@ function drainServices(): Promise<void> {
   if (servicesDrained) return Promise.resolve();
   if (drainingServices) return drainingServices;
   servicesTouched = true;
+  // Before the runner stops turns: runs in progress end interrupted and write no page.
+  try { routines.dispose(); } catch (error) { console.error("[modex] routines could not stop:", error); }
   modexAccount.cancel(); chatgpt.cancel(); claudeLogin.cancel(); retirer.stop();
   drainingServices = (async () => {
     // Start every disposer even if another throws before returning its promise.
@@ -715,7 +752,7 @@ handle("notes:import", async ({ targetId, paths }) => {
     if (picked.canceled) return { imported: 0, errors: [] };
     sources = picked.filePaths;
   }
-  const result = store.space.importFiles(targetId, sources);
+  const result = await store.space.importFiles(targetId, sources);
   return { imported: result.imported.length, errors: result.errors };
 }, { localOnly: true });
 handle("notes:file:read", ({ id }) => store.space.readFile(id));
@@ -858,6 +895,10 @@ handle("backends:health", async () => {
 });
 handle("companion:status", () => companionView(companion.status()));
 handle("companion:start", async () => companionView(await companion.start()));
+handle("routines:list", () => routines.list());
+handle("routines:save", (draft) => routines.save(validateRoutine(draft, (id) => Boolean(store.project(id)))));
+handle("routines:delete", ({ id }) => routines.remove(id));
+handle("routines:run", ({ id }) => routines.runNow(id));
 handle("companion:stop", async () => companionView(await companion.stop()));
 handle("companion:reset", () => companionView(companion.resetAccess()));
 handle("shell:openPath", async ({ path: p }) => {
@@ -1079,6 +1120,13 @@ app.whenReady().then(async () => {
   desktopHostActivation.ready();
   if (!demo && !process.env.MODEX_E2E && !nativeDraftFailure && !nativeStartup?.recovery) void pathReady.then(() => retirer.start());
   if (!demo && !nativeDraftFailure && !nativeStartup?.recovery && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
+  if (!demo && !nativeDraftFailure && !nativeStartup?.recovery) {
+    try {
+      routines.start();
+      // Timers stall while the Mac sleeps; look for missed routines as soon as it wakes.
+      powerMonitor.on("resume", () => routines.tick());
+    } catch (error) { console.error("[modex] routines could not start:", error); }
+  }
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
     await new Promise<void>((r) => win!.webContents.once("did-finish-load", () => r()));
