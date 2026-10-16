@@ -226,9 +226,10 @@ test("a routine's turns are read-only on both CLIs, and every approval is refuse
     assert.deepEqual(f.scheduler.list().runs.map((run) => run.status), ["completed", "completed", "completed", "completed"]);
 
     const [planTurn, chatTurn] = claude.turns;
-    assert.ok(ClaudeBackend.args(planTurn!).join(" ").includes("--permission-mode plan"));
-    assert.ok(ClaudeBackend.args(chatTurn!).join(" ").includes("--permission-mode manual --disallowedTools Edit Write NotebookEdit"));
-    for (const turn of claude.turns) assert.ok(!ClaudeBackend.args(turn).some((arg) => arg === "acceptEdits" || arg === "bypassPermissions"));
+    assert.equal(ClaudeBackend.sessionOptions(planTurn!).permissionMode, "plan");
+    assert.equal(ClaudeBackend.sessionOptions(chatTurn!).permissionMode, "default");
+    assert.deepEqual(ClaudeBackend.sessionOptions(chatTurn!).disallowedTools, ["Edit", "Write", "NotebookEdit"]);
+    for (const turn of claude.turns) assert.ok(["plan", "default"].includes(ClaudeBackend.sessionOptions(turn).permissionMode!));
     for (const turn of codex.turns) {
       assert.deepEqual(CodexBackend.policy(turn).sandboxPolicy, { type: "readOnly", networkAccess: false });
       assert.equal(CodexBackend.policy(turn).sandbox, "read-only");

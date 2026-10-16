@@ -7,7 +7,7 @@ import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
-import { FakeProcess, fakeSpawn } from "./fakeproc.js";
+import { FakeProcess, fakeSpawn, scriptedClaudeQuery } from "./fakeproc.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import type { PagesChange } from "../src/shared/pages.js";
@@ -861,6 +861,37 @@ test("deletion waits for the active turn and rejects late output after removal",
   assert.equal(fs.existsSync(thread.cwd), false);
 });
 
+test("a withdrawn approval closes its card while the turn keeps running", async () => {
+  const h = harness();
+  const cancelled = new AbortController();
+  let answer: string | undefined;
+  let finish!: () => void;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _o, sink) {
+    answer = await sink.approval({ question: "Run command?", canAlways: false }, cancelled.signal);
+    await new Promise<void>((resolve) => { finish = resolve; });
+    return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try {
+    const run = runner.send(thread.id, "go");
+    const card = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval"));
+    assert.equal(runner.status(thread.id), "waiting");
+    cancelled.abort();
+    await waitFor(() => answer);
+    assert.equal(answer, "no");
+    const persisted = new Store(h.home).items(thread.id).find((i) => i.id === card.id);
+    assert.ok(persisted?.kind === "approval");
+    assert.equal(persisted.answer, "no");
+    assert.equal(runner.status(thread.id), "running");
+    runner.answer(thread.id, card.id, "yes");
+    assert.equal(answer, "no", "a withdrawn card cannot be answered again");
+    finish();
+    await run;
+    assert.equal(runner.status(thread.id), "idle");
+  } finally { finish?.(); await runner.dispose(); }
+});
+
 test("backend failure closes pending approval cards before persisting", async () => {
   const h = harness();
   const project = h.store.addProject(gitRepo());
@@ -1196,7 +1227,7 @@ test("approval gate: a rule's refusal reaches Claude as a deny that names the ru
   h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 }, approval_rules: [{ id: "p", when: "push to main", decision: "never", match: "Bash: git push*", enabled: true }] });
   const proc = new FakeProcess();
   const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport: null });
-  const runner = new ThreadRunner({ ...h, router, backends: { claude: new ClaudeBackend("claude", fakeSpawn(proc).spawn) } });
+  const runner = new ThreadRunner({ ...h, router, backends: { claude: new ClaudeBackend("claude", fakeSpawn(proc).spawn, {}, scriptedClaudeQuery) } });
   const thread = await runner.createThread(project.id, { backend: "claude", mode: "agent" });
   runner.updateThread(thread.id, { title: "Ship" }); // a titled thread skips auto-naming, which would spawn the CLI again
   const done = runner.send(thread.id, "ship it");
@@ -1214,7 +1245,7 @@ test("approval gate: a rule's refusal reaches Claude as a deny that names the ru
   runner.answer(thread.id, card.id, "no");
   const r2 = JSON.parse(await proc.waitFor((l) => l.includes('"request_id":"r2"'))) as Reply;
   assert.deepEqual(r2.response.response, { behavior: "deny", message: "The user denied this action in Modex." });
-  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "ok" });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, session_id: "s", result: "ok", num_turns: 1 });
   proc.close(0);
   await done;
   assert.equal(statusesOf(h.events).filter((s) => s === "waiting").length, 1, "only the human's card waited");
@@ -1277,6 +1308,68 @@ test("approval gate: rules without a match go to Jev through the Router's own tr
   assert.deepEqual([card.decidedBy?.via, card.decidedBy?.p], ["jev", 0.93]);
   assert.equal((states[0] as { command: string }).command, "npm test");
   assert.ok(!statusesOf(h.events).includes("waiting"));
+});
+
+test("approval gate: withdrawing a request cancels Jev and adds no card", async () => {
+  const h = harness();
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 10_000 }, approval_rules: [{ id: "j", when: "anything", decision: "allow", enabled: true }] });
+  const cancelled = new AbortController();
+  let deciding: AbortSignal | undefined;
+  const transport = (_req: unknown, signal?: AbortSignal) => {
+    deciding = signal;
+    return new Promise<never>((_, reject) => signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+  };
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }), transport });
+  let answer: string | undefined;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _o, sink) {
+    answer = await sink.approval({ question: "Run command?", canAlways: false, action: { backend: "claude", tool: "Bash", title: "$ ls", input: { command: "ls" } } }, cancelled.signal);
+    sink.assistant("The request was cancelled.");
+    return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try {
+    const done = runner.send(thread.id, "go");
+    await waitFor(() => deciding);
+    cancelled.abort();
+    await done;
+    assert.equal(deciding?.aborted, true);
+    assert.equal(answer, "no");
+    assert.equal(runner.items(thread.id).some((i) => i.kind === "approval"), false);
+    assert.equal(runner.status(thread.id), "idle");
+  } finally { await runner.dispose(); }
+});
+
+test("approval gate: withdrawing during Jev setup resolves before setup finishes", async () => {
+  const h = harness();
+  h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 10_000 }, approval_rules: [{ id: "j", when: "anything", decision: "allow", enabled: true }] });
+  const cancelled = new AbortController();
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }) });
+  let setup = false;
+  let release!: () => void;
+  router.decisions.connect = (set, context) => {
+    assert.equal(set, "approval");
+    assert.ok(context?.threadId);
+    setup = true;
+    return new Promise((resolve) => { release = () => resolve({ transport: null, model: "" }); });
+  };
+  let answer: string | undefined;
+  const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _o, sink) {
+    answer = await sink.approval({ question: "Run command?", canAlways: false, action: { backend: "claude", tool: "Bash", title: "$ ls", input: { command: "ls" } } }, cancelled.signal);
+    sink.assistant("The request was cancelled.");
+    return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, router, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  const done = runner.send(thread.id, "go");
+  try {
+    await waitFor(() => setup || undefined);
+    cancelled.abort();
+    const result = await Promise.race([done.then(() => "done"), new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))]);
+    assert.equal(result, "done");
+    assert.equal(answer, "no");
+    assert.equal(runner.items(thread.id).some((i) => i.kind === "approval"), false);
+  } finally { release?.(); await done; await runner.dispose(); }
 });
 
 test("approval gate: stopping while Jev is deciding answers 'no' and adds no card", async () => {

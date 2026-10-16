@@ -11,10 +11,12 @@ for (const theme of ["jev", "coven"]) test(`${theme}: live agents remain visible
   const cli = path.join(home, "claude-fixture.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
 const fs = require('node:fs');
+const { handleControl } = require('./claude-sdk.cjs');
 if (process.argv.includes('--version')) { console.log('2.1.288 (Claude Code)'); process.exit(0); }
 const emit = x => console.log(JSON.stringify(x));
 require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
- if (JSON.parse(line).type !== 'user') return;
+ const message = JSON.parse(line);
+ if (handleControl(message) || message.type !== 'user') return;
  for (const id of ['a','b']) {
   emit({type:'assistant',message:{content:[{type:'tool_use',id,name:'Agent',input:{description:id==='a'?'Review typography':'Check theme colors'}}]}});
   emit({type:'system',subtype:'task_started',task_id:'task-'+id,tool_use_id:id,task_type:'local_agent',is_backgrounded:true,description:id==='a'?'Review typography':'Check theme colors'});
@@ -25,7 +27,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
  const timer = setInterval(() => {
   const state = fs.existsSync(${JSON.stringify(stage)}) ? fs.readFileSync(${JSON.stringify(stage)},'utf8') : '';
   if (state==='one' && !done) { done=true; emit({type:'system',subtype:'task_notification',task_id:'task-a',status:'completed',summary:'Typography checked'}); }
-  if (state==='finish') { clearInterval(timer); emit({type:'system',subtype:'task_notification',task_id:'task-b',status:'failed',summary:'Usage limit'}); emit({type:'result',is_error:false}); }
+  if (state==='finish') { clearInterval(timer); emit({type:'system',subtype:'task_notification',task_id:'task-b',status:'failed',summary:'Usage limit'}); emit({type:'result',subtype:'success',is_error:false,num_turns:1}); }
  }, 50);
 });
 `, { mode: 0o755 });

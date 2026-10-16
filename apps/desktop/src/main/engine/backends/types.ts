@@ -54,7 +54,8 @@ export interface TurnSink {
   assistant(text: string): void;
   toolStart(tool: ToolStart): void;
   toolUpdate(id: string, patch: ToolUpdate): void;
-  approval(req: ApprovalRequest): Promise<ApprovalAnswer>;
+  /** `cancelled` aborts when the backend withdraws the request; the card closes as answered "no". */
+  approval(req: ApprovalRequest, cancelled?: AbortSignal): Promise<ApprovalAnswer>;
   /**
    * After `approval(req)` answered "no": the "when" text of the approval rule that refused it on the
    * user's behalf, so the backend can tell the model why. Undefined when a human answered.

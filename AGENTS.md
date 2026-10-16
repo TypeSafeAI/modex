@@ -56,7 +56,8 @@ itself driving one of them.
   everyday builds.
 - `docs/status.md` — what has shipped, what is on `main` but unreleased, what is in flight, what is
   next. Update it in the PR that changes any of those. `docs/reviews/` holds release evidence.
-- Real models run only through the `claude` and `codex` CLIs. There is no API mode for
+- Real models run only through the `claude` and `codex` CLIs (Claude via the Agent SDK,
+  which launches the user's installed `claude` executable). There is no API mode for
   coding turns; do not add one. App-owned Sign in with ChatGPT may make authentication-only
   requests to OpenAI's authorization, OpenID metadata/JWKS, token and revocation endpoints;
   tokens stay in main-process OS-encrypted storage and the account's Codex child environment.
