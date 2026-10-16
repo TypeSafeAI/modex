@@ -45,29 +45,65 @@ runner applies events. Two tests check that a real session replays exactly to it
 `test/event-journal.test.ts`, using the scripted runner, and `e2e/event-journal.spec.ts`, using the
 app with the flag on.
 
-## Not yet
+Each journal file has its own id, kept in its `meta` table. A cursor means something only together
+with that id: after the file is deleted, a new file starts over with a new id, so an old cursor
+can't skip events.
 
-These are needed before Phase 0's exit tests are complete:
+## Resuming after sleep or a reconnect
 
-- A resume endpoint, so the desktop window and the iPhone companion fetch events after their last
-  cursor instead of reloading state.
-- The paired desktop-and-phone sleep test with no gaps or duplicates.
-- A retention policy. The journal grows without bound while the flag is on.
+`EventJournal.resume(id, cursor, { threadId })` answers a reconnecting client in one synchronous
+step. It returns the newest cursor and either the events after the client's cursor or nothing,
+which means "reload state". A client is told to reload when its cursor:
 
-## Notes for the resume endpoint
+- came from another journal file;
+- is older than what retention kept;
+- is ahead of the journal;
+- is more than 10,000 events behind.
 
-The journal's current behavior already settles four points:
+**Paired desktops.** While the journal is on, the desktop host sends thread events to paired
+desktops from the journal as each batch is written. Each SSE frame carries its cursor as `id:`. The
+stream's first `connected` frame names the journal, the cursor the stream starts after, and whether
+it resumed. A reconnecting desktop asks for `/events?journal=<id>&after=<cursor>`, and a client
+only asks a host that named its journal, so older hosts never see the query. The host reads the
+journal and registers the stream in the same synchronous step, so no batch falls between the
+replay and the live events. The client drops any frame at or below its cursor.
 
-- **The cursor excludes what the client has.** A row is written once and never changed: merging
-  happens only in the pending batch, and `since()` flushes that batch before it reads. So a client
-  that keeps the highest `seq` it applied and asks for `since(seq)` misses nothing and gets
-  nothing twice.
-- **A snapshot needs a matching cursor.** A client that starts from a full state load takes
-  `latest()` and the snapshot in one synchronous step, with no `await` between them. An event
-  emitted after that step has a higher `seq`. An event whose change the snapshot already shows
-  may still arrive once more, and the next point makes that harmless.
-- **Applying an event twice must change nothing.** An `item_update` patch carries whole field
-  values, so applying it again leaves the item unchanged. An `item` event must be applied as an
-  upsert by item id. `replayItems` appends because it always starts from an empty transcript.
-- **Retention needs a reload answer.** Once old rows are pruned, a cursor below the oldest kept
-  row must get "reload state" rather than a partial page.
+On a resumed reconnect, the Store edition refreshes its thread list and the selected thread's
+Changes, but keeps its loaded transcripts: the replay brings them up to date. When it can't resume,
+it reloads everything as before. It also closes the stream when the Mac goes to sleep and reopens
+it on wake, rather than waiting 45 seconds for a heartbeat timeout. A replay over 4 MB reloads
+instead. A stream that falls 8 MB behind is dropped, and its client resumes from its cursor.
+
+Thread events reach paired desktops up to 250 ms later while the journal is on: they arrive with
+the batch that wrote them. The local window still gets each event as it happens. If the journal
+stops, the host ends every stream, and each client reconnects without the journal and reloads.
+
+**The iPhone companion.** The phone still polls `/v1/snapshot` every 2.5 seconds, which keeps its
+thread list current. With the journal on, a snapshot for a selected thread includes
+`journal: { id, cursor }`. The phone sends those back as `journal` and `after`. If the Mac can
+resume them, `items` holds only that thread's items that changed after the cursor, marked
+`delta: true`. The phone replaces each changed item by id and appends new ones. Changing threads,
+reconnecting or forgetting the Mac drops the cursor, so the next snapshot is a full transcript.
+
+`test/journal-resume.test.ts` is the paired sleep test. The scripted runner and a real journal run a
+turn. A paired desktop over TLS and the phone's HTTP requests catch up. Both clients then sleep, a
+second turn runs, and both wake. The desktop must resume without reloading and receive each item
+exactly once. The phone must receive only the sleep's items, and both transcripts must match the
+Mac's. `CompanionModelTests` checks the phone's merge.
+
+These rules make that work:
+
+- **A row never changes.** Merging happens only in the pending batch, and every read flushes that
+  batch first. A client that keeps the highest cursor it applied misses nothing and gets nothing
+  twice.
+- **A snapshot needs a matching cursor.** A snapshot and its cursor are read with no `await`
+  between them.
+- **Applying an event twice changes nothing.** An `item_update` patch carries whole field values,
+  and clients apply an `item` as an upsert by item id.
+
+## Retention
+
+Rows older than 7 days are deleted, and so are the oldest rows past 250,000. Modex prunes when the
+journal opens and every hour after. The highest pruned cursor is kept in `meta`, so a client below
+it is told to reload, and cursors still never repeat. Deleting rows frees pages for reuse but does
+not shrink the file.
