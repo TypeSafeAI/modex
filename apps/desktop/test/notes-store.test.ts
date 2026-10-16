@@ -237,6 +237,33 @@ test("a file deleted outside Modex is trashed after a second look and can be res
   assert.match(fs.readFileSync(path.join(project(root), "Gone.md"), "utf8"), /keep me$/);
 }));
 
+test("a file deleted outside Modex before its project is renamed is restored in the renamed project", () => withStore((store, root, clock) => {
+  const page = store.create({ title: "Gone", markdown: "keep me" });
+  fs.rmSync(path.join(project(root), "Gone.md"));
+  store.list();
+  clock.now += 1_500;
+  assert.ok(store.list()[0]!.trashedAt);
+  store.rename(store.tree().nodes.find(n => n.kind === "project")!.id, "Journal");
+  store.trash(page.id, false);
+  assert.match(fs.readFileSync(path.join(root, "Personal", "Journal", "Gone.md"), "utf8"), /keep me$/);
+  assert.ok(!fs.existsSync(project(root)), "the old project is not made again");
+}));
+
+for (const change of ["move", "rename"] as const) test(`a note trashed from a plain folder inside a folder note is restored after the folder note's ${change}`, () => withStore((store, root) => {
+  const plan = store.create({ title: "Plan" });
+  store.create({ title: "Step", parentId: plan.id });
+  const planFolder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === plan.id)!;
+  const sub = store.createFolder(planFolder.id, "Sub");
+  const note = store.create({ title: "Note", containerId: sub.id });
+  store.trash(note.id, true);
+  if (change === "move") store.save({ ...store.list().find(p => p.id === plan.id)!, parentId: store.create({ title: "Target" }).id });
+  else store.rename(planFolder.id, "Roadmap");
+  const moved = store.tree().nodes.find(n => n.id === planFolder.id)!.rel;
+  store.trash(note.id, false);
+  assert.equal(store.tree().nodes.find(n => n.id === note.id)?.rel, `${moved}/Sub/Note.md`);
+  assert.ok(!fs.existsSync(path.join(project(root), "Plan")), "the folder's old place is not made again");
+}));
+
 test("the folder refuses a link and a copied id gets a new one", () => withStore((store, root) => {
   const page = store.create({ title: "Original" });
   fs.copyFileSync(path.join(project(root), "Original.md"), path.join(project(root), "Copy.md"));

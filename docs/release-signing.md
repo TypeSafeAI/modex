@@ -160,8 +160,17 @@ From v0.0.5 the published artifacts come from the `Release` workflow. The local 
 rehearsal that gates the merge.
 
 1. In a `release-<ver>` worktree, bump the version, update `docs/status.md`, and write the
-   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then the packaged e2e:
-   `MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" pnpm test:e2e`.
+   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then build the Store client and run
+   the packaged e2e, as the `Release` workflow does:
+
+   ```sh
+   pnpm --filter @modex/store-desktop build
+   MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" pnpm test:e2e
+   ```
+
+   The Store specs launch the client from source with development Electron, and neither
+   `scripts/release-mac.sh` nor the desktop build builds it. Without it they stop at once with
+   "The Store client is not built".
 2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
 3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
    `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, and runs

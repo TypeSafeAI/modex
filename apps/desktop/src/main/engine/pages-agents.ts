@@ -204,6 +204,16 @@ export class PagesAgents {
         return { versions: versions.slice(offset, offset + 20), nextOffset: offset + 20 < versions.length ? offset + 20 : null };
       }
       if (page.revision !== args.revision) throw new Error("This page changed. Read its current revision and reconcile your edits.");
+      if (name === "restore") {
+        // Restore brings back every ancestor too and puts the note under its parent; any of them may
+        // have moved to another project since the note was trashed.
+        const pages = new Map(space.list().map(p => [p.id, p]));
+        const seen = new Set<string>();
+        for (let parent = page.parentId; parent && pages.has(parent) && !seen.has(parent); parent = pages.get(parent)!.parentId) {
+          seen.add(parent);
+          if (!inScope(parent)) throw outside();
+        }
+      }
       if (name === "trash" || name === "restore") {
         const pages = space.trash(page.id, name === "trash", args.revision as number, change);
         page = pages.find(p => p.id === page!.id)!;

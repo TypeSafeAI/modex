@@ -7,9 +7,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { DESKTOP_PROTOCOL } from "../../shared/desktop-protocol.js";
 import { publishDesktop } from "./desktop-discovery.js";
+import type { EventJournal, JournalEntry } from "./event-journal.js";
 
 const hash = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
 const hex = /^[a-f0-9]{64}$/;
+/** A stream queued past this is not being read; drop it and let the client resume. */
+const STREAM_BACKLOG = 8 * 1024 * 1024;
+/** A replay larger than this reloads state instead, so one resume cannot exhaust the stream. */
+const REPLAY_BYTES = 4 * 1024 * 1024;
+const threadFrame = (entry: JournalEntry) => `id: ${entry.seq}\nevent: thread\ndata: ${JSON.stringify(entry.event)}\n\n`;
 interface Grant { id: string; name: string; tokenHash: string; createdAt: string }
 interface HostConfig { port?: number; grants: Grant[] }
 interface HostSource {
@@ -17,6 +23,11 @@ interface HostSource {
   channels(): string[];
   invoke(channel: string, payload: unknown, authorized: () => boolean): Promise<unknown>;
   authorize?(confirmationCode: string, signal: AbortSignal): Promise<boolean>;
+  /**
+   * The event journal, when it is on. Thread events then reach clients from the journal with their
+   * cursors (`broadcastJournal`), and a reconnecting client resumes after its cursor.
+   */
+  journal?(): Pick<EventJournal, "resume"> | undefined;
 }
 
 /** Full desktop authority requires its own invitation; phone credentials never enter this transport. */
@@ -105,10 +116,27 @@ export class DesktopHost {
   }
 
   broadcast(kind: "thread" | "terminal", event: unknown): void {
-    const message = `event: ${kind}\ndata: ${JSON.stringify(event)}\n\n`;
-    for (const stream of this.streams.keys()) if (!stream.write(message)) {
-      stream.destroy();
-      this.streams.delete(stream);
+    this.write(`event: ${kind}\ndata: ${JSON.stringify(event)}\n\n`);
+  }
+
+  /** Journaled thread events, each with its cursor, as the journal writes them. */
+  broadcastJournal(entries: JournalEntry[]): void {
+    if (entries.length) this.write(entries.map(threadFrame).join(""));
+  }
+
+  /** End every event stream so each client reconnects and reloads; used when the journal stops. */
+  restartStreams(): void {
+    for (const stream of this.streams.keys()) stream.end();
+    this.streams.clear();
+  }
+
+  private write(message: string): void {
+    for (const stream of this.streams.keys()) {
+      stream.write(message);
+      if (stream.writableLength > STREAM_BACKLOG) {
+        stream.destroy();
+        this.streams.delete(stream);
+      }
     }
   }
 
@@ -162,8 +190,10 @@ export class DesktopHost {
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.socket.remoteAddress !== "127.0.0.1" || req.headers.host !== `127.0.0.1:${this.port}` || req.headers.origin || req.headers["sec-fetch-site"]) return this.reply(res, 403, { error: "Untrusted desktop request." });
-    if (req.url !== "/pair" && req.url !== "/connect" && req.url !== "/invoke" && req.url !== "/events") return this.reply(res, 404, { error: "Unknown endpoint." });
-    if (req.url === "/connect") {
+    // Only the event stream takes a query: the journal and cursor a reconnecting client resumes from.
+    const [endpoint = "", query] = (req.url ?? "").split("?", 2) as [string, string | undefined];
+    if ((endpoint !== "/pair" && endpoint !== "/connect" && endpoint !== "/invoke" && endpoint !== "/events") || (query !== undefined && endpoint !== "/events")) return this.reply(res, 404, { error: "Unknown endpoint." });
+    if (endpoint === "/connect") {
       if (req.method !== "POST" || !this.source.authorize) return this.reply(res, 405, { error: "Use a connection link from this host." });
       let body: Record<string, unknown>;
       try { body = await this.body(req); } catch { return this.reply(res, 400, { error: "Invalid connection request." }); }
@@ -185,7 +215,7 @@ export class DesktopHost {
         return this.reply(res, 200, this.allow(clientId, "Modex Store Preview"));
       } finally { clearTimeout(timeout); this.authorizing = false; this.pending.delete(res); }
     }
-    if (req.url === "/pair" && req.method === "POST") {
+    if (endpoint === "/pair" && req.method === "POST") {
       let body: Record<string, unknown>;
       try { body = await this.body(req); } catch { return this.reply(res, 400, { error: "Invalid pairing request." }); }
       const { code, clientId, name, protocol } = body;
@@ -198,15 +228,25 @@ export class DesktopHost {
     }
     const grant = this.grant(req);
     if (!grant) return this.reply(res, 401, { error: "This desktop no longer has host access. Pair again from the host." });
-    if (req.url === "/events" && req.method === "GET") {
+    if (endpoint === "/events" && req.method === "GET") {
+      // Read the journal and register the stream in one synchronous step: every later batch reaches
+      // this stream through broadcastJournal, and every earlier one is in the replay.
+      const params = new URLSearchParams(query ?? "");
+      const after = params.get("after");
+      const cursor = after !== null && /^\d{1,15}$/.test(after) ? Number(after) : undefined;
+      const resume = this.source.journal?.()?.resume(params.get("journal") ?? undefined, cursor);
+      let replay = resume?.entries?.map(threadFrame).join("");
+      if (replay !== undefined && Buffer.byteLength(replay) > REPLAY_BYTES) replay = undefined;
+      const journal = resume && { id: resume.id, cursor: replay !== undefined ? cursor! : resume.latest, resumed: replay !== undefined };
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
-      res.write(`event: connected\ndata: ${JSON.stringify({ protocol: DESKTOP_PROTOCOL, version: this.source.version })}\n\n`);
+      res.write(`event: connected\ndata: ${JSON.stringify({ protocol: DESKTOP_PROTOCOL, version: this.source.version, ...(journal ? { journal } : {}) })}\n\n`);
+      if (replay) res.write(replay);
       this.streams.set(res, grant.id);
       const heartbeat = setInterval(() => { if (!res.write(": heartbeat\n\n")) res.destroy(); }, 15_000);
       res.on("close", () => { clearInterval(heartbeat); this.streams.delete(res); });
       return;
     }
-    if (req.url !== "/invoke" || req.method !== "POST") return this.reply(res, 405, { error: "Unsupported method." });
+    if (endpoint !== "/invoke" || req.method !== "POST") return this.reply(res, 405, { error: "Unsupported method." });
     this.pending.add(res);
     res.once("close", () => this.pending.delete(res));
     try {

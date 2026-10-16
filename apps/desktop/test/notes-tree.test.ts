@@ -360,6 +360,34 @@ for (const change of ["project rename", "workspace rename", "project move"] as c
   assert.equal(reopened.tree().nodes.filter(n => n.kind === "project").length, 1);
 }));
 
+for (const change of ["project rename", "workspace rename", "project move", "folder rename", "folder move"] as const) test(`notes trashed before a ${change} are restored where it went, without making the old place again`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const folder = store.createFolder(project.id, "Drafts");
+  const loose = store.create({ title: "Loose" });
+  const drafted = store.create({ title: "Drafted", containerId: folder.id });
+  store.create({ title: "Kept", containerId: folder.id });
+  store.trash(loose.id, true);
+  store.trash(drafted.id, true);
+  if (change === "project rename") store.rename(project.id, "Journal");
+  else if (change === "workspace rename") store.rename(workspace.id, "Home");
+  else if (change === "project move") store.moveNodes([project.id], store.createWorkspace("Work").id);
+  else if (change === "folder rename") store.rename(folder.id, "Final");
+  else store.moveNodes([folder.id], store.createProject(workspace.id, "Later").id);
+  const containers = (nodes: NotesNode[]) => nodes.filter(n => n.kind !== "note").map(n => n.rel).sort();
+  const before = containers(store.tree().nodes);
+  store.trash(loose.id, false);
+  store.trash(drafted.id, false);
+  for (const reader of [store, new NotesStore(root)]) {
+    const nodes = reader.tree().nodes;
+    const rel = (id: string) => nodes.find(n => n.id === id)?.rel;
+    assert.equal(rel(loose.id), `${rel(project.id)}/Loose.md`);
+    assert.equal(rel(drafted.id), `${rel(folder.id)}/Drafted.md`);
+    assert.deepEqual(containers(nodes), before, "no workspace, project or folder is made at the old place");
+  }
+  assert.ok(!fs.existsSync(path.join(root, "Personal", "Notes", "Drafts")));
+}));
+
 for (const interruption of [null, "link", "unlink"] as const) test(`moving a folder avoids child collisions and recovers ${interruption ?? "without interruption"}`, () => withStore((store, root) => {
   const parent = store.create({ title: "Parent", markdown: "parent body" });
   const child = store.create({ title: "Parent 2", markdown: "child body", parentId: parent.id });
