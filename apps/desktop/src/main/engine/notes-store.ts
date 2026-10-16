@@ -272,7 +272,10 @@ export class NotesStore implements SpacePagesStore {
       // Publish intent before either rename; readers finish both before deriving parent IDs.
       this.writeJson(path.join(this.meta, "settlement.json"), { version: 1, from: dir, to: target, note: path.posix.basename(live.rel) });
       this.finishSettlement();
-      return this.find(this.load(), id);
+      const settled = this.load();
+      this.rebaseOriginals(settled.index, dir, target);
+      this.writeIndex(settled.index);
+      return this.find(settled, id);
     } else {
       const name = uniqueName(stem, ".md", this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))));
       this.renameNote(state, page, live.rel, `${dir}/${name}`);
@@ -779,6 +782,7 @@ export class NotesStore implements SpacePagesStore {
     }
     // Notes inside a moved folder are found by their ids on the next read.
     for (const [id, entry] of Object.entries(index.notes)) if (entry.rel?.startsWith(`${node.rel}/`)) index.notes[id] = { ...entry, rel: `${rel}${entry.rel.slice(node.rel.length)}` };
+    this.rebaseOriginals(index, node.rel, rel);
   }
 
   // ── Reading and reconciling ──────────────────────────────────────────────────────────────
@@ -1324,6 +1328,16 @@ export class NotesStore implements SpacePagesStore {
       state.live.set(id, { ...file, rel });
       const entry = state.index.notes[id];
       if (entry) state.index.notes[id] = { ...entry, rel };
+    }
+    this.rebaseOriginals(state.index, from, to);
+  }
+
+  /** Trashed notes, and notes deleted outside Modex, from inside a moved folder are restored where it went. */
+  private rebaseOriginals(index: NotesIndex, from: string, to: string): void {
+    const moved = (rel: string) => `${to}${rel.slice(from.length)}`;
+    for (const [id, entry] of Object.entries(index.notes)) {
+      if (entry.trash?.original.startsWith(`${from}/`)) index.notes[id] = { ...entry, trash: { ...entry.trash, original: moved(entry.trash.original) } };
+      else if (entry.original?.startsWith(`${from}/`)) index.notes[id] = { ...entry, original: moved(entry.original) };
     }
   }
 
