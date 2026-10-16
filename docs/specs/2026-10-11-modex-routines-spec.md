@@ -84,7 +84,9 @@ works in isolation, pauses for approval, and resumes correctly after a restart.
 - Settle approval readiness: land the guards, run the human acceptance checklist, and decide
   whether the approval gate turns on.
 - **Decision service:** move Auto routing and approval rules behind one module, with versioned
-  question sets and a stored receipt for each judgment. Behaviour does not change.
+  question sets and a stored receipt for each judgment. Behaviour does not change. *Progress
+  (2026-10-15): landed as `routing/decisions.ts`; see
+  [the decision service](../auto-routing.md#the-decision-service).*
 - **Event journal:** record thread events in `node:sqlite` with a durable cursor, so existing
   clients resume after sleep or reconnect. Write to it alongside the existing storage, behind a
   flag; `state.json` and the per-thread files stay authoritative. *Progress: the journal, its flag

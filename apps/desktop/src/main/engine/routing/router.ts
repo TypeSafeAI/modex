@@ -1,41 +1,20 @@
 import path from "node:path";
 import type { BackendId, FollowUp, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Thread, ThreadItem } from "../../../shared/types.js";
-import { SecretStore, noCipher } from "../secrets.js";
+import type { SecretStore } from "../secrets.js";
 import { ladder, tierOf, type Candidate } from "./catalog.js";
+import { Decisions, type DecisionsOptions } from "./decisions.js";
 import { Fit } from "./fit.js";
-import { cliTransport, DEFAULT_JEV_MODEL, detectJevCli, httpTransport, JevError, resolveTypesafeKey, type CliInfo, type JevTransport, type KeyResolverOptions, type ResolvedKey, type SpawnLike } from "./jev.js";
+import { JevError } from "./jev.js";
 import { judgeHeuristically, judgeWithJev, stateFor, QUESTION_SET_VERSION, type JudgeSource, type Judgments } from "./judge.js";
 import { decide, type Decision } from "./policy.js";
 import { fallbackFollowUp, FOLLOW_UP_QUESTION, FOLLOW_UPS, followUpState } from "./followup.js";
 import type { TurnUsage } from "../backends/types.js";
 
-export interface RouterOptions {
+/** The Jev options (transport, key, timeout, test seams) build the shared decision service. */
+export interface RouterOptions extends Omit<DecisionsOptions, "home" | "policy"> {
   home: string;
   policy: () => RoutingPolicy;
   listModels: (backend: BackendId) => Promise<{ models: ModelInfo[]; error?: string }>;
-  /**
-   * undefined → resolve the key lazily (Modex keychain → env → jev config → login shell) and
-   * pick the jev CLI or HTTPS per policy; null → never call Jev (offline / tests);
-   * a function → injected transport.
-   */
-  transport?: JevTransport | null;
-  env?: NodeJS.ProcessEnv;
-  /** Judge timeout; the heuristic takes over past it. */
-  timeoutMs?: number;
-  /** Modex's encrypted store for a hand-entered key. Defaults to one that cannot store. */
-  secrets?: SecretStore;
-  /** Test seams: key-resolution hooks, CLI detection, and process spawning. */
-  keyResolver?: Pick<KeyResolverOptions, "readRef" | "loginShell" | "jevConfigPath">;
-  detectCli?: (bin: string) => Promise<CliInfo | null>;
-  spawnImpl?: SpawnLike;
-}
-
-interface Setup {
-  transport: JevTransport | null;
-  kind: "cli" | "http" | "none";
-  key: ResolvedKey;
-  cli: CliInfo | null;
-  unavailableReason?: string;
 }
 
 export interface RouteInput {
@@ -53,127 +32,43 @@ export interface RouteReceipt {
   questionSetVersion: number;
 }
 
-/** Ties the judge, catalogue, policy, and fit together for the ThreadRunner. */
+/**
+ * Ties the judge, catalogue, policy, and fit together for the ThreadRunner. Every question to Jev,
+ * including the approval gate's, goes through `decisions`, the shared decision service.
+ */
 export class Router {
   readonly fit: Fit;
-  readonly secrets: SecretStore;
-  private setupPromise: Promise<Setup> | null = null;
-  /** Invalidates session-level results from setup/provider work started with old settings. */
-  private setupGeneration = 0;
+  readonly decisions: Decisions;
   private readonly ladders = new Map<BackendId, { at: number; rungs: Candidate[] }>();
   private readonly blockedThreads = new Set<string>();
-  /** Set after an auth or billing rejection: retrying every turn would only add latency. */
-  private jevDisabled: string | null = null;
-  /** The last explicit Settings test. Status reads this without making a provider request. */
-  private lastTest: RoutingStatus["lastTest"];
 
   constructor(private readonly o: RouterOptions) {
     this.fit = new Fit(path.join(o.home, "app", "routing-fit.json"));
-    this.secrets = o.secrets ?? new SecretStore(o.home, noCipher);
+    const { listModels: _listModels, ...decisions } = o;
+    this.decisions = new Decisions(decisions);
   }
+
+  get secrets(): SecretStore { return this.decisions.secrets; }
 
   /** Forget the resolved key/transport and any session-level rejection (after a key or policy change). */
   reset(): void {
-    this.setupGeneration++;
-    this.setupPromise = null;
-    this.jevDisabled = null;
-    this.lastTest = undefined;
-  }
-
-  private disableOn(err: unknown, generation: number): void {
-    if (generation === this.setupGeneration && err instanceof JevError && (err.code === "auth" || err.code === "billing")) {
-      this.jevDisabled = `Jev is off for this session — ${err.message} Fix the key or credits and restart Modex.`;
-    }
-  }
-
-  private setup(): Promise<Setup> {
-    if (this.o.transport === null) return Promise.resolve({ transport: null, kind: "none", key: { key: null, source: "none" }, cli: null, unavailableReason: "No Jev API key found and no jev CLI on PATH." });
-    if (this.o.transport) return Promise.resolve({ transport: this.o.transport, kind: "http", key: { key: "injected", source: "env" }, cli: null });
-    return (this.setupPromise ??= this.buildSetup());
-  }
-
-  private async buildSetup(): Promise<Setup> {
-    const env = this.o.env ?? process.env;
-    const policy = this.o.policy();
-    const timeoutMs = this.o.timeoutMs ?? 8000;
-    const [key, cli] = await Promise.all([
-      resolveTypesafeKey({ env, stored: () => this.secrets.get("typesafe_api_key"), ...this.o.keyResolver }),
-      policy.jev_transport === "http" ? Promise.resolve(null) : (this.o.detectCli ?? ((bin: string) => detectJevCli(bin, env)))(policy.jev_bin || "jev"),
-    ]);
-    // CLI-only must honor the explicit preference; only Auto mode may fall back to HTTPS.
-    if (policy.jev_transport !== "http" && cli) return { transport: cliTransport(cli.bin, { apiKey: key.key, env, timeoutMs, spawnImpl: this.o.spawnImpl }), kind: "cli", key, cli };
-    if (policy.jev_transport === "cli") {
-      const bin = policy.jev_bin || "jev";
-      return { transport: null, kind: "none", key, cli, unavailableReason: `Jev CLI-only transport is selected, but “${bin}” was not found or could not be run. Install or repair the Jev CLI, or choose Auto or HTTPS transport.` };
-    }
-    if (key.key) return { transport: httpTransport(key.key, { timeoutMs }), kind: "http", key, cli };
-    return { transport: null, kind: "none", key, cli, unavailableReason: key.problem ?? "No Jev API key found — Modex keychain, TYPESAFE_API_KEY, ~/.config/jev/config.json, and your login shell are all empty." };
-  }
-
-  /**
-   * The same resolved Jev transport Auto routing uses, for other typed judgments (the approval gate),
-   * or null when there is none or Jev was switched off for this session. An auth or billing rejection
-   * seen through it switches Jev off here too, so the key path and its failure state stay single.
-   */
-  async jev(): Promise<{ transport: JevTransport | null; model: string }> {
-    const generation = this.setupGeneration;
-    const model = this.o.policy().jev_model || DEFAULT_JEV_MODEL;
-    const { transport } = await this.setup();
-    if (!transport || this.jevDisabled) return { transport: null, model };
-    return {
-      model,
-      transport: async (req, signal) => {
-        try {
-          return await transport(req, signal);
-        } catch (err) {
-          this.disableOn(err, generation);
-          throw err;
-        }
-      },
-    };
+    this.decisions.reset();
   }
 
   /** Stores a hand-entered key (or op:// reference) in the OS keychain and re-resolves. */
   async setKey(value: string): Promise<RoutingStatus> {
-    this.secrets.set("typesafe_api_key", value);
-    this.reset();
+    this.decisions.setKey(value);
     return this.status();
   }
 
   async clearKey(): Promise<RoutingStatus> {
-    this.secrets.clear("typesafe_api_key");
-    this.reset();
+    this.decisions.clearKey();
     return this.status();
   }
 
   /** One tiny request through the active transport: proves key, credits, and connectivity without spending a real turn. */
-  async test(): Promise<RoutingTest> {
-    const started = Date.now();
-    const generation = this.setupGeneration;
-    const model = this.o.policy().jev_model || DEFAULT_JEV_MODEL;
-    const s = await this.setup();
-    const policy = this.o.policy();
-    const tested = { executable: s.kind === "cli" ? s.cli?.bin ?? null : policy.jev_transport === "http" ? null : policy.jev_bin || "jev", model };
-    if (!s.transport) return this.recordTest({ ok: false, message: s.unavailableReason ?? s.key.problem ?? "Jev is unavailable with the current transport settings.", transport: "none", tested, current: generation === this.setupGeneration, ms: Date.now() - started }, generation);
-    try {
-      const res = await s.transport({ model, state: "ping", questions: { reachable: { type: "noul", instructions: "This state is the single word 'ping'." } } });
-      const a = res.answers.reachable;
-      if (!a || a.type !== "noul" || !Number.isFinite(a.noul) || a.noul < 0 || a.noul > 1) throw new JevError("Jev returned no valid reachable answer.", "bad_response");
-      if (generation === this.setupGeneration) this.jevDisabled = null;
-      return this.recordTest({ ok: true, message: `Jev answered via ${s.kind === "cli" ? `the jev CLI ${s.cli?.version ?? ""}`.trim() : "HTTPS"} (${res.usage?.input_tokens ?? "?"} input tokens${a && a.type === "noul" ? `, p=${a.noul.toFixed(2)}` : ""}).`, transport: s.kind, tested, current: generation === this.setupGeneration, ms: Date.now() - started }, generation);
-    } catch (err) {
-      const e = err instanceof JevError ? err : new JevError((err as Error).message, "unknown");
-      this.disableOn(e, generation);
-      return this.recordTest({ ok: false, message: e.message, code: e.code, status: e.status, transport: s.kind, tested, current: generation === this.setupGeneration, ms: Date.now() - started }, generation);
-    }
-  }
-
-  private recordTest(result: RoutingTest, generation: number): RoutingTest {
-    if (generation === this.setupGeneration && result.current !== false) {
-      const { current: _current, ...test } = result;
-      this.lastTest = { ...test, at: Date.now() };
-    }
-    return result;
+  test(): Promise<RoutingTest> {
+    return this.decisions.test();
   }
 
   /** Model ladders are cached for a minute; the CLIs' lists rarely change mid-session. */
@@ -196,22 +91,12 @@ export class Router {
   }
 
   async status(): Promise<RoutingStatus> {
-    const s = await this.setup();
-    const detail = this.jevDisabled ?? s.unavailableReason ?? s.key.problem;
+    const connection = await this.decisions.status();
     const fit = this.fit.snapshot();
     const tasks: RoutingStatus["fit"]["tasks"] = {};
     for (const [k, v] of Object.entries(fit.tasks)) if (v) tasks[k] = { offset: Math.round(v.offset * 100) / 100, samples: v.samples, overridesUp: v.overridesUp, overridesDown: v.overridesDown, failures: v.failures };
-    const sec = this.secrets.describe("typesafe_api_key");
     return {
-      live: Boolean(s.transport) && !this.jevDisabled,
-      keySource: s.key.source,
-      keyLast4: s.key.key && s.key.key !== "injected" ? s.key.key.slice(-4) : null,
-      keyRef: s.key.ref ?? null,
-      detail,
-      transport: s.kind === "cli" && s.cli ? { kind: "cli", bin: s.cli.bin, version: s.cli.version } : { kind: s.kind },
-      secrets: { backend: this.secrets.backend, available: this.secrets.available(), present: sec.present, savedAt: sec.savedAt },
-      model: this.o.policy().jev_model || DEFAULT_JEV_MODEL,
-      lastTest: this.lastTest,
+      ...connection,
       questionSetVersion: QUESTION_SET_VERSION,
       fit: { tasks, premiumToday: this.fit.premiumToday(), routes: fit.history.length },
     };
@@ -219,7 +104,6 @@ export class Router {
 
   async route(input: RouteInput, signal?: AbortSignal): Promise<RouteReceipt> {
     const started = Date.now();
-    const generation = this.setupGeneration;
     const policy = this.o.policy();
     const { thread } = input;
     // Until a new safe route succeeds, an override must not teach an older turn's preference.
@@ -229,24 +113,21 @@ export class Router {
     let judgments: Judgments;
     let source: JudgeSource = "heuristic";
     let fallback: string | undefined;
-    const setup = await this.setup();
-    const { transport } = setup;
-    if (this.jevDisabled) {
-      fallback = `${this.jevDisabled} Used the built-in heuristic.`;
-      judgments = judgeHeuristically(state);
-    } else if (transport) {
+    const jev = await this.decisions.connect("routing", { threadId: thread.id });
+    if (jev.transport) {
       try {
-        judgments = await judgeWithJev(state, transport, policy.jev_model || DEFAULT_JEV_MODEL, signal);
+        judgments = await judgeWithJev(state, jev.transport, jev.model, signal);
         source = "jev";
       } catch (err) {
         const why = err instanceof JevError ? `${err.message} (${err.code})` : (err as Error).message;
-        this.disableOn(err, generation);
         fallback = `Jev unavailable — ${why}; used the built-in heuristic.`;
         judgments = judgeHeuristically(state);
       }
+    } else if (jev.disabled) {
+      fallback = `${jev.disabled} Used the built-in heuristic.`;
+      judgments = judgeHeuristically(state);
     } else {
-      const why = (setup.unavailableReason ?? setup.key.problem ?? "No Jev transport available").replace(/[.!;]+$/, "");
-      fallback = `${why}; used the built-in heuristic.`;
+      fallback = `${(jev.unavailable ?? "No Jev transport available").replace(/[.!;]+$/, "")}; used the built-in heuristic.`;
       judgments = judgeHeuristically(state);
     }
 
@@ -327,15 +208,14 @@ export class Router {
   async followUp(input: RouteInput, signal?: AbortSignal): Promise<FollowUp | null> {
     if (signal?.aborted) return null;
     const state = followUpState(input);
-    const generation = this.setupGeneration;
     if (!state) return null;
     const fallback: FollowUp = { text: FOLLOW_UPS[fallbackFollowUp(state)], source: "heuristic" };
     if (!input.thread.auto) return fallback;
     try {
-      const { transport } = await this.setup();
+      const { transport, model } = await this.decisions.connect("follow_up", { threadId: input.thread.id });
       if (signal?.aborted) return null;
-      if (transport && !this.jevDisabled) {
-        const response = await transport({ state, model: this.o.policy().jev_model || DEFAULT_JEV_MODEL, questions: { follow_up: FOLLOW_UP_QUESTION } }, signal);
+      if (transport) {
+        const response = await transport({ state, model, questions: { follow_up: FOLLOW_UP_QUESTION } }, signal);
         if (signal?.aborted) return null;
         const answer = response.answers.follow_up;
         if (answer?.type === "choice" && Number.isFinite(answer.confidence) && answer.confidence >= this.o.policy().min_confidence) {
@@ -343,8 +223,8 @@ export class Router {
           if (Object.hasOwn(FOLLOW_UPS, answer.choice)) return { text: FOLLOW_UPS[answer.choice as keyof typeof FOLLOW_UPS], source: "jev" };
         }
       }
-    } catch (err) {
-      this.disableOn(err, generation);
+    } catch {
+      /* The decision service switched Jev off on an auth or billing rejection; the heuristic answers. */
     }
     return signal?.aborted ? null : fallback;
   }
