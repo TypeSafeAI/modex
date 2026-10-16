@@ -3,6 +3,9 @@ import { judgeHeuristically, stateFor } from "./judge.js";
 import type { RouteInput } from "./router.js";
 import type { JevQuestion } from "./jev.js";
 
+/** Bumped whenever the follow-up question or its choices change. */
+export const FOLLOW_UP_QUESTION_SET_VERSION = 1;
+
 export const FOLLOW_UPS = {
   verify: "Run the relevant tests and checks, and fix any failures from these changes.",
   review: "Review these changes for bugs, regressions, and missing tests.",
