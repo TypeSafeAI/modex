@@ -3,13 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
-import { appDir, createThread, seedHome, tid } from "./support";
+import { appDir, createThread, seedHome, storeClientDir, tid } from "./support";
 
 test("Store browser guests belong to the client and hide while its host is disconnected", async () => {
   const { home, repo } = seedHome();
   const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-browser-"));
   console.log(`Store browser fixture ${JSON.stringify({ home, repo, clientHome })}`);
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const server = createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end("<title>Store local browser</title><h1>Client-owned page</h1>"); });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/store-browser`;
