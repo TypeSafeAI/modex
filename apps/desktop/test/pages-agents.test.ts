@@ -228,6 +228,40 @@ test("scoped Pages revert refuses a historical parent in another project", async
   } finally { await client.close(); await lease.close(); await f.clean(); }
 });
 
+test("scoped Pages restore refuses a note whose parent folder moved to another project", async () => {
+  const f = await fixture(true);
+  const mine = f.space.linkProject({ id: "project", name: "mine", path: "/code/mine" });
+  const theirs = f.space.linkProject({ id: "other", name: "theirs", path: "/code/theirs" });
+  const parent = f.space.create({ title: "Plans", containerId: mine.id });
+  const child = f.space.create({ title: "Old plan", markdown: "Trashed in mine", parentId: parent.id });
+  f.space.trash(child.id, true);
+  f.space.moveNodes([f.space.tree().nodes.find(n => n.kind === "folder" && n.noteId === parent.id)!.id], theirs.id);
+  // An in-scope restore still brings back the trashed ancestors it needs.
+  const kept = f.space.create({ title: "Kept", containerId: mine.id });
+  const keptChild = f.space.create({ title: "Kept plan", markdown: "Stays in mine", parentId: kept.id });
+  f.space.trash(kept.id, true);
+  const theirFiles = () => fs.readdirSync(path.join(f.space.root, ...theirs.rel.split("/")), { recursive: true }).sort();
+  const files = theirFiles();
+  const moved = f.space.list().find(p => p.id === parent.id);
+  const versions = f.space.history(parent.id).length;
+  const { lease, client, call } = await f.begin();
+  try {
+    const trashed = f.space.list().find(p => p.id === child.id)!;
+    const result = await client.callTool({ name: "restore", arguments: { id: child.id, revision: trashed.revision, summary: "Restore plan" } });
+    assert.equal(result.isError, true);
+    assert.match((result.content as { text: string }[])[0]!.text, /outside this project's notes/);
+    assert.deepEqual(theirFiles(), files, "nothing is written under the other project");
+    assert.deepEqual(f.space.list().find(p => p.id === parent.id), moved, "the other project's page is unchanged");
+    assert.equal(f.space.history(parent.id).length, versions, "and gets no version");
+    assert.deepEqual(f.space.list().find(p => p.id === child.id), trashed);
+    assert.equal(f.receipts.length, 0);
+    const restored = await call("restore", { id: keptChild.id, revision: f.space.list().find(p => p.id === keptChild.id)!.revision, summary: "Restore kept plan" });
+    assert.equal(restored.trashedAt, null);
+    assert.equal(f.space.list().find(p => p.id === kept.id)!.trashedAt, null);
+    for (const id of [kept.id, keptChild.id]) assert.ok(f.space.pageRel(id)!.startsWith(`${mine.rel}/`));
+  } finally { await client.close(); await lease.close(); await f.clean(); }
+});
+
 for (const failure of [new Error("The notes folder must be a real folder"), new Error(), "unreadable", "", null, undefined])
 test(`an unreadable notes scope refuses calls for ${String(failure) || "an empty string"}`, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pages-agent-"));
