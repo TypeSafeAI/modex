@@ -14,7 +14,7 @@ function activeWorkLabel({ count, waiting, agents = 0 }: RailActiveWork): string
 /**
  * The 48 px icon rail. Chat remains the main surface, with Space and Analytics beside it; companion pairing and Settings live below.
  */
-export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenAnalytics, onOpenImages, onOpenPlugins, onOpenSettings, onOpenCompanion, onEnableStreamerMode, streamerMode = false, activeWork, onOpenActiveWork }: { surface?: "chat" | "space" | "analytics" | "images" | "plugins"; onOpenAnalytics?: () => void; onOpenImages?: () => void; onOpenPlugins?: () => void; onOpenChat?: () => void; onOpenSpace?: () => void; onOpenSettings: () => void; onOpenCompanion: () => void; onEnableStreamerMode: () => void; streamerMode?: boolean; activeWork?: RailActiveWork; onOpenActiveWork?: () => void }) {
+export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenAnalytics, onOpenImages, onOpenPlugins, onOpenRoutines, onOpenSettings, onOpenCompanion, onEnableStreamerMode, streamerMode = false, activeWork, onOpenActiveWork }: { surface?: "chat" | "space" | "analytics" | "images" | "plugins" | "routines"; onOpenRoutines?: () => void; onOpenAnalytics?: () => void; onOpenImages?: () => void; onOpenPlugins?: () => void; onOpenChat?: () => void; onOpenSpace?: () => void; onOpenSettings: () => void; onOpenCompanion: () => void; onEnableStreamerMode: () => void; streamerMode?: boolean; activeWork?: RailActiveWork; onOpenActiveWork?: () => void }) {
   const workLabel = activeWork && activeWork.count > 0 ? activeWorkLabel(activeWork) : "";
   return (
     <nav className="rail" aria-label="Surfaces" data-testid="rail">
@@ -22,6 +22,7 @@ export function Rail({ surface = "chat", onOpenChat, onOpenSpace, onOpenAnalytic
       {onOpenSpace && <IconButton icon="space" label="Space" size="lg" className={`rail-btn${surface === "space" ? " active" : ""}`} aria-current={surface === "space" ? "page" : undefined} data-testid="rail-space" tooltipSide="bottom" onClick={onOpenSpace} />}
       {onOpenAnalytics && <IconButton icon="analytics" label="Analytics" size="lg" className={`rail-btn${surface === "analytics" ? " active" : ""}`} aria-current={surface === "analytics" ? "page" : undefined} data-testid="rail-analytics" tooltipSide="bottom" onClick={onOpenAnalytics} />}
       {onOpenImages && <IconButton icon="image" label="Images" size="lg" className={`rail-btn${surface === "images" ? " active" : ""}`} aria-current={surface === "images" ? "page" : undefined} data-testid="rail-images" tooltipSide="bottom" onClick={onOpenImages} />}
+      {onOpenRoutines && <IconButton icon="history" label="Routines" size="lg" className={`rail-btn${surface === "routines" ? " active" : ""}`} aria-current={surface === "routines" ? "page" : undefined} data-testid="rail-routines" tooltipSide="bottom" onClick={onOpenRoutines} />}
       {onOpenPlugins && <IconButton icon="shapes" label="Plugins" size="lg" className={`rail-btn${surface === "plugins" ? " active" : ""}`} aria-current={surface === "plugins" ? "page" : undefined} data-testid="rail-plugins" tooltipSide="bottom" onClick={onOpenPlugins} />}
       {workLabel && (
         <div className="rail-work">

@@ -728,6 +728,13 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 
 ## On main, unreleased
 
+- **Read-only routines** (Routines Phase 1). Routines in the rail run a read-only Chat or Plan turn
+  in one project, once or every N minutes, hours or days, while Modex is running with or without a
+  window. Each reply becomes a new revision of the routine's Space page, under the project's
+  `Routines` folder. Every approval the turn asks for is refused, with a receipt in the transcript.
+  Missed runs run once on wake, never as a burst. A run cut off by a quit or crash is marked
+  interrupted and never repeated. Activity lists each run's trigger, times, thread and page
+  revision, and the iPhone companion shows a banner when runs finish or fail. [Routines](routines.md).
 - **One decision service for Jev** (Routines Phase 0). Auto routing, follow-up suggestions and
   approval rules now ask Jev through one module. It owns the key, the transport and the
   session-wide switch-off after a rejected key. Each kind of judgment has a versioned question
@@ -760,6 +767,12 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
   you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
   an earlier version left behind is set aside, and the folders stay as they are. (#241)
+- **New workspace opens only when asked.** After you make a workspace, searching pages and
+  clearing the search no longer reopens an empty New workspace field that takes your typing and
+  makes another workspace when you click away (#241).
+- **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
+  large import from another disk, a network share or iCloud no longer freezes the window, and
+  each file appears in your notes only once it has copied in full (#241).
 
 ## In flight
 
@@ -994,6 +1007,24 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   polling and spinner kept it busy, and the unscaled demo test still passed in 187 s because
   those waits never touch the suite's budgets. The CI runners are slow in the snapshot path,
   which is the one the budgets measure.
+- **`iPhone companion` `/resume` timeouts (2026-10-16).** Three paired-flow failures on 10-15/16
+  (38707861067, 38747016392, 38832248437) timed out on the paused-Mac `/resume` call, which green
+  runs (38832248437 attempt 2, 38836144274) answered in 0.1 s. The simulator's unified log
+  (in the xcresult's `simctl_diagnostics/<device>/system.logarchive`) shows two causes. First, the
+  test runner's first URLSession use came at that step, and on a freshly booted simulator its
+  setup (cfprefsd, nsurlsessiond's storage container, trustd) took 42 s in 38747016392, so the
+  POST never left the runner, and 19 s in 38707861067. The resume now goes over a plain socket
+  (`UITests/LoopbackPost.swift`) with the suite's scaled budget. Second, in 38707861067 and
+  38832248437 the POST did reach the Mac, but the fixture neither answered nor restarted the
+  companion within 8–10 s, while it exits at once on SIGTERM at the end of the job. 38848571338
+  failed the same way at the first reply: the fixture left a snapshot unanswered and a TLS
+  ClientHello unanswered for 5–8 s each, the app marked the Mac disconnected, and the
+  `create-thread` tap landed on the disabled button 0.2 s later. Locally the fixture answers
+  `/resume` in 3 ms after 8–80 s outages, and `dispose()` returns at once with a connection in
+  any state. Why the CI fixture goes silent is open. `fixture.mjs` now logs the phone's calls,
+  the pause/resume lifecycle, and every event-loop stall of 1 s or more with the CPU time,
+  major faults and involuntary context switches it saw, so the next failure's job log says
+  whether the process was busy, paging or starved.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before
@@ -1043,10 +1074,9 @@ Roughly in the order they earn their place; none is scheduled.
    [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication). Windows and Linux
    installers shipped with v0.1.0. Provider-account acceptance, KWallet6/full graphical sessions,
    and historical schema migration remain unproven; see [native-platforms.md](native-platforms.md).
-2. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
-   result written to a Space page. They follow a groundwork phase (a shared decision service
-   and an event journal), and routines that change code wait for the approval gate decision.
-   See the [routines specification](specs/2026-10-11-modex-routines-spec.md).
+2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
+   routines in a claimed worktree wait for the approval gate decision. See the
+   [routines specification](specs/2026-10-11-modex-routines-spec.md).
 3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 

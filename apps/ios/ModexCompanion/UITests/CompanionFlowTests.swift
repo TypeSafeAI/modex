@@ -204,6 +204,37 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertEqual(probe.taps, 2)
     }
 
+    func testLoopbackPostReturnsTheFixtureStatus() throws {
+        let fixture = try LoopbackListener(reply: "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(fixture.port)/resume/3f64b7e9"))
+        XCTAssertEqual(try postToLoopback(url, timeout: 10), 204)
+        XCTAssertEqual(fixture.request(within: 5)?.components(separatedBy: "\r\n").first, "POST /resume/3f64b7e9 HTTP/1.1")
+    }
+
+    func testLoopbackPostGivesUpOnASilentFixtureAtItsDeadline() throws {
+        let fixture = try LoopbackListener(reply: nil)
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(fixture.port)/resume/3f64b7e9"))
+        let started = Date()
+        XCTAssertThrowsError(try postToLoopback(url, timeout: 0.5)) { XCTAssertEqual($0 as? LoopbackPostError, .timedOut(phase: "reply")) }
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.45)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "The deadline covers the whole exchange.")
+        XCTAssertNotNil(fixture.request(within: 5), "The request reached the fixture before the reply wait.")
+    }
+
+    func testLoopbackPostFailsFastWhenNothingListens() throws {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(try unusedLoopbackPort())/resume/3f64b7e9"))
+        let started = Date()
+        XCTAssertThrowsError(try postToLoopback(url, timeout: 30)) { XCTAssertEqual($0 as? LoopbackPostError, .system(call: "connect", code: ECONNREFUSED)) }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+    }
+
+    func testLoopbackPostOnlyTakesAnIPv4Address() {
+        // A host name would need a resolver in the simulator, which is what this helper avoids.
+        XCTAssertThrowsError(try postToLoopback(URL(string: "http://localhost:80/resume")!, timeout: 1)) {
+            XCTAssertEqual($0 as? LoopbackPostError, .invalidURL("http://localhost:80/resume"))
+        }
+    }
+
     private final class ForgetConfirmationProbe {
         var presented = true
         var ready = true
@@ -412,23 +443,92 @@ final class CompanionFlowTests: XCTestCase {
             tap: { initiated = true; forget.tap() }), "The Forget Mac confirmation must finish before waiting for pairing.")
     }
 
+    /// Not URLSession: its first use in the runner could take 20–40 s on a booting CI simulator (see
+    /// `postToLoopback`). The fixture logs when it receives this and when it answers.
     private func resumeMac(_ fixture: Fixture) throws {
         let url = try XCTUnwrap(fixture.resumeURL.flatMap(URL.init(string:)), "Run the current test-e2e.sh fixture with explicit outage control.")
-        let resumed = expectation(description: "The Mac fixture has resumed")
-        var failure: Error?
-        var status: Int?
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 10
-        URLSession.shared.dataTask(with: request) { _, response, error in
-            failure = error
-            status = (response as? HTTPURLResponse)?.statusCode
-            resumed.fulfill()
-        }.resume()
-        wait(for: [resumed], timeout: UITestBudget.seconds(10))
-        XCTAssertNil(failure)
-        XCTAssertEqual(status, 204, "The fixture must resume before the user retries the saved connection.")
+        let started = Date()
+        do {
+            let status = try postToLoopback(url, timeout: UITestBudget.seconds(10))
+            XCTAssertEqual(status, 204, "The fixture must resume before the user retries the saved connection.")
+        } catch {
+            XCTFail("The Mac fixture's resume \(error) after \(String(format: "%.1f", Date().timeIntervalSince(started))) s\(UITestBudget.note).")
+        }
     }
 
     private struct Fixture: Decodable { let link: String; let reconnect: Bool?; let resumeURL: String? }
+}
+
+/// 127.0.0.1 with port 0, for `bind` to pick an ephemeral port.
+private func loopbackAddress() -> sockaddr_in {
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    return address
+}
+
+/// Binds a socket to an ephemeral loopback port and closes it without listening, so connects get refused.
+private func unusedLoopbackPort() throws -> Int {
+    let fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+    defer { close(fd) }
+    var address = loopbackAddress()
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let bound = withUnsafeMutablePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, length) == 0 && getsockname(fd, $0, &length) == 0 }
+    }
+    guard fd >= 0, bound else { throw LoopbackPostError.system(call: "bind", code: errno) }
+    return Int(UInt16(bigEndian: address.sin_port))
+}
+
+/// Accepts one connection on 127.0.0.1, records the request head, then answers with `reply`, or with
+/// nothing (a stalled fixture) until the client gives up.
+private final class LoopbackListener {
+    private final class Received { var head = "" }
+    let port: Int
+    private let fd: Int32
+    private let arrived = DispatchSemaphore(value: 0)
+    private let received = Received()
+
+    init(reply: String?) throws {
+        let listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+        var address = loopbackAddress()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let listening = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, length) == 0 && getsockname(listener, $0, &length) == 0 }
+        } && listen(listener, 1) == 0
+        guard listener >= 0, listening else {
+            let code = errno
+            close(listener)
+            throw LoopbackPostError.system(call: "listen", code: code)
+        }
+        fd = listener
+        port = Int(UInt16(bigEndian: address.sin_port))
+        let arrived = self.arrived, received = self.received
+        DispatchQueue.global().async {
+            let connection = accept(listener, nil, nil)
+            guard connection >= 0 else { return }
+            defer { close(connection) }
+            var head = [UInt8]()
+            var chunk = [UInt8](repeating: 0, count: 512)
+            while head.firstRange(of: Array("\r\n\r\n".utf8)) == nil {
+                let count = chunk.withUnsafeMutableBytes { read(connection, $0.baseAddress!, $0.count) }
+                guard count > 0 else { break }
+                head += chunk[..<count]
+            }
+            received.head = String(decoding: head, as: UTF8.self)
+            arrived.signal()
+            if let reply {
+                _ = Array(reply.utf8).withUnsafeBytes { write(connection, $0.baseAddress!, $0.count) }
+            } else {
+                while chunk.withUnsafeMutableBytes({ read(connection, $0.baseAddress!, $0.count) }) > 0 {}
+            }
+        }
+    }
+
+    func request(within seconds: TimeInterval) -> String? {
+        arrived.wait(timeout: .now() + seconds) == .success ? received.head : nil
+    }
+
+    deinit { close(fd) }
 }
