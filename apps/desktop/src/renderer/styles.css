@@ -843,4 +843,4 @@ button.turn-label:hover { color: var(--text-2); }
 
 .turn-content :is(.approval, .failure) { width: 100%; }
 
-.sheet:is([data-surface="images"], [data-surface="plugins"]) > :is(.sidebar, .main, .workspace) { display: none; }
+.sheet:is([data-surface="images"], [data-surface="plugins"], [data-surface="routines"]) > :is(.sidebar, .main, .workspace) { display: none; }
