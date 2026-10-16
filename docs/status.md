@@ -728,6 +728,12 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 
 ## On main, unreleased
 
+- **One decision service for Jev** (Routines Phase 0). Auto routing, follow-up suggestions and
+  approval rules now ask Jev through one module. It owns the key, the transport and the
+  session-wide switch-off after a rejected key. Each kind of judgment has a versioned question
+  set, and each judgment leaves a receipt in `app/decisions.jsonl`: Jev's typed answers or the
+  error, never the request. Routing, follow-ups and approvals behave as before.
+  [The decision service](auto-routing.md#the-decision-service).
 - **Analytics looks like the rest of Modex.** The dashboard takes the app's tokens and theme, and
   its view's corners follow the app's sheet. It is laid out like Space: a sidebar titled Analytics,
   and each view's title with its filters and Export CSV. Every view fits the window down to the
