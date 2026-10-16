@@ -752,7 +752,7 @@ handle("notes:import", async ({ targetId, paths }) => {
     if (picked.canceled) return { imported: 0, errors: [] };
     sources = picked.filePaths;
   }
-  const result = store.space.importFiles(targetId, sources);
+  const result = await store.space.importFiles(targetId, sources);
   return { imported: result.imported.length, errors: result.errors };
 }, { localOnly: true });
 handle("notes:file:read", ({ id }) => store.space.readFile(id));

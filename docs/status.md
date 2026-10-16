@@ -770,6 +770,9 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 - **New workspace opens only when asked.** After you make a workspace, searching pages and
   clearing the search no longer reopens an empty New workspace field that takes your typing and
   makes another workspace when you click away (#241).
+- **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
+  large import from another disk, a network share or iCloud no longer freezes the window, and
+  each file appears in your notes only once it has copied in full (#241).
 
 ## In flight
 

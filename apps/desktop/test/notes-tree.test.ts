@@ -8,10 +8,10 @@ import type { NotesFolder, NotesNode, NotesProject, NotesWorkspace } from "../sr
 import { pageImageFromUrl, pageImageUrl } from "../src/shared/notes.js";
 import { tmpdir } from "./helpers.js";
 
-function withStore(run: (store: NotesStore, root: string) => void): void {
+async function withStore(run: (store: NotesStore, root: string) => void | Promise<void>): Promise<void> {
   const home = tmpdir("modex-notes-tree-");
   const root = path.join(home, "notes");
-  try { run(new NotesStore(root), root); } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  try { await run(new NotesStore(root), root); } finally { fs.rmSync(home, { recursive: true, force: true }); }
 }
 const named = (nodes: NotesNode[], name: string) => nodes.find(n => n.name === name)!;
 const shape = (nodes: NotesNode[]) => nodes.map(n => `${n.kind}:${n.rel}`).sort();
@@ -123,7 +123,7 @@ test("folders and files moved or renamed in Finder keep their ids; only empty co
   assert.throws(() => store.deleteEmpty(work.id), /default/);
 }));
 
-test("importing files copies them into a folder without replacing anything, and Markdown becomes a page", () => withStore((store, root) => {
+test("importing files copies them into a folder without replacing anything, and Markdown becomes a page", () => withStore(async (store, root) => {
   const outside = tmpdir("modex-import-src-");
   try {
     const project = store.tree().nodes.find(n => n.kind === "project")!;
@@ -133,20 +133,20 @@ test("importing files copies them into a folder without replacing anything, and 
     fs.writeFileSync(path.join(root, "Personal", "Notes", "Assets", "logo.png"), "already here");
     fs.mkdirSync(path.join(outside, "a-folder"));
     fs.symlinkSync(path.join(outside, "logo.png"), path.join(outside, "link.png"));
-    const result = store.importFiles(folder.id, [path.join(outside, "logo.png"), path.join(outside, "Brief.md"), path.join(outside, "a-folder"), path.join(outside, "link.png"), "relative.txt"]);
+    const result = await store.importFiles(folder.id, [path.join(outside, "logo.png"), path.join(outside, "Brief.md"), path.join(outside, "a-folder"), path.join(outside, "link.png"), "relative.txt"]);
     assert.deepEqual(result.imported.map(n => n.name).sort(), ["Brief", "logo 2.png"]);
     assert.equal(result.errors.length, 3, "a folder, a link and a relative path are refused");
     assert.equal(fs.readFileSync(path.join(root, "Personal", "Notes", "Assets", "logo.png"), "utf8"), "already here", "nothing is replaced");
     assert.equal(fs.readFileSync(path.join(root, "Personal", "Notes", "Assets", "logo 2.png"), "utf8"), "png-bytes");
     const brief = store.list().find(p => p.title === "Brief")!;
     assert.equal(brief.markdown, "# Brief\nimported");
-    assert.throws(() => store.importFiles(store.tree().nodes.find(n => n.kind === "workspace")!.id, []), /project or folder/);
-    assert.throws(() => store.importFiles(folder.id, Array.from({ length: 51 }, (_, i) => path.join(outside, `${i}.txt`))), /50 files/);
+    await assert.rejects(store.importFiles(store.tree().nodes.find(n => n.kind === "workspace")!.id, []), /project or folder/);
+    await assert.rejects(store.importFiles(folder.id, Array.from({ length: 51 }, (_, i) => path.join(outside, `${i}.txt`))), /50 files/);
 
     fs.writeFileSync(path.join(outside, "mark.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
     fs.writeFileSync(path.join(outside, "big.png"), Buffer.alloc(25 * 1024 * 1024 + 1));
     fs.writeFileSync(path.join(outside, "notes.v1:final"), "odd");
-    const more = store.importFiles(folder.id, ["mark.svg", "big.png", "notes.v1:final"].map(name => path.join(outside, name)));
+    const more = await store.importFiles(folder.id, ["mark.svg", "big.png", "notes.v1:final"].map(name => path.join(outside, name)));
     assert.deepEqual(more.errors, []);
     const byName = new Map(more.imported.map(n => [n.name, n]));
     assert.equal(store.readImage(byName.get("mark.svg")!.id)?.mime, "image/svg+xml");
@@ -157,6 +157,60 @@ test("importing files copies them into a folder without replacing anything, and 
     assert.equal(store.readImage(store.list().find(p => p.title === "Brief")!.id), null, "a page is never served as an image");
   } finally { fs.rmSync(outside, { recursive: true, force: true }); }
 }));
+
+test("importing waits for each copy without blocking, and a file still copying never shows in the folder", async () => {
+  const home = tmpdir("modex-notes-import-");
+  const outside = tmpdir("modex-import-src-");
+  const root = path.join(home, "notes");
+  const promises = fs.promises as { copyFile: typeof fs.promises.copyFile };
+  const copyFile = promises.copyFile;
+  try {
+    const store = new NotesStore(root);
+    const project = store.tree().nodes.find(n => n.kind === "project")!;
+    const folder = store.createFolder(project.id, "Assets");
+    for (const from of ["a", "b"]) {
+      fs.mkdirSync(path.join(outside, from));
+      fs.writeFileSync(path.join(outside, from, "Report.md"), `# Report\nfrom ${from}`);
+    }
+    fs.writeFileSync(path.join(outside, "broken.png"), "png");
+    // Each copy writes its bytes, then holds until released, like a slow volume still copying.
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let copied = () => {};
+    const nextCopy = () => new Promise<void>(resolve => { copied = resolve; });
+    promises.copyFile = async (from, to, mode) => {
+      if (String(from).endsWith("broken.png")) {
+        fs.writeFileSync(to, "half");
+        throw Object.assign(new Error("EIO: i/o error, copyfile"), { code: "EIO" });
+      }
+      await copyFile(from, to, mode);
+      copied();
+      await held;
+    };
+    const first = nextCopy();
+    const one = store.importFiles(folder.id, [path.join(outside, "a", "Report.md")]);
+    assert.equal(await Promise.race([first.then(() => "copying"), one.then(() => "imported")]), "copying", "the import waits for its copy instead of blocking until it is done");
+    assert.ok(!store.tree().nodes.some(n => n.name.startsWith("Report")), "a file still copying is not in the folder");
+    assert.ok(!store.list().some(p => p.title.startsWith("Report")), "nor recorded as a page");
+    // While it copies, the folder can be renamed and a file of the same name imported into it.
+    store.rename(folder.id, "Library");
+    const second = nextCopy();
+    const two = store.importFiles(folder.id, [path.join(outside, "b", "Report.md"), path.join(outside, "broken.png")]);
+    await second;
+    release();
+    const results = await Promise.all([one, two]);
+    assert.deepEqual(results.flatMap(result => result.imported.map(n => n.name)).sort(), ["Report", "Report 2"]);
+    const library = path.join(root, "Personal", "Notes", "Library");
+    assert.deepEqual(fs.readdirSync(library).sort(), ["Report 2.md", "Report.md"], "both follow the renamed folder, and nothing is replaced");
+    assert.deepEqual(["Report.md", "Report 2.md"].map(name => fs.readFileSync(path.join(library, name), "utf8")).sort(), ["# Report\nfrom a", "# Report\nfrom b"]);
+    assert.deepEqual(results.map(result => result.errors), [[], ["broken.png i/o error, copyfile"]], "a failed copy is reported for its own file");
+    assert.deepEqual(fs.readdirSync(root, { recursive: true }).filter(name => String(name).endsWith(".tmp")), [], "no partial copy is left behind");
+  } finally {
+    promises.copyFile = copyFile;
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
 
 test("a watched folder is walked again only after something changes, or every 10 seconds", async () => {
   const home = tmpdir("modex-notes-watch-");
