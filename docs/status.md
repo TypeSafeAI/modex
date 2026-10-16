@@ -750,6 +750,10 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 - **Restored notes follow their folder.** A note trashed before its workspace, project or
   folder was renamed or moved comes back in the new place, instead of making the old folder
   again outside the project (#241).
+- **Notes stay readable around folders with a backslash.** Moving or renaming a folder whose name
+  has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
+  you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
+  an earlier version left behind is set aside, and the folders stay as they are. (#241)
 
 ## In flight
 
