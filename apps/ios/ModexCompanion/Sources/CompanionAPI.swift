@@ -73,6 +73,8 @@ struct CompanionThread: Decodable, Identifiable, Equatable {
     var retiredPr: Int? = nil
     /// Set when the thread was put away on the Mac or a phone. Hidden here unless archived threads are shown.
     var archived: Bool? = nil
+    /// The routine whose run made this thread.
+    var routine: String? = nil
 
     struct PullRequestBadge: Decodable, Equatable {
         let number: Int
@@ -103,6 +105,16 @@ struct JournalCursor: Decodable, Equatable {
     let cursor: Int
 }
 
+/// A routine run that ended on the Mac. The phone says so once, for runs it has not seen yet.
+struct CompanionRoutineRun: Decodable, Equatable {
+    let id: String
+    let routine: String
+    /// "completed", "failed" or "interrupted".
+    let status: String
+    let endedAt: String
+    var threadId: String? = nil
+}
+
 struct CompanionSnapshot: Decodable, Equatable {
     let projects: [CompanionProject]
     let threads: [CompanionThread]
@@ -113,6 +125,8 @@ struct CompanionSnapshot: Decodable, Equatable {
     var journal: JournalCursor? = nil
     /// `items` holds only the items changed after the cursor the request sent; merge them by id.
     var delta = false
+    /// Recent routine runs that ended, newest first.
+    var routineRuns: [CompanionRoutineRun] = []
 
     init(projects: [CompanionProject], threads: [CompanionThread], items: [CompanionItem], defaultBackend: String = "codex", autoByDefault: Bool = false) {
         self.projects = projects
@@ -122,7 +136,7 @@ struct CompanionSnapshot: Decodable, Equatable {
         self.autoByDefault = autoByDefault
     }
 
-    private enum CodingKeys: String, CodingKey { case projects, threads, items, defaultBackend, autoByDefault, journal, delta }
+    private enum CodingKeys: String, CodingKey { case projects, threads, items, defaultBackend, autoByDefault, journal, delta, routineRuns }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -133,6 +147,7 @@ struct CompanionSnapshot: Decodable, Equatable {
         autoByDefault = try values.decodeIfPresent(Bool.self, forKey: .autoByDefault) ?? false
         journal = try values.decodeIfPresent(JournalCursor.self, forKey: .journal)
         delta = try values.decodeIfPresent(Bool.self, forKey: .delta) ?? false
+        routineRuns = try values.decodeIfPresent([CompanionRoutineRun].self, forKey: .routineRuns) ?? []
     }
 
     /// A transcript with changed items applied: each replaces the item with its id, or appends.

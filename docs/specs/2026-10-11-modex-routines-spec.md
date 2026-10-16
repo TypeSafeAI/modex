@@ -100,6 +100,11 @@ works in isolation, pauses for approval, and resumes correctly after a restart.
 
 ### Phase 1: read-only routines
 
+*Progress (2026-10-15): landed; see [routines.md](../routines.md). Modex writes the page itself,
+through the revision-checked page store the Pages MCP uses, because a read-only turn's Pages
+tools are read-only. A power-save blocker (`prevent-app-suspension`) is held during each run,
+and missed runs are checked on wake.*
+
 - A routine runs **Chat or Plan** turns on a time trigger, in one named project, while the app
   is running (window open or not). It writes its result to a Space page through the Pages MCP.
 - It needs no repository writes and no approvals.

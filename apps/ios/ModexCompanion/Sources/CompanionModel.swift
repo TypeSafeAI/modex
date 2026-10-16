@@ -19,11 +19,14 @@ import SwiftUI
     @Published private(set) var isDemo = false
     /// Archived threads stay hidden on the phone until asked for. Hidden again with every new workspace.
     @Published var showArchived = false
+    /// A routine run on the Mac finished or failed since this phone last looked.
+    @Published private(set) var routineNotice: RoutineNotice?
 
     private var api: (any CompanionClient)?
     private let store: any PairingStorage
     private let makeClient: (Pairing) -> any CompanionClient
     private let discovery: any CompanionDiscovery
+    private let defaults: UserDefaults
     private var discoveredURLs: [URL] = []
     private var retrySavedEndpoint = false
     private var pollTask: Task<Void, Never>?
@@ -40,8 +43,9 @@ import SwiftUI
     private var commandOperation: UUID?
     private var commandContext: String?
 
-    init(store: any PairingStorage = PairingStore(), discovery: (any CompanionDiscovery)? = nil, makeClient: @escaping (Pairing) -> any CompanionClient = { CompanionAPI(pairing: $0) }) {
+    init(store: any PairingStorage = PairingStore(), discovery: (any CompanionDiscovery)? = nil, defaults: UserDefaults = .standard, makeClient: @escaping (Pairing) -> any CompanionClient = { CompanionAPI(pairing: $0) }) {
         self.store = store
+        self.defaults = defaults
         self.discovery = discovery ?? BonjourCompanionDiscovery()
         self.makeClient = makeClient
         pairing = store.load()
@@ -195,6 +199,7 @@ import SwiftUI
 
     private func invalidateConnection() {
         journal = nil
+        routineNotice = nil
         connectionRevision += 1
         refreshRevision += 1
         sendOperation = nil
@@ -262,6 +267,7 @@ import SwiftUI
             // Rebuilding an unchanged workspace replaces open menu actions during polling.
             if snapshot != result { snapshot = result }
             if !connected { connected = true }
+            noticeRoutineRuns(response.routineRuns)
             retrySavedEndpoint = false
             if connectionError != nil { connectionError = nil }
             if let selectedThreadId, !result.threads.contains(where: { $0.id == selectedThreadId }) {
@@ -280,6 +286,25 @@ import SwiftUI
             if connectionError != message { connectionError = message }
         }
     }
+
+    /// Says once that routine runs ended since the last look, however many there were. The first
+    /// look at a Mac only remembers where it is, so pairing never replays old runs.
+    private func noticeRoutineRuns(_ runs: [CompanionRoutineRun]) {
+        guard let pairing else { return }
+        let key = "routineRunsSeen.\(pairing.fingerprint)"
+        let newest = runs.map(\.endedAt).max()
+        // A Mac with no runs yet sets the mark too, so its first runs are news.
+        guard let seen = defaults.string(forKey: key) else {
+            defaults.set(newest ?? "", forKey: key)
+            return
+        }
+        let fresh = runs.filter { $0.endedAt > seen }
+        guard let newest, !fresh.isEmpty else { return }
+        defaults.set(newest, forKey: key)
+        routineNotice = RoutineNotice(runs: fresh)
+    }
+
+    func dismissRoutineNotice() { routineNotice = nil }
 
     func send() async {
         guard let api, let threadId = selectedThreadId else { return }
@@ -419,5 +444,32 @@ import SwiftUI
         disconnect()
         error = failure.localizedDescription
         return true
+    }
+}
+
+/// What the phone says about routine runs that ended: one line, never one alert per run.
+struct RoutineNotice: Equatable {
+    let text: String
+    /// The thread of the newest run, to open from the notice.
+    let threadId: String?
+    let failed: Bool
+
+    init(runs: [CompanionRoutineRun]) {
+        let newest = runs.max { $0.endedAt < $1.endedAt }!
+        let unsuccessful = runs.filter { $0.status != "completed" }
+        failed = !unsuccessful.isEmpty
+        threadId = newest.threadId
+        if runs.count == 1 {
+            switch newest.status {
+            case "completed": text = "Routine “\(newest.routine)” finished."
+            case "interrupted": text = "Routine “\(newest.routine)” was interrupted."
+            default: text = "Routine “\(newest.routine)” failed."
+            }
+        } else {
+            let names = Array(Set(runs.map(\.routine))).sorted().joined(separator: ", ")
+            text = unsuccessful.isEmpty
+                ? "\(runs.count) routine runs finished: \(names)."
+                : "\(runs.count) routine runs ended, \(unsuccessful.count) without finishing: \(names)."
+        }
     }
 }

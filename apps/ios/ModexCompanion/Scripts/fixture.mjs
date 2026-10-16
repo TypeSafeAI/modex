@@ -8,6 +8,26 @@ import { Store } from "../../../desktop/dist/src/main/engine/store.js";
 import { ThreadRunner } from "../../../desktop/dist/src/main/engine/runner.js";
 import { CompanionServer } from "../../../desktop/dist/src/main/engine/companion.js";
 
+// The job log is the only record of this process. In CI runs 38707861067, 38832248437 and 38848571338
+// it left a delivered /resume, a snapshot request and a TLS ClientHello unanswered for 5–10 s or more
+// while otherwise idle. Log what the phone asked for, and every event-loop stall of a second or more
+// with what the process did meanwhile: CPU time means our own work, major faults paging, neither a
+// starved process.
+const log = (message) => process.stderr.write(`[fixture ${new Date().toISOString()}] ${message}\n`);
+let lastTick = performance.now();
+let lastUsage = process.resourceUsage();
+setInterval(() => {
+  const now = performance.now();
+  const usage = process.resourceUsage();
+  const late = now - lastTick - 250;
+  if (late >= 1000) {
+    const delta = (key) => usage[key] - lastUsage[key];
+    log(`event loop stalled ${Math.round(late)} ms: cpu ${Math.round((delta("userCPUTime") + delta("systemCPUTime")) / 1000)} ms, major faults ${delta("majorPageFault")}, involuntary switches ${delta("involuntaryContextSwitches")}, fs reads ${delta("fsRead")}, fs writes ${delta("fsWrite")}`);
+  }
+  lastTick = now;
+  lastUsage = usage;
+}, 250).unref();
+
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-ios-e2e-"));
 const repo = fs.mkdtempSync(path.join(os.tmpdir(), "modex-ios-e2e-repo-"));
 const store = new Store(home);
@@ -52,9 +72,9 @@ const server = new CompanionServer(home, {
   state: () => store.snapshot(),
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
-  create: (projectId, options) => runner.createThread(projectId, { ...options, backend: "mock", auto: false }),
-  send: async (id, text) => { void runner.send(id, text); return { ok: true }; },
-  answer: (id, itemId, answer) => runner.answer(id, itemId, answer),
+  create: (projectId, options) => { log(`phone creates a thread in ${projectId}`); return runner.createThread(projectId, { ...options, backend: "mock", auto: false }); },
+  send: async (id, text) => { log(`phone sends "${text}" to ${id}`); void runner.send(id, text); return { ok: true }; },
+  answer: (id, itemId, answer) => { log(`phone answers ${itemId} with ${answer}`); runner.answer(id, itemId, answer); },
   setArchived: (id, archived) => runner.setArchived(id, archived),
 }, process.env.MODEX_IOS_LAN === "1" ? undefined : () => ["127.0.0.1"]);
 await server.start();
@@ -68,6 +88,7 @@ const control = http.createServer(async (request, response) => {
     response.writeHead(404).end();
     return;
   }
+  log(`resume requested${resumePausedMac ? "" : " while not paused"}`);
   if (!resumePausedMac) {
     response.writeHead(409).end();
     return;
@@ -77,8 +98,10 @@ const control = http.createServer(async (request, response) => {
   resume();
   try {
     await restartTask;
+    log("resumed; answering 204");
     response.writeHead(204).end();
-  } catch {
+  } catch (error) {
+    log(`resume failed: ${error}`);
     response.writeHead(500).end();
   }
 });
@@ -88,10 +111,13 @@ fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairing
 
 async function pauseMac() {
   const resumed = new Promise((resolve) => { resumePausedMac = resolve; });
+  log("pausing the companion");
   await server.dispose();
+  log("companion paused");
   await resumed;
   resumePausedMac = undefined;
   if (!closing) await server.start();
+  if (!closing) log(`companion listening again on ${server.status().port}`);
 }
 
 async function restartMac() {

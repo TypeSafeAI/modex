@@ -506,34 +506,43 @@ export class NotesStore implements SpacePagesStore {
   /**
    * Copies files into a project or folder. Each is a regular file (no folders or links) of at most
    * 100 MB, up to 50 at a time; a name already taken gets a suffix, and nothing is ever replaced.
-   * Markdown files become pages on the next read.
+   * Markdown files become pages on the next read. Each file is copied off the main thread into
+   * `.modex/`, so a slow volume never freezes the window and no read sees half a file, then linked
+   * into place under a name free at that moment.
    */
-  importFiles(targetId: string, sources: string[]): { imported: NotesNode[]; errors: string[] } {
+  async importFiles(targetId: string, sources: string[]): Promise<{ imported: NotesNode[]; errors: string[] }> {
     const layout = this.layout(this.load());
     const target = layout.byId.get(targetId);
     if (!target || (target.kind !== "project" && target.kind !== "folder")) throw new Error("Choose a project or folder to import into.");
     if (!Array.isArray(sources) || sources.length === 0) return { imported: [], errors: [] };
     if (sources.length > 50) throw new Error("Import up to 50 files at a time.");
     const errors: string[] = [];
-    const rels: string[] = [];
+    const names: string[] = [];
+    let dir = target.rel;
     for (const source of sources) {
       const label = typeof source === "string" ? path.basename(source) : "A file";
+      const staged = path.join(this.meta, `import-${randomUUID()}.tmp`);
       try {
         if (typeof source !== "string" || !path.isAbsolute(source)) throw new Error("is not a local file");
-        const stat = fs.lstatSync(source);
+        const stat = await fs.promises.lstat(source);
         if (!stat.isFile()) throw new Error("is not a regular file (folders and links are not imported)");
         if (stat.size > 100 * 1024 * 1024) throw new Error("is larger than 100 MB");
         // An extension a name could not carry (a colon, say) stays part of the stem, made safe with it.
         const raw = path.extname(source);
         const ext = /^\.[A-Za-z0-9_+-]{1,16}$/.test(raw) ? raw : "";
         const stem = noteStem(path.basename(source, ext));
-        const rel = `${target.rel}/${uniqueName(stem, ext.toLowerCase() === ".md" ? ".md" : ext, this.names(target.rel))}`;
-        fs.copyFileSync(source, this.abs(rel), fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
-        rels.push(rel);
+        await fs.promises.copyFile(source, staged, fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
+        // The folder may have been moved or renamed while the file copied; the file follows it.
+        if (!fs.statSync(this.abs(dir), { throwIfNoEntry: false })?.isDirectory()) dir = this.layout(this.load()).byId.get(targetId)?.rel ?? dir;
+        const name = uniqueName(stem, ext.toLowerCase() === ".md" ? ".md" : ext, this.names(dir));
+        // A link refuses a name taken meanwhile; nothing is ever replaced.
+        fs.linkSync(staged, this.abs(`${dir}/${name}`));
+        names.push(name);
       } catch (error) { errors.push(`${label} ${(error as Error).message.replace(/^[A-Z]+: /, "")}`); }
+      finally { fs.rmSync(staged, { force: true }); }
     }
     const after = this.layout(this.load());
-    return { imported: after.nodes.filter(node => rels.includes(node.rel)), errors };
+    return { imported: after.nodes.filter(node => node.parentId === targetId && names.includes(path.posix.basename(node.rel))), errors };
   }
 
   /** An image file's bytes and type, for previews over `modex-notes://file/<id>`; nothing else is served. */
