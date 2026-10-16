@@ -61,3 +61,33 @@ test("workspaces, projects and folders made in Space are folders on disk, and pe
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("a search does not reopen New workspace after one was made", async () => {
+  const { home } = seedHome();
+  const notes = (...parts: string[]) => path.join(home, "notes", ...parts);
+  const { app, page } = await launch(home);
+  try {
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "Space options" }).click();
+    await page.getByRole("menuitem", { name: "New workspace" }).click();
+    await page.getByRole("textbox", { name: "New workspace name" }).fill("TypeSafeAI");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "TypeSafeAI", exact: true })).toBeVisible();
+
+    // A search hides the tree; clearing it brings the tree back without the made workspace's field.
+    await page.getByRole("button", { name: "Search pages", exact: true }).click();
+    const search = page.getByRole("searchbox", { name: "Search pages" });
+    await search.fill("x");
+    await expect(page.getByRole("button", { name: "TypeSafeAI", exact: true })).toHaveCount(0);
+    await search.fill("");
+    await expect(page.getByRole("button", { name: "TypeSafeAI", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "New workspace name" })).toHaveCount(0);
+    await expect(search).toBeFocused();
+    await page.keyboard.type("Stray");
+    await expect(search).toHaveValue("Stray");
+    await search.press("Escape");
+    await expect(page.getByRole("button", { name: "TypeSafeAI", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "New workspace name" })).toHaveCount(0);
+    expect(fs.existsSync(notes("Stray"))).toBe(false);
+  } finally { await app.close(); }
+});

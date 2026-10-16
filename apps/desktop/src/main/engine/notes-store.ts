@@ -63,6 +63,8 @@ export interface LinkedProject { id: string; name: string; path: string }
 export interface NotesWorkspaceSummary { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }
 interface HistoryFile { version: 1; versions: SpacePageVersion[] }
 interface TrashManifest { version: 1; id: string; trashedAt: string; items: { id: string; original: string; rel: string }[] }
+/** A folder rename in flight (`.modex/settlement.json`): the folder, then its note, and a move's version. */
+interface Settlement { version: number; from: string; to: string; note: string; move?: SpacePageVersion }
 export interface MigrationReceipt {
   version: 1;
   /** `app/space.json` when pages were migrated from it; null for a fresh folder. */
@@ -269,10 +271,13 @@ export class NotesStore implements SpacePagesStore {
         ...this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))),
       ]);
       const target = `${parent}/${name}`;
-      // Publish intent before either rename; readers finish both before deriving parent IDs.
-      this.writeJson(path.join(this.meta, "settlement.json"), { version: 1, from: dir, to: target, note: path.posix.basename(live.rel) });
-      this.finishSettlement();
-      return this.find(this.load(), id);
+      // Publish intent before either rename; readers finish both before deriving parent IDs. A path
+      // readers would refuse (a backslash made in Finder) keeps its folder name; the note keeps the title.
+      if (!this.startSettlement({ version: 1, from: dir, to: target, note: path.posix.basename(live.rel) })) return page;
+      const settled = this.load();
+      this.rebaseOriginals(settled.index, dir, target);
+      this.writeIndex(settled.index);
+      return this.find(settled, id);
     } else {
       const name = uniqueName(stem, ".md", this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))));
       this.renameNote(state, page, live.rel, `${dir}/${name}`);
@@ -401,11 +406,11 @@ export class NotesStore implements SpacePagesStore {
         const page = this.find(fresh, node.noteId);
         const moved: SpacePage = { ...page, parentId: into.kind === "folder" ? into.noteId : null, updatedAt: this.iso(), revision: page.revision + 1 };
         // Replay history and both filesystem changes before deriving parent IDs after a crash.
-        this.writeJson(path.join(this.meta, "settlement.json"), {
+        const started = this.startSettlement({
           version: 1, from: node.rel, to: rel, note: path.posix.basename(folderNote!.rel),
           move: { page: moved, actor: "human", summary: "Moved folder" },
         });
-        this.finishSettlement();
+        if (!started) throw new Error("A folder with a backslash (\\) in its path can only be moved in Finder.");
         this.rebase(fresh, node.rel, rel);
         fresh.index.notes[page.id] = { ...fresh.index.notes[page.id]!, rel: `${rel}/${name}.md` };
       } else {
@@ -501,34 +506,43 @@ export class NotesStore implements SpacePagesStore {
   /**
    * Copies files into a project or folder. Each is a regular file (no folders or links) of at most
    * 100 MB, up to 50 at a time; a name already taken gets a suffix, and nothing is ever replaced.
-   * Markdown files become pages on the next read.
+   * Markdown files become pages on the next read. Each file is copied off the main thread into
+   * `.modex/`, so a slow volume never freezes the window and no read sees half a file, then linked
+   * into place under a name free at that moment.
    */
-  importFiles(targetId: string, sources: string[]): { imported: NotesNode[]; errors: string[] } {
+  async importFiles(targetId: string, sources: string[]): Promise<{ imported: NotesNode[]; errors: string[] }> {
     const layout = this.layout(this.load());
     const target = layout.byId.get(targetId);
     if (!target || (target.kind !== "project" && target.kind !== "folder")) throw new Error("Choose a project or folder to import into.");
     if (!Array.isArray(sources) || sources.length === 0) return { imported: [], errors: [] };
     if (sources.length > 50) throw new Error("Import up to 50 files at a time.");
     const errors: string[] = [];
-    const rels: string[] = [];
+    const names: string[] = [];
+    let dir = target.rel;
     for (const source of sources) {
       const label = typeof source === "string" ? path.basename(source) : "A file";
+      const staged = path.join(this.meta, `import-${randomUUID()}.tmp`);
       try {
         if (typeof source !== "string" || !path.isAbsolute(source)) throw new Error("is not a local file");
-        const stat = fs.lstatSync(source);
+        const stat = await fs.promises.lstat(source);
         if (!stat.isFile()) throw new Error("is not a regular file (folders and links are not imported)");
         if (stat.size > 100 * 1024 * 1024) throw new Error("is larger than 100 MB");
         // An extension a name could not carry (a colon, say) stays part of the stem, made safe with it.
         const raw = path.extname(source);
         const ext = /^\.[A-Za-z0-9_+-]{1,16}$/.test(raw) ? raw : "";
         const stem = noteStem(path.basename(source, ext));
-        const rel = `${target.rel}/${uniqueName(stem, ext.toLowerCase() === ".md" ? ".md" : ext, this.names(target.rel))}`;
-        fs.copyFileSync(source, this.abs(rel), fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
-        rels.push(rel);
+        await fs.promises.copyFile(source, staged, fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
+        // The folder may have been moved or renamed while the file copied; the file follows it.
+        if (!fs.statSync(this.abs(dir), { throwIfNoEntry: false })?.isDirectory()) dir = this.layout(this.load()).byId.get(targetId)?.rel ?? dir;
+        const name = uniqueName(stem, ext.toLowerCase() === ".md" ? ".md" : ext, this.names(dir));
+        // A link refuses a name taken meanwhile; nothing is ever replaced.
+        fs.linkSync(staged, this.abs(`${dir}/${name}`));
+        names.push(name);
       } catch (error) { errors.push(`${label} ${(error as Error).message.replace(/^[A-Z]+: /, "")}`); }
+      finally { fs.rmSync(staged, { force: true }); }
     }
     const after = this.layout(this.load());
-    return { imported: after.nodes.filter(node => rels.includes(node.rel)), errors };
+    return { imported: after.nodes.filter(node => node.parentId === targetId && names.includes(path.posix.basename(node.rel))), errors };
   }
 
   /** An image file's bytes and type, for previews over `modex-notes://file/<id>`; nothing else is served. */
@@ -779,6 +793,7 @@ export class NotesStore implements SpacePagesStore {
     }
     // Notes inside a moved folder are found by their ids on the next read.
     for (const [id, entry] of Object.entries(index.notes)) if (entry.rel?.startsWith(`${node.rel}/`)) index.notes[id] = { ...entry, rel: `${rel}${entry.rel.slice(node.rel.length)}` };
+    this.rebaseOriginals(index, node.rel, rel);
   }
 
   // ── Reading and reconciling ──────────────────────────────────────────────────────────────
@@ -845,24 +860,35 @@ export class NotesStore implements SpacePagesStore {
     return state;
   }
 
+  /** Publishes a folder rename and replays it. False, with nothing written, for one a reader would refuse. */
+  private startSettlement(intent: Settlement): boolean {
+    if (!validSettlement(intent)) return false;
+    this.writeJson(path.join(this.meta, "settlement.json"), intent);
+    this.finishSettlement();
+    return true;
+  }
+
   /** Replays the two-step folder/note rename without ever replacing another file. */
   private finishSettlement(): void {
     const journal = path.join(this.meta, "settlement.json");
-    let intent: { version: number; from: string; to: string; note: string; move?: SpacePageVersion };
-    try { intent = JSON.parse(fs.readFileSync(journal, "utf8")); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw preserved(error);
+    let intent: Settlement;
+    try {
+      intent = JSON.parse(fs.readFileSync(journal, "utf8"));
+      if (!validSettlement(intent)) throw new Error("Invalid folder rename intent.");
+      if (intent.move) validateHistory(intent.move.page.id, { version: 1, versions: [intent.move] });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return;
+      if (code) throw preserved(error);
+      // A reader refuses a journal before renaming anything, and Modex no longer writes one it refuses
+      // (older versions did, for a backslash made in Finder): set it aside rather than fail every read.
+      const aside = path.join(this.meta, `settlement.invalid-${randomUUID()}.json`);
+      fs.renameSync(journal, aside);
+      fsyncDir(this.meta);
+      console.error("[modex] notes: set aside a folder rename that cannot be replayed:", aside);
+      return;
     }
-    const safe = (rel: unknown): rel is string => typeof rel === "string" && rel.split("/").length >= 3 &&
-      rel.split("/").every(part => part !== "" && part !== "." && part !== ".." && !part.includes("\\") && part !== ".modex");
-    if (intent?.version !== 1 || !safe(intent.from) || !safe(intent.to) ||
-        (!intent.move && path.posix.dirname(intent.from) !== path.posix.dirname(intent.to)) ||
-        intent.to.startsWith(`${intent.from}/`) ||
-        typeof intent.note !== "string" || !/^[^/\\]+\.md$/i.test(intent.note) ||
-        nameKey(stemOf(intent.note)) !== nameKey(path.posix.basename(intent.from))) throw preserved(new Error("Invalid folder rename intent."));
     if (intent.move) {
-      validateHistory(intent.move.page.id, { version: 1, versions: [intent.move] });
       const versions = this.readHistory(intent.move.page.id);
       const latest = versions?.at(-1);
       if (!versions || !latest || latest.page.revision > intent.move.page.revision) throw preserved(new Error("Invalid folder move history."));
@@ -1325,6 +1351,16 @@ export class NotesStore implements SpacePagesStore {
       const entry = state.index.notes[id];
       if (entry) state.index.notes[id] = { ...entry, rel };
     }
+    this.rebaseOriginals(state.index, from, to);
+  }
+
+  /** Trashed notes, and notes deleted outside Modex, from inside a moved folder are restored where it went. */
+  private rebaseOriginals(index: NotesIndex, from: string, to: string): void {
+    const moved = (rel: string) => `${to}${rel.slice(from.length)}`;
+    for (const [id, entry] of Object.entries(index.notes)) {
+      if (entry.trash?.original.startsWith(`${from}/`)) index.notes[id] = { ...entry, trash: { ...entry.trash, original: moved(entry.trash.original) } };
+      else if (entry.original?.startsWith(`${from}/`)) index.notes[id] = { ...entry, original: moved(entry.original) };
+    }
   }
 
   private writeNoteAt(state: State, page: SpacePage, rel: string): void {
@@ -1541,6 +1577,17 @@ export class NotesStore implements SpacePagesStore {
       id = parent.parentId;
     }
   }
+}
+
+/** Whether a reader replays this folder rename: plain parts below a project, a sibling unless it moves, a note named after its folder. */
+function validSettlement(intent: Settlement): boolean {
+  const safe = (rel: unknown): rel is string => typeof rel === "string" && rel.split("/").length >= 3 &&
+    rel.split("/").every(part => part !== "" && part !== "." && part !== ".." && !part.includes("\\") && part !== ".modex");
+  return intent?.version === 1 && safe(intent.from) && safe(intent.to) &&
+    (Boolean(intent.move) || path.posix.dirname(intent.from) === path.posix.dirname(intent.to)) &&
+    !intent.to.startsWith(`${intent.from}/`) &&
+    typeof intent.note === "string" && /^[^/\\]+\.md$/i.test(intent.note) &&
+    nameKey(stemOf(intent.note)) === nameKey(path.posix.basename(intent.from));
 }
 
 function validateHistory(id: string, data: HistoryFile): void {

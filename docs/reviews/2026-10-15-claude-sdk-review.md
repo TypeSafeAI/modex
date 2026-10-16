@@ -119,3 +119,19 @@ The fork's earlier lockfile comment was already addressed in `13c6530`; the froz
 install above reconfirms the exact SDK pin. Evidence for this follow-up is saved
 outside the worktree under `/tmp/modex-codex-comments-*.log`. Live model acceptance
 remains subject to the account limit documented above.
+
+## Main integration (October 16)
+
+Preserved the GitHub merge `e38c274` and merged upstream main `8a635f2`. The runner
+retains routine approval denials and the shared Jev decision service, together with
+SDK withdrawal/Stop cancellation during connection setup and approval evaluation.
+Routine permission assertions now inspect SDK session options; the delayed-setup
+regression targets the decision service. The status document retains main's release
+and unreleased entries, with this migration still under In flight.
+
+Frozen install, workspace build and typechecks pass on Node 24.14.0/pnpm 10.34.5.
+The full suite passes 1,654 tests with 19 skips and zero failures. Four targeted
+Electron cases pass: SDK approval/withdrawal/Stop/failure and all three routines
+acceptance cases. Independent review found no actionable issues and separately
+passed six focused tests. The full Electron matrix and native iPhone suite were not
+rerun. Logs are saved outside the worktree at `/tmp/modex-main-20261016-*.log`.

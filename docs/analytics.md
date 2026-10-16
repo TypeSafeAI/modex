@@ -31,6 +31,14 @@ in an in-memory session, with the rows at `usage.json`; every other request from
 page has no access to the desktop bridge. It refreshes every 15 seconds while visible. Like the knowledge base, the
 view hides under dialogs and menus and while Streamer Mode is on.
 
+It looks like the rest of Modex. The page reads the app's tokens (`renderer/tokens.css`), and main sets the app's
+theme on it (Graphite, Jev or OpenCoven) as the page loads and whenever the theme changes in Settings; the view's
+corners follow the app's sheet. Like Space, it has a sidebar titled **Analytics** with the six views, and each view
+has its title with the date and tool filters and **Export CSV** beside it, over one line saying what was recorded.
+Every view fits the window, down to the app's 900×600 minimum, with no page scroll: Overview sizes its totals,
+chart, token breakdown, tools and recent turns to the window, and long tables and lists scroll inside their own
+panel.
+
 ## The standalone preview
 
 The same dashboard runs on its fictional fixture data outside the app, with a **Demo Data** stamp. Run from the
@@ -59,14 +67,12 @@ the same fixture records. Date and tool filters apply together; date bounds are
 inclusive UTC days. CSV export includes the filtered search results. Missing
 prices remain unpriced, and reasoning is already included in output tokens.
 
-Both appearances use TypeSafe UI's palette and self-hosted IBM Plex fonts.
-The sidebar groups Workspace and Manage into keyboard-operable disclosures,
-with concise Models and Sources labels and a large Demo Data stamp. Following a
-link into a collapsed group reopens it so the current destination stays visible.
-Narrow screens switch to a horizontal navigation strip and stacked panels; wider
-tables scroll within their panel. All six mobile destinations stay available
-regardless of the desktop disclosure state. Charts include a text summary and data table.
-Dialogs support Escape; focus moves to the heading after a navigation change.
+The preview takes the app's tokens too, in Graphite unless the URL says `?theme=jev` or
+`?theme=coven`, and is laid out for the app's window sizes. The sidebar groups Workspace and
+Manage into keyboard-operable disclosures; following a link into a collapsed group reopens it so
+the current destination stays visible. Tables and lists scroll within their panel. Charts draw at
+the size they are shown and carry a text summary. Dialogs support Escape; focus moves to the
+heading after a navigation change.
 
 ## Fixture and asset provenance
 
@@ -87,12 +93,8 @@ Dialogs support Escape; focus moves to the heading after a navigation change.
   illustrative. Its API-equivalent cost remains unpriced; Copilot billing units
   are never treated as USD. GitHub's [usage and billing documentation](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/usage-and-billing)
   describes the separate reporting surfaces. No Copilot connector or import is implemented.
-- Palette, spacing, surface treatment, and typography follow
-  [TypeSafe UI](https://ui.jev.works), with token references from
-  [its source](https://github.com/TypeSafeAI/typesafe-ui/blob/main/packages/ui/src/styles/globals.css).
-- IBM Plex Sans and IBM Plex Mono were sourced from TypeSafe UI's hosted font
-  assets. Their SIL Open Font License is retained in `usage/public/licenses/OFL.txt`.
-- The brand mark reuses Modex's existing `BrandMark` component.
+- Colors, type, radii and spacing are Modex's own (`renderer/tokens.css`); the chart series use
+  its syntax palette. The page uses the system font stack, like the app, and ships no fonts.
 
 Importing other tools' logs, account connections, subscription billing, and provider
 quotas are not implemented.

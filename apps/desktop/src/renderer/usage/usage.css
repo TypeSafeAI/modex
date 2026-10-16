@@ -1,67 +1,36 @@
-@font-face {
-  font-family: "IBM Plex Sans";
-  src: url("./assets/plex-sans.woff2") format("woff2");
-  font-weight: 100 900;
-  font-display: swap;
-}
-@font-face {
-  font-family: "IBM Plex Mono";
-  src: url("./assets/plex-mono.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
+/*
+ * The dashboard is its own document (a native view in Modex), so it takes the app's tokens
+ * (../tokens.css) and the app's theme (main sets data-theme), and maps its own names onto them.
+ */
 :root {
   color-scheme: dark;
-  --background: #0c1015;
-  --foreground: #f4f4f5;
-  --card: #151a21;
-  --sidebar: #0f1012;
-  --secondary: #1e2024;
-  --muted: #a2a9b5;
-  --subtle: #7f8998;
-  --border: #2b333e;
-  --input: #4a4d55;
-  --primary: #f386a1;
-  --primary-ink: #1b1b1f;
-  --teal: #19bcae;
-  --amber: #f5b72b;
-  --blue: #85aee9;
-  --violet: #b1a0e5;
-  --green: #68c58b;
-  --hover: #202731;
-  --selection: #f386a113;
-  --shadow: 0 0 0 1px #ffffff10;
-  --dot: #19212c;
-  font-family: "IBM Plex Sans", sans-serif;
-  font-size: 14px;
+  --background: var(--bg-main);
+  --foreground: var(--text-1);
+  --card: var(--bg-main);
+  --sidebar: var(--bg-sidebar);
+  --secondary: var(--bg-row-hover);
+  --muted: var(--text-3);
+  --subtle: var(--text-4);
+  --border: var(--border-pane);
+  --input: var(--border-composer);
+  --primary: var(--accent);
+  --primary-ink: var(--accent-ink);
+  --teal: var(--syntax-string);
+  --amber: var(--syntax-number);
+  --blue: var(--syntax-key);
+  --violet: var(--syntax-keyword);
+  --green: var(--ok);
+  --hover: var(--bg-row-hover);
+  --selection: var(--bg-row-selected);
+  --shadow: none;
+  --dot: var(--rule);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   background: var(--background);
   color: var(--foreground);
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --background: #f7f7f8;
-  --foreground: #1b1b1f;
-  --card: #fff;
-  --sidebar: #f2f2f4;
-  --secondary: #ececf0;
-  --muted: #62656d;
-  --subtle: #6c7280;
-  --border: #e0e0e4;
-  --input: #b8b9c0;
-  --primary: #bb305f;
-  --primary-ink: #fff;
-  --teal: #087d75;
-  --amber: #8c5f14;
-  --blue: #3d6dac;
-  --violet: #7e62bd;
-  --green: #15803d;
-  --hover: #ededf1;
-  --selection: #bb305f0c;
-  --shadow: 0 0 0 1px #00000008, 0 2px 4px #00000003;
-  --dot: #e6e8ed;
 }
 .theme-changing *,
 .theme-changing *:before,
@@ -151,7 +120,7 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 .mono {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .muted {
@@ -216,7 +185,7 @@ svg {
 }
 .brand-byline {
   display: block;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1px;
   color: var(--muted);
@@ -232,7 +201,7 @@ svg {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -303,7 +272,7 @@ svg {
   border-radius: 0 2px 2px 0;
 }
 .nav-count {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -326,7 +295,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 8px;
   color: var(--muted);
 }
@@ -454,7 +423,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1.5px;
   color: var(--muted);
@@ -765,7 +734,7 @@ h1 {
   width: 100%;
   height: auto;
   overflow: visible;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
 }
 .usage-chart text {
@@ -1053,7 +1022,7 @@ td:first-child > .row-secondary {
 .badge {
   display: inline-flex;
   align-items: center;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   border: 1px solid var(--border);
   padding: 4px 7px;
@@ -1826,4 +1795,497 @@ dd {
 }
 .unpriced-value {
   font-size: 26px;
+}
+
+/* ── Fits Modex: one window, no page scroll, the app's sidebar and page header ─────────────── */
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+.usage-app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w, 240px) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+.usage-app > .sidebar {
+  position: static;
+  width: auto;
+  height: 100%;
+  padding: 0 0 12px;
+  gap: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-pane);
+  overflow: hidden;
+}
+.sidebar-head {
+  height: 50px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 16px;
+}
+.sidebar-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.3px;
+  color: var(--text-2);
+}
+.usage-app .nav-group {
+  margin: 0 0 14px;
+}
+.usage-app .nav-caption {
+  height: 30px;
+  margin: 0 8px;
+  padding: 0 8px;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-3);
+}
+.usage-app .nav-link {
+  height: var(--row-h);
+  margin: 0 8px 1px;
+  padding: 0 8px;
+  border-radius: var(--radius-row);
+  font-size: var(--text-md);
+  color: var(--text-2);
+  gap: 10px;
+}
+.usage-app .nav-link:hover {
+  background: var(--bg-row-hover);
+  color: var(--text-1);
+}
+.usage-app .nav-link.selected {
+  background: var(--bg-row-selected);
+  color: var(--text-1);
+}
+.usage-app .nav-link.selected::before {
+  display: none;
+}
+.usage-app .nav-count {
+  border: 0;
+  background: none;
+  color: var(--text-4);
+  font-family: var(--font-sans);
+}
+.usage-app .sidebar-bottom {
+  margin-top: auto;
+  padding: 0 16px;
+  border: 0;
+}
+.usage-app .sidebar-foot {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text-4);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+.usage-app .demo-stamp {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+.usage-app .demo-stamp strong {
+  font-size: 22px;
+}
+.usage-app > .workspace {
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.usage-app .main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 20px 28px 20px;
+  overflow: hidden;
+}
+.usage-app .page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  margin: 0;
+}
+.page-title {
+  min-width: 0;
+}
+.usage-app .page-title h1 {
+  font-size: 24px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--text-1);
+}
+.page-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.page-summary .mono {
+  font-size: var(--text-xs);
+}
+/* Each part after the first brings its own dot, so a wrapped line never ends on one. The empty
+   alternative text keeps the dot out of accessible names ("Coverage", not "· Coverage"). */
+.page-summary > * + *::before {
+  content: "·";
+  content: "·" / "";
+  margin-right: 6px;
+  color: var(--text-4);
+}
+.page-summary .text-button {
+  padding: 0;
+  font-size: var(--text-sm);
+}
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.usage-app .select-control,
+.usage-app .button {
+  height: 32px;
+  border: 1px solid var(--border-pane);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  box-shadow: none;
+}
+.usage-app .select-control {
+  padding: 0 10px;
+}
+.usage-app .select-control select {
+  height: 30px;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.usage-app .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+}
+.usage-app .button:hover,
+.usage-app .select-control:hover {
+  background: var(--bg-row-hover);
+  border-color: var(--border-strong);
+}
+.view-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+.view-body > * {
+  flex: none;
+}
+/* A view's main panel takes the rest of the window; its table scrolls inside it. */
+.view-body > .panel:last-child {
+  flex: 1;
+  min-height: 0;
+}
+.usage-app .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  border: 1px solid var(--border-pane);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+  box-shadow: none;
+  overflow: hidden;
+}
+.usage-app .panel-heading {
+  flex: none;
+  padding: 14px 16px 10px;
+}
+.usage-app .panel-heading h2 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+}
+.usage-app .panel-heading p {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+.usage-app .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.usage-app thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-main);
+}
+/* Overview: the totals, then two rows that share the height that is left. */
+.view-body[data-view="overview"] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1.3fr) minmax(0, 1fr);
+}
+.usage-app .metrics {
+  gap: 12px;
+  margin: 0;
+}
+.usage-app .metric {
+  padding: 14px 16px;
+  border: 1px solid var(--border-pane);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+  box-shadow: none;
+}
+.usage-app .metric-value {
+  font-size: 26px;
+  font-weight: 500;
+  margin: 6px 0 4px;
+}
+.overview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+.overview-bottom {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+}
+.overview-row > .panel {
+  min-height: 0;
+}
+.trend-panel .usage-chart {
+  flex: 1;
+  min-height: 0;
+  margin: 0 12px;
+}
+.trend-panel .usage-chart svg {
+  display: block;
+}
+.trend-panel .chart-data {
+  display: none;
+}
+.overview-row .panel > :not(.panel-heading) {
+  min-height: 0;
+}
+.usage-app .nav-link,
+.usage-app .nav-caption {
+  width: calc(100% - 16px);
+  min-height: 0;
+}
+.usage-app .nav-group + .nav-group {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+/* Section headings read like Space's: a quiet label, no counts or chevrons. */
+.usage-app .nav-group-context,
+.usage-app .nav-caption > .icon {
+  display: none;
+}
+.usage-app .demo-stamp strong {
+  display: none;
+}
+.usage-app .select-control {
+  width: auto;
+  min-width: 0;
+}
+/* Lists inside a panel scroll there, never the page; a chart takes the panel's spare height. */
+.overview-row .panel > * {
+  flex: none;
+}
+.overview-row .panel > :is(.usage-chart, .tool-rank, .breakdown-list, .table-wrap),
+.view-body .panel > .account-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.overview-row .panel > .usage-chart {
+  overflow: hidden;
+}
+.usage-app .chart-legend {
+  margin: 4px 16px 12px;
+}
+.usage-app .token-composition {
+  padding: 0 16px;
+}
+.usage-app .breakdown-list,
+.usage-app .tool-rank {
+  margin: 0;
+  padding: 0 16px;
+}
+.breakdown-panel > p {
+  padding: 8px 16px 12px;
+}
+/* Accounts and Sources: a one-line notice, the main panel filling the rest, a short explainer. */
+.view-body[data-view="accounts"] > .panel:first-of-type,
+.view-body[data-view="sources"] > .panel:first-of-type {
+  flex: 1;
+}
+.view-body[data-view="accounts"] > .panel:last-of-type,
+.view-body[data-view="sources"] > .panel:nth-of-type(2) {
+  flex: none;
+}
+.usage-app .account-notice,
+.usage-app .source-summary {
+  flex: none;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-pane);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+  box-shadow: none;
+}
+.usage-app .account-notice p,
+.usage-app .source-summary p {
+  font-size: var(--text-xs);
+}
+.usage-app .account-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+.usage-app .account-card {
+  padding: 14px;
+  border: 1px solid var(--border-pane);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+  box-shadow: none;
+}
+.usage-app .explanation-grid {
+  gap: 16px;
+  padding: 0 16px 14px;
+}
+.usage-app .explanation-grid p {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+.view-body[data-view="sources"] > .panel:nth-of-type(n + 3),
+.view-body .attribution {
+  display: none;
+}
+/* The title and the controls share the first row; the summary takes the full width below. */
+.usage-app .page-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  row-gap: 2px;
+}
+.usage-app .page-title {
+  display: contents;
+}
+.usage-app .page-summary {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+.usage-app .breakdown-list > * {
+  padding: 6px 0;
+}
+/* Recent activity on the Overview is narrow; the Activity view keeps every column. */
+.overview-bottom table :is(th, td):nth-child(3) {
+  display: none;
+}
+.usage-app .page-title h1 {
+  grid-column: 1;
+  grid-row: 1;
+}
+.usage-app .page-actions {
+  grid-column: 2;
+  grid-row: 1;
+}
+.overview-bottom :is(th, td) {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.usage-app :is(.metric-label, .metric-foot) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trend-panel .usage-chart {
+  min-height: 110px;
+}
+/* The app narrows its sidebar below a 1100px window (this view is the window less the rail). */
+@media (max-width: 1045px) {
+  :root,
+  :root[data-theme] {
+    --sidebar-w: 180px;
+  }
+}
+/* Short windows, down to the 900×600 minimum: tighter spacing, no panel subtitles. */
+@media (max-height: 720px) {
+  .usage-app .main {
+    padding: 14px 20px;
+    gap: 10px;
+  }
+  .view-body {
+    gap: 10px;
+  }
+  .usage-app .panel-heading {
+    padding: 10px 14px 6px;
+  }
+  .usage-app .panel-heading p {
+    display: none;
+  }
+  .usage-app .metric {
+    padding: 10px 14px;
+  }
+  .usage-app .metric-value {
+    font-size: 22px;
+    margin: 2px 0;
+  }
+  .usage-app .chart-legend {
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+}
+@media (max-height: 600px) {
+  .usage-app .metric-foot,
+  .usage-app .page-summary {
+    display: none;
+  }
+}
+/* Four totals in one row at every size the app allows; their labels truncate instead. */
+.usage-app .metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.usage-app .chart-legend > span {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .usage-app .metric-value {
+    font-size: 20px;
+  }
+  .usage-app .metric-label > .icon {
+    display: none;
+  }
+}
+.usage-app .breakdown-list > * > :first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

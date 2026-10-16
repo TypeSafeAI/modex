@@ -29,7 +29,8 @@ import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
 import { ReleaseChecker } from "./engine/updates.js";
 import { EventJournal } from "./engine/event-journal.js";
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem } from "electron";
+import { RoutinePages, RoutineScheduler, validateRoutine } from "./engine/routines.js";
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, protocol, shell, nativeTheme, safeStorage, screen, Menu, MenuItem, powerMonitor, powerSaveBlocker } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -164,27 +165,43 @@ app.on("open-url", (event, url) => {
   if (desktopHostActivation.open(url)) event.preventDefault();
 });
 // Routines Phase 0 event journal, off by default (docs/event-journal.md). It records alongside the
-// authoritative state files; a failure turns the journal off and never affects a turn.
+// authoritative state files; a failure turns the journal off and never affects a turn. While it is
+// on, paired desktops get thread events from it with cursors and resume after a reconnect.
 let journal: EventJournal | undefined;
+let journalPruning: ReturnType<typeof setInterval> | undefined;
+const stopJournal = (error: unknown): void => {
+  console.error("[modex] event journal stopped:", error);
+  const stopped = journal;
+  journal = undefined;
+  clearInterval(journalPruning);
+  try { stopped?.close(); } catch { /* Already failing; the state files remain authoritative. */ }
+  // Streams fed by the journal would miss what it never wrote: reconnect them without it.
+  desktopHost?.restartStreams();
+};
 if (process.env.MODEX_EVENT_JOURNAL === "1") {
-  try { journal = new EventJournal(path.join(home, "app", "events.sqlite")); }
-  catch (error) { console.error("[modex] event journal unavailable:", error); }
+  try {
+    journal = new EventJournal(path.join(home, "app", "events.sqlite"), { onError: stopJournal });
+    journal.subscribe((entries) => desktopHost?.broadcastJournal(entries));
+    journal.prune();
+    journalPruning = setInterval(() => { try { journal?.prune(); } catch (error) { stopJournal(error); } }, 60 * 60_000);
+    journalPruning.unref();
+  } catch (error) {
+    console.error("[modex] event journal unavailable:", error);
+    try { journal?.close(); } catch { /* The state files remain authoritative. */ }
+    journal = undefined;
+  }
 }
 const journalEvent = (event: ThreadEvent): void => {
   if (!journal) return;
   try { journal.record(event); }
-  catch (error) {
-    console.error("[modex] event journal stopped:", error);
-    try { journal.close(); } catch { /* Already failing; the state files remain authoritative. */ }
-    journal = undefined;
-  }
+  catch (error) { stopJournal(error); }
 };
 let media: Media | undefined;
 const emit = (event: ThreadEvent): void => {
   media?.onEvent(event);
   journalEvent(event);
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
-  desktopHost?.broadcast("thread", event);
+  if (!journal) desktopHost?.broadcast("thread", event);
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
@@ -290,8 +307,43 @@ const retirer = new TaskRetirer({
   inspect: (cwd) => gitx.worktreeState(cwd),
   retire: (id, pr) => runner.retireThread(id, pr),
 });
+// Routines Phase 1 (docs/routines.md): read-only Chat or Plan turns on a timer, with or without a window.
+const routineBlockers = new Map<string, number>();
+const routines = new RoutineScheduler(home, {
+  project: (id) => store.project(id),
+  createThread: (projectId, routine) => restartAdmission.run(async () => {
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    await pathReady;
+    if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+    return runner.createRoutineThread(projectId, routine);
+  }),
+  // Admission covers starting the turn, as for any send; the run itself is awaited outside it.
+  sendUnattended: async (id, text) => {
+    let turn: Promise<{ completed: boolean }> | undefined;
+    await restartAdmission.run(async () => {
+      if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
+      turn = runner.sendUnattended(id, text);
+      turn.catch(() => { /* Awaited below. */ });
+    });
+    return turn!;
+  },
+  stop: (id) => runner.stop(id),
+  items: (id) => runner.items(id),
+  status: (id) => runner.status(id),
+  addNotice: (id, level, text) => runner.addNotice(id, level, text),
+  pages: new RoutinePages(store.space),
+  // Keep a windowless Modex from being suspended by App Nap while a run works.
+  runStarted: (run) => { routineBlockers.set(run.id, powerSaveBlocker.start("prevent-app-suspension")); },
+  runEnded: (run) => {
+    const blocker = routineBlockers.get(run.id);
+    routineBlockers.delete(run.id);
+    if (blocker !== undefined && powerSaveBlocker.isStarted(blocker)) powerSaveBlocker.stop(blocker);
+  },
+});
 const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
+  journal: () => journal,
+  routineRuns: () => routines.list().runs,
   pullRequest: (id) => retirer.pullRequest(id),
   setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
   setArchived: (id, archived) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.setArchived(id, archived); },
@@ -469,6 +521,8 @@ function drainServices(): Promise<void> {
   if (servicesDrained) return Promise.resolve();
   if (drainingServices) return drainingServices;
   servicesTouched = true;
+  // Before the runner stops turns: runs in progress end interrupted and write no page.
+  try { routines.dispose(); } catch (error) { console.error("[modex] routines could not stop:", error); }
   modexAccount.cancel(); chatgpt.cancel(); claudeLogin.cancel(); retirer.stop();
   drainingServices = (async () => {
     // Start every disposer even if another throws before returning its promise.
@@ -476,7 +530,7 @@ function drainServices(): Promise<void> {
       () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
-    try { journal?.close(); } catch (error) { console.error("[modex] event journal close failed:", error); }
+    try { clearInterval(journalPruning); journal?.close(); } catch (error) { console.error("[modex] event journal close failed:", error); }
     journal = undefined;
     const failure = results.find(result => result.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
@@ -679,6 +733,7 @@ handle("space:create", (input) => store.space.create(input));
 handle("space:save", (page) => store.space.save(page));
 handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
 handle("notes:settle", ({ id }) => store.space.settle(id));
+handle("notes:page:path", ({ id }) => store.space.pageRel(id) ?? null);
 handle("notes:tree", (req) => { const tree = store.space.tree(); return req?.since === tree.version ? { unchanged: true as const, version: tree.version } : tree; });
 handle("notes:workspace:create", ({ name }) => store.space.createWorkspace(name));
 handle("notes:project:create", ({ workspaceId, name }) => store.space.createProject(workspaceId, name));
@@ -698,7 +753,7 @@ handle("notes:import", async ({ targetId, paths }) => {
     if (picked.canceled) return { imported: 0, errors: [] };
     sources = picked.filePaths;
   }
-  const result = store.space.importFiles(targetId, sources);
+  const result = await store.space.importFiles(targetId, sources);
   return { imported: result.imported.length, errors: result.errors };
 }, { localOnly: true });
 handle("notes:file:read", ({ id }) => store.space.readFile(id));
@@ -788,14 +843,14 @@ handle("settings:update", async (patch) => {
     ...(patch.approval_rules !== undefined ? { approval_rules: validateRules(patch.approval_rules) } : {}),
   });
   win?.setBackgroundColor(THEMES[settings.theme].background);
-  if (settings.theme !== previousTheme) void knowledgeBrowser?.refreshAppearance();
+  if (settings.theme !== previousTheme) { void knowledgeBrowser?.refreshAppearance(); void workspaceAnalytics?.refreshAppearance(); }
   return settings;
 });
 handle("approvals:rules:get", () => store.snapshot().settings.approval_rules);
 handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
 handle("approvals:try", (req) => previewApproval(req, {
   project: (id) => store.project(id), config: store.snapshot().settings.approval_gate,
-  jev: () => runner.router.jev(),
+  jev: () => runner.router.decisions.connect("approval", { preview: true }),
 }));
 handle("models:list", ({ backend }) => runner.listModels(backend));
 // Account identity is local desktop authority, never exposed to paired mobile clients.
@@ -841,6 +896,10 @@ handle("backends:health", async () => {
 });
 handle("companion:status", () => companionView(companion.status()));
 handle("companion:start", async () => companionView(await companion.start()));
+handle("routines:list", () => routines.list());
+handle("routines:save", (draft) => routines.save(validateRoutine(draft, (id) => Boolean(store.project(id)))));
+handle("routines:delete", ({ id }) => routines.remove(id));
+handle("routines:run", ({ id }) => routines.runNow(id));
 handle("companion:stop", async () => companionView(await companion.stop()));
 handle("companion:reset", () => companionView(companion.resetAccess()));
 handle("shell:openPath", async ({ path: p }) => {
@@ -913,9 +972,10 @@ function createWindow(): BrowserWindow {
   w.on("closed", () => { knowledgeView.dispose(); if (knowledgeBrowser === knowledgeView) { knowledgeBrowser = null; knowledgeURL = null; } });
   // The built usage dashboard sits beside the renderer (dist/usage-preview); main serves it to its own session.
   const analyticsRoot = path.join(here, "..", "..", "usage-preview");
-  let analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger);
+  const analyticsTheme = () => store.settings.theme;
+  let analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger, analyticsTheme);
   workspaceAnalytics = analytics;
-  w.webContents.on("did-start-navigation", () => { analytics.dispose(); analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger); workspaceAnalytics = analytics; });
+  w.webContents.on("did-start-navigation", () => { analytics.dispose(); analytics = new WorkspaceAnalytics(w, analyticsRoot, usageLedger, analyticsTheme); workspaceAnalytics = analytics; });
   w.on("closed", () => { analytics.dispose(); if (workspaceAnalytics === analytics) workspaceAnalytics = null; });
   w.webContents.on("did-start-navigation", () => browser.dispose());
   w.on("closed", () => { browser.dispose(); if (workspaceBrowser === browser) workspaceBrowser = null; });
@@ -975,6 +1035,7 @@ function startDesktopHost(): Promise<void> {
     check();
     desktopHost = new DesktopHost(home, {
       version: app.getVersion(),
+      journal: () => journal,
       channels: () => [...desktopCommands.keys()],
       authorize: (confirmationCode, signal) => restartAdmission.run(async () => {
         check();
@@ -1060,6 +1121,13 @@ app.whenReady().then(async () => {
   desktopHostActivation.ready();
   if (!demo && !process.env.MODEX_E2E && !nativeDraftFailure && !nativeStartup?.recovery) void pathReady.then(() => retirer.start());
   if (!demo && !nativeDraftFailure && !nativeStartup?.recovery && companion.shouldStart) void companion.start().catch((err: Error) => console.error("[modex] companion could not start:", err.message));
+  if (!demo && !nativeDraftFailure && !nativeStartup?.recovery) {
+    try {
+      routines.start();
+      // Timers stall while the Mac sleeps; look for missed routines as soon as it wakes.
+      powerMonitor.on("resume", () => routines.tick());
+    } catch (error) { console.error("[modex] routines could not start:", error); }
+  }
   if (demo) {
     if (screenshotDir) setTimeout(() => { console.error("[modex] demo watchdog fired"); app.exit(2); }, 45_000).unref();
     await new Promise<void>((r) => win!.webContents.once("did-finish-load", () => r()));

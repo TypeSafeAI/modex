@@ -22,8 +22,10 @@ _Last updated 2026-10-15._
 | v0.0.10 | 2026-10-09 | #148, #149, #150, #154, #151 | Agent-maintained Knowledge and Pages, compact resizable panels, approval policies, task retirement and shutdown recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.10). |
 | v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). |
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). |
+| v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). |
 
-Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
+Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
+Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
 sequence (worktree → review doc → signed build + packaged e2e → guarded merge → signed tag →
 the `Release` workflow, behind the `release-signing` reviewer → GitHub release with
@@ -546,7 +548,19 @@ permission, Streamer Mode, Space/Knowledge, and readiness work to its delivery P
 retains the integrated candidate's CI and native evidence separately from the published
 v0.0.11 artifacts, including the original CI failures and remaining acceptance limits.
 
-## On main, unreleased
+## v0.1.0 release
+
+Published on 2026-10-15 from signed tag `v0.1.0` on `8bd21c6` (#251), with macOS, Windows and Linux
+installers, by Val's decision. [Release run 38825544975](https://github.com/TypeSafeAI/modex/actions/runs/38825544975)
+passed signing, notarization, stapling and the full packaged E2E suite, the Windows and Linux
+installer checks, and all three signed native updater scenarios on separate GitHub-hosted Macs,
+each using the published ZIP. The first tagged run, 38803510045, failed only at the draft attach
+step (setup-node looked for pnpm, fixed in #251). Nothing from it was published, and the
+replacement tag also carries #246 and #247. The independently downloaded installers passed
+checksum, manifest, signature, Gatekeeper, ticket, version and architecture checks. The DMG and
+ZIP apps have identical code hashes. The packaged suite passed again against the download (314 cases). GitHub's latest release
+reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its ZIP and digest.
+[Release review](reviews/2026-10-15-v0.1.0-release-review.md).
 
 - **Analytics export and recovery.** The native dashboard permits its own CSV
   export through a save dialog while other downloads remain refused. A torn
@@ -712,6 +726,56 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
   routing and title updates from admitted turns also finish while new edits stay fenced.
 
+## On main, unreleased
+
+- **Read-only routines** (Routines Phase 1). Routines in the rail run a read-only Chat or Plan turn
+  in one project, once or every N minutes, hours or days, while Modex is running with or without a
+  window. Each reply becomes a new revision of the routine's Space page, under the project's
+  `Routines` folder. Every approval the turn asks for is refused, with a receipt in the transcript.
+  Missed runs run once on wake, never as a burst. A run cut off by a quit or crash is marked
+  interrupted and never repeated. Activity lists each run's trigger, times, thread and page
+  revision, and the iPhone companion shows a banner when runs finish or fail. [Routines](routines.md).
+- **One decision service for Jev** (Routines Phase 0). Auto routing, follow-up suggestions and
+  approval rules now ask Jev through one module. It owns the key, the transport and the
+  session-wide switch-off after a rejected key. Each kind of judgment has a versioned question
+  set, and each judgment leaves a receipt in `app/decisions.jsonl`: Jev's typed answers or the
+  error, never the request. Routing, follow-ups and approvals behave as before.
+  [The decision service](auto-routing.md#the-decision-service).
+- **Analytics looks like the rest of Modex.** The dashboard takes the app's tokens and theme, and
+  its view's corners follow the app's sheet. It is laid out like Space: a sidebar titled Analytics,
+  and each view's title with its filters and Export CSV. Every view fits the window down to the
+  900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
+  standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
+- **The event journal resumes paired desktops and the phone** (Routines Phase 0). With
+  `MODEX_EVENT_JOURNAL=1`, a paired desktop that reconnects after sleep receives only the thread
+  events after its last cursor, and keeps its loaded transcripts instead of reloading them. The
+  iPhone companion fetches only the transcript items that changed. A cursor the journal no longer
+  covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
+  sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
+- **Agents restore notes only into their own project.** A note trashed in one project whose
+  folder was then dragged into another project can no longer be restored there by the first
+  project's agent (#241).
+- **New image jobs no longer look stuck at "queued".** When a job reached its approval before
+  Images had handled the Generate click, the job stayed "queued", or showed the previous job's
+  transcript, with no Approve button until the window lost and regained focus. Images now
+  shows the new job's status and approval either way, and reloads an open job's transcript when
+  you come back to Images.
+- **Restored notes follow their folder.** A note trashed before its workspace, project or
+  folder was renamed or moved comes back in the new place, instead of making the old folder
+  again outside the project (#241).
+- **Notes stay readable around folders with a backslash.** Moving or renaming a folder whose name
+  has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
+  you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
+  an earlier version left behind is set aside, and the folders stay as they are. (#241)
+- **New workspace opens only when asked.** After you make a workspace, searching pages and
+  clearing the search no longer reopens an empty New workspace field that takes your typing and
+  makes another workspace when you click away (#241).
+- **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
+  large import from another disk, a network share or iCloud no longer freezes the window, and
+  each file appears in your notes only once it has copied in full (#241).
+- **Open in knowledge base finds a renamed page.** Right after you retitle a page, Open in
+  knowledge base opens its file under the new name instead of failing on the old one. (#241)
+
 ## In flight
 
 - **Claude Agent SDK ([fork PR #1](https://github.com/snowopsdev/modex/pull/1)).** Claude
@@ -724,14 +788,6 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   cancellation and shutdown. Packaged builds omit bundled native CLI packages. The
   [review evidence](reviews/2026-10-15-claude-sdk-review.md) records checks and the installed
   Claude smoke limit; this migration has not landed on main.
-
-- **Desktop v0.1.0 preparation.** The first minor release ships everything under "On main,
-  unreleased": Markdown notes in workspaces and projects with per-project agent scope, files in
-  notes, Images and native Plugins (Val's decision), Analytics and thread archiving. It is the
-  first published-to-published automatic update, from v0.0.12. A signed rehearsal and the full
-  test suite passed locally. Notarization, the packaged E2E on the signed tag, the hosted native
-  updater scenarios, independent download checks and publication remain.
-  [Candidate review](reviews/2026-10-15-v0.1.0-release-review.md).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
@@ -964,6 +1020,24 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   polling and spinner kept it busy, and the unscaled demo test still passed in 187 s because
   those waits never touch the suite's budgets. The CI runners are slow in the snapshot path,
   which is the one the budgets measure.
+- **`iPhone companion` `/resume` timeouts (2026-10-16).** Three paired-flow failures on 10-15/16
+  (38707861067, 38747016392, 38832248437) timed out on the paused-Mac `/resume` call, which green
+  runs (38832248437 attempt 2, 38836144274) answered in 0.1 s. The simulator's unified log
+  (in the xcresult's `simctl_diagnostics/<device>/system.logarchive`) shows two causes. First, the
+  test runner's first URLSession use came at that step, and on a freshly booted simulator its
+  setup (cfprefsd, nsurlsessiond's storage container, trustd) took 42 s in 38747016392, so the
+  POST never left the runner, and 19 s in 38707861067. The resume now goes over a plain socket
+  (`UITests/LoopbackPost.swift`) with the suite's scaled budget. Second, in 38707861067 and
+  38832248437 the POST did reach the Mac, but the fixture neither answered nor restarted the
+  companion within 8–10 s, while it exits at once on SIGTERM at the end of the job. 38848571338
+  failed the same way at the first reply: the fixture left a snapshot unanswered and a TLS
+  ClientHello unanswered for 5–8 s each, the app marked the Mac disconnected, and the
+  `create-thread` tap landed on the disabled button 0.2 s later. Locally the fixture answers
+  `/resume` in 3 ms after 8–80 s outages, and `dispose()` returns at once with a connection in
+  any state. Why the CI fixture goes silent is open. `fixture.mjs` now logs the phone's calls,
+  the pause/resume lifecycle, and every event-loop stall of 1 s or more with the CPU time,
+  major faults and involuntary context switches it saw, so the next failure's job log says
+  whether the process was busy, paging or starved.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before
@@ -1008,15 +1082,14 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Publish Windows and Linux installers.** The protected pipeline built and verified them for
-   v0.0.12 (run 38465731604), but Val chose macOS-only publication. Publish them from a
-   later signed tag after release review. Candidate Actions artifacts are not releases. Provider-account acceptance,
-   KWallet6/full graphical sessions, and historical schema migration remain unproven;
-   see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
-2. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
-   result written to a Space page. They follow a groundwork phase (a shared decision service
-   and an event journal), and routines that change code wait for the approval gate decision.
-   See the [routines specification](specs/2026-10-11-modex-routines-spec.md).
+1. **Record the first published-to-published update.** Upgrade a real v0.0.12 install to v0.1.0
+   through its own update banner, and add the result to the
+   [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication). Windows and Linux
+   installers shipped with v0.1.0. Provider-account acceptance, KWallet6/full graphical sessions,
+   and historical schema migration remain unproven; see [native-platforms.md](native-platforms.md).
+2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
+   routines in a claimed worktree wait for the approval gate decision. See the
+   [routines specification](specs/2026-10-11-modex-routines-spec.md).
 3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 

@@ -107,6 +107,30 @@ verify step prints the team identifier, the signing certificate of the app and t
 Gatekeeper verdict for both (`source=Notarized Developer ID`), the stapler result for the app,
 the DMG and the app inside the ZIP, the bundle icon check, and the checksums.
 
+### When 1Password cannot be reached
+
+`op run` can fail before the build starts. Seen so far: `connecting to desktop app timed out`,
+even from Val's own shell with the app running (v0.1.0), and `authorization timeout` when nobody
+is at the Mac to approve the prompt (v0.0.11). The rehearsal does not need 1Password.
+`--sign-only` uses only the Developer ID identity in the login keychain and skips notarization,
+which the `Release` workflow does with the `release-signing` credentials. Skip the `op run`
+re-exec and name the identity yourself:
+
+```sh
+MODEX_RELEASE_ENV_LOADED=1 \
+MODEX_SIGN_IDENTITY="Developer ID Application: Soul Protocol LLC (9LR8Z8UQ9X)" \
+scripts/release-mac.sh --sign-only
+```
+
+`MODEX_RELEASE_ENV_LOADED=1` is the flag the script sets for itself once `op run` has loaded
+the environment. With it set, `.env.release` is not read at all. The output is signed but not
+notarized, so never publish it. Say in the release review that local notarization was skipped
+and why. The packaged e2e and the rest of the rehearsal run as usual.
+
+A full local run (no `--sign-only`) and the iPhone TestFlight upload still need `op`. The CLI
+reaches secrets through the 1Password app: it must be running and unlocked, with **Settings →
+Developer → Integrate with 1Password CLI** turned on. `op whoami` should answer without a timeout.
+
 ## Verifying a download
 
 Anyone can check an artifact without trusting this repository:
@@ -160,8 +184,17 @@ From v0.0.5 the published artifacts come from the `Release` workflow. The local 
 rehearsal that gates the merge.
 
 1. In a `release-<ver>` worktree, bump the version, update `docs/status.md`, and write the
-   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then the packaged e2e:
-   `MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" pnpm test:e2e`.
+   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then build the Store client and run
+   the packaged e2e, as the `Release` workflow does:
+
+   ```sh
+   pnpm --filter @modex/store-desktop build
+   MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" pnpm test:e2e
+   ```
+
+   The Store specs launch the client from source with development Electron, and neither
+   `scripts/release-mac.sh` nor the desktop build builds it. Without it they stop at once with
+   "The Store client is not built".
 2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
 3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
    `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, and runs

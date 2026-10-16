@@ -3,10 +3,13 @@ import { createRoot } from "react-dom/client";
 import { UsageDashboard } from "./UsageDashboard";
 import { sampleEvents } from "./sample";
 import type { UsageEvent } from "./ledger";
+import "../tokens.css";
 import "./usage.css";
 
 /** Inside Modex the page is served from `modex-analytics://app/` with the recorded usage beside it. */
 const live = location.protocol === "modex-analytics:";
+// Inside Modex, main sets the app's theme; the standalone preview takes ?theme= (Graphite by default).
+if (!live) document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") ?? "graphite";
 /** How often an open dashboard picks up turns that finished since it loaded. */
 const REFRESH_MS = 15_000;
 

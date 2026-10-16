@@ -76,6 +76,37 @@ state per request. A routing call sends a few hundred tokens, so Auto costs well
 hundredth of a cent per turn and typically answers in well under a second; a turn waits at
 most 8 s for the judge before falling back to the heuristic.
 
+## The decision service
+
+Every question Modex puts to Jev goes through one module,
+`apps/desktop/src/main/engine/routing/decisions.ts`: Auto routing, the follow-up suggestion and
+[approval rules](approval-rules.md), including Try it. It owns the key, the transport and the
+session-wide switch-off. An auth or billing rejection seen by any of them turns Jev off for all of
+them until the key or judge settings change or a test succeeds. Each caller still asks its own
+questions and handles its own failure: routing falls back to the heuristic, follow-ups use the
+heuristic pick, and approval rules ask a person.
+
+Each kind of judgment has a versioned question set. The version goes up whenever its wording or
+choices change:
+
+| Set | Version | Questions |
+| --- | --- | --- |
+| `routing` | 1 | the six above (`routing/judge.ts`) |
+| `follow_up` | 1 | `follow_up` (`routing/followup.ts`) |
+| `approval` | 1 | `destructive` plus one per language rule (`approvals/gate.ts`) |
+
+Each request to Jev leaves a receipt in `~/.modex/app/decisions.jsonl`, one JSON line per
+judgment, written with mode 0600. A receipt records:
+
+- the set and its version, the Jev model and transport, and when it ran and how long it took;
+- the thread, or `preview` for Try it;
+- Jev's typed answers (choice and confidence, score and confidence, or noul), or the error.
+
+It never holds the state sent to Jev: no request text, digest, command or path. Past 4 MB the file
+starts over, and the previous file is kept as `decisions.1.jsonl`. The connection test in Settings
+is not a judgment and leaves no receipt. A receipt that can't be written is logged once and never
+changes a decision.
+
 ## What code decides
 
 Jev's answers are raw judgments. The policy (`routing/policy.ts`) turns them into a route,

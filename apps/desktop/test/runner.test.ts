@@ -1347,7 +1347,9 @@ test("approval gate: withdrawing during Jev setup resolves before setup finishes
   const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: [] }) });
   let setup = false;
   let release!: () => void;
-  router.jev = () => {
+  router.decisions.connect = (set, context) => {
+    assert.equal(set, "approval");
+    assert.ok(context?.threadId);
     setup = true;
     return new Promise((resolve) => { release = () => resolve({ transport: null, model: "" }); });
   };

@@ -91,7 +91,9 @@ CLI's own "Always" for one command, which remains on the card.
 The gate sends tool/title, scrubbed command text, paths, project name, branch when available,
 and mode. It does not send file contents, patches, edit strings, or coding-session messages.
 The preview accepts only sample metadata. Credential lookup is shared with
-[Auto routing](auto-routing.md); there is no second key store or coding API mode.
+[Auto routing](auto-routing.md); there is no second key store or coding API mode. Each judgment
+leaves a local receipt with Jev's answers but none of that data; see
+[the decision service](auto-routing.md#the-decision-service).
 
 ## Live preview evidence
 

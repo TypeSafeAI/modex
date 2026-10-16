@@ -1,5 +1,6 @@
 import type { PluginCommands } from "./plugins.js";
 import type { ImageCommands } from "./images.js";
+import type { RoutineCommands } from "./routines.js";
 import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
@@ -82,6 +83,8 @@ export interface Thread {
   retired?: { at: string; reason: "merged"; pr: number; url: string };
   /** Set when the thread was put away, on the Mac or a phone. It leaves the working lists; the transcript stays and a new message brings it back. */
   archived?: { at: string };
+  /** Main-owned: the routine run that made this thread (docs/routines.md). */
+  routine?: { id: string; name: string; runId: string };
 }
 
 /** A CLI-reported delegated task. Unknown means the stream ended without a final state. */
@@ -427,7 +430,7 @@ export interface ModexBridge {
   pickFiles?(): Promise<File[]>;
   attachmentThumbnail?(rel: string, signal: AbortSignal): Promise<Blob>;
   /** Optional host transport: refresh snapshots after reconnect without discarding drafts. */
-  onReconnect?(cb: () => void): () => void;
+  onReconnect?(cb: (info?: { resumed: boolean }) => void): () => void;
 }
 
 export interface BackendHealth {
@@ -473,7 +476,7 @@ export interface CompanionStatus {
 
 export interface ReleaseUpdate { version: string; url: string; }
 
-export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands {
+export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
   "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };
@@ -500,6 +503,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
   /** Renames a page's file to match its title once editing the title is done; typing never renames files. */
   "notes:settle": { req: { id: string }; res: import("./space.js").SpacePage };
+  /** A page's file relative to the notes folder, read at the time of asking so a renamed page has its new name (a folder note is Folder/Folder.md). */
+  "notes:page:path": { req: { id: string }; res: string | null };
   /** The notes folder as a tree; `since` a version that still holds answers `unchanged`. */
   "notes:tree": { req: { since?: string } | undefined; res: import("./notes.js").NotesTree | { unchanged: true; version: string } };
   "notes:workspace:create": { req: { name: string }; res: import("./notes.js").NotesWorkspace };

@@ -84,19 +84,26 @@ works in isolation, pauses for approval, and resumes correctly after a restart.
 - Settle approval readiness: land the guards, run the human acceptance checklist, and decide
   whether the approval gate turns on.
 - **Decision service:** move Auto routing and approval rules behind one module, with versioned
-  question sets and a stored receipt for each judgment. Behaviour does not change.
+  question sets and a stored receipt for each judgment. Behaviour does not change. *Progress
+  (2026-10-15): landed as `routing/decisions.ts`; see
+  [the decision service](../auto-routing.md#the-decision-service).*
 - **Event journal:** record thread events in `node:sqlite` with a durable cursor, so existing
   clients resume after sleep or reconnect. Write to it alongside the existing storage, behind a
-  flag; `state.json` and the per-thread files stay authoritative. *Progress (2026-10-14): the
-  journal, its flag (`MODEX_EVENT_JOURNAL=1`) and the replay exit test have landed; see
-  [event-journal.md](../event-journal.md). The resume endpoint, the paired sleep test and
-  retention remain.*
+  flag; `state.json` and the per-thread files stay authoritative. *Progress: the journal, its flag
+  (`MODEX_EVENT_JOURNAL=1`) and the replay exit test landed on 2026-10-14. The resume endpoint
+  for paired desktops and the phone, retention, and the paired sleep test landed on 2026-10-15.
+  See [event-journal.md](../event-journal.md).*
 - **Exit tests:**
   - the existing unit and e2e suites pass unchanged;
   - replaying a recorded session from the journal matches its transcript;
   - a paired desktop and the phone resume after sleep without gaps or duplicates.
 
 ### Phase 1: read-only routines
+
+*Progress (2026-10-15): landed; see [routines.md](../routines.md). Modex writes the page itself,
+through the revision-checked page store the Pages MCP uses, because a read-only turn's Pages
+tools are read-only. A power-save blocker (`prevent-app-suspension`) is held during each run,
+and missed runs are checked on wake.*
 
 - A routine runs **Chat or Plan** turns on a time trigger, in one named project, while the app
   is running (window open or not). It writes its result to a Space page through the Pages MCP.

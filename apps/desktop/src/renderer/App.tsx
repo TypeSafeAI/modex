@@ -43,6 +43,7 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 // xterm is only loaded once a terminal is first opened.
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 const ImagesView = lazy(() => import("./images/ImagesView").then(m => ({ default: m.ImagesView })));
+const RoutinesView = lazy(() => import("./routines/RoutinesView").then(m => ({ default: m.RoutinesView })));
 const PluginSurface = lazy(() => import("./plugins/PluginSurface").then(m => ({ default: m.PluginSurface })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 
@@ -82,7 +83,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     window.addEventListener("modex:open-page", open);
     return () => window.removeEventListener("modex:open-page", open);
   }, []);
-  const [surface, setSurface] = useState<"chat" | "space" | "analytics" | "images" | "plugins">("chat");
+  const [surface, setSurface] = useState<"chat" | "space" | "analytics" | "images" | "plugins" | "routines">("chat");
   const [mediaFeatures, setMediaFeatures] = useState({ images: false, plugins: false });
   const [imagesOpened, setImagesOpened] = useState(false);
   useEffect(() => { let live = true; void bridge.invoke("features:media", undefined).then(features => { if (live) setMediaFeatures(features); }).catch(() => {}); return () => { live = false; }; }, []);
@@ -376,8 +377,12 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     return () => { live = false; };
   }, [refresh]);
 
-  useEffect(() => bridge.onReconnect?.(() => {
-    setConnectionRevision((revision) => revision + 1);
+  useEffect(() => bridge.onReconnect?.((info) => {
+    // A resumed host stream replays every missed event, so loaded transcripts stay; only reload them
+    // when the host could not resume. The thread list always refreshes: creation and deletion are
+    // not thread events.
+    if (!info?.resumed) setConnectionRevision((revision) => revision + 1);
+    else if (selectedRef.current) void loadChanges(selectedRef.current);
     void refresh().then((snapshot) => {
       const current = selectedRef.current;
       if (current && !snapshot.threads.some((thread) => thread.id === current)) setSelected(null);
@@ -397,7 +402,12 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
       else if (e.type === "status") {
         setState((s) => (s ? { ...s, threads: s.threads.map((t) => (t.id === e.threadId ? { ...t, status: e.status } : t)) } : s));
         if ((e.status === "idle" || e.status === "error") && selectedRef.current === e.threadId) void loadChanges(e.threadId);
-      } else if (e.type === "thread") setState((s) => (s ? { ...s, threads: s.threads.map((t) => (t.id === e.thread.id ? { ...t, ...e.thread, status: t.status } : t)) } : s));
+      } else if (e.type === "thread") setState((s) => {
+        if (!s) return s;
+        // A thread made in main (a routine run) is news to this window; others update in place.
+        if (!s.threads.some((t) => t.id === e.thread.id)) return { ...s, threads: [e.thread, ...s.threads] };
+        return { ...s, threads: s.threads.map((t) => (t.id === e.thread.id ? { ...t, ...e.thread, status: t.status } : t)) };
+      });
     });
   }, []);
 
@@ -882,7 +892,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         onArchive={archiveThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins ? () => setSurface("plugins") : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
+      <Rail surface={surface} onOpenRoutines={() => setSurface("routines")} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins ? () => setSurface("plugins") : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
       <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
         {(surface === "chat" || surface === "space") && sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
@@ -899,6 +909,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           setSurface("chat");
         }} /></Suspense>}
         {surface === "plugins" && <Suspense fallback={<div role="status">Opening Plugins…</div>}><PluginSurface projects={state.projects} onImages={openImages} /></Suspense>}
+        {surface === "routines" && <Suspense fallback={<div role="status">Opening Routines…</div>}><RoutinesView active={!showSettings && !showCompanion} projects={state.projects}
+          onOpenThread={id => { void (state.threads.some(t => t.id === id) ? Promise.resolve() : refresh()).then(() => { selectThread(id); setSurface("chat"); }).catch((err: Error) => setError({ message: err.message })); }}
+          onOpenPage={spaceEnabled ? id => { setOpenPage({ id }); setSpaceOpened(true); setSurface("space"); } : undefined} /></Suspense>}
         {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onOpenImages={mediaFeatures.images ? openImages : undefined} onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar

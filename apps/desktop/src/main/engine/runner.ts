@@ -29,6 +29,9 @@ import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
 
+/** Refused approvals in a routine run: the routine is read-only, and nobody is there to answer. */
+const UNATTENDED_RECEIPT: ApprovalReceipt = { source: "policy", ruleId: "policy:routine", when: "Routine run: approvals are refused while it runs unattended", decision: "never", via: "policy", ms: 0 };
+
 type ThreadCreationOptions = { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean; plan?: boolean; effort?: string };
 
 type UserItem = Extract<ThreadItem, { kind: "user" }>;
@@ -52,6 +55,8 @@ interface Live {
   status: ThreadStatus;
   /** Assistant item currently receiving streamed text, if any. */
   streaming: { id: string; text: string } | null;
+  /** The last turn ended completed: not failed, stopped or silent. */
+  completed?: boolean;
   /** The follow-up suggestion for the transcript as it stands; `key` says which transcript and settings it answers. */
   followUp?: { key: string; abort: AbortController; result: Promise<FollowUp | null> };
 }
@@ -98,6 +103,8 @@ export class ThreadRunner {
   private readonly titleRuns = new Set<Promise<void>>();
   private readonly deleting = new Set<string>();
   private readonly removingProjects = new Set<string>();
+  /** Threads running an unattended routine turn: no person is there to answer, so approvals are refused. */
+  private readonly unattended = new Set<string>();
   private readonly creating = new Map<string, Set<Promise<Thread>>>();
   private readonly pendingCreations = new Map<string, { signature: string; promise: Promise<Thread> }>();
   private readonly backends: Record<BackendId, Backend>;
@@ -242,6 +249,39 @@ export class ThreadRunner {
 
   async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
     return this.trackCreation(projectId, opts);
+  }
+
+  /**
+   * A routine run's thread: always Chat (read-only), with Plan when the routine asks for it, in the
+   * project checkout, named after the routine and marked with the run that made it.
+   */
+  async createRoutineThread(projectId: string, routine: { id: string; name: string; runId: string; plan: boolean; backend?: BackendId; model?: string }): Promise<Thread> {
+    // Auto off: the routine's own provider and model run, whatever Auto's default is.
+    const thread = await this.trackCreation(projectId, { mode: "chat", plan: routine.plan, auto: false, ...(routine.backend ? { backend: routine.backend } : {}), ...(routine.model ? { model: routine.model } : {}) });
+    const marked = this.o.store.updateThread(thread.id, { title: routine.name.slice(0, 200), titleSource: "manual", routine: { id: routine.id, name: routine.name, runId: routine.runId } });
+    // No window asked for this thread: tell any open one it exists.
+    this.o.emit({ threadId: marked.id, type: "thread", thread: marked });
+    return marked;
+  }
+
+  /**
+   * Runs one turn with nobody watching. The thread must still be read-only when the turn starts:
+   * a saved routine grants nothing. Every approval the CLI asks for is refused, with a receipt.
+   */
+  async sendUnattended(threadId: string, text: string): Promise<{ completed: boolean }> {
+    const thread = this.o.store.thread(threadId);
+    if (!thread || thread.mode !== "chat") throw new Error("An unattended turn must run in Chat, which is read-only.");
+    this.unattended.add(threadId);
+    try {
+      await this.send(threadId, text);
+      // A stopped, failed or silent turn is not a result, however much it streamed first.
+      return { completed: this.slot(threadId).completed === true };
+    } finally { this.unattended.delete(threadId); }
+  }
+
+  /** A receipt in the transcript for something Modex did on the thread's behalf. */
+  addNotice(threadId: string, level: "info" | "warn" | "error", text: string): void {
+    this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: new Date().toISOString() });
   }
 
   /** Main-only pending intent path. Public thread:create never accepts the
@@ -484,6 +524,7 @@ export class ThreadRunner {
     const l = this.slot(threadId);
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
+    l.completed = false;
 
     if (prepared) {
       if (reuse !== undefined || l.items.some(item => item.id === prepared.id)) throw new Error("This message was already admitted. Use Retry explicitly.");
@@ -663,6 +704,7 @@ export class ThreadRunner {
         this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
       } else {
         if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
+        else if (!abort.signal.aborted) l.completed = true;
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
@@ -956,6 +998,11 @@ export class ThreadRunner {
       },
       approval: (req, cancelled) => {
         const signal = cancelled && abort ? AbortSignal.any([cancelled, abort.signal]) : cancelled ?? abort?.signal;
+        if (this.unattended.has(threadId)) {
+          // A routine runs read-only with no one to ask: refuse, and say so on the card.
+          if (active()) this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, ...(req.action ? { title: req.action.title } : {}), answer: "no", decidedBy: UNATTENDED_RECEIPT, at: at() });
+          return Promise.resolve("no" as const);
+        }
         // Today's flow: a card the user answers. Rules can only add a receipt to it.
         const askUser = (decidedBy?: ApprovalReceipt) =>
           new Promise<ApprovalAnswer>((resolve) => {
@@ -1041,7 +1088,7 @@ export class ThreadRunner {
     const cancelled = new Promise<null>((resolve) => { withdraw = () => resolve(null); });
     c.signal?.addEventListener("abort", withdraw, { once: true });
     try {
-      const jev = await Promise.race([this.router.jev().catch(() => ({ transport: null, model: "" })), cancelled]);
+      const jev = await Promise.race([this.router.decisions.connect("approval", { threadId: c.thread.id }).catch(() => ({ transport: null, model: "" })), cancelled]);
       if (!jev || c.signal?.aborted) return { ask: false, answer: "no" };
       const d = await decideApproval(req.action, {
         rules: c.settings.approval_rules,

@@ -2,11 +2,11 @@ import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { appDir, items, tid } from "./support";
+import { items, storeClientDir, tid } from "./support";
 
 test("Store demo works without a host and resets without saving access", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-demo-"));
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const client = await electron.launch({ args: [clientDir], cwd: clientDir,
     env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: home, MODEX_DESKTOP_DISCOVERY_DIR: path.join(home, "no-host") } });
   try {
@@ -51,7 +51,7 @@ test("Store demo preserves unreadable saved host access", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-demo-saved-"));
   const saved = path.join(home, "host-access.enc");
   fs.writeFileSync(saved, "existing encrypted access");
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: home } });
   try {
     const page = await client.firstWindow();
