@@ -22,6 +22,8 @@ import { digestAction, digestClipped } from "./digest.js";
  * 7. Aborted while deciding → the approval is answered "no".
  */
 
+/** Bumped whenever the questions below change, so stored receipts say which wording Jev answered. */
+export const APPROVAL_QUESTION_SET_VERSION = 1;
 export const MAX_JEV_RULES = 12;
 export const DESTRUCTIVE_THRESHOLD = 0.5;
 /** The reason recorded when Jev was needed and there is no transport to ask. */
