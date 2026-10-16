@@ -754,7 +754,6 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
   you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
   an earlier version left behind is set aside, and the folders stay as they are. (#241)
-
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
 
