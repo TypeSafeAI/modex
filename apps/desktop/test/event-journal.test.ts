@@ -20,7 +20,7 @@ test("a recorded session replays from the journal to exactly its saved transcrip
     { content: "Added NOTE.md." },
   ];
   store.updateSettings({ default_backend: "mock", mock_script: writeScript(steps) });
-  const journal = new EventJournal(path.join(home, "app", "events.sqlite"), 5);
+  const journal = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
   const emitted: ThreadEvent[] = [];
   const runner = new ThreadRunner({ home, store, emit: (event) => { emitted.push(event); journal.record(event); },
     backends: { mock: new MockBackend(() => store.settings.mock_script, home, 0) } });
@@ -64,7 +64,7 @@ test("cursors only grow and survive reopening the journal", () => {
 });
 
 test("updates within one flush merge into one row that applies like the separate updates", () => {
-  const journal = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"), 60_000);
+  const journal = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"), { flushMs: 60_000 });
   const reply = { id: "a1", kind: "assistant", text: "", at: "2026-10-14T00:00:00.000Z" } as ThreadItem;
   const events: ThreadEvent[] = [
     { threadId: "t1", type: "item", item: reply },
@@ -93,4 +93,92 @@ test("since filters by thread and bounds its page size", () => {
   assert.deepEqual(journal.since(2, { limit: 2 }).map((entry) => entry.seq), [3, 4]);
   journal.close();
   assert.doesNotThrow(() => journal.record({ threadId: "even", type: "status", status: "idle" }), "a closed journal ignores late events");
+});
+
+const note = (id: string, at = "2026-10-15T00:00:00.000Z") => ({ id, kind: "user", text: id, at }) as ThreadItem;
+
+test("resume answers a known cursor with exactly what it missed, and anything else with reload", () => {
+  const file = path.join(tmpdir("modex-journal-"), "events.sqlite");
+  const journal = new EventJournal(file);
+  journal.record({ threadId: "t1", type: "item", item: note("a") });
+  journal.record({ threadId: "t2", type: "item", item: note("b") });
+  const cursor = journal.latest();
+  journal.record({ threadId: "t1", type: "item", item: note("c") });
+  journal.record({ threadId: "t2", type: "status", status: "running" });
+
+  const missed = journal.resume(journal.id, cursor);
+  assert.equal(missed.latest, 4);
+  assert.deepEqual(missed.entries?.map((entry) => entry.seq), [3, 4]);
+  assert.deepEqual(journal.resume(journal.id, cursor, { threadId: "t1" }).entries?.map((entry) => entry.seq), [3]);
+  assert.deepEqual(journal.resume(journal.id, 4).entries, [], "a caught-up client gets nothing");
+  for (const [id, at] of [["another-journal", cursor], [journal.id, undefined], [journal.id, 5], [journal.id, -1], [journal.id, 1.5]] as const) {
+    assert.deepEqual(journal.resume(id, at), { id: journal.id, latest: 4 }, `reload for ${id} @ ${at}`);
+  }
+  const id = journal.id;
+  journal.close();
+  const reopened = new EventJournal(file);
+  assert.equal(reopened.id, id, "the journal keeps its id across restarts");
+  assert.deepEqual(reopened.resume(id, cursor).entries?.map((entry) => entry.seq), [3, 4]);
+  reopened.close();
+  const fresh = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"));
+  assert.notEqual(fresh.id, id, "a new journal file never accepts an old file's cursor");
+  assert.equal(fresh.resume(id, 0).entries, undefined);
+  fresh.close();
+});
+
+test("retention prunes by age and by row count, and a pruned cursor must reload", () => {
+  const file = path.join(tmpdir("modex-journal-"), "events.sqlite");
+  const day = 24 * 60 * 60_000;
+  const journal = new EventJournal(file, { retention: { maxAgeMs: 7 * day, maxRows: 3 } });
+  const now = Date.now();
+  for (const id of ["a", "b"]) journal.record({ threadId: "t1", type: "item", item: note(id) });
+  journal.flush();
+  assert.equal(journal.prune(now), 0, "fresh rows within the row limit stay");
+  assert.equal(journal.prune(now + 8 * day), 2, "rows older than the age limit go");
+  assert.equal(journal.resume(journal.id, 0).entries, undefined, "a cursor from before the pruned point reloads");
+  assert.deepEqual(journal.resume(journal.id, 2).entries, [], "the pruned point itself still resumes");
+  for (const id of ["c", "d", "e", "f", "g"]) journal.record({ threadId: "t1", type: "item", item: note(id) });
+  assert.equal(journal.prune(now), 2, "past the row limit, the oldest rows go");
+  assert.deepEqual(journal.since(0).map((entry) => entry.seq), [5, 6, 7]);
+  assert.equal(journal.resume(journal.id, 3).entries, undefined);
+  assert.deepEqual(journal.resume(journal.id, 4).entries?.map((entry) => entry.seq), [5, 6, 7]);
+  journal.close();
+  const reopened = new EventJournal(file, { retention: { maxAgeMs: 7 * day, maxRows: 3 } });
+  assert.equal(reopened.resume(reopened.id, 3).entries, undefined, "the pruned point survives a restart");
+  reopened.record({ threadId: "t1", type: "status", status: "idle" });
+  assert.equal(reopened.latest(), 8, "pruning never lets a cursor be reused");
+  reopened.close();
+});
+
+test("a resume further behind than one page reloads instead", () => {
+  const journal = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"), { flushMs: 60_000 });
+  for (let i = 0; i <= 10_000; i++) journal.record({ threadId: "t1", type: "item", item: note(`n${i}`) });
+  assert.equal(journal.resume(journal.id, 0).entries, undefined);
+  assert.equal(journal.resume(journal.id, 1).entries?.length, 10_000);
+  journal.close();
+});
+
+test("subscribers get each written batch with its cursors, and a timed flush failure is reported", async () => {
+  const journal = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"), { flushMs: 60_000 });
+  const seen: number[][] = [];
+  const unsubscribe = journal.subscribe((entries) => seen.push(entries.map((entry) => entry.seq)));
+  journal.record({ threadId: "t1", type: "item", item: note("a") });
+  journal.record({ threadId: "t1", type: "status", status: "running" });
+  assert.deepEqual(seen, [], "nothing reaches subscribers before it is written");
+  const resumed = journal.resume(journal.id, 0);
+  assert.deepEqual(seen, [[1, 2]], "reading flushes, and subscribers see that batch first");
+  assert.deepEqual(resumed.entries?.map((entry) => entry.seq), [1, 2]);
+  unsubscribe();
+  journal.record({ threadId: "t1", type: "status", status: "idle" });
+  journal.flush();
+  assert.deepEqual(seen, [[1, 2]]);
+  journal.close();
+
+  const errors: unknown[] = [];
+  const failing = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"), { flushMs: 5, onError: (error) => errors.push(error) });
+  (failing as unknown as { insert: { run(): never } }).insert = { run() { throw new Error("disk full"); } };
+  failing.record({ threadId: "t1", type: "status", status: "idle" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.match(String(errors[0]), /disk full/, "a timed flush reports its failure instead of throwing from a timer");
+  failing.close();
 });

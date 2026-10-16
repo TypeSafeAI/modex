@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import type { AddressInfo, Socket } from "node:net";
 import { APPROVAL_POLICIES, type AppState, type ApprovalAnswer, type ApprovalPolicy, type BackendId, type PullRequestSummary, type Thread, type ThreadItem } from "../../shared/types.js";
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
+import type { EventJournal } from "./event-journal.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
 
 interface CompanionSource {
@@ -23,6 +24,8 @@ interface CompanionSource {
   setArchived?(threadId: string, archived: boolean): void;
   /** The pull request last seen for a worktree task, if any. */
   pullRequest?(threadId: string): PullRequestSummary | undefined;
+  /** The event journal, when it is on: a phone then fetches only the items changed since its cursor. */
+  journal?(): Pick<EventJournal, "resume"> | undefined;
 }
 
 interface Config { enabled: boolean; token: string; port?: number }
@@ -250,14 +253,21 @@ export class CompanionServer {
       const state = this.source.state();
       const threadId = url.searchParams.get("threadId");
       const thread = threadId ? state.threads.find((t) => t.id === threadId) : undefined;
+      // The selected thread's transcript comes with a journal cursor read in the same synchronous
+      // step. Given that cursor back, only items that changed after it are sent, and `delta` says so.
+      const after = url.searchParams.get("after");
+      const resume = thread ? this.source.journal?.()?.resume(url.searchParams.get("journal") ?? undefined, after !== null && /^\d{1,15}$/.test(after) ? Number(after) : undefined, { threadId: thread.id }) : undefined;
+      const changed = resume?.entries && new Set(resume.entries.map(({ event }) => event.type === "item" ? event.item.id : event.type === "item_update" ? event.id : undefined));
+      const items = thread ? this.source.items(thread.id).filter((item) => !changed || changed.has(item.id)) : [];
       // Return the current list even if the selected thread was deleted on the Mac.
       // The phone can then leave that transcript without treating this as a lost connection.
       this.reply(res, 200, {
         projects: state.projects.map((p) => ({ id: p.id, name: p.name })),
         threads: state.threads.map((t) => mobileThread(t, this.source.status(t.id), this.source.pullRequest?.(t.id))),
-        items: thread ? this.source.items(thread.id).map(mobileItem) : [],
+        items: items.map(mobileItem),
         defaultBackend: state.settings.default_backend ?? "codex",
         autoByDefault: state.settings.routing?.auto_by_default ?? false,
+        ...(resume ? { journal: { id: resume.id, cursor: resume.latest }, ...(changed ? { delta: true } : {}) } : {}),
       });
       return;
     }

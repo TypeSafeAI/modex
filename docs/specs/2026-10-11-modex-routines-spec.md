@@ -87,10 +87,10 @@ works in isolation, pauses for approval, and resumes correctly after a restart.
   question sets and a stored receipt for each judgment. Behaviour does not change.
 - **Event journal:** record thread events in `node:sqlite` with a durable cursor, so existing
   clients resume after sleep or reconnect. Write to it alongside the existing storage, behind a
-  flag; `state.json` and the per-thread files stay authoritative. *Progress (2026-10-14): the
-  journal, its flag (`MODEX_EVENT_JOURNAL=1`) and the replay exit test have landed; see
-  [event-journal.md](../event-journal.md). The resume endpoint, the paired sleep test and
-  retention remain.*
+  flag; `state.json` and the per-thread files stay authoritative. *Progress: the journal, its flag
+  (`MODEX_EVENT_JOURNAL=1`) and the replay exit test landed on 2026-10-14. The resume endpoint
+  for paired desktops and the phone, retention, and the paired sleep test landed on 2026-10-15.
+  See [event-journal.md](../event-journal.md).*
 - **Exit tests:**
   - the existing unit and e2e suites pass unchanged;
   - replaying a recorded session from the journal matches its transcript;
