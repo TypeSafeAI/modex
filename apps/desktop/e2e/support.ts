@@ -13,6 +13,18 @@ export const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 export const mockScript = path.join(appDir, "demo", "mock-script.json");
 
 /**
+ * The Store client's source directory, which specs launch with development Electron. Neither the
+ * desktop build nor `scripts/release-mac.sh` builds it, so a missing build fails here at once instead
+ * of as a 90-second launch timeout in every Store spec.
+ */
+export function storeClientDir(): string {
+  const dir = path.resolve(appDir, "../store-desktop");
+  const main = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).main as string;
+  if (!fs.existsSync(path.join(dir, main))) throw new Error("The Store client is not built. Run `pnpm --filter @modex/store-desktop build` first.");
+  return dir;
+}
+
+/**
  * A throwaway MODEX_HOME with one git project and no threads, on the offline mock backend in Chat mode.
  * `settings` is merged over the seeded settings (e.g. approval rules).
  */
