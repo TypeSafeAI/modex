@@ -728,7 +728,11 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 
 ## On main, unreleased
 
-Nothing yet.
+- **Analytics looks like the rest of Modex.** The dashboard takes the app's tokens and theme, and
+  its view's corners follow the app's sheet. It is laid out like Space: a sidebar titled Analytics,
+  and each view's title with its filters and Export CSV. Every view fits the window down to the
+  900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
+  standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
 
 ## In flight
 

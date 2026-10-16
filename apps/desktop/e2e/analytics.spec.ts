@@ -26,6 +26,10 @@ test("Analytics opens from the rail with the usage recorded on this Mac, and Set
     const shown = (await text())!;
     expect(shown).toContain("1 turn from Claude Code and Codex threads");
     expect(shown).not.toContain("Demo Data");
+    // It fits the window like the app's other surfaces, in the app's theme: the page never scrolls.
+    const fit = await app.evaluate(({ webContents }) => webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-analytics://app/"))!
+      .executeJavaScript("({ theme: document.documentElement.dataset.theme, scroll: document.documentElement.scrollHeight - innerHeight, title: document.querySelector('h1')?.textContent })"));
+    expect(fit).toEqual({ theme: "graphite", scroll: 0, title: "Overview" });
     expect(await app.evaluate(({ webContents }) => webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-analytics://app/"))!.executeJavaScript("[typeof window.modex, typeof require]"))).toEqual(["undefined", "undefined"]);
 
     await tid(page, "open-settings").click();
