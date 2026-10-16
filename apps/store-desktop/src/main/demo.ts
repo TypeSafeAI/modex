@@ -92,6 +92,7 @@ export class StoreDemo {
       "space:save": () => { throw new Error("Space is unavailable in the review demo."); },
       "space:trash": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:settle": () => { throw new Error("Space is unavailable in the review demo."); },
+      "notes:page:path": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:tree": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:workspace:create": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:project:create": () => { throw new Error("Space is unavailable in the review demo."); },

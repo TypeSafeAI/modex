@@ -57,6 +57,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("space:save", (page) => store.space.save(page));
   handle("space:trash", ({ id, trash }) => store.space.trash(id, trash));
   handle("notes:settle", ({ id }) => store.space.settle(id));
+  handle("notes:page:path", ({ id }) => store.space.pageRel(id) ?? null);
   handle("notes:tree", (req) => { const tree = store.space.tree(); return req?.since === tree.version ? { unchanged: true as const, version: tree.version } : tree; });
   handle("notes:workspace:create", ({ name }) => store.space.createWorkspace(name));
   handle("notes:project:create", ({ workspaceId, name }) => store.space.createProject(workspaceId, name));
