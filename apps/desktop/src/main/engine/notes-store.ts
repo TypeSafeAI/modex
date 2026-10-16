@@ -63,6 +63,8 @@ export interface LinkedProject { id: string; name: string; path: string }
 export interface NotesWorkspaceSummary { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }
 interface HistoryFile { version: 1; versions: SpacePageVersion[] }
 interface TrashManifest { version: 1; id: string; trashedAt: string; items: { id: string; original: string; rel: string }[] }
+/** A folder rename in flight (`.modex/settlement.json`): the folder, then its note, and a move's version. */
+interface Settlement { version: number; from: string; to: string; note: string; move?: SpacePageVersion }
 export interface MigrationReceipt {
   version: 1;
   /** `app/space.json` when pages were migrated from it; null for a fresh folder. */
@@ -269,10 +271,13 @@ export class NotesStore implements SpacePagesStore {
         ...this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))),
       ]);
       const target = `${parent}/${name}`;
-      // Publish intent before either rename; readers finish both before deriving parent IDs.
-      this.writeJson(path.join(this.meta, "settlement.json"), { version: 1, from: dir, to: target, note: path.posix.basename(live.rel) });
-      this.finishSettlement();
-      return this.find(this.load(), id);
+      // Publish intent before either rename; readers finish both before deriving parent IDs. A path
+      // readers would refuse (a backslash made in Finder) keeps its folder name; the note keeps the title.
+      if (!this.startSettlement({ version: 1, from: dir, to: target, note: path.posix.basename(live.rel) })) return page;
+      const settled = this.load();
+      this.rebaseOriginals(settled.index, dir, target);
+      this.writeIndex(settled.index);
+      return this.find(settled, id);
     } else {
       const name = uniqueName(stem, ".md", this.names(dir).filter(n => nameKey(n) !== nameKey(path.posix.basename(live.rel))));
       this.renameNote(state, page, live.rel, `${dir}/${name}`);
@@ -401,11 +406,11 @@ export class NotesStore implements SpacePagesStore {
         const page = this.find(fresh, node.noteId);
         const moved: SpacePage = { ...page, parentId: into.kind === "folder" ? into.noteId : null, updatedAt: this.iso(), revision: page.revision + 1 };
         // Replay history and both filesystem changes before deriving parent IDs after a crash.
-        this.writeJson(path.join(this.meta, "settlement.json"), {
+        const started = this.startSettlement({
           version: 1, from: node.rel, to: rel, note: path.posix.basename(folderNote!.rel),
           move: { page: moved, actor: "human", summary: "Moved folder" },
         });
-        this.finishSettlement();
+        if (!started) throw new Error("A folder with a backslash (\\) in its path can only be moved in Finder.");
         this.rebase(fresh, node.rel, rel);
         fresh.index.notes[page.id] = { ...fresh.index.notes[page.id]!, rel: `${rel}/${name}.md` };
       } else {
@@ -779,6 +784,7 @@ export class NotesStore implements SpacePagesStore {
     }
     // Notes inside a moved folder are found by their ids on the next read.
     for (const [id, entry] of Object.entries(index.notes)) if (entry.rel?.startsWith(`${node.rel}/`)) index.notes[id] = { ...entry, rel: `${rel}${entry.rel.slice(node.rel.length)}` };
+    this.rebaseOriginals(index, node.rel, rel);
   }
 
   // ── Reading and reconciling ──────────────────────────────────────────────────────────────
@@ -845,24 +851,35 @@ export class NotesStore implements SpacePagesStore {
     return state;
   }
 
+  /** Publishes a folder rename and replays it. False, with nothing written, for one a reader would refuse. */
+  private startSettlement(intent: Settlement): boolean {
+    if (!validSettlement(intent)) return false;
+    this.writeJson(path.join(this.meta, "settlement.json"), intent);
+    this.finishSettlement();
+    return true;
+  }
+
   /** Replays the two-step folder/note rename without ever replacing another file. */
   private finishSettlement(): void {
     const journal = path.join(this.meta, "settlement.json");
-    let intent: { version: number; from: string; to: string; note: string; move?: SpacePageVersion };
-    try { intent = JSON.parse(fs.readFileSync(journal, "utf8")); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw preserved(error);
+    let intent: Settlement;
+    try {
+      intent = JSON.parse(fs.readFileSync(journal, "utf8"));
+      if (!validSettlement(intent)) throw new Error("Invalid folder rename intent.");
+      if (intent.move) validateHistory(intent.move.page.id, { version: 1, versions: [intent.move] });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return;
+      if (code) throw preserved(error);
+      // A reader refuses a journal before renaming anything, and Modex no longer writes one it refuses
+      // (older versions did, for a backslash made in Finder): set it aside rather than fail every read.
+      const aside = path.join(this.meta, `settlement.invalid-${randomUUID()}.json`);
+      fs.renameSync(journal, aside);
+      fsyncDir(this.meta);
+      console.error("[modex] notes: set aside a folder rename that cannot be replayed:", aside);
+      return;
     }
-    const safe = (rel: unknown): rel is string => typeof rel === "string" && rel.split("/").length >= 3 &&
-      rel.split("/").every(part => part !== "" && part !== "." && part !== ".." && !part.includes("\\") && part !== ".modex");
-    if (intent?.version !== 1 || !safe(intent.from) || !safe(intent.to) ||
-        (!intent.move && path.posix.dirname(intent.from) !== path.posix.dirname(intent.to)) ||
-        intent.to.startsWith(`${intent.from}/`) ||
-        typeof intent.note !== "string" || !/^[^/\\]+\.md$/i.test(intent.note) ||
-        nameKey(stemOf(intent.note)) !== nameKey(path.posix.basename(intent.from))) throw preserved(new Error("Invalid folder rename intent."));
     if (intent.move) {
-      validateHistory(intent.move.page.id, { version: 1, versions: [intent.move] });
       const versions = this.readHistory(intent.move.page.id);
       const latest = versions?.at(-1);
       if (!versions || !latest || latest.page.revision > intent.move.page.revision) throw preserved(new Error("Invalid folder move history."));
@@ -1325,6 +1342,16 @@ export class NotesStore implements SpacePagesStore {
       const entry = state.index.notes[id];
       if (entry) state.index.notes[id] = { ...entry, rel };
     }
+    this.rebaseOriginals(state.index, from, to);
+  }
+
+  /** Trashed notes, and notes deleted outside Modex, from inside a moved folder are restored where it went. */
+  private rebaseOriginals(index: NotesIndex, from: string, to: string): void {
+    const moved = (rel: string) => `${to}${rel.slice(from.length)}`;
+    for (const [id, entry] of Object.entries(index.notes)) {
+      if (entry.trash?.original.startsWith(`${from}/`)) index.notes[id] = { ...entry, trash: { ...entry.trash, original: moved(entry.trash.original) } };
+      else if (entry.original?.startsWith(`${from}/`)) index.notes[id] = { ...entry, original: moved(entry.original) };
+    }
   }
 
   private writeNoteAt(state: State, page: SpacePage, rel: string): void {
@@ -1541,6 +1568,17 @@ export class NotesStore implements SpacePagesStore {
       id = parent.parentId;
     }
   }
+}
+
+/** Whether a reader replays this folder rename: plain parts below a project, a sibling unless it moves, a note named after its folder. */
+function validSettlement(intent: Settlement): boolean {
+  const safe = (rel: unknown): rel is string => typeof rel === "string" && rel.split("/").length >= 3 &&
+    rel.split("/").every(part => part !== "" && part !== "." && part !== ".." && !part.includes("\\") && part !== ".modex");
+  return intent?.version === 1 && safe(intent.from) && safe(intent.to) &&
+    (Boolean(intent.move) || path.posix.dirname(intent.from) === path.posix.dirname(intent.to)) &&
+    !intent.to.startsWith(`${intent.from}/`) &&
+    typeof intent.note === "string" && /^[^/\\]+\.md$/i.test(intent.note) &&
+    nameKey(stemOf(intent.note)) === nameKey(path.posix.basename(intent.from));
 }
 
 function validateHistory(id: string, data: HistoryFile): void {
