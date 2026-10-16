@@ -734,6 +734,10 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
   standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
 
+- **Restored notes follow their folder.** A note trashed before its workspace, project or
+  folder was renamed or moved comes back in the new place, instead of making the old folder
+  again outside the project (#241).
+
 ## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
