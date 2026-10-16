@@ -1030,7 +1030,7 @@ export class ThreadRunner {
   ): Promise<{ ask: true; decidedBy?: ApprovalReceipt } | { ask: false; answer: "yes" | "no"; decidedBy?: ApprovalReceipt }> {
     if (!c.active() || c.signal?.aborted) return { ask: false, answer: "no" };
     try {
-      const jev = await this.router.jev().catch(() => ({ transport: null, model: "" }));
+      const jev = await this.router.decisions.connect("approval", { threadId: c.thread.id }).catch(() => ({ transport: null, model: "" }));
       const d = await decideApproval(req.action, {
         rules: c.settings.approval_rules,
         config: c.settings.approval_gate,
