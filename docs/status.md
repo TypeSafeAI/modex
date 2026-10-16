@@ -733,6 +733,9 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   and each view's title with its filters and Export CSV. Every view fits the window down to the
   900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
   standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
+- **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
+  large import from another disk, a network share or iCloud no longer freezes the window, and
+  each file appears in your notes only once it has copied in full (#241).
 
 ## In flight
 
