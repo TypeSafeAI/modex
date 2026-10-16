@@ -648,6 +648,65 @@ import XCTest
         let client = ControlledClient()
         return (CompanionModel(store: MemoryPairingStore(), discovery: FakeDiscovery(), makeClient: { _ in client }), client)
     }
+
+    func testJournalDeltasMergeIntoTheTranscriptTheyWereReadAgainst() async {
+        let client = JournalClient()
+        let model = CompanionModel(store: MemoryPairingStore(), discovery: FakeDiscovery(), makeClient: { _ in client })
+        let journal = JournalCursor(id: "j1", cursor: 4)
+        await client.reply(journalItems(["u1": "hi", "a1": "Hel"]), journal: journal)
+        await model.select("a")
+        XCTAssertEqual(model.snapshot.items.map(\.text), ["hi", "Hel"])
+
+        // After sleep the phone sends its cursor and gets only what changed: an update and a new item.
+        await client.reply(journalItems(["a1": "Hello", "t1": "done"]), journal: JournalCursor(id: "j1", cursor: 9), delta: true)
+        await model.refresh()
+        let afterSent = await client.afters.last
+        XCTAssertEqual(afterSent ?? nil, journal, "The phone resumes from the cursor its transcript was read at.")
+        XCTAssertEqual(model.snapshot.items.map(\.id), ["u1", "a1", "t1"], "Changed items replace theirs in place and new ones append once.")
+        XCTAssertEqual(model.snapshot.items.map(\.text), ["hi", "Hello", "done"])
+
+        // Nothing changed: an empty delta keeps the transcript and publishes nothing.
+        await client.reply([], journal: JournalCursor(id: "j1", cursor: 9), delta: true)
+        var publications = 0
+        let subscription = model.objectWillChange.sink { publications += 1 }
+        await model.refresh()
+        subscription.cancel()
+        XCTAssertEqual(publications, 0)
+        XCTAssertEqual(model.snapshot.items.count, 3)
+
+        // Another thread starts from a full transcript, never from this thread's cursor.
+        await client.reply(journalItems(["b1": "other"]), journal: JournalCursor(id: "j1", cursor: 12))
+        await model.select("b")
+        let switched = await client.afters.last
+        XCTAssertNil(switched ?? nil)
+        XCTAssertEqual(model.snapshot.items.map(\.id), ["b1"])
+    }
+}
+
+private func journalItems(_ pairs: KeyValuePairs<String, String>) -> [CompanionItem] {
+    pairs.map { CompanionItem(id: $0.key, kind: "assistant", text: $0.value, title: nil, question: nil, detail: nil, answer: nil, status: nil, level: nil, at: "2026-10-15T00:00:00Z") }
+}
+
+/// Answers each snapshot with the next scripted reply and records the journal cursor it was sent.
+private actor JournalClient: CompanionClient {
+    private var replies: [CompanionSnapshot] = []
+    private(set) var afters: [JournalCursor?] = []
+    func reply(_ items: [CompanionItem], journal: JournalCursor, delta: Bool = false) {
+        var snapshot = makeSnapshot(nil)
+        snapshot = CompanionSnapshot(projects: snapshot.projects, threads: snapshot.threads, items: items)
+        snapshot.journal = journal
+        snapshot.delta = delta
+        replies.append(snapshot)
+    }
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot { try await snapshot(threadId: threadId, after: nil) }
+    func snapshot(threadId: String?, after: JournalCursor?) async throws -> CompanionSnapshot {
+        afters.append(after)
+        return replies.isEmpty ? makeSnapshot(threadId) : replies.removeFirst()
+    }
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread { throw CompanionError.message("unused") }
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand] { [] }
+    func send(threadId: String, text: String) async throws {}
+    func answer(threadId: String, itemId: String, approve: Bool) async throws {}
 }
 
 @MainActor private final class FakeDiscovery: CompanionDiscovery {
