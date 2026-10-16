@@ -237,6 +237,33 @@ test("a file deleted outside Modex is trashed after a second look and can be res
   assert.match(fs.readFileSync(path.join(project(root), "Gone.md"), "utf8"), /keep me$/);
 }));
 
+test("a file deleted outside Modex before its project is renamed is restored in the renamed project", () => withStore((store, root, clock) => {
+  const page = store.create({ title: "Gone", markdown: "keep me" });
+  fs.rmSync(path.join(project(root), "Gone.md"));
+  store.list();
+  clock.now += 1_500;
+  assert.ok(store.list()[0]!.trashedAt);
+  store.rename(store.tree().nodes.find(n => n.kind === "project")!.id, "Journal");
+  store.trash(page.id, false);
+  assert.match(fs.readFileSync(path.join(root, "Personal", "Journal", "Gone.md"), "utf8"), /keep me$/);
+  assert.ok(!fs.existsSync(project(root)), "the old project is not made again");
+}));
+
+for (const change of ["move", "rename"] as const) test(`a note trashed from a plain folder inside a folder note is restored after the folder note's ${change}`, () => withStore((store, root) => {
+  const plan = store.create({ title: "Plan" });
+  store.create({ title: "Step", parentId: plan.id });
+  const planFolder = store.tree().nodes.find(n => n.kind === "folder" && n.noteId === plan.id)!;
+  const sub = store.createFolder(planFolder.id, "Sub");
+  const note = store.create({ title: "Note", containerId: sub.id });
+  store.trash(note.id, true);
+  if (change === "move") store.save({ ...store.list().find(p => p.id === plan.id)!, parentId: store.create({ title: "Target" }).id });
+  else store.rename(planFolder.id, "Roadmap");
+  const moved = store.tree().nodes.find(n => n.id === planFolder.id)!.rel;
+  store.trash(note.id, false);
+  assert.equal(store.tree().nodes.find(n => n.id === note.id)?.rel, `${moved}/Sub/Note.md`);
+  assert.ok(!fs.existsSync(path.join(project(root), "Plan")), "the folder's old place is not made again");
+}));
+
 test("the folder refuses a link and a copied id gets a new one", () => withStore((store, root) => {
   const page = store.create({ title: "Original" });
   fs.copyFileSync(path.join(project(root), "Original.md"), path.join(project(root), "Copy.md"));
@@ -342,6 +369,26 @@ for (const interruption of ["link", "unlink"] as const) test(`folder settlement 
     assert.equal(pages.find(p => p.id === child.id)?.parentId, parent.id);
     assert.equal(pages.find(p => p.id === child.id)?.markdown, "child body");
   }
+}));
+
+for (const [label, journal] of [
+  ["a backslash path, as older versions wrote", JSON.stringify({ version: 1, from: "Personal/Notes/R\\D", to: "Personal/Notes/R-D", note: "R\\D.md" })],
+  ["unreadable JSON", "{\"version\":1,"],
+] as const) test(`a folder rename journal with ${label} is set aside instead of failing every read`, () => withStore((store, root) => {
+  const page = store.create({ title: "Kept" });
+  fs.mkdirSync(path.join(project(root), "R\\D"));
+  fs.writeFileSync(path.join(project(root), "R\\D", "R\\D.md"), "plans");
+  fs.writeFileSync(path.join(root, ".modex", "settlement.json"), journal);
+  for (const reader of [reopen(root), store, reopen(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.length, 2);
+    assert.ok(pages.some(p => p.id === page.id));
+  }
+  assert.equal(fs.readFileSync(path.join(project(root), "R\\D", "R\\D.md"), "utf8").includes("plans"), true, "the folders stay as they are");
+  const aside = fs.readdirSync(path.join(root, ".modex")).filter(name => name.startsWith("settlement"));
+  assert.equal(aside.length, 1);
+  assert.notEqual(aside[0], "settlement.json");
+  assert.equal(fs.readFileSync(path.join(root, ".modex", aside[0]!), "utf8"), journal, "the journal is kept to look at");
 }));
 
 for (const basename of ["A.MD", "a.md"]) test(`folder settlement preserves the exact source basename ${basename}`, () => withStore((store, root) => {
