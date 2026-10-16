@@ -1001,6 +1001,24 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   polling and spinner kept it busy, and the unscaled demo test still passed in 187 s because
   those waits never touch the suite's budgets. The CI runners are slow in the snapshot path,
   which is the one the budgets measure.
+- **`iPhone companion` `/resume` timeouts (2026-10-16).** Three paired-flow failures on 10-15/16
+  (38707861067, 38747016392, 38832248437) timed out on the paused-Mac `/resume` call, which green
+  runs (38832248437 attempt 2, 38836144274) answered in 0.1 s. The simulator's unified log
+  (in the xcresult's `simctl_diagnostics/<device>/system.logarchive`) shows two causes. First, the
+  test runner's first URLSession use came at that step, and on a freshly booted simulator its
+  setup (cfprefsd, nsurlsessiond's storage container, trustd) took 42 s in 38747016392, so the
+  POST never left the runner, and 19 s in 38707861067. The resume now goes over a plain socket
+  (`UITests/LoopbackPost.swift`) with the suite's scaled budget. Second, in 38707861067 and
+  38832248437 the POST did reach the Mac, but the fixture neither answered nor restarted the
+  companion within 8–10 s, while it exits at once on SIGTERM at the end of the job. 38848571338
+  failed the same way at the first reply: the fixture left a snapshot unanswered and a TLS
+  ClientHello unanswered for 5–8 s each, the app marked the Mac disconnected, and the
+  `create-thread` tap landed on the disabled button 0.2 s later. Locally the fixture answers
+  `/resume` in 3 ms after 8–80 s outages, and `dispose()` returns at once with a connection in
+  any state. Why the CI fixture goes silent is open. `fixture.mjs` now logs the phone's calls,
+  the pause/resume lifecycle, and every event-loop stall of 1 s or more with the CPU time,
+  major faults and involuntary context switches it saw, so the next failure's job log says
+  whether the process was busy, paging or starved.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before
