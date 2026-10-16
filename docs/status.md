@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-15._
+_Last updated 2026-10-16._
 
 ## Shipped
 
@@ -1028,7 +1028,11 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   any state. Why the CI fixture goes silent is open. `fixture.mjs` now logs the phone's calls,
   the pause/resume lifecycle, and every event-loop stall of 1 s or more with the CPU time,
   major faults and involuntary context switches it saw, so the next failure's job log says
-  whether the process was busy, paging or starved.
+  whether the process was busy, paging or starved. The first two failures after it (38890707807,
+  38898248332) say paging: stalls of 29–31 s that used 24–37 ms of CPU, with 143–164 major faults,
+  550–600 involuntary switches and no file I/O. The runner was short of memory while the simulator
+  ran; both passed on a rerun. A longer budget would only hide this. The fix is a smaller memory
+  footprint for the job, or a test that waits out a stalled Mac.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before
@@ -1068,6 +1072,38 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   parent thread's history, so the thread fails every turn afterwards. Plan children now run
   with `features.multi_agent` off and the failure card says to start a new thread. Threads
   poisoned before the fix stay poisoned in Modex; see [chatgpt-signin.md](chatgpt-signin.md).
+
+## Blocked
+
+Waiting on a decision or access only Val can give, as of 2026-10-16. The rest of the
+post-v0.1.0 queue has landed: the #241 notes fixes (#254, #258–#261, #263, #264), the release
+tooling (#255, #256, #262, #265) and #266. No issues were opened after 2026-10-15, and this
+Mac's `~/.modex` threads showed no regression in v0.1.0.
+
+- **The first published-to-published update** (Next, item 1) needs Val at the Mac. Open a draft
+  in the installed v0.0.12, update through its banner, then confirm the relaunch, the About version
+  and that the draft survived. The result goes in the
+  [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication).
+- **#250, Claude through the Agent SDK,** waits for Val's decision. Its full suite passed locally
+  on its head: 1,436 desktop unit tests and 312 desktop e2e (3 skipped), with none failing. It
+  rewrites the CLI-only rule in `AGENTS.md`. Anthropic's Agent SDK docs do not allow third-party
+  products to offer claude.ai login or rate limits unless approved. The SDK reports each turn it
+  launches as an Agent SDK client (`CLAUDE_CODE_ENTRYPOINT=sdk-ts`), and #250 sets
+  `CLAUDE_AGENT_SDK_CLIENT_APP=modex`.
+- **1Password CLI.** `op` cannot reach the desktop app, so a full local release run and the
+  TestFlight upload wait for Val to turn on Settings → Developer → Integrate with 1Password CLI.
+  Until then, rehearse with `--sign-only` ([release signing](release-signing.md#when-1password-cannot-be-reached)).
+- **Worktree and branch cleanup** waits for Val.
+  - The Codex coordinator thread that prepared the v0.1.0 batch should hear that the batch
+    shipped before its worktrees are retired: `notes-final-review`, `release-reviewed-batch`, and
+    its `review-*` and `notes-*` repairs. Only their owner can release them.
+  - `notes-land`, `pr210-conflicts`, `notes-files` and `review-archive` hold merged PR heads that
+    the pruning tool cannot prove merged. `notes-land`'s tip is #227's merged head, and #227's
+    squash has the identical tree. Each needs Val's decision; if approved, archive it, then
+    remove it.
+  - An orphaned Vite preview server from the Analytics session (#248, merged) holds
+    `analytics-fit`.
+  - Nine remote branches of closed PRs wait for approval to delete.
 
 ## Next
 
