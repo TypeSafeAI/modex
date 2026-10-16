@@ -740,6 +740,9 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
   sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
 
+- **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
+  sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
+
 ## In flight
 
 - **Verified multiplatform release candidates.** The release workflow now joins native

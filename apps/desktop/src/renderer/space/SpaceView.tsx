@@ -15,7 +15,7 @@ import { PageComments, type CommentDraft } from "./PageComments";
 import { BLOCK_COMMANDS } from "./markdown";
 import { useSpace } from "./useSpace";
 import { useNotesTree } from "./useNotesTree";
-import { NotesTreeView, type NotesTreeActions } from "./NotesTree";
+import { NotesTreeView, useTreeActions } from "./NotesTree";
 import { FilePreview } from "./FilePreview";
 import type { NotesFile } from "../../shared/notes";
 import { restartDrafts } from "../restart-drafts";
@@ -158,7 +158,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
 
   const selectView = (value: View) => { setView(value); setQuery(""); setSelected(null); };
   const tree = (action: () => Promise<unknown>) => run(() => notes.act(action));
-  const treeActions: NotesTreeActions = {
+  const treeActions = useTreeActions({
     openPage: id => { setView("pages"); setQuery(""); open(id); },
     createPage: containerId => create("", "", null, containerId),
     createFolder: (parentId, name) => tree(() => bridge.invoke("notes:folder:create", { parentId, name })),
@@ -176,7 +176,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
       if (result.errors.length) throw new Error(`${result.imported ? `Imported ${result.imported}. ` : ""}${result.errors.join("; ")}`);
       if (result.imported) setNotice(`Imported ${result.imported} ${result.imported === 1 ? "file" : "files"}`);
     }),
-  };
+  });
   const exportText = (p: SpacePage) => `# ${pageTitle(p)}\n\n${p.markdown}\n`;
   const download = (p: SpacePage) => void run(async () => {
     await space.flush();
