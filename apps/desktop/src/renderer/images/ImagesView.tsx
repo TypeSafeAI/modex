@@ -101,6 +101,12 @@ export function ImagesView({
       if (epoch === queryEpoch.current) setLoading(false);
     }
   }, [query]);
+  // Live updates read these when they fire. Resubscribing whenever they changed would drop a
+  // refresh already due, and a job that reached approval meanwhile sends no further event.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const jobIdRef = useRef(jobId);
+  jobIdRef.current = jobId;
   useEffect(() => {
     if (active) void refresh();
   }, [active, refresh]);
@@ -174,21 +180,27 @@ export function ImagesView({
   useEffect(() => {
     if (!active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const transcriptNow = () => {
+      const id = jobIdRef.current;
+      if (id)
+        void bridge
+          .invoke("imageJobs:items", { id })
+          .then(setTranscript)
+          .catch((err) => setError(err.message));
+    };
     const schedule = () => {
       if (timer) return;
       timer = setTimeout(() => {
         timer = undefined;
-        void refresh();
-        if (jobId)
-          void bridge
-            .invoke("imageJobs:items", { id: jobId })
-            .then(setTranscript)
-            .catch((err) => setError(err.message));
+        void refreshRef.current();
+        transcriptNow();
       }, 100);
     };
+    // Events that arrived while Images was hidden were not observed.
+    transcriptNow();
     const off = bridge.onMediaEvent?.(schedule);
     const offThread = bridge.onEvent(() => {
-      if (jobId) schedule();
+      if (jobIdRef.current) schedule();
     });
     window.addEventListener("focus", schedule);
     return () => {
@@ -197,7 +209,7 @@ export function ImagesView({
       window.removeEventListener("focus", schedule);
       if (timer) clearTimeout(timer);
     };
-  }, [active, refresh, jobId]);
+  }, [active]);
   useEffect(() => {
     if (!selected) return;
     setName(selected.name);
@@ -300,7 +312,10 @@ export function ImagesView({
         ...draft,
         requestId: crypto.randomUUID(),
       });
+      // A refresh already due must load this job, not the one shown before.
+      jobIdRef.current = job.id;
       setJobId(job.id);
+      setTranscript([]);
       setNotice("Image job queued. You can keep working while it runs.");
     });
   const chosen = caps.find((c) => c.id === draft.capabilityId);

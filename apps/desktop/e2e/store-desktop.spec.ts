@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import https from "node:https";
-import { appDir, createThread, seedHome, tid, items } from "./support";
+import { appDir, createThread, seedHome, storeClientDir, tid, items } from "./support";
 
 async function startHost(home: string): Promise<ElectronApplication> {
   const host = await electron.launch({ args: [appDir, "--desktop-host"], cwd: appDir,
@@ -27,7 +27,7 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
   const { home, repo } = seedHome();
   const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-e2e-"));
   let host = await startHost(home);
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome } });
   try {
     const page = await client.firstWindow();
@@ -76,7 +76,7 @@ test("Store preview discovers this Mac, confirms access once and restores saved 
   const { home, repo } = seedHome();
   const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-discovery-e2e-"));
   const host = await startHost(home);
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const startClient = () => electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome, MODEX_DESKTOP_DISCOVERY_DIR: path.join(home, "discovery") } });
   let client = await startClient();
   try {
@@ -115,7 +115,7 @@ test("Store connected account commands stay local and explain unavailable sign-i
   const { home, repo } = seedHome();
   const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-account-"));
   const host = await startHost(home);
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome } });
   try {
     const page = await client.firstWindow();
@@ -151,7 +151,7 @@ for (const overlay of ["settings", "companion", "menu", "browser-tools"] as cons
   const { home, repo } = seedHome();
   const clientHome = fs.mkdtempSync(path.join(os.tmpdir(), "modex-store-recovery-"));
   let host: ElectronApplication | undefined = await startHost(home);
-  const clientDir = path.resolve(appDir, "../store-desktop");
+  const clientDir = storeClientDir();
   const client = await electron.launch({ args: [clientDir], cwd: clientDir, env: { ...process.env, MODEX_E2E: "1", MODEX_STORE_HOME: clientHome } });
   let incompatible: https.Server | undefined;
   try {
