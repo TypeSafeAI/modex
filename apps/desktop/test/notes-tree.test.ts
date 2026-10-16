@@ -459,6 +459,28 @@ test("folder move recovery retains external edits made after interruption", () =
   assert.ok(reopened.history(parent.id).some(v => v.actor === "external" && v.page.markdown === "Human edit after crash"));
 }));
 
+for (const change of ["move", "rename"] as const) test(`a ${change} of a folder with a backslash in its name leaves notes readable`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  // Finder allows a backslash in a name; Modex never makes one.
+  const rel = `${project.rel}/R\\D`;
+  fs.mkdirSync(path.join(root, rel));
+  fs.writeFileSync(path.join(root, rel, "R\\D.md"), "plans");
+  fs.writeFileSync(path.join(root, rel, "Child.md"), "child body");
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.rel === rel) as NotesFolder;
+  const child = store.list().find(p => p.markdown === "child body")!;
+  assert.ok(folder.noteId);
+  const dest = store.createFolder(project.id, "Dest");
+  if (change === "move") assert.throws(() => store.moveNodes([folder.id], dest.id), /backslash.*Finder/);
+  else store.rename(folder.id, "Research");
+  for (const reader of [store, new NotesStore(root), new NotesStore(root)]) {
+    const node = reader.tree().nodes.find(n => n.id === folder.id);
+    assert.equal(node?.rel, rel, "the folder stays where it was, under its own name");
+    assert.equal(node?.name, change === "move" ? "R\\D" : "Research");
+    assert.equal(reader.list().find(p => p.id === child.id)?.parentId, folder.noteId);
+  }
+  assert.ok(!fs.existsSync(path.join(root, ".modex", "settlement.json")));
+}));
+
 
 test("layout keeps shared-inode file aliases distinct when one moves before or after the other", () => withStore((store, root) => {
   const project = store.tree().nodes.find(n => n.kind === "project")!;

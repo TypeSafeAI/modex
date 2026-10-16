@@ -344,6 +344,26 @@ for (const interruption of ["link", "unlink"] as const) test(`folder settlement 
   }
 }));
 
+for (const [label, journal] of [
+  ["a backslash path, as older versions wrote", JSON.stringify({ version: 1, from: "Personal/Notes/R\\D", to: "Personal/Notes/R-D", note: "R\\D.md" })],
+  ["unreadable JSON", "{\"version\":1,"],
+] as const) test(`a folder rename journal with ${label} is set aside instead of failing every read`, () => withStore((store, root) => {
+  const page = store.create({ title: "Kept" });
+  fs.mkdirSync(path.join(project(root), "R\\D"));
+  fs.writeFileSync(path.join(project(root), "R\\D", "R\\D.md"), "plans");
+  fs.writeFileSync(path.join(root, ".modex", "settlement.json"), journal);
+  for (const reader of [reopen(root), store, reopen(root)]) {
+    const pages = reader.list();
+    assert.equal(pages.length, 2);
+    assert.ok(pages.some(p => p.id === page.id));
+  }
+  assert.equal(fs.readFileSync(path.join(project(root), "R\\D", "R\\D.md"), "utf8").includes("plans"), true, "the folders stay as they are");
+  const aside = fs.readdirSync(path.join(root, ".modex")).filter(name => name.startsWith("settlement"));
+  assert.equal(aside.length, 1);
+  assert.notEqual(aside[0], "settlement.json");
+  assert.equal(fs.readFileSync(path.join(root, ".modex", aside[0]!), "utf8"), journal, "the journal is kept to look at");
+}));
+
 for (const basename of ["A.MD", "a.md"]) test(`folder settlement preserves the exact source basename ${basename}`, () => withStore((store, root) => {
   const parent = store.create({ title: "A" });
   const child = store.create({ title: "Child", parentId: parent.id });
