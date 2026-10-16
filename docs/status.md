@@ -750,7 +750,6 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 - **Restored notes follow their folder.** A note trashed before its workspace, project or
   folder was renamed or moved comes back in the new place, instead of making the old folder
   again outside the project (#241).
-
 - **New workspace opens only when asked.** After you make a workspace, searching pages and
   clearing the search no longer reopens an empty New workspace field that takes your typing and
   makes another workspace when you click away (#241).
