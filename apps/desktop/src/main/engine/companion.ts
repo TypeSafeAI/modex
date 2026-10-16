@@ -10,6 +10,7 @@ import { APPROVAL_POLICIES, type AppState, type ApprovalAnswer, type ApprovalPol
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
 import type { EventJournal } from "./event-journal.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
+import type { RoutineRun } from "../../shared/routines.js";
 
 interface CompanionSource {
   state(): AppState;
@@ -26,6 +27,8 @@ interface CompanionSource {
   pullRequest?(threadId: string): PullRequestSummary | undefined;
   /** The event journal, when it is on: a phone then fetches only the items changed since its cursor. */
   journal?(): Pick<EventJournal, "resume"> | undefined;
+  /** Routine runs, newest first: the phone tells its user when one finishes or fails. */
+  routineRuns?(): RoutineRun[];
 }
 
 interface Config { enabled: boolean; token: string; port?: number }
@@ -268,6 +271,7 @@ export class CompanionServer {
         defaultBackend: state.settings.default_backend ?? "codex",
         autoByDefault: state.settings.routing?.auto_by_default ?? false,
         ...(resume ? { journal: { id: resume.id, cursor: resume.latest }, ...(changed ? { delta: true } : {}) } : {}),
+        routineRuns: (this.source.routineRuns?.() ?? []).filter((run) => run.status !== "running").slice(0, 10).map(mobileRoutineRun),
       });
       return;
     }
@@ -361,8 +365,14 @@ function mobileThread(thread: Thread, status: string, pr?: PullRequestSummary): 
     ...(thread.worktree ? { worktree: true } : {}),
     ...(thread.retired ? { retiredPr: thread.retired.pr } : {}),
     ...(thread.archived ? { archived: true } : {}),
+    ...(thread.routine ? { routine: thread.routine.name } : {}),
     ...(pr && "number" in pr ? { pr: { number: pr.number, state: pr.state } } : {}),
   };
+}
+
+/** A finished routine run as the phone shows it: no instructions, no reply, no page content. */
+function mobileRoutineRun(run: RoutineRun): Record<string, unknown> {
+  return { id: run.id, routine: run.routineName, status: run.status, endedAt: run.endedAt ?? run.startedAt, ...(run.threadId ? { threadId: run.threadId } : {}) };
 }
 
 function mobileItem(item: ThreadItem): Record<string, unknown> {

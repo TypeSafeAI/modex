@@ -728,6 +728,13 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 
 ## On main, unreleased
 
+- **Read-only routines** (Routines Phase 1). Routines in the rail run a read-only Chat or Plan turn
+  in one project, once or every N minutes, hours or days, while Modex is running with or without a
+  window. Each reply becomes a new revision of the routine's Space page, under the project's
+  `Routines` folder. Every approval the turn asks for is refused, with a receipt in the transcript.
+  Missed runs run once on wake, never as a burst. A run cut off by a quit or crash is marked
+  interrupted and never repeated. Activity lists each run's trigger, times, thread and page
+  revision, and the iPhone companion shows a banner when runs finish or fail. [Routines](routines.md).
 - **One decision service for Jev** (Routines Phase 0). Auto routing, follow-up suggestions and
   approval rules now ask Jev through one module. It owns the key, the transport and the
   session-wide switch-off after a rejected key. Each kind of judgment has a versioned question
@@ -1061,10 +1068,9 @@ Roughly in the order they earn their place; none is scheduled.
    [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication). Windows and Linux
    installers shipped with v0.1.0. Provider-account acceptance, KWallet6/full graphical sessions,
    and historical schema migration remain unproven; see [native-platforms.md](native-platforms.md).
-2. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
-   result written to a Space page. They follow a groundwork phase (a shared decision service
-   and an event journal), and routines that change code wait for the approval gate decision.
-   See the [routines specification](specs/2026-10-11-modex-routines-spec.md).
+2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
+   routines in a claimed worktree wait for the approval gate decision. See the
+   [routines specification](specs/2026-10-11-modex-routines-spec.md).
 3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 

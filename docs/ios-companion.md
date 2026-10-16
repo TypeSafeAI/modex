@@ -49,6 +49,11 @@ brings it back. A thread that is working or waiting for an approval cannot be ar
 nothing hidden ever waits for an answer. The snapshot carries only the fact (`archived: true`),
 not when it happened.
 
+When a [routine](routines.md) run on the Mac finishes or fails, the phone shows one banner the
+next time it looks, with a link to the run's thread; runs that ended while it was away share one
+line. A routine's own approvals appear as "Refused automatically · routine run". The snapshot
+carries each run's routine name, status, end time and thread, never its instructions or page.
+
 Threads on a worktree show their pull request number and state ("Worktree · PR #12 open").
 When the PR merges and nothing in the worktree would be lost, the Mac retires the task and the
 phone shows "Finished · PR #12 merged"; the transcript stays but takes no more follow-ups. The
