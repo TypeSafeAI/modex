@@ -127,7 +127,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("approvals:rules:set", ({ rules }) => store.updateSettings({ approval_rules: validateRules(rules) }).approval_rules);
   handle("approvals:try", (req) => previewApproval(req, {
     project: (id) => store.project(id), config: store.snapshot().settings.approval_gate,
-    jev: () => runner.router.jev(),
+    jev: () => runner.router.decisions.connect("approval", { preview: true }),
   }));
   handle("models:list", ({ backend }) => runner.listModels(backend));
   handle("usage:list", (req) => new UsageLedger(store.dir).list(req ?? {}));
