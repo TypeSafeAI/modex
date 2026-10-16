@@ -31,13 +31,13 @@ type Editing = { kind: "rename" | "folder" | "project"; id: string; value: strin
  * The notes folder as Workspace › Project › Folder › notes and files. A note opens its page; a folder
  * with a folder note opens that page; a file opens in its default app. Names are edited in place.
  */
-export function NotesTreeView({ tree, pages, selected, actions, newWorkspace, focus, onFocusApplied }: { tree: NotesTree; pages: SpacePage[]; selected: string | null; actions: NotesTreeActions; newWorkspace: number; focus?: { id: string }; onFocusApplied: (request: { id: string }) => void }) {
+export function NotesTreeView({ tree, pages, selected, actions, newWorkspace, onNewWorkspaceOpened, focus, onFocusApplied }: { tree: NotesTree; pages: SpacePage[]; selected: string | null; actions: NotesTreeActions; newWorkspace: boolean; onNewWorkspaceOpened: () => void; focus?: { id: string }; onFocusApplied: (request: { id: string }) => void }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   /** The row being dragged within the tree, to move it. */
   const [dragging, setDragging] = useState<NotesNode | null>(null);
-  useEffect(() => { if (newWorkspace) setEditing({ kind: "workspace", id: null, value: "" }); }, [newWorkspace]);
+  useEffect(() => { if (newWorkspace) { setEditing({ kind: "workspace", id: null, value: "" }); onNewWorkspaceOpened(); } }, [newWorkspace, onNewWorkspaceOpened]);
   // A node asked for from elsewhere (a project's notes): open its ancestors and bring it into view,
   // once per request, so the tree's later polls do not pull the view back to it.
   const focused = useRef<{ id: string } | undefined>(undefined);
