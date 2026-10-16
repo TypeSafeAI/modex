@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, MenuItem, clipboard, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, Menu, MenuItem, clipboard, ipcMain, nativeTheme, powerMonitor, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -57,7 +57,10 @@ app.whenReady().then(() => {
   });
   client.on("thread", (event) => { if (!demo) send("thread:event", event); });
   client.on("terminal", (event) => { if (!demo) send("terminal:event", event); });
-  client.on("connected", () => { if (connectedBefore) send("host:reconnected"); connectedBefore = true; });
+  // A resumed stream replays what was missed, so the window refreshes its lists but keeps transcripts.
+  client.on("connected", ({ resumed }: { resumed: boolean }) => { if (connectedBefore) send("host:reconnected", { resumed }); connectedBefore = true; });
+  powerMonitor.on("suspend", () => client.suspend());
+  powerMonitor.on("resume", () => client.resume());
   const discovery = createDesktopDiscovery({
     async directory() {
       if (testing) return process.env.MODEX_DESKTOP_DISCOVERY_DIR;

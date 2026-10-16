@@ -414,6 +414,34 @@ for (const change of ["project rename", "workspace rename", "project move"] as c
   assert.equal(reopened.tree().nodes.filter(n => n.kind === "project").length, 1);
 }));
 
+for (const change of ["project rename", "workspace rename", "project move", "folder rename", "folder move"] as const) test(`notes trashed before a ${change} are restored where it went, without making the old place again`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  const workspace = store.tree().nodes.find(n => n.kind === "workspace")!;
+  const folder = store.createFolder(project.id, "Drafts");
+  const loose = store.create({ title: "Loose" });
+  const drafted = store.create({ title: "Drafted", containerId: folder.id });
+  store.create({ title: "Kept", containerId: folder.id });
+  store.trash(loose.id, true);
+  store.trash(drafted.id, true);
+  if (change === "project rename") store.rename(project.id, "Journal");
+  else if (change === "workspace rename") store.rename(workspace.id, "Home");
+  else if (change === "project move") store.moveNodes([project.id], store.createWorkspace("Work").id);
+  else if (change === "folder rename") store.rename(folder.id, "Final");
+  else store.moveNodes([folder.id], store.createProject(workspace.id, "Later").id);
+  const containers = (nodes: NotesNode[]) => nodes.filter(n => n.kind !== "note").map(n => n.rel).sort();
+  const before = containers(store.tree().nodes);
+  store.trash(loose.id, false);
+  store.trash(drafted.id, false);
+  for (const reader of [store, new NotesStore(root)]) {
+    const nodes = reader.tree().nodes;
+    const rel = (id: string) => nodes.find(n => n.id === id)?.rel;
+    assert.equal(rel(loose.id), `${rel(project.id)}/Loose.md`);
+    assert.equal(rel(drafted.id), `${rel(folder.id)}/Drafted.md`);
+    assert.deepEqual(containers(nodes), before, "no workspace, project or folder is made at the old place");
+  }
+  assert.ok(!fs.existsSync(path.join(root, "Personal", "Notes", "Drafts")));
+}));
+
 for (const interruption of [null, "link", "unlink"] as const) test(`moving a folder avoids child collisions and recovers ${interruption ?? "without interruption"}`, () => withStore((store, root) => {
   const parent = store.create({ title: "Parent", markdown: "parent body" });
   const child = store.create({ title: "Parent 2", markdown: "child body", parentId: parent.id });
@@ -511,6 +539,28 @@ test("folder move recovery retains external edits made after interruption", () =
   const reopened = new NotesStore(root);
   assert.equal(reopened.list().find(p => p.id === parent.id)?.markdown, "Human edit after crash");
   assert.ok(reopened.history(parent.id).some(v => v.actor === "external" && v.page.markdown === "Human edit after crash"));
+}));
+
+for (const change of ["move", "rename"] as const) test(`a ${change} of a folder with a backslash in its name leaves notes readable`, () => withStore((store, root) => {
+  const project = store.tree().nodes.find(n => n.kind === "project")!;
+  // Finder allows a backslash in a name; Modex never makes one.
+  const rel = `${project.rel}/R\\D`;
+  fs.mkdirSync(path.join(root, rel));
+  fs.writeFileSync(path.join(root, rel, "R\\D.md"), "plans");
+  fs.writeFileSync(path.join(root, rel, "Child.md"), "child body");
+  const folder = store.tree().nodes.find(n => n.kind === "folder" && n.rel === rel) as NotesFolder;
+  const child = store.list().find(p => p.markdown === "child body")!;
+  assert.ok(folder.noteId);
+  const dest = store.createFolder(project.id, "Dest");
+  if (change === "move") assert.throws(() => store.moveNodes([folder.id], dest.id), /backslash.*Finder/);
+  else store.rename(folder.id, "Research");
+  for (const reader of [store, new NotesStore(root), new NotesStore(root)]) {
+    const node = reader.tree().nodes.find(n => n.id === folder.id);
+    assert.equal(node?.rel, rel, "the folder stays where it was, under its own name");
+    assert.equal(node?.name, change === "move" ? "R\\D" : "Research");
+    assert.equal(reader.list().find(p => p.id === child.id)?.parentId, folder.noteId);
+  }
+  assert.ok(!fs.existsSync(path.join(root, ".modex", "settlement.json")));
 }));
 
 

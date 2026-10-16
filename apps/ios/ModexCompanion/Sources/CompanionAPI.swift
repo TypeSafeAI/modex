@@ -97,12 +97,22 @@ struct CompanionItem: Decodable, Identifiable, Equatable {
     var auto: String? = nil
 }
 
+/// The Mac's event journal and the cursor a snapshot's transcript was read at.
+struct JournalCursor: Decodable, Equatable {
+    let id: String
+    let cursor: Int
+}
+
 struct CompanionSnapshot: Decodable, Equatable {
     let projects: [CompanionProject]
     let threads: [CompanionThread]
     let items: [CompanionItem]
     let defaultBackend: String
     let autoByDefault: Bool
+    /// Where `items` were read, when the Mac keeps an event journal. Sent back to fetch only changes.
+    var journal: JournalCursor? = nil
+    /// `items` holds only the items changed after the cursor the request sent; merge them by id.
+    var delta = false
 
     init(projects: [CompanionProject], threads: [CompanionThread], items: [CompanionItem], defaultBackend: String = "codex", autoByDefault: Bool = false) {
         self.projects = projects
@@ -112,7 +122,7 @@ struct CompanionSnapshot: Decodable, Equatable {
         self.autoByDefault = autoByDefault
     }
 
-    private enum CodingKeys: String, CodingKey { case projects, threads, items, defaultBackend, autoByDefault }
+    private enum CodingKeys: String, CodingKey { case projects, threads, items, defaultBackend, autoByDefault, journal, delta }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -121,6 +131,21 @@ struct CompanionSnapshot: Decodable, Equatable {
         items = try values.decode([CompanionItem].self, forKey: .items)
         defaultBackend = try values.decodeIfPresent(String.self, forKey: .defaultBackend) ?? "codex"
         autoByDefault = try values.decodeIfPresent(Bool.self, forKey: .autoByDefault) ?? false
+        journal = try values.decodeIfPresent(JournalCursor.self, forKey: .journal)
+        delta = try values.decodeIfPresent(Bool.self, forKey: .delta) ?? false
+    }
+
+    /// A transcript with changed items applied: each replaces the item with its id, or appends.
+    static func merge(_ items: [CompanionItem], changed: [CompanionItem]) -> [CompanionItem] {
+        var merged = items
+        var index = Dictionary(merged.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for item in changed {
+            if let position = index[item.id] { merged[position] = item } else {
+                index[item.id] = merged.count
+                merged.append(item)
+            }
+        }
+        return merged
     }
 }
 
@@ -134,6 +159,8 @@ struct CompanionCommand: Decodable, Identifiable, Equatable {
 
 protocol CompanionClient {
     func snapshot(threadId: String?) async throws -> CompanionSnapshot
+    /// The same snapshot; given the journal cursor of the last one, the Mac may send only changed items.
+    func snapshot(threadId: String?, after: JournalCursor?) async throws -> CompanionSnapshot
     func pairingSnapshot() async throws -> CompanionSnapshot
     func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread
     func commands(projectId: String, backend: String) async throws -> [CompanionCommand]
@@ -148,6 +175,7 @@ protocol CompanionClient {
 
 extension CompanionClient {
     func invalidate() {}
+    func snapshot(threadId: String?, after: JournalCursor?) async throws -> CompanionSnapshot { try await snapshot(threadId: threadId) }
     func pairingSnapshot() async throws -> CompanionSnapshot { try await snapshot(threadId: nil) }
     func setApprovals(threadId: String, policy: String) async throws {
         throw CompanionError.message("This Mac does not support approval settings. Update Modex on your Mac.")
@@ -196,8 +224,17 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
     }
 
     func snapshot(threadId: String? = nil) async throws -> CompanionSnapshot {
+        try await snapshot(threadId: threadId, after: nil)
+    }
+
+    func snapshot(threadId: String?, after: JournalCursor?) async throws -> CompanionSnapshot {
         var components = URLComponents(url: pairing.url.appending(path: "v1/snapshot"), resolvingAgainstBaseURL: false)!
-        if let threadId { components.queryItems = [URLQueryItem(name: "threadId", value: threadId)] }
+        if let threadId {
+            components.queryItems = [URLQueryItem(name: "threadId", value: threadId)]
+            if let after {
+                components.queryItems! += [URLQueryItem(name: "journal", value: after.id), URLQueryItem(name: "after", value: String(after.cursor))]
+            }
+        }
         return try await request(components.url!, method: "GET", body: nil)
     }
 

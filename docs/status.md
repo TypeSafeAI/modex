@@ -733,6 +733,27 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   and each view's title with its filters and Export CSV. Every view fits the window down to the
   900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
   standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
+- **The event journal resumes paired desktops and the phone** (Routines Phase 0). With
+  `MODEX_EVENT_JOURNAL=1`, a paired desktop that reconnects after sleep receives only the thread
+  events after its last cursor, and keeps its loaded transcripts instead of reloading them. The
+  iPhone companion fetches only the transcript items that changed. A cursor the journal no longer
+  covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
+  sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
+- **Agents restore notes only into their own project.** A note trashed in one project whose
+  folder was then dragged into another project can no longer be restored there by the first
+  project's agent (#241).
+- **New image jobs no longer look stuck at "queued".** When a job reached its approval before
+  Images had handled the Generate click, the job stayed "queued", or showed the previous job's
+  transcript, with no Approve button until the window lost and regained focus. Images now
+  shows the new job's status and approval either way, and reloads an open job's transcript when
+  you come back to Images.
+- **Restored notes follow their folder.** A note trashed before its workspace, project or
+  folder was renamed or moved comes back in the new place, instead of making the old folder
+  again outside the project (#241).
+- **Notes stay readable around folders with a backslash.** Moving or renaming a folder whose name
+  has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
+  you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
+  an earlier version left behind is set aside, and the folders stay as they are. (#241)
 - **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
   large import from another disk, a network share or iCloud no longer freezes the window, and
   each file appears in your notes only once it has copied in full (#241).

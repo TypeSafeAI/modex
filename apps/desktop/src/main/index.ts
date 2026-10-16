@@ -164,27 +164,43 @@ app.on("open-url", (event, url) => {
   if (desktopHostActivation.open(url)) event.preventDefault();
 });
 // Routines Phase 0 event journal, off by default (docs/event-journal.md). It records alongside the
-// authoritative state files; a failure turns the journal off and never affects a turn.
+// authoritative state files; a failure turns the journal off and never affects a turn. While it is
+// on, paired desktops get thread events from it with cursors and resume after a reconnect.
 let journal: EventJournal | undefined;
+let journalPruning: ReturnType<typeof setInterval> | undefined;
+const stopJournal = (error: unknown): void => {
+  console.error("[modex] event journal stopped:", error);
+  const stopped = journal;
+  journal = undefined;
+  clearInterval(journalPruning);
+  try { stopped?.close(); } catch { /* Already failing; the state files remain authoritative. */ }
+  // Streams fed by the journal would miss what it never wrote: reconnect them without it.
+  desktopHost?.restartStreams();
+};
 if (process.env.MODEX_EVENT_JOURNAL === "1") {
-  try { journal = new EventJournal(path.join(home, "app", "events.sqlite")); }
-  catch (error) { console.error("[modex] event journal unavailable:", error); }
+  try {
+    journal = new EventJournal(path.join(home, "app", "events.sqlite"), { onError: stopJournal });
+    journal.subscribe((entries) => desktopHost?.broadcastJournal(entries));
+    journal.prune();
+    journalPruning = setInterval(() => { try { journal?.prune(); } catch (error) { stopJournal(error); } }, 60 * 60_000);
+    journalPruning.unref();
+  } catch (error) {
+    console.error("[modex] event journal unavailable:", error);
+    try { journal?.close(); } catch { /* The state files remain authoritative. */ }
+    journal = undefined;
+  }
 }
 const journalEvent = (event: ThreadEvent): void => {
   if (!journal) return;
   try { journal.record(event); }
-  catch (error) {
-    console.error("[modex] event journal stopped:", error);
-    try { journal.close(); } catch { /* Already failing; the state files remain authoritative. */ }
-    journal = undefined;
-  }
+  catch (error) { stopJournal(error); }
 };
 let media: Media | undefined;
 const emit = (event: ThreadEvent): void => {
   media?.onEvent(event);
   journalEvent(event);
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
-  desktopHost?.broadcast("thread", event);
+  if (!journal) desktopHost?.broadcast("thread", event);
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
@@ -292,6 +308,7 @@ const retirer = new TaskRetirer({
 });
 const companion = new CompanionServer(home, {
   state: () => store.snapshot(),
+  journal: () => journal,
   pullRequest: (id) => retirer.pullRequest(id),
   setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
   setArchived: (id, archived) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.setArchived(id, archived); },
@@ -476,7 +493,7 @@ function drainServices(): Promise<void> {
       () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
-    try { journal?.close(); } catch (error) { console.error("[modex] event journal close failed:", error); }
+    try { clearInterval(journalPruning); journal?.close(); } catch (error) { console.error("[modex] event journal close failed:", error); }
     journal = undefined;
     const failure = results.find(result => result.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
@@ -976,6 +993,7 @@ function startDesktopHost(): Promise<void> {
     check();
     desktopHost = new DesktopHost(home, {
       version: app.getVersion(),
+      journal: () => journal,
       channels: () => [...desktopCommands.keys()],
       authorize: (confirmationCode, signal) => restartAdmission.run(async () => {
         check();
