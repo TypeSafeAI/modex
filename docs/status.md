@@ -754,7 +754,6 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
   you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
   an earlier version left behind is set aside, and the folders stay as they are. (#241)
-
 - **Open in knowledge base finds a renamed page.** Right after you retitle a page, Open in
   knowledge base opens its file under the new name instead of failing on the old one. (#241)
 
