@@ -742,7 +742,6 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 - **Agents restore notes only into their own project.** A note trashed in one project whose
   folder was then dragged into another project can no longer be restored there by the first
   project's agent (#241).
-
 - **Restored notes follow their folder.** A note trashed before its workspace, project or
   folder was renamed or moved comes back in the new place, instead of making the old folder
   again outside the project (#241).
