@@ -681,6 +681,47 @@ import XCTest
         XCTAssertNil(switched ?? nil)
         XCTAssertEqual(model.snapshot.items.map(\.id), ["b1"])
     }
+
+    func testRoutineRunsThatEndAreAnnouncedOnceAndNeverReplayedOnFirstSight() async {
+        let defaults = UserDefaults(suiteName: "routine-notices-\(UUID().uuidString)")!
+        let client = RoutineClient()
+        let model = CompanionModel(store: MemoryPairingStore(), discovery: FakeDiscovery(), defaults: defaults, makeClient: { _ in client })
+        await client.set([routineRun("r1", "Nightly review", "completed", "2026-10-15T01:00:00.000Z", thread: "a")])
+        await model.refresh()
+        XCTAssertNil(model.routineNotice, "A Mac's existing runs are not news the first time the phone sees them.")
+
+        // A Mac that had no runs when first seen: its first run is news.
+        let freshDefaults = UserDefaults(suiteName: "routine-notices-\(UUID().uuidString)")!
+        let freshClient = RoutineClient()
+        let fresh = CompanionModel(store: MemoryPairingStore(), discovery: FakeDiscovery(), defaults: freshDefaults, makeClient: { _ in freshClient })
+        await fresh.refresh()
+        await freshClient.set([routineRun("f1", "First routine", "completed", "2026-10-15T00:30:00.000Z", thread: "a")])
+        await fresh.refresh()
+        XCTAssertEqual(fresh.routineNotice?.text, "Routine “First routine” finished.")
+
+        await client.set([
+            routineRun("r2", "Nightly review", "completed", "2026-10-15T02:00:00.000Z", thread: "b"),
+            routineRun("r1", "Nightly review", "completed", "2026-10-15T01:00:00.000Z", thread: "a"),
+        ])
+        await model.refresh()
+        XCTAssertEqual(model.routineNotice?.text, "Routine “Nightly review” finished.")
+        XCTAssertEqual(model.routineNotice?.threadId, "b")
+        XCTAssertEqual(model.routineNotice?.failed, false)
+        model.dismissRoutineNotice()
+        await model.refresh()
+        XCTAssertNil(model.routineNotice, "A run is announced once.")
+
+        // Asleep through several runs: one notice, not one per run.
+        await client.set([
+            routineRun("r4", "Dependency audit", "failed", "2026-10-15T04:00:00.000Z", thread: "a"),
+            routineRun("r3", "Nightly review", "completed", "2026-10-15T03:00:00.000Z", thread: "b"),
+            routineRun("r2", "Nightly review", "completed", "2026-10-15T02:00:00.000Z", thread: "b"),
+        ])
+        await model.refresh()
+        XCTAssertEqual(model.routineNotice?.text, "2 routine runs ended, 1 without finishing: Dependency audit, Nightly review.")
+        XCTAssertEqual(model.routineNotice?.failed, true)
+        XCTAssertEqual(model.routineNotice?.threadId, "a")
+    }
 }
 
 private func journalItems(_ pairs: KeyValuePairs<String, String>) -> [CompanionItem] {
@@ -702,6 +743,25 @@ private actor JournalClient: CompanionClient {
     func snapshot(threadId: String?, after: JournalCursor?) async throws -> CompanionSnapshot {
         afters.append(after)
         return replies.isEmpty ? makeSnapshot(threadId) : replies.removeFirst()
+    }
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread { throw CompanionError.message("unused") }
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand] { [] }
+    func send(threadId: String, text: String) async throws {}
+    func answer(threadId: String, itemId: String, approve: Bool) async throws {}
+}
+
+private func routineRun(_ id: String, _ routine: String, _ status: String, _ endedAt: String, thread: String) -> CompanionRoutineRun {
+    CompanionRoutineRun(id: id, routine: routine, status: status, endedAt: endedAt, threadId: thread)
+}
+
+/// Answers every snapshot with the routine runs it was last given.
+private actor RoutineClient: CompanionClient {
+    private var runs: [CompanionRoutineRun] = []
+    func set(_ runs: [CompanionRoutineRun]) { self.runs = runs }
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot {
+        var snapshot = makeSnapshot(threadId)
+        snapshot.routineRuns = runs
+        return snapshot
     }
     func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread { throw CompanionError.message("unused") }
     func commands(projectId: String, backend: String) async throws -> [CompanionCommand] { [] }

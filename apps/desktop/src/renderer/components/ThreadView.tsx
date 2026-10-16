@@ -429,7 +429,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
       <button className="receipt-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="receipt-icon" aria-hidden="true">{allowed ? "✓" : "✕"}</span>
         <span className="receipt-label" data-testid="approval-receipt">
-          {allowed ? <>Allowed: <code>{title}</code></> : <>Refused by rule "{r.when}"</>}
+          {allowed ? <>Allowed: <code>{title}</code></> : r.source === "policy" ? <>Refused: <code>{title}</code></> : <>Refused by rule "{r.when}"</>}
         </span>
         <span className="receipt-meta" data-testid="receipt-meta">{r.source === "policy" ? r.when : allowed ? `rule "${r.when}" · ${via}` : <><code>{title}</code> · {via}</>}</span>
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
@@ -440,7 +440,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
           {item.detail && <pre className="detail">{item.detail}</pre>}
           <div className="dim">
             {r.source === "policy"
-              ? `Approved because this thread is set to "${r.when}".`
+              ? allowed ? `Approved because this thread is set to "${r.when}".` : `Refused automatically. ${r.when}: a routine is read-only and nobody is there to answer.`
               : <>{allowed ? "Approved once" : "Denied"} by your rule "{r.when}" ({receiptVia(r)}, {r.ms} ms){r.destructive !== undefined ? `; Jev put the chance that it is destructive at ${r.destructive.toFixed(2)}` : ""}.
                 {jevNotConsulted(r) ? " Jev was not consulted (not configured or unavailable), so only rules with an exact match could apply and nothing was checked for destructive effects." : ""}</>}
           </div>

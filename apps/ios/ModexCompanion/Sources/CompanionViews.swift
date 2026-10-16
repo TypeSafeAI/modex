@@ -36,6 +36,17 @@ struct CompanionRootView: View {
             }
         }
         .tint(Palette.accent)
+        .overlay(alignment: .top) {
+            if let notice = model.routineNotice {
+                RoutineNoticeBanner(notice: notice, open: notice.threadId.flatMap { id in model.snapshot.threads.contains { $0.id == id } ? id : nil }.map { id in { path = [id]; model.dismissRoutineNotice() } }) {
+                    model.dismissRoutineNotice()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.routineNotice)
         .sheet(isPresented: $showPairing) { PairingSheet() }
         .sheet(item: $newThreadRequest) { request in
             NewThreadSheet(initialProjectId: request.projectId) { id in
@@ -257,6 +268,39 @@ private struct WorkspaceCard: ViewModifier {
 
 private extension View {
     func workspaceCard() -> some View { modifier(WorkspaceCard()) }
+}
+
+/// A routine on the Mac finished or failed. It stays until dismissed or opened.
+private struct RoutineNoticeBanner: View {
+    let notice: RoutineNotice
+    let open: (() -> Void)?
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: notice.failed ? "exclamationmark.circle" : "checkmark.circle")
+                .foregroundStyle(Palette.accent)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(notice.text)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("routine-notice")
+                if let open {
+                    Button("Open thread", action: open)
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier("routine-notice-open")
+                }
+            }
+            Spacer(minLength: 0)
+            Button(action: dismiss) { Image(systemName: "xmark") }
+                .accessibilityLabel("Dismiss")
+                .accessibilityIdentifier("routine-notice-dismiss")
+        }
+        .padding(14)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line))
+    }
 }
 
 private struct ConnectionRecoveryCard: View {
@@ -706,7 +750,7 @@ private struct ItemView: View {
                 Text(item.question ?? "Action requested").font(.system(size: 15, weight: .semibold))
                 if let detail = item.detail, !detail.isEmpty { Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted).textSelection(.enabled) }
                 if let answer = item.answer {
-                    Label(answer == "yes" ? approvedText : "Denied", systemImage: answer == "yes" ? "checkmark.circle" : "xmark.circle")
+                    Label(answer == "yes" ? approvedText : item.auto == "routine" ? "Refused automatically · routine run" : "Denied", systemImage: answer == "yes" ? "checkmark.circle" : "xmark.circle")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.muted)
                 } else {
                     HStack(spacing: 10) {
