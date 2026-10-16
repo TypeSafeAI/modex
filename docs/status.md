@@ -773,6 +773,8 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 - **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
   large import from another disk, a network share or iCloud no longer freezes the window, and
   each file appears in your notes only once it has copied in full (#241).
+- **Open in knowledge base finds a renamed page.** Right after you retitle a page, Open in
+  knowledge base opens its file under the new name instead of failing on the old one. (#241)
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
 

@@ -191,11 +191,6 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
     void bridge.invoke("knowledge:state", undefined).then(state => { if (alive) setKnowledgeNotes(state.folder && state.folder === state.notesFolder ? state.folder : null); }, () => { if (alive) setKnowledgeNotes(null); });
     return () => { alive = false; };
   }, [menu]);
-  /** The page's file, relative to the notes folder (a folder note is Folder/Folder.md). */
-  const pagePath = (id: string): string | undefined => {
-    const node = notes.tree?.nodes.find(n => n.id === id || (n.kind === "folder" && n.noteId === id));
-    return node?.kind === "folder" ? `${node.rel}/${node.rel.split("/").at(-1)}.md` : node?.rel;
-  };
   const insertBlock = (source: string) => { setInsertOpen(false); setInsertRequest({ source, nonce: Date.now() }); };
   const beginGeneration = (kind: "write" | "visualize") => {
     setInsertOpen(false);
@@ -254,7 +249,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
               <MenuItem onClick={pick(() => void run(async () => { await bridge.invoke("clipboard:write", { text: exportText(page) }); setNotice("Markdown copied"); }))}><Icon name="space" />Copy Markdown</MenuItem>
               <MenuItem onClick={pick(() => download(page))}><Icon name="download" />Export Markdown</MenuItem>
               {knowledgeNotes
-                ? <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await space.settle(page.id); await notes.refresh(); const path = pagePath(page.id); if (!path) throw new Error("This page is not in the notes folder yet."); await bridge.invoke("knowledge:open", { folder: knowledgeNotes, path }); }))}><Icon name="folder" />Open in knowledge base</MenuItem>
+                ? <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await space.settle(page.id); const path = await bridge.invoke("notes:page:path", { id: page.id }); if (!path) throw new Error("This page is not in the notes folder yet."); await bridge.invoke("knowledge:open", { folder: knowledgeNotes, path }); }))}><Icon name="folder" />Open in knowledge base</MenuItem>
                 : <MenuItem onClick={pick(() => void run(async () => { await space.flush(); await bridge.invoke("knowledge:copy", { pageId: page.id }); setNotice("Page copied to your knowledge base"); }))}><Icon name="folder" />Copy to knowledge base</MenuItem>}
               <MenuItem onClick={pick(() => importInput.current?.click())}><Icon name="file" />Import Markdown</MenuItem>
               <MenuItem onClick={pick(() => setHistory(true))}><Icon name="history" />Version history</MenuItem>

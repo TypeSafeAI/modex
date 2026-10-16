@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { appDir, launch, resizeWindow, seedHome, tid } from "./support";
+import { savedNotes } from "./notes-support";
 
 const screenshots = path.join(appDir, ".probes", "space");
 
@@ -112,6 +113,38 @@ test("Knowledge maintenance shows a pending toggle and rolls back a failed save"
     await app.evaluate(() => (globalThis as any).__rejectKnowledge());
     await expect(page.getByRole("alert")).toContainText("Knowledge save failed");
     await expect(checkbox).not.toBeChecked(); await expect(checkbox).toBeEnabled();
+  } finally { await app.close(); }
+});
+
+test("Open in knowledge base opens a just-renamed page at its new file", async () => {
+  const { home } = seedHome();
+  const notes = path.join(home, "notes");
+  const { app, page } = await launch(home);
+  try {
+    // The notes folder is the knowledge base; record what Space asks main to open.
+    await app.evaluate(({ ipcMain }, folder) => {
+      const opened: unknown[] = (globalThis as any).__knowledgeOpened = [];
+      ipcMain.removeHandler("knowledge:state");
+      ipcMain.handle("knowledge:state", () => ({ status: "ready", installed: true, folder, notesFolder: folder, url: "http://127.0.0.1:12345", error: null }));
+      ipcMain.removeHandler("knowledge:open");
+      ipcMain.handle("knowledge:open", (_event, change) => { opened.push(change); });
+    }, notes);
+    await tid(page, "rail-space").click();
+    await page.getByRole("button", { name: "New page", exact: true }).click();
+    await expect.poll(() => savedNotes(home).map(note => note.rel)).toContain("Personal/Notes/Untitled.md");
+    await expect(page.getByRole("button", { name: "Open Untitled page", exact: true })).toBeVisible();
+    // Act before the sidebar's next poll, every time: polls report no change, full reads still go to main.
+    await app.evaluate(({ ipcMain }) => {
+      const tree = ((ipcMain as any)._invokeHandlers as Map<string, (...args: any[]) => any>).get("notes:tree")!;
+      ipcMain.removeHandler("notes:tree");
+      ipcMain.handle("notes:tree", (event, req) => req?.since ? { unchanged: true, version: req.since } : tree(event, req));
+    });
+    await page.getByRole("textbox", { name: "Page title" }).fill("Renamed");
+    await page.getByRole("button", { name: "Page actions" }).click();
+    await page.getByRole("menuitem", { name: "Open in knowledge base" }).click();
+    await expect.poll(() => app.evaluate(() => (globalThis as any).__knowledgeOpened)).toEqual([{ folder: notes, path: "Personal/Notes/Renamed.md" }]);
+    expect(fs.existsSync(path.join(notes, "Personal", "Notes", "Renamed.md"))).toBe(true);
+    await expect(page.getByRole("alert")).toHaveCount(0);
   } finally { await app.close(); }
 });
 

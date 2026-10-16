@@ -503,6 +503,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "space:trash": { req: { id: string; trash: boolean }; res: import("./space.js").SpacePage[] };
   /** Renames a page's file to match its title once editing the title is done; typing never renames files. */
   "notes:settle": { req: { id: string }; res: import("./space.js").SpacePage };
+  /** A page's file relative to the notes folder, read at the time of asking so a renamed page has its new name (a folder note is Folder/Folder.md). */
+  "notes:page:path": { req: { id: string }; res: string | null };
   /** The notes folder as a tree; `since` a version that still holds answers `unchanged`. */
   "notes:tree": { req: { since?: string } | undefined; res: import("./notes.js").NotesTree | { unchanged: true; version: string } };
   "notes:workspace:create": { req: { name: string }; res: import("./notes.js").NotesWorkspace };

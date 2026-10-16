@@ -107,6 +107,30 @@ verify step prints the team identifier, the signing certificate of the app and t
 Gatekeeper verdict for both (`source=Notarized Developer ID`), the stapler result for the app,
 the DMG and the app inside the ZIP, the bundle icon check, and the checksums.
 
+### When 1Password cannot be reached
+
+`op run` can fail before the build starts. Seen so far: `connecting to desktop app timed out`,
+even from Val's own shell with the app running (v0.1.0), and `authorization timeout` when nobody
+is at the Mac to approve the prompt (v0.0.11). The rehearsal does not need 1Password.
+`--sign-only` uses only the Developer ID identity in the login keychain and skips notarization,
+which the `Release` workflow does with the `release-signing` credentials. Skip the `op run`
+re-exec and name the identity yourself:
+
+```sh
+MODEX_RELEASE_ENV_LOADED=1 \
+MODEX_SIGN_IDENTITY="Developer ID Application: Soul Protocol LLC (9LR8Z8UQ9X)" \
+scripts/release-mac.sh --sign-only
+```
+
+`MODEX_RELEASE_ENV_LOADED=1` is the flag the script sets for itself once `op run` has loaded
+the environment. With it set, `.env.release` is not read at all. The output is signed but not
+notarized, so never publish it. Say in the release review that local notarization was skipped
+and why. The packaged e2e and the rest of the rehearsal run as usual.
+
+A full local run (no `--sign-only`) and the iPhone TestFlight upload still need `op`. The CLI
+reaches secrets through the 1Password app: it must be running and unlocked, with **Settings →
+Developer → Integrate with 1Password CLI** turned on. `op whoami` should answer without a timeout.
+
 ## Verifying a download
 
 Anyone can check an artifact without trusting this repository:

@@ -6,6 +6,9 @@
 #   scripts/release-mac.sh --verify     # verify an existing apps/desktop/release/ only
 #   scripts/release-mac.sh --verify --sign-only   # same, for a rehearsal build
 #
+# When `op run` cannot reach 1Password, rehearse without it: MODEX_RELEASE_ENV_LOADED=1 skips the
+# re-exec below, and --sign-only needs only MODEX_SIGN_IDENTITY (see docs/release-signing.md).
+#
 # Credentials come from the environment, or from .env.release (git-ignored) resolved through
 # `op run` when 1Password's CLI is installed. Notarization takes either an App Store Connect API
 # key (APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER) or a notarytool keychain profile
