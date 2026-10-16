@@ -22,8 +22,10 @@ _Last updated 2026-10-15._
 | v0.0.10 | 2026-10-09 | #148, #149, #150, #154, #151 | Agent-maintained Knowledge and Pages, compact resizable panels, approval policies, task retirement and shutdown recovery. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.10). |
 | v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). |
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). |
+| v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). |
 
-Every release so far is macOS Apple Silicon. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
+Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
+Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
 releases are Developer ID signed (Soul Protocol LLC), notarized and stapled. The release
 sequence (worktree → review doc → signed build + packaged e2e → guarded merge → signed tag →
 the `Release` workflow, behind the `release-signing` reviewer → GitHub release with
@@ -546,7 +548,19 @@ permission, Streamer Mode, Space/Knowledge, and readiness work to its delivery P
 retains the integrated candidate's CI and native evidence separately from the published
 v0.0.11 artifacts, including the original CI failures and remaining acceptance limits.
 
-## On main, unreleased
+## v0.1.0 release
+
+Published on 2026-10-15 from signed tag `v0.1.0` on `8bd21c6` (#251), with macOS, Windows and Linux
+installers, by Val's decision. [Release run 38825544975](https://github.com/TypeSafeAI/modex/actions/runs/38825544975)
+passed signing, notarization, stapling and the full packaged E2E suite, the Windows and Linux
+installer checks, and all three signed native updater scenarios on separate GitHub-hosted Macs,
+each using the published ZIP. The first tagged run, 38803510045, failed only at the draft attach
+step (setup-node looked for pnpm, fixed in #251). Nothing from it was published, and the
+replacement tag also carries #246 and #247. The independently downloaded installers passed
+checksum, manifest, signature, Gatekeeper, ticket, version and architecture checks. The DMG and
+ZIP apps have identical code hashes. The packaged suite passed again against the download (314 cases). GitHub's latest release
+reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its ZIP and digest.
+[Release review](reviews/2026-10-15-v0.1.0-release-review.md).
 
 - **Analytics export and recovery.** The native dashboard permits its own CSV
   export through a save dialog while other downloads remain refused. A torn
@@ -712,6 +726,8 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   Stop requests remain admitted during deletion for CLI force-stop recovery. Internal
   routing and title updates from admitted turns also finish while new edits stay fenced.
 
+## On main, unreleased
+
 - **Analytics looks like the rest of Modex.** The dashboard takes the app's tokens and theme, and
   its view's corners follow the app's sheet. It is laid out like Space: a sidebar titled Analytics,
   and each view's title with its filters and Export CSV. Every view fits the window down to the
@@ -719,14 +735,6 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
   standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
 
 ## In flight
-
-- **Desktop v0.1.0 preparation.** The first minor release ships everything under "On main,
-  unreleased": Markdown notes in workspaces and projects with per-project agent scope, files in
-  notes, Images and native Plugins (Val's decision), Analytics and thread archiving. It is the
-  first published-to-published automatic update, from v0.0.12. A signed rehearsal and the full
-  test suite passed locally. Notarization, the packaged E2E on the signed tag, the hosted native
-  updater scenarios, independent download checks and publication remain.
-  [Candidate review](reviews/2026-10-15-v0.1.0-release-review.md).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
@@ -1003,11 +1011,11 @@ v0.0.11 artifacts, including the original CI failures and remaining acceptance l
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Publish Windows and Linux installers.** The protected pipeline built and verified them for
-   v0.0.12 (run 38465731604), but Val chose macOS-only publication. Publish them from a
-   later signed tag after release review. Candidate Actions artifacts are not releases. Provider-account acceptance,
-   KWallet6/full graphical sessions, and historical schema migration remain unproven;
-   see [native-platforms.md](native-platforms.md) for candidate evidence and its limits.
+1. **Record the first published-to-published update.** Upgrade a real v0.0.12 install to v0.1.0
+   through its own update banner, and add the result to the
+   [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication). Windows and Linux
+   installers shipped with v0.1.0. Provider-account acceptance, KWallet6/full graphical sessions,
+   and historical schema migration remain unproven; see [native-platforms.md](native-platforms.md).
 2. **Routines.** Read-only routines come next: Chat or Plan turns on a timer, with the
    result written to a Space page. They follow a groundwork phase (a shared decision service
    and an event journal), and routines that change code wait for the approval gate decision.
