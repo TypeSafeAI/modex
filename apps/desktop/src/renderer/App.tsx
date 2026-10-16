@@ -376,8 +376,12 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     return () => { live = false; };
   }, [refresh]);
 
-  useEffect(() => bridge.onReconnect?.(() => {
-    setConnectionRevision((revision) => revision + 1);
+  useEffect(() => bridge.onReconnect?.((info) => {
+    // A resumed host stream replays every missed event, so loaded transcripts stay; only reload them
+    // when the host could not resume. The thread list always refreshes: creation and deletion are
+    // not thread events.
+    if (!info?.resumed) setConnectionRevision((revision) => revision + 1);
+    else if (selectedRef.current) void loadChanges(selectedRef.current);
     void refresh().then((snapshot) => {
       const current = selectedRef.current;
       if (current && !snapshot.threads.some((thread) => thread.id === current)) setSelected(null);
