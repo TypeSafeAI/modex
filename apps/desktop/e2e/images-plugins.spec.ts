@@ -173,6 +173,51 @@ test("Plugins binds an offline image skill; approvals produce a saved revision a
   }
 });
 
+test("a job that reaches approval before Images reads its submit reply still offers Approve", async () => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  const saved = () =>
+    JSON.parse(fs.readFileSync(path.join(home, "images", "jobs.json"), "utf8")) as {
+      draft: { prompt: string };
+      jobs: { status: string }[];
+    };
+  try {
+    await page.evaluate(() => window.modex.invoke("images:bind", { runtime: "claude", account: "cli", pluginId: "modex-fixture", pluginVersion: "1", entrypoint: "modex-fixture", label: "Offline fixture", edit: true }));
+    await tid(page, "rail-images").click();
+    await page.getByRole("button", { name: "Generate", exact: true }).click();
+    await page.getByLabel("Image skill", { exact: true }).selectOption({ label: "Offline fixture · claude · unverified" });
+    await page.getByLabel("Image prompt", { exact: true }).fill("Finish before the reply");
+    await expect(page.getByRole("button", { name: "Generate image", exact: true })).toBeEnabled();
+    // The click must send the submission at once, not wait behind a draft save.
+    await expect.poll(() => saved().draft.prompt).toBe("Finish before the reply");
+    await page.evaluate(() => window.modex.invoke("images:draft", undefined));
+    // With fast storage, main can take the job all the way to its approval before the
+    // renderer handles the submit reply (CI runs 38856460357, 38850091541). Pause the
+    // renderer right after it sends the submission and resume once main is waiting.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Debugger.enable");
+    const paused = new Promise((resolve) => cdp.once("Debugger.paused", resolve));
+    const clicked = page.evaluate(async () => {
+      [...document.querySelectorAll("button")].find((b) => b.textContent === "Generate image")!.click();
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      debugger;
+    });
+    await paused;
+    await expect.poll(() => saved().jobs[0]?.status).toBe("waiting-for-approval");
+    await cdp.send("Debugger.resume");
+    await clicked;
+    await cdp.detach();
+    await expect(page.getByText("waiting for approval", { exact: true })).toBeVisible();
+    // Submitting opens the new job's transcript; its approval must appear without reopening it.
+    const approve = page.getByRole("button", { name: "Approve", exact: true });
+    await expect(approve).toBeVisible();
+    await approve.click();
+    await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
 test("corrupt image metadata preserves Chat and displays a recoverable library error", async () => {
   const { home } = seedHome();
   fs.mkdirSync(path.join(home, "images"));

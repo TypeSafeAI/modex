@@ -742,6 +742,11 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
 - **Agents restore notes only into their own project.** A note trashed in one project whose
   folder was then dragged into another project can no longer be restored there by the first
   project's agent (#241).
+- **New image jobs no longer look stuck at "queued".** When a job reached its approval before
+  Images had handled the Generate click, the job stayed "queued", or showed the previous job's
+  transcript, with no Approve button until the window lost and regained focus. Images now
+  shows the new job's status and approval either way, and reloads an open job's transcript when
+  you come back to Images.
 - **Restored notes follow their folder.** A note trashed before its workspace, project or
   folder was renamed or moved comes back in the new place, instead of making the old folder
   again outside the project (#241).
