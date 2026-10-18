@@ -11,7 +11,7 @@
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
 repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
 stream-json and `codex app-server`), using existing CLI logins or app-owned ChatGPT sign-in.
-App-owned sign-in is under review; see [its acceptance gates](docs/chatgpt-signin.md).
+App-owned sign-in shipped in v0.0.6; see [how it works and its limits](docs/chatgpt-signin.md).
 It never calls a model
 API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
 Claude and Codex CLI credentials remain with their CLIs.
@@ -165,8 +165,11 @@ skills exactly as it would in a terminal.
 ### Run it
 
 For macOS on Apple Silicon, download the DMG or ZIP from the
-[latest release](https://github.com/TypeSafeAI/modex/releases/latest). Replace the existing
-app to upgrade; projects, threads, and preferences remain in `~/.modex`. Builds from v0.0.5
+[latest release](https://github.com/TypeSafeAI/modex/releases/latest). From v0.0.12 the app
+updates itself (see [Release notifications](#release-notifications)); earlier builds upgrade by
+replacing the app. Projects, threads, and preferences remain in `~/.modex`. The same page has
+unsigned Windows x64 and Linux x64 installers from v0.1.0, which update manually; see
+[native platforms](docs/native-platforms.md). Builds from v0.0.5
 are signed with a Developer ID and notarized by Apple, so they open without a Gatekeeper
 warning; v0.0.1–v0.0.4 were ad-hoc signed and need a right-click → Open the first time. You
 still need `claude` or `codex` installed and logged in. To check a download yourself, see
@@ -210,10 +213,10 @@ Starting with v0.0.7, installed macOS builds check for a newer stable release at
 workspace is visible, with a check when you return to it. A small banner links to the
 release page; dismissing it hides that version across relaunches. A later release appears
 again. Checks use public GitHub release metadata and require an uploaded installer for
-your Mac. Offline failures stay quiet. Published builds still require manual downloads and
-installation. The in-flight [automatic update and durable-draft work](docs/update-recovery.md)
-adds verified preparation and recovery and has passed local integration checks. Signed native
-acceptance and release approval remain required before publication.
+your Mac. Offline failures stay quiet. From v0.0.12 the banner also offers **Download update**:
+Modex verifies the archive and its publisher, then offers **Restart to update** and keeps your
+drafts. Builds before v0.0.12 install it manually once, and Windows and Linux keep manual update
+links. See [update preparation and draft recovery](docs/update-recovery.md).
 
 If you are on v0.0.6 or earlier, install v0.0.7 from the release page once to enable future
 update notifications; older builds do not contain the banner.
@@ -268,13 +271,13 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks and scheduled automations remain deferred until local readiness. Automatic
-update installation and public Windows/Linux installers still need their release gates;
-[native installer candidates](docs/native-platforms.md) already have bounded acceptance
-evidence. Modex has no HTTP-API execution mode;
-if a CLI is not installed or logged in, the thread says so.
+Codex Cloud tasks stay out of scope. Read-only [routines](docs/routines.md) are on `main`,
+unreleased; routines that change code wait on the approval gate decision. Windows and Linux
+installers ship from v0.1.0, and their [acceptance gaps](docs/native-platforms.md) are still
+open. Modex has no HTTP-API execution mode; if a CLI is not installed or logged in, the thread
+says so.
 
-## Images and Plugins (unreleased)
+## Images and Plugins
 
 The full desktop app includes local image imports and a native Claude Code/Codex plugin manager.
 Compatible image skills can generate and revise images through the existing CLI runner, with

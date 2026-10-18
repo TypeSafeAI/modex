@@ -1,5 +1,8 @@
 # Worktree hygiene implementation plan
 
+**Status (2026-10-18): delivered** in #171 on 2026-10-11. The procedure is
+[worktree-hygiene.md](../../worktree-hygiene.md).
+
 **Goal:** Run daily local pruning automatically, but only for explicitly released,
 clean, inactive work whose exact commit is proven merged and recoverably archived.
 

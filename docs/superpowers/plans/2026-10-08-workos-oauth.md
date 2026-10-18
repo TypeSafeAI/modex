@@ -1,5 +1,10 @@
 # Modex OAuth sign-in implementation plan
 
+**Status (2026-10-18): delivered.** Native Modex sign-in with GitHub through WorkOS merged in
+#141 and shipped in v0.0.9, whose signed app passed the production sign-in lifecycle
+([status](../../status.md#v009-release)). The boxes below stopped being updated before delivery
+and are historical. Behaviour: [modex-signin.md](../../modex-signin.md).
+
 > **For agentic workers:** Use the executing-plans workflow for the tasks below.
 
 **Goal:** Authenticate Modex with the existing GitHub OAuth App through WorkOS, then release only after live acceptance and the repository release gates.

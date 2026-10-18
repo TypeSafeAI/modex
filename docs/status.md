@@ -72,7 +72,8 @@ iPhone Companion and inline FAQ. Mobile retains the product explanation and plat
 requirements; screenshot enlargement, keyboard controls and no-JavaScript links remain usable.
 
 Mac links update to the latest stable Apple Silicon release through the cached public
-GitHub feed, with verified v0.0.11 URLs as the static fallback. Signing, release and MIT
+GitHub feed, with the last published release's verified URLs (`apps/site/release.json`) as the
+static fallback. Signing, release and MIT
 license links sit beside the main download; community counts move to the footer. Missing
 counts remain hidden and cached counts are labeled after a failed refresh. The optional
 Companion links to Val's [public TestFlight invitation](https://testflight.apple.com/join/Qr14JKCh),
@@ -830,16 +831,9 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
 
 
-- **Verified multiplatform release candidates.** The release workflow now joins native
-  Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
-  to the exact tag/source/run, and prepares a draft with five installers, checksums and
-  an acceptance manifest. The combined recovery source passed local build/typechecks and
-  1,405 unit tests (15 skipped). Native reports and all three installer hashes were verified
-  on [the release-patch run](https://github.com/TypeSafeAI/modex/actions/runs/38230412498).
-  The combined workflow first ran on an approved signed tag for v0.0.12 (run 38465731604);
-  its Windows and Linux candidates passed native checks but were not published. Windows
-  signing stays deferred; account/session and historical migration gaps remain.
-  [Attachment checks](release-signing.md#candidate-attachment-checks).
+- **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
+  Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286 (CF-2)
+  and #289 (CF-7). The tracker keeps the dependency order and each slice's evidence.
 
 - **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
   no remaining product or test patch beyond #144, #150, and #154. The
@@ -1142,8 +1136,8 @@ Roughly in the order they earn their place; none is scheduled.
 3. **#250's lifecycle fixes on the `claude -p` backend.** #250 (Claude through the Agent SDK) was
    closed so that Modex keeps `claude -p`; see its closing comment. Its graceful interrupt before
    SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
-   stderr and exit codes all apply to `backends/claude.ts` without the SDK. The author is invited to
-   send them; otherwise they come after the next release.
+   stderr and exit codes all apply to `backends/claude.ts` without the SDK. They are open in #286
+   (CF-2, #275).
 4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
