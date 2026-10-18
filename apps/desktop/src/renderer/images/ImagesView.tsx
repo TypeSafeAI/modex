@@ -1004,7 +1004,7 @@ export function ImagesView({
                         <>
                           <p>{redact(item.question)}</p>
                           {item.detail && <pre>{redact(item.detail)}</pre>}
-                          {item.answer && <p>Decision: {item.answer}</p>}
+                          {item.answer && <p>Decision: {item.withdrawn ? "withdrawn" : item.answer}</p>}
                           {!item.answer && activeJob(job) && (
                             <div className="images-actions">
                               <button

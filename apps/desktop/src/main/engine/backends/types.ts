@@ -57,7 +57,11 @@ export interface TurnSink {
    * with the turn and attempt and projects it into transcript items.
    */
   observe(observation: Observation): void;
-  approval(req: ApprovalRequest): Promise<ApprovalAnswer>;
+  /**
+   * Asks for a decision. `withdrawn` aborts when the backend's CLI no longer needs the answer (Claude's
+   * `control_cancel_request`): the sink then settles the request once as "no" and leaves nothing actionable.
+   */
+  approval(req: ApprovalRequest, withdrawn?: AbortSignal): Promise<ApprovalAnswer>;
   /**
    * After `approval(req)` answered "no": the "when" text of the approval rule that refused it on the
    * user's behalf, so the backend can tell the model why. Undefined when a human answered.
@@ -123,6 +127,24 @@ export interface TurnResult {
   usage?: TurnUsage;
   /** Whether fast mode ran, as the CLI reported it, and if not, why; absent when the backend does not say. */
   fastMode?: { on: boolean; why?: string };
+  /** After Stop, including when a failure preceded it: how the process ended, or whether exit is unconfirmed. */
+  stop?: StopReport;
+}
+
+/**
+ * How a stopped turn's process ended. `exited`: it ended the turn and exited by itself after the interrupt.
+ * `terminated` / `killed`: Modex had to send SIGTERM / SIGKILL. `unconfirmed`: no exit was observed even
+ * after SIGKILL, so the process may still be running.
+ */
+export interface StopReport {
+  outcome: "exited" | "terminated" | "killed" | "unconfirmed";
+  exitCode?: number | null;
+  signal?: string | null;
+  pid?: number;
+  /** From Stop to the process's exit (or to giving up on it). */
+  ms: number;
+  /** The grace Modex allowed before SIGTERM, for the notice that explains it. */
+  graceMs?: number;
 }
 
 export interface TitleOptions {

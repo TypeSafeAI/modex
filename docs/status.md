@@ -82,6 +82,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     each finished turn, Save to Notes writes the turn's request, plan, changed files, commands and
     loose ends into the project's notes; saving again updates the note unless you edited it.
     [Task plans and records](task-context.md).
+  - **Truthful Claude Stop (CF-2 #275, #286).** Stop sends the CLI's native interrupt, drains
+    its final output and waits for exit, escalating through SIGTERM and SIGKILL. An unconfirmed
+    process keeps its thread and worktree; a failure just before Stop keeps its error and process
+    ownership. Withdrawn permission cards become inert. Split output and final diagnostics survive
+    draining without exposing MCP credentials. Live macOS checks cover pending approval, running
+    command, resume and mid-stream Stop; Windows/Linux escalation remains unproven.
+    [Evidence and limits](reviews/2026-10-18-claude-lifecycle.md).
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
     plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
@@ -175,7 +182,6 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac, and the TestFlight
   upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
-
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
@@ -317,17 +323,12 @@ Roughly in the order they earn their place; none is scheduled.
 2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
-3. **#250's lifecycle fixes on the `claude -p` backend.** #250 (Claude through the Agent SDK) was
-   closed so that Modex keeps `claude -p`; see its closing comment. Its graceful interrupt before
-   SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
-   stderr and exit codes all apply to `backends/claude.ts` without the SDK. They are open in #286
-   and #291 (CF-2, #275).
-4. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting
+3. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting
    on repositories needs a dedicated GitHub App owner and a hosted service destination before
    implementation and live acceptance. The
    [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md) is the
    historical proposal.
-5. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
