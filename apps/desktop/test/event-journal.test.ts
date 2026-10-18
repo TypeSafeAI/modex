@@ -10,6 +10,7 @@ import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import type { MockStep } from "@modex/core";
 import { gitRepo, tmpdir, writeScript } from "./helpers.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { mobileItem } from "../src/main/engine/companion.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { CODEX_THREAD, codexServer, fixture } from "./conversation-fixtures.js";
@@ -383,4 +384,44 @@ test("a cursor from a deleted journal reloads, and journal faults leave every ot
   crash(fresh);
   new EventJournal(file).close();
   assert.deepEqual(besideJournal(home), files, "drafts and state files are untouched by a crash, a deleted journal and a failed write");
+});
+
+test("an MCP route's capability token reaches no event, journal row or file when a failed turn reports its launch", async () => {
+  const home = tmpdir("modex-journal-secret-");
+  const store = new Store(home);
+  const journal = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
+  const token = "3f0c2a6e-8b1d-4c55-9e0f-7a2b1c3d4e5f";
+  const proc = new FakeProcess();
+  const emitted: ThreadEvent[] = [];
+  const pages = { prepare: async () => ({ connection: { url: `http://127.0.0.1:4100/mcp/${token}`, instructions: "Notes" }, close: async () => {} }) };
+  const runner = new ThreadRunner({ home, store, emit: (event) => { emitted.push(event); journal.record(event); },
+    backends: { claude: new ClaudeBackend("claude", fakeSpawn(proc).spawn) },
+    pages: pages as unknown as NonNullable<ConstructorParameters<typeof ThreadRunner>[0]["pages"]> });
+  const project = store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+  store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+  try {
+    const turn = runner.send(thread.id, "go");
+    await proc.waitFor((line) => line.includes('"type":"user"'));
+    proc.stderr.write("fatal\n");
+    proc.close(1);
+    await turn;
+    journal.flush();
+    assert.ok(JSON.stringify(runner.items(thread.id)).includes("127.0.0.1:4100/mcp/"), "the failure still names the route it launched with");
+    assert.ok(!JSON.stringify(emitted).includes(token), "no event carries the token");
+    assert.ok(!journal.since(0).some((entry) => JSON.stringify(entry.event).includes(token)), "no journal row carries it");
+  } finally {
+    await runner.dispose();
+    journal.close();
+  }
+  const leaks: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (fs.readFileSync(file).includes(token)) leaks.push(path.relative(home, file));
+    }
+  };
+  walk(home);
+  assert.deepEqual(leaks, [], "no file under MODEX_HOME holds it, the SQLite file and its WAL included");
 });
