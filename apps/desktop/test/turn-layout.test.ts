@@ -79,3 +79,11 @@ test("pending requests, notices, failures, interruptions and unknown work never 
   const items = [pending, answered, notice, tool("f", "failed"), tool("i", "interrupted"), tool("u", "unknown"), tool("s", "succeeded"), say("a", "Done.", "final")];
   assert.deepEqual(layoutTurn(items, { busy: false }).work, [false, true, false, false, false, false, true, false]);
 });
+
+test("an open question stays out of the fold; an answered or withdrawn one folds like an answered approval", () => {
+  const questions = [{ id: "q1", header: "Env", text: "Which?", options: null, allowOther: true, secret: false }];
+  const open: ThreadItem = { id: "o", kind: "question", questions, blocking: true, at };
+  const answered: ThreadItem = { id: "d", kind: "question", questions, blocking: true, answers: { q1: ["staging"] }, at };
+  const withdrawn: ThreadItem = { id: "w", kind: "question", questions, blocking: true, withdrawn: "stopped", at };
+  assert.deepEqual(layoutTurn([open, answered, withdrawn, say("a", "Done.", "final")], { busy: false }).work, [false, true, true, false]);
+});
