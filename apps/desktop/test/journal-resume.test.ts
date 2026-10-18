@@ -9,11 +9,13 @@ import { once } from "node:events";
 import { EventJournal } from "../src/main/engine/event-journal.js";
 import { DesktopHost } from "../src/main/engine/desktop-host.js";
 import { DesktopClient } from "../src/main/engine/desktop-client.js";
-import { CompanionServer } from "../src/main/engine/companion.js";
+import { CompanionServer, mobileItem } from "../src/main/engine/companion.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
+import type { TurnSink } from "../src/main/engine/backends/types.js";
+import { replayItems } from "../src/main/engine/event-journal.js";
 import type { MockStep } from "@modex/core";
 import { gitRepo, tmpdir, writeScript } from "./helpers.js";
 
@@ -494,5 +496,126 @@ test("a journal batch delivered twice reaches the paired desktop once", async ()
     assert.deepEqual(mine, rows.map((entry) => entry.event), "each row applied once, though it was sent twice");
   } finally {
     await at.dispose();
+  }
+});
+
+test("one mixed transcript converges on every path, survives hostile frames, and nothing is run or answered twice", async () => {
+  const home = tmpdir("modex-journal-mixed-");
+  const store = new Store(home);
+  const project = store.addProject(gitRepo());
+  const live = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
+  // The same events through a journal that batches the whole run into one window, so a card's
+  // opening and its withdrawal or answer coalesce into one row.
+  const coalesced = new EventJournal(path.join(home, "batched.sqlite"), { flushMs: 60_000 });
+  const emitted: ThreadEvent[] = [];
+  const emit = (event: ThreadEvent) => { emitted.push(event); live.record(event); coalesced.record(event); };
+  let runs = 0;
+  const decisions: string[] = [];
+  const sinks: TurnSink[] = [];
+  const at = (item: string) => ({ runtime: "fixture", item });
+  const backend = { id: "claude" as const, listModels: async () => [], dispose: async () => {}, async runTurn(_text: string, _opts: unknown, sink: TurnSink) {
+    const n = ++runs;
+    sinks.push(sink);
+    if (n === 1) {
+      sink.observe({ type: "message.start", native: at("m1"), phase: "commentary" });
+      sink.observe({ type: "message.delta", native: at("m1"), text: "Looking first." });
+      sink.observe({ type: "message.done", native: at("m1") });
+      sink.observe({ type: "tool.start", native: at("t1"), tool: { name: "shell", title: "$ ls", args: { command: "ls" } } });
+      sink.observe({ type: "tool.done", native: at("t1"), outcome: "succeeded", progress: { output: "a\nb\n" } });
+      sink.observe({ type: "tool.update", native: at("t1"), progress: { output: "a late frame after the tool ended" } });
+      const answer = await sink.approval({ question: "Allow Bash: $ rm -rf build?", canAlways: false });
+      decisions.push(answer);
+      sink.observe({ type: "tool.start", native: at("t2"), tool: { name: "shell", title: "$ rm -rf build", args: { command: "rm -rf build" } } });
+      sink.observe({ type: "tool.done", native: at("t2"), outcome: answer === "yes" ? "succeeded" : "denied" });
+      sink.observe({ type: "message.start", native: at("m2"), phase: "final" });
+      sink.observe({ type: "message.delta", native: at("m2"), text: "first try" });
+      return { status: "failed" as const, error: "try again" };
+    }
+    // The retry reuses the first attempt's native message id, and the first attempt's sink speaks late.
+    sinks[0]!.observe({ type: "message.delta", native: at("m2"), text: " (late, from attempt 1)" });
+    const withdrawn = new AbortController();
+    const asked = sink.approval({ question: "Allow Bash: $ deploy?", canAlways: false }, withdrawn.signal);
+    withdrawn.abort(); // the CLI settles the request itself before anyone answers
+    decisions.push(`withdrawn:${await asked}`);
+    sink.observe({ type: "message.start", native: at("m2"), phase: "final" });
+    sink.observe({ type: "message.delta", native: at("m2"), text: "second try" });
+    sink.observe({ type: "message.done", native: at("m2") });
+    return { status: "completed" as const };
+  } };
+  const runner = new ThreadRunner({ home, store, backends: { claude: backend }, emit });
+  const host = new DesktopHost(home, { version: "test", channels: () => [], async invoke() { return null; }, journal: () => live });
+  live.subscribe((entries) => host.broadcastJournal(entries));
+  const companion = new CompanionServer(home, { state: () => store.snapshot(), items: (id) => runner.items(id), status: (id) => runner.status(id),
+    send: async () => ({ ok: true }), answer: () => {}, journal: () => live }, () => ["127.0.0.1"], () => () => {});
+  const client = new DesktopClient(() => {});
+  const connections: boolean[] = [];
+  client.on("connected", ({ resumed }: { resumed: boolean }) => connections.push(resumed));
+  let desktop: ThreadItem[] = [];
+  let restarted: ThreadRunner | undefined;
+  try {
+    const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+    store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+    client.on("thread", (event: ThreadEvent) => { if (event.threadId === thread.id) desktop = apply(desktop, event); });
+    await host.start();
+    const pairingUri = (await companion.start()).pairingUri!;
+    await client.pair(host.invite(), "a".repeat(64));
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    desktop = structuredClone(runner.items(thread.id));
+
+    // Attempt 1 waits on its approval: the phone loads, and the desktop sleeps through the rest.
+    const turn = runner.send(thread.id, "clean up");
+    await until(() => runner.items(thread.id).some((item) => item.kind === "approval"));
+    const mid = await phoneSnapshot(pairingUri, home, thread.id);
+    client.suspend();
+    const card = runner.items(thread.id).find((item) => item.kind === "approval")!;
+    runner.answer(thread.id, card.id, "yes");
+    runner.answer(thread.id, card.id, "yes"); // a second click, or the phone's answer arriving late
+    await turn;
+    await runner.retry(thread.id);
+    client.resume();
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    live.flush();
+    coalesced.flush();
+
+    const saved = new Store(home).items(thread.id);
+    const fromLive = live.since(0, { threadId: thread.id });
+    const fromBatched = coalesced.since(0, { threadId: thread.id });
+    // Memory can hold keys set to undefined, such as a failure card's empty debug fields; the files and every
+    // client see items through JSON, so the live projection is compared the same way.
+    const wire = (items: ThreadItem[]) => JSON.parse(JSON.stringify(items)) as ThreadItem[];
+    assert.deepEqual(wire(runner.items(thread.id)), saved, "the live projection is what a journal-off reload loads");
+    assert.deepEqual(wire(replayItems(emitted, thread.id)), saved, "the live event stream folds to it");
+    assert.deepEqual(replayItems(fromLive, thread.id), saved, "the journal replays to it");
+    assert.deepEqual(replayItems([...fromLive, ...fromLive], thread.id), saved, "and replaying it twice changes nothing");
+    assert.ok(fromBatched.length < fromLive.length, "the batched journal really coalesced");
+    assert.deepEqual(replayItems(fromBatched, thread.id), saved, "the batched journal replays to it too");
+    assert.deepEqual(connections, [false, true], "the desktop resumed after its sleep");
+    await until(() => JSON.stringify(desktop) === JSON.stringify(saved));
+    const delta = await phoneSnapshot(pairingUri, home, thread.id, mid.journal);
+    assert.equal(delta.delta, true);
+    assert.deepEqual(merge(mid.items, delta.items), JSON.parse(JSON.stringify(saved.map(mobileItem))), "the phone's mid-run snapshot plus its delta matches a full one");
+
+    // What the transcript says, on every path above.
+    const cards = saved.filter((item) => item.kind === "approval") as (ThreadItem & { answer?: string; withdrawn?: string })[];
+    assert.deepEqual(cards.map((item) => [item.answer, Boolean(item.withdrawn)]), [["yes", false], ["no", true]], "an answered card and a withdrawn one, through coalescing");
+    const tools = saved.filter((item) => item.kind === "tool") as (ThreadItem & { status: string; outcome?: string })[];
+    assert.deepEqual(tools.map((item) => [item.status, item.outcome]), [["done", "succeeded"], ["done", "succeeded"]], "a late update never reopens a finished tool");
+    const answers = saved.filter((item) => item.kind === "assistant") as (ThreadItem & { text: string; outcome?: string })[];
+    assert.deepEqual(answers.map((item) => [item.text, item.outcome]), [["Looking first.", "succeeded"], ["first try", "unknown"], ["second try", "succeeded"]], "the old attempt's late text reaches no item");
+
+    // Nothing ran or answered more than the user asked, through replay, reconnects and a restart.
+    restarted = new ThreadRunner({ home, store: new Store(home), backends: { claude: backend }, emit: () => {} });
+    assert.deepEqual(wire(restarted.items(thread.id)), saved, "a restarted Modex loads the same transcript");
+    assert.equal(runs, 2, "two attempts ran: the turn and its retry");
+    assert.deepEqual(decisions, ["yes", "withdrawn:no"], "the CLI heard one answer, and the withdrawn request settled no");
+  } finally {
+    client.dispose();
+    await companion.dispose();
+    await host.dispose();
+    await restarted?.dispose();
+    await runner.dispose();
+    live.close();
+    coalesced.close();
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });
