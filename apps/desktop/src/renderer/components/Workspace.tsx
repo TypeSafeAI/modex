@@ -54,7 +54,15 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     if (currentRef.current?.kind === "terminal") onHideTerminal();
     const tab = makeTab();
     setTabs((prev) => [...prev, tab]); setActive(tab.id); setFull(fullView); setAddMenu(false); setError(""); onShow();
-    requestAnimationFrame(() => addressRef.current?.focus());
+    // A frame can arrive late (an inactive or busy window). By then the address may already have focus,
+    // or the person may have moved on to type elsewhere: once focus has moved at all, leave it.
+    let moved = false;
+    const mark = () => { moved = true; };
+    document.addEventListener("focusin", mark, true);
+    requestAnimationFrame(() => {
+      document.removeEventListener("focusin", mark, true);
+      if (!moved) addressRef.current?.focus();
+    });
   }, [onShow, onHideTerminal]);
   const openTool = (kind: "review" | "files" | "terminal" | "canvas") => {
     const existing = tabs.find((tab) => tab.kind === kind);

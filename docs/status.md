@@ -89,6 +89,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     draining without exposing MCP credentials. Live macOS checks cover pending approval, running
     command, resume and mid-stream Stop; Windows/Linux escalation remains unproven.
     [Evidence and limits](reviews/2026-10-18-claude-lifecycle.md).
+  - **Approvals and questions, answered once (CF-3 #276).** Each request is bound to its turn,
+    attempt and the CLI's own request id. The first answer is taken; any other is refused with a
+    reason, and the phone gets a 409. Codex questions (`item/tool/requestUserInput`, experimental in
+    codex-cli 0.163.0) are cards with a control for each question, and a secret answer goes to the
+    CLI only. Stop sends Codex an error, never an empty answer. A request Codex settles itself closes
+    as withdrawn, and cards a restarted Modex left open close as ended everywhere. Phones show
+    questions as text to answer on the Mac. Scripted fixtures only. [Human requests](human-requests.md).
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
     plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
@@ -99,8 +106,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
     every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
     window wraps its text and buttons instead of pushing Deny out of view.
-  - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
-    acceptance and human VoiceOver checks.
+  - **Still open:** CF-4's remaining Markdown checks (#277), CF-6's request half, CF-7's
+    clarifications, live-provider acceptance and human VoiceOver checks.
 
 - **Every inline error can be copied, and most can be retried.** A shared `ErrorNotice`
   replaces bare error text across the terminal, Changes diff, Files, Canvas, browser and
