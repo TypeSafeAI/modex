@@ -189,7 +189,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - Resume after Stop: answers normally.
   - Stop mid-stream: the text so far is kept.
 
-  Windows and Linux escalation is unproven. Open in #286; #291 is integrated. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
+  Windows and Linux escalation is unproven. Open in #286. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286
