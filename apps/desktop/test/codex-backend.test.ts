@@ -181,11 +181,11 @@ test("CodexBackend: a turn streams deltas, command + file-change items, approval
   assert.deepEqual(events, [
     `session:${threadId}`,
     "think:r1:",
-    "think:r1:Need to ",
-    "think:r1:look first.",
-    "think:r1:\n\n",
-    "think:r1:Then edit.",
-    "think_done:r1:Need to look first.\n\nThen edit.",
+    // Summary parts are keyed by summaryIndex; the projector joins them, so no separator is streamed.
+    "think:r1:summary[0]:Need to ",
+    "think:r1:summary[0]:look first.",
+    "think:r1:summary[1]:Then edit.",
+    "think_done:r1:Need to look first.|Then edit.",
     "delta:Look",
     "delta:ing.",
     "assistant:Looking.",

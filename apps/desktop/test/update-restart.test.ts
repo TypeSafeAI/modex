@@ -6,6 +6,7 @@ import { ThreadRunner } from "../src/main/engine/runner.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend } from "../src/main/engine/backends/types.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { local } from "./fakeproc.js";
 
 function harness(backend: Partial<Backend> = {}, beforeDeleteThread?: (id: string) => Promise<void>) {
   const home = tmpdir("update-restart-");
@@ -16,7 +17,7 @@ function harness(backend: Partial<Backend> = {}, beforeDeleteThread?: (id: strin
   const runner = new ThreadRunner({ home, store, emit: () => {}, beforeDeleteThread,
     router: new Router({ home, policy: () => store.settings.routing, listModels: async () => ({ models: [] }), transport: null }),
     // A completed turn always carries at least one item; a silent completion is a failure card.
-    backends: { mock: { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, _options, sink) => { sink.assistant("done"); return { status: "completed" }; }, ...backend } },
+    backends: { mock: { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async (_text, _options, sink) => { local(sink).assistant("done"); return { status: "completed" }; }, ...backend } },
   });
   return { runner, store, project, close: async () => {
     await runner.dispose();

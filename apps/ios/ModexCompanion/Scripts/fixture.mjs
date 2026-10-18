@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { Store } from "../../../desktop/dist/src/main/engine/store.js";
 import { ThreadRunner } from "../../../desktop/dist/src/main/engine/runner.js";
 import { CompanionServer } from "../../../desktop/dist/src/main/engine/companion.js";
+import { LocalItems } from "../../../desktop/dist/src/main/engine/backends/local-items.js";
 
 // The job log is the only record of this process. In CI runs 38707861067, 38832248437 and 38848571338
 // it left a delivered /resume, a snapshot request and a TLS ClientHello unanswered for 5–10 s or more
@@ -51,11 +52,13 @@ const backend = {
   async listModels() { return []; },
   async dispose() {},
   async runTurn(text, _opts, sink) {
+    // Replies go through the typed observation path (docs/conversation-events.md), ids assigned here.
+    const reply = new LocalItems(sink);
     if (text === "Prepare the change") {
       const answer = await sink.approval({ question: "Apply the launch change?", detail: "One file in the test project", canAlways: false, action: { backend: "mock", tool: "apply_patch", title: "Apply launch change" } });
-      sink.assistant(answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
+      reply.assistant(answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
     } else {
-      sink.assistant(`Follow-up received: ${text}`);
+      reply.assistant(`Follow-up received: ${text}`);
       if (text === "Pause for recovery") {
         restartTimer = setTimeout(() => { restartTask = pauseMac(); }, 1500);
       } else if (reconnect && text === "Please summarize the result") {

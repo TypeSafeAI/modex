@@ -15,3 +15,20 @@ export function toolSummary(item: Extract<ThreadItem, { kind: "tool" }>): string
   const detail = arg("query", "pattern", "url", "description");
   return detail ? `${name} · ${line(detail)}` : title || name;
 }
+
+const OUTCOME_LABEL = { running: "Working", succeeded: "Done", failed: "Failed", denied: "Denied", interrupted: "Stopped", unknown: "Status unavailable" } as const;
+const AGENT_LABEL = { running: "Working", waiting: "Waiting", completed: "Done", failed: "Failed", stopped: "Stopped", unknown: "Status unavailable" } as const;
+
+/** A tool row's status word. A finished tool reads its outcome; one saved before outcomes existed reads `ok`, as it always did. */
+export function toolStatusLabel(item: Extract<ThreadItem, { kind: "tool" }>): string {
+  if (item.agent) return AGENT_LABEL[item.agent.state];
+  if (item.status === "running") return "Working";
+  if (item.outcome) return OUTCOME_LABEL[item.outcome];
+  return item.ok === false ? "Failed" : "Done";
+}
+
+/** Whether a finished tool folds under its turn's header: only work that neither failed, was denied, nor was stopped. */
+export function toolFoldsAsWork(item: Extract<ThreadItem, { kind: "tool" }>): boolean {
+  if (item.status !== "done" || item.agent?.state === "running" || item.agent?.state === "waiting") return false;
+  return item.outcome ? item.outcome === "succeeded" || item.outcome === "unknown" : item.ok !== false;
+}

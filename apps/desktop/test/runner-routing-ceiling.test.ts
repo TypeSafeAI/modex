@@ -8,6 +8,7 @@ import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnSink } from "../src/main/engine/backends/types.js";
 import { DEFAULT_ROUTING, type ModelInfo } from "../src/shared/types.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { local } from "./fakeproc.js";
 
 test("Auto stops before backend execution when no advertised effort fits the ceiling", async () => {
   const home = tmpdir("modex-policy-ceiling-");
@@ -54,7 +55,7 @@ test("learning-file write failures cannot block safe coding turns or turn a comp
   const model = { id: "gpt-6-luna", label: "Luna", efforts: ["high", "xhigh"], isDefault: true };
   const backend: Backend = {
     id: "codex", listModels: async () => [model], dispose: async () => {},
-    runTurn: async (_text, options, sink) => { runs.push(options); sink.assistant("done"); return { status: "completed" }; },
+    runTurn: async (_text, options, sink) => { runs.push(options); local(sink).assistant("done"); return { status: "completed" }; },
   };
   const router = new Router({ home, policy: () => ({ ...DEFAULT_ROUTING, premium_turns_per_day: 1 }), transport: null,
     listModels: async () => ({ models: [model] }),
