@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import https from "node:https";
 import path from "node:path";
 import { once } from "node:events";
@@ -16,7 +17,7 @@ import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import type { MockStep } from "@modex/core";
 import { gitRepo, tmpdir, writeScript } from "./helpers.js";
 
-type Phone = { id: string; kind: string; text?: string; status?: string };
+type Phone = { id: string; kind: string; text?: string; status?: string; answer?: string };
 type PhoneSnapshot = { items: Phone[]; journal?: { id: string; cursor: number }; delta?: true };
 
 /** Applies an item event as the window does: an `item` upserts by id, an `item_update` merges. */
@@ -240,5 +241,140 @@ test("a thread event too big for the client's frame buffer reloads once instead 
     assert.ok(!paired.ids.includes("big"), "the oversized frame itself never arrives; the reload carries that item");
   } finally {
     await paired.dispose();
+  }
+});
+
+test("Modex killed right after an approval is answered: pre-crash cursors reload on both clients, the card shows the answer, and nothing is sent again", async () => {
+  const home = tmpdir("modex-journal-crash-");
+  const store = new Store(home);
+  const project = store.addProject(gitRepo());
+  const idle = { id: "claude" as const, listModels: async () => [], dispose: async () => {}, async runTurn() { return { status: "completed" as const }; } };
+  const setup = new ThreadRunner({ home, store, backends: { claude: idle }, emit: () => {} });
+  const thread = await setup.createThread(project.id, { backend: "claude", auto: false });
+  store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+  await setup.dispose();
+
+  // A real Modex process: the CLI asks, the answer is saved and handed to the CLI, and the process is
+  // killed before the journal's 250 ms batch is written. The paired desktop's cursor is taken first.
+  const module = (name: string) => JSON.stringify(new URL(`../src/main/engine/${name}.js`, import.meta.url).href);
+  const script = `import fs from "node:fs"; import path from "node:path";
+    import { EventJournal } from ${module("event-journal")}; import { Store } from ${module("store")}; import { ThreadRunner } from ${module("runner")};
+    const home = ${JSON.stringify(home)}, threadId = ${JSON.stringify(thread.id)};
+    const journal = new EventJournal(path.join(home, "app", "events.sqlite"));
+    const backend = { id: "claude", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _opts, sink) {
+      const answer = await sink.approval({ question: "Allow Bash: $ deploy?", canAlways: false });
+      fs.appendFileSync(path.join(home, "decisions.log"), answer + "\\n");
+      process.kill(process.pid, "SIGKILL");
+      return { status: "completed" };
+    } };
+    const runner = new ThreadRunner({ home, store: new Store(home), emit: (event) => journal.record(event), backends: { claude: backend } });
+    void runner.send(threadId, "deploy");
+    for (let i = 0; i < 500 && !runner.items(threadId).some((item) => item.kind === "approval"); i++) await new Promise((r) => setTimeout(r, 10));
+    journal.flush();
+    const card = runner.items(threadId).find((item) => item.kind === "approval");
+    fs.writeFileSync(path.join(home, "pre-crash.json"), JSON.stringify({ id: journal.id, cursor: journal.latest(), card: card.id }));
+    runner.answer(threadId, card.id, "yes");
+    await new Promise(() => {});`;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", script], { timeout: 30_000, encoding: "utf8" });
+  assert.equal(child.signal, "SIGKILL", child.stderr);
+  const before = JSON.parse(fs.readFileSync(path.join(home, "pre-crash.json"), "utf8")) as { id: string; cursor: number; card: string };
+  assert.equal(fs.readFileSync(path.join(home, "decisions.log"), "utf8"), "yes\n", "the CLI heard one decision");
+  assert.equal((new Store(home).items(thread.id).find((item) => item.id === before.card) as { answer?: string }).answer, "yes", "the answer was saved");
+
+  // Relaunch over the same home, with a CLI that counts every call.
+  const journal = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
+  let ran = 0;
+  const counting = { ...idle, async runTurn() { ran++; return { status: "completed" as const }; } };
+  const relaunched = new Store(home);
+  const runner = new ThreadRunner({ home, store: relaunched, emit: (event) => journal.record(event), backends: { claude: counting } });
+  const host = new DesktopHost(home, { version: "test", channels: () => [], async invoke() { return null; }, journal: () => journal });
+  journal.subscribe((entries) => host.broadcastJournal(entries));
+  const companion = new CompanionServer(home, { state: () => relaunched.snapshot(), items: (id) => runner.items(id), status: (id) => runner.status(id),
+    send: async () => ({ ok: true }), answer: () => {}, journal: () => journal }, () => ["127.0.0.1"], () => () => {});
+  const client = new DesktopClient(() => {});
+  const connections: boolean[] = [];
+  client.on("connected", ({ resumed }: { resumed: boolean }) => connections.push(resumed));
+  try {
+    assert.notEqual(journal.id, before.id, "the journal a dead process left open takes a new identity");
+    await host.start();
+    const pairingUri = (await companion.start()).pairingUri!;
+    await client.pair(host.invite(), "a".repeat(64));
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    // The paired desktop held its pre-crash cursor across the outage.
+    client.suspend();
+    (client as unknown as { journal?: { id: string; cursor: number } }).journal = { id: before.id, cursor: before.cursor };
+    client.resume();
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    assert.deepEqual(connections, [false, false], "a pre-crash cursor reloads instead of resuming into a card that looks open");
+    const phone = await phoneSnapshot(pairingUri, home, thread.id, { id: before.id, cursor: before.cursor });
+    assert.equal(phone.delta, undefined, "the phone's pre-crash cursor reloads too");
+    assert.equal(phone.items.find((item) => item.id === before.card)?.answer, "yes", "and its reload shows the card answered");
+    assert.equal(ran, 0, "reloading, replaying and reconnecting ran nothing");
+    assert.equal(fs.readFileSync(path.join(home, "decisions.log"), "utf8"), "yes\n", "and sent the CLI no second decision");
+  } finally {
+    client.dispose();
+    await companion.dispose();
+    await host.dispose();
+    await runner.dispose();
+    journal.close();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a journal write that fails while the phone reads turns journaling off: the phone and the desktop reload, and live events continue", async () => {
+  const home = tmpdir("modex-journal-fail-");
+  const store = new Store(home);
+  const project = store.addProject(gitRepo());
+  let journal: EventJournal | undefined;
+  const stopped: unknown[] = [];
+  const host = new DesktopHost(home, { version: "test", channels: () => [], async invoke() { return null; }, journal: () => journal });
+  // index.ts's wiring: the main process records into the journal while it is on and broadcasts
+  // directly otherwise; a failure stops it, and streams it fed reconnect without it.
+  const emit = (event: ThreadEvent) => { if (journal) journal.record(event); else host.broadcast("thread", event); };
+  const idle = { id: "claude" as const, listModels: async () => [], dispose: async () => {}, async runTurn() { return { status: "completed" as const }; } };
+  const runner = new ThreadRunner({ home, store, backends: { claude: idle }, emit });
+  journal = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 60_000, onError: (error) => {
+    stopped.push(error);
+    const failed = journal;
+    journal = undefined;
+    try { failed?.close(); } catch { /* the state files remain authoritative */ }
+    host.restartStreams();
+  } });
+  journal.subscribe((entries) => host.broadcastJournal(entries));
+  const companion = new CompanionServer(home, { state: () => store.snapshot(), items: (id) => runner.items(id), status: (id) => runner.status(id),
+    send: async () => ({ ok: true }), answer: () => {}, journal: () => journal }, () => ["127.0.0.1"], () => () => {});
+  const client = new DesktopClient(() => {});
+  const connections: boolean[] = [];
+  client.on("connected", ({ resumed }: { resumed: boolean }) => connections.push(resumed));
+  const events: ThreadEvent[] = [];
+  client.on("thread", (event: ThreadEvent) => events.push(event));
+  try {
+    const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+    await host.start();
+    const pairingUri = (await companion.start()).pairingUri!;
+    await client.pair(host.invite(), "a".repeat(64));
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    const first = await phoneSnapshot(pairingUri, home, thread.id);
+    assert.ok(first.journal, "the phone holds a cursor");
+
+    emit({ threadId: thread.id, type: "status", status: "running" }); // pending in the batch window
+    (journal as unknown as { insert: { run(): never } }).insert = { run() { throw new Error("SQLITE_FULL: database or disk is full"); } };
+    const after = await phoneSnapshot(pairingUri, home, thread.id, first.journal);
+    assert.equal(after.delta, undefined, "the phone whose read hit the failure reloads instead of getting an error or a gap");
+    assert.equal(stopped.length, 1, "the failure stopped the journal once");
+    await until(() => connections.length === 2);
+    assert.deepEqual(connections, [false, false], "the desktop reconnects without the journal and reloads");
+
+    emit({ threadId: thread.id, type: "status", status: "idle" });
+    await until(() => events.some((event) => event.type === "status" && event.status === "idle"));
+    const later = await phoneSnapshot(pairingUri, home, thread.id, after.journal);
+    assert.equal(later.delta, undefined, "with the journal off, every phone snapshot is a full transcript");
+  } finally {
+    client.dispose();
+    await companion.dispose();
+    await host.dispose();
+    await runner.dispose();
+    journal?.close();
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });
