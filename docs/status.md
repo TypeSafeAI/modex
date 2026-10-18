@@ -1039,14 +1039,20 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   ClientHello unanswered for 5–8 s each, the app marked the Mac disconnected, and the
   `create-thread` tap landed on the disabled button 0.2 s later. Locally the fixture answers
   `/resume` in 3 ms after 8–80 s outages, and `dispose()` returns at once with a connection in
-  any state. Why the CI fixture goes silent is open. `fixture.mjs` now logs the phone's calls,
+  any state. To find why the CI fixture went silent, `fixture.mjs` now logs the phone's calls,
   the pause/resume lifecycle, and every event-loop stall of 1 s or more with the CPU time,
   major faults and involuntary context switches it saw, so the next failure's job log says
   whether the process was busy, paging or starved. The first two failures after it (38890707807,
   38898248332) say paging: stalls of 29–31 s that used 24–37 ms of CPU, with 143–164 major faults,
   550–600 involuntary switches and no file I/O. The runner was short of memory while the simulator
-  ran; both passed on a rerun. A longer budget would only hide this. The fix is a smaller memory
-  footprint for the job, or a test that waits out a stalled Mac.
+  ran; both passed on a rerun. A longer budget would only hide this. Sampling the whole job (#271)
+  found the cause: the simulator's own first-boot work. In 39095765816, two and a half minutes into
+  the paired test, six wallpaper poster extensions (260–300 MB each) started at once beside News,
+  Fitness and Health. Free memory fell to 28%, swap rose from 0 to 942 MB, and the fixture stalled
+  for 38 s, in a run that passed only because no wait was open then. The job now boots the
+  simulator before `pnpm install`, so that burst lands during the build. In both runs since
+  (39097082261, attempts 1 and 2) it came about 3 minutes after boot, before the paired test
+  started. The paired test then had no stall longer than 2.2 s and took 7–9 min instead of 10–14.
 - **Local e2e on a machine in use.** The test window is shown inactive under `MODEX_E2E`
   (v0.0.3); if a run still garbles terminal input, nothing else should be typed while it runs.
 - **Native picker test readiness.** The attachment test waits for the recovery file before

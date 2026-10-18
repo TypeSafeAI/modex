@@ -119,6 +119,12 @@ When the `iPhone companion` job fails, download its `iphone-test-results` artifa
 `Scripts/xctest-activity-times.py` on the runner's Session log (the script's header has the
 export commands) before changing any budget: it totals XCTest's own steps — idle waits, launches,
 SpringBoard interruption checks, snapshots — for comparison with a green run of the same job.
+Check memory first, too. The job boots its simulator before building, so the simulator's first-boot
+burst (wallpaper and widget extensions) is over before the paired test starts.
+`Scripts/sample-memory.sh` records free memory, swap and the eight largest processes every 10 s
+into the artifact's `memory.log`, and the job's **Memory low point** step prints the worst moment.
+The fixture's `event loop stalled` lines in the job log say whether the Mac side was paging
+(major faults, almost no CPU) or busy.
 
 The first test command runs pairing validation and delayed-response model tests. The second starts a local Mac
 fixture with the real thread runner and paired HTTPS API, then drives the simulator through
