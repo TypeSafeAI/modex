@@ -85,8 +85,15 @@ test("Copy on a code block puts exactly its code on the clipboard and starts not
   const answer = items(page, "assistant").first();
   const block = tid(answer, "code-block");
   await expect(block).toContainText("ts");
-  await tid(block, "code-copy").click();
-  await expect(tid(block, "code-copy")).toHaveText("Copied");
+  // A follow-up suggestion can arrive after the turn ends and grow the composer, which moves the
+  // transcript under the pointer mid-click: the likely cause of the one CI run (39112253838) where
+  // Copied never showed after a 42 ms click. A missed click copies nothing, so clicking again until
+  // Copied shows cannot hide a wrong copy.
+  const copy = tid(block, "code-copy");
+  await expect(async () => {
+    await copy.click();
+    await expect(copy).toHaveText("Copied", { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("export const answer = 42;");
   await expect(items(page, "tool")).toHaveCount(0);
   await expect(items(page, "approval")).toHaveCount(0);
