@@ -267,9 +267,11 @@ work up to its final answer, by `finalAnswerIndex`.
   `provider-text` shows untagged.
 - **Interruption and requests (CF-2, CF-3).** Approvals are still separate transcript items. A Claude
   denial is attributed through the `tool_use_id` of the refused `control_request`.
-- **Replay and paired clients (CF-6).** Events are serializable and validated by
-  `parseConversationEvent`, and the projector is deterministic. They are not stored yet: the
-  journal still records the item events they produce.
+- **Replay and paired clients (CF-6).** Conversation events are not stored: the journal records the
+  item events they produce, with the typed fields as whole values. `replayItems` upserts by id, the
+  phone receives the typed fields, and work left running at a restart is settled everywhere. See
+  [Typed conversation state](event-journal.md#typed-conversation-state). `parseConversationEvent`
+  and the deterministic projector are there for a future event store.
 
 ## Evidence
 

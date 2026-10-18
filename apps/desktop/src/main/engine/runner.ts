@@ -204,6 +204,20 @@ export class ThreadRunner {
       });
       l = { abort: null, run: null, backend: null, pending: new Map(), items, status: "idle", conversation: initialConversation(), attempt: null };
       this.live.set(threadId, l);
+      // Settle it everywhere once, not only in this window: save it for the next process, and send the
+      // change through the event stream so the journal and paired clients that resume from it see it too.
+      const stored = this.o.store.items(threadId);
+      const settled = items.flatMap((item, i) => {
+        const before = stored[i];
+        if (!before || item === before) return [];
+        const patch = Object.fromEntries(Object.entries(item).filter(([key, value]) => (before as Record<string, unknown>)[key] !== value));
+        return [{ id: item.id, patch: patch as Partial<ThreadItem> }];
+      });
+      if (settled.length) {
+        try { this.persistItems(threadId, l); }
+        catch (error) { console.error("[modex] could not save settled items:", error); }
+        for (const { id, patch } of settled) this.o.emit({ threadId, type: "item_update", id, patch });
+      }
     }
     return l;
   }
