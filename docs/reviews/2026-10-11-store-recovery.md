@@ -85,3 +85,35 @@ macOS account was available for this run.
 Apple distribution and the complete Store parity matrix remain separate gates. Attachments
 remain excluded from Store; this change does not alter PR #157 or perform Apple writes,
 submission, release, or installed-app mutation.
+
+## Status summary
+
+Moved from `docs/status.md` on 2026-10-18, where this was the "Local Mac Store development
+preview (unreleased)" section. Its Store facts now sit in the Mac App Store edition entry under
+In flight. The text is unchanged except that links now resolve from `docs/reviews/`.
+
+Store recovery now pauses on certificate identity/date/hostname failures and incompatible
+host protocols while retaining saved access and the mounted draft. Explicit retry rechecks
+the saved pin and stream without replaying commands. Discovery refreshes installed-host
+availability and retries failed group-directory lookup. The Store owns unavailable Modex
+account responses and a native Workspace menu through the existing shortcut pipeline.
+See the [recovery verification](2026-10-11-store-recovery.md) and
+[Store readiness audit](2026-10-11-store-readiness.md) for evidence and remaining gates.
+
+
+PR #119 adds a dedicated opt-in loopback host and a sandboxed Electron MAS client that
+reuses the desktop renderer. Val approved integrating this development preview. Transport
+boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
+saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
+App Sandbox was verified on the running client. Graceful host shutdown, full parity and
+real CLI acceptance, provisioning and App Review eligibility remain pending. Store 0.0.8
+was approved for macOS TestFlight beta testing on 2026-10-07; this is not an App Store
+release. See [the preview ledger](../mac-store-preview-plan.md) and
+[run instructions](../../apps/store-desktop/README.md).
+
+The shared Mac connection settings now recognize existing system CLI sign-ins and recheck
+them on return from Terminal or a browser. Authenticated Claude no longer asks for another
+login; an authenticated Codex CLI account remains selected unless the user chooses another
+account. Executable overrides still require verification before saving. Read-only checks on
+this Mac confirmed Claude Code 2.1.289 and Codex 0.160.1 are already authenticated; this is
+account-detection evidence, not a new live coding-turn or Store distribution acceptance.
