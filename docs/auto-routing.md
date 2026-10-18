@@ -26,8 +26,8 @@ calibrated probabilities. Modex asks six questions in one request
 | `needs_deep_reasoning` | noul | doing it well needs multi-step reasoning about interactions |
 | `depends_on_prior_turns` | noul | only when the thread has history: the request leans on it |
 
-The state sent is the request (clipped to 4k chars), the last six turns as short digests
-(user/assistant text clipped, tool titles), and thread/project facts (backend, mode, plan,
+The state sent is the request (clipped to 4k chars), the last six transcript entries (user
+text clipped, a placeholder for each assistant reply, tool titles), and thread/project facts (backend, mode, plan,
 turn count, project name, branch). No file contents, diffs, or tool output are sent.
 
 ## Key and transport
@@ -51,16 +51,16 @@ locked vault as the problem rather than silently judging with the heuristic.
 
 The judge itself is reached one of two ways (Settings → Judge transport):
 
-- **`jev` CLI** (default when installed): Modex runs `jev run - --raw` with the payload on
-  stdin and the resolved key in the child's environment only. That gives Modex the CLI's
-  config, its retries, its error messages, and `jev doctor`, and keeps one code path for
+- **`jev` CLI** (default when installed): Modex runs `jev run - --raw --compact --attempts 1`
+  with the payload on stdin and the resolved key in the child's environment only. That gives
+  Modex the CLI's config, its error messages, and `jev doctor`, and keeps one code path for
   people, scripts, and agents. Install with `npm link` in `TypeSafeAI/cli`.
 - **Built-in HTTPS** (`POST https://api.typesafe.ai/v1/systemone`): the same request from
   Modex's own process, used when the CLI is absent or the policy says so.
 
 Transport selection is explicit: **Auto** prefers the CLI and may fall back to HTTPS;
-**Always the jev CLI** never uses HTTPS if its executable is unavailable; **Always HTTPS**
-does not inspect the CLI. Saving changed judge transport, executable, or model settings
+**Always the jev CLI** never uses HTTPS if its executable is unavailable; **Always Modex's
+HTTPS call** does not inspect the CLI. Saving changed judge transport, executable, or model settings
 invalidates resolved setup without clearing learned preferences or disrupting an
 already-running turn. General, posture-only, and no-op saves retain connection-test health.
 
@@ -125,8 +125,8 @@ deterministically, and every step that changes the outcome adds a reason to the 
    unavailable. Mid-thread switches lose the CLI's context, so this is off by default; model
    switches have their own guard in step 7.
 4. **Model.** The highest rung at or below the target tier on that backend
-   (`routing/catalog.ts`). The ladder is rebuilt from the CLI's live model list: Claude's
-   aliases (haiku 0 · sonnet 1 · opus 2 · fable 3) and Codex's catalogue (gpt-5.5 0 ·
+   (`routing/catalog.ts`). The ladder is rebuilt from each backend's model list: Modex's
+   fixed Claude aliases (haiku 0 · sonnet 1 · opus 2 · fable 3) and Codex's live catalogue (gpt-5.5 0 ·
    gpt-5.6-* 1 · gpt-6-luna/sol 2 · gpt-6-astra 3), with description hints for anything new
    and the middle tier for unknowns.
    Successful non-empty lists are cached for a minute. A failed or empty list retries on
@@ -235,7 +235,8 @@ what each switch actually cost.
 
 ## Bounds you control
 
-Settings has separate General, Coding CLIs, Auto routing, and Advanced sections, with Save
+Settings has separate General, Coding CLIs, Auto routing, Approval rules, and Advanced / demo
+sections, with Save
 and Cancel kept visible while the content scrolls. Auto routing exposes posture, effort
 ceiling, minimum judge confidence, premium turns per day, fast-mode allowance, backend
 switching, and whether new threads start on Auto, plus the judge model and allowed coding

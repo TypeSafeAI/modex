@@ -215,8 +215,8 @@ release page; dismissing it hides that version across relaunches. A later releas
 again. Checks use public GitHub release metadata and require an uploaded installer for
 your Mac. Offline failures stay quiet. From v0.0.12 the banner also offers **Download update**:
 Modex verifies the archive and its publisher, then offers **Restart to update** and keeps your
-drafts. Builds before v0.0.12 install it manually once, and Windows and Linux keep manual update
-links. See [update preparation and draft recovery](docs/update-recovery.md).
+drafts. Builds before v0.0.12 install it manually once. Windows and Linux show no update banner;
+install a newer release by hand. See [update preparation and draft recovery](docs/update-recovery.md).
 
 If you are on v0.0.6 or earlier, install v0.0.7 from the release page once to enable future
 update notifications; older builds do not contain the banner.

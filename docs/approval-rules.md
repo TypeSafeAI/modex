@@ -6,7 +6,7 @@ tools themselves, create approval requests the CLI did not make, or widen a sand
 The gate remains **off** while this integration is reviewed. Settings can save rules and
 **Try it** can preview their decisions during this period. Rules do not answer live approvals;
 the existing thread policy still applies (Ask each time, Always allow, or YOLO).
-This editor follows v0.0.6 and is not included in its replacement release tag.
+The editor shipped in v0.0.7.
 See the [specification](specs/2026-10-01-modex-jev-approval-rules-spec.md).
 
 ## Add a rule

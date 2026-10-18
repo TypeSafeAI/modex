@@ -58,8 +58,8 @@ a missing credential stops the run rather than falling back to an unsigned build
   (`CSC_KEYCHAIN`) before the script runs, so the script resolves and signs by hash there
   exactly as it does locally.
 - `pnpm --filter @modex/desktop dist` is unchanged for contributors: it passes `identity=-`
-  and turns hardened runtime off, which is the ad-hoc build that CI's e2e and local demos
-  use. `dist:release` is the signed path and expects the credentials below.
+  and turns hardened runtime off, which is the ad-hoc build for local use and demos. CI's e2e
+  runs the unpackaged build. `dist:release` is the signed path and expects the credentials below.
 
 ## Credentials, and where they live
 
@@ -233,10 +233,11 @@ or native updater state.
 These scenarios cover native download failure and interruption before staging completes.
 They do not prove recovery from arbitrary ShipIt replacement failures, interruption after
 `update-downloaded`, or historical schema migration. The private A build uses the same source
-with version `0.0.0`; the first later published-to-published upgrade needs separate evidence.
+with version `0.0.0`. The first published-to-published upgrade, v0.0.12 to v0.1.0, passed on the
+release Mac on 2026-10-18 ([status](status.md#v010-release)).
 
-Keep the `macos-native-update-*` artifacts with the release review. Local harness tests and
-simulated controller tests pass, but the three hosted native scenarios have not run. Signed
+Keep the `macos-native-update-*` artifacts with the release review. All three hosted native
+scenarios passed on the v0.0.12 and v0.1.0 release runs (38465731604, 38825544975). Signed
 tag approval, the `release-signing` reviewer, and draft-asset verification remain required
 before publication. See [update recovery](update-recovery.md) for current local behavior.
 
