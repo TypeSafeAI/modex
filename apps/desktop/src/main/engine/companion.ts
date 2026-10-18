@@ -308,7 +308,9 @@ export class CompanionServer {
       this.reply(res, 201, { thread: mobileThread(thread, this.source.status(thread.id), this.source.pullRequest?.(thread.id)) });
       return;
     }
-    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer|policy|archive)$/.exec(url.pathname);
+    // Any id the store accepts: 8 hex characters for threads made here or by older builds, the full UUID a
+    // Mac draft reserved (#181). The thread must still exist.
+    const match = /^\/v1\/threads\/([A-Za-z0-9_-]{1,128})\/(send|answer|policy|archive)$/.exec(url.pathname);
     if (req.method !== "POST" || !match) { this.reply(res, 404, { error: "Not found." }); return; }
     const threadId = match[1]!;
     const action = match[2]!;
