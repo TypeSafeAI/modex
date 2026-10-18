@@ -128,7 +128,7 @@ deterministically, and every step that changes the outcome adds a reason to the 
    (`routing/catalog.ts`). The ladder is rebuilt from each backend's model list: Modex's
    fixed Claude aliases (haiku 0 · sonnet 1 · opus 2 · fable 3) and Codex's live catalogue (gpt-5.5 0 ·
    gpt-5.6-* 1 · gpt-6-luna/sol 2 · gpt-6-astra 3), with description hints for anything new
-   and the middle tier for unknowns.
+   and tier 2 for unknowns.
    Successful non-empty lists are cached for a minute. A failed or empty list retries on
    the next turn; discovery errors appear in receipts and any resulting stop message.
 5. **Effort.** Tier sets the base (low/medium/high/xhigh); deep reasoning bumps one; an
