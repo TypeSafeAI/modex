@@ -6,6 +6,7 @@ import { importMarkdownPage, splitTitlePaste } from "../../shared/space-markdown
 import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
+import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "../components/ui/Menu";
 import { PagesMaintenance } from "./PagesMaintenance";
 import { PageHistory } from "./PageHistory";
@@ -281,7 +282,10 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
         </> : <button className="btn small space-new" disabled={!space.loaded || creating} onClick={() => void create()}><Icon name="plus" size={14} /> Create page</button>}
       </header>
       {maintenance && <PagesMaintenance active={active} />}
-      {(space.error || actionError) && <div className="space-error" role="alert"><span>{actionError ?? space.error}</span>{space.error && <><button className="btn small" onClick={() => void run(space.retry)}>Retry</button><button className="btn small" onClick={() => void run(space.preserveDrafts)}>Save drafts as copies and reload</button></>}{actionError && <button className="btn small" onClick={() => setActionError(null)}>Dismiss</button>}</div>}
+      {(space.error || actionError) && <ErrorNotice className="space-error" testId="space-error" where="Notes" message={actionError ?? space.error ?? ""}
+        onRetry={space.error ? () => void run(space.retry) : undefined}
+        fix={space.error ? { label: "Save drafts as copies and reload", onClick: () => void run(space.preserveDrafts) } : undefined}
+        onDismiss={actionError ? () => setActionError(null) : undefined} context={{ page: selected ?? undefined, view }} />}
       {notice && <div className="space-notice" role="status">{notice}</div>}
       <div className="space-page-body">
       {!space.loaded ? <div className="space-loading" role="status">{space.error ? "Could not load Space." : "Opening Space…"}</div> : page ? <div className="space-document-scroll" key={page.id}>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CompanionStatus } from "../../shared/types";
 import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 export function CompanionDialog({ onClose }: { onClose: () => void }) {
   const streamerMode = useStreamerMode();
@@ -10,6 +11,8 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The action that failed, for the error's Retry. Status errors have none: status refreshes every 2.5 s.
+  const [failedAction, setFailedAction] = useState<(() => void) | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const endpoint = status?.endpoints?.find((candidate) => candidate.address === selectedAddress) ?? status?.endpoints?.[0];
   // Older hosts provide only one code. New hosts offer one code for each live listener.
@@ -33,7 +36,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
         const value = await bridge.invoke("companion:status", undefined);
         if (active && request === requestRevision.current) setStatus(value);
       } catch (err) {
-        if (active && request === requestRevision.current) setError((err as Error).message);
+        if (active && request === requestRevision.current) { setError((err as Error).message); setFailedAction(null); }
       }
     };
     void refresh();
@@ -56,8 +59,9 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
     actionPending.current = true;
     requestRevision.current += 1;
     setError(null);
+    setFailedAction(null);
     try { setStatus(await bridge.invoke(channel, undefined)); }
-    catch (err) { setError((err as Error).message); }
+    catch (err) { setError((err as Error).message); setFailedAction(() => () => void act(channel)); }
     finally { actionPending.current = false; setBusy(false); }
   };
   const copyLink = async () => {
@@ -66,7 +70,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
     try {
       await bridge.invoke("clipboard:write", { text: link });
       setCopiedLink(link);
-    } catch { setError("Could not copy the pairing link. Please try again."); }
+    } catch { setError("Could not copy the pairing link."); setFailedAction(() => () => void copyLink()); }
   };
   return (
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -100,7 +104,7 @@ export function CompanionDialog({ onClose }: { onClose: () => void }) {
             <span>{status?.enabled ? "A local address is needed to pair your iPhone." : "Turn on the companion to show a private pairing code."}</span>
           </div>
         )}
-        {error && <p className="companion-error" role="alert">{error}</p>}
+        {error && <ErrorNotice className="companion-error" testId="companion-error" where="iPhone companion" message={error} onRetry={failedAction && !busy ? () => { setError(null); failedAction(); } : undefined} context={{ serviceEnabled: status?.enabled }} />}
         <div className="companion-actions">
           {status?.enabled ? (
             <>

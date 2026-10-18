@@ -19,6 +19,7 @@ import {
 } from "../streamer";
 import { restartDrafts } from "../restart-drafts";
 import { Icon } from "../components/ui/Icon";
+import { ErrorNotice } from "../components/ui/ErrorNotice";
 import "./images.css";
 const blank: ImageDraft = { prompt: "", capabilityId: "", referenceIds: [] };
 const activeJob = (job: ImageJob) =>
@@ -455,13 +456,9 @@ export function ImagesView({
           <option value="name">Name</option>
         </select>
       </div>
+      {/* Errors here come from many actions (loads, saves, uploads, validation), so there is no single action to retry. */}
       {error && (
-        <div role="alert" className="images-error">
-          {redact(error)}
-          <button className="btn" onClick={() => setError(null)}>
-            Dismiss
-          </button>
-        </div>
+        <ErrorNotice className="images-error" testId="images-error" where="Images" message={error} onDismiss={() => setError(null)} />
       )}
       {notice && <p role="status">{redact(notice)}</p>}
       {studio && (

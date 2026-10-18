@@ -9,6 +9,7 @@ import { bridge } from "../bridge";
 import { ApprovalRules } from "./ApprovalRules";
 import { ConnectionStatus, TerminalLogin } from "./CliConnection";
 import { Icon } from "./ui/Icon";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 interface Props {
   settings: Settings;
@@ -439,7 +440,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           {learned.length ? ` · learned: ${learned.map(([k, t]) => `${k.replace(/_/g, " ")} ${t.offset > 0 ? "+" : ""}${t.offset}`).join(", ")}` : ""}
           {routing && routing.fit.routes > 0 ? <> · <button className="btn small ghost" disabled={interactionLocked} onClick={() => void resetLearning()}>Reset learning…</button></> : null}
         </p>
-        {resetError && <p className="warn" role="alert" data-testid="routing-reset-error">{resetError}</p>}
+        {resetError && <ErrorNotice className="warn" testId="routing-reset-error" where="Settings · reset learning" message={resetError} />}
         <div className="key-row" data-testid="jev-key">
           <label className="field grow">
             <span>Jev API key {routing?.secrets.present ? <em className="ok">· saved in {routing.secrets.backend}{routing.keySource === "modex" && routing.keyLast4 ? ` (****${routing.keyLast4})` : ""}</em> : null}</span>
@@ -558,7 +559,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
         {section === "approvals" && <ApprovalRules rules={s.approval_rules} projects={projects} currentProjectId={currentProjectId} gateEnabled={s.approval_gate.enabled} routing={routing} onChange={(rules) => set("approval_rules", rules)} />}
         </div>
         <footer className="settings-footer" data-testid="settings-actions">
-          {saveError && <p className="warn" role="alert" data-testid="settings-save-error">{saveError} Your draft is still here; retry or cancel.</p>}
+          {saveError && <ErrorNotice className="warn" testId="settings-save-error" where="Settings · save" message={saveError} onRetry={interactionLocked ? undefined : () => void save()} retryLabel="Retry save"> Your draft is still here; retry or cancel.</ErrorNotice>}
           <div className="row end">
             <button className="btn" disabled={interactionLocked} onClick={onClose}>Cancel</button>
             <button className="btn primary" disabled={interactionLocked} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
