@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { currentRow, items, launch, seedHome, tid } from "./support";
+import { currentRow, items, launch, resizeWindow, seedHome, tid } from "./support";
 
 /**
  * Turns from the conversation-event contract (docs/conversation-events.md) render from their own
@@ -150,4 +150,33 @@ test("scrolling up while output streams shows Jump to latest; it returns to the 
   await expect(tid(page, "jump-latest")).toBeHidden();
   await send([item({ ...say("final-long", "All lines done.", "final"), origin: { ...origin("J1", "final-long"), turn: "u-long" } })]);
   await expect(page.getByText("All lines done.")).toBeInViewport();
+});
+
+test("typed turns stay readable in every theme at the 900×600 minimum", async ({}, testInfo) => {
+  // Its own turn: an earlier test's running() reload may have replaced what was sent before it.
+  const o = (attempt: string, id: string) => ({ ...origin(attempt, id), turn: "u-themes" });
+  await send([
+    item({ id: "u-themes", kind: "user", text: "theme turn", at: at() }),
+    item({ ...say("th-old", "Superseded answer.", "final", "succeeded", "T1"), origin: o("T1", "th-old") }),
+    item({ ...think("th-summary", "summary", "Plan: check the themes."), origin: o("T2", "th-summary") }),
+    item({ ...tool("th-denied", "$ rm -rf build", "denied", "T2"), origin: o("T2", "th-denied") }),
+    item({ ...say("th-final", "Themes checked.", "final", "succeeded", "T2"), origin: o("T2", "th-final") }),
+  ]);
+  await resizeWindow(app, page, 900, 600);
+  const turn = page.locator(".turn-content").filter({ has: page.getByText("Themes checked.") });
+  await tid(page, "turn-label").last().click();
+  for (const theme of ["graphite", "jev", "coven"]) {
+    await page.evaluate((value) => window.modex!.invoke("settings:update", { theme: value }), theme);
+    await turn.scrollIntoViewIfNeeded();
+    const transcript = tid(page, "transcript");
+    expect(await transcript.evaluate((el) => el.scrollWidth - el.clientWidth), `${theme}: no sideways scroll`).toBeLessThanOrEqual(0);
+    await expect(turn.getByText("Themes checked.")).toBeVisible();
+    await expect(turn.getByText("$ rm -rf build")).toBeVisible();
+    await expect(tid(turn.locator('[data-reasoning="summary"]'), "reasoning-tag")).toBeVisible();
+    await expect(tid(turn, "attempt-divider")).toHaveText("Attempt 2");
+    const shot = await page.screenshot();
+    await testInfo.attach(`typed-turn-${theme}-900x600`, { body: shot, contentType: "image/png" });
+    // MODEX_SCREENSHOTS=<dir> keeps them for review evidence.
+    if (process.env.MODEX_SCREENSHOTS) fs.writeFileSync(path.join(process.env.MODEX_SCREENSHOTS, `typed-turn-${theme}-900x600.png`), shot);
+  }
 });
