@@ -25,6 +25,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). [Review](reviews/2026-10-12-v0.0.11-release-review.md). |
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). [Review](reviews/2026-10-13-v0.0.12-release-review.md). |
 | v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). [Review](reviews/2026-10-15-v0.1.0-release-review.md). |
+| v0.2.0 | 2026-10-18 | #253, #257, #267, #269, #272 | Read-only routines on a timer, on one decision service for Jev; the journal resumes paired desktops and the phone; Copy details and Retry on every inline error; the notes fixes from v0.1.0's review; the Analytics restyle. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -109,66 +110,6 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Still open:** the Markdown parser (#283), CF-6's request half, CF-7's clarifications,
     live-provider acceptance and human VoiceOver checks.
 
-- **Every inline error can be copied, and most can be retried.** A shared `ErrorNotice`
-  replaces bare error text across the terminal, Changes diff, Files, Canvas, browser and
-  browser extensions, Analytics, the iPhone companion dialog, Settings save and reset, approval
-  rule previews, the composer's attachment and model-list warnings, notes (Space, history,
-  comments, agent access, file preview), Knowledge, Routines, Plugins, Images and both update
-  screens. Copy details puts where, when, the message and context on the clipboard, and main
-  appends the app version and platform. Retry repeats exactly the action that failed and is left
-  out where repeating cannot help: a rejected URL, a skill in the wrong scope, lists that already
-  refresh themselves, and Images, whose errors have no single action. Streamer Mode redacts the
-  shown message and the whole copied report.
-
-- **Read-only routines** (Routines Phase 1). Routines in the rail run a read-only Chat or Plan turn
-  in one project, once or every N minutes, hours or days, while Modex is running with or without a
-  window. Each reply becomes a new revision of the routine's Space page, under the project's
-  `Routines` folder. Every approval the turn asks for is refused, with a receipt in the transcript.
-  Missed runs run once on wake, never as a burst. A run cut off by a quit or crash is marked
-  interrupted and never repeated. Activity lists each run's trigger, times, thread and page
-  revision, and the iPhone companion shows a banner when runs finish or fail. [Routines](routines.md).
-- **One decision service for Jev** (Routines Phase 0). Auto routing, follow-up suggestions and
-  approval rules now ask Jev through one module. It owns the key, the transport and the
-  session-wide switch-off after a rejected key. Each kind of judgment has a versioned question
-  set, and each judgment leaves a receipt in `app/decisions.jsonl`: Jev's typed answers or the
-  error, never the request. Routing, follow-ups and approvals behave as before.
-  [The decision service](auto-routing.md#the-decision-service).
-- **Analytics looks like the rest of Modex.** The dashboard takes the app's tokens and theme, and
-  its view's corners follow the app's sheet. It is laid out like Space: a sidebar titled Analytics,
-  and each view's title with its filters and Export CSV. Every view fits the window down to the
-  900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
-  standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
-- **The event journal resumes paired desktops and the phone** (Routines Phase 0). With
-  `MODEX_EVENT_JOURNAL=1`, a paired desktop that reconnects after sleep receives only the thread
-  events after its last cursor, and keeps its loaded transcripts instead of reloading them. The
-  iPhone companion fetches only the transcript items that changed. A cursor the journal no longer
-  covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
-  sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
-- **Agents restore notes only into their own project.** A note trashed in one project whose
-  folder was then dragged into another project can no longer be restored there by the first
-  project's agent (#241).
-- **New image jobs no longer look stuck at "queued".** When a job reached its approval before
-  Images had handled the Generate click, the job stayed "queued", or showed the previous job's
-  transcript, with no Approve button until the window lost and regained focus. Images now
-  shows the new job's status and approval either way, and reloads an open job's transcript when
-  you come back to Images.
-- **Restored notes follow their folder.** A note trashed before its workspace, project or
-  folder was renamed or moved comes back in the new place, instead of making the old folder
-  again outside the project (#241).
-- **Notes stay readable around folders with a backslash.** Moving or renaming a folder whose name
-  has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
-  you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
-  an earlier version left behind is set aside, and the folders stay as they are. (#241)
-- **New workspace opens only when asked.** After you make a workspace, searching pages and
-  clearing the search no longer reopens an empty New workspace field that takes your typing and
-  makes another workspace when you click away (#241).
-- **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
-  large import from another disk, a network share or iCloud no longer freezes the window, and
-  each file appears in your notes only once it has copied in full (#241).
-- **Open in knowledge base finds a renamed page.** Right after you retitle a page, Open in
-  knowledge base opens its file under the new name instead of failing on the old one. (#241)
-- **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
-  sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
 - **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
   transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
   quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
@@ -181,23 +122,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The signed `v0.2.0` tag is on `01b1b8a`
-  (#272), so the release ships `main` up to there. The conversation-fidelity slices from #282 on,
-  under "On main, unreleased", are not in it. It ships:
-  - read-only routines on a timer, on one decision service for Jev;
-  - the notes fixes from v0.1.0's review (#241);
-  - Copy details and Retry on every inline error;
-  - the Analytics restyle and the Images "queued" fix.
-
-  Val chose the version. The full test suite, typecheck and a signed, notarized rehearsal ran
-  locally. On 2026-10-18 the tag passed
-  [release run 39100984341](https://github.com/TypeSafeAI/modex/actions/runs/39100984341). It
-  covered signing, notarization and stapling, the E2E suite against the packaged app, all three
-  signed native updater scenarios and the Windows and Linux installers. Its draft release holds the
-  five installers, `RELEASE-MANIFEST.json` and `SHA256SUMS.txt`. Remaining: independent download
-  checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac, and the TestFlight
-  upload of Companion build 7, which carries thread archiving from the phone.
-  [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
+- **v0.2.0 follow-ups.** Desktop v0.2.0 was published on 2026-10-18 from the signed tag on
+  `01b1b8a` ([release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0),
+  [review](reviews/2026-10-18-v0.2.0-release-review.md)). No receipt yet records three gates:
+  - the independent download checks;
+  - the v0.1.0 → v0.2.0 banner upgrade on the release Mac;
+  - the TestFlight upload of Companion 0.2.0 (7), which carries thread archiving from the phone.
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
