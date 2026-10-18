@@ -642,6 +642,15 @@ a.thread-pr:hover { text-decoration: underline; }
 .approval .detail { max-height: 200px; margin: 0 0 12px; padding: 8px 10px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-2); white-space: pre-wrap; }
 .approval-answer { color: var(--text-3); font-size: var(--text-sm); }
 .approval-reason { margin: -4px 0 10px; color: var(--text-3); font-size: var(--text-sm); }
+/* Question card: the approval frame, one block per question, each with its own control. */
+.question-field { margin: 0 0 12px; }
+.question-title { color: var(--text-1); font-weight: var(--weight-semibold); }
+.question-text { margin-top: 2px; color: var(--text-2); }
+.question-options { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.question-option { display: flex; align-items: baseline; gap: 8px; color: var(--text-1); cursor: pointer; }
+.question-hint { color: var(--text-3); font-size: var(--text-sm); }
+.question-input { width: 100%; max-width: 420px; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--border-pane); border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-1); font: inherit; }
+.question-error { color: var(--danger-text); font-size: var(--text-sm); }
 
 /* Approval answered by a rule: no card, because nothing waited on it. One quiet line, expandable like a tool. */
 .approval-receipt { margin-bottom: 6px; }

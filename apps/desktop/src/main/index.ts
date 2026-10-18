@@ -364,7 +364,7 @@ const companion = new CompanionServer(home, {
     if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
     return startTurn(id, runner.send(id, text));
   }),
-  answer: (id, itemId, answer) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answer(id, itemId, answer); },
+  answer: (id, itemId, answer, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answer(id, itemId, answer, by); },
 });
 const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => {
   const endpoints = await Promise.all((status.endpoints ?? []).map(async (endpoint) => ({
@@ -826,6 +826,7 @@ handle("attachments:pick", async (req) => {
 handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
+handle("thread:answer-question", ({ threadId, itemId, answers }) => runner.answerQuestion(threadId, itemId, answers));
 handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
 handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {

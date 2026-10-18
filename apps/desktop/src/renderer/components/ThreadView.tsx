@@ -1,6 +1,6 @@
 import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
+import type { AnswerResult, ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
@@ -16,6 +16,7 @@ import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
+import { QuestionCard } from "./transcript/QuestionCard";
 import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
 import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS } from "../../shared/evidence";
 import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
@@ -35,6 +36,8 @@ interface Props {
   onSend: (text: string) => Promise<void>;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
+  /** Answers a question card; resolves to main's verdict so the card can say why it was refused. */
+  onAnswerQuestion: (itemId: string, answers: Record<string, string[]>) => Promise<AnswerResult | undefined>;
   onUpdate: (patch: ThreadPatch) => void;
   /** Runs the last message again after a failed turn (the failure card's Retry). */
   onRetry: () => void;
@@ -69,7 +72,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
@@ -174,7 +177,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
             footer={(t) => <SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} />}
-            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
+            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
       </TranscriptThread.Provider>
@@ -228,7 +231,7 @@ export function isNearBottom(el: { scrollTop: number; scrollHeight: number; clie
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
 }
 
-function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
+function Item({ item, live, onAnswer, onAnswerQuestion, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onAnswerQuestion: Props["onAnswerQuestion"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
       return (
@@ -243,6 +246,8 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
       return <ToolItem item={item} />;
     case "approval":
       return <ApprovalItem item={item} onAnswer={onAnswer} onPolicy={onPolicy} />;
+    case "question":
+      return <QuestionCard item={item} onAnswer={onAnswerQuestion} />;
     case "notice":
       if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
       if (item.pages) return <div className="notice info" data-testid="item" data-item-kind="notice"><span>{item.text} </span><button className="btn small" aria-label={`Open note ${item.pages.title}`} onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: item.pages!.pageId }))}>{item.pages.title}<Icon name="arrow-right" size={12} /></button></div>;

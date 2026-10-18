@@ -52,6 +52,7 @@ function settled(item: ThreadItem): boolean {
     case "thinking": return item.status === "done";
     case "assistant": case "route": return true;
     case "approval": return Boolean(item.answer);
+    case "question": return Boolean(item.answers || item.withdrawn);
     default: return false;
   }
 }

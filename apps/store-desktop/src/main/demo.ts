@@ -148,7 +148,10 @@ export class StoreDemo {
         if (answer === "yes") this.changed.add(threadId);
         this.append(thread, { id: this.nextId(), kind: "assistant", text: answer === "yes" ? "Applied to the demo README in memory. Open Review or Files to inspect the sample change. No real files were modified." : "Denied. The demo README is unchanged. Send a follow-up to continue.", at: stamp() });
         this.status(thread, "idle");
+        return { ok: true };
       },
+      // The demo never asks questions, so there is no card to answer.
+      "thread:answer-question": () => ({ ok: false, reason: "unknown" }),
       "thread:update": ({ threadId, patch }) => {
         const thread = this.thread(threadId);
         for (const key of ["title", "backend", "model", "mode", "plan", "effort", "auto"] as const) if (patch[key] !== undefined) Object.assign(thread, { [key]: patch[key] });

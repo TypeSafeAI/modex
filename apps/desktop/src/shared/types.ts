@@ -9,6 +9,7 @@ import type { Theme } from "./theme.js";
 import type { UsageEvent } from "./usage.js";
 import type { ExecutionOutcome, ItemOrigin, MessagePhase, PlanSource, PlanStep, ReasoningRepresentation } from "./conversation-events.js";
 import type { Evidence, Exec } from "./evidence.js";
+import type { Question, Refusal } from "./human-requests.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -100,6 +101,9 @@ export interface AgentActivity {
   detail?: string;
 }
 
+/** What answering a card did: accepted once, or refused with the reason (docs/human-requests.md). `error` explains an invalid answer. */
+export type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string };
+
 export type ThreadItem =
   /** `attachments` are the files sent with the message; main keeps them under its attachments folder. */
   | { id: string; kind: "user"; text: string; at: string; attachments?: import("./attachments.js").Attachment[] }
@@ -119,6 +123,11 @@ export type ThreadItem =
    * that predate the field show it closed, never actionable.
    */
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; at: string }
+  /**
+   * A question the CLI asked a person (docs/human-requests.md; Codex `item/tool/requestUserInput`). `answers`
+   * are the answers as they may be shown, saved or exported: a secret one is "(hidden)". `withdrawn` as on approvals.
+   */
+  | { id: string; kind: "question"; questions: Question[]; blocking: boolean; answers?: Record<string, string[]>; withdrawn?: "native" | "stopped" | "ended"; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. `reasoning` says which. */
@@ -573,7 +582,9 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** Runs the thread's last message again in place (no second user bubble); the Retry on a failure card. */
   "thread:retry": { req: { threadId: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
-  "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
+  "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: AnswerResult };
+  /** Answers a question card: one answer list per question, checked against the questions before anything reaches the CLI. */
+  "thread:answer-question": { req: { threadId: string; itemId: string; answers: Record<string, string[]> }; res: AnswerResult };
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
   /** Analytics: recorded per-turn model usage, oldest first. ISO bounds are inclusive and optional. */
   "usage:list": { req: { since?: string; until?: string } | undefined; res: UsageEvent[] };
