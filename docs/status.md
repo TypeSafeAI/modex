@@ -818,12 +818,24 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
   language and has Copy, which only puts the code on the clipboard; it shows its code while the
   fence is still streaming. Raw HTML stays text, only http(s) links
-  are links, and an image becomes a link to it instead of being fetched. While a reply streams, only
-  its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
-  thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
-  about 40 ms before); reopening it reuses the result.
+  are links, and an image becomes a link to it instead of being fetched. While a plain reply streams,
+  completed blocks are reused and the changing tail is parsed again.
+  Lists, references, blockquotes and indented code retain whole-document context. Reopening a
+  thread reuses cached renders; cold-open and streaming measurements are recorded in the
+  [CF-4 checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 
 ## In flight
+
+- **CF-4 conversation fidelity follow-up (#277, stacked on parser PR #283).** Typed records use
+  their explicit turn and final phase; unspecified messages no longer become final by position.
+  Non-successful messages and reasoning remain visible, including after retries. Reasoning
+  summaries stay labelled while streaming and show failed/denied/stopped/unknown outcomes.
+  Streaming Markdown preserves existing code controls, focus and selection. Bounded, session-only
+  reader state restores expansion and scroll position when returning to a thread; drafts remain
+  App-owned. Focused Electron tests exercise sustained updates, thread switches, keyboard Copy,
+  reduced motion and all three actual themes at 900×600 and 1280×900. Build/typecheck/unit checks passed; the full E2E run and passing corrective reruns are recorded
+  with exact counts in the checkpoint. A stacked review PR is being prepared. Native-provider and human VoiceOver acceptance remain separate gates.
+  [Evidence and exact checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 
 - **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The release ships everything under "On main,
   unreleased":

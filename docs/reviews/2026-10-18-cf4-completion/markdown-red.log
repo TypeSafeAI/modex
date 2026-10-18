@@ -1,0 +1,57 @@
+✔ tables, blockquotes, nested and task lists, emphasis and strikethrough render as their elements (7456.737708ms)
+✔ headings keep their place below the transcript's own titles, and a fence keeps its language and indentation (375.72675ms)
+✔ a fence that is still streaming shows its code so far, and the closing fence changes nothing before it (19.378416ms)
+✔ every prefix of a streamed reply renders, and no prefix loses or doubles its text (1956.781709ms)
+✔ Unicode passes through untouched (107.190083ms)
+✔ raw HTML stays text: no element, attribute or handler reaches the page (11.609083ms)
+✔ only web links are links; other schemes stay as the text that was written (254.43375ms)
+✔ bare URLs link without the sentence's punctuation, and reference links resolve (2.997625ms)
+✔ images are never fetched: a web image becomes a link named by its alt text (4.158292ms)
+✔ a streaming reply splits at blank lines outside code fences, and the pieces join back to the text (15.77225ms)
+✔ rendering a reply piece by piece shows the same text as rendering it whole (12.403833ms)
+✔ the settled cache keeps recent renders, drops the oldest past its limit, and never holds very long text (1.124625ms)
+✔ a code block names its language and offers Copy (0.816542ms)
+✖ typed items stay with their explicit turn when another user message intervenes (1196.279ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 13
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15331.277792
+
+✖ failing tests:
+
+test at apps/desktop/dist/test/markdown-render.test.js:155:1
+✖ typed items stay with their explicit turn when another user message intervenes (1196.279ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      [
+        'u1',
+        [
+          'a1',
+  -       'late'
+        ]
+      ],
+      [
+        'u2',
+        [
+          'a2',
+  +       'late'
+        ]
+      ]
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/dist/test/markdown-render.test.js:161:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ [ 'u1', [Array] ], [ 'u2', [Array] ] ],
+    expected: [ [ 'u1', [Array] ], [ 'u2', [Array] ] ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

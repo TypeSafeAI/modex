@@ -1,0 +1,188 @@
+5:35:41 AM [vite] (client) [optimizer] scanning dependencies...
+✔ a legacy turn keeps the last-reply heuristic and folds the work before it (40.622208ms)
+✔ a typed turn's final answer is its final-phase message; commentary and successful tools fold, a denial stays (0.434291ms)
+✔ a final answer is never taken from array position: a commentary after the final stays out of the fold (0.218667ms)
+✔ a typed turn with no final answer folds nothing (0.190042ms)
+✔ every item still running is live, not only the newest (4.860791ms)
+✔ attempts stay distinct: each later attempt is marked, and only the latest attempt can supply the final answer (0.13375ms)
+✖ typed unspecified messages never invent a final answer (0.877583ms)
+✔ pending requests, notices, failures, interruptions and unknown work never fold (0.254083ms)
+✖ typed running messages and reasoning remain visible before a final answer (1.19575ms)
+✖ typed failed messages and reasoning remain visible before a final answer (1.16375ms)
+✖ typed denied messages and reasoning remain visible before a final answer (0.165833ms)
+✖ typed interrupted messages and reasoning remain visible before a final answer (0.099084ms)
+✖ typed unknown messages and reasoning remain visible before a final answer (0.089208ms)
+5:35:44 AM [vite] (client) [optimizer] bundling dependencies...
+ℹ tests 13
+ℹ suites 0
+ℹ pass 7
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2668.70725
+
+✖ failing tests:
+
+test at test/turn-layout.test.ts:182:31
+✖ typed unspecified messages never invent a final answer (0.877583ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== -1
+  
+      at TestContext.eval (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/test/turn-layout.test.ts:189:32)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: -1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/turn-layout.test.ts:245:32
+✖ typed running messages and reasoning remain visible before a final answer (1.19575ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   true,
+      false,
+      false,
+  -   false
+    ]
+  
+      at TestContext.eval (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/test/turn-layout.test.ts:251:33)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/turn-layout.test.ts:245:32
+✖ typed failed messages and reasoning remain visible before a final answer (1.16375ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   true,
+  +   true,
+      false,
+  -   false,
+  -   false
+    ]
+  
+      at TestContext.eval (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/test/turn-layout.test.ts:251:33)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/turn-layout.test.ts:245:32
+✖ typed denied messages and reasoning remain visible before a final answer (0.165833ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   true,
+  +   true,
+      false,
+  -   false,
+  -   false
+    ]
+  
+      at TestContext.eval (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/test/turn-layout.test.ts:251:33)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/turn-layout.test.ts:245:32
+✖ typed interrupted messages and reasoning remain visible before a final answer (0.099084ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   true,
+  +   true,
+      false,
+  -   false,
+  -   false
+    ]
+  
+      at TestContext.eval (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/test/turn-layout.test.ts:251:33)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/turn-layout.test.ts:245:32
+✖ typed unknown messages and reasoning remain visible before a final answer (0.089208ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   true,
+  +   true,
+      false,
+  -   false,
+  -   false
+    ]
+  
+      at TestContext.eval (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/test/turn-layout.test.ts:251:33)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node --input-type=module -e import {createServer} from "vite"; const s=await createServer({configFile:false,server:{middlewareMode:true,hmr:false,ws:false}}); try {await s.ssrLoadModule("/test/turn-layout.test.ts");} finally {await s.close();}
