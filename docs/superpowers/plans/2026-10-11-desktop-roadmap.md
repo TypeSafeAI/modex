@@ -1,5 +1,11 @@
 # Desktop Roadmap Implementation Plan
 
+**Status (2026-10-18): delivered, except Cloud tasks.** Canvas merged in #164 (v0.0.11). Signed
+automatic updates merged in #181, #200 and #201 (v0.0.12). Windows and Linux installers merged in
+#173 and #186 and were first published with v0.1.0. Cloud tasks stay out of scope, and the
+remaining Windows and Linux acceptance gaps are listed under [Next](../../status.md#next). The
+boxes below stopped being updated on 2026-10-11 and are historical.
+
 > Execute inline using the executing-plans skill; retain this ledger across sessions.
 
 **Goal:** Ship interactive Canvas, signed automatic updates, and native Windows/Linux installers, then disposition deferred automations.

@@ -1,9 +1,9 @@
 # Sticky Auto routing
 
-Approved on 2026-10-12; not implemented. This specification changes when Auto may change a
-thread's model, reasoning effort and fast mode between turns, and adds the usage measurement
-that decision needs. It does not change the judge, its questions, or which backends Auto may
-use.
+Approved on 2026-10-12; implemented in #180 (measurement) and #183 (the hold), and shipped in
+v0.0.11. This specification changes when Auto may change a thread's model, reasoning effort and
+fast mode between turns, and adds the usage measurement that decision needs. It does not change
+the judge, its questions, or which backends Auto may use.
 
 ## Problem
 

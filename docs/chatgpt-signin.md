@@ -1,6 +1,7 @@
 # App-owned ChatGPT sign-in through Codex (#76)
 
-Settings → Coding CLIs offers **Continue with ChatGPT**, account selection,
+Settings → Coding CLIs offers **Continue with ChatGPT** (**Add another ChatGPT account** when
+the Codex CLI is already signed in), account selection,
 reauthorization and sign-out. Actions apply immediately. Existing Codex CLI authentication
 remains available. Each saved account label includes its issued registration so two
 workspaces with the same email remain distinguishable.
@@ -67,7 +68,7 @@ recovery prevents accidental concurrent refresh on a shared home.
 Fixture tests cover public/returning flows, identity validation, state/path rejection,
 encryption, insufficient scopes, refresh serialization, local/remote sign-out and separate
 Codex child ownership. They do not establish a real OpenAI grant or subscription entitlement.
-Before landing: complete a real user-controlled new registration, returning authorization,
+Before landing, the plan required a real user-controlled new registration, returning authorization,
 Codex turn, refresh/resume, multi-account selection and sign-out on macOS Apple Silicon.
 Apple Silicon acceptance completed on 2026-10-04: real registration and returning
 authorization, completed Codex turns, rotating refresh and process replacement,

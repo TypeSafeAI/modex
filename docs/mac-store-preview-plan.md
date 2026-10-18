@@ -1,5 +1,9 @@
 # Mac App Store preview execution ledger
 
+**Status (2026-10-18): partial.** The preview merged in #119. The two open items below remain;
+the other Store gates are in [status, In flight](status.md#in-flight). No open PR carries this
+work.
+
 Val requested a runnable desktop Store preview on 2026-10-05, following approval of the
 separate signed-host direction. Reuse the existing desktop React interface and CLI-owned
 engine. The iPhone-on-Mac Companion is not this desktop target.
