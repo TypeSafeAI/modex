@@ -22,9 +22,10 @@ Claude and Codex coding turns continue to run through their CLIs on the Mac.
 
 The listener is off until enabled. It exposes only a small paired API: snapshots, thread
 creation, provider-scoped command discovery, sending a follow-up, answering an unanswered
-approval once, and archiving or unarchiving a thread. It omits project paths, skill paths, backend session
-handles, settings, and tool arguments from snapshots. The iPhone offers only Approve once and
-Deny, with an extra confirmation before approval. The Mac certificate and token live under
+approval once, setting a thread's approval policy, and archiving or unarchiving a thread. It
+omits project paths, skill paths, backend session handles, settings, and tool arguments from
+snapshots. The phone confirms each answer to an approval card before sending it; see
+[Approvals](#approvals-skills-and-finished-tasks). The Mac certificate and token live under
 `~/.modex/companion/` with owner-only permissions, outside the repository and app bundle.
 The server needs the Mac app to be running. There is no relay or internet endpoint.
 
@@ -92,7 +93,7 @@ recovery permanently. Bonjour publishes only the address and public certificate 
 
 Xcode 26.6 and XcodeGen are used to generate the native SwiftUI project from
 `apps/ios/ModexCompanion/project.yml`. The app identifier is
-`works.jev.modex`, version 0.1.0 (build 6), for iPhone on iOS 18 or newer.
+`works.jev.modex`, version 0.2.0 (build 7), for iPhone on iOS 18 or newer.
 
 ```sh
 cd apps/ios/ModexCompanion
@@ -181,8 +182,8 @@ Build 3 adopts the official Modex mark in the App Store icon, onboarding and wor
 On 2026-10-05, all 10 native tests and the paired simulator flow passed. Its signed IPA
 passed Apple validation and upload, then reached `VALID` and `IN_BETA_TESTING` in the
 existing Internal group with one tester (build ID `ee29b4ab-89d6-401d-a4ae-c4a860c71ae0`).
-Physical iPhone installation and acceptance remain open; the public website continues to
-show **Coming soon**. See the [v0.0.7 ledger](reviews/2026-10-05-v0.0.7-release-review.md).
+Physical iPhone installation and acceptance remained open; the public website then showed
+**Coming soon**. See the [v0.0.7 ledger](reviews/2026-10-05-v0.0.7-release-review.md).
 
 Build 4 adds persistent pairing, trusted local discovery and automatic recovery after the
 Mac address or port changes. On 2026-10-05, all 14 native tests and the extended LAN
@@ -211,7 +212,10 @@ settings and full skill descriptions, and keeps the saved pairing and draft whil
 It also rotates through every private address the Mac advertises. On 2026-10-13 its signed IPA
 passed validation and upload (build ID `2f6e7d20-527e-44dd-a337-74564ac23bba`), reached
 `VALID`, and was assigned to the Internal and External groups. Apple returned beta review
-`APPROVED` at submission. Physical installation of this build was not performed. See the
+`APPROVED` at submission. Physical installation of this build was not performed. On
+2026-10-11 a signed development build passed pairing, recovery, approval and retirement on a
+physical iPhone; fresh-install consent and a TestFlight install remain unaccepted
+([physical acceptance](reviews/2026-10-11-iphone-acceptance.md)). See the
 [v0.0.11 ledger](reviews/2026-10-12-v0.0.11-release-review.md#iphone-companion-build-6).
 
 The iPhone build has a separate release path from the signed and notarized macOS release.

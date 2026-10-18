@@ -1,5 +1,9 @@
 # Sticky Auto Routing Implementation Plan
 
+**Status (2026-10-18): delivered.** Part 1 merged in #180 and Part 2 in #183; both shipped in
+v0.0.11. The boxes below were not ticked during execution and are historical. Behaviour:
+[auto-routing.md](../../auto-routing.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stop Auto from discarding a warm prompt cache: measure each turn's cache usage, then keep a thread's model while its cache is warm.

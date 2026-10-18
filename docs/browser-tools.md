@@ -88,8 +88,8 @@ biometric gesture.
 See the [acceptance report](reviews/2026-10-11-browser-credential-acceptance.md) for the exact
 evidence and limits.
 
-Before releasing 1Password filling, use a disposable Login for a controlled HTTPS site in
-a signed app launched normally. Verify real unlock, selection, filling without submission,
+1Password filling shipped in v0.0.11 with this check still open. To complete it, use a
+disposable Login for a controlled HTTPS site in a signed app launched normally. Verify real unlock, selection, filling without submission,
 cancellation during listing and item reads, navigation and close cancellation, and absence
 of credentials from app state, logs, and error surfaces. Enable the CLI integration in
 1Password and select the intended account first if you use several accounts.

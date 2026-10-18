@@ -2,7 +2,7 @@
 
 Modex includes its own local Pages MCP server. Claude and Codex use it to manage the same notes you edit in **Space**, without an OpenKnowledge installation, remote account or global CLI configuration.
 
-Open Space, expand **Agent notes**, and enable **Manage notes for <project>**. This grants that project's agents access to that project's own notes (its folder in Space), and to nothing outside them. It starts disabled for every project. Disable it to revoke access immediately. Chat and plan turns can read enabled notes but cannot change them.
+In Space, choose **Space options → Agent notes**, and enable **Manage notes for <project>**. This grants that project's agents access to that project's own notes (its folder in Space), and to nothing outside them. It starts disabled for every project. Disable it to revoke access immediately. Chat and plan turns can read enabled notes but cannot change them.
 
 Ask an agent to find, create, update or organize your notes. It searches before creating, reads before editing, and uses targeted replacements to preserve your writing. Each successful change produces a thread receipt that opens the note. Space refreshes changes while keeping unsaved drafts intact.
 

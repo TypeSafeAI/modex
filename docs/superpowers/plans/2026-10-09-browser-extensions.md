@@ -1,5 +1,10 @@
 # Browser extensions and sign-in implementation plan
 
+**Status (2026-10-18): delivered.** The extension manager and 1Password filling merged in #152
+and shipped in v0.0.11. Device Touch ID stays disabled until a separately provisioned change, as
+planned. The boxes below were not ticked during execution and are historical. Behaviour:
+[browser-tools.md](../../browser-tools.md).
+
 **Goal:** Add a restricted custom extension manager and 1Password login filling to the workspace browser. Native Touch ID passkeys remain deferred until a separately provisioned enabling change and signed acceptance.
 
 **Architecture:** Keep the app and Knowledge sessions separate from a persistent workspace browser session. Main owns extension packages, approval, CLI execution and credential selection. Web content never receives the app preload. Passwords are written only into the selected page's visible top-frame login fields after rechecking the origin and document. Existing synced passkeys remain in the system browser.

@@ -3,9 +3,10 @@
 Choose a knowledge folder and install OpenKnowledge in **Space → Knowledge base**.
 **Use your Modex notes** makes the notes folder ([Notes folder](notes.md)) the knowledge base, so
 pages written in Space and in Open Knowledge are the same files. A page's menu then offers
-**Open in knowledge base** instead of a copy. With the notes folder as the knowledge base, each
-project's agents read, write and search only that project's notes; search then runs over those
-files directly rather than through the companion.
+**Open in knowledge base** instead of a copy. When the knowledge base is the notes folder, a
+folder inside it, or a folder that holds it, each project's agents read, write and search only
+that project's notes there; search then runs over those files directly rather than through the
+companion.
 Claude and Codex threads can search and read it from any project or worktree. Modex
 starts the companion when a coding turn needs the connection.
 
