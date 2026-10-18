@@ -1,0 +1,33 @@
+{
+  "bin": "/Users/buns/.local/bin/claude",
+  "version": "2.1.302 (Claude Code)",
+  "model": "haiku",
+  "at": "2026-10-18T19:27:56.116Z",
+  "pendingCard": {
+    "ms": 860,
+    "notice": "Stopped.",
+    "failures": 0
+  },
+  "runningTool": {
+    "ms": 2359,
+    "notice": "Stopped. Claude did not end the turn within 1.5 s of the interrupt, so Modex terminated it.",
+    "failures": 0,
+    "tools": [
+      {
+        "title": "$ python3 -c \"import time; time.sleep(30); open('live-b.txt', 'w')\"",
+        "status": "done",
+        "outcome": "interrupted"
+      }
+    ]
+  },
+  "resume": {
+    "reply": "resumed",
+    "failures": 0
+  },
+  "streaming": {
+    "ms": 1043,
+    "notice": "Stopped.",
+    "failures": 0,
+    "keptChars": 374
+  }
+}

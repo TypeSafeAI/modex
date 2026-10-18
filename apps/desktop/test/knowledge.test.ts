@@ -4,11 +4,31 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
 import { KnowledgeService } from "../src/main/engine/knowledge.js";
 
 async function existingServer(options: { exitCode?: number; ready?: boolean; ui?: boolean; matchingPid?: boolean; banner?: boolean; statusWarning?: boolean; statusExit?: number; malformedStatus?: boolean } = {}) {
   const fixture = setup();
-  const server = http.createServer((_req, res) => {
+  const cliPidFile = path.join(fixture.home, "cli.pid");
+  const readinessFile = path.join(fixture.home, "readiness-requested");
+  const server = http.createServer(async (_req, res) => {
+    fs.writeFileSync(readinessFile, "");
+    // This fixture represents a server owned by another process. Do not answer readiness
+    // while the URL-emitting CLI is still alive: that is the valid owned-server path.
+    // Observe process termination, rather than assuming console.log + exit is atomic.
+    if (fs.existsSync(cliPidFile)) {
+      const pid = Number(fs.readFileSync(cliPidFile, "utf8"));
+      while (!res.destroyed) {
+        try { process.kill(pid, 0); }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") break;
+          res.destroy(error as Error);
+          return;
+        }
+        await delay(10);
+      }
+    }
+    if (res.destroyed) return;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ ready: options.ready ?? true }));
   });
@@ -31,8 +51,15 @@ async function existingServer(options: { exitCode?: number; ready?: boolean; ui?
       process.exitCode = ${options.statusExit ?? 0};
     }
     else {
+      const fs = await import('node:fs');
+      fs.writeFileSync(${JSON.stringify(cliPidFile)}, String(process.pid));
       console.log(${JSON.stringify(options.banner === false ? url : `OpenKnowledge is already running on this project (pid ${process.pid}).\n  ${url}\nLeaving it running — run \`ok stop\` first if you want a fresh server.`)});
-      process.exit(${options.exitCode ?? 0});
+      if (${options.banner === false}) {
+        // Force the formerly racy ordering: the URL is fetched before this CLI exits.
+        setInterval(() => {
+          if (fs.existsSync(${JSON.stringify(readinessFile)})) process.exit(${options.exitCode ?? 0});
+        }, 10);
+      } else process.exit(${options.exitCode ?? 0});
     }
   `);
   const service = new KnowledgeService(fixture.home, { runtimeDir: runtime, startupTimeoutMs: 1000, env: { ...process.env, FORCE_COLOR: "1" } });
@@ -95,15 +122,17 @@ test("knowledge still rejects non-JSON data on status stdout", async () => {
   } finally { await fixture.dispose(); }
 });
 
-test("knowledge does not adopt failed, unready, unidentified, or UI-less servers", async () => {
+test("knowledge does not adopt failed, unready, unidentified, or UI-less servers", async (t) => {
   for (const options of [{ exitCode: 1 }, { ready: false }, { ui: false }, { matchingPid: false }, { banner: false }]) {
-    const fixture = await existingServer(options);
-    try {
-      await assert.rejects(fixture.service.start());
-      assert.equal(fixture.service.snapshot().status, "error");
-      assert.equal(fixture.service.snapshot().url, null);
-      assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
-    } finally { await fixture.dispose(); }
+    await t.test(JSON.stringify(options), async () => {
+      const fixture = await existingServer(options);
+      try {
+        await assert.rejects(fixture.service.start());
+        assert.equal(fixture.service.snapshot().status, "error");
+        assert.equal(fixture.service.snapshot().url, null);
+        assert.equal((await fetch(`${fixture.url}/readyz`)).ok, true);
+      } finally { await fixture.dispose(); }
+    });
   }
 });
 
