@@ -226,17 +226,20 @@ test("fastModeOf words each state; the latest init or result wins", async () => 
 test("Stop waits for the Claude process to close before settling", async () => {
   const proc = new FakeProcess();
   proc.kill = () => { proc.killed = true; return true; };
-  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
+  // A CLI that ignores the interrupt: after the grace window it gets SIGTERM, and still the turn waits for its exit.
+  const backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn, { interruptGraceMs: 5 });
   const abort = new AbortController();
   const run = backend.runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, abort.signal);
   let settled = false;
   void run.then(() => { settled = true; });
   abort.abort();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(proc.killed, true);
   assert.equal(settled, false, "SIGTERM delivery is not process termination");
   proc.close(null);
-  assert.deepEqual(await run, { status: "interrupted" });
+  const r = await run;
+  assert.equal(r.status, "interrupted");
+  assert.equal(r.stop?.outcome, "terminated");
 });
 
 test("ClaudeBackend: can_use_tool carries a structured action; a rule's 'yes' allows without updatedPermissions", async () => {
