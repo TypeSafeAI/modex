@@ -273,6 +273,12 @@ work up to its final answer, by `finalAnswerIndex`.
   [Typed conversation state](event-journal.md#typed-conversation-state). `parseConversationEvent`
   and the deterministic projector are there for a future event store.
 
+## Evidence attached to items
+
+`message.done` can carry `evidence` (a Codex memory citation). `tool.start` can carry `exec` (the
+command that ran and, when reported, its cwd). `tool.update` and `tool.done` progress can carry
+`exitCode`, `outputBytes` and `outputTruncated`. See [conversation-evidence.md](conversation-evidence.md).
+
 ## Evidence
 
 `apps/desktop/test/conversation-events.test.ts` replays sanitized captures from Claude Code 2.1.302

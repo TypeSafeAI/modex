@@ -15,6 +15,8 @@ import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
 import { ReasoningItem } from "./transcript/ReasoningItem";
+import { EvidenceCard } from "./transcript/EvidenceCard";
+import { OUTPUT_PREVIEW_BYTES } from "../../shared/evidence";
 
 export { formatElapsed } from "./transcript/TurnContent";
 
@@ -231,7 +233,7 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
         </div>
       );
     case "assistant":
-      return <AssistantItem text={item.text} live={Boolean(live)} phase={item.phase} outcome={item.outcome} />;
+      return <AssistantItem text={item.text} live={Boolean(live)} phase={item.phase} outcome={item.outcome} evidence={item.evidence} />;
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
@@ -269,12 +271,13 @@ function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice"
  * until then it reads as the list it is, so the cards never flicker in and out mid-line.
  */
 /** A reply. Commentary reads as progress, not the answer; a reply that stopped or never completed says so. */
-function AssistantItem({ text, live, phase, outcome }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"] }) {
+function AssistantItem({ text, live, phase, outcome, evidence }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"]; evidence?: Extract<ThreadItem, { kind: "assistant" }>["evidence"] }) {
   const { body, sources } = useMemo(() => (live ? { body: text, sources: [] } : splitSources(text)), [text, live]);
   const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete" : null;
   return (
     <div className={`msg assistant${phase === "commentary" ? " commentary" : ""}`} data-testid="item" data-item-kind="assistant" data-phase={phase} data-outcome={outcome}>
       <Markdown text={body} />
+      {evidence?.length ? <EvidenceCard evidence={evidence} /> : null}
       {sources.length > 0 && <Sources links={sources} />}
       {ended && <div className="msg-status" data-testid="message-status">{ended}</div>}
     </div>
@@ -283,8 +286,9 @@ function AssistantItem({ text, live, phase, outcome }: { text: string; live: boo
 
 function Sources({ links }: { links: SourceLink[] }) {
   return (
-    <div className="sources" data-testid="sources">
-      <div className="sources-label">{links.length === 1 ? "Source" : `Sources · ${links.length}`}</div>
+    // Read from a "Sources:" list the model wrote: ordinary links, not citations Modex has verified.
+    <div className="sources" data-testid="sources" data-provenance="reply-text" title="Links the model wrote in its reply. Modex has not checked them.">
+      <div className="sources-label">{links.length === 1 ? "Link in the reply" : `Links in the reply · ${links.length}`}</div>
       <ol className="sources-list">
         {links.map((l, i) => (
           <li key={l.url}>
@@ -449,7 +453,14 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
       </button>
       {open && (
         <div className="tool-body" data-testid="item-body">
+          {item.exec && <div className="tool-exec">
+            <code className="tool-command" data-testid="tool-command">{item.exec.command}</code>
+            {item.exec.cwd && <span className="tool-cwd" data-testid="tool-cwd">in {item.exec.cwd}</span>}
+            {item.status === "done" && <span className="tool-exit" data-testid="tool-exit">{exitLabel(item.exitCode)}</span>}
+          </div>}
+          {PATCH_TOOLS.has(item.name) && <div className="tool-patch-note" data-testid="tool-patch-note">The patch as this turn applied it. The working tree may have changed since; Changes shows it now.</div>}
           {item.name === "apply_patch" && typeof item.args.patch === "string" ? <Patch text={item.args.patch} /> : null}
+          {item.outputTruncated && item.outputBytes != null && <div className="tool-truncated" data-testid="tool-truncated">Showing the last {formatBytes(OUTPUT_PREVIEW_BYTES)} of {formatBytes(item.outputBytes)}.</div>}
           {page && <a className="tool-link" data-testid="tool-link" href={page} target="_blank" rel="noreferrer">{page}</a>}
           {search ? <SearchResults search={search} />
             : item.output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={item.output} /></div> : <pre className="output" data-testid="tool-output">{item.output}</pre>)
@@ -494,4 +505,16 @@ export function Patch({ text }: { text: string }) {
       })}
     </pre>
   );
+}
+
+/** Tools whose output is a patch: what the turn applied then, which the working tree may no longer match. */
+const PATCH_TOOLS = new Set(["apply_patch", "Edit", "MultiEdit", "Write", "NotebookEdit"]);
+
+/** How a command ended, as the CLI reported it: a code, an explicit none, or nothing reported. */
+function exitLabel(code: number | null | undefined): string {
+  return typeof code === "number" ? `Exit code ${code}` : code === null ? "No exit code" : "Exit code not reported";
+}
+
+function formatBytes(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
