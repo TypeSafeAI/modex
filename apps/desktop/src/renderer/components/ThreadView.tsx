@@ -1,5 +1,5 @@
 import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
@@ -14,6 +14,7 @@ import { Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
+import { readerStateFor, ReaderStateContext, useExpansionState } from "./transcript/reader-state";
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { OUTPUT_PREVIEW_BYTES } from "../../shared/evidence";
@@ -69,6 +70,8 @@ export function tailPath(p: string, max = 40): string {
 
 export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const reader = useMemo(() => readerStateFor(thread.id), [thread.id]);
+  const restored = useRef(false);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
   const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
@@ -111,11 +114,22 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     autoTop.current = el.scrollTop;
     setAway(false);
   };
-  useEffect(() => {
-    stick.current = true;
-    autoTop.current = 0;
-    setAway(false);
-  }, [thread.id]);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || !items.length || restored.current) return;
+    restored.current = true;
+    newestUser.current = items.filter(item => item.kind === "user").at(-1)?.id;
+    if (reader.scroll) {
+      stick.current = reader.scroll.follow;
+      el.scrollTop = reader.scroll.top;
+      autoTop.current = el.scrollTop;
+      setAway(!stick.current);
+    }
+  }, [items.length, reader]);
+  useLayoutEffect(() => () => {
+    const el = scroller.current;
+    if (el) reader.scroll = { top: el.scrollTop, follow: stick.current };
+  }, [reader]);
   // Output also grows without new items (streamed text, a pane opening and re-wrapping the prose):
   // keep following those while stuck to the bottom.
   useEffect(() => {
@@ -160,7 +174,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
   }
 
   return (
-    <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
+    <ReaderStateContext.Provider value={reader}><section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
 
       <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
         {items.length === 0 && (
@@ -213,7 +227,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         onStop={onStop}
         inputRef={inputRef}
       />}
-    </section>
+    </section></ReaderStateContext.Provider>
   );
 }
 
@@ -434,7 +448,7 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
 /** Collapsible reasoning: open while the model is still thinking, folded to one line once done. */
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useExpansionState<boolean>(`tool:${item.id}`, false);
   // Claude Code calls them WebSearch and WebFetch; Codex reports a `webSearch` item.
   const web = item.name === "WebSearch" || item.name === "webSearch" ? "search" : item.name === "WebFetch" ? "fetch" : null;
   const search = useMemo(() => (web === "search" && item.output && item.ok !== false ? parseWebSearch(item.output) : null), [web, item.output, item.ok]);

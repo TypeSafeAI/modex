@@ -1,4 +1,4 @@
-import { finalAnswerIndex, type ItemOrigin } from "./conversation-events.js";
+import { finalAnswerIndex, itemFacts, type ItemOrigin } from "./conversation-events.js";
 import { toolFoldsAsWork } from "./tool-summary.js";
 import type { ThreadItem } from "./types.js";
 
@@ -18,8 +18,8 @@ export interface TurnLayout {
 
 /**
  * Lays out one turn's items. Items from the conversation-event contract decide by their own fields:
- * the final answer is the latest attempt's `final` message (or its last reply when the CLI gives no
- * phases), every item still `running` is live, and only work that succeeded folds. Items saved
+ * the final answer is the latest attempt's explicit `final` message, every item still `running`
+ * is live, and only work that succeeded folds. Items saved
  * before the contract keep the historical heuristics, isolated here: the last reply is the answer,
  * and the newest item of a running turn is the one streaming.
  */
@@ -37,8 +37,7 @@ export function layoutTurn(items: readonly ThreadItem[], opts: { busy: boolean }
     // Only the latest attempt can answer: an earlier attempt's reply was superseded by the retry.
     const latest = attempts.at(-1);
     const indexes = items.map((_, i) => i).filter((i) => origins[i]?.attempt === latest);
-    const local = finalAnswerIndex(indexes.map((i) => items[i]!));
-    final = local < 0 ? -1 : indexes[local]!;
+    final = indexes.reverse().find((i) => items[i]!.kind === "assistant" && itemFacts(items[i]!).phase === "final") ?? -1;
   } else final = finalAnswerIndex(items);
   const work = items.map((item, i) => i < final && settled(item));
   const live = items.map((item, i) => origins[i] ? (item as { outcome?: string }).outcome === "running" : opts.busy && !typed && i === items.length - 1);
@@ -47,6 +46,8 @@ export function layoutTurn(items: readonly ThreadItem[], opts: { busy: boolean }
 
 /** Whether a finished item may fold away: never a notice, a pending request, or work that did not succeed. */
 function settled(item: ThreadItem): boolean {
+  const facts = itemFacts(item);
+  if (facts.observed && facts.outcome !== "succeeded") return false;
   switch (item.kind) {
     case "tool": return toolFoldsAsWork(item);
     case "thinking": return item.status === "done";
