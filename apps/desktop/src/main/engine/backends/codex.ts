@@ -11,7 +11,7 @@ import { LineBuffer, stderrTail } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
-import type { MessagePhase, NativeRef, SettledOutcome } from "../../../shared/conversation-events.js";
+import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
 import { boundOutput, byteLength, memoryEvidence } from "../../../shared/evidence.js";
 
 /**
@@ -425,6 +425,12 @@ export class CodexBackend implements Backend {
           case "item/reasoning/textDelta":
             sink.observe({ type: "reasoning.delta", native: native(p.itemId), representation: "provider-text", index: partIndex(p.contentIndex), text: String(p.delta ?? "") });
             break;
+          // The plan Codex reports for the turn (codex-cli 0.163.0: pending, inProgress, completed), whole each time.
+          case "turn/plan/updated": {
+            const steps = Array.isArray(p.plan) ? (p.plan as { step?: unknown; status?: unknown }[]).map((s) => ({ text: String(s.step ?? ""), status: codexStepStatus(s.status) })) : [];
+            sink.observe({ type: "plan.update", native: native("plan"), from: "codex-plan", steps, ...(typeof p.explanation === "string" && p.explanation ? { explanation: p.explanation } : {}) });
+            break;
+          }
           case "item/agentMessage/delta":
             sink.observe({ type: "message.delta", native: native(p.itemId), text: String(p.delta ?? "") });
             break;
@@ -700,6 +706,10 @@ export function codexOutcome(item: { type: string; status?: string; exitCode?: n
   if (item.status === undefined && item.type === "commandExecution" && exit !== "unknown") return exit;
   if (item.error) return "failed";
   return item.status === undefined && item.type === "webSearch" ? "succeeded" : "unknown";
+}
+
+function codexStepStatus(status: unknown): PlanStepStatus {
+  return status === "pending" ? "pending" : status === "inProgress" ? "in-progress" : status === "completed" ? "completed" : "unknown";
 }
 
 function partIndex(value: unknown): number {
