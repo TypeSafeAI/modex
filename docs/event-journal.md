@@ -56,7 +56,8 @@ The id also changes when a journal may be missing rows. While open, the journal 
 `open = 1` in `meta`, and a clean close resets it. It reopens still marked open in two cases:
 the process died with a batch unwritten, which can be up to 250 ms of events the state files
 already hold, or a write failed. Either way it takes a new id, so every cursor issued before then
-reloads instead of resuming past the gap. An ordinary quit keeps the id, so a relaunch still resumes.
+reloads instead of resuming past the gap. An ordinary quit keeps the id, so a relaunch still
+resumes.
 
 ## Resuming after sleep or a reconnect
 
@@ -171,14 +172,14 @@ The schema is additive.
 **Older journals.** A v0.1.0 file, with an `events` table and nothing else, opens with every row
 kept, gains an id, and replays unchanged. A v0.2.0 file keeps its id.
 
-**Downgrading.** An older build can still read and append to a file this build wrote. Here is what it
-doesn't do:
+**Downgrading.** An older build can still read and append to a file this build wrote. Here is
+what it doesn't do:
 - v0.2.0 ignores `open`, so a crash it has keeps the id, and its own resume rules apply.
 - v0.1.0 doesn't prune and has no cursors, so retention isn't enforced until this build opens the
   file again.
 - v0.1.0's and v0.2.0's phone mapping has no case for kinds newer than themselves, such as `plan`
-  (#289) and `question` (#293). It sends them as `null`, and the phone then rejects the snapshot until that thread's
-  items are gone or Modex is upgraded again.
+  (#289) and `question` (#293). It sends them as `null`, and the phone then rejects the snapshot
+  until that thread's items are gone or Modex is upgraded again.
 
 The journal is never authoritative, so deleting `events.sqlite` is always a safe rollback. It
 loses only journal history, and every client reloads.
