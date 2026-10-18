@@ -499,7 +499,9 @@ export class ClaudeBackend implements Backend {
               continue;
             }
             ctx.started.set(block.id, Date.now());
-            ctx.observe({ type: "tool.start", native: ctx.native(block.id), tool: { name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {} } });
+            // Bash's command is what ran; its working directory is the CLI's own and persists between calls, so none is claimed.
+            const command = block.name === "Bash" && typeof block.input?.command === "string" ? block.input.command : undefined;
+            ctx.observe({ type: "tool.start", native: ctx.native(block.id), tool: { name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {}, ...(command ? { exec: { command } } : {}) } });
           }
         }
         return;

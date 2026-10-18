@@ -12,6 +12,7 @@
  * unspecified, unavailable or unknown, never guessed.
  */
 import type { AgentActivity, BackendId, ThreadItem } from "./types.js";
+import type { Evidence, Exec } from "./evidence.js";
 
 export const CONVERSATION_SCHEMA = 1 as const;
 
@@ -66,14 +67,21 @@ export interface ToolCall {
   title: string;
   args: Record<string, unknown>;
   agent?: AgentActivity;
+  /** The command that actually ran, apart from the display title (shared/evidence.ts). */
+  exec?: Exec;
 }
 
 export interface ToolProgress {
   args?: Record<string, unknown>;
   title?: string;
   agent?: AgentActivity;
-  /** The whole output so far, not an increment. */
+  /** The whole output so far, not an increment; the runner keeps at most its last 256 KiB. */
   output?: string;
+  /** How many bytes of output there were, when more than `output` holds. */
+  outputBytes?: number;
+  outputTruncated?: boolean;
+  /** The exit code the CLI reported; null when it reported that there is none. Absent: not reported. */
+  exitCode?: number | null;
   durationMs?: number;
 }
 
@@ -83,7 +91,7 @@ export type Observation = (
   | { type: "message.start"; native: NativeRef; phase: MessagePhase; nativePhase?: string }
   | { type: "message.delta"; native: NativeRef; text: string }
   /** The message ended. `text`, when given, is the final snapshot and replaces what streamed. */
-  | { type: "message.done"; native: NativeRef; text?: string; phase?: MessagePhase; nativePhase?: string }
+  | { type: "message.done"; native: NativeRef; text?: string; phase?: MessagePhase; nativePhase?: string; evidence?: Evidence[] }
   | { type: "reasoning.start"; native: NativeRef }
   /** Reasoning text for one part (Codex `summaryIndex` or `contentIndex`) of one representation. */
   | { type: "reasoning.delta"; native: NativeRef; representation: "summary" | "provider-text"; index: number; text: string }
@@ -195,9 +203,10 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
       if (entry?.done) return state;
       const e = { ...(entry ?? fresh("message", turn)), done: true, ...(event.phase ? { phase: event.phase } : {}), ...(event.nativePhase !== undefined ? { nativePhase: event.nativePhase } : {}) };
       const id = e.ids.message;
-      if (id) return draft.patch(id, (item) => item.kind === "assistant" ? { ...item, ...(event.text !== undefined ? { text: event.text } : {}), phase: e.phase ?? "unspecified", ...(e.nativePhase !== undefined ? { nativePhase: e.nativePhase } : {}), outcome: "succeeded" } : item).entry(key, e).done();
+      const evidence = event.evidence?.length ? { evidence: event.evidence } : {};
+      if (id) return draft.patch(id, (item) => item.kind === "assistant" ? { ...item, ...(event.text !== undefined ? { text: event.text } : {}), phase: e.phase ?? "unspecified", ...(e.nativePhase !== undefined ? { nativePhase: e.nativePhase } : {}), outcome: "succeeded", ...evidence } : item).entry(key, e).done();
       if (!event.text?.trim()) return draft.entry(key, e).done();
-      return draft.add(message(newId, e, event.text, "succeeded", origin, event.at)).entry(key, { ...e, ids: { message: newId } }).done();
+      return draft.add({ ...message(newId, e, event.text, "succeeded", origin, event.at), ...evidence } as ConversationItem).entry(key, { ...e, ids: { message: newId } }).done();
     }
     case "reasoning.start": {
       if (entry) return state;
@@ -224,7 +233,7 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
     }
     case "tool.start": {
       if (entry) return state;
-      const item: ConversationItem = { id: newId, kind: "tool", name: event.tool.name, title: event.tool.title, args: event.tool.args, ...(event.tool.agent ? { agent: event.tool.agent } : {}), status: "running", outcome: "running", origin, at: event.at };
+      const item: ConversationItem = { id: newId, kind: "tool", name: event.tool.name, title: event.tool.title, args: event.tool.args, ...(event.tool.agent ? { agent: event.tool.agent } : {}), ...(event.tool.exec ? { exec: event.tool.exec } : {}), status: "running", outcome: "running", origin, at: event.at };
       return draft.add(item).entry(key, { ...fresh("tool", turn), ids: { tool: newId } }).done();
     }
     case "tool.update":
@@ -303,11 +312,12 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
     switch (value.type) {
       case "message.start": return PHASES.includes(value.phase as string) && optional(value.nativePhase, isString);
       case "message.delta": return isString(value.text);
-      case "message.done": return optional(value.text, isString) && optional(value.phase, (p) => PHASES.includes(p as string)) && optional(value.nativePhase, isString);
+      case "message.done": return optional(value.text, isString) && optional(value.phase, (p) => PHASES.includes(p as string)) && optional(value.nativePhase, isString) && optional(value.evidence, (e) => Array.isArray(e) && e.every(isRecord));
       case "reasoning.start": return true;
       case "reasoning.delta": return (value.representation === "summary" || value.representation === "provider-text") && Number.isSafeInteger(value.index) && (value.index as number) >= 0 && isString(value.text);
       case "reasoning.done": return optional(value.summary, strings) && optional(value.text, strings);
-      case "tool.start": return isRecord(value.tool) && isString(value.tool.name) && isString(value.tool.title) && isRecord(value.tool.args) && optional(value.tool.agent, isRecord);
+      case "tool.start": return isRecord(value.tool) && isString(value.tool.name) && isString(value.tool.title) && isRecord(value.tool.args) && optional(value.tool.agent, isRecord)
+        && optional(value.tool.exec, (x) => isRecord(x) && isString(x.command) && optional(x.cwd, isString));
       case "tool.update": return progress(value.progress);
       case "tool.done": return SETTLED.includes(value.outcome as string) && optional(value.progress, progress);
       default: return false;
@@ -407,5 +417,7 @@ function strings(value: unknown): boolean { return Array.isArray(value) && value
 function optional(value: unknown, check: (v: unknown) => boolean): boolean { return value === undefined || check(value); }
 function progress(value: unknown): boolean {
   return isRecord(value) && optional(value.args, isRecord) && optional(value.title, isString) && optional(value.agent, isRecord) && optional(value.output, isString)
-    && optional(value.durationMs, (d) => typeof d === "number" && Number.isFinite(d));
+    && optional(value.durationMs, (d) => typeof d === "number" && Number.isFinite(d))
+    && optional(value.outputBytes, (b) => Number.isSafeInteger(b) && (b as number) >= 0) && optional(value.outputTruncated, (t) => typeof t === "boolean")
+    && optional(value.exitCode, (c) => c === null || Number.isSafeInteger(c));
 }

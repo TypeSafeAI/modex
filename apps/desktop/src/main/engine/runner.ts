@@ -28,6 +28,7 @@ import type { PendingCreation, PendingSendRecord } from "./pending-sends.js";
 import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
+import { boundOutput } from "../../shared/evidence.js";
 import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
 /** Refused approvals in a routine run: the routine is read-only, and nobody is there to answer. */
@@ -1205,10 +1206,18 @@ export class ThreadRunner {
 /** How a backend's turn result ends its attempt. */
 const ATTEMPT_OUTCOME: Record<TurnResult["status"], SettledOutcome> = { completed: "succeeded", interrupted: "interrupted", failed: "failed" };
 
-/** Tool args at the size the UI keeps. */
+/** Tool args and output at the size the transcript keeps: output is its last 256 KiB, with the total. */
 function redactObservation(o: Observation): Observation {
   if (o.type === "tool.start") return { ...o, tool: { ...o.tool, args: redact(o.tool.args) } };
-  if ((o.type === "tool.update" || o.type === "tool.done") && o.progress?.args) return { ...o, progress: { ...o.progress, args: redact(o.progress.args) } };
+  if ((o.type === "tool.update" || o.type === "tool.done") && o.progress) {
+    const progress = { ...o.progress, ...(o.progress.args ? { args: redact(o.progress.args) } : {}) };
+    if (progress.output !== undefined) {
+      const bounded = boundOutput(progress.output);
+      progress.output = bounded.text;
+      if (bounded.truncated) Object.assign(progress, { outputBytes: Math.max(progress.outputBytes ?? 0, bounded.truncated.totalBytes), outputTruncated: true });
+    }
+    return { ...o, progress } as Observation;
+  }
   return o;
 }
 
