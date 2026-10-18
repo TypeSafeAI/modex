@@ -807,6 +807,21 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   and the TestFlight upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
 
+- **Truthful Claude Stop on `claude -p` (CF-2, #275).** This is #250's lifecycle work without the
+  Agent SDK.
+  - Stop sends Claude Code's own interrupt and ends its input, then reads the CLI's last messages.
+    Exit code 1 after an interrupt is not a failure.
+  - The turn ends when the process has exited. Modex sends SIGTERM 1.5 s after Stop and SIGKILL
+    1.5 s later. A process that still has not exited is reported unconfirmed, with its pid, and
+    its thread and worktree are kept.
+  - Permission cards Claude withdraws close inert, and late answers are dropped.
+  - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result
+    now survive. Failure details no longer copy MCP route tokens.
+
+  Measured live on Claude Code 2.1.302 until the account's weekly limit. Modex's own path was
+  covered with scripted CLIs; no live-model Stop has run through the app yet.
+  [Evidence](reviews/2026-10-18-claude-lifecycle.md).
+
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and
@@ -1116,12 +1131,7 @@ Roughly in the order they earn their place; none is scheduled.
 2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
-3. **#250's lifecycle fixes on the `claude -p` backend.** #250 (Claude through the Agent SDK) was
-   closed so that Modex keeps `claude -p`; see its closing comment. Its graceful interrupt before
-   SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
-   stderr and exit codes all apply to `backends/claude.ts` without the SDK. The author is invited to
-   send them; otherwise they come after the next release.
-4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
