@@ -28,9 +28,9 @@ test("a finished tool's status comes from its outcome; unknown and interrupted n
   assert.equal(toolStatusLabel(done({ outcome: "succeeded", agent: { id: "a", label: "x", state: "stopped" } })), "Stopped", "an agent row reads its agent state");
 });
 
-test("finished work folds under the turn header unless it failed, was denied or was stopped", () => {
+test("only finished work that succeeded folds under the turn header; failed, denied, stopped and unknown work stays in view", () => {
   const done = (patch: Partial<Extract<ThreadItem, { kind: "tool" }>>) => tool({ status: "done", ...patch });
-  assert.deepEqual(["succeeded", "unknown", "failed", "denied", "interrupted"].map((outcome) => toolFoldsAsWork(done({ outcome: outcome as "succeeded" }))), [true, true, false, false, false]);
+  assert.deepEqual(["succeeded", "unknown", "failed", "denied", "interrupted"].map((outcome) => toolFoldsAsWork(done({ outcome: outcome as "succeeded" }))), [true, false, false, false, false]);
   assert.equal(toolFoldsAsWork(tool({})), false, "running work stays in view");
   assert.deepEqual([toolFoldsAsWork(done({ ok: true })), toolFoldsAsWork(done({})), toolFoldsAsWork(done({ ok: false }))], [true, true, false]);
   assert.equal(toolFoldsAsWork(done({ outcome: "succeeded", agent: { id: "a", label: "x", state: "running" } })), false);
