@@ -87,8 +87,8 @@ to open the recovery folder.
 
 ## Verification boundary
 
-The local monorepo build and workspace typechecks passed. The full unit suite passed
-1,362 tests with 15 skips, and the integrated E2E run passed all 270 desktop and seven
+On 2026-10-12, the local monorepo build and workspace typechecks passed. The full unit suite
+passed 1,362 tests with 15 skips, and the integrated E2E run passed all 270 desktop and seven
 site cases. Coverage includes independent raw drafts across full relaunch, save-failure
 close veto and retry, pending original messages, attachment capacity and late results,
 owner removal, automatic retirement, terminal lifecycle, partial-shutdown reload, and

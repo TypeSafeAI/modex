@@ -37,7 +37,8 @@ Production is the default public client `client_01M4DWGC09T282ZJHMZCX395ZP`.
 `MODEX_WORKOS_ENV=staging` selects `client_01M4B32N0CQBCPPMZ5WA4NM5P4` and visibly
 labels the card **Staging**. Both environments allow
 `http://127.0.0.1:*/auth/workos/callback`; the fixed default callback is
-`http://127.0.0.1:43821/auth/workos/callback`. GitHub OAuth provider configuration and
+`http://127.0.0.1:43821/auth/workos/callback`. Modex itself listens on a free port the system
+picks for each sign-in, which the wildcard entry covers. GitHub OAuth provider configuration and
 credentials stay in WorkOS, not in the desktop or environment variables.
 
 Credentials live in `<MODEX_HOME>/app/workos-production.enc` or `workos-staging.enc`,
