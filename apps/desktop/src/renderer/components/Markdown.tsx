@@ -39,23 +39,34 @@ function render(text: string): ReactNode[] {
   return blocks(tree.children, { source: text, definitions, tight: false });
 }
 
+/** Renders by text, keeping the most recent `entries` results for texts of at most `maxChars`. */
+export class RenderCache {
+  private readonly kept = new Map<string, unknown>();
+  constructor(private readonly entries: number, private readonly maxChars: number) {}
+  get size(): number { return this.kept.size; }
+  get<T>(text: string, make: () => T): T {
+    if (text.length > this.maxChars) return make();
+    if (this.kept.has(text)) {
+      const hit = this.kept.get(text) as T;
+      this.kept.delete(text);
+      this.kept.set(text, hit);
+      return hit;
+    }
+    const made = make();
+    this.kept.set(text, made);
+    if (this.kept.size > this.entries) this.kept.delete(this.kept.keys().next().value!);
+    return made;
+  }
+}
+
 /**
  * Settled text, rendered once per app session: reopening a thread or switching back to one reuses
- * the elements instead of parsing every message again. Streaming pieces are never cached.
+ * the elements instead of parsing every message again. Streaming pieces are never cached, nor is
+ * very long text such as a fetched page.
  */
-const SETTLED_CACHE = 400;
-const settledCache = new Map<string, ReactNode[]>();
+const settledRenders = new RenderCache(400, 64_000);
 function settledBlocks(text: string): ReactNode[] {
-  const hit = settledCache.get(text);
-  if (hit) {
-    settledCache.delete(text);
-    settledCache.set(text, hit);
-    return hit;
-  }
-  const rendered = render(text);
-  settledCache.set(text, rendered);
-  if (settledCache.size > SETTLED_CACHE) settledCache.delete(settledCache.keys().next().value!);
-  return rendered;
+  return settledRenders.get(text, () => render(text));
 }
 
 /**

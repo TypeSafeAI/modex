@@ -130,3 +130,23 @@ test("rendering a reply piece by piece shows the same text as rendering it whole
   const pieces = (await Promise.all((await chunksOf(reply)).map(render))).map(visible).join("").replace(/\s+/g, "");
   assert.equal(pieces, whole);
 });
+
+test("the settled cache keeps recent renders, drops the oldest past its limit, and never holds very long text", async () => {
+  await render("");
+  const { RenderCache } = await server!.ssrLoadModule("/src/renderer/components/Markdown.tsx") as { RenderCache: new (entries: number, maxChars: number) => { get<T>(text: string, make: () => T): T; size: number } };
+  const cache = new RenderCache(2, 10);
+  let made = 0;
+  const make = () => ++made;
+  assert.equal(cache.get("a", make), 1);
+  assert.equal(cache.get("a", make), 1, "a hit renders nothing again");
+  cache.get("b", make);
+  cache.get("a", make); // "a" is now the most recent
+  cache.get("c", make); // past the limit: "b", the least recent, goes
+  assert.equal(cache.size, 2);
+  assert.equal(cache.get("a", make), 1);
+  assert.equal(cache.get("b", make), 4, "b was rendered again");
+  const long = "x".repeat(11);
+  assert.equal(cache.get(long, make), 5);
+  assert.equal(cache.get(long, make), 6, "text past the size limit is rendered each time, never kept");
+  assert.equal(cache.size, 2);
+});
