@@ -150,6 +150,7 @@ export function collectSink(answers: ("yes" | "no" | "always")[] = ["yes"]) {
       case "tool.start": return `tool_start:${id(o.native)}:${o.tool.title}`;
       case "tool.update": return `tool_update:${id(o.native)}:::${(o.progress.output ?? "").slice(0, 40)}`;
       case "tool.done": return `tool_update:${id(o.native)}:done:${okFor(o.outcome) ?? ""}:${(o.progress?.output ?? "").slice(0, 40)}`;
+      case "plan.update": return `plan:${o.from}:${o.steps.map((s) => `${s.status}=${s.text}`).join("|")}`;
     }
   };
   const sink: TurnSink = {

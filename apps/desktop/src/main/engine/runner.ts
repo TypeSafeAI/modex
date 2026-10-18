@@ -29,6 +29,7 @@ import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
 import { boundOutput } from "../../shared/evidence.js";
+import { taskMarkdown, taskRecord } from "../../shared/task-context.js";
 import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
 /** Refused approvals in a routine run: the routine is read-only, and nobody is there to answer. */
@@ -303,6 +304,38 @@ export class ThreadRunner {
       // A stopped, failed or silent turn is not a result, however much it streamed first.
       return { completed: this.slot(threadId).completed === true };
     } finally { this.unattended.delete(threadId); }
+  }
+
+  /**
+   * Saves a turn's task record (shared/task-context.ts) to the thread's project notes, at a person's
+   * request. Saving again updates the same note, unless it was edited since: then the edit stays and
+   * this version becomes a note of its own. Writes only through the notes store; reads only the
+   * transcript.
+   */
+  saveTaskNote(threadId: string, turnId: string): { pageId: string; title: string; revision: number; created: boolean; preserved: boolean } {
+    this.assertNotRestarting();
+    const thread = this.o.store.thread(threadId);
+    if (!thread) throw new Error(`unknown thread ${threadId}`);
+    const items = this.items(threadId);
+    const start = items.findIndex((item) => item.kind === "user" && item.id === turnId);
+    if (start < 0) throw new Error("That message is no longer in this thread.");
+    const next = items.findIndex((item, i) => i > start && item.kind === "user");
+    const turn = items.slice(start, next < 0 ? undefined : next);
+    const record = taskRecord(turn, { threadId, title: `Task: ${thread.title}`, cwd: thread.cwd });
+    const markdown = taskMarkdown(record);
+    const notes = this.o.store.space;
+    const project = notes.tree().nodes.find((node) => node.kind === "project" && node.modexProjectId === thread.projectId);
+    if (!project) throw new Error("This project has no notes yet. Open Notes for it, then save again.");
+    const saved = thread.taskNotes?.[turnId];
+    const existing = saved ? notes.list().find((page) => page.id === saved.pageId && !page.trashedAt) : undefined;
+    const change = { actor: "human", summary: "Saved a task record" };
+    const untouched = existing && existing.revision === saved!.revision;
+    const page = untouched
+      ? notes.save({ ...existing, title: record.title, markdown }, change)
+      : notes.create({ title: existing ? `${record.title} (saved again)` : record.title, markdown, containerId: project.id }, change);
+    const updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
+    this.o.emit({ threadId, type: "thread", thread: updated });
+    return { pageId: page.id, title: page.title, revision: page.revision, created: !untouched, preserved: Boolean(existing && !untouched) };
   }
 
   /** A receipt in the transcript for something Modex did on the thread's behalf. */

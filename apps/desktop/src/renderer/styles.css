@@ -679,6 +679,21 @@ a.thread-pr:hover { text-decoration: underline; }
 .evidence-where { overflow-wrap: anywhere; color: var(--text-2); font: 12px var(--font-mono); }
 .evidence-note { margin-left: 8px; color: var(--text-3); }
 
+/* ── Task plans and records (docs/task-context.md). ── */
+.plan-card { margin: 4px 0 14px; padding: 10px 14px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); font-size: var(--text-sm); }
+.plan-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.plan-title { color: var(--text-1); font-weight: var(--weight-semibold); }
+.plan-meta, .plan-explanation { color: var(--text-3); font-size: var(--text-xs); }
+.plan-explanation { margin: 0 0 6px; }
+.plan-steps { margin: 0; padding-left: 18px; display: grid; gap: 3px; color: var(--text-2); }
+.plan-status { display: inline-block; min-width: 92px; color: var(--text-3); font-size: var(--text-xs); }
+.plan-step.completed .plan-status { color: var(--text-2); }
+.task-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -6px 0 18px; font-size: var(--text-xs); color: var(--text-3); }
+.task-note-save { border: 0; background: transparent; padding: 2px 0; color: var(--text-3); font: inherit; cursor: pointer; }
+.task-note-save:hover { color: var(--text-1); }
+.task-note-save:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.task-note-saved { display: inline-flex; align-items: center; gap: 6px; }
+
 /* Small controls keep their look but get a 28 px hit area. */
 .icon-btn.sm, .composer-chip, .icon { position: relative; }
 .icon-btn.sm::before, .icon::before { content: ""; position: absolute; inset: -3px; }

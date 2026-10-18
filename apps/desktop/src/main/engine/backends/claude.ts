@@ -12,7 +12,7 @@ import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { ApprovalAnswer, BackendHealth } from "../../../shared/types.js";
-import type { NativeRef, Observation } from "../../../shared/conversation-events.js";
+import type { NativeRef, Observation, PlanStepStatus } from "../../../shared/conversation-events.js";
 import { isModelOutOfCredits } from "../../../shared/failures.js";
 
 /**
@@ -499,6 +499,11 @@ export class ClaudeBackend implements Backend {
               continue;
             }
             ctx.started.set(block.id, Date.now());
+            // TodoWrite carries the whole todo list: Claude's plan, revised by each call.
+            if (block.name === "TodoWrite" && Array.isArray(block.input?.todos)) {
+              const steps = (block.input.todos as { content?: unknown; status?: unknown }[]).map((t) => ({ text: String(t.content ?? ""), status: claudeStepStatus(t.status) }));
+              ctx.observe({ type: "plan.update", native: ctx.native("todos"), from: "claude-todo", steps });
+            }
             // Bash's command is what ran; its working directory is the CLI's own and persists between calls, so none is claimed.
             const command = block.name === "Bash" && typeof block.input?.command === "string" ? block.input.command : undefined;
             ctx.observe({ type: "tool.start", native: ctx.native(block.id), tool: { name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {}, ...(command ? { exec: { command } } : {}) } });
@@ -687,6 +692,10 @@ export function isApiErrorReply(msg: { type: string; parent_tool_use_id?: string
  */
 export function thinkingRepresentation(display: string | undefined): "summary" | "provider-text" {
   return display === "summarized" ? "summary" : "provider-text";
+}
+
+function claudeStepStatus(status: unknown): PlanStepStatus {
+  return status === "pending" ? "pending" : status === "in_progress" ? "in-progress" : status === "completed" ? "completed" : "unknown";
 }
 
 /** A `result` message as a turn outcome. */

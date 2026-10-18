@@ -749,6 +749,11 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
     as the CLI reported it. Tool output keeps its last 256 KB with a visible note. A patch is labelled
     as this turn's. Codex memory citations show as citations, and a "Sources:" list the model wrote
     is labelled as links in the reply. [Evidence](conversation-evidence.md).
+  - **Plans and task records (CF-7 #280, first part).** A plan reported by Codex or Claude's
+    TodoWrite shows each step in the CLI's own status: "Reported done", never "verified". Under
+    each finished turn, Save to Notes writes the turn's request, plan, changed files, commands and
+    loose ends into the project's notes; saving again updates the note unless you edited it.
+    [Task plans and records](task-context.md).
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
     acceptance and human VoiceOver checks.

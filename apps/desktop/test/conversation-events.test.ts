@@ -255,7 +255,7 @@ function stream(turn: TurnRef = turnRef()) {
 }
 const native = (item: string, over: Partial<NativeRef> = {}): NativeRef => ({ runtime: "R1", thread: "nt", turn: "nu", item, ...over });
 /** An item's text, or a tool's title. */
-const body = (item: ConversationItem) => (item.kind === "tool" ? item.title : item.text);
+const body = (item: ConversationItem) => (item.kind === "tool" ? item.title : item.kind === "plan" ? item.steps.map((s) => s.text).join("; ") : item.text);
 
 test("projector: two messages interleaved with two tools keep their own text and phase; completion snapshots replace, never duplicate", () => {
   const e = stream();
