@@ -18,8 +18,11 @@ There is no Agent SDK and no API mode.
   - `52b159a`: merge of `main` at `8e26534`, which landed CF-4 (#284, typed turn layout). No conflicts.
   - `bab1e10`: the opt-in live acceptance spec and its first results.
   - `a6ea0b0`: merge of `main` at `fb76aac`, which landed the first half of CF-6 (#285, typed state through the journal and phone). Only `docs/status.md` conflicted.
-  - The next commit tightens the live spec's assertions and adds these records.
-- Tested code: `a6ea0b03df2eb2d93512fa2ea1fc85db65595b7d`, up to date with `main` at `fb76aac`. The commit after it changes only the opt-in live spec, which is skipped unless `MODEX_CLAUDE_LIVE=1`, plus these records.
+  - `2597393`: the live spec requires a real stop on every step, plus these records.
+  - `7c9d62c`: merge of `main` at `d3711c6`, which landed the first part of CF-5 (#287, command evidence and output bounds). No conflicts.
+  - `449f660`: records for `7c9d62c`.
+  - `13faaeb`: merge of `main` at `f6976df`, which landed the first part of CF-7 (#289, plans and task records). Only an import line conflicted.
+- Tested code: `13faaebfc77c7b1e6d7a6c9f0ff05529d6ea075f`, up to date with `main` at `f6976df`. The last full local run is at `7c9d62c`. At `13faaeb` this records targeted checks and the live run; PR CI gives the full check at the head. Commits after it change only these records.
 
 ## CLI versions
 
@@ -126,7 +129,57 @@ At `feb2166`:
 
 The review fixes in `62ac15c` were red first (3/3 failing for the reported reasons). At `62ac15c`, 147/147 pass across the lifecycle, Claude backend, background, runner, routines and subagent suites.
 
-### Final checks at `a6ea0b0` (up to date with `main` at `fb76aac`)
+### Checks at `13faaeb` (up to date with `main` at `f6976df`)
+
+Sibling CF PRs landed four times while this branch was in its final checks. A full local run takes about 50 minutes and was flaky at load averages of 50–90. So the last merge is checked like this:
+- **Targeted, locally:** build pass. 228/228 unit tests across the lifecycle, Claude backend, background, runner, conversation-events, conversation-migration, event-journal, evidence, task-context, turn-layout, companion, routines and credit-fallback suites. 28/28 Electron cases across `claude-lifecycle`, `titles`, `typed-turns`, `approvals`, `errors` and `conversation-evidence`.
+- **Live,** 11:55 UTC: below.
+- **Full:** PR #286's CI at this SHA, recorded on #275 once it finishes.
+
+### Full checks at `7c9d62c` (up to date with `main` at `d3711c6`)
+
+**CI on PR #286 at `7c9d62c`:** all 12 check runs succeeded:
+- `unit + e2e (macOS)` (required);
+- `iPhone companion`;
+- CLI and installers on Linux and Windows;
+- CodeQL and every analysis job;
+- coverage upload.
+
+Local run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 10:55–11:44 UTC, at a load average between 50 and 90:
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | pass |
+| `pnpm build` | pass (27 s) |
+| `pnpm typecheck` | pass (22 s) |
+| `pnpm test` | pass (579 s), broken down below |
+| `pnpm test:e2e` (desktop) | 322 passed, 4 skipped (3 opt-in Open Knowledge, 1 opt-in live), 5 failed |
+| `pnpm --filter @modex/site test:e2e` | 7/7 |
+
+`pnpm test`, by suite:
+
+| Suite | Result |
+| --- | --- |
+| worktrees | 109/109 |
+| core | 16/16 |
+| desktop | 1,541 passed, 16 skipped, of 1,557 |
+| desktop native/update | 21/21 |
+| site | 10/10 |
+| store-desktop | 16/16 |
+
+The 5 desktop E2E failures were all timeouts in specs that never start the Claude backend:
+- `canvas.spec.ts › …recovers after the selected file is deleted`;
+- `conversation-evidence.spec.ts` (2 cases; mock backend, with items sent straight to the window);
+- `notes.spec.ts › an edit made outside Modex shows in Space…`;
+- `streamer-mode.spec.ts`, where the worker's teardown timed out.
+
+All four specs then passed alone at the same SHA, 26/26, and CI passed them. The site suite was run on its own because the desktop step failed first.
+
+Targeted checks at `7c9d62c`:
+- 223/223 across the lifecycle, Claude backend, background, runner, conversation-events, conversation-migration, event-journal, evidence, turn-layout, companion, routines and credit-fallback suites;
+- 24/24 Electron cases across `claude-lifecycle`, `titles`, `typed-turns`, `approvals` and `errors`.
+
+### Checks at `a6ea0b0` (up to date with `main` at `fb76aac`)
 
 Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 09:55–10:42 UTC:
 
@@ -261,16 +314,26 @@ An earlier full E2E run at `feb2166` was stopped deliberately after 106/321 test
 
 The usage limit had lifted by 09:19 UTC. `e2e/claude-live-stop.spec.ts` then drove the built app with the real Claude Code 2.1.302 and Haiku. It ran in Chat mode, in a throwaway repository, from a shell without `CLAUDE*`/`ANTHROPIC*` variables.
 
-**Final run at `a6ea0b0` (10:47 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Every step ended with a "Stopped." notice and no failure card:
+**Final run at `13faaeb` (11:55 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Results were the same as at `7c9d62c`, within 0.01 s:
+- card waiting: idle in 0.88 s;
+- running command: idle in 2.39 s, after SIGTERM, row `interrupted`;
+- resume: replied "resumed";
+- stream: idle in 0.86 s, 398 characters kept.
+
+Every step ended "Stopped." with no failure card.
+
+**At `7c9d62c` (11:47 UTC): pass.** Every step ended with a "Stopped." notice and no failure card:
 
 | Step | Observed |
 | --- | --- |
-| Stop while a `touch` card waits | Idle 0.93 s after Stop, notice "Stopped.". |
-| Approve a 30 s Python command, Stop 3 s later | Idle 2.36 s after Stop. The notice reads "Stopped. Claude did not end the turn within 1.5 s of the interrupt, so Modex terminated it." The tool row is `done` / `interrupted`, and its file was never written. |
+| Stop while a `touch` card waits | Idle 0.88 s after Stop, notice "Stopped.". |
+| Approve a 30 s Python command, Stop 3 s later | Idle 2.39 s after Stop. The notice reads "Stopped. Claude did not end the turn within 1.5 s of the interrupt, so Modex terminated it." The tool row is `done` / `interrupted`, and its file was never written. |
 | Same thread, "Reply with the single word: resumed" | Reply "resumed". |
-| Stop while a 2,000-word story streams | Idle 1.37 s after Stop, notice "Stopped.", 834 characters kept. |
+| Stop while a 2,000-word story streams | Idle 0.85 s after Stop, notice "Stopped.", 381 characters kept. |
 
-The run before that at `a6ea0b0` passed too, but its streaming step had asked for only 400 words. Haiku finished the story before Stop landed: no stop notice, all 2,240 characters kept. That was a true account (nothing was stopped), but it did not test a mid-stream Stop. The spec now asks for 2,000 words and requires a "Stopped." notice on every step.
+**At `a6ea0b0` (10:47 UTC): pass, same spec.** Idle in 0.93 s, 2.36 s (terminated) and 1.37 s; resume replied "resumed"; 834 characters kept.
+
+An earlier run at `a6ea0b0` passed too, but its streaming step had asked for only 400 words. Haiku finished the story before Stop landed: no stop notice, all 2,240 characters kept. That was a true account (nothing was stopped), but it did not test a mid-stream Stop. The spec now asks for 2,000 words and requires a "Stopped." notice on every step.
 
 **Earlier run at `52b159a` (09:50 UTC): pass, with the looser spec.**
 
@@ -349,7 +412,10 @@ interfaces. The only manual merge resolution combines the `ApprovalAnswer` and
 `PlanStepStatus` type imports in the Claude backend. The failure-before-Stop repair and
 its two regressions are unchanged. Verification of this combined tree is recorded in
 [#291](https://github.com/TypeSafeAI/modex/pull/291), separately from the earlier checks
-against `a6ea0b0`.
+against `a6ea0b0`. The owner's later head
+`3b1c1be760e68c722e8ea740c95e1225745e5de3` was then merged to preserve their newer
+receipts. That merge changes only the review document and their live-report JSON;
+application and test source remain identical to the verified integrated tree.
 
 Local verification of the integrated source tree (`327fdc71165824a348d91aedba3025f58f38cbe4`):
 - Frozen install with pnpm 10.34.5, full build and typecheck passed.
