@@ -93,7 +93,7 @@ export const INTERRUPTED = {
  * Answers Modex's interrupt the way Claude Code 2.1.302 did live: cancel each pending `can_use_tool`,
  * acknowledge, close the turn, and exit with code 1 once stdin ends. Returns the request ids it cancelled.
  */
-export function actLikeClaude(proc: FakeProcess, opts: { pending?: string[]; partial?: string; exitCode?: number; exitOnEnd?: boolean } = {}): { cancelled: string[] } {
+export function actLikeClaude(proc: FakeProcess, opts: { pending?: string[]; tools?: string[]; partial?: string; exitCode?: number; exitOnEnd?: boolean } = {}): { cancelled: string[] } {
   const cancelled: string[] = [];
   let input = "";
   proc.stdin.on("data", (d: Buffer) => {
@@ -108,6 +108,8 @@ export function actLikeClaude(proc: FakeProcess, opts: { pending?: string[]; par
       for (const id of opts.pending ?? []) { cancelled.push(id); proc.emitLine({ type: "control_cancel_request", request_id: id }); }
       proc.emitLine(INTERRUPTED.ack(msg.request_id));
       if (opts.partial !== undefined) proc.emitLine({ type: "assistant", message: { id: "m-partial", content: [{ type: "text", text: opts.partial }] } });
+      // Each tool call the interrupt stopped is closed with a rejection (its text's first sentence, as captured).
+      for (const id of opts.tools ?? []) proc.emitLine({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "The user doesn't want to proceed with this tool use.", is_error: true }] } });
       proc.emitLine(opts.pending?.length ? INTERRUPTED.tools : INTERRUPTED.streaming);
       proc.emitLine(INTERRUPTED.result(opts.pending?.length ? "aborted_tools" : "aborted_streaming"));
     }

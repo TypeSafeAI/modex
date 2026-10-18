@@ -344,7 +344,7 @@ export class ClaudeBackend implements Backend {
         let part = 0;
         const observe = (o: Observation) => sink.observe({ ...o, ...(msg.uuid ? { source: `${msg.uuid}#${part++}` } : {}) });
         const native = (item: string, block?: number): NativeRef => ({ runtime, ...(session.id ? { thread: session.id } : {}), item, ...(block !== undefined ? { part: String(block) } : {}) });
-        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, requests, init, agents, tasks, background, listed, blocks, denied, observe, native });
+        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, requests, stopping: () => stopAt !== undefined, init, agents, tasks, background, listed, blocks, denied, observe, native });
         if (msg.type === "control_request") {
           approvals++;
           void handled.finally(() => {
@@ -377,7 +377,7 @@ export class ClaudeBackend implements Backend {
   }
 
   /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; requests: Map<string, AbortController>; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; requests: Map<string, AbortController>; stopping: () => boolean; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
@@ -515,8 +515,9 @@ export class ClaudeBackend implements Backend {
               continue;
             }
             const t0 = ctx.started.get(block.tool_use_id);
-            // An error result is a denial only when Modex itself refused this tool_use; otherwise it failed.
-            const outcome = !block.is_error ? "succeeded" : ctx.denied.has(block.tool_use_id) ? "denied" : "failed";
+            // An error result is a denial only when Modex itself refused this tool_use. After Stop it is the CLI
+            // rejecting the call it was interrupted in; otherwise it failed.
+            const outcome = !block.is_error ? "succeeded" : ctx.denied.has(block.tool_use_id) ? "denied" : ctx.stopping() ? "interrupted" : "failed";
             ctx.observe({ type: "tool.done", native: ctx.native(block.tool_use_id), outcome, progress: { output: content, ...(t0 ? { durationMs: Date.now() - t0 } : {}) } });
           }
         }

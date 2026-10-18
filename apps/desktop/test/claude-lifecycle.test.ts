@@ -355,7 +355,7 @@ test("runner: a request withdrawn while the approval gate is still deciding neve
 
 test("runner: Stop with a pending card withdraws it, sends one interrupt and reports one stop", async () => {
   const proc = new FakeProcess();
-  actLikeClaude(proc, { pending: ["r1"] });
+  actLikeClaude(proc, { pending: ["r1"], tools: ["tu-r1"] });
   const { h, runner, project } = await claudeThread([proc]);
   const thread = await runner.createThread(project.id, { backend: "claude", mode: "agent", auto: false });
   runner.updateThread(thread.id, { title: "Stop" });
@@ -377,7 +377,8 @@ test("runner: Stop with a pending card withdraws it, sends one interrupt and rep
   assert.equal(statuses(h.events, thread.id).at(-1), "idle");
   assert.equal(statuses(h.events, thread.id).filter((s) => s === "idle").length, 1, "one terminal status");
   const tool = items.find((i) => i.kind === "tool");
-  assert.equal(tool?.kind === "tool" && tool.ok, false, "the CLI's own tool result closes the row");
+  assert.equal(tool?.kind === "tool" && tool.status, "done", "the CLI's own tool result closes the row");
+  assert.equal(tool?.kind === "tool" && tool.outcome, "interrupted", "a call Stop rejected was interrupted, not a failure");
 });
 
 test("runner: a Stop Claude does not acknowledge says how Modex ended it", async () => {
