@@ -22,7 +22,10 @@ There is no Agent SDK and no API mode.
   - `7c9d62c`: merge of `main` at `d3711c6`, which landed the first part of CF-5 (#287, command evidence and output bounds). No conflicts.
   - `449f660`: records for `7c9d62c`.
   - `13faaeb`: merge of `main` at `f6976df`, which landed the first part of CF-7 (#289, plans and task records). Only an import line conflicted.
-- Tested code: `13faaebfc77c7b1e6d7a6c9f0ff05529d6ea075f`, up to date with `main` at `f6976df`. The last full local run is at `7c9d62c`. At `13faaeb` this records targeted checks and the live run; PR CI gives the full check at the head. Commits after it change only these records.
+  - `3b1c1be`: records for `13faaeb`.
+  - `4679fb5`: merge of `main` at `04b7ec7` (#292, steward docs). Docs only.
+  - `61cc65d`: merge of #291, which Val authorized. It is the stacked repair from another session, keeping a turn that failed before Stop owned until exit is confirmed (see "Failure before Stop" below).
+- Tested code: `61cc65dccb5774aa6ed7fad27bfafc6092577b2b`, up to date with `main` at `04b7ec7`. Commits after it change only these records.
 
 ## CLI versions
 
@@ -128,6 +131,45 @@ At `feb2166`:
 - `e2e/claude-lifecycle.spec.ts`: 1/1 pass (29.8 s).
 
 The review fixes in `62ac15c` were red first (3/3 failing for the reported reasons). At `62ac15c`, 147/147 pass across the lifecycle, Claude backend, background, runner, routines and subagent suites.
+
+### Final checks at `61cc65d` (up to date with `main` at `04b7ec7`, #291 merged)
+
+Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 12:52–13:25 UTC. Every check passed, with no reruns needed:
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | pass |
+| `pnpm build` | pass (70 s) |
+| `pnpm typecheck` | pass (52 s) |
+| `pnpm test` | pass (358 s), broken down below |
+| `pnpm test:e2e` (desktop) | 329 passed, 4 skipped (3 opt-in Open Knowledge, 1 opt-in live), 0 failed, 24.1 min |
+| `pnpm test:e2e` (site) | 7/7 |
+
+`pnpm test`, by suite:
+
+| Suite | Result |
+| --- | --- |
+| worktrees | 109/109 |
+| core | 16/16 |
+| desktop | 1,548 passed, 16 skipped, of 1,564 |
+| desktop native/update | 21/21 |
+| site | 10/10 |
+| store-desktop | 16/16 |
+
+Targeted at `61cc65d`, before the full run:
+- 230/230 unit tests, including #291's two regressions;
+- 28/28 Electron cases across `claude-lifecycle`, `titles`, `typed-turns`, `approvals`, `errors` and `conversation-evidence`.
+
+Building right after the #291 merge first failed with ENOSPC: the data volume was full, from other work on the machine. The build and every check above were rerun once space had freed.
+
+CI on PR #286 at `61cc65d`, attempt 1 ([run 39128450673](https://github.com/TypeSafeAI/modex/actions/runs/39128450673)):
+- **Passed:** 10 check runs.
+- **Failed:** `unit + e2e (macOS)`, with 3 failures in CF-5's `conversation-evidence.spec.ts`: 329 passed, 3 failed.
+- **Skipped:** the coverage upload, because the step before it failed.
+
+Only rows that succeeded were "not visible". That fits a folding race in the spec's setup: it clicks the last turn header before the evidence turn has rendered. The spec uses the mock backend, not Claude. It passed in CI at `3b1c1be` and `7c9d62c`, and in the clean local run above at this SHA. The race is reported on #278, and the failed job was re-run.
+
+**Attempt 2: `unit + e2e (macOS)` passed.** CI at `61cc65d` is green, counting the latest run of each check: `unit + e2e (macOS)`, coverage upload, `iPhone companion`, CLI and installers on Linux and Windows, CodeQL, and every analysis job.
 
 ### Checks at `13faaeb` (up to date with `main` at `f6976df`)
 
@@ -314,7 +356,13 @@ An earlier full E2E run at `feb2166` was stopped deliberately after 106/321 test
 
 The usage limit had lifted by 09:19 UTC. `e2e/claude-live-stop.spec.ts` then drove the built app with the real Claude Code 2.1.302 and Haiku. It ran in Chat mode, in a throwaway repository, from a shell without `CLAUDE*`/`ANTHROPIC*` variables.
 
-**Final run at `13faaeb` (11:55 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Results were the same as at `7c9d62c`, within 0.01 s:
+**Final run at `61cc65d` (12:50 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Every step ended "Stopped." with no failure card:
+- card waiting: idle in 0.85 s;
+- running command: idle in 2.37 s, after SIGTERM;
+- resume: replied "resumed";
+- stream: idle in 0.98 s, 528 characters kept.
+
+**At `13faaeb` (11:55 UTC): pass** Results were the same as at `7c9d62c`, within 0.01 s:
 - card waiting: idle in 0.88 s;
 - running command: idle in 2.39 s, after SIGTERM, row `interrupted`;
 - resume: replied "resumed";

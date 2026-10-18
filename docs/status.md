@@ -171,8 +171,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     its thread and worktree are kept.
   - A failure received just before Stop retains its error and process ownership: the failure's
     drain deadline cannot permit deletion before exit or bounded stop confirmation.
-    Repair PR #291 integrates the CF-2 owner's latest branch and main through CF-7's first part;
-    its receipt distinguishes verification of that combination from the earlier branch checks.
+    The repair came from #291, now merged into #286.
   - Permission cards Claude withdraws close inert, and late answers are dropped.
   - Built on CF-1's event contract: a tool call that Stop interrupted reads Stopped, not Failed.
   - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result
@@ -184,7 +183,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - Resume after Stop: answers normally.
   - Stop mid-stream: the text so far is kept.
 
-  Windows and Linux escalation is unproven. Open in #286, with a stacked repair in #291. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
+  Windows and Linux escalation is unproven. Open in #286. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286 and #291
