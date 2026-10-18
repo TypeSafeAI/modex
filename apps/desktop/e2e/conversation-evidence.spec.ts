@@ -23,7 +23,7 @@ async function send(events: Record<string, unknown>[]): Promise<void> {
 }
 const item = (event: Record<string, unknown>) => ({ type: "item", threadId, item: event });
 
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   ({ home, repo } = seedHome());
   ({ app, page } = await launch(home));
   const script = path.join(home, "evidence-script.json");
@@ -48,10 +48,16 @@ test.beforeAll(async () => {
       evidence: [{ kind: "memory", source: "codex", path: "notes/build.md", lineStart: 3, lineEnd: 5, note: "Build flags 🛠" }] }),
     { type: "status", threadId, status: "idle" },
   ]);
-  await tid(page, "turn-label").last().click();
+  // Sending IPC does not wait for React to render it. Wait for this turn's final
+  // item, then select its disclosure button, not the preceding turn's plain label.
+  await expect(items(page, "assistant").filter({ hasText: "Use the build flags" })).toBeVisible();
+  const history = page.locator('button[data-testid="turn-label"]').last();
+  await expect(history).toHaveAttribute("aria-expanded", "false");
+  await history.click();
+  await expect(history).toHaveAttribute("aria-expanded", "true");
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await app?.close();
   fs.rmSync(home, { recursive: true, force: true });
   fs.rmSync(repo, { recursive: true, force: true });
@@ -74,6 +80,7 @@ test("a command shows what actually ran, where, and how it ended, apart from its
 
 test("output past the preview says how much is shown", async () => {
   const failed = items(page, "tool").filter({ hasText: "$ npm test" });
+  await tid(failed, "item-toggle").click();
   await expect(tid(failed, "tool-truncated")).toHaveText("Showing the last 256 KB of 3.0 MB.");
   await expect(tid(failed, "tool-output")).toContainText("1 failing");
 });
