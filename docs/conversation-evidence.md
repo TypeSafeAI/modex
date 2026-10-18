@@ -63,17 +63,44 @@ Observed on 2026-10-18:
   of the log is not kept; the CLI's own logs have it.
 - **Patches.** A patch tool (`apply_patch`, `Edit`, `MultiEdit`, `Write`, `NotebookEdit`) is labelled
   "The patch as this turn applied it. The working tree may have changed since; Changes shows it now."
+- **Comparing a patch with the working tree.** A patch the CLI reported as applied has **Compare
+  with working tree**, then **Check again**. It asks main (`evidence:patch`,
+  `main/engine/patch-state.ts`), which takes the patch from the thread's own record, not from the
+  window.
+  - **What each file says.** One verdict per file, with the time of the check:
+    - *As this turn left it*: the file is exactly what a `Write` or a Codex add wrote, or is still
+      absent after a Codex delete.
+    - *Still has this turn's edit*: the text an `Edit` or `MultiEdit` put in is still there, or
+      each Codex hunk's new lines are still there, in order. The rest of the file is not known.
+    - *Changed since this turn* and *Deleted since this turn*. A moved file is checked at its new
+      path, and it reads as changed if a file is back at the old path.
+    - *Not compared*, with the reason.
+  - **When it says Not compared.** A file outside the thread's folder, or a link that leads out of
+    it. A directory, or a file over 8 MiB. An edit that only removed text. A notebook edit. A Codex
+    patch saved before per-file records were kept.
+  - **What it reads.** Only the files the patch names, inside the thread's folder (realpath, no
+    link at the last step). Only verdicts reach the window, never file contents.
+  - **Nothing else happens.** Opening the row reads nothing. Comparing writes nothing and runs
+    nothing. A patch that was denied, failed, stopped or has no known outcome is not compared.
+  - **Paired desktops.** A paired desktop can compare too. It learns less than `files:read`
+    already gives it.
+  - **The Codex record.** codex-cli 0.163.0 sends each file of a `fileChange` with an absolute
+    `path`, and an update's diff as hunks only (`@@ -a,b +c,d @@`, no file headers); an add
+    carries the whole file. Observed in local Codex sessions and in Modex's own thread records.
+    Modex keeps the diffs joined in `args.patch`, as before. Beside it, `args.files` keeps each
+    file's `path`, `kind`, `movePath` and `lines`: how many lines of `patch` are that file's
+    diff. So no diff is stored twice.
 
 ## Owned artifacts
 
 Images, Notes and Knowledge changes, and attachments already reach the transcript through their own
 owners. Image registration uses Images; note and knowledge receipts open through `pages` and
 `knowledge:open`; attachments go through `attachments:open`. Each checks access in main. This work
-adds no new artifact store. Its only new read is a memory citation's lines, above.
+adds no new artifact store. Its only new reads are a memory citation's lines and a patch's files, above.
 
 ## Not done yet
 
 - Native web-search results as structured evidence. Codex's `results` are opaque JSON, and Claude's
   arrive as tool text.
-- Turn patches compared against the current working tree, beyond the label.
+- Comparing a patch whose edit only removed text, and notebook edits.
 - A retained full log beyond the 256 KiB preview.

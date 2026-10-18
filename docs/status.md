@@ -159,6 +159,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
   Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
   and opens nothing. It works on the Mac only, never from a paired desktop.
+- **A turn's patch can be compared with the working tree** (part of #278). A patch the CLI
+  reported as applied has **Compare with working tree**. Each file it touched reads as left by the
+  turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
+  Main reads only the named files inside the thread's folder and returns verdicts, never contents.
+  Codex file changes now keep their per-file paths beside the patch.
 
 ## In flight
 

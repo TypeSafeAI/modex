@@ -688,6 +688,16 @@ a.thread-pr:hover { text-decoration: underline; }
 .evidence-excerpt-box { margin: 6px 0 2px; }
 .evidence-range { color: var(--text-3); font-size: var(--text-xs); margin-bottom: 4px; }
 .evidence-excerpt { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sunken); font: 12px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.evidence-action:disabled { opacity: 0.6; cursor: default; }
+.patch-compare { margin: 2px 0 8px; font-size: var(--text-xs); }
+.patch-check { margin-top: 6px; }
+.patch-checked { color: var(--text-3); }
+.patch-files { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.patch-file { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.patch-file code { margin-right: 6px; }
+.patch-file.as-left .patch-file-state, .patch-file.has-edit .patch-file-state { color: var(--ok); }
+.patch-file.changed .patch-file-state, .patch-file.deleted .patch-file-state { color: var(--warn); }
+.patch-file.unknown .patch-file-state { color: var(--text-3); }
 
 /* ── Task plans and records (docs/task-context.md). ── */
 .plan-card { margin: 4px 0 14px; padding: 10px 14px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); font-size: var(--text-sm); }
