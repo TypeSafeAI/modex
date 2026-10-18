@@ -177,6 +177,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
+  - **Development preview** (#119, approved by Val): an opt-in loopback host and a sandboxed
+    MAS client that reuses the desktop renderer. Since #166, Store recovery pauses on
+    certificate and host-protocol failures, keeps saved access and the mounted draft, and
+    retries only when asked. [Preview ledger](mac-store-preview-plan.md),
+    [run instructions](../apps/store-desktop/README.md),
+    [recovery verification](reviews/2026-10-11-store-recovery.md).
   - **Apple:** Mac Store 0.0.8 is beta approved in TestFlight (October 11 readback). Its
     production draft has the build and review notes selected, and still needs screenshots,
     description, keywords, support and privacy-policy URLs, and copyright; screenshots and
@@ -185,11 +191,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Accepted** on signed current-account candidates: host discovery, real Codex and Claude
     turns, code comparison and denial, matching-code approval, credentials after relaunch,
     Stop of a real Claude background task, host-restart reconnect with the unsent draft, and
-    revocation. The Store recovery changes are on `main` (`edf52fc`, #173).
-    [Signed acceptance](reviews/2026-10-11-store-signed-acceptance.md#status-summary).
-  - **Open:** fresh-user setup, installed-host auto-launch, sleep/wake, the full welcome Open
-    sequence and its Cancel check, a macOS TestFlight install, App Review, and Val's
-    attribution of one GUI Connect grant. [Readiness](reviews/2026-10-11-store-readiness.md).
+    revocation. [Signed acceptance](reviews/2026-10-11-store-signed-acceptance.md#status-summary).
+  - **Open:** the full parity matrix, graceful host shutdown, fresh-user setup, installed-host
+    auto-launch, sleep/wake, the full welcome Open sequence and its Cancel check, a macOS
+    TestFlight install, App Review, and Val's attribution of one GUI Connect grant.
+    [Readiness](reviews/2026-10-11-store-readiness.md).
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
@@ -328,32 +334,3 @@ Roughly in the order they earn their place; none is scheduled.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
 - A release's details and evidence go in its review under [`reviews/`](reviews/). This page
   keeps one Shipped row that links it, and the release leaves "In flight".
-
-
-## Local Mac Store development preview (unreleased)
-
-Store recovery now pauses on certificate identity/date/hostname failures and incompatible
-host protocols while retaining saved access and the mounted draft. Explicit retry rechecks
-the saved pin and stream without replaying commands. Discovery refreshes installed-host
-availability and retries failed group-directory lookup. The Store owns unavailable Modex
-account responses and a native Workspace menu through the existing shortcut pipeline.
-See the [recovery verification](reviews/2026-10-11-store-recovery.md) and
-[Store readiness audit](reviews/2026-10-11-store-readiness.md) for evidence and remaining gates.
-
-
-PR #119 adds a dedicated opt-in loopback host and a sandboxed Electron MAS client that
-reuses the desktop renderer. Val approved integrating this development preview. Transport
-boundary/revocation tests and a signed native smoke test cover explicit pairing, encrypted
-saved access, an approved scripted edit, terminal execution, restart recovery and revocation.
-App Sandbox was verified on the running client. Graceful host shutdown, full parity and
-real CLI acceptance, provisioning and App Review eligibility remain pending. Store 0.0.8
-was approved for macOS TestFlight beta testing on 2026-10-07; this is not an App Store
-release. See [the preview ledger](mac-store-preview-plan.md) and
-[run instructions](../apps/store-desktop/README.md).
-
-The shared Mac connection settings now recognize existing system CLI sign-ins and recheck
-them on return from Terminal or a browser. Authenticated Claude no longer asks for another
-login; an authenticated Codex CLI account remains selected unless the user chooses another
-account. Executable overrides still require verification before saving. Read-only checks on
-this Mac confirmed Claude Code 2.1.289 and Codex 0.160.1 are already authenticated; this is
-account-detection evidence, not a new live coding-turn or Store distribution acceptance.
