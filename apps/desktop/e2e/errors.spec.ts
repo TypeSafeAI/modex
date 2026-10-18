@@ -194,8 +194,8 @@ test("the model-list Retry requests the catalogue again and clears the error", a
   await expect(tid(page, "composer-input")).toBeVisible();
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "draft-view")).toBeVisible();
-  await expect(tid(page, "models-retry")).toBeVisible();
-  await tid(page, "models-retry").click();
-  await expect(tid(page, "models-retry")).toHaveCount(0);
+  await expect(tid(tid(page, "models-error"), "error-retry")).toBeVisible();
+  await tid(tid(page, "models-error"), "error-retry").click();
+  await expect(tid(tid(page, "models-error"), "error-retry")).toHaveCount(0);
   await expect(tid(page, "model-picker")).toContainText("Recovered model");
 });

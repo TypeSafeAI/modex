@@ -138,6 +138,11 @@ a { color: var(--accent); }
 .toast .btn { color: inherit; border-color: var(--danger-border); background: var(--danger-bg); }
 .toast .btn:hover { background: color-mix(in srgb, var(--danger) 22%, transparent); }
 .toast .toast-close { background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; }
+/* Inline errors with their actions (ui/ErrorNotice): the surface's own class supplies colour and spacing. */
+.error-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.error-notice-text { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+.error-notice-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.error-notice-actions .btn.small { margin: 0; font-size: 12px; }
 
 /* Backend segmented control, plan toggle, effort, shortcuts */
 kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; margin-left: 6px; color: var(--fg-1); }

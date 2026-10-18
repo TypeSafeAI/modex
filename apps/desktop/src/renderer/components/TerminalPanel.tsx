@@ -7,6 +7,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { TerminalEvent, TerminalSnapshot, Thread } from "../../shared/types";
 import { bridge } from "../bridge";
 import { IconButton } from "./ui/IconButton";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const terminalTheme = () => ({ background: token("--bg-main"), foreground: token("--text-1"), cursor: token("--text-1"), selectionBackground: token("--bg-row-selected") });
@@ -128,7 +129,7 @@ export function TerminalPanel({ theme, thread, onClose, command, onCommandConsum
         <IconButton icon="restart" label="Restart terminal" data-testid="terminal-restart" onClick={() => void end(true)} />
         <IconButton icon="close" label="Close terminal" data-testid="terminal-close" onClick={() => void end(false)} />
       </header>
-      {error && <div className="terminal-error" role="alert">{error}</div>}
+      {error && <ErrorNotice className="terminal-error" testId="terminal-error" where="Terminal" message={error} onRetry={() => void end(true)} retryLabel="Restart terminal" context={{ threadId: thread.id, cwd: thread.cwd }} />}
       <div className="terminal-screen" data-testid="terminal-screen" ref={screen} />
     </section>
   );

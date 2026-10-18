@@ -9,6 +9,7 @@ import { AttachmentChips } from "./Attachments";
 import { ModelMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
+import { ErrorNotice } from "./ui/ErrorNotice";
 import { Kbd } from "./ui/Kbd";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "./ui/Menu";
 
@@ -200,10 +201,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
           </div>
         </div>
         {attachWarning && (
-          <div className="composer-warn" role="alert" data-testid="attach-warning">
-            ⚠ {attachWarning}
-            <button type="button" className="btn ghost small" onClick={onDismissWarning}>Dismiss</button>
-          </div>
+          <ErrorNotice className="composer-warn" testId="attach-warning" where="Composer · attachments" message={`⚠ ${attachWarning}`} onDismiss={onDismissWarning} context={{ backend }} />
         )}
         {dragging && (
           <div className="drop-overlay" data-testid="drop-overlay" aria-hidden="true">
@@ -211,10 +209,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
           </div>
         )}
         {modelsError && (
-          <div className="composer-warn" role="alert" data-testid="models-error">
-            ⚠ {modelsError}
-            {onRetryModels && <button type="button" className="btn ghost small" data-testid="models-retry" onClick={onRetryModels}>Retry</button>}
-          </div>
+          <ErrorNotice className="composer-warn" testId="models-error" where="Composer · model list" message={`⚠ ${modelsError}`} onRetry={onRetryModels} context={{ backend }} />
         )}
       </div>
     </div>

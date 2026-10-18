@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import type { BrowserToolsSnapshot } from "../../shared/browser";
 import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 export function BrowserToolsDialog({ onClose }: { onClose(): void }) {
   const [state, setState] = useState<BrowserToolsSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The operation behind `error`, for its Retry. Loading errors have none: they mean no desktop host.
+  const [failed, setFailed] = useState<{ message: string; operation: () => Promise<BrowserToolsSnapshot> } | null>(null);
   const [notice, setNotice] = useState("");
   const dialog = useRef<HTMLElement>(null);
   const pending = useRef(false);
@@ -32,7 +35,11 @@ export function BrowserToolsDialog({ onClose }: { onClose(): void }) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError(""); setNotice("");
     try { setState(await operation()); setNotice("Reload open browser tabs to apply extension changes."); }
-    catch (error) { setError((error as Error).message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "")); }
+    catch (error) {
+      const message = (error as Error).message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "");
+      setError(message);
+      setFailed({ message, operation });
+    }
     finally { pending.current = false; setBusy(false); }
   };
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !pending.current) onClose(); }}>
@@ -57,7 +64,7 @@ export function BrowserToolsDialog({ onClose }: { onClose(): void }) {
         <p>Device Touch ID passkeys are unavailable in this release. A signed app alone does not authorize access to their protected keychain group.</p>
         <p>For existing 1Password or iCloud passkeys, choose <strong>Page options → Open in system browser</strong>. Your browser keeps that sign-in; its session is separate from Modex.</p>
       </section>
-      {(error || state?.error) && <p className="workspace-error" role="alert">{error || state?.error}</p>}
+      {(error || state?.error) && <ErrorNotice className="workspace-error" testId="browser-tools-error" where="Browser extensions" message={error || state?.error || ""} onRetry={!busy && error && failed?.message === error ? () => void act(failed.operation) : undefined} />}
       {notice && <p role="status">{notice}</p>}
     </section>
   </div>;

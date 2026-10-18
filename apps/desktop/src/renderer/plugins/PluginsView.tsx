@@ -3,6 +3,7 @@ import type { NativePlugin, PluginAction, PluginContext, PluginDetail, PluginInv
 import type { Project } from "../../shared/types";
 import { bridge } from "../bridge";
 import { SecretInput, SecretTextarea, useRedact } from "../streamer";
+import { ErrorNotice } from "../components/ui/ErrorNotice";
 import "./plugins.css";
 
 export interface PluginsViewProps {
@@ -25,6 +26,8 @@ export function PluginsView({ projects, onUseForImages }: PluginsViewProps) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What failed and how to run it again, for the error's Retry; it applies only while `error` is still that message.
+  const [failed, setFailed] = useState<{ message: string; run: () => void } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const sequence = useRef(0);
   const detailsSequence = useRef(0);
@@ -40,7 +43,7 @@ export function PluginsView({ projects, onUseForImages }: PluginsViewProps) {
         const result = await bridge.invoke("plugins:list", { context, available: tab === "discover" });
         if (sequence.current === seq) setInventory(result);
       }
-    } catch (err) { if (sequence.current === seq) setError((err as Error).message); }
+    } catch (err) { if (sequence.current === seq) { const message = (err as Error).message; setError(message); setFailed({ message, run: () => void refresh() }); } }
     finally { if (sequence.current === seq) setLoading(false); }
   };
   useEffect(() => {
@@ -58,7 +61,7 @@ export function PluginsView({ projects, onUseForImages }: PluginsViewProps) {
     if (busy) return;
     setBusy(true); setError(null); setNotice(null);
     try { await operation(); setNotice(message); await refresh(); }
-    catch (err) { setError((err as Error).message); }
+    catch (err) { const failure = (err as Error).message; setError(failure); setFailed({ message: failure, run: () => void run(operation, message) }); }
     finally { setBusy(false); }
   };
   const open = async (plugin: NativePlugin) => {
@@ -91,7 +94,7 @@ export function PluginsView({ projects, onUseForImages }: PluginsViewProps) {
     </div>
     <p className="plugins-context-note">Native plugins use the runtime’s existing CLI identity and installation. Modex account sign-in does not create a separate plugin home.{context.runtime === "codex" ? " Codex exposes user scope only." : ""}</p>
     <nav className="plugins-tabs" aria-label="Plugin views">{(["installed", "discover", "sources"] as const).map(value => <button key={value} aria-current={tab === value ? "page" : undefined} disabled={busy} onClick={() => setTab(value)}>{value[0]!.toUpperCase() + value.slice(1)}</button>)}</nav>
-    {error && <div className="plugins-error" role="alert">{redact(error)}</div>}
+    {error && <ErrorNotice className="plugins-error" testId="plugins-error" where="Plugins" message={error} onRetry={failed?.message === error && !busy && !loading ? () => failed.run() : undefined} context={{ runtime: context.runtime, scope: context.scope, tab }} />}
     {notice && <div className="plugins-notice" role="status">{redact(notice)}</div>}
     {stale?.stale && <p className="plugins-notice" role="status">Showing cached inventory from {new Date(stale.fetchedAt).toLocaleString()}. {redact(stale.error ?? "Native runtime unavailable.")}</p>}
     {tab === "sources" ? <div className="plugins-sources">

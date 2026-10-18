@@ -47,6 +47,20 @@ test("saving freezes the draft until persistence resolves and keeps it available
   await expect(dialog).toHaveAttribute("aria-busy", "false");
   await expect(tid(dialog, "settings-content")).not.toHaveAttribute("inert", "");
   await expect(mode).toHaveValue("agent");
+
+  // Copy details puts a report on the clipboard: where, the message, and the app build main appends.
+  await tid(tid(page, "settings-save-error"), "error-copy").click();
+  await expect(tid(tid(page, "settings-save-error"), "error-copy")).toHaveText("Copied");
+  const report = await app.evaluate(({ clipboard }) => clipboard.readText());
+  expect(report).toContain("Modex error: Settings · save");
+  expect(report).toContain("fake persistence failure");
+  expect(report).toMatch(/App: Modex \d+\.\d+\.\d+/);
+  // Retry save runs the same save again with the draft intact.
+  await tid(tid(page, "settings-save-error"), "error-retry").click();
+  await expect(dialog).toHaveAttribute("aria-busy", "true");
+  await app.evaluate(() => (globalThis as any).__modexRejectSettingsSave());
+  await expect(tid(page, "settings-save-error")).toContainText("fake persistence failure");
+  await expect(mode).toHaveValue("agent");
   await dialog.getByRole("button", { name: "Cancel" }).click();
 });
 
@@ -299,6 +313,6 @@ test("an empty save failure message keeps one plain retry instruction", async ()
   await tid(page, "open-settings").click();
   const dialog = tid(page, "settings");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(tid(dialog, "settings-save-error")).toHaveText("Could not save settings. Your draft is still here; retry or cancel.");
+  await expect(tid(tid(dialog, "settings-save-error"), "error-text")).toHaveText("Could not save settings. Your draft is still here; retry or cancel.");
   await dialog.getByRole("button", { name: "Cancel" }).click();
 });

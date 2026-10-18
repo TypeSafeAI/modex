@@ -730,6 +730,17 @@ v0.1.0 through its own banner, relaunched by itself, showed 0.1.0 in About and k
 
 ## On main, unreleased
 
+- **Every inline error can be copied, and most can be retried.** A shared `ErrorNotice`
+  replaces bare error text across the terminal, Changes diff, Files, Canvas, browser and
+  browser extensions, Analytics, the iPhone companion dialog, Settings save and reset, approval
+  rule previews, the composer's attachment and model-list warnings, notes (Space, history,
+  comments, agent access, file preview), Knowledge, Routines, Plugins, Images and both update
+  screens. Copy details puts where, when, the message and context on the clipboard, and main
+  appends the app version and platform. Retry repeats exactly the action that failed and is left
+  out where repeating cannot help: a rejected URL, a skill in the wrong scope, lists that already
+  refresh themselves, and Images, whose errors have no single action. Streamer Mode redacts the
+  shown message and the whole copied report.
+
 - **Read-only routines** (Routines Phase 1). Routines in the rail run a read-only Chat or Plan turn
   in one project, once or every N minutes, hours or days, while Modex is running with or without a
   window. Each reply becomes a new revision of the routine's Space page, under the project's

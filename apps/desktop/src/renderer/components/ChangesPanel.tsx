@@ -5,6 +5,7 @@ import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 interface Props { visible: boolean; thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void }
 const compactCount = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
@@ -27,6 +28,8 @@ export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: 
   const closeOptions = () => { setMenu(false); menuRef.current?.focus(); };
   useEffect(() => { setExpanded(false); }, [file]);
   useEffect(() => { if (!visible) setMenu(false); }, [visible]);
+  // Bumped by the diff error's Retry: loads the same file's diff again.
+  const [diffAttempt, setDiffAttempt] = useState(0);
   useEffect(() => {
     if (!file) return;
     let live = true;
@@ -35,7 +38,8 @@ export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: 
       (error: Error) => { if (live) setResult({ file, snapshot: changes, expanded, text: "", error: error.message }); },
     );
     return () => { live = false; };
-  }, [file, thread.id, changes, entry?.original, expanded]);
+  }, [file, thread.id, changes, entry?.original, expanded, diffAttempt]);
+  const retryDiff = () => { setResult(null); setDiffAttempt((n) => n + 1); };
   const totals = (changes?.files ?? []).reduce((acc, f) => ({ a: acc.a + f.additions, d: acc.d + f.deletions }), { a: 0, d: 0 });
   const paths = (changes?.files ?? []).filter((f) => f.path.toLowerCase().includes(filter.toLowerCase())).sort((a, b) => Number(a.code === "??") - Number(b.code === "??") || a.path.localeCompare(b.path));
   const groups = new Map<string, typeof paths>();
@@ -71,7 +75,7 @@ export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: 
       <div className={`review-body${tree ? "" : " tree-hidden"}`}>
         <div className="review-diff" data-testid="changes-diff">
           <div className="review-file-heading"><FileIcon path={file ?? ""} /><span title={file ?? ""}><bdi dir="ltr">{file}</bdi></span><span className="stat add">+{entry?.additions ?? 0}</span><span className="stat del">-{entry?.deletions ?? 0}</span></div>
-          {!diff ? <p className="hint pad" role="status">Loading diff…</p> : diff.error ? <p className="hint pad" role="alert">Could not load diff: {diff.error}</p> : <Diff text={diff.text} wrap={wrap} highlight={highlight} onExpand={() => setExpanded(true)} />}
+          {!diff ? <p className="hint pad" role="status">Loading diff…</p> : diff.error ? <ErrorNotice className="hint pad" testId="changes-diff-error" where="Changes · diff" message={`Could not load diff: ${diff.error}`} onRetry={retryDiff} context={{ threadId: thread.id, cwd: thread.cwd, path: file, original: entry?.original }} /> : <Diff text={diff.text} wrap={wrap} highlight={highlight} onExpand={() => setExpanded(true)} />}
         </div>
         {tree && <aside className="review-tree" data-testid="review-tree" aria-label="Changed files">
           <label className="review-filter"><Icon name="search" size={13} /><SecretInput ref={filterRef} data-testid="review-filter" aria-label="Filter files" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>

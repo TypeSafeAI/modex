@@ -3,6 +3,7 @@ import type { Routine, RoutineDraft, RoutineRun, RoutinesState, RoutineUnit } fr
 import type { BackendId, Project } from "../../shared/types";
 import { bridge } from "../bridge";
 import { useRedact } from "../streamer";
+import { ErrorNotice } from "../components/ui/ErrorNotice";
 import "./routines.css";
 
 /** `datetime-local` speaks local wall time without a zone; main stores ISO instants. */
@@ -45,6 +46,8 @@ export function RoutinesView({ active, projects, onOpenThread, onOpenPage }: Rou
   const redact = useRedact();
   const [state, setState] = useState<RoutinesState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The operation behind `error`, for its Retry. List errors have none: the list refreshes every 2 s.
+  const [failed, setFailed] = useState<{ message: string; operation: () => Promise<unknown> } | null>(null);
   const [editing, setEditing] = useState<RoutineDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const sequence = useRef(0);
@@ -69,7 +72,7 @@ export function RoutinesView({ active, projects, onOpenThread, onOpenPage }: Rou
     if (busy) return;
     setBusy(true); setError(null);
     try { await operation(); await refresh(); }
-    catch (err) { setError((err as Error).message); }
+    catch (err) { const message = (err as Error).message; setError(message); setFailed({ message, operation }); }
     finally { setBusy(false); }
   };
 
@@ -85,8 +88,8 @@ export function RoutinesView({ active, projects, onOpenThread, onOpenPage }: Rou
         </div>
         <button type="button" data-testid="routine-new" disabled={!projects.length || Boolean(editing)} onClick={() => setEditing(blank(projects))}>New routine</button>
       </header>
-      {state?.error && <div className="routines-error" role="alert">{state.error}</div>}
-      {error && <div className="routines-error" role="alert">{redact(error)} <button type="button" onClick={() => setError(null)}>Dismiss</button></div>}
+      {state?.error && <ErrorNotice className="routines-error" testId="routines-state-error" where="Routines" message={state.error} />}
+      {error && <ErrorNotice className="routines-error" testId="routines-error" where="Routines · action" message={error} onRetry={failed?.message === error && !busy ? () => void act(failed.operation) : undefined} onDismiss={() => setError(null)} />}
       {!projects.length && <p className="routines-empty">Add a project first: a routine runs in one project.</p>}
       {editing && (
         <RoutineEditor

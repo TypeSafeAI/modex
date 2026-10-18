@@ -2,6 +2,7 @@ import { SecretOption, SecretInput } from "../streamer";
 import { useEffect, useState } from "react";
 import type { ApprovalPreview, ApprovalRule, Mode, Project, RoutingStatus, RuleDecision } from "../../shared/types";
 import { bridge } from "../bridge";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 interface Props {
   rules: ApprovalRule[];
@@ -77,7 +78,7 @@ export function ApprovalRules({ rules, projects, currentProjectId, gateEnabled, 
     <label className="check"><SecretInput type="checkbox" checked={escalation} onChange={(e) => setEscalation(e.target.checked)} /><span>Requests additional sandbox permissions</span></label>
     <button type="button" className="btn small" disabled={!projectId || !tool.trim() || !title.trim() || shown?.pending} onClick={() => void run()}>{shown?.pending ? "Checking…" : "Try it"}</button>
     <div aria-live="polite" aria-atomic="true">
-      {shown?.error && <p className="warn" role="alert">{shown.error}</p>}
+      {shown?.error && <ErrorNotice className="warn" testId="approval-preview-error" where="Settings · approval rule preview" message={shown.error} onRetry={shown.pending ? undefined : () => void run()} context={{ tool, projectId }} />}
       {shown?.value && <PreviewReceipt result={shown.value} />}
     </div>
   </section>;

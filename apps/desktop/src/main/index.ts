@@ -1,6 +1,7 @@
 import { imageFixtureBackend } from "./engine/images/fixture.js";
 import { Media } from "./media.js";
 import { IMAGE_SCHEME } from "../shared/images.js";
+import { appInfoLine } from "../shared/error-report.js";
 import { NativeDrafts } from "./engine/native-drafts.js";
 import { OwnerRemoval } from "./engine/owner-removal.js";
 import type { DraftRemovalScope } from "../shared/native-drafts.js";
@@ -907,7 +908,10 @@ handle("shell:openPath", async ({ path: p }) => {
   if (err) throw new Error(err);
 });
 handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
-handle("clipboard:write", ({ text }) => { clipboard.writeText(String(text).slice(0, 200_000)); });
+handle("clipboard:write", ({ text, appInfo }) => {
+  const footer = appInfo ? `\n\n${appInfoLine({ version: app.getVersion(), electron: process.versions.electron, platform: process.platform, arch: process.arch })}` : "";
+  clipboard.writeText((String(text) + footer).slice(0, 200_000));
+});
 handle("terminal:open", ({ threadId, cols, rows }) => terminals.open(threadId, cols, rows));
 handle("terminal:write", ({ threadId, sessionId, data }) => terminals.write(threadId, sessionId, data));
 handle("terminal:resize", ({ threadId, sessionId, cols, rows }) => terminals.resize(threadId, sessionId, cols, rows));

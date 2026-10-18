@@ -12,6 +12,7 @@ import { AttachmentChips } from "./Attachments";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 interface Props {
   thread: Thread;
@@ -311,7 +312,7 @@ function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice"
   };
   return <div className="notice info" data-testid="item" data-item-kind="notice">
     <span>{item.text} </span><button className="btn small" disabled={opening} onClick={() => void open()} aria-label={`Open knowledge page ${item.knowledge!.path}`}>{item.knowledge!.path}<Icon name="arrow-right" size={12} /></button>
-    {error && <p role="alert">{error}</p>}
+    {error && <ErrorNotice testId="knowledge-open-error" where="Knowledge · open page" message={error} onRetry={opening ? undefined : () => void open()} context={{ folder: item.knowledge?.folder, path: item.knowledge?.path }} />}
   </div>;
 }
 
