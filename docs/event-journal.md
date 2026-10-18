@@ -40,8 +40,8 @@ one row per batch instead of one per token, and replay is unchanged.
 ## Reading it
 
 `EventJournal.since(cursor, { threadId, limit })` returns the events after a cursor, oldest first,
-in pages of at most 10,000. `replayItems(entries, threadId)` rebuilds a transcript the way the
-runner applies events. Two tests check that a real session replays exactly to its saved transcript:
+in pages of at most 10,000. `replayItems(entries, threadId)` rebuilds a transcript the way clients
+apply events: an `item` is an upsert by id, so a frame delivered twice changes nothing. Two tests check that a real session replays exactly to its saved transcript:
 `test/event-journal.test.ts`, using the scripted runner, and `e2e/event-journal.spec.ts`, using the
 app with the flag on.
 
@@ -100,6 +100,30 @@ These rules make that work:
   between them.
 - **Applying an event twice changes nothing.** An `item_update` patch carries whole field values,
   and clients apply an `item` as an upsert by item id.
+
+## Typed conversation state
+
+Transcript items carry the fields of the [conversation-event contract](conversation-events.md):
+`origin` (turn, attempt, runtime and native ids), `phase`, `reasoning` and `outcome`. They travel in
+the same `item` and `item_update` events, as whole field values, so the journal stores, merges and
+replays them unchanged.
+
+- **No merging across items.** A batch merges updates only into the row of the same item id. Each
+  attempt's items have their own ids, so a retry that reuses a native id never merges into the first
+  attempt.
+- **Converging views.** `test/event-journal.test.ts` replays a captured Codex turn through the
+  runner with the journal on. Its transcript, the saved snapshot, the journal replay (also delivered
+  twice) and the phone's full and delta snapshots agree on every item's id, text, phase and outcome.
+- **Work left running at a restart.** A tool, message or reasoning row (or a sub-agent) that a
+  process saw start but never end is settled when its thread next loads: `unknown`, spinner
+  stopped. That change is saved and sent as `item_update` events, so the journal and every client
+  resuming from it see the same thing. Nothing is run again.
+- **The phone.** It gets `phase`, `outcome` and `reasoning` alongside the fields it already read.
+  A phone that reads only a tool's title and status shows every finished tool as done, so a
+  finished tool that did not succeed also says how it ended in its title: "· Failed", "· Denied",
+  "· Stopped" or "· Status unavailable".
+
+Approval and question state across replay waits for the human-request lifecycle (#276).
 
 ## Retention
 

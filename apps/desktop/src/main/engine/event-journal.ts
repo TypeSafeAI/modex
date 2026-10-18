@@ -212,19 +212,24 @@ function merge(previous: ThreadEvent, next: ThreadEvent): ThreadEvent {
 }
 
 /**
- * A thread's transcript rebuilt from journaled events, applied as the runner applies them: an
- * `item` appends, an `item_update` merges into the item with that id and is ignored when there is
- * none.
+ * A thread's transcript rebuilt from journaled events, applied as clients apply them: an `item` is
+ * an upsert by id (appended when new, replacing the item otherwise), and an `item_update` merges
+ * into the item with that id and is ignored when there is none. So a frame delivered twice changes
+ * nothing, and items keep their identity: two items never merge unless they share an id.
  */
 export function replayItems(entries: Iterable<JournalEntry | ThreadEvent>, threadId: string): ThreadItem[] {
   const items: ThreadItem[] = [];
+  const index = new Map<string, number>();
   for (const entry of entries) {
     const event = "event" in entry ? entry.event : entry;
     if (event.threadId !== threadId) continue;
-    if (event.type === "item") items.push(event.item);
-    else if (event.type === "item_update") {
-      const index = items.findIndex((item) => item.id === event.id);
-      if (index >= 0) items[index] = { ...items[index], ...event.patch } as ThreadItem;
+    if (event.type === "item") {
+      const at = index.get(event.item.id);
+      if (at === undefined) { index.set(event.item.id, items.length); items.push(event.item); }
+      else items[at] = event.item;
+    } else if (event.type === "item_update") {
+      const at = index.get(event.id);
+      if (at !== undefined) items[at] = { ...items[at], ...event.patch } as ThreadItem;
     }
   }
   return items;
