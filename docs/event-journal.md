@@ -117,7 +117,8 @@ replays them unchanged.
 - **Work left running at a restart.** A tool, message or reasoning row (or a sub-agent) that a
   process saw start but never end is settled when its thread next loads: `unknown`, spinner
   stopped. That change is saved and sent as `item_update` events, so the journal and every client
-  resuming from it see the same thing. Nothing is run again.
+  resuming from it see the same thing. Nothing is run again. Only those items are sent, with only the
+  fields that changed; a thread with nothing to settle sends nothing and is not rewritten.
 - **The phone.** It gets `phase`, `outcome` and `reasoning` alongside the fields it already read.
   A phone that reads only a tool's title and status shows every finished tool as done, so a
   finished tool that did not succeed also says how it ended in its title: "· Failed", "· Denied",

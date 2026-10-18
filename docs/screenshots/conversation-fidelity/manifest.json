@@ -1,0 +1,386 @@
+{
+  "captured_at": "2026-10-18T15:25:49Z",
+  "source_commit": "0fa93d3966ff7669d64235f3b64dcaba858c9ae5",
+  "source_note": "Branch cf8-machine-rows on main db0bbfd: the captures include this branch's approval-card wrap and settle fix. Rebasing the branch onto later main does not recapture them.",
+  "application": {
+    "workspace": "@modex/desktop",
+    "version": "0.2.0",
+    "build": "pnpm build from source, run unpackaged by Playwright; not a signed or released build",
+    "electron": "44.4.5"
+  },
+  "operating_system": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "product_version": "26.7.1",
+    "build": "25G241"
+  },
+  "machine": {
+    "model": "Mac15,9",
+    "chip": "Apple M3 Max",
+    "memory_gib": 48,
+    "display": "built-in Liquid Retina XDR"
+  },
+  "capture": {
+    "tool": "Playwright 1.63.0 for Electron, inside the e2e specs",
+    "command": "pnpm build && MODEX_SCREENSHOTS=$PWD/docs/screenshots/conversation-fidelity pnpm --dir apps/desktop exec playwright test e2e/conversation-fidelity.spec.ts e2e/typed-turns.spec.ts",
+    "scale": "CSS pixels, 1×: page.screenshot({ scale: \"css\", animations: \"disabled\" })",
+    "viewports": [
+      "900x600 (the window minimum)",
+      "1440x900 (the fixed wider reference)"
+    ],
+    "themes": [
+      "graphite",
+      "jev",
+      "coven (OpenCoven)"
+    ],
+    "theme_switch": "Settings → General → Save, the way a person switches it",
+    "states": {
+      "waiting": "the Edit approval card is open and the thread is waiting",
+      "completed": "after the answer; succeeded work folded under the turn header",
+      "restored": "after a restart, the thread reopened; nothing ran again",
+      "failed": "the check command failed; its plan step stays in progress",
+      "live": "the check command is running, before Stop"
+    }
+  },
+  "not_claimed": [
+    "These are references from fixtures, not provider screenshots: no model or provider produced this content.",
+    "They are not pixel baselines. Durations, temporary paths, repository names and the git state differ between runs.",
+    "Each capture asserts only that the transcript has no sideways scroll."
+  ],
+  "visible_differences": [
+    "At 900x600 the composer's Read only and model labels wrap onto two lines.",
+    "Graphite lays the sidebar out differently from Jev and OpenCoven (the Graphite shell), so the themes differ in more than colour."
+  ],
+  "files": [
+    {
+      "file": "completed-coven-1440x900.png",
+      "state": "completed",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "fb846dca5e0d7aee91891b760672f0175be42d4aee57de08a0ce8aff0ab29c7d"
+    },
+    {
+      "file": "completed-coven-900x600.png",
+      "state": "completed",
+      "theme": "coven",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "5cb900424da67f72e8cdba9435d3f9f056cbfe260da3689cd7aeaafa25c2379b"
+    },
+    {
+      "file": "completed-graphite-1440x900.png",
+      "state": "completed",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "820bcfb7479df2f81ac3148f0e18203e22e8da82dee1b27b6a610202128a2684"
+    },
+    {
+      "file": "completed-graphite-900x600.png",
+      "state": "completed",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "efd910a29aef5ab02342af22b057ea0eb646a8a14c33b5c4642d2995bbb005db"
+    },
+    {
+      "file": "completed-jev-1440x900.png",
+      "state": "completed",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "937186f52ca390aea1fc2e77ee40c4cce2cfb9090fb8827ba6b3b19a80974546"
+    },
+    {
+      "file": "completed-jev-900x600.png",
+      "state": "completed",
+      "theme": "jev",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "bc7a0133c3a909320474c6b061bf93e921fb570b8267374c3573bdc71d83559b"
+    },
+    {
+      "file": "failed-coven-1440x900.png",
+      "state": "failed",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "cc036717388a46c4bbdfa854142ac2ca8a445796256e1b693fec9fc77c4f9d36"
+    },
+    {
+      "file": "failed-coven-900x600.png",
+      "state": "failed",
+      "theme": "coven",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "d719198ee8b816aa66ed7df4d88d73eea6ced29678bc7ca3b2f18db30f6ef5fb"
+    },
+    {
+      "file": "failed-graphite-1440x900.png",
+      "state": "failed",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "7eba1daddaf9ef25cbe4881eb143a0b603c7e1966a4dffc076af33021bfedd2c"
+    },
+    {
+      "file": "failed-graphite-900x600.png",
+      "state": "failed",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "9abe1e3bc663e51cc02906435dd7eb501451e558e6c06942cbce5757277f43ce"
+    },
+    {
+      "file": "failed-jev-1440x900.png",
+      "state": "failed",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "b122b70b03a9a7e135a20d10fcfe296a48eea880f45ad8d30c9ed0ceef73099d"
+    },
+    {
+      "file": "failed-jev-900x600.png",
+      "state": "failed",
+      "theme": "jev",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "00f4932b2b0a9b435b55348c90d0fd7b16fdf56900bada7a627ac0673cf711f5"
+    },
+    {
+      "file": "live-coven-1440x900.png",
+      "state": "live",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "6b2106a30ec55e2edb913e5e8f3a7487633875b88594e6b370dbaae8dd40d64f"
+    },
+    {
+      "file": "live-coven-900x600.png",
+      "state": "live",
+      "theme": "coven",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "03823ccff9c0d76b8240324a3b3a4a0cbd3ab6049b21528e495016b329fdd469"
+    },
+    {
+      "file": "live-graphite-1440x900.png",
+      "state": "live",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "66a250834258f0abcd398c3e035ec6049a7b73ab171cfcb180c33b909c0099fb"
+    },
+    {
+      "file": "live-graphite-900x600.png",
+      "state": "live",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "95faa28762019e514bd69a10d60cb9ef01a4b788a640319f6877eea03de50c6a"
+    },
+    {
+      "file": "live-jev-1440x900.png",
+      "state": "live",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "a46a7ba67d19cf2aafb9398f49453c01e974626fb8fcf561938c3ac8217432f4"
+    },
+    {
+      "file": "live-jev-900x600.png",
+      "state": "live",
+      "theme": "jev",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "09fab2f6517b46e76a58c5b6f14b8cb01ac2517f54b8b5b5b465b9f5cde2297c"
+    },
+    {
+      "file": "restored-coven-1440x900.png",
+      "state": "restored",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "67f027d87571786907946e72acdc13bcdb33921639786d1e79dda8ac70961da9"
+    },
+    {
+      "file": "restored-coven-900x600.png",
+      "state": "restored",
+      "theme": "coven",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "4eb7e6b62d2ac1dafe440ed950d4fa728cb60104a33edd268a0ddf9d7e5dcf76"
+    },
+    {
+      "file": "restored-graphite-1440x900.png",
+      "state": "restored",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "4d0fa6183812b99d200e11693488bd2167f2a90e8c1ed4a1470d6b3ed8da24d0"
+    },
+    {
+      "file": "restored-graphite-900x600.png",
+      "state": "restored",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "5c1ad4224e100b0486a051c7a8a51424c332c27ce42ebf31536a5dc867628f46"
+    },
+    {
+      "file": "restored-jev-1440x900.png",
+      "state": "restored",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "782637b25fae39e49b5ec20c1a23660c44aef427e8a0adf9e3c7e745ca0f1bbe"
+    },
+    {
+      "file": "restored-jev-900x600.png",
+      "state": "restored",
+      "theme": "jev",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "981133c4a943e7e8c66fd3d7ba24459f13e2f8d46c48b4a7f1ea8ab7f340a7d9"
+    },
+    {
+      "file": "typed-turn-coven-900x600.png",
+      "state": "typed turn (folded work expanded)",
+      "theme": "coven",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/typed-turns.spec.ts",
+      "source": "items sent to the window as main would send them, over the offline mock engine",
+      "pixels": "900x600",
+      "sha256": "da07d9a9cc0208d3eff8e2e608b2cbe24f735b68156026d17b830120afec5e6e"
+    },
+    {
+      "file": "typed-turn-graphite-900x600.png",
+      "state": "typed turn (folded work expanded)",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/typed-turns.spec.ts",
+      "source": "items sent to the window as main would send them, over the offline mock engine",
+      "pixels": "900x600",
+      "sha256": "0b456b49a6c832ccbbc0e65a7e114eb417b0b20f7c26ec1597208df21d5019dd"
+    },
+    {
+      "file": "typed-turn-jev-900x600.png",
+      "state": "typed turn (folded work expanded)",
+      "theme": "jev",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/typed-turns.spec.ts",
+      "source": "items sent to the window as main would send them, over the offline mock engine",
+      "pixels": "900x600",
+      "sha256": "126ee971ed14b34108eb6bfe84f6e604271197f31a76d772844f499c63b9b8a9"
+    },
+    {
+      "file": "waiting-coven-1440x900.png",
+      "state": "waiting",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "c5f7cd03d193645d41fd57b9abe141f6f65897d6acb997afb9864bd9b05dc587"
+    },
+    {
+      "file": "waiting-coven-900x600.png",
+      "state": "waiting",
+      "theme": "coven",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "c4b944cd436af1eb012d06956f59fdce01cc40b61597cacf3b9308cea8125dfa"
+    },
+    {
+      "file": "waiting-graphite-1440x900.png",
+      "state": "waiting",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "8ade3dd471b043de58b61ba5b8ac18276829395831305f1ae71da3f5a49aaa9b"
+    },
+    {
+      "file": "waiting-graphite-900x600.png",
+      "state": "waiting",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "f6fa618036bc078661a95a60d99094bcbac3a6bca6db106534c307faa65145da"
+    },
+    {
+      "file": "waiting-jev-1440x900.png",
+      "state": "waiting",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "1440x900",
+      "sha256": "ddcb789cd7997c30832e3699330ae0b378c48e480530972e5d4cafd8a91d7ce1"
+    },
+    {
+      "file": "waiting-jev-900x600.png",
+      "state": "waiting",
+      "theme": "jev",
+      "viewport": "900x600",
+      "spec": "apps/desktop/e2e/conversation-fidelity.spec.ts",
+      "source": "the real app, main process and claude -p adapter, driven by a fixture Claude CLI",
+      "pixels": "900x600",
+      "sha256": "5089b2eb071ec77932b6145f444482372885e941ddd25e9976cc1bd8c8cb8fb2"
+    }
+  ]
+}
