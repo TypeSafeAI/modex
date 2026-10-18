@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { EventJournal, replayItems } from "../src/main/engine/event-journal.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
@@ -148,4 +149,97 @@ test("an item kind this Mac does not know reaches the phone as a readable, inert
   assert.equal(typeof phone.text, "string");
   assert.ok(!JSON.stringify(phone).includes("whatever a newer Modex"), "an unknown item's fields are not forwarded: they may hold anything");
   assert.ok(!JSON.stringify([future, future].map(mobileItem)).includes("null"), "a snapshot with unknown items has no null entries");
+});
+
+/** Every file under `home` except the journal's own, by its bytes. */
+function besideJournal(home: string): Map<string, string> {
+  const files = new Map<string, string>();
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (!entry.name.startsWith("events.sqlite")) files.set(path.relative(home, file), fs.readFileSync(file).toString("base64"));
+    }
+  };
+  walk(home);
+  return files;
+}
+
+// v0.1.0's journal schema, verbatim (`git show v0.1.0:apps/desktop/src/main/engine/event-journal.ts`):
+// an events table, no meta table, so no identity and no cursors.
+const V010_SCHEMA = `PRAGMA journal_mode = WAL;
+  PRAGMA synchronous = NORMAL;
+  CREATE TABLE IF NOT EXISTS events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    event TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS events_thread ON events (thread_id, seq);`;
+
+test("a journal v0.1.0 wrote opens with its rows, takes an identity, replays unchanged, and leaves drafts and state files alone", async () => {
+  const home = tmpdir("modex-migration-v010-");
+  const store = new Store(home);
+  const project = store.addProject(gitRepo());
+  const setup = new ThreadRunner({ home, store, emit: () => {} });
+  const thread = await setup.createThread(project.id, { backend: "claude", auto: false });
+  store.updateThread(thread.id, { title: "Old thread", titleSource: "manual" });
+  store.saveItems(thread.id, LEGACY);
+  await setup.dispose();
+  fs.writeFileSync(path.join(store.dir, "update-recovery.json"), JSON.stringify({ drafts: [{ threadId: thread.id, text: "half a reply" }] }));
+  const file = path.join(home, "app", "events.sqlite");
+  const old = new DatabaseSync(file);
+  old.exec(V010_SCHEMA);
+  const insert = old.prepare("INSERT INTO events (at, thread_id, type, event) VALUES (?, ?, ?, ?)");
+  for (const item of LEGACY) insert.run(at, thread.id, "item", JSON.stringify({ threadId: thread.id, type: "item", item }));
+  old.close();
+  const files = besideJournal(home);
+
+  const journal = new EventJournal(file, { flushMs: 5 });
+  try {
+    assert.match(journal.id, /^[\w-]{1,64}$/, "it gains an identity clients can resume from");
+    assert.equal(journal.latest(), LEGACY.length, "every row v0.1.0 wrote is kept, and cursors continue after them");
+    assert.deepEqual(replayItems(journal.since(0, { threadId: thread.id }), thread.id), LEGACY, "and replays to the saved transcript");
+    assert.equal(journal.resume(undefined, undefined).entries, undefined, "a client from before cursors reloads");
+    const { runner } = runnerOn(home, journal);
+    assert.deepEqual(runner.items(thread.id), LEGACY, "the transcript loads with every word");
+    await runner.dispose();
+  } finally { journal.close(); }
+  const relaunched = new EventJournal(file);
+  const id = relaunched.id;
+  relaunched.close();
+  assert.equal(new EventJournal(file).id, id, "the identity is kept across clean relaunches");
+  assert.deepEqual(besideJournal(home), files, "the draft and the state files are byte-identical");
+});
+
+test("a journal this build wrote stays usable after a downgrade: v0.1.0's and v0.2.0's own statements still read and write it", () => {
+  const file = path.join(tmpdir("modex-migration-rollback-"), "events.sqlite");
+  const journal = new EventJournal(file);
+  journal.record({ threadId: "t1", type: "item", item: LEGACY[0]! });
+  const id = journal.id;
+  const cursor = journal.latest();
+  journal.close();
+
+  // v0.1.0 opening it: its schema is a subset, so it opens, reads and appends.
+  const v010 = new DatabaseSync(file);
+  v010.exec(V010_SCHEMA);
+  v010.prepare("INSERT INTO events (at, thread_id, type, event) VALUES (?, ?, ?, ?)").run(at, "t1", "item", JSON.stringify({ threadId: "t1", type: "item", item: LEGACY[1] }));
+  assert.equal((v010.prepare("SELECT seq, at, event FROM events WHERE seq > ? ORDER BY seq LIMIT ?").all(0, 10) as unknown[]).length, 2);
+  v010.close();
+
+  // v0.2.0 opening it: the same meta table; it keeps the identity and ignores the `open` flag.
+  const v020 = new DatabaseSync(file);
+  v020.exec(`${V010_SCHEMA}
+  CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+  v020.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('id', ?)").run("would-be-new-id");
+  assert.equal((v020.prepare("SELECT value FROM meta WHERE key = ?").get("id") as { value: string }).value, id, "v0.2.0 keeps the identity this build gave it");
+  assert.equal(Number((v020.prepare("SELECT COALESCE(MAX(seq), 0) AS seq FROM events").get() as { seq: number }).seq), cursor + 1);
+  v020.close();
+
+  // Back on this build: nothing the older builds did confuses it.
+  const back = new EventJournal(file);
+  assert.equal(back.id, id, "an older build's clean use does not look like a crash");
+  assert.equal(back.since(0).length, 2);
+  back.close();
 });
