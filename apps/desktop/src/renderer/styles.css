@@ -677,6 +677,16 @@ a.thread-pr:hover { text-decoration: underline; }
 /* Every control shows a keyboard focus ring unless it styles its own (zero specificity: specific rules win). */
 :where(button, a[href], select, summary, [tabindex]:not([tabindex="-1"]), [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* ── Typed turns (docs/conversation-events.md): commentary, ended replies, reasoning tags, attempts, Jump to latest. ── */
+.msg.assistant.commentary { color: var(--text-2); }
+.msg-status { margin-top: 4px; color: var(--text-3); font-size: var(--text-sm); }
+.thinking-tag { padding: 0 6px; border: 1px solid var(--border-pane); border-radius: var(--radius-pill); color: var(--text-3); font-size: var(--text-xs); line-height: 18px; }
+.attempt-divider { display: flex; align-items: center; gap: 10px; margin: 14px 0 12px; color: var(--text-3); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
+.attempt-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-pane); }
+.jump-latest { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 6px; align-self: center; height: 28px; margin: -40px auto 12px; padding: 0 12px; border: 1px solid var(--border-pane); border-radius: var(--radius-pill); background: var(--bg-elevated); color: var(--text-2); font-size: var(--text-sm); cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+.jump-latest:hover { color: var(--text-1); }
+.jump-latest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Small controls keep their look but get a 28 px hit area. */
 .icon-btn.sm, .composer-chip, .icon { position: relative; }
 .icon-btn.sm::before, .icon::before { content: ""; position: absolute; inset: -3px; }

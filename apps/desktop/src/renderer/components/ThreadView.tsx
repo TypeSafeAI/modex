@@ -1,6 +1,5 @@
-import { toolFoldsAsWork, toolStatusLabel, toolSummary } from "../../shared/tool-summary";
-import { finalAnswerIndex } from "../../shared/conversation-events";
-import { useId, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
@@ -14,6 +13,10 @@ import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
+import { TurnContent, groupTurns } from "./transcript/TurnContent";
+import { ReasoningItem } from "./transcript/ReasoningItem";
+
+export { formatElapsed } from "./transcript/TurnContent";
 
 interface Props {
   thread: Thread;
@@ -79,6 +82,8 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
   }, [suggestionKey, thread.retired, thread.archived]);
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
+  // Shown while the reader is away from the bottom, so they can return without losing their place first.
+  const [away, setAway] = useState(false);
   const newestUser = useRef<string | undefined>(undefined);
   // Where auto-scroll last put the view. Content can change (a ticking header, streamed text) before the
   // browser delivers the reader's scroll event, so "has the reader moved it?" is read from the position
@@ -92,11 +97,22 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
   }).current;
   const onScroll = () => {
     const el = scroller.current;
-    if (el) stick.current = isNearBottom(el);
+    if (!el) return;
+    stick.current = isNearBottom(el);
+    setAway(!stick.current);
+  };
+  const jumpToLatest = () => {
+    const el = scroller.current;
+    if (!el) return;
+    stick.current = true;
+    el.scrollTop = el.scrollHeight;
+    autoTop.current = el.scrollTop;
+    setAway(false);
   };
   useEffect(() => {
     stick.current = true;
     autoTop.current = 0;
+    setAway(false);
   }, [thread.id]);
   // Output also grows without new items (streamed text, a pane opening and re-wrapping the prose):
   // keep following those while stuck to the bottom.
@@ -140,8 +156,6 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     if (item.kind !== "notice") break;
     if (item.failure) { retryId = item.id; break; }
   }
-  // The newest item of a running turn may still be streaming.
-  const liveId = busy ? items.at(-1)?.id : undefined;
 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
@@ -154,9 +168,10 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         )}
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
-            render={item => <Item key={item.id} item={item} live={item.id === liveId} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
+            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
+      {away && items.length > 0 && <button type="button" className="jump-latest" data-testid="jump-latest" onClick={jumpToLatest}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
       {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
         <p>This message is saved. Start its coding turn when you are ready.</p>
         <button type="button" className="btn small" data-testid="saved-message-retry" onClick={onRetry}>Retry saved message</button>
@@ -206,75 +221,6 @@ export function isNearBottom(el: { scrollTop: number; scrollHeight: number; clie
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
 }
 
-interface Turn {
-  user?: Extract<ThreadItem, { kind: "user" }>;
-  rest: ThreadItem[];
-}
-/** Splits the transcript at each user message: one turn = a message and everything the agent did for it. */
-function groupTurns(items: ThreadItem[]): Turn[] {
-  const turns: Turn[] = [];
-  for (const item of items) {
-    if (item.kind === "user") turns.push({ user: item, rest: [] });
-    else if (turns.length) turns.at(-1)!.rest.push(item);
-    else turns.push({ rest: [item] });
-  }
-  return turns;
-}
-/** Keep the final answer and actionable notices visible; completed work stays inspectable. */
-function TurnContent({ turn, status, render }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem) => ReactNode }) {
-  const [expanded, setExpanded] = useState(false);
-  const historyId = useId();
-  // A typed final answer when the CLI gave phases; otherwise the last reply, as always.
-  const finalIndex = finalAnswerIndex(turn.rest);
-  const isWork = (item: ThreadItem, index: number) => index < finalIndex && (
-    (item.kind === "tool" && toolFoldsAsWork(item)) ||
-    (item.kind === "thinking" && item.status === "done") || item.kind === "route" || item.kind === "assistant" ||
-    (item.kind === "approval" && Boolean(item.answer))
-  );
-  const hasWork = turn.rest.some(isWork);
-  const live = status !== undefined;
-  const showWork = live || expanded || !turn.user;
-  return <>
-    {turn.user && render(turn.user)}
-    {turn.user && (live || turn.rest.length > 0) && <TurnHeader start={turn.user.at} end={live ? undefined : turnEnd(turn.rest)} status={status}
-      expanded={hasWork && !live ? expanded : undefined} controls={historyId} onToggle={() => setExpanded(value => !value)} />}
-    {/* Wrappers preserve chronological order and mounted item state while work is folded. */}
-    <div id={historyId} className="turn-content">
-      {turn.rest.map((item, index) => <div key={item.id} hidden={isWork(item, index) && !showWork}>{render(item)}</div>)}
-    </div>
-  </>;
-}
-/** When a finished turn ended: its last item's time, plus that item's own duration when it has one. */
-function turnEnd(rest: ThreadItem[]): number {
-  return Math.max(...rest.map((i) => Date.parse(i.at) + ("durationMs" in i && typeof i.durationMs === "number" ? i.durationMs : 0)));
-}
-/** 7s · 1m 36s · 1h 4m */
-export function formatElapsed(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
-/** "Working for 7s" (live, ticking) or "Worked for 1m 36s" above a rule, between a message and the agent's work. */
-function TurnHeader({ start, end, status, expanded, controls, onToggle }: { start: string; end?: number; status?: Thread["status"]; expanded?: boolean; controls?: string; onToggle?: () => void }) {
-  const live = end === undefined;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!live) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [live]);
-  const elapsed = formatElapsed((live ? now : end) - Date.parse(start));
-  const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `Waiting for approval · ${elapsed}` : `Working for ${elapsed}`;
-  return (
-    <div className={`turn-header${live ? " live" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
-      {expanded === undefined ? <span className="turn-label" data-testid="turn-label">{label}</span> : <button className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span>{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
-    </div>
-  );
-}
-
 function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
@@ -285,7 +231,7 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
         </div>
       );
     case "assistant":
-      return <AssistantItem text={item.text} live={Boolean(live)} />;
+      return <AssistantItem text={item.text} live={Boolean(live)} phase={item.phase} outcome={item.outcome} />;
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
@@ -296,7 +242,7 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
       if (item.knowledge) return <KnowledgeReceipt item={item} />;
       return <div className={`notice ${item.level}`} data-testid="item" data-item-kind="notice" data-level={item.level}>{item.text}</div>;
     case "thinking":
-      return <ThinkingItem item={item} />;
+      return <ReasoningItem item={item} />;
     case "route":
       return <RouteItem item={item} />;
   }
@@ -322,12 +268,15 @@ function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice"
  * An answer. A trailing "Sources:" list becomes numbered cards once the text has stopped streaming;
  * until then it reads as the list it is, so the cards never flicker in and out mid-line.
  */
-function AssistantItem({ text, live }: { text: string; live: boolean }) {
+/** A reply. Commentary reads as progress, not the answer; a reply that stopped or never completed says so. */
+function AssistantItem({ text, live, phase, outcome }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"] }) {
   const { body, sources } = useMemo(() => (live ? { body: text, sources: [] } : splitSources(text)), [text, live]);
+  const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete" : null;
   return (
-    <div className="msg assistant" data-testid="item" data-item-kind="assistant">
+    <div className={`msg assistant${phase === "commentary" ? " commentary" : ""}`} data-testid="item" data-item-kind="assistant" data-phase={phase} data-outcome={outcome}>
       <Markdown text={body} />
       {sources.length > 0 && <Sources links={sources} />}
+      {ended && <div className="msg-status" data-testid="message-status">{ended}</div>}
     </div>
   );
 }
@@ -479,21 +428,6 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
 }
 
 /** Collapsible reasoning: open while the model is still thinking, folded to one line once done. */
-function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }> }) {
-  const [open, setOpen] = useState<boolean | null>(null);
-  const isOpen = open ?? item.status === "running";
-  const secs = item.durationMs != null ? Math.max(1, Math.round(item.durationMs / 1000)) : null;
-  return (
-    <div className={`thinking ${item.status} ${isOpen ? "open" : ""}`} data-testid="item" data-item-kind="thinking" data-status={item.status}>
-      <button className="thinking-head" data-testid="item-toggle" onClick={() => setOpen(!isOpen)} aria-expanded={isOpen}>
-        <span className={`thinking-label ${item.status === "running" ? "shimmer" : ""}`} data-testid="thinking-label">{item.status === "running" ? "Thinking…" : secs ? `Thought for ${secs}s` : "Thinking"}</span>
-        <span className="spacer" />
-        <Icon name="chevron-right" size={12} className={`chev${isOpen ? " open" : ""}`} />
-      </button>
-      {isOpen && (item.text.trim() ? <div className="thinking-body" data-testid="item-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim" data-testid="item-body">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
-    </div>
-  );
-}
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);

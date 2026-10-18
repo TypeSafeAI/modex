@@ -260,8 +260,11 @@ work up to its final answer, by `finalAnswerIndex`.
 
 ## For the issues that build on this
 
-- **Rendering (CF-4).** `phase`, `reasoning` and `outcome` are on every new item; `itemFacts` covers
-  old ones. `provider-text` items currently render as Thinking rows like summaries.
+- **Rendering (CF-4).** `shared/turn-layout.ts` (`layoutTurn`) lays a turn out from these fields:
+  the latest attempt's `final` message answers, every `running` item is live, a later attempt opens
+  with a divider, and only work that succeeded folds under the turn header. Items saved before the
+  contract keep the last-reply heuristic there. A reasoning row is tagged Summary or Not shared;
+  `provider-text` shows untagged.
 - **Interruption and requests (CF-2, CF-3).** Approvals are still separate transcript items. A Claude
   denial is attributed through the `tool_use_id` of the refused `control_request`.
 - **Replay and paired clients (CF-6).** Events are serializable and validated by
