@@ -11,6 +11,7 @@ import { publishCompanion, type CompanionPublisher } from "./companion-discovery
 import type { EventJournal } from "./event-journal.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
 import type { RoutineRun } from "../../shared/routines.js";
+import { toolStatusLabel } from "../../shared/tool-summary.js";
 
 interface CompanionSource {
   state(): AppState;
@@ -375,11 +376,18 @@ function mobileRoutineRun(run: RoutineRun): Record<string, unknown> {
   return { id: run.id, routine: run.routineName, status: run.status, endedAt: run.endedAt ?? run.startedAt, ...(run.threadId ? { threadId: run.threadId } : {}) };
 }
 
-function mobileItem(item: ThreadItem): Record<string, unknown> {
+/** A transcript item as the phone receives it. Exported for tests. */
+export function mobileItem(item: ThreadItem): Record<string, unknown> {
   switch (item.kind) {
-    case "user": case "assistant": case "thinking": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
+    // Typed fields (docs/conversation-events.md) ride along for clients that read them; older phones ignore them.
+    case "assistant": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.phase ? { phase: item.phase } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
+    case "thinking": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.reasoning ? { reasoning: item.reasoning } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
+    case "user": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
     case "approval": return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, ...(item.decidedBy?.source === "policy" ? { auto: item.decidedBy.ruleId.slice("policy:".length) } : item.decidedBy && item.decidedBy.decision !== "ask" ? { auto: "rule" } : {}), at: item.at };
-    case "tool": return { id: item.id, kind: item.kind, title: item.title, status: item.status, ok: item.ok, at: item.at };
+    // A phone that reads only title and status shows every finished tool as done, so a finished tool
+    // that did not succeed says how it ended in its title.
+    case "tool": return { id: item.id, kind: item.kind, title: item.status === "done" && (item.outcome ? item.outcome !== "succeeded" : item.ok === false) ? `${item.title} · ${toolStatusLabel(item)}` : item.title,
+      status: item.status, ok: item.ok, ...(item.outcome ? { outcome: item.outcome } : {}), at: item.at };
     case "route": return { id: item.id, kind: item.kind, text: `${item.backend} · ${item.model || "default"}`, at: item.at };
   }
 }
