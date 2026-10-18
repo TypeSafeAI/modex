@@ -16,6 +16,7 @@ import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
+import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
 import { OUTPUT_PREVIEW_BYTES } from "../../shared/evidence";
 
 export { formatElapsed } from "./transcript/TurnContent";
@@ -170,6 +171,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         )}
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
+            footer={(t) => <SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} />}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
@@ -247,6 +249,8 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
       return <ReasoningItem item={item} />;
     case "route":
       return <RouteItem item={item} />;
+    case "plan":
+      return <TaskPlanCard item={item} />;
   }
 }
 
