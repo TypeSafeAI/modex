@@ -106,8 +106,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
     every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
     window wraps its text and buttons instead of pushing Deny out of view.
-  - **Still open:** the Markdown parser (#283), CF-6's request half, CF-7's clarifications,
-    live-provider acceptance and human VoiceOver checks.
+  - **Still open:** CF-4's remaining Markdown checks (#277), CF-6's request half, CF-7's
+    clarifications, live-provider acceptance and human VoiceOver checks.
 
 - **Every inline error can be copied, and most can be retried.** A shared `ErrorNotice`
   replaces bare error text across the terminal, Changes diff, Files, Canvas, browser and
@@ -178,6 +178,15 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
   thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
   about 40 ms before); reopening it reuses the result.
+- **Codex memory citations can be read in place** (part of #278). A reply's "From Codex memory"
+  citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
+  Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
+  and opens nothing. It works on the Mac only, never from a paired desktop.
+- **A turn's patch can be compared with the working tree** (part of #278). A patch the CLI
+  reported as applied has **Compare with working tree**. Each file it touched reads as left by the
+  turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
+  Main reads only the named files inside the thread's folder and returns verdicts, never contents.
+  Codex file changes now keep their per-file paths beside the patch.
 
 ## In flight
 

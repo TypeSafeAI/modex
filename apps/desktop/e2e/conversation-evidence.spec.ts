@@ -22,10 +22,20 @@ async function send(events: Record<string, unknown>[]): Promise<void> {
   }, events);
 }
 const item = (event: Record<string, unknown>) => ({ type: "item", threadId, item: event });
+/** The memory file the citation in "Use the build flags" points to: its lines 3–5 are cited. */
+const MEMORY_FILE = "# Build\n\nUse --frozen-lockfile ✓\nwith pnpm 10\nthen run the build\n\nunrelated line\n";
 
 test.beforeEach(async () => {
   ({ home, repo } = seedHome());
-  ({ app, page } = await launch(home));
+  // A Codex home of this test's own: citations read its memory file, never the developer's.
+  const codexHome = path.join(home, "codex-home");
+  fs.mkdirSync(path.join(codexHome, "memories", "notes"), { recursive: true });
+  fs.writeFileSync(path.join(codexHome, "memories", "notes", "build.md"), MEMORY_FILE);
+  fs.writeFileSync(path.join(codexHome, "secret.txt"), "outside the memories folder\n");
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  try { ({ app, page } = await launch(home)); }
+  finally { if (previous === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previous; }
   const script = path.join(home, "evidence-script.json");
   fs.writeFileSync(script, JSON.stringify([{ content: "Ready." }]));
   await page.evaluate((mock_script) => window.modex!.invoke("settings:update", { mock_script }), script);
@@ -44,6 +54,8 @@ test.beforeEach(async () => {
     tool("t-denied", "$ rm -rf build", { exec: { command: "/bin/zsh -lc 'rm -rf build'", cwd: "/repo" }, exitCode: null, outcome: "denied", ok: false }),
     tool("t-claude", "$ ls", { exec: { command: "ls" }, outcome: "succeeded", ok: true, output: "src\n" }),
     item({ id: "t-patch", kind: "tool", name: "apply_patch", title: "edit NOTE.md", args: { patch: "*** Begin Patch\n*** Add File: NOTE.md\n+hi\n*** End Patch" }, status: "done", outcome: "succeeded", ok: true, origin: origin("t-patch"), at: at() }),
+    item({ id: "a-escape", kind: "assistant", text: "A citation that points outside memory.", phase: "commentary", outcome: "succeeded", origin: origin("a-escape"), at: at(),
+      evidence: [{ kind: "memory", source: "codex", path: "../secret.txt", lineStart: 1, lineEnd: 1, note: "escape" }] }),
     item({ id: "a-final", kind: "assistant", text: "Use the build flags from memory.\n\nSources:\n- [Node.js](https://nodejs.org/)\n- [npm docs](https://docs.npmjs.com/)", phase: "final", outcome: "succeeded", origin: origin("a-final"), at: at(),
       evidence: [{ kind: "memory", source: "codex", path: "notes/build.md", lineStart: 3, lineEnd: 5, note: "Build flags 🛠" }] }),
     { type: "status", threadId, status: "idle" },
@@ -101,4 +113,30 @@ test("a native memory citation is shown as one; links the model wrote are labell
   await expect(sources).toHaveAttribute("data-provenance", "reply-text");
   await expect(sources).toContainText("Links in the reply · 2");
   await expect(sources).toHaveAttribute("title", "Links the model wrote in its reply. Modex has not checked them.");
+});
+
+test("a memory citation's lines can be shown and copied, read from Codex's memories folder and nothing else", async () => {
+  const answer = items(page, "assistant").filter({ hasText: "Use the build flags" });
+  const memory = tid(answer, "evidence-memory");
+  const tools = await items(page, "tool").count();
+  await tid(memory, "evidence-show").click();
+  await expect(tid(memory, "evidence-excerpt")).toHaveText("Use --frozen-lockfile ✓\nwith pnpm 10\nthen run the build");
+  await expect(tid(memory, "evidence-range")).toHaveText("Lines 3–5 of 7");
+  await expect(async () => {
+    await tid(memory, "evidence-copy").click();
+    await expect(tid(memory, "evidence-copy")).toHaveText("Copied", { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("Use --frozen-lockfile ✓\nwith pnpm 10\nthen run the build");
+  // Reading a citation runs nothing and adds nothing to the turn.
+  await expect(items(page, "tool")).toHaveCount(tools);
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+});
+
+test("a citation that points outside Codex's memories folder is refused and shows nothing from it", async () => {
+  const answer = items(page, "assistant").filter({ hasText: "A citation that points outside memory." });
+  const memory = tid(answer, "evidence-memory");
+  await tid(memory, "evidence-show").click();
+  await expect(tid(memory, "evidence-error")).toContainText("does not point inside Codex's memory folder");
+  await expect(tid(memory, "evidence-excerpt")).toHaveCount(0);
+  await expect(answer).not.toContainText("outside the memories folder");
 });

@@ -1,4 +1,6 @@
 import { imageFixtureBackend } from "./engine/images/fixture.js";
+import { codexMemoriesDir, readMemoryCitation } from "./engine/memory-citations.js";
+import { checkPatch } from "./engine/patch-state.js";
 import { Media } from "./media.js";
 import { IMAGE_SCHEME } from "../shared/images.js";
 import { appInfoLine } from "../shared/error-report.js";
@@ -461,6 +463,12 @@ handle("drafts:open", (_req, event) => {
   attachments.sweepStaging();
   return opened;
 }, { localOnly: true });
+// A Codex memory citation's lines, read inside Codex's memories folder only. Mac only: a paired
+// desktop never reads this Mac's memory files.
+handle("evidence:memory", (req) => readMemoryCitation(codexMemoriesDir(), req), { localOnly: true });
+// A turn's patch against the thread's folder now, from the thread's own record. Only per-file verdicts
+// leave main; a paired desktop learns less from it than `files:read` already gives it.
+handle("evidence:patch", ({ threadId, itemId }) => checkPatch(cwdFor(threadId), runner.items(threadId).find((item) => item.id === itemId)));
 handle("drafts:save", (req, event) => nativeFor(req, event).save(req.session, req), { localOnly: true });
 handle("drafts:stage", (req, event) => nativeFor(req, event).stage(req.session, req.owner, req.files), { localOnly: true });
 handle("drafts:pick", async (req, event) => {

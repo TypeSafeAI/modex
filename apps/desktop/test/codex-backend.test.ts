@@ -163,6 +163,41 @@ test("a long Codex command hands every raw chunk to main, while the transcript o
   } finally { await backend.dispose(); }
 });
 
+test("a Codex file change keeps each file's path, kind, move target and share of the patch", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, observations } = collectSink();
+  try {
+    const run = backend.runTurn("rename and note", { cwd: "/repo", mode: "full-access", plan: false, model: "" }, sink, new AbortController().signal);
+    await proc.waitFor((l) => l.includes('"turn/start"'));
+    // As codex-cli 0.163.0 sends them: absolute paths; an update's diff is hunks only; an add carries the file.
+    const changes = [
+      { path: "/repo/src/old.ts", kind: { type: "update", move_path: "/repo/src/new.ts" }, diff: "@@ -1 +1 @@\n-a\n+b\n" },
+      { path: "/repo/NOTE.md", kind: { type: "add" }, diff: "# Note\nhi\n" },
+      { path: "/repo/gone.txt", kind: { type: "delete" }, diff: "bye" },
+    ];
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "fileChange", id: "f1", changes, status: "inProgress" } } });
+    proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "fileChange", id: "f1", changes, status: "completed" } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
+    await run;
+    const start = observations.find((o) => o.type === "tool.start");
+    assert.ok(start && start.type === "tool.start");
+    const args = start.tool.args as { patch: string; files: { path: string; kind: string; movePath?: string; lines: number }[] };
+    assert.deepEqual(args.files, [
+      { path: "/repo/src/old.ts", kind: "update", movePath: "/repo/src/new.ts", lines: 4 },
+      { path: "/repo/NOTE.md", kind: "add", lines: 3 },
+      { path: "/repo/gone.txt", kind: "delete", lines: 1 },
+    ]);
+    // The lines split `patch` back into each file's own diff, so no diff is stored twice.
+    const lines = args.patch.split("\n");
+    let at = 0;
+    const parts = args.files.map((f) => lines.slice(at, (at += f.lines)).join("\n"));
+    assert.deepEqual(parts, changes.map((c) => c.diff));
+    assert.equal(at, lines.length);
+  } finally { await backend.dispose(); }
+});
+
 test("CodexBackend: a turn streams deltas, command + file-change items, approvals, and completes", async () => {
   const proc = new FakeProcess();
   const { seen, threadId, turnId } = fakeServer(proc);
