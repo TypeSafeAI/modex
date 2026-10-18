@@ -58,8 +58,8 @@ a missing credential stops the run rather than falling back to an unsigned build
   (`CSC_KEYCHAIN`) before the script runs, so the script resolves and signs by hash there
   exactly as it does locally.
 - `pnpm --filter @modex/desktop dist` is unchanged for contributors: it passes `identity=-`
-  and turns hardened runtime off, which is the ad-hoc build that CI's e2e and local demos
-  use. `dist:release` is the signed path and expects the credentials below.
+  and turns hardened runtime off, which is the ad-hoc build for local use and demos. CI's e2e
+  runs the unpackaged build. `dist:release` is the signed path and expects the credentials below.
 
 ## Credentials, and where they live
 
@@ -183,8 +183,9 @@ Without these secrets the workflow fails at its first step, which is the intende
 From v0.0.5 the published artifacts come from the `Release` workflow. The local build is the
 rehearsal that gates the merge.
 
-1. In a `release-<ver>` worktree, bump the version, update `docs/status.md`, and write the
-   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then build the Store client and run
+1. In a `release-<ver>` worktree, bump the version, update `docs/status.md` (a Shipped row
+   that links the review), and write the review in `docs/reviews/`, which holds the release's
+   details. Run `scripts/release-mac.sh`, then build the Store client and run
    the packaged e2e, as the `Release` workflow does:
 
    ```sh
@@ -233,10 +234,11 @@ or native updater state.
 These scenarios cover native download failure and interruption before staging completes.
 They do not prove recovery from arbitrary ShipIt replacement failures, interruption after
 `update-downloaded`, or historical schema migration. The private A build uses the same source
-with version `0.0.0`; the first later published-to-published upgrade needs separate evidence.
+with version `0.0.0`. The first published-to-published upgrade, v0.0.12 to v0.1.0, passed on the
+release Mac on 2026-10-18 ([v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#status-summary)).
 
-Keep the `macos-native-update-*` artifacts with the release review. Local harness tests and
-simulated controller tests pass, but the three hosted native scenarios have not run. Signed
+Keep the `macos-native-update-*` artifacts with the release review. All three hosted native
+scenarios passed on the v0.0.12 and v0.1.0 release runs (38465731604, 38825544975). Signed
 tag approval, the `release-signing` reviewer, and draft-asset verification remain required
 before publication. See [update recovery](update-recovery.md) for current local behavior.
 

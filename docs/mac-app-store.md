@@ -76,10 +76,10 @@ renderer reuse, not production transport authorization or Store acceptance.
    cannot submit commands, including requests already in flight. Add real CLI acceptance.
 4. Run signed, sandboxed acceptance under a fresh macOS user. Verify consented file access,
    persistent pairing, sleep/wake, host/client restarts and compatible-version upgrades.
-5. Create the macOS App Store Connect record and provision the distinct Store bundle ID
-   (proposed `works.jev.modex.desktop`, final record/name to be confirmed at that gate).
-   Produce the Apple Distribution package; validate, upload, verify processing and test
-   installation through macOS TestFlight. A Developer ID DMG does not satisfy this gate.
+5. The App Store Connect record (**Modex Mac App Store**, app ID `6819549715`) and the Store
+   bundle ID `works.jev.modex.desktop` exist, and the Apple Distribution package for 0.0.8
+   was uploaded and processed. Installation through macOS TestFlight is still untested. A
+   Developer ID DMG does not satisfy this gate.
 6. Submit truthful metadata and screenshots for App Review. Publish only after acceptance.
 
 The iPhone reconnection work in v0.0.7 supplies useful identity/revocation behavior, but it

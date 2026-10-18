@@ -138,11 +138,9 @@ three KWallet5 launches. Downloaded evidence hashes and the exact tested tree we
 independently verified. The later Canvas and worktree-hygiene merges require a new
 verification pass on the reconciled source; these older receipts do not certify that tree.
 
-The tag release workflow currently attaches only macOS artifacts. Windows/Linux shipment
-still requires native builds and acceptance on the signed release tag, matching candidate
-manifest and installed-app result identities/hashes, and publication of those exact
-accepted installers. Synthetic baseline packages must never be release assets. Windows
-remains unsigned and Windows/Linux updates manual. No platform release has been published.
+The tag release workflow builds the Windows/Linux installers on native runners and attaches
+them alongside macOS; v0.1.0 first published them. Synthetic baseline packages must never be
+release assets. Windows remains unsigned and Windows/Linux updates manual.
 
 The candidate reconciled against main `42223e2d` passed a fresh dependency install, full
 monorepo build, all workspace typechecks, 805 unit tests (12 Windows-native skips on
@@ -185,9 +183,9 @@ Fresh required macOS checks and native Windows/Linux jobs verify each submitted 
 [PR #173](https://github.com/TypeSafeAI/modex/pull/173) records the exact hosted receipts.
 
 Installer candidate implementation and native test artifacts are distinct from release
-publication. The combined release workflow below is prepared, but acceptance and
-publication of the exact tagged Windows/Linux installers remain pending, along with
-the account/session and historical-migration limits recorded above.
+publication. The combined release workflow below published the tagged Windows/Linux
+installers in v0.1.0; their account/session acceptance and the historical-migration limits
+recorded above remain open.
 
 ## Tagged release candidates
 
@@ -212,4 +210,4 @@ passed at `5189b57`. Both reports contain the verified candidate manifest and
 digests; their manifests exactly match the installed-app receipts, and all three installer
 byte sizes and SHA-256 values match. The tested merge tree equals that source head.
 This proves the new report fields on that revision; it does not complete the pending
-account/session checks or the first combined signed-tag execution.
+account/session checks; the first combined signed-tag execution came later, in run 38465731604.

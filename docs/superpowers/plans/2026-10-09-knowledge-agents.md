@@ -1,5 +1,8 @@
 # Agent knowledge maintenance implementation plan
 
+**Status (2026-10-18): delivered** in #150 and shipped in v0.0.10. Behaviour:
+[knowledge-maintenance.md](../../knowledge-maintenance.md).
+
 **Goal:** Claude and Codex threads can search, read and maintain the selected OpenKnowledge folder, with per-project automatic maintenance and visible, recoverable updates.
 
 **Architecture:** Keep inference in the existing CLI backends. A main-owned, loopback MCP adapter exposes only document operations and forwards them to pinned OpenKnowledge 0.83.2. A stable per-thread endpoint has a revocable per-turn lease; every call checks current folder, project permission and turn mode. The companion owns collaborative writes and history.

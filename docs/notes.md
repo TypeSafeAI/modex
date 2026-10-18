@@ -1,7 +1,8 @@
 # Notes folder
 
-Space notes are moving from one `MODEX_HOME/app/space.json` into a folder of Markdown files,
-`MODEX_HOME/notes/`, laid out **Workspace › Project › Folder › notes and files**. This page
+Space notes live in a folder of Markdown files, `MODEX_HOME/notes/`, laid out
+**Workspace › Project › Folder › notes and files**. They moved there from one
+`MODEX_HOME/app/space.json` in v0.1.0 (see [Migration](#migration)). This page
 describes the format `NotesStore` (`apps/desktop/src/main/engine/notes-store.ts`) reads and
 writes. Space and the Pages tools (`modex_pages`) use it.
 

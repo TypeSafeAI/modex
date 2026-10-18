@@ -5,6 +5,10 @@ and the decisions recorded in `docs/status.md`. The earlier filename was referen
 an accompanying document. This specification records the agreed behavior and the acceptance
 criteria for the remaining work; it does not claim that they have shipped.
 
+Status (2026-10-18): parts 1 (#54) and 2 (#107, #185) are on `main` and shipped, with the gate
+off. Turning the gate on waits on the [acceptance decision](#current-acceptance-decision-2026-10-11)
+below.
+
 ## Boundaries
 
 Coding turns continue to run through the Claude and Codex CLIs. The optional Jev judge

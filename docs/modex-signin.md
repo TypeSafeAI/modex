@@ -57,11 +57,10 @@ storage failure, environment isolation, cancellation, refresh identity and sign-
 The offline Electron test exercises Settings, local IPC and persistence with fixture
 browser/token responses. Neither proves a real GitHub/WorkOS sign-in.
 
-Before release, verify production sign-in and repeat sign-in with the existing GitHub
-OAuth App, restart persistence, refresh after expiry, cancellation, and local plus remote
-sign-out in the signed app. Confirm coding tool accounts are unchanged. Release remains
-held until this live acceptance and the repository's build, unit, E2E, signed/notarized
-artifact and hosted checks pass.
+Live acceptance in the signed app passed before v0.0.9: production sign-in and repeat
+sign-in with the existing GitHub OAuth App, restart persistence, refresh after expiry,
+cancellation, and local plus remote sign-out. Coding tool accounts were unchanged. See the
+[v0.0.9 review](reviews/2026-10-08-v0.0.9-release-review.md).
 
 Protocol references: [WorkOS PKCE support](https://github.com/workos/workos-node/blob/main/docs/V8_MIGRATION_GUIDE.md),
 [public-client refresh and logout](https://github.com/workos/workos-node/blob/main/src/user-management/user-management.ts),
