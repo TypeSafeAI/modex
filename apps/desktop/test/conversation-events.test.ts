@@ -11,6 +11,7 @@ import type { Backend, TurnResult, TurnSink } from "../src/main/engine/backends/
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { CONVERSATION_SCHEMA, applyConversationEvent, finalAnswerIndex, itemFacts, parseConversationEvent, projectConversation, type AttemptMark, type ConversationEvent, type ConversationItem, type NativeRef, type Observation, type TurnRef } from "../src/shared/conversation-events.js";
 
 // Sanitized captures from real CLI runs (see test/fixtures/conversation/README.md). Replaying them
 // tests the adapters against bytes the CLIs really sent; it is not live-provider acceptance.
@@ -294,4 +295,226 @@ test("a late delta from a superseded attempt never changes the attempt that repl
   const texts = conversation(h.runner.items(h.thread.id)).map((i) => i.text);
   assert.deepEqual(texts, ["fresh answer"]);
   assert.ok(!JSON.stringify(h.runner.items(h.thread.id)).includes("STALE"));
+});
+
+// ── The pure projector ──────────────────────────────────────────────────────────────────────────
+
+const turnRef = (over: Partial<TurnRef> = {}): TurnRef => ({ thread: "T", turn: "U", attempt: "A1", backend: "codex", ...over });
+
+/** Builds stamped events the way the runner does: ids and order assigned at ingress unless given. */
+function stream(turn: TurnRef = turnRef()) {
+  let seq = 0;
+  const at = (n: number) => new Date(Date.UTC(2026, 9, 18, 6, 0, n)).toISOString();
+  return (body: Observation | AttemptMark, id?: string): ConversationEvent => {
+    seq++;
+    return { schema: CONVERSATION_SCHEMA, id: id ?? `${turn.attempt}:${seq}`, seq, at: at(seq), turn, ...body } as ConversationEvent;
+  };
+}
+const native = (item: string, over: Partial<NativeRef> = {}): NativeRef => ({ runtime: "R1", thread: "nt", turn: "nu", item, ...over });
+/** An item's text, or a tool's title. */
+const body = (item: ConversationItem) => (item.kind === "tool" ? item.title : item.text);
+
+test("projector: two messages interleaved with two tools keep their own text and phase; completion snapshots replace, never duplicate", () => {
+  const e = stream();
+  const events = [
+    e({ type: "attempt.start" }),
+    e({ type: "message.start", native: native("m1"), phase: "commentary", nativePhase: "commentary" }),
+    e({ type: "message.delta", native: native("m1"), text: "Looking" }),
+    e({ type: "tool.start", native: native("t1"), tool: { name: "shell", title: "$ ls", args: {} } }),
+    e({ type: "message.start", native: native("m2"), phase: "final", nativePhase: "final_answer" }),
+    e({ type: "message.delta", native: native("m2"), text: "All" }),
+    e({ type: "message.delta", native: native("m1"), text: " around." }),
+    e({ type: "tool.start", native: native("t2"), tool: { name: "shell", title: "$ npm test", args: {} } }),
+    e({ type: "tool.done", native: native("t1"), outcome: "succeeded", progress: { output: "a.ts" } }),
+    e({ type: "message.done", native: native("m1"), text: "Looking around." }),
+    e({ type: "message.delta", native: native("m2"), text: " good." }),
+    e({ type: "message.done", native: native("m2") }),
+    e({ type: "tool.done", native: native("t2"), outcome: "failed", progress: { output: "1 failing" } }),
+    e({ type: "attempt.end", outcome: "succeeded" }),
+  ];
+  const state = projectConversation(events);
+  assert.deepEqual(state.items.map((i) => [i.kind, body(i), i.kind === "assistant" ? i.phase : i.outcome]), [
+    ["assistant", "Looking around.", "commentary"],
+    ["tool", "$ ls", "succeeded"],
+    ["assistant", "All good.", "final"],
+    ["tool", "$ npm test", "failed"],
+  ]);
+  assert.deepEqual(state.items.map((i) => i.outcome), ["succeeded", "succeeded", "succeeded", "failed"]);
+  assert.deepEqual(state.items.map((i) => i.kind === "tool" ? i.ok : null), [null, true, null, false]);
+  assert.equal(state.attempts.U!.outcome, "succeeded");
+});
+
+test("projector: a reused native item id stays separate across threads, accounts and runtime generations", () => {
+  const events: ConversationEvent[] = [];
+  for (const [label, turn, runtime] of [
+    ["thread A", turnRef({ thread: "TA", turn: "UA", attempt: "AA" }), "R1"],
+    ["thread B", turnRef({ thread: "TB", turn: "UB", attempt: "AB" }), "R1"],
+    ["account cli", turnRef({ thread: "TC", turn: "UC", attempt: "AC", account: "cli" }), "R2"],
+    ["account chatgpt", turnRef({ thread: "TC", turn: "UC2", attempt: "AC2", account: "acct-2" }), "R2"],
+  ] as const) {
+    const e = stream(turn);
+    events.push(e({ type: "attempt.start" }), e({ type: "message.delta", native: native("msg_same", { runtime }), text: label }));
+  }
+  // One attempt whose runtime restarted mid-turn (Codex reconnects after a stale sign-in): same ids, new generation.
+  const e = stream(turnRef({ thread: "TD", turn: "UD", attempt: "AD" }));
+  events.push(e({ type: "attempt.start" }), e({ type: "message.delta", native: native("msg_same", { runtime: "gen-1" }), text: "first server" }), e({ type: "message.delta", native: native("msg_same", { runtime: "gen-2" }), text: "second server" }));
+  const state = projectConversation(events);
+  assert.deepEqual(state.items.map((i) => body(i)), ["thread A", "thread B", "account cli", "account chatgpt", "first server", "second server"]);
+  assert.equal(new Set(state.items.map((i) => i.id)).size, 6);
+});
+
+test("projector: deltas from a superseded or ended attempt never mutate the turn", () => {
+  const one = stream(turnRef({ attempt: "A1" }));
+  const two = stream(turnRef({ attempt: "A2" }));
+  const events = [
+    one({ type: "attempt.start" }),
+    one({ type: "message.delta", native: native("m"), text: "draft" }),
+    one({ type: "attempt.end", outcome: "failed" }),
+    one({ type: "message.delta", native: native("m"), text: " after the end" }),
+    two({ type: "attempt.start" }),
+    two({ type: "message.delta", native: native("m"), text: "retry" }),
+    one({ type: "message.delta", native: native("m"), text: " late" }),
+    one({ type: "tool.start", native: native("t"), tool: { name: "shell", title: "$ rm -rf", args: {} } }),
+    two({ type: "message.done", native: native("m"), text: "retry answer" }),
+  ];
+  const state = projectConversation(events);
+  assert.deepEqual(state.items.map((i) => [i.origin.attempt, body(i), i.outcome]), [["A1", "draft", "unknown"], ["A2", "retry answer", "succeeded"]]);
+  assert.equal(state.attempts.U!.attempt, "A2");
+});
+
+test("projector: summaries and provider text never mix; reasoning with no text stays unavailable", () => {
+  const e = stream();
+  const r = native("r1");
+  const state = projectConversation([
+    e({ type: "attempt.start" }),
+    e({ type: "reasoning.start", native: r }),
+    e({ type: "reasoning.delta", native: r, representation: "summary", index: 1, text: "Then edit." }),
+    e({ type: "reasoning.delta", native: r, representation: "provider-text", index: 0, text: "private-looking raw text" }),
+    e({ type: "reasoning.delta", native: r, representation: "summary", index: 0, text: "Look first." }),
+    e({ type: "reasoning.done", native: r }),
+    e({ type: "reasoning.start", native: native("r2") }),
+    e({ type: "reasoning.done", native: native("r2") }),
+  ]);
+  assert.deepEqual(state.items.map((i) => [i.kind, i.kind === "thinking" ? i.reasoning : null, body(i), i.kind === "thinking" ? i.status : null]), [
+    ["thinking", "summary", "Look first.\n\nThen edit.", "done"],
+    ["thinking", "provider-text", "private-looking raw text", "done"],
+    ["thinking", "unavailable", "", "done"],
+  ]);
+  // A completion snapshot replaces what streamed, per representation.
+  const snap = projectConversation([e({ type: "attempt.start" }), e({ type: "reasoning.start", native: native("r3") }), e({ type: "reasoning.delta", native: native("r3"), representation: "summary", index: 0, text: "Lo" }), e({ type: "reasoning.done", native: native("r3"), summary: ["Look first."], text: [] })]);
+  assert.deepEqual(snap.items.map((i) => [i.kind === "thinking" && i.reasoning, body(i)]), [["summary", "Look first."]]);
+});
+
+test("projector: replay is deterministic, duplicates of an event apply once, and identical adjacent deltas are both kept", () => {
+  const e = stream();
+  const events = [
+    e({ type: "attempt.start" }),
+    e({ type: "message.start", native: native("m"), phase: "final" }),
+    e({ type: "message.delta", native: native("m"), text: "ha" }),
+    e({ type: "message.delta", native: native("m"), text: "ha" }),
+    e({ type: "message.delta", native: native("m"), text: "ha" }),
+    e({ type: "tool.start", native: native("t"), tool: { name: "shell", title: "$ ls", args: {} } }),
+    e({ type: "tool.update", native: native("t"), progress: { output: "a" } }),
+    e({ type: "tool.done", native: native("t"), outcome: "succeeded" }),
+    e({ type: "attempt.end", outcome: "succeeded" }),
+  ];
+  const once = projectConversation(events);
+  assert.equal(body(once.items[0]!), "hahaha", "three different events with the same text are three tokens");
+  assert.deepEqual(projectConversation(events), once, "replaying the same events gives the same view");
+  const doubled = events.flatMap((event) => [event, structuredClone(event)]);
+  assert.deepEqual(projectConversation(doubled), once, "a duplicate of an identified event changes nothing");
+  assert.equal(applyConversationEvent(once, events[3]!), once, "re-applying an applied event returns the same state");
+  const roundTrip = JSON.parse(JSON.stringify(events)) as ConversationEvent[];
+  assert.deepEqual(projectConversation(roundTrip), once, "events survive JSON");
+  assert.deepEqual(JSON.parse(JSON.stringify(once)), once, "state survives JSON");
+});
+
+test("projector: failed, denied, interrupted and unknown stay distinct from success; ending the attempt settles open work", () => {
+  const e = stream();
+  const tool = (id: string) => e({ type: "tool.start", native: native(id), tool: { name: "shell", title: id, args: {} } });
+  const state = projectConversation([
+    e({ type: "attempt.start" }),
+    tool("ok"), tool("failed"), tool("denied"), tool("unknown"), tool("open"),
+    e({ type: "message.delta", native: native("m"), text: "partial" }),
+    e({ type: "reasoning.start", native: native("r") }),
+    e({ type: "tool.done", native: native("ok"), outcome: "succeeded" }),
+    e({ type: "tool.done", native: native("failed"), outcome: "failed" }),
+    e({ type: "tool.done", native: native("denied"), outcome: "denied" }),
+    e({ type: "tool.done", native: native("unknown"), outcome: "unknown" }),
+    e({ type: "attempt.end", outcome: "interrupted" }),
+    e({ type: "tool.done", native: native("open"), outcome: "succeeded" }),
+  ]);
+  assert.deepEqual(state.items.map((i) => [i.kind === "tool" ? i.title : i.kind, i.outcome, i.kind === "tool" ? i.ok : undefined]), [
+    ["ok", "succeeded", true], ["failed", "failed", false], ["denied", "denied", false], ["unknown", "unknown", undefined],
+    ["open", "interrupted", undefined], ["assistant", "interrupted", undefined], ["thinking", "interrupted", undefined],
+  ]);
+  assert.ok(state.items.every((i) => i.kind !== "tool" || i.status === "done"));
+  const dropped = projectConversation([e({ type: "attempt.start" }), tool("still running"), e({ type: "attempt.end", outcome: "failed" })]);
+  assert.equal(dropped.items.at(-1)!.outcome, "unknown", "a failed turn says nothing about the work it left open");
+});
+
+test("projector: an empty message start shows nothing until text arrives; an empty completion adds nothing", () => {
+  const e = stream();
+  const state = projectConversation([
+    e({ type: "attempt.start" }),
+    e({ type: "message.start", native: native("m1"), phase: "final" }),
+    e({ type: "message.done", native: native("m1"), text: "" }),
+    e({ type: "message.done", native: native("m2"), text: "Completed without deltas." }),
+  ]);
+  assert.deepEqual(state.items.map((i) => body(i)), ["Completed without deltas."]);
+});
+
+test("events validate before a client trusts them", () => {
+  const e = stream();
+  const good = e({ type: "message.delta", native: native("m"), text: "hi" });
+  assert.deepEqual(parseConversationEvent(JSON.parse(JSON.stringify(good))), good);
+  for (const bad of [
+    { ...good, schema: 2 }, { ...good, id: "" }, { ...good, type: "message.exploded" }, { ...good, native: { item: "m" } },
+    { ...good, text: 3 }, { ...good, turn: { ...good.turn, attempt: undefined } }, { ...good, type: "tool.done", outcome: "maybe" }, null, "x",
+  ]) assert.equal(parseConversationEvent(bad), null, JSON.stringify(bad));
+});
+
+test("legacy items read through the explicit adapter: text kept, identity and phase unknown, success only where it was recorded", () => {
+  const at = "2026-10-01T00:00:00.000Z";
+  const legacy: ThreadItem[] = [
+    { id: "u", kind: "user", text: "hi", at },
+    { id: "a1", kind: "assistant", text: "Let me look.", at },
+    { id: "t1", kind: "tool", name: "shell", title: "$ ls", args: {}, status: "done", ok: true, at },
+    { id: "t2", kind: "tool", name: "shell", title: "$ rm", args: {}, status: "done", ok: false, at },
+    { id: "t3", kind: "tool", name: "shell", title: "$ sleep", args: {}, status: "running", at },
+    { id: "r", kind: "thinking", text: "Thought.", status: "done", at },
+    { id: "a2", kind: "assistant", text: "Done.", at },
+  ];
+  assert.deepEqual(legacy.slice(1).map((i) => itemFacts(i)), [
+    { observed: false, phase: "unspecified", outcome: "unknown" },
+    { observed: false, phase: "unspecified", outcome: "succeeded" },
+    { observed: false, phase: "unspecified", outcome: "unknown" },
+    { observed: false, phase: "unspecified", outcome: "unknown" },
+    { observed: false, phase: "unspecified", outcome: "unknown" },
+    { observed: false, phase: "unspecified", outcome: "unknown" },
+  ]);
+  assert.equal(finalAnswerIndex(legacy.slice(1)), 5, "legacy turns keep the last-reply heuristic");
+  const typed = [{ ...legacy[1]!, phase: "final" }, { ...legacy[6]!, phase: "commentary" }] as ThreadItem[];
+  assert.equal(finalAnswerIndex(typed), 0, "a typed final answer wins over a later commentary");
+});
+
+test("legacy history loads unchanged, starts no turn, and a stale running CF-1 item becomes unknown", async () => {
+  let ran = 0;
+  const backend: Backend = { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => { ran++; return { status: "completed" }; } };
+  const h = await harness({ claude: backend }, "claude");
+  const at = "2026-10-01T00:00:00.000Z";
+  const legacy: ThreadItem[] = [
+    { id: "u", kind: "user", text: "hi", at },
+    { id: "a1", kind: "assistant", text: "Hello — café ✓", at },
+    { id: "t1", kind: "tool", name: "shell", title: "$ ls", args: {}, status: "done", ok: true, at },
+  ];
+  const origin = { thread: h.thread.id, turn: "u2", attempt: "x", backend: "claude" as const, native: { runtime: "dead", item: "toolu" } };
+  const stale = { id: "t2", kind: "tool", name: "Bash", title: "$ sleep 60", args: {}, status: "running", at, outcome: "running", origin } as ThreadItem;
+  h.store.saveItems(h.thread.id, [...legacy, stale]);
+  const fresh = new ThreadRunner({ home: h.home, store: new Store(h.home), emit: () => {}, backends: { claude: backend } });
+  const items = fresh.items(h.thread.id);
+  assert.deepEqual(items.slice(0, 3), legacy, "legacy items are returned exactly as stored");
+  assert.ok(items.slice(0, 3).every((i) => !("origin" in i)), "no provenance is invented for them");
+  assert.deepEqual([items[3]!.kind === "tool" && items[3]!.status, (items[3] as Loose).outcome, items[3]!.kind === "tool" && items[3]!.ok], ["done", "unknown", undefined]);
+  assert.equal(ran, 0, "loading history runs nothing");
 });
