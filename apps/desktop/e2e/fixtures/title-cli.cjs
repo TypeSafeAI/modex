@@ -45,9 +45,18 @@ process.on("SIGTERM", () => {
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
   if (!codex) {
-    if (message.type !== "user") return;
     const naming = path.basename(process.cwd()).startsWith("modex-title-");
     const session_id = naming ? "title-session" : "coding-session";
+    // Stop is Claude Code's native interrupt; 2.1.302 acknowledges it and closes the turn at once.
+    if (message.type === "control_request" && message.request?.subtype === "interrupt") {
+      clearInterval(pending.get(session_id));
+      pending.delete(session_id);
+      send({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response: { still_queued: [] } } });
+      send({ type: "result", subtype: "error_during_execution", is_error: true, session_id, terminal_reason: "aborted_streaming" });
+      fs.writeFileSync(path.join(home, "title-cancelled"), "stopped");
+      return;
+    }
+    if (message.type !== "user") return;
     send({ type: "system", subtype: "init", session_id });
     run(message.message.content, process.cwd(), (text, fail) => {
       send({ type: "assistant", message: { content: [{ type: "text", text }] } });

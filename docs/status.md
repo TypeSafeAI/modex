@@ -167,23 +167,52 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The release ships everything under "On main,
-  unreleased":
+- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The signed `v0.2.0` tag is on `01b1b8a`
+  (#272), so the release ships `main` up to there. The conversation-fidelity slices from #282 on,
+  under "On main, unreleased", are not in it. It ships:
   - read-only routines on a timer, on one decision service for Jev;
   - the notes fixes from v0.1.0's review (#241);
   - Copy details and Retry on every inline error;
   - the Analytics restyle and the Images "queued" fix.
 
   Val chose the version. The full test suite, typecheck and a signed, notarized rehearsal ran
-  locally. Remaining: the packaged E2E on the signed tag, the hosted native updater scenarios,
-  independent download checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac,
-  and the TestFlight upload of Companion build 7, which carries thread archiving from the phone.
+  locally. On 2026-10-18 the tag passed
+  [release run 39100984341](https://github.com/TypeSafeAI/modex/actions/runs/39100984341). It
+  covered signing, notarization and stapling, the E2E suite against the packaged app, all three
+  signed native updater scenarios and the Windows and Linux installers. Its draft release holds the
+  five installers, `RELEASE-MANIFEST.json` and `SHA256SUMS.txt`. Remaining: independent download
+  checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac, and the TestFlight
+  upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
 
+- **Truthful Claude Stop on `claude -p` (CF-2, #275).** This is #250's lifecycle work without the
+  Agent SDK.
+  - Stop sends Claude Code's own interrupt and ends its input, then reads the CLI's last messages.
+    Exit code 1 after an interrupt is not a failure.
+  - The turn ends when the process has exited. Modex sends SIGTERM 1.5 s after Stop and SIGKILL
+    1.5 s later. A process that still has not exited is reported unconfirmed, with its pid, and
+    its thread and worktree are kept.
+  - A failure received just before Stop retains its error and process ownership: the failure's
+    drain deadline cannot permit deletion before exit or bounded stop confirmation.
+    Repair PR #291 is integrated into #286. Follow-up reconciliation includes CF-8's test and
+    fixes evidence E2E setup that could click a plain turn label before its disclosure rendered;
+    each evidence case now opens its own rows independently. The receipt retains earlier failures.
+  - Permission cards Claude withdraws close inert, and late answers are dropped.
+  - Built on CF-1's event contract: a tool call that Stop interrupted reads Stopped, not Failed.
+  - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result
+    now survive. Failure details no longer copy MCP route tokens.
+
+  Claude Code 2.1.302 with Haiku, through the app on 2026-10-18 (opt-in `e2e/claude-live-stop.spec.ts`):
+  - Stop with a card waiting: idle in 0.9 s.
+  - Stop during a running command: SIGTERM after the 1.5 s grace, and the command's file was never written.
+  - Resume after Stop: answers normally.
+  - Stop mid-stream: the text so far is kept.
+
+  Windows and Linux escalation is unproven. Open in #286. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
-  Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286 and #291
-  (CF-2), and #293 (CF-3). The tracker keeps the dependency order and each slice's evidence.
+  Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
+  each slice's evidence, and its child issues link their open PRs.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
@@ -204,8 +233,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     revocation. [Signed acceptance](reviews/2026-10-11-store-signed-acceptance.md#status-summary).
   - **Open:** the full parity matrix, graceful host shutdown, fresh-user setup, installed-host
     auto-launch, sleep/wake, the full welcome Open sequence and its Cancel check, a macOS
-    TestFlight install, App Review, and Val's attribution of one GUI Connect grant.
-    [Readiness](reviews/2026-10-11-store-readiness.md).
+    TestFlight install, and App Review. [Readiness](reviews/2026-10-11-store-readiness.md).
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
@@ -322,17 +350,12 @@ Roughly in the order they earn their place; none is scheduled.
 2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
-3. **#250's lifecycle fixes on the `claude -p` backend.** #250 (Claude through the Agent SDK) was
-   closed so that Modex keeps `claude -p`; see its closing comment. Its graceful interrupt before
-   SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
-   stderr and exit codes all apply to `backends/claude.ts` without the SDK. They are open in #286
-   and #291 (CF-2, #275).
-4. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting
+3. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting
    on repositories needs a dedicated GitHub App owner and a hosted service destination before
    implementation and live acceptance. The
    [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md) is the
    historical proposal.
-5. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true

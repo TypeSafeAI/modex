@@ -224,7 +224,7 @@ numbered when one line makes several.
 | `signature_delta`, `redacted_thinking` data | nothing; never read |
 | `assistant` thinking block not seen streaming | `reasoning.start`, its text if any, `reasoning.done` |
 | `assistant` `tool_use` block | `tool.start` (`agent:<id>` for Agent and Task) |
-| `tool_result` | `tool.done`: `succeeded`; `denied` when `is_error` and Modex refused that `tool_use_id`; `failed` otherwise |
+| `tool_result` | `tool.done`: `succeeded`; `denied` when `is_error` and Modex refused that `tool_use_id`; `interrupted` when `is_error` arrives after Stop (the CLI rejecting the call it was interrupted in); `failed` otherwise |
 | sub-agent lines (`parent_tool_use_id`) | the agent's own row only, as before |
 
 A thinking block whose text is empty (Haiku 5.5 sends only a signature, with

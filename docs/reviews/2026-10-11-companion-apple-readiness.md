@@ -288,3 +288,8 @@ The second physical LAN, first-use consent, fresh macOS user, complete signed we
 Open/Cancel path, sleep/wake, migration and other Store acceptance limits above remain
 open. No Apple metadata, submission, build or release was changed. Preserve this
 worktree and its evidence until delivery and a separate guarded retirement review.
+
+**Attribution resolved, 2026-10-18.** Val confirmed on #290 that the grant the GUI Connect run
+acquired before native prompt capture came from Val's own manual testing. The Cancel check stays
+unaccepted; see the
+[signed acceptance review](2026-10-11-store-signed-acceptance.md#attribution-resolved-2026-10-18).

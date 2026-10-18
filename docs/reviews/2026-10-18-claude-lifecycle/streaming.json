@@ -1,0 +1,256 @@
+{
+ "bin": "claude 2.1.302 (~/.local/share/claude/versions/2.1.302)",
+ "scenario": "streaming",
+ "args": [
+  "-p",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+  "--include-partial-messages",
+  "--permission-prompt-tool",
+  "stdio",
+  "--permission-mode",
+  "default",
+  "--model",
+  "haiku",
+  "--effort",
+  "low"
+ ],
+ "log": [
+  {
+   "t": 3,
+   "dir": "in",
+   "type": "user"
+  },
+  {
+   "t": 3679,
+   "dir": "out",
+   "type": "system",
+   "subtype": "init",
+   "caps": [
+    "interrupt_receipt_v1",
+    "interrupt_cancel_queued_v1",
+    "interrupt_send_now_v1",
+    "msg_lifecycle_v1",
+    "request_marker_lists_v1",
+    "sdk_mcp_tools_list_changed",
+    "sdk_mcp_manifests",
+    "mcp_read_resource_v1",
+    "mcp_tool_ui_meta_v1",
+    "ui_surface_v1",
+    "mcp_call_result_not_for_model_v1"
+   ],
+   "version": "2.1.302"
+  },
+  {
+   "t": 3739,
+   "dir": "out",
+   "type": "system",
+   "subtype": "status"
+  },
+  {
+   "t": 5711,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "message_start"
+  },
+  {
+   "t": 5711,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5838,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5886,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5914,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5914,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5939,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5945,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5947,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5947,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5947,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5947,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5956,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5972,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 5997,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 6017,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 6045,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 6072,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 6098,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 6112,
+   "dir": "in",
+   "type": "control_request",
+   "subtype": "interrupt",
+   "request_id": "int-1"
+  },
+  {
+   "t": 6121,
+   "dir": "out",
+   "type": "control_response",
+   "subtype": "success",
+   "request_id": "int-1",
+   "response": {
+    "still_queued": []
+   }
+  },
+  {
+   "t": 6125,
+   "dir": "out",
+   "type": "assistant",
+   "request_id": "req_011Cg9DkMUXUw6or4kHRkf3a",
+   "content": [
+    "text:The Last Light of Harrow Point\n\nFor forty-one years, Dorothe"
+   ]
+  },
+  {
+   "t": 6126,
+   "dir": "out",
+   "type": "user",
+   "content": [
+    "text:[Request interrupted by user]"
+   ]
+  },
+  {
+   "t": 6126,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "message_stop"
+  },
+  {
+   "t": 6141,
+   "dir": "out",
+   "type": "result",
+   "subtype": "error_during_execution",
+   "is_error": true,
+   "num_turns": 2,
+   "stop_reason": null,
+   "terminal_reason": "aborted_streaming",
+   "errors": [
+    "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null"
+   ]
+  },
+  {
+   "t": 10112,
+   "dir": "in",
+   "type": "stdin-end"
+  },
+  {
+   "t": 10707,
+   "dir": "exit",
+   "code": 1,
+   "sig": null
+  },
+  {
+   "t": 10708,
+   "dir": "summary",
+   "exitAfterStdinEndMs": 595,
+   "stderrTail": ""
+  }
+ ]
+}
