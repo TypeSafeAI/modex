@@ -83,6 +83,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     loose ends into the project's notes; saving again updates the note unless you edited it.
     [Task plans and records](task-context.md).
   - **Old transcripts** read unchanged, with no invented provenance.
+  - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
+    plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
+    re-runs nothing. Denial, a failing check and Stop are covered too.
+    [Fidelity](conversation-fidelity.md), [review](reviews/2026-10-18-conversation-fidelity-acceptance.md).
   - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
     acceptance and human VoiceOver checks.
 
@@ -169,8 +173,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286 and #291
-  (CF-2), #293 (CF-3) and #294 (CF-8). The tracker keeps the dependency order and each slice's
-  evidence.
+  (CF-2), and #293 (CF-3). The tracker keeps the dependency order and each slice's evidence.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
