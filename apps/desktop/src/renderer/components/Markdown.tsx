@@ -4,6 +4,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 import { safeHref } from "../../shared/inline";
+import { CodeBlock } from "./transcript/CodeBlock";
 
 /**
  * Markdown as the transcript shows it: CommonMark with GitHub's extensions (tables, task lists,
@@ -130,7 +131,7 @@ function block(node: RootContent, key: number, ctx: Context): ReactNode {
       return <Tag key={key}>{inline(node.children, ctx)}</Tag>;
     }
     case "code":
-      return <pre key={key} className="code" data-lang={node.lang || undefined}><code>{node.value}</code></pre>;
+      return <CodeBlock key={key} code={node.value} lang={node.lang ?? undefined} />;
     case "blockquote":
       return <blockquote key={key}>{blocks(node.children, { ...ctx, tight: false })}</blockquote>;
     case "list": {

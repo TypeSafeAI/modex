@@ -13,6 +13,8 @@ let Markdown: ComponentType<{ text: string }>;
 
 async function render(text: string): Promise<string> {
   if (!server) {
+    // Code blocks reach the clipboard through the bridge, which reads `window.modex` when it loads.
+    Object.assign(globalThis, { window: { modex: { platform: "web", invoke: async () => {}, onEvent: () => () => {}, onTerminalEvent: () => () => {} } } });
     server = await createServer({ configFile: false, root: appDir, plugins: [react()], logLevel: "error", appType: "custom", server: { middlewareMode: true, hmr: false, ws: false } });
     ({ Markdown } = await server.ssrLoadModule("/src/renderer/components/Markdown.tsx") as { Markdown: ComponentType<{ text: string }> });
   }
@@ -53,7 +55,7 @@ test("a fence that is still streaming shows its code so far, and the closing fen
   const open = await render("Here:\n\n```js\nconst a = 1;\nconst b = ");
   assert.match(open, /<pre class="code" data-lang="js"><code>const a = 1;\nconst b = <\/code><\/pre>/);
   const closed = await render("Here:\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nDone.");
-  assert.match(closed, /<code>const a = 1;\nconst b = 2;<\/code><\/pre><p>Done\.<\/p>/);
+  assert.match(closed, /<code>const a = 1;\nconst b = 2;<\/code><\/pre>.*?<p>Done\.<\/p>/s);
 });
 
 test("every prefix of a streamed reply renders, and no prefix loses or doubles its text", async () => {
@@ -149,4 +151,10 @@ test("the settled cache keeps recent renders, drops the oldest past its limit, a
   assert.equal(cache.get(long, make), 5);
   assert.equal(cache.get(long, make), 6, "text past the size limit is rendered each time, never kept");
   assert.equal(cache.size, 2);
+});
+
+test("a code block names its language and offers Copy", async () => {
+  const html = await render("```ts\nconst a = 1;\n```\n\n```\nplain\n```");
+  assert.match(html, /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"><code>const a = 1;<\/code><\/pre>/);
+  assert.match(html, /<span class="code-lang">text<\/span><button[^>]*aria-label="Copy code">Copy<\/button><\/div><pre class="code"><code>plain<\/code>/);
 });

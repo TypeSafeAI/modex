@@ -547,6 +547,13 @@ a.thread-pr:hover { text-decoration: underline; }
 .md strong { font-weight: var(--weight-semibold); }
 .md code { padding: 1px 5px; border-radius: 5px; background: var(--bg-row-selected); font-size: 12.5px; }
 .md pre.code { margin: 8px 0 14px; padding: 12px 14px; overflow: auto; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sunken); }
+.md .code-block { position: relative; margin: 8px 0 14px; }
+.md .code-block pre.code { margin: 0; padding-top: 30px; }
+.md .code-head { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; height: 26px; padding: 0 8px 0 14px; color: var(--text-3); font-size: var(--text-xs); }
+.md .code-copy { padding: 2px 8px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--text-3); font: inherit; cursor: pointer; }
+.md .code-copy:hover { border-color: var(--border-pane); color: var(--text-1); }
+.md .code-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.md .code-copy-error { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--text-xs); }
 .md pre.code code { padding: 0; background: none; }
 .md a, .tool-link { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
 .md a:hover, .tool-link:hover { text-decoration: underline; }

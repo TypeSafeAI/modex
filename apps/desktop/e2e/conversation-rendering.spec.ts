@@ -80,3 +80,16 @@ test("raw HTML, script links and images in a reply stay inert", async () => {
   await expect(answer.getByRole("link", { name: "Image: chart" })).toHaveAttribute("href", "https://example.com/c.png");
   expect(dialogs).toEqual([]);
 });
+
+test("Copy on a code block puts exactly its code on the clipboard and starts nothing", async () => {
+  const answer = items(page, "assistant").first();
+  const block = tid(answer, "code-block");
+  await expect(block).toContainText("ts");
+  await tid(block, "code-copy").click();
+  await expect(tid(block, "code-copy")).toHaveText("Copied");
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("export const answer = 42;");
+  await expect(items(page, "tool")).toHaveCount(0);
+  await expect(items(page, "approval")).toHaveCount(0);
+  await expect(items(page, "user")).toHaveCount(1);
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+});
