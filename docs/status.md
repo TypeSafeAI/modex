@@ -731,6 +731,23 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
 
 ## On main, unreleased
 
+- **Assistant turns keep their native identity, phase and outcome** (CF-1 #282, CF-4 #284, CF-6 first
+  half, tracker #273). Codex and Claude report every message, reasoning block and tool through one
+  typed path that names the native item. The [conversation-event contract](conversation-events.md)
+  folds them into transcript items carrying origin, phase (commentary, final), reasoning (summary,
+  provider text, not shared) and outcome (succeeded, failed, denied, stopped, unknown).
+  - **Final answers.** A turn's final answer comes from its `final` message, not the last reply.
+    Every running item is live, and a retry shows as Attempt 2.
+  - **Visible work.** Only work that succeeded folds away; a dropped stream reads "Status
+    unavailable", never "Done" or "Failed". Interleaved messages no longer merge, and summaries no
+    longer absorb reasoning text. Jump to latest appears once you scroll away from new output.
+  - **Replay and clients.** Journal replay, paired desktops and the phone agree on the same items;
+    a duplicated frame no longer doubles an item. On the phone, a failed or denied tool says so in its
+    title. Work a crashed Modex left running is saved and sent as unknown instead of spinning forever.
+  - **Old transcripts** read unchanged, with no invented provenance.
+  - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
+    acceptance and human VoiceOver checks.
+
 - **Every inline error can be copied, and most can be retried.** A shared `ErrorNotice`
   replaces bare error text across the terminal, Changes diff, Files, Canvas, browser and
   browser extensions, Analytics, the iPhone companion dialog, Settings save and reset, approval
@@ -807,26 +824,6 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   and the TestFlight upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
 
-- **Native conversation fidelity: the event contract (CF-1, #274).** Tracker #273 splits the work
-  into eight issues; this is the first, on branch `cf1-contract`. Backends report assistant text,
-  reasoning and tool work through one typed `observe` path that names each native item and part;
-  the runner stamps every observation with the Modex turn and attempt and folds it into transcript
-  items with a pure projector. Items now carry their origin, message phase (commentary, final,
-  unspecified), reasoning representation (summary, provider text, unavailable) and outcome
-  (succeeded, failed, denied, interrupted, unknown). Interleaved messages no longer merge, Codex
-  summaries no longer absorb reasoning text, a dropped stream no longer marks open work failed, and
-  a credit-fallback rerun can no longer be written into by the first run. Older transcripts read
-  through an explicit legacy adapter, unchanged. Checked against sanitized captures from Claude
-  Code 2.1.302 and codex-cli 0.163.0; no live-provider acceptance yet.
-  [Contract](conversation-events.md).
-
-- **Native conversation fidelity: typed turns (CF-4, #277).** On branch `cf4-typed-turns`, stacked on
-  CF-1. A turn's final answer comes from the `final` phase of its latest attempt instead of the last
-  reply. Every running item is live at once. A retry shows as Attempt 2. Only work that succeeded
-  folds away: failed, denied, stopped and unknown work and pending requests stay in view. Reasoning
-  is tagged Summary or Not shared, and a reply that stopped or never completed says so. Jump to
-  latest appears once you scroll away from new output. Older transcripts keep the last-reply
-  heuristic. The Markdown parser and code blocks are the #273 session's slice (#283).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
