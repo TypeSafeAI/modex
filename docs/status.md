@@ -150,6 +150,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   knowledge base opens its file under the new name instead of failing on the old one. (#241)
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
+- **Codex memory citations can be read in place** (part of #278). A reply's "From Codex memory"
+  citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
+  Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
+  and opens nothing. It works on the Mac only, never from a paired desktop.
 
 ## In flight
 

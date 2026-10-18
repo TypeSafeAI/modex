@@ -678,6 +678,13 @@ a.thread-pr:hover { text-decoration: underline; }
 .evidence-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .evidence-where { overflow-wrap: anywhere; color: var(--text-2); font: 12px var(--font-mono); }
 .evidence-note { margin-left: 8px; color: var(--text-3); }
+.evidence-actions { display: inline-flex; gap: 4px; margin-left: 8px; }
+.evidence-action { padding: 1px 7px; border: 1px solid var(--border-pane); border-radius: 5px; background: none; color: var(--text-3); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.evidence-action:hover { color: var(--text-1); border-color: var(--border-strong); }
+.evidence-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.evidence-excerpt-box { margin: 6px 0 2px; }
+.evidence-range { color: var(--text-3); font-size: var(--text-xs); margin-bottom: 4px; }
+.evidence-excerpt { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sunken); font: 12px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ── Task plans and records (docs/task-context.md). ── */
 .plan-card { margin: 4px 0 14px; padding: 10px 14px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); font-size: var(--text-sm); }

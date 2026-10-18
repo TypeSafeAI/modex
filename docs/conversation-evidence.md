@@ -31,6 +31,23 @@ Observed on 2026-10-18:
   turns them into `evidence` on the assistant item, shown as "From Codex memory" with the file, line
   range and note. Entries that are not well formed are dropped: a missing path, a negative or
   fractional line, or an end before the start.
+- **Reading a memory citation.** Each citation has **Show lines** and **Copy**. Both ask main
+  (`evidence:memory`, `main/engine/memory-citations.ts`) for the cited lines.
+  - **Where main reads.** Only inside Codex's memories folder: `$CODEX_HOME/memories`, else
+    `~/.codex/memories`.
+  - **What it refuses.** An absolute path, any `..`, a symlink that resolves outside the folder,
+    a directory, a file over 8 MiB, and a range that starts past the end of the file.
+  - **What it returns.** Only the cited lines, 1-based and inclusive, cut to 64 KiB. It says
+    when the range ran past the file's end, and when the excerpt was cut.
+  - **Nothing else happens.** No file is opened in another app, and nothing is executed or
+    fetched.
+  - **Mac only.** The command is local-only: a paired desktop never reads this Mac's memory
+    files, and says so.
+  - **Streamer Mode.** It masks the shown lines; Copy puts the lines themselves on the
+    clipboard.
+  - **Evidence.** Local codex-cli 0.163.0 sessions cite paths relative to the memories folder
+    (such as `MEMORY.md`). A one-line citation's note matched its line counted from 1 and not
+    from 0, so lines are 1-based.
 - **The command that ran.** A tool item's `exec` holds the command exactly as the CLI reported it,
   apart from the shortened title, with its `cwd` when the CLI reported one. Codex reports both. Claude
   Code's Bash keeps its own working directory between calls, so a Claude command shows no directory.
@@ -52,12 +69,10 @@ Observed on 2026-10-18:
 Images, Notes and Knowledge changes, and attachments already reach the transcript through their own
 owners. Image registration uses Images; note and knowledge receipts open through `pages` and
 `knowledge:open`; attachments go through `attachments:open`. Each checks access in main. This work
-adds no new artifact store and no new open action.
+adds no new artifact store. Its only new read is a memory citation's lines, above.
 
 ## Not done yet
 
-- Opening or copying a memory citation's file. It is display-only until main has a validated open
-  action for Codex memory paths.
 - Native web-search results as structured evidence. Codex's `results` are opaque JSON, and Claude's
   arrive as tool text.
 - Turn patches compared against the current working tree, beyond the label.

@@ -19,6 +19,26 @@ export interface MemoryEvidence {
   threadIds?: string[];
 }
 
+/**
+ * The lines a memory citation points to, as main read them from Codex's memories folder: 1-based and
+ * inclusive. `beyondEnd`: the citation ran past the file's end and was cut to it. `cut`: the excerpt
+ * was longer than the window is sent and ends early.
+ */
+export interface MemoryExcerpt {
+  path: string;
+  lineStart: number;
+  lineEnd: number;
+  text: string;
+  totalLines: number;
+  beyondEnd?: true;
+  cut?: true;
+}
+
+/** Main-owned: reads a memory citation's lines. On the Mac only; never offered to a paired desktop. */
+export interface EvidenceCommands {
+  "evidence:memory": { req: { path: string; lineStart: number; lineEnd: number }; res: MemoryExcerpt };
+}
+
 /** Native evidence attached to an assistant message. Links the model wrote are not evidence of this kind. */
 export type Evidence = MemoryEvidence;
 
