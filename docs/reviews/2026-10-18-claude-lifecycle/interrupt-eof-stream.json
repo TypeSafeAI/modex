@@ -1,0 +1,265 @@
+{
+ "bin": "claude 2.1.302 (~/.local/share/claude/versions/2.1.302)",
+ "scenario": "interrupt-eof-stream",
+ "args": [
+  "-p",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+  "--include-partial-messages",
+  "--permission-prompt-tool",
+  "stdio",
+  "--permission-mode",
+  "default",
+  "--model",
+  "haiku",
+  "--effort",
+  "low"
+ ],
+ "log": [
+  {
+   "t": 4,
+   "dir": "in",
+   "type": "user"
+  },
+  {
+   "t": 1275,
+   "dir": "out",
+   "type": "system",
+   "subtype": "init",
+   "caps": [
+    "interrupt_receipt_v1",
+    "interrupt_cancel_queued_v1",
+    "interrupt_send_now_v1",
+    "msg_lifecycle_v1",
+    "request_marker_lists_v1",
+    "sdk_mcp_tools_list_changed",
+    "sdk_mcp_manifests",
+    "mcp_read_resource_v1",
+    "mcp_tool_ui_meta_v1",
+    "ui_surface_v1",
+    "mcp_call_result_not_for_model_v1"
+   ],
+   "version": "2.1.302"
+  },
+  {
+   "t": 1278,
+   "dir": "out",
+   "type": "system",
+   "subtype": "status"
+  },
+  {
+   "t": 2015,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "message_start"
+  },
+  {
+   "t": 2140,
+   "dir": "out",
+   "type": "assistant",
+   "request_id": "req_011Cg9E5eVyr2sejSvPC2bJp",
+   "content": [
+    "thinking"
+   ]
+  },
+  {
+   "t": 2140,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2154,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2173,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2199,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2221,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2238,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2257,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2283,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2302,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2323,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2415,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2417,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2418,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2419,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2438,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2459,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2480,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2509,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "content_block_delta",
+   "delta": "text_delta"
+  },
+  {
+   "t": 2543,
+   "dir": "in",
+   "type": "control_request",
+   "subtype": "interrupt",
+   "request_id": "int-1"
+  },
+  {
+   "t": 2543,
+   "dir": "in",
+   "type": "stdin-end"
+  },
+  {
+   "t": 2547,
+   "dir": "out",
+   "type": "control_response",
+   "subtype": "success",
+   "request_id": "int-1",
+   "response": {
+    "still_queued": []
+   }
+  },
+  {
+   "t": 2551,
+   "dir": "out",
+   "type": "assistant",
+   "request_id": "req_011Cg9E5eVyr2sejSvPC2bJp",
+   "content": [
+    "text:**The Keeper's Last Light**\n\nFor forty-one years, Mara Okonk"
+   ]
+  },
+  {
+   "t": 2551,
+   "dir": "out",
+   "type": "user",
+   "content": [
+    "text:[Request interrupted by user]"
+   ]
+  },
+  {
+   "t": 2551,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "message_stop"
+  },
+  {
+   "t": 2560,
+   "dir": "out",
+   "type": "result",
+   "subtype": "error_during_execution",
+   "is_error": true,
+   "num_turns": 2,
+   "stop_reason": null,
+   "terminal_reason": "aborted_streaming",
+   "errors": [
+    "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null"
+   ]
+  },
+  {
+   "t": 3159,
+   "dir": "exit",
+   "code": 1,
+   "sig": null
+  },
+  {
+   "t": 3160,
+   "dir": "summary",
+   "exitAfterStdinEndMs": 0,
+   "stderrTail": ""
+  }
+ ]
+}
