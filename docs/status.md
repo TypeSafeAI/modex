@@ -820,6 +820,14 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   Code 2.1.302 and codex-cli 0.163.0; no live-provider acceptance yet.
   [Contract](conversation-events.md).
 
+- **Native conversation fidelity: typed turns (CF-4, #277).** On branch `cf4-typed-turns`, stacked on
+  CF-1. A turn's final answer comes from the `final` phase of its latest attempt instead of the last
+  reply. Every running item is live at once. A retry shows as Attempt 2. Only work that succeeded
+  folds away: failed, denied, stopped and unknown work and pending requests stay in view. Reasoning
+  is tagged Summary or Not shared, and a reply that stopped or never completed says so. Jump to
+  latest appears once you scroll away from new output. Older transcripts keep the last-reply
+  heuristic. The Markdown parser and code blocks are the #273 session's slice (#283).
+
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and

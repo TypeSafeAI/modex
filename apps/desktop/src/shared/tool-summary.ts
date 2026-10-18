@@ -27,8 +27,8 @@ export function toolStatusLabel(item: Extract<ThreadItem, { kind: "tool" }>): st
   return item.ok === false ? "Failed" : "Done";
 }
 
-/** Whether a finished tool folds under its turn's header: only work that neither failed, was denied, nor was stopped. */
+/** Whether a finished tool folds under its turn's header: only work that succeeded. Failed, denied, stopped and unknown work stays in view. */
 export function toolFoldsAsWork(item: Extract<ThreadItem, { kind: "tool" }>): boolean {
   if (item.status !== "done" || item.agent?.state === "running" || item.agent?.state === "waiting") return false;
-  return item.outcome ? item.outcome === "succeeded" || item.outcome === "unknown" : item.ok !== false;
+  return item.outcome ? item.outcome === "succeeded" : item.ok !== false;
 }
