@@ -21,9 +21,17 @@ async function render(text: string): Promise<string> {
   return renderToStaticMarkup(createElement(Markdown, { text }));
 }
 
-/** The visible text, with tags removed and the few entities React writes decoded. */
+/** The visible text of React's static markup: the characters outside tags, with the entities React writes decoded once. */
 function visible(html: string): string {
-  return html.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+  let text = "";
+  let inTag = false;
+  for (const ch of html) {
+    if (inTag) inTag = ch !== ">";
+    else if (ch === "<") inTag = true;
+    else text += ch;
+  }
+  const entities: Record<string, string> = { "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'", "&amp;": "&" };
+  return text.replace(/&(?:lt|gt|quot|#x27|amp);/g, (entity) => entities[entity]!);
 }
 
 test.after(async () => { await server?.close(); });
