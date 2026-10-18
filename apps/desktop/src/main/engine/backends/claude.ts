@@ -4,13 +4,14 @@ import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import { StringDecoder } from "node:string_decoder";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
-import type { ApprovalRequest, Backend, ModelInfo, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { ApprovalRequest, Backend, ModelInfo, StopReport, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
-import type { BackendHealth } from "../../../shared/types.js";
+import type { ApprovalAnswer, BackendHealth } from "../../../shared/types.js";
 import type { NativeRef, Observation, PlanStepStatus } from "../../../shared/conversation-events.js";
 import { isModelOutOfCredits } from "../../../shared/failures.js";
 
@@ -41,7 +42,7 @@ export class ClaudeBackend implements Backend {
     private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
     private readonly spawnImpl = cliSpawn,
     /** How long a turn waits on background work; tests shorten these. */
-    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {},
+    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number; interruptGraceMs?: number; killGraceMs?: number; exitConfirmMs?: number; drainMs?: number } = {},
   ) {}
 
   /** `claude --effort` levels (from `claude --help`); no default so the CLI's own setting applies. */
@@ -116,7 +117,7 @@ export class ClaudeBackend implements Backend {
         bin = this.bin;
         child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin) });
       } catch (err) {
-        return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv, spawnError: (err as Error).message } });
+        return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv: reportArgv(argv), spawnError: (err as Error).message } });
       }
       const lines = new LineBuffer();
       const started = new Map<string, number>();
@@ -137,6 +138,8 @@ export class ClaudeBackend implements Backend {
       let sawAssistant = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let stderr = "";
+      // A multi-byte character can straddle two stderr chunks, as on stdout.
+      const stderrText = new StringDecoder("utf8");
       // What the CLI said about itself at startup (build, model, where its key came from), for failure reports.
       const init: Record<string, unknown> = {};
       const meter = new UsageMeter();
@@ -156,8 +159,30 @@ export class ClaudeBackend implements Backend {
       let capTimer: ReturnType<typeof setTimeout> | undefined;
       const idleMs = this.timing.backgroundIdleMs ?? BACKGROUND_IDLE_MS;
       const capMs = this.timing.backgroundCapMs ?? BACKGROUND_CAP_MS;
+      const graceMs = this.timing.interruptGraceMs ?? INTERRUPT_GRACE_MS;
+      const killMs = this.timing.killGraceMs ?? KILL_GRACE_MS;
+      const confirmMs = this.timing.exitConfirmMs ?? EXIT_CONFIRM_MS;
+      const drainMs = this.timing.drainMs ?? DRAIN_MS;
+      // `can_use_tool` requests waiting on an answer, by request id. The CLI's `control_cancel_request` aborts one.
+      const requests = new Map<string, AbortController>();
+      // The process's own end: `exit` may precede `close` by however long a descendant holds its pipes.
+      let exit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+      // A failed `result` ends the turn once the process has exited (or `drainMs` passed), so the stderr it
+      // writes on its way out and its exit code reach the failure report.
+      let failure: TurnResult | null = null;
+      let drainTimer: ReturnType<typeof setTimeout> | undefined;
+      // Stop: when it was asked for, and how far Modex had to go to end the process.
+      let stopAt: number | undefined;
+      let escalation: "terminated" | "killed" | undefined;
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+      // Writing to a pipe the CLI has closed fails asynchronously (EPIPE); there is nothing left to tell it.
+      child.stdin?.on("error", () => {});
+      const endInput = () => {
+        if (child.stdin && !child.stdin.writableEnded) child.stdin.end();
+      };
       const settle = (r: TurnResult) => {
-        child.stdin?.end();
+        endInput();
         finish(r);
       };
       // Once the work has drained, the CLI normally starts its follow-up turn at once. If it stays quiet
@@ -166,18 +191,23 @@ export class ClaudeBackend implements Backend {
       const armIdle = () => {
         clearTimeout(idleTimer);
         idleTimer = undefined;
-        if (finished || !held || followUp || approvals > 0 || background.size > 0) return;
+        if (finished || stopAt !== undefined || failure || !held || followUp || approvals > 0 || background.size > 0) return;
         const done = held;
         idleTimer = setTimeout(() => settle(done), idleMs);
       };
       const onResult = (msg: ClaudeMessage) => {
         meter.addOutput(msg.usage?.output_tokens);
         if (msg.session_id) sink.session(msg.session_id);
+        // After Stop, this is the interrupted turn closing (`error_during_execution`, terminal_reason `aborted_*`).
+        // It is no failure, and it does not end the turn: the process's exit does.
+        if (stopAt !== undefined) return endInput();
+        // The turn has failed already; nothing the CLI reports while it winds down changes that.
+        if (failure) return;
         const r = resultOf(msg);
         // An error ends the turn at once, as on a turn without background work; holding it would hide it.
         if (r.status === "failed") {
           if (background.size > 0) sink.notice("warn", `Claude reported an error while ${work(background.size)} ${background.size === 1 ? "was" : "were"} still running. The turn ends now, so that work may stop.`);
-          return settle(r);
+          return fail(r);
         }
         // `--resume` first replays the previous turn's stopped background task as a turn of its own: `task_notification`,
         // `init`, then a success `result` with `num_turns` 0 and no text, and only then the `init` of the turn that answers
@@ -207,77 +237,146 @@ export class ClaudeBackend implements Backend {
           terminate();
         }, capMs);
       };
+      const fail = (r: TurnResult) => {
+        failure = r;
+        clearTimeout(idleTimer);
+        clearTimeout(capTimer);
+        endInput();
+        drainTimer ??= setTimeout(ended, drainMs);
+      };
+      const stopReport = (outcome: StopReport["outcome"]): StopReport => ({
+        outcome, exitCode: exit?.code ?? null, signal: exit?.signal ?? null, pid: child.pid, ms: Date.now() - (stopAt ?? Date.now()), graceMs,
+      });
       const finish = (r: TurnResult) => {
         if (finished) return;
         finished = true;
         agents.finish(signal.aborted || r.status === "interrupted");
-        clearTimeout(idleTimer);
-        clearTimeout(capTimer);
+        // Stop's escalation outlives the turn: one that failed before Stop still has a process to end.
+        for (const t of [idleTimer, capTimer, drainTimer, confirmTimer]) clearTimeout(t);
         signal.removeEventListener("abort", onAbort);
-        const out: TurnResult = signal.aborted ? { status: "interrupted" } : r.status === "failed" ? { ...r, detail: { bin, argv, pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
+        // A turn that failed before Stop was pressed reports its failure, not the stop.
+        const out: TurnResult = signal.aborted && !failure ? { status: "interrupted", ...(r.stop ? { stop: r.stop } : {}) }
+          : r.status === "failed" ? { ...r, detail: { bin, argv: reportArgv(argv), pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
         const fastMode = fastModeOf(fast.state, fast.reason);
         resolve(withUsage(fastMode ? { ...out, fastMode } : out, meter));
       };
+      // The process is done (closed, or exited and `drainMs` passed): whatever it printed last has been read.
+      const ended = () => {
+        if (finished) return;
+        // A failed result's drain deadline is not proof that Stop ended the process.
+        // Keep ownership until exit or the bounded unconfirmed-stop deadline.
+        if (stopAt !== undefined && !exit) {
+          clearTimeout(drainTimer);
+          drainTimer = undefined;
+          return;
+        }
+        lines.flush(onLine);
+        stderr = (stderr + stderrText.end()).slice(-16_384);
+        if (finished) return;
+        const exited = exit && (exit.code !== null ? { exitCode: exit.code } : {}), signalled = exit?.signal ? { signal: exit.signal } : {};
+        if (failure) return finish({ ...failure, detail: { ...failure.detail, ...exited, ...signalled }, ...(stopAt !== undefined ? { stop: stopReport(escalation ?? "exited") } : {}) });
+        if (signal.aborted) return finish({ status: "interrupted", stop: stopReport(escalation ?? "exited") });
+        const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
+        const how = exit?.signal ? `was terminated by ${exit.signal}` : `exited with code ${exit?.code}`;
+        finish(exit?.code === 0 ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} ${how}`, detail: { exitCode: exit?.code ?? null, signal: exit?.signal ?? undefined } });
+      };
+      // Only while this turn lasts, and only into an input that is still open.
       const write = (o: unknown) => {
+        const stdin = child.stdin;
+        if (finished || !stdin || stdin.writableEnded || stdin.destroyed) return;
         try {
-          child.stdin?.write(JSON.stringify(o) + "\n");
+          stdin.write(JSON.stringify(o) + "\n");
         } catch {
           /* closed */
         }
       };
       // Turn settlement must not cancel escalation while the child is still alive.
       const terminate = () => {
-        if (child.exitCode !== null || child.signalCode != null) return;
-        killTimer ??= setTimeout(() => child.kill("SIGKILL"), 1500);
+        if (exit || child.exitCode !== null || child.signalCode != null) return;
+        killTimer ??= setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS);
         child.kill("SIGTERM");
       };
-      const onAbort = terminate;
+      // Stop asks Claude Code to interrupt its turn, as its own Esc does: it withdraws its pending prompts, closes
+      // the turn and acknowledges at once. Ending its input too lets a running tool stop and the CLI exit once the
+      // turn is closed (2.1.302 kept a running Bash call going under the interrupt alone until stdin ended). Its
+      // last messages are still read. The turn ends when the process has exited; one that has not within
+      // `graceMs` is terminated, then killed, and one that never reports an exit is given up on, said so.
+      const onAbort = () => {
+        if (finished || stopAt !== undefined) return;
+        stopAt = Date.now();
+        clearTimeout(idleTimer);
+        clearTimeout(capTimer);
+        write({ type: "control_request", request_id: `modex-stop-${randomUUID()}`, request: { subtype: "interrupt" } });
+        endInput();
+        graceTimer = setTimeout(() => {
+          if (exit) return;
+          escalation = "terminated";
+          child.kill("SIGTERM");
+          killTimer = setTimeout(() => {
+            if (exit) return;
+            escalation = "killed";
+            child.kill("SIGKILL");
+            confirmTimer = setTimeout(() => finish({ ...(failure ?? { status: "interrupted" }), stop: stopReport("unconfirmed") }), confirmMs);
+          }, killMs);
+        }, graceMs);
+      };
       signal.addEventListener("abort", onAbort, { once: true });
 
+      const onLine = (line: string) => {
+        if (finished) return;
+        let msg: ClaudeMessage;
+        try {
+          msg = JSON.parse(line) as ClaudeMessage;
+        } catch {
+          return;
+        }
+        // A heartbeat (the CLI sends one while a control request runs long) is no sign of the turn going on.
+        if (msg.type === "keep_alive") return;
+        // The CLI no longer needs an answer to one of its prompts (Stop, or it settled the prompt itself).
+        if (msg.type === "control_cancel_request") return void (msg.request_id && requests.get(msg.request_id)?.abort());
+        // Our interrupt's acknowledgement. What ends a stopped turn is the process's exit.
+        if (msg.type === "control_response") return;
+        // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
+        if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
+        if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
+        if (msg.type === "system" && msg.subtype === "init") sawAssistant = false;
+        if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
+        if (msg.type === "result") return onResult(msg);
+        // An API refusal arrives as a synthetic assistant reply, then again as the failed result. The
+        // failure card shows it once; as a reply bubble it would also outlive a model fallback.
+        if (isApiErrorReply(msg)) return;
+        // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
+        if (msg.session_id) session.id = msg.session_id;
+        // Every line has its own uuid; the observations a line makes are numbered after it.
+        let part = 0;
+        const observe = (o: Observation) => sink.observe({ ...o, ...(msg.uuid ? { source: `${msg.uuid}#${part++}` } : {}) });
+        const native = (item: string, block?: number): NativeRef => ({ runtime, ...(session.id ? { thread: session.id } : {}), item, ...(block !== undefined ? { part: String(block) } : {}) });
+        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, requests, stopping: () => stopAt !== undefined, init, agents, tasks, background, listed, blocks, denied, observe, native });
+        if (msg.type === "control_request") {
+          approvals++;
+          void handled.finally(() => {
+            approvals--;
+            armIdle();
+          });
+        }
+        if (msg.type === "system" && msg.subtype === "init" && held) followUp = true;
+        armIdle();
+      };
       child.on("error", (err) => finish({ status: "failed", error: `${bin}: ${err.message}. Is Claude Code installed and on PATH?`, detail: { spawnError: err.message, errno: (err as NodeJS.ErrnoException).code } }));
-      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
-      child.stdout?.on("data", (d: Buffer) =>
-        lines.push(d, (line) => {
-          if (finished || signal.aborted) return;
-          let msg: ClaudeMessage;
-          try {
-            msg = JSON.parse(line) as ClaudeMessage;
-          } catch {
-            return;
-          }
-          // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
-          if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
-          if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
-          if (msg.type === "system" && msg.subtype === "init") sawAssistant = false;
-          if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
-          if (msg.type === "result") return onResult(msg);
-          // An API refusal arrives as a synthetic assistant reply, then again as the failed result. The
-          // failure card shows it once; as a reply bubble it would also outlive a model fallback.
-          if (isApiErrorReply(msg)) return;
-          // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
-          if (msg.session_id) session.id = msg.session_id;
-          // Every line has its own uuid; the observations a line makes are numbered after it.
-          let part = 0;
-          const observe = (o: Observation) => sink.observe({ ...o, ...(msg.uuid ? { source: `${msg.uuid}#${part++}` } : {}) });
-          const native = (item: string, block?: number): NativeRef => ({ runtime, ...(session.id ? { thread: session.id } : {}), item, ...(block !== undefined ? { part: String(block) } : {}) });
-          const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, init, agents, tasks, background, listed, blocks, denied, observe, native });
-          if (msg.type === "control_request") {
-            approvals++;
-            void handled.finally(() => {
-              approvals--;
-              armIdle();
-            });
-          }
-          if (msg.type === "system" && msg.subtype === "init" && held) followUp = true;
-          armIdle();
-        }),
-      );
+      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + stderrText.write(d)).slice(-16_384)));
+      child.stdout?.on("data", (d: Buffer) => lines.push(d, onLine));
+      // The last line may lack its newline when the CLI exits.
+      child.stdout?.on("end", () => lines.flush(onLine));
+      child.on("exit", (code, sig) => {
+        exit = { code, signal: sig };
+        for (const t of [killTimer, graceTimer, confirmTimer]) clearTimeout(t);
+        // A descendant (a background shell, say) can hold the pipes open long after Claude itself is gone.
+        drainTimer ??= setTimeout(ended, drainMs);
+      });
       child.on("close", (code, sig) => {
-        clearTimeout(killTimer);
-        signal.removeEventListener("abort", onAbort);
-        if (signal.aborted) return finish({ status: "interrupted" });
-        const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
-        finish(code === 0 ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} exited with code ${code}`, detail: { exitCode: code, signal: sig ?? undefined } });
+        exit ??= { code, signal: sig };
+        for (const t of [killTimer, graceTimer, confirmTimer]) clearTimeout(t);
+        ended();
       });
 
       write({ type: "user", message: { role: "user", content: userContent(text, opts.attachments) } });
@@ -285,7 +384,7 @@ export class ClaudeBackend implements Backend {
   }
 
   /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; requests: Map<string, AbortController>; stopping: () => boolean; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
@@ -430,8 +529,9 @@ export class ClaudeBackend implements Backend {
               continue;
             }
             const t0 = ctx.started.get(block.tool_use_id);
-            // An error result is a denial only when Modex itself refused this tool_use; otherwise it failed.
-            const outcome = !block.is_error ? "succeeded" : ctx.denied.has(block.tool_use_id) ? "denied" : "failed";
+            // An error result is a denial only when Modex itself refused this tool_use. After Stop it is the CLI
+            // rejecting the call it was interrupted in; otherwise it failed.
+            const outcome = !block.is_error ? "succeeded" : ctx.denied.has(block.tool_use_id) ? "denied" : ctx.stopping() ? "interrupted" : "failed";
             ctx.observe({ type: "tool.done", native: ctx.native(block.tool_use_id), outcome, progress: { output: content, ...(t0 ? { durationMs: Date.now() - t0 } : {}) } });
           }
         }
@@ -451,7 +551,21 @@ export class ClaudeBackend implements Backend {
           canAlways: Boolean(req.permission_suggestions?.length),
           action: { backend: "claude", tool, title, cwd: ctx.cwd, input: req.input ?? {} },
         };
-        const answer = await sink.approval(request);
+        // The CLI may withdraw the prompt (`control_cancel_request`) while it waits: the sink closes its card,
+        // this request is done, and no answer is sent, since the CLI ignores one for a request it cancelled.
+        const withdrawn = new AbortController();
+        const id = msg.request_id;
+        if (id) ctx.requests.set(id, withdrawn);
+        let answer: ApprovalAnswer | undefined;
+        try {
+          answer = await Promise.race([
+            sink.approval(request, withdrawn.signal),
+            new Promise<undefined>((resolve) => withdrawn.signal.addEventListener("abort", () => resolve(undefined), { once: true })),
+          ]);
+        } finally {
+          if (id && ctx.requests.get(id) === withdrawn) ctx.requests.delete(id);
+        }
+        if (answer === undefined || withdrawn.signal.aborted) return;
         const allow = answer !== "no";
         if (!allow && req.tool_use_id) ctx.denied.add(req.tool_use_id);
         ctx.write({
@@ -595,6 +709,25 @@ function claudeStepStatus(status: unknown): PlanStepStatus {
 function resultOf(msg: ClaudeMessage): TurnResult {
   if (msg.is_error) return { status: "failed", error: typeof msg.result === "string" ? msg.result : msg.subtype ?? "error", detail: { resultSubtype: msg.subtype, errors: msg.errors, sessionId: msg.session_id, numTurns: msg.num_turns, durationMs: msg.duration_ms } };
   return { status: "completed" };
+}
+
+/**
+ * After Stop, how long Claude has to close its turn and exit before Modex sends SIGTERM. Measured live on Claude
+ * Code 2.1.302 (2026-10-18), interrupt plus end of input: acknowledged within 10 ms; exited 0.6 s after Stop while
+ * streaming; with a Bash call running, the turn closed after 2.7 s and the CLI exited at 3.2 s, so there this grace
+ * ends in SIGTERM as Stop always did, 1.5 s later than before.
+ */
+export const INTERRUPT_GRACE_MS = 1500;
+/** After SIGTERM, how long before SIGKILL (the budget Stop has always had). */
+export const KILL_GRACE_MS = 1500;
+/** After SIGKILL, how long to wait for the exit before reporting the stop unconfirmed rather than waiting forever. */
+export const EXIT_CONFIRM_MS = 2000;
+/** After the exit (or a failed result), how long to keep reading output that is still on its way. */
+export const DRAIN_MS = 1000;
+
+/** The argv for a debug report: MCP routes keep their address, not the capability token in their path. Exported for tests. */
+export function reportArgv(argv: string[]): string[] {
+  return argv.map((arg) => arg.replace(/(\/mcp\/)[A-Za-z0-9._~-]{8,}/g, "$1[redacted]"));
 }
 
 /** After background work drains, how long to wait for the CLI to begin its follow-up turn before the held reply stands. */

@@ -64,6 +64,8 @@ interface Live {
   completed?: boolean;
   /** The follow-up suggestion for the transcript as it stands; `key` says which transcript and settings it answers. */
   followUp?: { key: string; abort: AbortController; result: Promise<FollowUp | null> };
+  /** Processes a Stop asked to end that never confirmed their exit; their thread's files stay while one lives. */
+  unconfirmed?: Set<number>;
 }
 
 export interface RunnerOptions {
@@ -90,6 +92,8 @@ export interface RunnerOptions {
   withOwnerRemoval?: (scope: DraftRemovalScope, operation: () => Promise<void>) => Promise<void>;
   /** Where attached files live; defaults to `<home>/attachments`. */
   attachments?: AttachmentStore;
+  /** Whether a process still exists; tests replace the signal-0 probe. */
+  isProcessAlive?: (pid: number) => boolean;
 }
 
 /**
@@ -464,9 +468,18 @@ export class ThreadRunner {
     try {
       const thread = this.o.store.thread(threadId);
       const l = this.live.get(threadId);
+      // A process an earlier Stop could not confirm ended may still use the thread's files: keep them all.
+      const refuseWhileAlive = () => {
+        const alive = l ? this.unconfirmedAlive(l) : [];
+        if (!alive.length) return;
+        const name = BACKENDS.find((b) => b.id === thread?.backend)?.label ?? "The CLI";
+        throw new Error(`${name} (pid ${alive.join(", ")}) has not confirmed that it stopped, so Modex keeps this thread and its worktree. Delete it again once that process has exited.`);
+      };
+      refuseWhileAlive();
       this.stop(threadId);
       await this.o.beforeDeleteThread?.(threadId);
       await l?.run;
+      refuseWhileAlive();
       if (thread?.worktree && !thread.retired && removeWorktree) {
         const project = this.o.store.project(thread.projectId);
         if (project) {
@@ -501,6 +514,8 @@ export class ThreadRunner {
     const wt = thread?.worktree;
     if (!thread || !wt || thread.retired) return;
     if (this.deleting.has(threadId) || this.live.get(threadId)?.run) return;
+    const slot = this.live.get(threadId);
+    if (slot && this.unconfirmedAlive(slot).length) return;
     const project = this.o.store.project(thread.projectId);
     if (!project) return;
     this.deleting.add(threadId);
@@ -766,6 +781,8 @@ export class ThreadRunner {
       }
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       this.recordUsage(thread, account, result);
+      // A failure can precede Stop; its outcome does not establish process exit.
+      if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
       } else if (result.status === "completed" && l.items.length === replyStart && !abort.signal.aborted) {
@@ -773,8 +790,10 @@ export class ThreadRunner {
         // that looks as if nothing was asked (2026-10-09: a resumed session's stale result ended a turn this way).
         this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
       } else {
-        if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
-        else if (!abort.signal.aborted) l.completed = true;
+        if (result.status === "interrupted") {
+          const { level, text } = stopNotice(BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend, result.stop);
+          this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: new Date().toISOString() });
+        } else if (!abort.signal.aborted) l.completed = true;
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
@@ -799,11 +818,8 @@ export class ThreadRunner {
           this.patchItem(threadId, item.id, { status: "done", durationMs: Date.now() - Date.parse(item.at), ...(item.kind === "tool" ? { ok: false } : {}) }, { persist: false });
         }
       }
-      for (const [id, resolve] of l.pending) {
-        this.patchItem(threadId, id, { answer: "no" }, { persist: false });
-        resolve("no");
-      }
-      l.pending.clear();
+      // Still open when the turn ended: nobody can answer them now.
+      for (const id of [...l.pending.keys()]) this.withdraw(threadId, l, id, "ended", false);
       this.persistItems(threadId, l);
       l.abort = null;
       l.backend = null;
@@ -868,11 +884,7 @@ export class ThreadRunner {
     if (!l) return;
     l.followUp?.abort.abort();
     l.followUp = undefined;
-    for (const [itemId, resolve] of l.pending) {
-      this.patchItem(threadId, itemId, { answer: "no" });
-      resolve("no");
-    }
-    l.pending.clear();
+    for (const itemId of [...l.pending.keys()]) this.withdraw(threadId, l, itemId, "stopped");
     const abort = l.abort;
     if (!abort) return;
     if (!abort.signal.aborted) abort.abort();
@@ -903,6 +915,27 @@ export class ThreadRunner {
     this.patchItem(threadId, itemId, { answer });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     resolve(answer);
+  }
+
+  /**
+   * Closes a card nobody answered, once: it reads as withdrawn (and "no", so older clients show it closed),
+   * its request settles "no", and a late click finds nothing pending. Only a backend's own withdrawal lets the
+   * thread stop waiting; Stop and the turn's end set the status themselves.
+   */
+  private withdraw(threadId: string, l: Live, itemId: string, why: "native" | "stopped" | "ended", persist = true): void {
+    const resolve = l.pending.get(itemId);
+    if (!resolve) return;
+    l.pending.delete(itemId);
+    this.patchItem(threadId, itemId, { answer: "no", withdrawn: why }, { persist });
+    if (why === "native" && l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
+    resolve("no");
+  }
+
+  /** Stopped processes that never confirmed their exit and are still there. */
+  private unconfirmedAlive(l: Live): number[] {
+    const alive = this.o.isProcessAlive ?? processAlive;
+    for (const pid of l.unconfirmed ?? []) if (!alive(pid)) l.unconfirmed!.delete(pid);
+    return [...(l.unconfirmed ?? [])];
   }
 
   /**
@@ -1086,20 +1119,27 @@ export class ThreadRunner {
     const refusals = new WeakMap<ApprovalRequest, string>();
     return {
       observe: (observation) => { if (active()) observe(observation); },
-      approval: (req) => {
+      approval: (req, withdrawn) => {
         if (this.unattended.has(threadId)) {
           // A routine runs read-only with no one to ask: refuse, and say so on the card.
           if (active()) this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, ...(req.action ? { title: req.action.title } : {}), answer: "no", decidedBy: UNATTENDED_RECEIPT, at: at() });
           return Promise.resolve("no" as const);
         }
+        // Stopped, superseded, or withdrawn by the CLI: nothing more is shown or decided for this request.
+        const gone = () => !active() || Boolean(l.abort?.signal.aborted) || Boolean(withdrawn?.aborted);
         // Today's flow: a card the user answers. Rules can only add a receipt to it.
         const askUser = (decidedBy?: ApprovalReceipt) =>
           new Promise<ApprovalAnswer>((resolve) => {
-            if (!active() || l.abort?.signal.aborted) return resolve("no");
+            if (gone()) return resolve("no");
             const id = newId();
-            l.pending.set(id, resolve);
+            const close = () => this.withdraw(threadId, l, id, "native");
+            l.pending.set(id, (answer) => {
+              withdrawn?.removeEventListener("abort", close);
+              resolve(answer);
+            });
             this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(decidedBy ? { decidedBy } : {}), at: at() });
             this.setStatus(threadId, "waiting");
+            withdrawn?.addEventListener("abort", close, { once: true });
           });
         const thread = this.o.store.thread(threadId);
         const project = thread ? this.o.store.project(thread.projectId) : undefined;
@@ -1108,14 +1148,15 @@ export class ThreadRunner {
         const byPolicy = (decidedBy?: ApprovalReceipt) => {
           const policy = this.o.store.thread(threadId)?.approvals;
           if (policyAnswer(policy, req.action, decidedBy) !== "yes") return askUser(decidedBy);
-          if (!active() || l.abort?.signal.aborted) return "no" as const;
+          if (gone()) return "no" as const;
           this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: "yes", decidedBy: policyReceipt(policy!), at: at() });
           return "yes" as const;
         };
         if (!thread || !project || !gateApplies(req.action, settings.approval_rules, settings.approval_gate, project.path)) return Promise.resolve(byPolicy());
-        return this.gateApproval(req, { thread, project, settings, active, signal: abort?.signal }).then((r) => {
+        const signal = withdrawn && abort ? AbortSignal.any([abort.signal, withdrawn]) : abort?.signal ?? withdrawn;
+        return this.gateApproval(req, { thread, project, settings, active, signal }).then((r) => {
           if (r.ask) return byPolicy(r.decidedBy);
-          if (!active() || l.abort?.signal.aborted) return "no";
+          if (gone()) return "no";
           // Answered by a rule: the card lands already answered, and the thread never waits on it.
           if (r.decidedBy) {
             this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: r.answer, decidedBy: r.decidedBy, at: at() });
@@ -1213,6 +1254,23 @@ function redactObservation(o: Observation): Observation {
     return { ...o, progress } as Observation;
   }
   return o;
+}
+
+/** Whether a process exists (signal 0 delivers nothing; EPERM means it exists under another user). */
+function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+}
+
+/** The notice a stopped turn ends with: plain "Stopped." when the CLI ended on its own, else how Modex ended it. */
+function stopNotice(name: string, stop: TurnResult["stop"]): { level: "info" | "warn"; text: string } {
+  const grace = stop?.graceMs === undefined ? "its grace window" : stop.graceMs < 1000 ? `${stop.graceMs} ms` : `${Math.round(stop.graceMs / 100) / 10} s`;
+  switch (stop?.outcome) {
+    case "terminated": return { level: "info", text: `Stopped. ${name} did not end the turn within ${grace} of the interrupt, so Modex terminated it.` };
+    case "killed": return { level: "warn", text: `Stopped. ${name} ignored the interrupt and SIGTERM, so Modex killed it.` };
+    case "unconfirmed": return { level: "warn", text: `Stop requested, but ${name}${stop.pid ? ` (pid ${stop.pid})` : ""} has not confirmed that it exited. Modex keeps this thread and its worktree until it does.` };
+    default: return { level: "info", text: "Stopped." };
+  }
 }
 
 /** Keeps tool args small enough for the UI: long strings are truncated. */

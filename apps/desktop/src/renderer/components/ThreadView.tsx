@@ -348,6 +348,13 @@ function FailureItem({ failure, onFix, onRetry }: { failure: TurnFailure; onFix:
 
 type ApprovalEntry = Extract<ThreadItem, { kind: "approval" }>;
 
+/** A card closed without anyone answering it says why, rather than "Denied". */
+const WITHDRAWN: Record<NonNullable<ApprovalEntry["withdrawn"]>, string> = {
+  native: "Withdrawn — the agent no longer needs an answer",
+  stopped: "Not answered — the turn was stopped",
+  ended: "Not answered — the turn ended first",
+};
+
 /**
  * An approval. A rule's allow or refusal is a compact receipt row (the turn never waited on it);
  * anything a human answers is today's card, plus one line saying why when a rule sent it here.
@@ -364,7 +371,7 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {r?.decision === "ask" && <div className="approval-reason" data-testid="approval-reason">{askedBecause(r)}</div>}
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
-        <div className="approval-answer" data-testid="approval-answer">{item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+        <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
       ) : (
         <div className="row">
           <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
