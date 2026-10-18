@@ -550,6 +550,7 @@ export class ClaudeBackend implements Backend {
           detail: shortJson(req.input ?? {}),
           canAlways: Boolean(req.permission_suggestions?.length),
           action: { backend: "claude", tool, title, cwd: ctx.cwd, input: req.input ?? {} },
+          ...(msg.request_id ? { native: { runtime: ctx.native("").runtime, request: msg.request_id, ...(req.tool_use_id ? { item: req.tool_use_id } : {}) } } : {}),
         };
         // The CLI may withdraw the prompt (`control_cancel_request`) while it waits: the sink closes its card,
         // this request is done, and no answer is sent, since the CLI ignores one for a request it cancelled.

@@ -33,6 +33,7 @@ export function TurnContent({ turn, status, render, footer }: { turn: Turn; stat
   return <>
     {turn.user && render(turn.user, false)}
     {turn.user && (live || turn.rest.length > 0) && <TurnHeader start={turn.user.at} end={live ? undefined : turnEnd(turn.rest)} status={status}
+      asking={turn.rest.some((item) => item.kind === "question" && !item.answers && !item.withdrawn)}
       expanded={hasWork && !live ? expanded : undefined} controls={historyId} onToggle={() => setExpanded(value => !value)} />}
     {/* Wrappers preserve chronological order and mounted item state while work is folded. */}
     <div id={historyId} className="turn-content">
@@ -60,7 +61,7 @@ export function formatElapsed(ms: number): string {
 }
 
 /** "Working for 7s" (live, ticking) or "Worked for 1m 36s" above a rule, between a message and the agent's work. */
-function TurnHeader({ start, end, status, expanded, controls, onToggle }: { start: string; end?: number; status?: Thread["status"]; expanded?: boolean; controls?: string; onToggle?: () => void }) {
+function TurnHeader({ start, end, status, asking, expanded, controls, onToggle }: { start: string; end?: number; status?: Thread["status"]; asking?: boolean; expanded?: boolean; controls?: string; onToggle?: () => void }) {
   const live = end === undefined;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -69,7 +70,7 @@ function TurnHeader({ start, end, status, expanded, controls, onToggle }: { star
     return () => clearInterval(t);
   }, [live]);
   const elapsed = formatElapsed((live ? now : end) - Date.parse(start));
-  const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `Waiting for approval · ${elapsed}` : `Working for ${elapsed}`;
+  const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `${asking ? "Waiting for your answer" : "Waiting for approval"} · ${elapsed}` : `Working for ${elapsed}`;
   return (
     <div className={`turn-header${live ? " live" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
       {expanded === undefined ? <span className="turn-label" data-testid="turn-label">{label}</span> : <button className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span>{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
