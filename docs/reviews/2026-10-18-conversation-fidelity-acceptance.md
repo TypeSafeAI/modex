@@ -16,11 +16,11 @@ several children have parts still open. Each row names the build it was checked 
 | --- | --- | --- |
 | CF-1 #274: identity, phases, outcomes | #282 → `7780093` | Done; closed |
 | CF-2 #275: Claude Stop and cleanup | PR #286, green, waiting to update over CF-4 | Owned by another session |
-| CF-3 #276: human requests | — | Not started by its owner |
+| CF-3 #276: human requests | In progress, stacked on PR #286 | Not landed |
 | CF-4 #277: typed turns, Markdown | #284 → `8e26534` (typed turns); Markdown slice is PR #283 | Partial |
 | CF-5 #278: evidence | #287 → `d3711c6` (first part) | Partial |
 | CF-6 #279: journal and clients | #285 → `fb76aac` (CF-1 half) | Partial; request half waits for CF-3 |
-| CF-7 #280: plans and Notes | PR #289 (first part) | Partial; question cards wait for CF-3 |
+| CF-7 #280: plans and Notes | #289 → `f6976df` (first part) | Partial; question cards wait for CF-3 |
 
 ## Integration matrix
 
@@ -49,10 +49,10 @@ several children have parts still open. Each row names the build it was checked 
 
 ## Commands and results for this preparation
 
-On `cf8-fidelity`, stacked on CF-7, macOS (Apple Silicon), Node v24.18.1, pnpm 10.34.5:
+On `cf8-fidelity`, on `main` at `f6976df` (CF-7 landed), macOS (Apple Silicon), Node v24.18.1, pnpm 10.34.5:
 
-- `pnpm run build`: passed.
-- `npx playwright test e2e/conversation-fidelity.spec.ts`: 4 of 4 passed (45 s).
+- `pnpm build` (all apps): passed.
+- `npx playwright test e2e/conversation-fidelity.spec.ts e2e/task-to-notes.spec.ts`: 6 of 6 passed (44 s).
 
 These are acceptance tests of behaviour CF-1 through CF-7 already built, so they had no red phase.
 
