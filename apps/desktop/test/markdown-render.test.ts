@@ -166,3 +166,13 @@ test("a code block names its language and offers Copy", async () => {
   assert.match(html, /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"><code>const a = 1;<\/code><\/pre>/);
   assert.match(html, /<span class="code-lang">text<\/span><button[^>]*aria-label="Copy code">Copy<\/button><\/div><pre class="code"><code>plain<\/code>/);
 });
+
+test("the settled rendering keeps the streaming pieces' structure, so finishing a reply updates the page in place", async () => {
+  // Same elements in the same order as the pieces rendered one by one: React then patches each piece
+  // where it is, and a selection or focus inside one survives the reply settling.
+  const reply = "Select this sentence.\n\n```ts\nconst answer = 42;\n```\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n- one\n- two\n\nDone 日本語 ✓";
+  const inner = (html: string) => html.replace(/^<div class="md">/, "").replace(/<\/div>$/, "");
+  const settled = inner(await render(reply));
+  const pieces = (await Promise.all((await chunksOf(reply)).map(render))).map(inner).join("");
+  assert.equal(settled, pieces);
+});
