@@ -421,3 +421,48 @@ test("companion sets a thread's approval policy, and 'Always allow' answers the 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("a phone sees a question card as text it cannot answer, never a secret, and a refused answer is a conflict", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-question-"));
+  const calls: string[] = [];
+  const question: ThreadItem = { id: "question-1", kind: "question", blocking: true, at: "now", questions: [
+    { id: "q-env", header: "Environment", text: "Which environment?", options: [{ label: "staging", description: "" }], allowOther: false, secret: false },
+    { id: "q-token", header: "Token", text: "Paste the deploy token", options: null, allowOther: true, secret: true },
+  ] };
+  const answered: ThreadItem = { ...question, id: "question-2", answers: { "q-env": ["staging"], "q-token": ["(hidden)"] } };
+  const items: ThreadItem[] = [question, answered, { id: "approval-1", kind: "approval", question: "Run it?", at: "now" }];
+  const state = { projects: [{ id: "p1", name: "example", path: "/private/source", addedAt: "now" }], threads: [{ id: "abcdef12", projectId: "p1", title: "Deploy", backend: "codex", status: "waiting", cwd: "/private/source", mode: "chat", model: "gpt", plan: false, createdAt: "now", updatedAt: "now" }], version: 1, settings: {} } as AppState;
+  const server = new CompanionServer(home, {
+    state: () => state, items: () => items, status: () => "waiting", send: async () => ({ ok: true }),
+    // The runner refuses: another client answered first.
+    answer: (_id, item, value) => { calls.push(`answer:${item}:${value}`); return { ok: false, reason: "already-resolved" }; },
+  }, () => ["127.0.0.1"]);
+  try {
+    const pairing = await server.start();
+    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
+    const request = (route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req = https.request(`${credentials.url}${route}`, { method, ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+        let text = "";
+        res.on("data", (chunk) => { text += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
+      });
+      req.on("error", reject);
+      req.end(body ? JSON.stringify(body) : undefined);
+    });
+    const snapshot = await request("/v1/snapshot?threadId=abcdef12");
+    const [open, done] = snapshot.body.items;
+    assert.deepEqual([open.kind, open.level], ["notice", "info"], "older phones render a notice; none has buttons");
+    assert.match(open.text, /Which environment\?/);
+    assert.match(open.text, /Answer it in Modex on your Mac/);
+    assert.match(done.text, /Answered on your Mac/);
+    assert.ok(!JSON.stringify(snapshot.body).includes("staging\""), "answers stay on the Mac");
+    assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "question-1", answer: "yes" })).status, 409, "an approval answer never answers a question");
+    assert.deepEqual(calls, []);
+    const refused = await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes" });
+    assert.equal(refused.status, 409, "the runner's refusal reaches the phone");
+    assert.deepEqual(calls, ["answer:approval-1:yes"]);
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

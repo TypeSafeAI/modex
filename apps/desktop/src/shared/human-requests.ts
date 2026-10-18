@@ -122,7 +122,8 @@ export function actionDigest(action: unknown): string {
 }
 
 /** Checks answers against the questions: each question answered, choices from its options unless other text is allowed. */
-export function validateAnswers(questions: readonly Question[], answers: Record<string, unknown>): { ok: true; answers: Record<string, string[]> } | { ok: false; error: string } {
+export function validateAnswers(questions: readonly Question[], answers: unknown): { ok: true; answers: Record<string, string[]> } | { ok: false; error: string } {
+  if (!isRecord(answers)) return { ok: false, error: "Answer every question." };
   const ids = new Set(questions.map((q) => q.id));
   for (const id of Object.keys(answers)) if (!ids.has(id)) return { ok: false, error: `Unknown question ${id}.` };
   for (const q of questions) {
