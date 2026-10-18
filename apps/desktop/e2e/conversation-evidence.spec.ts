@@ -25,7 +25,7 @@ const item = (event: Record<string, unknown>) => ({ type: "item", threadId, item
 /** The memory file the citation in "Use the build flags" points to: its lines 3–5 are cited. */
 const MEMORY_FILE = "# Build\n\nUse --frozen-lockfile ✓\nwith pnpm 10\nthen run the build\n\nunrelated line\n";
 
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   ({ home, repo } = seedHome());
   // A Codex home of this test's own: citations read its memory file, never the developer's.
   const codexHome = path.join(home, "codex-home");
@@ -60,10 +60,16 @@ test.beforeAll(async () => {
       evidence: [{ kind: "memory", source: "codex", path: "notes/build.md", lineStart: 3, lineEnd: 5, note: "Build flags 🛠" }] }),
     { type: "status", threadId, status: "idle" },
   ]);
-  await tid(page, "turn-label").last().click();
+  // Sending IPC does not wait for React to render it. Wait for this turn's final
+  // item, then select its disclosure button, not the preceding turn's plain label.
+  await expect(items(page, "assistant").filter({ hasText: "Use the build flags" })).toBeVisible();
+  const history = page.locator('button[data-testid="turn-label"]').last();
+  await expect(history).toHaveAttribute("aria-expanded", "false");
+  await history.click();
+  await expect(history).toHaveAttribute("aria-expanded", "true");
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await app?.close();
   fs.rmSync(home, { recursive: true, force: true });
   fs.rmSync(repo, { recursive: true, force: true });
@@ -86,6 +92,7 @@ test("a command shows what actually ran, where, and how it ended, apart from its
 
 test("output past the preview says how much is shown", async () => {
   const failed = items(page, "tool").filter({ hasText: "$ npm test" });
+  await tid(failed, "item-toggle").click();
   await expect(tid(failed, "tool-truncated")).toHaveText("Showing the last 256 KB of 3.0 MB.");
   await expect(tid(failed, "tool-output")).toContainText("1 failing");
 });

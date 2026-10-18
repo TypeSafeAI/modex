@@ -85,8 +85,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
     plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
-    re-runs nothing. Denial, a failing check and Stop are covered too.
-    [Fidelity](conversation-fidelity.md), [review](reviews/2026-10-18-conversation-fidelity-acceptance.md).
+    re-runs nothing. Denial, a failing check and Stop are covered too. Each of those states has
+    reference captures in every theme at 900×600 and 1440×900, and a long transcript and a 3 MiB log
+    are measured on a named Mac. [Fidelity](conversation-fidelity.md),
+    [review](reviews/2026-10-18-conversation-fidelity-acceptance.md).
+  - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
+    every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
+    window wraps its text and buttons instead of pushing Deny out of view.
   - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
     acceptance and human VoiceOver checks.
 
