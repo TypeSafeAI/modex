@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import type { Definition, ListItem, Nodes, Parents, PhrasingContent, RootContent, TableRow } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
@@ -14,7 +14,7 @@ import { CodeBlock } from "./transcript/CodeBlock";
  * code so far.
  */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
-  // Text that changed in the last moment is still streaming: parse only its last piece again, and
+  // Text that changed in the last moment is still streaming: parse only its last block again, and
   // the whole text once it has rested, so the settled rendering is always the exact one.
   const [settled, setSettled] = useState(text);
   useEffect(() => {
@@ -22,43 +22,22 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
     const timer = setTimeout(() => setSettled(text), STREAM_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [text, settled]);
-  // This instance's renders of streaming pieces, by piece text: an unchanged piece is not parsed again.
-  const streamed = useRef(new Map<string, ReactNode[]>());
-  let pieces: ReactNode[][];
-  if (text === settled) {
-    pieces = settledPieces(text);
-    streamed.current = new Map();
-  } else {
-    const next = new Map<string, ReactNode[]>();
-    pieces = streamingChunks(text).map((chunk) => {
-      const rendered = streamed.current.get(chunk) ?? next.get(chunk) ?? render(chunk);
-      next.set(chunk, rendered);
-      return rendered;
-    });
-    streamed.current = next;
-  }
-  // Both ways give one Piece per streaming piece, so settling updates each piece where it stands:
-  // a selection, keyboard focus or a code block's Copied state inside the reply survives it.
-  return <div className="md">{pieces.map((nodes, i) => <Piece key={i} nodes={nodes} />)}</div>;
+  if (text === settled) return <div className="md">{settledBlocks(text)}</div>;
+  return <div className="md">{streamingChunks(text).map((chunk, i) => <Blocks key={i} text={chunk} />)}</div>;
 });
 
 /** How long text must stop changing before it is parsed whole again. */
 const STREAM_SETTLE_MS = 300;
 
-const Piece = memo(function Piece({ nodes }: { nodes: ReactNode[] }) {
-  return <>{nodes}</>;
+const Blocks = memo(function Blocks({ text }: { text: string }) {
+  return <>{render(text)}</>;
 });
 
-function parse(text: string) {
+function render(text: string): ReactNode[] {
   const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
   const definitions = new Map<string, Definition>();
   collectDefinitions(tree, definitions);
-  return { tree, ctx: { source: text, definitions, tight: false } as Context };
-}
-
-function render(text: string): ReactNode[] {
-  const { tree, ctx } = parse(text);
-  return blocks(tree.children, ctx);
+  return blocks(tree.children, { source: text, definitions, tight: false });
 }
 
 /** Renders by text, keeping the most recent `entries` results for texts of at most `maxChars`. */
@@ -82,28 +61,13 @@ export class RenderCache {
 }
 
 /**
- * Settled text, parsed whole and grouped back into its streaming pieces: each top-level block goes to
- * the piece it starts in. Rendered once per app session, so reopening a thread or switching back to
- * one reuses the elements instead of parsing every message again. Streaming pieces are never cached
- * here, nor is very long text such as a fetched page.
+ * Settled text, rendered once per app session: reopening a thread or switching back to one reuses
+ * the elements instead of parsing every message again. Streaming pieces are never cached, nor is
+ * very long text such as a fetched page.
  */
 const settledRenders = new RenderCache(400, 64_000);
-function settledPieces(text: string): ReactNode[][] {
-  return settledRenders.get(text, () => {
-    const chunks = streamingChunks(text);
-    if (!chunks.length) return [];
-    const { tree, ctx } = parse(text);
-    const ends: number[] = [];
-    let offset = 0;
-    for (const chunk of chunks) ends.push(offset += chunk.length);
-    const groups: RootContent[][] = chunks.map(() => []);
-    for (const node of tree.children) {
-      const start = node.position?.start.offset ?? 0;
-      const at = ends.findIndex((end) => start < end);
-      groups[at < 0 ? groups.length - 1 : at]!.push(node);
-    }
-    return groups.map((nodes) => blocks(nodes, ctx));
-  });
+function settledBlocks(text: string): ReactNode[] {
+  return settledRenders.get(text, () => render(text));
 }
 
 /**

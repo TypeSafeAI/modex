@@ -824,8 +824,7 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   language and has Copy, which only puts the code on the clipboard; it shows its code while the
   fence is still streaming. Raw HTML stays text, only http(s) links
   are links, and an image becomes a link to it instead of being fetched. While a reply streams, only
-  its last block is parsed again, and the whole reply once it rests for 300 ms; text selected in the
-  reply, and focus on a control in it, stay put when it finishes. Opening a long
+  its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
   thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
   about 40 ms before); reopening it reuses the result.
 
