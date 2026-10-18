@@ -543,6 +543,22 @@ Local follow-up verification with pnpm 10.34.5:
   run the full desktop/site suite and companion checks. No new live-Claude run was needed
   for the unchanged application source; its earlier live/platform limits still apply.
 
+Follow-up CI at signed `5e691d374d34c0508d141cbdd365af657a511902` passed:
+- [macOS](https://github.com/TypeSafeAI/modex/actions/runs/39133158217/job/117692272116):
+  build, 1,720 unit tests (16 skips), 336 desktop E2E tests (one opt-in live skip),
+  and seven site tests. All evidence and fidelity cases passed; the Store case passed
+  in 7.8 seconds. Coverage upload also passed.
+- [iPhone](https://github.com/TypeSafeAI/modex/actions/runs/39133158217/job/117692272289):
+  native tests and 43 UI tests, no failures.
+- [Windows and Linux](https://github.com/TypeSafeAI/modex/actions/runs/39133158225): passed.
+
+The CI checkout `b2d665137b2e78009d2c9055641ee6416bf89ade` merges `5e691d3` into
+`61cc65d`; its tree is identical to `5e691d3`. After CI completed, the owning branch
+advanced to `ee496e2` and main to `db0bbfd`. Reconciliation preserves the owner's new
+receipts and main's Store documentation changes. Application and test source remain
+identical to `5e691d3`; no local test rerun was needed for those documentation-only
+merges. The resulting head's CI is recorded in #298 before the separate merge decision.
+
 ### Earlier review
 
 A read-only review of `62fccb9..feb2166` found nothing high-severity. It confirmed:
