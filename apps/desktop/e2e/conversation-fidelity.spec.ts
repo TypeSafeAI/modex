@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { currentRow, items, launch, seedHome, tid } from "./support";
+import { currentRow, items, launch, resizeWindow, seedHome, setTheme, tid } from "./support";
 
 /**
  * The integration path for tracker #273 (docs/conversation-fidelity.md): a request runs through the
@@ -33,6 +33,12 @@ rl.on('line', (line) => {
   if (msg.type === 'control_response' && pending) { const go = pending; pending = null; go(msg.response.response.behavior === 'allow'); return; }
   if (msg.type !== 'user') return;
   emit({ type: 'system', subtype: 'init', session_id: 'fidelity-session', claude_code_version: '2.1.302', model: 'fixture' });
+  // Naming the thread runs in its own folder and only names it.
+  if (process.cwd().includes('modex-title-')) {
+    emit({ type: 'assistant', message: { id: 'm-title', content: [{ type: 'text', text: 'Fidelity greeting' }] } });
+    emit({ type: 'result', subtype: 'success', is_error: false, session_id: 'fidelity-session', result: 'Fidelity greeting', num_turns: 1 });
+    return;
+  }
   todos('in_progress', 'pending');
   emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'todo-in_progresspending', content: 'ok' }] } });
   emit({ type: 'assistant', message: { id: 'm-say', content: [{ type: 'text', text: 'Editing the greeting.' }] } });
@@ -90,6 +96,32 @@ async function open(variant: Variant): Promise<{ app: ElectronApplication; page:
 }
 
 const approval = (page: Page) => items(page, "approval").filter({ hasText: "Edit" });
+
+/**
+ * Reference captures (docs/screenshots/conversation-fidelity/): one state in every theme, at the 900×600
+ * minimum and at a fixed wider viewport, each with no sideways scroll. MODEX_SCREENSHOTS=<dir> keeps them.
+ * Animations stop for the shot. Durations and times differ between runs, and nothing is compared pixel for pixel.
+ */
+const THEMES = ["graphite", "jev", "coven"] as const;
+const VIEWPORTS = [[900, 600], [1440, 900]] as const;
+async function capture(run: { app: ElectronApplication; page: Page }, state: string): Promise<void> {
+  const { app, page } = run;
+  const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize());
+  const theme = await page.evaluate(() => document.documentElement.dataset.theme) as typeof THEMES[number];
+  for (const value of THEMES) {
+    await setTheme(page, value);
+    for (const [width, height] of VIEWPORTS) {
+      await resizeWindow(app, page, width, height);
+      const name = `${state}-${value}-${width}x${height}`;
+      expect(await tid(page, "transcript").evaluate((el) => el.scrollWidth - el.clientWidth), `${name}: no sideways scroll`).toBeLessThanOrEqual(0);
+      const shot = await page.screenshot({ animations: "disabled", scale: "css" });
+      await test.info().attach(name, { body: shot, contentType: "image/png" });
+      if (process.env.MODEX_SCREENSHOTS) fs.writeFileSync(path.join(process.env.MODEX_SCREENSHOTS, `${name}.png`), shot);
+    }
+  }
+  await setTheme(page, theme);
+  await resizeWindow(app, page, size[0]!, size[1]!);
+}
 const close = async (run: { app: ElectronApplication; home: string; repo: string }) => {
   await run.app.close().catch(() => {});
   fs.rmSync(run.home, { recursive: true, force: true });
@@ -99,8 +131,12 @@ const close = async (run: { app: ElectronApplication; home: string; repo: string
 test("golden path: plan, approval, a real edit and check, the answer, Save to Notes, Open, and a restart that restores without re-running", async () => {
   let run = await open("golden");
   try {
+    await expect(approval(run.page)).toBeVisible();
+    await expect(currentRow(run.page)).toHaveAttribute("data-status", "waiting");
+    await capture(run, "waiting");
     await approval(run.page).getByRole("button", { name: "Approve" }).click();
     await expect(currentRow(run.page)).toHaveAttribute("data-status", "idle", { timeout: 20_000 });
+    await capture(run, "completed");
     expect(fs.readFileSync(path.join(run.repo, "greeting.txt"), "utf8")).toBe(AFTER);
     expect(run.read()).toEqual({ edits: 1, checksStarted: 1, checksFinished: 1 });
     // Typed outcomes, the reported plan and the final answer, as recorded rather than as prose says.
@@ -137,6 +173,9 @@ test("golden path: plan, approval, a real edit and check, the answer, Save to No
     expect(after).toEqual(before);
     expect(run.read()).toEqual({ edits: 1, checksStarted: 1, checksFinished: 1 });
     expect(fs.readFileSync(path.join(run.repo, "greeting.txt"), "utf8")).toBe(AFTER);
+    await run.page.locator(`[data-testid="thread-row"][data-thread-id="${threadId}"] button.thread-main`).click();
+    await expect(run.page.locator('.turn-content > div[data-final="true"]').last()).toContainText("Changed the greeting; the check passed.");
+    await capture(run, "restored");
   } finally { await close(run); }
 });
 
@@ -161,6 +200,7 @@ test("a failing check is a failed command, whatever the reply says", async () =>
     await expect(check).toBeVisible();
     await expect(tid(check, "tool-meta")).toContainText("failed");
     await expect(tid(items(run.page, "plan"), "plan-step")).toHaveText(["Reported done Edit greeting.txt", "In progress Check the file"]);
+    await capture(run, "failed");
   } finally { await close(run); }
 });
 
@@ -169,6 +209,8 @@ test("Stop while a check runs ends it as stopped; the check never reports, and n
   try {
     await approval(run.page).getByRole("button", { name: "Approve" }).click();
     await expect.poll(() => run.read().checksStarted ?? 0).toBe(1);
+    await expect(items(run.page, "tool").filter({ hasText: "grep -q fidelity" })).toBeVisible();
+    await capture(run, "live");
     await tid(run.page, "stop").click();
     await expect(currentRow(run.page)).toHaveAttribute("data-status", "idle", { timeout: 20_000 });
     const check = items(run.page, "tool").filter({ hasText: "grep -q fidelity" });
