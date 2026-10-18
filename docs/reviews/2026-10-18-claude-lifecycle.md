@@ -20,7 +20,9 @@ There is no Agent SDK and no API mode.
   - `a6ea0b0`: merge of `main` at `fb76aac`, which landed the first half of CF-6 (#285, typed state through the journal and phone). Only `docs/status.md` conflicted.
   - `2597393`: the live spec requires a real stop on every step, plus these records.
   - `7c9d62c`: merge of `main` at `d3711c6`, which landed the first part of CF-5 (#287, command evidence and output bounds). No conflicts.
-- Tested code: `7c9d62ccae9fcf8b0a725fa76c9b13851a76c67b`, up to date with `main` at `d3711c6`. Commits after it change only these records.
+  - `449f660`: records for `7c9d62c`.
+  - `13faaeb`: merge of `main` at `f6976df`, which landed the first part of CF-7 (#289, plans and task records). Only an import line conflicted.
+- Tested code: `13faaebfc77c7b1e6d7a6c9f0ff05529d6ea075f`, up to date with `main` at `f6976df`. The last full local run is at `7c9d62c`. At `13faaeb` this records targeted checks and the live run; PR CI gives the full check at the head. Commits after it change only these records.
 
 ## CLI versions
 
@@ -127,7 +129,14 @@ At `feb2166`:
 
 The review fixes in `62ac15c` were red first (3/3 failing for the reported reasons). At `62ac15c`, 147/147 pass across the lifecycle, Claude backend, background, runner, routines and subagent suites.
 
-### Final checks at `7c9d62c` (up to date with `main` at `d3711c6`)
+### Checks at `13faaeb` (up to date with `main` at `f6976df`)
+
+Sibling CF PRs landed four times while this branch was in its final checks. A full local run takes about 50 minutes and was flaky at load averages of 50–90. So the last merge is checked like this:
+- **Targeted, locally:** build pass. 228/228 unit tests across the lifecycle, Claude backend, background, runner, conversation-events, conversation-migration, event-journal, evidence, task-context, turn-layout, companion, routines and credit-fallback suites. 28/28 Electron cases across `claude-lifecycle`, `titles`, `typed-turns`, `approvals`, `errors` and `conversation-evidence`.
+- **Live,** 11:55 UTC: below.
+- **Full:** PR #286's CI at this SHA, recorded on #275 once it finishes.
+
+### Full checks at `7c9d62c` (up to date with `main` at `d3711c6`)
 
 **CI on PR #286 at `7c9d62c`:** all 12 check runs succeeded:
 - `unit + e2e (macOS)` (required);
@@ -305,7 +314,15 @@ An earlier full E2E run at `feb2166` was stopped deliberately after 106/321 test
 
 The usage limit had lifted by 09:19 UTC. `e2e/claude-live-stop.spec.ts` then drove the built app with the real Claude Code 2.1.302 and Haiku. It ran in Chat mode, in a throwaway repository, from a shell without `CLAUDE*`/`ANTHROPIC*` variables.
 
-**Final run at `7c9d62c` (11:47 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Every step ended with a "Stopped." notice and no failure card:
+**Final run at `13faaeb` (11:55 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Results were the same as at `7c9d62c`, within 0.01 s:
+- card waiting: idle in 0.88 s;
+- running command: idle in 2.39 s, after SIGTERM, row `interrupted`;
+- resume: replied "resumed";
+- stream: idle in 0.86 s, 398 characters kept.
+
+Every step ended "Stopped." with no failure card.
+
+**At `7c9d62c` (11:47 UTC): pass.** Every step ended with a "Stopped." notice and no failure card:
 
 | Step | Observed |
 | --- | --- |

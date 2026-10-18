@@ -2,9 +2,9 @@
   "bin": "/Users/buns/.local/share/claude/versions/2.1.302",
   "version": "2.1.302 (Claude Code)",
   "model": "haiku",
-  "at": "2026-10-18T11:47:10.884Z",
+  "at": "2026-10-18T11:55:36.123Z",
   "pendingCard": {
-    "ms": 880,
+    "ms": 883,
     "notice": "Stopped.",
     "failures": 0
   },
@@ -25,9 +25,9 @@
     "failures": 0
   },
   "streaming": {
-    "ms": 845,
+    "ms": 855,
     "notice": "Stopped.",
     "failures": 0,
-    "keptChars": 381
+    "keptChars": 398
   }
 }
