@@ -173,8 +173,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
-  Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286 and #291
-  (CF-2), and #293 (CF-3). The tracker keeps the dependency order and each slice's evidence.
+  Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
+  each slice's evidence, and its child issues link their open PRs.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
@@ -195,8 +195,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     revocation. [Signed acceptance](reviews/2026-10-11-store-signed-acceptance.md#status-summary).
   - **Open:** the full parity matrix, graceful host shutdown, fresh-user setup, installed-host
     auto-launch, sleep/wake, the full welcome Open sequence and its Cancel check, a macOS
-    TestFlight install, App Review, and Val's attribution of one GUI Connect grant.
-    [Readiness](reviews/2026-10-11-store-readiness.md).
+    TestFlight install, and App Review. [Readiness](reviews/2026-10-11-store-readiness.md).
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the
