@@ -469,6 +469,8 @@ handle("evidence:memory", (req) => readMemoryCitation(codexMemoriesDir(), req), 
 // A turn's patch against the thread's folder now, from the thread's own record. Only per-file verdicts
 // leave main; a paired desktop learns less from it than `files:read` already gives it.
 handle("evidence:patch", ({ threadId, itemId }) => checkPatch(cwdFor(threadId), runner.items(threadId).find((item) => item.id === itemId)));
+// A long tool's kept raw output, a page at a time, for an item of that thread. Reading it runs nothing.
+handle("evidence:tool-log", ({ threadId, itemId, offset }) => runner.toolLog(threadId, itemId, offset ?? 0));
 handle("drafts:save", (req, event) => nativeFor(req, event).save(req.session, req), { localOnly: true });
 handle("drafts:stage", (req, event) => nativeFor(req, event).stage(req.session, req.owner, req.files), { localOnly: true });
 handle("drafts:pick", async (req, event) => {

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { OUTPUT_PREVIEW_BYTES } from "../../shared/evidence.js";
+import { OUTPUT_PREVIEW_BYTES, TOOL_LOG_MAX_BYTES, TOOL_LOG_PAGE_BYTES, type ToolLogPage } from "../../shared/evidence.js";
+
+export { TOOL_LOG_MAX_BYTES, TOOL_LOG_PAGE_BYTES, type ToolLogPage };
 
 /**
  * A tool's raw output, kept in main (docs/conversation-evidence.md). The transcript keeps a tool's last
@@ -8,25 +10,6 @@ import { OUTPUT_PREVIEW_BYTES } from "../../shared/evidence.js";
  * file per item under the app folder, and reads it back a page at a time. Output that fits in the
  * preview is never written. Nothing here runs, opens or sends anything; ids never become paths.
  */
-
-/** The most output kept for one tool item. */
-export const TOOL_LOG_MAX_BYTES = 10 * 1024 * 1024;
-/** The most text one read returns. */
-export const TOOL_LOG_PAGE_BYTES = 256 * 1024;
-
-/**
- * One page of a kept log. `next` is where the following page starts, or null at the end. `total` is the
- * output the tool produced and `cut` whether some of it is not kept; both are absent when the tool
- * never finished, since Modex then does not know how much there was.
- */
-export interface ToolLogPage {
-  text: string;
-  offset: number;
-  next: number | null;
-  kept: number;
-  total?: number;
-  cut?: boolean;
-}
 
 interface Writing { pending: Buffer[]; bytes: number; kept: number; full: boolean; fd: number | null }
 

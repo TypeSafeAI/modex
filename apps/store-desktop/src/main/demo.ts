@@ -81,6 +81,7 @@ export class StoreDemo {
       "task:save-note": unavailable,
       "evidence:memory": unavailable,
       "evidence:patch": unavailable,
+      "evidence:tool-log": unavailable,
       "knowledge:open": unavailable,
       "project:knowledge": unavailable,
       "project:pages": unavailable,
