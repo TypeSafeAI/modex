@@ -361,6 +361,90 @@ Unset every `CLAUDE*`/`ANTHROPIC*` variable when you run it from inside a Claude
 
 ## Independent review
 
+### Failure before Stop: reconciliation of `a6ea0b0`
+
+A separate reconciliation reproduced a remaining ownership race on PR #286's head
+`a6ea0b03df2eb2d93512fa2ea1fc85db65595b7d`. A failed result armed the drain deadline;
+Stop then armed its longer termination deadlines. The drain settled the failed turn before
+the process exited, without a stop report. The runner only retained unconfirmed pids for
+interrupted results, so deleting the failed thread could remove a live process's worktree.
+
+Two new regressions failed before the repair: the backend returned no unconfirmed stop
+report, and `deleteThread` resolved instead of refusing while the process-liveness probe
+still returned true. The tests use the actual backend and runner with the existing fake
+process; they are not live-provider evidence.
+
+The repair waits for exit or bounded Stop confirmation even when a failure arrived first.
+The result retains both the original failure and its stop report. The runner tracks an
+unconfirmed pid regardless of turn outcome, refusing deletion until the process exits.
+The regression also checks that deletion succeeds once the liveness probe reports exit.
+Verification results for this reconciliation are recorded separately from the earlier runs.
+
+Live acceptance was repeated on the repaired build at 10:16 UTC with Claude Code 2.1.302
+and Haiku. The opt-in spec passed all four steps: the pending card stopped in 936 ms,
+the approved command stopped via SIGTERM in 2,336 ms without writing its file, the same
+thread replied `resumed`, and streaming Stop kept 2,182 characters without a failure card.
+The [new live report](2026-10-18-claude-lifecycle/reconciliation-live-app-run.json) records
+those observations. The stuck-process failure-before-Stop race itself remains simulated;
+this live run checks the existing native behavior after the repair.
+
+The first full unit run passed worktrees (109) and core (16), then desktop reported
+1,532 passed, 16 skipped and five failures in `knowledge.test.ts`. These were existing
+server reuse, separate status stdout/stderr, failed-status diagnostics, malformed status,
+and invalid-server refusal cases. The run included `kill EPERM`, readiness timeouts,
+and missed rejection assertions. Running that unchanged file alone passed all 11 tests.
+No timeouts or Knowledge code were changed. These failures remain part of the evidence.
+
+The final repaired tree passed `pnpm build`, `pnpm typecheck`, and the complete `pnpm test`
+command: worktrees 109/109, core 16/16, desktop 1,537 passed and 16 skipped (of 1,553),
+desktop native/update 21/21, site 10/10, and Store desktop 16/16. Both new regressions pass
+in that full run. The 16 skips are the existing 15 Windows-only cases and opt-in
+OpenKnowledge integration. Full E2E and exact-commit CI results are recorded in the repair
+PR linked from [#286](https://github.com/TypeSafeAI/modex/pull/286).
+
+### Repair integration with CF-5 and CF-7
+
+PR #291 also brings in the owning CF-2 branch at
+`7c9d62ccae9fcf8b0a725fa76c9b13851a76c67b` and main at
+`f6976dfe1eb4793343939db280706dfb41e450dc`. This preserves the owner's strengthened
+live acceptance assertions and incorporates the landed command evidence and task-plan
+interfaces. The only manual merge resolution combines the `ApprovalAnswer` and
+`PlanStepStatus` type imports in the Claude backend. The failure-before-Stop repair and
+its two regressions are unchanged. Verification of this combined tree is recorded in
+[#291](https://github.com/TypeSafeAI/modex/pull/291), separately from the earlier checks
+against `a6ea0b0`. The owner's later head
+`3b1c1be760e68c722e8ea740c95e1225745e5de3` was then merged to preserve their newer
+receipts. That merge changes only the review document and their live-report JSON;
+application and test source remain identical to the verified integrated tree.
+
+Local verification of the integrated source tree (`327fdc71165824a348d91aedba3025f58f38cbe4`):
+- Frozen install with pnpm 10.34.5, full build and typecheck passed.
+- First unit run: worktrees 109 and core 16 passed; desktop 1,546 passed, 16 skipped,
+  two failed. The unchanged Knowledge invalid-server case missed an expected rejection;
+  the unchanged Plugins timeout fixture had no `heartbeat` file when read. Those two
+  files passed 36/36 in isolation. The complete unchanged rerun passed 1,720 tests with
+  16 existing skips: worktrees 109, core 16, desktop 1,548, native/update 21, site 10,
+  Store desktop 16. Both repair regressions passed in both full runs.
+- Live acceptance with the owner's strengthened Stop assertions passed at 11:35 UTC:
+  pending card 887 ms; running command 2,459 ms via SIGTERM, interrupted, with no output
+  file after its deadline; resumed reply `resumed`; streaming Stop 966 ms with 191
+  characters retained. All Stop steps recorded `Stopped.` and zero failures.
+  [Integrated-build report](2026-10-18-claude-lifecycle/integration-live-app-run.json).
+- Full desktop E2E: 328 passed, four opt-in skips, one failed in 29.6 minutes.
+  `workspace-store.spec.ts:107` lost the browser-tools dialog after the native Hide side
+  panel action. The first unchanged isolated rerun failed earlier waiting for the thread
+  view and timed out closing the host. A second unchanged isolated rerun passed the
+  original dialog assertion, reached later browser-guest lifecycle checks, and exceeded
+  the 90-second test limit. These runs do not establish a local pass for that spec.
+- Site E2E, run separately because the desktop failure stopped the combined command: 7/7.
+
+No implementation or timeout was changed for the local test failures. The full E2E failure
+and both isolated failures remain evidence; exact-head CI on the final integration commit
+is required before calling the repair ready. Its results are recorded in #291. Native
+withdrawal outside Stop and Windows/Linux native escalation retain the limits below.
+
+### Earlier review
+
 A read-only review of `62fccb9..feb2166` found nothing high-severity. It confirmed:
 - every Stop path is bounded;
 - requests settle once;

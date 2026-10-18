@@ -780,6 +780,8 @@ export class ThreadRunner {
       }
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
       this.recordUsage(thread, account, result);
+      // A failure can precede Stop; its outcome does not establish process exit.
+      if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
       if (result.status === "failed") {
         this.failTurn(threadId, thread, result.error ?? "The turn failed.", { detail: result.detail, recovery: result.recovery, fast, retry });
       } else if (result.status === "completed" && l.items.length === replyStart && !abort.signal.aborted) {
@@ -788,7 +790,6 @@ export class ThreadRunner {
         this.failTurn(threadId, thread, `${BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend} ended the turn without replying.`, { fast, retry });
       } else {
         if (result.status === "interrupted") {
-          if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
           const { level, text } = stopNotice(BACKENDS.find((b) => b.id === thread.backend)?.label ?? thread.backend, result.stop);
           this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: new Date().toISOString() });
         } else if (!abort.signal.aborted) l.completed = true;

@@ -263,11 +263,18 @@ export class ClaudeBackend implements Backend {
       // The process is done (closed, or exited and `drainMs` passed): whatever it printed last has been read.
       const ended = () => {
         if (finished) return;
+        // A failed result's drain deadline is not proof that Stop ended the process.
+        // Keep ownership until exit or the bounded unconfirmed-stop deadline.
+        if (stopAt !== undefined && !exit) {
+          clearTimeout(drainTimer);
+          drainTimer = undefined;
+          return;
+        }
         lines.flush(onLine);
         stderr = (stderr + stderrText.end()).slice(-16_384);
         if (finished) return;
         const exited = exit && (exit.code !== null ? { exitCode: exit.code } : {}), signalled = exit?.signal ? { signal: exit.signal } : {};
-        if (failure) return finish({ ...failure, detail: { ...failure.detail, ...exited, ...signalled } });
+        if (failure) return finish({ ...failure, detail: { ...failure.detail, ...exited, ...signalled }, ...(stopAt !== undefined ? { stop: stopReport(escalation ?? "exited") } : {}) });
         if (signal.aborted) return finish({ status: "interrupted", stop: stopReport(escalation ?? "exited") });
         const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
         const how = exit?.signal ? `was terminated by ${exit.signal}` : `exited with code ${exit?.code}`;
@@ -309,7 +316,7 @@ export class ClaudeBackend implements Backend {
             if (exit) return;
             escalation = "killed";
             child.kill("SIGKILL");
-            confirmTimer = setTimeout(() => finish({ status: "interrupted", stop: stopReport("unconfirmed") }), confirmMs);
+            confirmTimer = setTimeout(() => finish({ ...(failure ?? { status: "interrupted" }), stop: stopReport("unconfirmed") }), confirmMs);
           }, killMs);
         }, graceMs);
       };

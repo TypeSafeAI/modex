@@ -127,7 +127,7 @@ export interface TurnResult {
   usage?: TurnUsage;
   /** Whether fast mode ran, as the CLI reported it, and if not, why; absent when the backend does not say. */
   fastMode?: { on: boolean; why?: string };
-  /** On an interrupted turn: how the backend's process actually ended. Stop asks; this says what happened. */
+  /** After Stop, including when a failure preceded it: how the process ended, or whether exit is unconfirmed. */
   stop?: StopReport;
 }
 
