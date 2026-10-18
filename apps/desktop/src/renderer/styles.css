@@ -530,8 +530,20 @@ a.thread-pr:hover { text-decoration: underline; }
 .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
 .msg.user .bubble { max-width: 70%; padding: 8px 16px; border: 1px solid var(--bubble-border); border-radius: 12px; background: var(--bg-user-bubble); white-space: pre-wrap; overflow-wrap: anywhere; }
 .md p { margin: 0 0 12px; }
-.md h2, .md h3, .md h4 { margin: 18px 0 8px; font-weight: var(--weight-semibold); }
+.md h2, .md h3, .md h4, .md h5, .md h6 { margin: 18px 0 8px; font-weight: var(--weight-semibold); }
+.md h5, .md h6 { font-size: var(--text-md); }
 .md ul, .md ol { margin: 0 0 12px; padding-left: 28px; }
+.md li > ul, .md li > ol { margin-bottom: 0; }
+.md li.task { list-style: none; }
+.md li.task > input { margin: 0 6px 0 -20px; vertical-align: -1px; }
+.md blockquote { margin: 0 0 12px; padding: 0 0 0 12px; border-left: 3px solid var(--border-strong); color: var(--text-3); }
+.md hr { margin: 16px 0; border: 0; border-top: 1px solid var(--border-pane); }
+.md .md-table { margin: 0 0 12px; overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: var(--text-sm); }
+.md th, .md td { padding: 5px 10px; border: 1px solid var(--border-pane); text-align: left; vertical-align: top; }
+.md th { font-weight: var(--weight-semibold); background: var(--bg-sunken); }
+.md .footnote { margin: 0 0 6px; color: var(--text-3); font-size: var(--text-sm); }
+.md sup { font-size: 0.75em; }
 .md strong { font-weight: var(--weight-semibold); }
 .md code { padding: 1px 5px; border-radius: 5px; background: var(--bg-row-selected); font-size: 12.5px; }
 .md pre.code { margin: 8px 0 14px; padding: 12px 14px; overflow: auto; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sunken); }
