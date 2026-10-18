@@ -162,6 +162,15 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   knowledge base opens its file under the new name instead of failing on the old one. (#241)
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
+- **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
+  transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
+  quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
+  language and has Copy, which only puts the code on the clipboard; it shows its code while the
+  fence is still streaming. Raw HTML stays text, only http(s) links
+  are links, and an image becomes a link to it instead of being fetched. While a reply streams, only
+  its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
+  thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
+  about 40 ms before); reopening it reuses the result.
 - **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
   unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
   search no status or error field. Its completion is its only report, so a completed search now
