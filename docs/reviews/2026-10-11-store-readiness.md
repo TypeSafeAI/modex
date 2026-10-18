@@ -230,3 +230,8 @@ Keep welcome, native authorization, denial, reconnect, and revocation captures i
 5. Obtain explicit authorization for any new Apple upload, submission, or release. This audit supplies preparation, not that authorization.
 
 Apple's current rules require sandboxing and constrain additional installations and host-dependent functionality; the separate-host approach remains an App Review eligibility question. Source correctness and demo access cannot settle it. [App Review Guidelines 2.4.5 and 4.2.3](https://developer.apple.com/app-store/review/guidelines/).
+
+**Attribution resolved, 2026-10-18.** Val confirmed on #290 that the grant the GUI Connect run
+acquired before native prompt capture came from Val's own manual testing. The Cancel check stays
+unaccepted; see the
+[signed acceptance review](2026-10-11-store-signed-acceptance.md#attribution-resolved-2026-10-18).
