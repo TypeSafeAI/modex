@@ -16,8 +16,10 @@ There is no Agent SDK and no API mode.
   - `172b13f`: a tool call Stop interrupted reads `interrupted`.
   - `20a1eea`: records after the CF-1 merge.
   - `52b159a`: merge of `main` at `8e26534`, which landed CF-4 (#284, typed turn layout). No conflicts.
-  - The next commit adds the opt-in live acceptance spec and these records.
-- Tested code: `52b159abd6b3f16f9a347653b37afc4a1c60d264`. The commit after it adds only an E2E spec that is skipped unless `MODEX_CLAUDE_LIVE=1`, plus these records.
+  - `bab1e10`: the opt-in live acceptance spec and its first results.
+  - `a6ea0b0`: merge of `main` at `fb76aac`, which landed the first half of CF-6 (#285, typed state through the journal and phone). Only `docs/status.md` conflicted.
+  - The next commit tightens the live spec's assertions and adds these records.
+- Tested code: `a6ea0b03df2eb2d93512fa2ea1fc85db65595b7d`, up to date with `main` at `fb76aac`. The commit after it changes only the opt-in live spec, which is skipped unless `MODEX_CLAUDE_LIVE=1`, plus these records.
 
 ## CLI versions
 
@@ -124,7 +126,41 @@ At `feb2166`:
 
 The review fixes in `62ac15c` were red first (3/3 failing for the reported reasons). At `62ac15c`, 147/147 pass across the lifecycle, Claude backend, background, runner, routines and subagent suites.
 
-### Final checks at `52b159a` (up to date with `main`)
+### Final checks at `a6ea0b0` (up to date with `main` at `fb76aac`)
+
+Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 09:55–10:42 UTC:
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | pass |
+| `pnpm build` | pass (29 s) |
+| `pnpm typecheck` | pass (15 s) |
+| `pnpm test` | pass (349 s), broken down below |
+| `pnpm test:e2e` (desktop) | 322 passed, 4 skipped (3 opt-in Open Knowledge, 1 opt-in live), 1 failed |
+| `pnpm --filter @modex/site test:e2e` | 7/7 |
+
+`pnpm test`, by suite:
+
+| Suite | Result |
+| --- | --- |
+| worktrees | 109/109 |
+| core | 16/16 |
+| desktop | 1,535 passed, 16 skipped, of 1,551 |
+| desktop native/update | 21/21 |
+| site | 10/10 |
+| store-desktop | 16/16 |
+
+The desktop E2E failure was `app.spec.ts › accessibility: information text meets AA contrast, …`:
+- **What failed:** two sidebar "Chat details" popovers were open at once when the test opened one with ArrowRight. This is sidebar hover and keyboard UI, which CF-2 does not touch.
+- **Rerun:** the test passed when rerun alone at the same SHA.
+- **CI:** it passed at the same SHA (below).
+- **Site suite:** it was skipped inside `pnpm test:e2e` because the desktop step had failed, so it was run on its own.
+
+Targeted checks at `a6ea0b0`: 217/217 across the lifecycle, Claude backend, background, runner, conversation-events, conversation-migration, event-journal, turn-layout, companion, routines and credit-fallback suites.
+
+**CI on PR #286 at `a6ea0b0`:** all 12 check runs succeeded, including the required `unit + e2e (macOS)`, `iPhone companion`, and CLI and installers on Linux and Windows. These were read over the REST API, because the account's GraphQL budget was spent.
+
+### Checks at `52b159a`
 
 Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 09:19–09:47 UTC, after merging CF-4:
 
@@ -221,9 +257,22 @@ On a machine with load average around 200, an earlier full desktop run at `feb21
 
 An earlier full E2E run at `feb2166` was stopped deliberately after 106/321 tests, all passing. The review fixes then changed the backend, and `dist/` had been rebuilt mid-run, so that run is not counted.
 
-## Live acceptance through the app (2026-10-18, 09:50 UTC)
+## Live acceptance through the app (2026-10-18)
 
-The usage limit had lifted by 09:19 UTC. `e2e/claude-live-stop.spec.ts` then drove the built app at `52b159a` with the real Claude Code 2.1.302 and Haiku. It ran in Chat mode, in a throwaway repository, from a shell without `CLAUDE*`/`ANTHROPIC*` variables. It passed: [report](2026-10-18-claude-lifecycle/live-app-run.json).
+The usage limit had lifted by 09:19 UTC. `e2e/claude-live-stop.spec.ts` then drove the built app with the real Claude Code 2.1.302 and Haiku. It ran in Chat mode, in a throwaway repository, from a shell without `CLAUDE*`/`ANTHROPIC*` variables.
+
+**Final run at `a6ea0b0` (10:47 UTC): pass** ([report](2026-10-18-claude-lifecycle/live-app-run.json)). Every step ended with a "Stopped." notice and no failure card:
+
+| Step | Observed |
+| --- | --- |
+| Stop while a `touch` card waits | Idle 0.93 s after Stop, notice "Stopped.". |
+| Approve a 30 s Python command, Stop 3 s later | Idle 2.36 s after Stop. The notice reads "Stopped. Claude did not end the turn within 1.5 s of the interrupt, so Modex terminated it." The tool row is `done` / `interrupted`, and its file was never written. |
+| Same thread, "Reply with the single word: resumed" | Reply "resumed". |
+| Stop while a 2,000-word story streams | Idle 1.37 s after Stop, notice "Stopped.", 834 characters kept. |
+
+The run before that at `a6ea0b0` passed too, but its streaming step had asked for only 400 words. Haiku finished the story before Stop landed: no stop notice, all 2,240 characters kept. That was a true account (nothing was stopped), but it did not test a mid-stream Stop. The spec now asks for 2,000 words and requires a "Stopped." notice on every step.
+
+**Earlier run at `52b159a` (09:50 UTC): pass, with the looser spec.**
 
 | Step | Observed |
 | --- | --- |
@@ -289,6 +338,44 @@ desktop native/update 21/21, site 10/10, and Store desktop 16/16. Both new regre
 in that full run. The 16 skips are the existing 15 Windows-only cases and opt-in
 OpenKnowledge integration. Full E2E and exact-commit CI results are recorded in the repair
 PR linked from [#286](https://github.com/TypeSafeAI/modex/pull/286).
+
+### Repair integration with CF-5 and CF-7
+
+PR #291 also brings in the owning CF-2 branch at
+`7c9d62ccae9fcf8b0a725fa76c9b13851a76c67b` and main at
+`f6976dfe1eb4793343939db280706dfb41e450dc`. This preserves the owner's strengthened
+live acceptance assertions and incorporates the landed command evidence and task-plan
+interfaces. The only manual merge resolution combines the `ApprovalAnswer` and
+`PlanStepStatus` type imports in the Claude backend. The failure-before-Stop repair and
+its two regressions are unchanged. Verification of this combined tree is recorded in
+[#291](https://github.com/TypeSafeAI/modex/pull/291), separately from the earlier checks
+against `a6ea0b0`.
+
+Local verification of the integrated source tree (`327fdc71165824a348d91aedba3025f58f38cbe4`):
+- Frozen install with pnpm 10.34.5, full build and typecheck passed.
+- First unit run: worktrees 109 and core 16 passed; desktop 1,546 passed, 16 skipped,
+  two failed. The unchanged Knowledge invalid-server case missed an expected rejection;
+  the unchanged Plugins timeout fixture had no `heartbeat` file when read. Those two
+  files passed 36/36 in isolation. The complete unchanged rerun passed 1,720 tests with
+  16 existing skips: worktrees 109, core 16, desktop 1,548, native/update 21, site 10,
+  Store desktop 16. Both repair regressions passed in both full runs.
+- Live acceptance with the owner's strengthened Stop assertions passed at 11:35 UTC:
+  pending card 887 ms; running command 2,459 ms via SIGTERM, interrupted, with no output
+  file after its deadline; resumed reply `resumed`; streaming Stop 966 ms with 191
+  characters retained. All Stop steps recorded `Stopped.` and zero failures.
+  [Integrated-build report](2026-10-18-claude-lifecycle/integration-live-app-run.json).
+- Full desktop E2E: 328 passed, four opt-in skips, one failed in 29.6 minutes.
+  `workspace-store.spec.ts:107` lost the browser-tools dialog after the native Hide side
+  panel action. The first unchanged isolated rerun failed earlier waiting for the thread
+  view and timed out closing the host. A second unchanged isolated rerun passed the
+  original dialog assertion, reached later browser-guest lifecycle checks, and exceeded
+  the 90-second test limit. These runs do not establish a local pass for that spec.
+- Site E2E, run separately because the desktop failure stopped the combined command: 7/7.
+
+No implementation or timeout was changed for the local test failures. The full E2E failure
+and both isolated failures remain evidence; exact-head CI on the final integration commit
+is required before calling the repair ready. Its results are recorded in #291. Native
+withdrawal outside Stop and Windows/Linux native escalation retain the limits below.
 
 ### Earlier review
 

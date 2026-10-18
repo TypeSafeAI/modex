@@ -11,7 +11,8 @@ import { LineBuffer, stderrTail } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
-import type { MessagePhase, NativeRef, SettledOutcome } from "../../../shared/conversation-events.js";
+import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
+import { boundOutput, byteLength, memoryEvidence } from "../../../shared/evidence.js";
 
 /**
  * Codex's own wording when the sign-in it loaded at startup no longer matches ~/.codex/auth.json
@@ -283,7 +284,8 @@ export class CodexBackend implements Backend {
     const runtime = this.generation;
     const agents = new AgentTracker(sink, runtime);
     const activities = new Set<string>();
-    const tools = new Map<string, { started: number; output: string }>();
+    // Output is kept bounded as it streams (its last 256 KiB), with the total seen.
+    const tools = new Map<string, { started: number; output: string; bytes: number }>();
     let turnId: string | null = null;
     // Codex announces a fatal error as an `error` notification before `turn/completed` reports the
     // failure. The notification carries the better message and an error code; it is held here and
@@ -401,15 +403,16 @@ export class CodexBackend implements Backend {
             } else if (item.type === "reasoning") {
               sink.observe({ type: "reasoning.start", native: native(item.id) });
             } else if (item.type === "commandExecution") {
-              tools.set(item.id, { started: Date.now(), output: "" });
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd } } });
+              tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd },
+                ...(item.command ? { exec: { command: item.command, ...(item.cwd ? { cwd: item.cwd } : {}) } } : {}) } });
             } else if (item.type === "fileChange") {
-              tools.set(item.id, { started: Date.now(), output: "" });
+              tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
               this.changePaths.set(`${tid}:${item.id}`, files);
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
-              tools.set(item.id, { started: Date.now(), output: "" });
+              tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: item.type, title: label, args: (item.arguments as Record<string, unknown>) ?? {} } });
             }
@@ -422,14 +425,22 @@ export class CodexBackend implements Backend {
           case "item/reasoning/textDelta":
             sink.observe({ type: "reasoning.delta", native: native(p.itemId), representation: "provider-text", index: partIndex(p.contentIndex), text: String(p.delta ?? "") });
             break;
+          // The plan Codex reports for the turn (codex-cli 0.163.0: pending, inProgress, completed), whole each time.
+          case "turn/plan/updated": {
+            const steps = Array.isArray(p.plan) ? (p.plan as { step?: unknown; status?: unknown }[]).map((s) => ({ text: String(s.step ?? ""), status: codexStepStatus(s.status) })) : [];
+            sink.observe({ type: "plan.update", native: native("plan"), from: "codex-plan", steps, ...(typeof p.explanation === "string" && p.explanation ? { explanation: p.explanation } : {}) });
+            break;
+          }
           case "item/agentMessage/delta":
             sink.observe({ type: "message.delta", native: native(p.itemId), text: String(p.delta ?? "") });
             break;
           case "item/commandExecution/outputDelta": {
             const t = tools.get(String(p.itemId));
             if (t) {
-              t.output += String(p.delta ?? "");
-              sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output } });
+              const delta = String(p.delta ?? "");
+              t.bytes += byteLength(delta);
+              t.output = boundOutput(t.output + delta).text;
+              sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output, ...(t.bytes > byteLength(t.output) ? { outputBytes: t.bytes, outputTruncated: true } : {}) } });
             }
             break;
           }
@@ -438,11 +449,18 @@ export class CodexBackend implements Backend {
             if (item.type === "fileChange") this.changePaths.delete(`${tid}:${item.id}`);
             if (item.type === "agentMessage") {
               // A message that completes without streaming is kept, commentary included: its phase says what it is.
-              sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}) });
+              const evidence = memoryEvidence(item.memoryCitation);
+              sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}), ...(evidence.length ? { evidence } : {}) });
             } else if (tools.has(item.id)) {
               const t = tools.get(item.id)!;
               const output = item.type === "commandExecution" ? (item.aggregatedOutput ?? t.output) : item.type === "fileChange" ? (item.changes ?? []).map((c) => `${c.kind?.type ?? "update"} ${c.path}\n${c.diff}`).join("\n") : JSON.stringify(item.result ?? item.error ?? "", null, 2);
-              sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: { ...(output ? { output } : {}), durationMs: item.durationMs ?? Date.now() - t.started } });
+              const total = Math.max(t.bytes, byteLength(output));
+              const shown = boundOutput(output).text;
+              sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: {
+                ...(shown ? { output: shown } : {}), ...(total > byteLength(shown) ? { outputBytes: total, outputTruncated: true } : {}),
+                ...(item.type === "commandExecution" && "exitCode" in item ? { exitCode: item.exitCode ?? null } : {}),
+                durationMs: item.durationMs ?? Date.now() - t.started,
+              } });
             } else if (item.type === "reasoning") {
               sink.observe({ type: "reasoning.done", native: native(item.id), summary: item.summary ?? [], text: item.content ?? [] });
             }
@@ -623,6 +641,7 @@ interface CodexItem {
   agentThreadId?: string;
   agentPath?: string;
   kind?: string;
+  memoryCitation?: unknown;
 }
 
 /** Cancel setup locally without killing the shared server used by other threads. */
@@ -685,6 +704,10 @@ export function codexOutcome(item: { type: string; status?: string; exitCode?: n
   if (item.status === "completed") return item.type === "commandExecution" ? exit : "succeeded";
   if (item.status === undefined && item.type === "commandExecution" && exit !== "unknown") return exit;
   return item.error ? "failed" : "unknown";
+}
+
+function codexStepStatus(status: unknown): PlanStepStatus {
+  return status === "pending" ? "pending" : status === "inProgress" ? "in-progress" : status === "completed" ? "completed" : "unknown";
 }
 
 function partIndex(value: unknown): number {

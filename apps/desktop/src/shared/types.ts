@@ -6,7 +6,8 @@ import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 import type { UsageEvent } from "./usage.js";
-import type { ExecutionOutcome, ItemOrigin, MessagePhase, ReasoningRepresentation } from "./conversation-events.js";
+import type { ExecutionOutcome, ItemOrigin, MessagePhase, PlanSource, PlanStep, ReasoningRepresentation } from "./conversation-events.js";
+import type { Evidence, Exec } from "./evidence.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -86,6 +87,8 @@ export interface Thread {
   archived?: { at: string };
   /** Main-owned: the routine run that made this thread (docs/routines.md). */
   routine?: { id: string; name: string; runId: string };
+  /** Main-owned: the note each turn's task record was saved to, by turn (user message) id, and the revision it saved (docs/task-context.md). */
+  taskNotes?: Record<string, { pageId: string; revision: number }>;
 }
 
 /** A CLI-reported delegated task. Unknown means the stream ended without a final state. */
@@ -104,9 +107,10 @@ export type ThreadItem =
    * contract (shared/conversation-events.ts). Items saved before it have none; read them through `itemFacts`.
    * `nativePhase` is the CLI's own phase value, kept verbatim.
    */
-  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
+  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin; evidence?: Evidence[] }
   /** `ok` is kept for older readers: true only for `succeeded`, false only for `failed` or `denied`. */
-  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin }
+  /** `exec`, `exitCode`, `outputBytes` and `outputTruncated` (shared/evidence.ts): the command that ran and its output, bounded. */
+  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   /**
    * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn
@@ -118,6 +122,8 @@ export type ThreadItem =
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. `reasoning` says which. */
   | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string; reasoning?: ReasoningRepresentation; outcome?: ExecutionOutcome; origin?: ItemOrigin }
+  /** The plan a CLI reported for this turn (docs/task-context.md); `revision` counts its updates. "completed" steps are reported done, not checked. */
+  | { id: string; kind: "plan"; steps: PlanStep[]; explanation?: string; from: PlanSource; revision: number; at: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** An Auto routing decision made before a turn: what was picked and why. */
   | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
 
@@ -552,6 +558,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "project:remove": { req: { projectId: string }; res: AppState };
   "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
+  /** Saves one turn's task record to its project's notes, or updates the note it was saved to (docs/task-context.md). */
+  "task:save-note": { req: { threadId: string; turnId: string }; res: { pageId: string; title: string; revision: number; created: boolean; preserved: boolean } };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
   "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[] }; res: { ok: boolean; error?: string } };
   /** Copies dropped, pasted or picked files into main's staging folder; over-limit files come back as errors. */

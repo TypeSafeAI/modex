@@ -12,6 +12,7 @@
  * unspecified, unavailable or unknown, never guessed.
  */
 import type { AgentActivity, BackendId, ThreadItem } from "./types.js";
+import type { Evidence, Exec } from "./evidence.js";
 
 export const CONVERSATION_SCHEMA = 1 as const;
 
@@ -61,19 +62,35 @@ export interface ItemOrigin extends TurnRef {
   native: NativeRef;
 }
 
+/**
+ * A plan step's status as the CLI reported it. `completed` means the CLI reported the step done; it
+ * is not a check. A status Modex does not know is `unknown`.
+ */
+export type PlanStepStatus = "pending" | "in-progress" | "completed" | "unknown";
+export interface PlanStep { text: string; status: PlanStepStatus }
+/** Where a plan came from: Codex's `turn/plan/updated`, or Claude Code's `TodoWrite` tool. */
+export type PlanSource = "codex-plan" | "claude-todo";
+
 export interface ToolCall {
   name: string;
   title: string;
   args: Record<string, unknown>;
   agent?: AgentActivity;
+  /** The command that actually ran, apart from the display title (shared/evidence.ts). */
+  exec?: Exec;
 }
 
 export interface ToolProgress {
   args?: Record<string, unknown>;
   title?: string;
   agent?: AgentActivity;
-  /** The whole output so far, not an increment. */
+  /** The whole output so far, not an increment; the runner keeps at most its last 256 KiB. */
   output?: string;
+  /** How many bytes of output there were, when more than `output` holds. */
+  outputBytes?: number;
+  outputTruncated?: boolean;
+  /** The exit code the CLI reported; null when it reported that there is none. Absent: not reported. */
+  exitCode?: number | null;
   durationMs?: number;
 }
 
@@ -83,7 +100,7 @@ export type Observation = (
   | { type: "message.start"; native: NativeRef; phase: MessagePhase; nativePhase?: string }
   | { type: "message.delta"; native: NativeRef; text: string }
   /** The message ended. `text`, when given, is the final snapshot and replaces what streamed. */
-  | { type: "message.done"; native: NativeRef; text?: string; phase?: MessagePhase; nativePhase?: string }
+  | { type: "message.done"; native: NativeRef; text?: string; phase?: MessagePhase; nativePhase?: string; evidence?: Evidence[] }
   | { type: "reasoning.start"; native: NativeRef }
   /** Reasoning text for one part (Codex `summaryIndex` or `contentIndex`) of one representation. */
   | { type: "reasoning.delta"; native: NativeRef; representation: "summary" | "provider-text"; index: number; text: string }
@@ -92,6 +109,8 @@ export type Observation = (
   | { type: "tool.start"; native: NativeRef; tool: ToolCall }
   | { type: "tool.update"; native: NativeRef; progress: ToolProgress }
   | { type: "tool.done"; native: NativeRef; outcome: SettledOutcome; progress?: ToolProgress }
+  /** The whole plan as the CLI now reports it; each update is a new revision of the same plan. */
+  | { type: "plan.update"; native: NativeRef; from: PlanSource; steps: PlanStep[]; explanation?: string }
 ) & { source?: string };
 
 /** Attempt boundaries, issued by the runner, never by a backend. */
@@ -115,10 +134,11 @@ type Item<K extends ThreadItem["kind"]> = Extract<ThreadItem, { kind: K }> & { o
 export type ConversationItem =
   | (Item<"assistant"> & { phase: MessagePhase })
   | (Item<"thinking"> & { reasoning: ReasoningRepresentation })
-  | Item<"tool">;
+  | Item<"tool">
+  | Item<"plan">;
 
 interface Entry {
-  kind: "message" | "reasoning" | "tool";
+  kind: "message" | "reasoning" | "tool" | "plan";
   turn: string;
   attempt: string;
   done: boolean;
@@ -171,7 +191,7 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
   }
   if (!current || current.attempt !== turn.attempt || current.outcome !== "running") return state;
   if (event.type === "attempt.end") {
-    const next = settle(s, turn.turn, turn.attempt, event.outcome === "interrupted" ? "interrupted" : "unknown", event.at);
+    const next = settle(s, turn.turn, turn.attempt, event.outcome === "interrupted" ? "interrupted" : "unknown", event.at, event.outcome);
     return { ...next, attempts: { ...next.attempts, [turn.turn]: { attempt: turn.attempt, outcome: event.outcome } } };
   }
   const key = nativeKey(turn, event.native);
@@ -195,9 +215,10 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
       if (entry?.done) return state;
       const e = { ...(entry ?? fresh("message", turn)), done: true, ...(event.phase ? { phase: event.phase } : {}), ...(event.nativePhase !== undefined ? { nativePhase: event.nativePhase } : {}) };
       const id = e.ids.message;
-      if (id) return draft.patch(id, (item) => item.kind === "assistant" ? { ...item, ...(event.text !== undefined ? { text: event.text } : {}), phase: e.phase ?? "unspecified", ...(e.nativePhase !== undefined ? { nativePhase: e.nativePhase } : {}), outcome: "succeeded" } : item).entry(key, e).done();
+      const evidence = event.evidence?.length ? { evidence: event.evidence } : {};
+      if (id) return draft.patch(id, (item) => item.kind === "assistant" ? { ...item, ...(event.text !== undefined ? { text: event.text } : {}), phase: e.phase ?? "unspecified", ...(e.nativePhase !== undefined ? { nativePhase: e.nativePhase } : {}), outcome: "succeeded", ...evidence } : item).entry(key, e).done();
       if (!event.text?.trim()) return draft.entry(key, e).done();
-      return draft.add(message(newId, e, event.text, "succeeded", origin, event.at)).entry(key, { ...e, ids: { message: newId } }).done();
+      return draft.add({ ...message(newId, e, event.text, "succeeded", origin, event.at), ...evidence } as ConversationItem).entry(key, { ...e, ids: { message: newId } }).done();
     }
     case "reasoning.start": {
       if (entry) return state;
@@ -224,8 +245,19 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
     }
     case "tool.start": {
       if (entry) return state;
-      const item: ConversationItem = { id: newId, kind: "tool", name: event.tool.name, title: event.tool.title, args: event.tool.args, ...(event.tool.agent ? { agent: event.tool.agent } : {}), status: "running", outcome: "running", origin, at: event.at };
+      const item: ConversationItem = { id: newId, kind: "tool", name: event.tool.name, title: event.tool.title, args: event.tool.args, ...(event.tool.agent ? { agent: event.tool.agent } : {}), ...(event.tool.exec ? { exec: event.tool.exec } : {}), status: "running", outcome: "running", origin, at: event.at };
       return draft.add(item).entry(key, { ...fresh("tool", turn), ids: { tool: newId } }).done();
+    }
+    case "plan.update": {
+      const steps = event.steps.map((step) => ({ text: step.text, status: step.status }));
+      const id = entry?.ids.plan;
+      if (id) return draft.patch(id, (item) => {
+        if (item.kind !== "plan") return item;
+        const { explanation: _old, ...rest } = item;
+        return { ...rest, steps, ...(event.explanation ? { explanation: event.explanation } : {}), from: event.from, revision: item.revision + 1 };
+      }).done();
+      const item: ConversationItem = { id: newId, kind: "plan", steps, ...(event.explanation ? { explanation: event.explanation } : {}), from: event.from, revision: 1, outcome: "running", origin, at: event.at };
+      return draft.add(item).entry(key, { ...fresh("plan", turn), ids: { plan: newId } }).done();
     }
     case "tool.update":
     case "tool.done": {
@@ -289,6 +321,7 @@ export function finalAnswerIndex(items: readonly ThreadItem[]): number {
 const PHASES: readonly string[] = ["commentary", "final", "unspecified"];
 const SETTLED: readonly string[] = ["succeeded", "failed", "denied", "interrupted", "unknown"];
 const BACKEND_IDS: readonly string[] = ["claude", "codex", "mock"];
+const PLAN_STATUSES: readonly string[] = ["pending", "in-progress", "completed", "unknown"];
 
 /** A conversation event read from outside the process (a file, a paired client), or null when malformed. */
 export function parseConversationEvent(value: unknown): ConversationEvent | null {
@@ -303,13 +336,16 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
     switch (value.type) {
       case "message.start": return PHASES.includes(value.phase as string) && optional(value.nativePhase, isString);
       case "message.delta": return isString(value.text);
-      case "message.done": return optional(value.text, isString) && optional(value.phase, (p) => PHASES.includes(p as string)) && optional(value.nativePhase, isString);
+      case "message.done": return optional(value.text, isString) && optional(value.phase, (p) => PHASES.includes(p as string)) && optional(value.nativePhase, isString) && optional(value.evidence, (e) => Array.isArray(e) && e.every(isRecord));
       case "reasoning.start": return true;
       case "reasoning.delta": return (value.representation === "summary" || value.representation === "provider-text") && Number.isSafeInteger(value.index) && (value.index as number) >= 0 && isString(value.text);
       case "reasoning.done": return optional(value.summary, strings) && optional(value.text, strings);
-      case "tool.start": return isRecord(value.tool) && isString(value.tool.name) && isString(value.tool.title) && isRecord(value.tool.args) && optional(value.tool.agent, isRecord);
+      case "tool.start": return isRecord(value.tool) && isString(value.tool.name) && isString(value.tool.title) && isRecord(value.tool.args) && optional(value.tool.agent, isRecord)
+        && optional(value.tool.exec, (x) => isRecord(x) && isString(x.command) && optional(x.cwd, isString));
       case "tool.update": return progress(value.progress);
       case "tool.done": return SETTLED.includes(value.outcome as string) && optional(value.progress, progress);
+      case "plan.update": return (value.from === "codex-plan" || value.from === "claude-todo") && optional(value.explanation, isString)
+        && Array.isArray(value.steps) && value.steps.every((step) => isRecord(step) && isString(step.text) && PLAN_STATUSES.includes(step.status as string));
       default: return false;
     }
   })();
@@ -343,13 +379,14 @@ function reasoning(draft: Draft, key: string, e: Entry, representation: "summary
   return draft.entry(key, { ...e, ids, parts: { ...e.parts, [representation]: parts } });
 }
 
-/** Ends whatever an attempt left open with `outcome`. */
-function settle(state: ConversationState, turn: string, attempt: string, outcome: "interrupted" | "unknown", at: string): ConversationState {
+/** Ends whatever an attempt left open with `outcome`. A plan takes the attempt's own outcome when there is one. */
+function settle(state: ConversationState, turn: string, attempt: string, outcome: "interrupted" | "unknown", at: string, attemptOutcome?: SettledOutcome): ConversationState {
   const draft = new Draft(state);
   for (const [key, e] of Object.entries(state.entries)) {
     if (e.done || e.turn !== turn || e.attempt !== attempt) continue;
     for (const id of Object.values(e.ids)) {
-      draft.patch(id, (item) => item.kind === "assistant" ? { ...item, outcome }
+      draft.patch(id, (item) => item.kind === "plan" ? { ...item, outcome: attemptOutcome ?? outcome }
+        : item.kind === "assistant" ? { ...item, outcome }
         : item.kind === "tool" ? { ...item, status: "done", outcome, ok: okFor(outcome), durationMs: elapsed(item.at, at) }
         : { ...item, status: "done", outcome, durationMs: elapsed(item.at, at) });
     }
@@ -407,5 +444,7 @@ function strings(value: unknown): boolean { return Array.isArray(value) && value
 function optional(value: unknown, check: (v: unknown) => boolean): boolean { return value === undefined || check(value); }
 function progress(value: unknown): boolean {
   return isRecord(value) && optional(value.args, isRecord) && optional(value.title, isString) && optional(value.agent, isRecord) && optional(value.output, isString)
-    && optional(value.durationMs, (d) => typeof d === "number" && Number.isFinite(d));
+    && optional(value.durationMs, (d) => typeof d === "number" && Number.isFinite(d))
+    && optional(value.outputBytes, (b) => Number.isSafeInteger(b) && (b as number) >= 0) && optional(value.outputTruncated, (t) => typeof t === "boolean")
+    && optional(value.exitCode, (c) => c === null || Number.isSafeInteger(c));
 }

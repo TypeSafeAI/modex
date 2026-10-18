@@ -57,6 +57,7 @@ test("live Claude: Stop with a waiting card, Stop mid-command, resume after Stop
     report.pendingCard = pendingStop;
     await expect(tid(card, "approval-answer")).toHaveText("Not answered — the turn was stopped");
     expect(pendingStop.failures).toBe(0);
+    expect(pendingStop.notice).toMatch(/^Stopped\./);
     expect(fs.existsSync(path.join(repo, "live-a.txt"))).toBe(false);
 
     // 2. Approve a long command, then Stop while it runs: the call ends Stopped and its file is never written.
@@ -71,6 +72,7 @@ test("live Claude: Stop with a waiting card, Stop mid-command, resume after Stop
     const tool = tools.at(-1);
     report.runningTool = { ...runningStop, tools: tools.map((t) => ({ title: (t as { title?: string }).title, status: t.status, outcome: t.outcome })) };
     expect(runningStop.failures).toBe(0);
+    expect(runningStop.notice).toMatch(/^Stopped\./);
     expect(tool?.status).toBe("done");
     expect(tool?.outcome, "the call Stop interrupted reads interrupted").toBe("interrupted");
     await page.waitForTimeout(31_000);
@@ -87,12 +89,14 @@ test("live Claude: Stop with a waiting card, Stop mid-command, resume after Stop
     expect(resumed.filter((i) => i.kind === "assistant").at(-1)?.text ?? "").toMatch(/resumed/i);
 
     // 4. Stop while the reply streams: the text so far is kept, and nothing reads as a failure.
-    await newChat(page, "Write a 400-word story about a lighthouse keeper. Do not use any tools.");
+    // Long enough that Stop lands while it streams, so the turn is really stopped rather than already done.
+    await newChat(page, "Write a 2000-word story about a lighthouse keeper, in plain prose. Do not use any tools.");
     await expect(items(page, "assistant").last()).toBeVisible({ timeout: 120_000 });
     const streamingStop = await stop(page);
     const story = (await threadItems(page)).filter((i) => i.kind === "assistant").at(-1);
     report.streaming = { ...streamingStop, keptChars: story?.text?.length ?? 0 };
     expect(streamingStop.failures).toBe(0);
+    expect(streamingStop.notice, "Stop ended the streaming turn").toMatch(/^Stopped\./);
     expect(story?.text?.length ?? 0).toBeGreaterThan(0);
     await page.screenshot({ path: test.info().outputPath("claude-live-stop.png") });
   } finally {
