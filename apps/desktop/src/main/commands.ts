@@ -68,6 +68,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("notes:workspaces", () => store.space.workspaces());
   handle("project:notes", ({ projectId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.linkProject(project); });
   handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
+  handle("project:new-workspace", ({ projectId, name }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.moveProjectToNewWorkspace(project, name); });
   handle("notes:reveal", () => { throw new Error("Reveal in Finder is available in the desktop app."); });
   handle("notes:open", () => { throw new Error("Opening files is available in the desktop app."); });
   handle("notes:import", () => { throw new Error("Importing files is available in the desktop app."); });

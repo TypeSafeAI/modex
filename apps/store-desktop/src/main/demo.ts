@@ -105,6 +105,7 @@ export class StoreDemo {
       "notes:workspaces": () => [],
       "project:notes": () => { throw new Error("Space is unavailable in the review demo."); },
       "project:workspace": () => { throw new Error("Space is unavailable in the review demo."); },
+      "project:new-workspace": () => { throw new Error("Space is unavailable in the review demo."); },
       "notes:open": unavailable,
       "notes:import": unavailable,
       "notes:file:read": unavailable,

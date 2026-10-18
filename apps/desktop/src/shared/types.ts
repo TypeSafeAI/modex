@@ -536,6 +536,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "project:notes": { req: { projectId: string }; res: import("./notes.js").NotesProject };
   /** Moves a Modex project's notes into another workspace. */
   "project:workspace": { req: { projectId: string; workspaceId: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
+  /** Makes a notes workspace and moves the project's notes into it, as one action. */
+  "project:new-workspace": { req: { projectId: string; name: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
   "notes:open": { req: { id: string }; res: void };
   /** Copies files into a project or folder; without paths, a picker opens. */
   "notes:import": { req: { targetId: string; paths?: string[] }; res: { imported: number; errors: string[] } };

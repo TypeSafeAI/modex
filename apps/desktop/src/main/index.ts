@@ -745,6 +745,7 @@ handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.s
 handle("notes:workspaces", () => store.space.workspaces());
 handle("project:notes", ({ projectId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.linkProject(project); });
 handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
+handle("project:new-workspace", ({ projectId, name }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.moveProjectToNewWorkspace(project, name); });
 handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
 handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
 handle("notes:import", async ({ targetId, paths }) => {

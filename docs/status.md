@@ -155,6 +155,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   knowledge base opens its file under the new name instead of failing on the old one. (#241)
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
+- **A project can move to a new workspace from the chat sidebar.** Its menu has **Move to new
+  workspace…**, which names a workspace and moves the project into it in one step, even while there
+  is only the default workspace. Before, a new workspace had to be made in Space first.
 
 ## In flight
 
