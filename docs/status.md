@@ -82,6 +82,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     each finished turn, Save to Notes writes the turn's request, plan, changed files, commands and
     loose ends into the project's notes; saving again updates the note unless you edited it.
     [Task plans and records](task-context.md).
+  - **Truthful Claude Stop (CF-2 #275, #286).** Stop sends the CLI's native interrupt, drains
+    its final output and waits for exit, escalating through SIGTERM and SIGKILL. An unconfirmed
+    process keeps its thread and worktree; a failure just before Stop keeps its error and process
+    ownership. Withdrawn permission cards become inert. Split output and final diagnostics survive
+    draining without exposing MCP credentials. Live macOS checks cover pending approval, running
+    command, resume and mid-stream Stop; Windows/Linux escalation remains unproven.
+    [Evidence and limits](reviews/2026-10-18-claude-lifecycle.md).
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
     plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
@@ -184,31 +191,6 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac, and the TestFlight
   upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
-
-- **Truthful Claude Stop on `claude -p` (CF-2, #275).** This is #250's lifecycle work without the
-  Agent SDK.
-  - Stop sends Claude Code's own interrupt and ends its input, then reads the CLI's last messages.
-    Exit code 1 after an interrupt is not a failure.
-  - The turn ends when the process has exited. Modex sends SIGTERM 1.5 s after Stop and SIGKILL
-    1.5 s later. A process that still has not exited is reported unconfirmed, with its pid, and
-    its thread and worktree are kept.
-  - A failure received just before Stop retains its error and process ownership: the failure's
-    drain deadline cannot permit deletion before exit or bounded stop confirmation.
-    Repair PR #291 is integrated into #286. Follow-up reconciliation includes CF-8's test and
-    fixes evidence E2E setup that could click a plain turn label before its disclosure rendered;
-    each evidence case now opens its own rows independently. The receipt retains earlier failures.
-  - Permission cards Claude withdraws close inert, and late answers are dropped.
-  - Built on CF-1's event contract: a tool call that Stop interrupted reads Stopped, not Failed.
-  - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result
-    now survive. Failure details no longer copy MCP route tokens.
-
-  Claude Code 2.1.302 with Haiku, through the app on 2026-10-18 (opt-in `e2e/claude-live-stop.spec.ts`):
-  - Stop with a card waiting: idle in 0.9 s.
-  - Stop during a running command: SIGTERM after the 1.5 s grace, and the command's file was never written.
-  - Resume after Stop: answers normally.
-  - Stop mid-stream: the text so far is kept.
-
-  Windows and Linux escalation is unproven. Open in #286. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
