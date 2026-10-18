@@ -67,9 +67,13 @@ renderer reuse, not production transport authorization or Store acceptance.
 1. Resolve App Review eligibility for a host-dependent development client, with a clear
    explanation of independently useful client behavior, local/remote host requirements,
    explicit installation/launch consent and no code downloaded by the Store app.
-2. Implement the production host transport and sandboxed Electron `mas` shell. Preserve
-   CLI-owned coding turns. Define behavior when the host is absent, stopped, revoked,
-   outdated, disconnected or restarted during an action.
+2. Implemented; acceptance open. The production host transport (`desktop-host.ts`) and the
+   sandboxed Electron `mas` shell (`apps/store-desktop`) landed in #119, and coding turns stay
+   CLI-owned. The Store has defined behavior for an absent host (demo access), a host that
+   stops, restarts or disconnects (it reconnects and keeps the unsent draft), revocation
+   (in-flight results are withheld), and an outdated or changed host (#166). Signed acceptance
+   of these cases is partial; the [readiness matrix](reviews/2026-10-11-store-readiness.md)
+   lists what is pending.
 3. Run the full desktop acceptance suite through the real Store-to-host transport:
    projects/worktrees, both auth flows, send/retry/stop, approvals, diffs/revert, terminals,
    settings, themes, streaming, window lifecycle and cleanup. Verify a revoked client
