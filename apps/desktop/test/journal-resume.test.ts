@@ -378,3 +378,121 @@ test("a journal write that fails while the phone reads turns journaling off: the
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+/** A host, phone server and paired desktop over one journal and a real thread, to probe cursors and limits. */
+async function hostPhoneAndDesktop(prefix: string) {
+  const home = tmpdir(prefix);
+  const file = path.join(home, "app", "events.sqlite");
+  const store = new Store(home);
+  const project = store.addProject(gitRepo());
+  let journal = new EventJournal(file, { flushMs: 5 });
+  const idle = { id: "claude" as const, listModels: async () => [], dispose: async () => {}, async runTurn() { return { status: "completed" as const }; } };
+  const runner = new ThreadRunner({ home, store, backends: { claude: idle }, emit: (event) => journal.record(event) });
+  const host = new DesktopHost(home, { version: "test", channels: () => [], async invoke() { return null; }, journal: () => journal });
+  let unsubscribe = journal.subscribe((entries) => host.broadcastJournal(entries));
+  const companion = new CompanionServer(home, { state: () => store.snapshot(), items: (id) => runner.items(id), status: (id) => runner.status(id),
+    send: async () => ({ ok: true }), answer: () => {}, journal: () => journal }, () => ["127.0.0.1"], () => () => {});
+  const client = new DesktopClient(() => {});
+  const connections: boolean[] = [];
+  client.on("connected", ({ resumed }: { resumed: boolean }) => connections.push(resumed));
+  const received: ThreadEvent[] = [];
+  client.on("thread", (event: ThreadEvent) => received.push(event));
+  const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+  await host.start();
+  const pairingUri = (await companion.start()).pairingUri!;
+  await client.pair(host.invite(), "a".repeat(64));
+  await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+  return {
+    home, file, thread, host, client, connections, received,
+    get journal() { return journal; },
+    /** The desktop reconnects holding `cursor`, as after sleep; resolves whether it resumed. */
+    async desktopFrom(cursor: { id: string; cursor: number }): Promise<boolean> {
+      client.suspend();
+      (client as unknown as { journal?: { id: string; cursor: number } }).journal = cursor;
+      client.resume();
+      await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+      return connections.at(-1)!;
+    },
+    phoneFrom: (cursor?: { id: string; cursor: number }) => phoneSnapshot(pairingUri, home, thread.id, cursor),
+    /** The journal file is deleted and a new one opens over the same home. */
+    replaceJournal() {
+      unsubscribe();
+      journal.close();
+      for (const suffix of ["", "-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
+      journal = new EventJournal(file, { flushMs: 5 });
+      unsubscribe = journal.subscribe((entries) => host.broadcastJournal(entries));
+    },
+    async dispose() { client.dispose(); await companion.dispose(); await host.dispose(); await runner.dispose(); journal.close(); fs.rmSync(home, { recursive: true, force: true }); },
+  };
+}
+
+test("every cursor the journal cannot honour reloads both clients: ahead of the log, pruned, and from a deleted journal", async () => {
+  const at = await hostPhoneAndDesktop("modex-journal-cursors-");
+  try {
+    // Distinct items, so each is its own row (updates to one item would merge into one).
+    for (let i = 0; i < 4; i++) at.journal.record({ threadId: at.thread.id, type: "item", item: note(`c${i}`) });
+    const latest = at.journal.latest();
+    const id = at.journal.id;
+    // A control first: the client really does present the cursor it is given.
+    assert.equal(await at.desktopFrom({ id, cursor: latest }), true, "a current cursor resumes the desktop");
+    assert.equal((await at.phoneFrom({ id, cursor: latest })).delta, true, "and the phone");
+
+    assert.equal(await at.desktopFrom({ id, cursor: latest + 50 }), false, "a cursor ahead of the log reloads the desktop");
+    assert.equal((await at.phoneFrom({ id, cursor: latest + 50 })).delta, undefined, "and the phone");
+
+    (at.journal as unknown as { retention: { maxAgeMs: number; maxRows: number } }).retention = { maxAgeMs: 60_000, maxRows: 1 };
+    at.journal.prune();
+    assert.equal(await at.desktopFrom({ id, cursor: 1 }), false, "a pruned cursor reloads the desktop");
+    assert.equal((await at.phoneFrom({ id, cursor: 1 })).delta, undefined, "and the phone");
+
+    at.replaceJournal();
+    assert.notEqual(at.journal.id, id);
+    assert.equal(await at.desktopFrom({ id, cursor: latest }), false, "a cursor from a deleted journal reloads the desktop");
+    assert.equal((await at.phoneFrom({ id, cursor: latest })).delta, undefined, "and the phone");
+  } finally {
+    await at.dispose();
+  }
+});
+
+test("a resume whose replay passes 4 MB reloads instead, and one under it replays every missed event once", async () => {
+  const at = await hostPhoneAndDesktop("modex-journal-replay-");
+  try {
+    const big = (id: string) => ({ threadId: at.thread.id, type: "item" as const, item: note(id, "z".repeat(900_000)) });
+    const missed = async (count: number, tag: string): Promise<boolean> => {
+      at.journal.flush();
+      const cursor = { id: at.journal.id, cursor: at.journal.latest() };
+      at.client.suspend();
+      for (let i = 0; i < count; i++) at.journal.record(big(`${tag}${i}`));
+      at.journal.flush();
+      return at.desktopFrom(cursor);
+    };
+    assert.equal(await missed(3, "small"), true, "about 2.7 MB missed: the desktop resumes");
+    await until(() => ["small0", "small1", "small2"].every((id) => at.received.some((event) => event.type === "item" && event.item.id === id)));
+    for (const id of ["small0", "small1", "small2"]) assert.equal(at.received.filter((event) => event.type === "item" && event.item.id === id).length, 1, `${id} arrived once`);
+    assert.equal(await missed(5, "large"), false, "about 4.5 MB missed: the desktop reloads instead of replaying it");
+    assert.ok(!at.received.some((event) => event.type === "item" && event.item.id.startsWith("large")), "nothing of the oversized replay was streamed");
+  } finally {
+    await at.dispose();
+  }
+});
+
+test("a journal batch delivered twice reaches the paired desktop once", async () => {
+  const at = await hostPhoneAndDesktop("modex-journal-twice-");
+  try {
+    at.journal.flush();
+    const cursor = at.journal.latest();
+    at.journal.record({ threadId: at.thread.id, type: "item", item: note("once") });
+    at.journal.record({ threadId: at.thread.id, type: "item_update", id: "once", patch: { text: "edited" } });
+    at.journal.flush();
+    const batch = at.journal.since(cursor);
+    at.host.broadcastJournal(batch); // the same rows again, as a retried write or a second subscriber would send them
+    at.journal.record({ threadId: at.thread.id, type: "status", status: "idle" });
+    await until(() => at.received.some((event) => event.type === "status" && event.status === "idle"));
+    const rows = batch.filter((entry) => entry.event.threadId === at.thread.id && (entry.event.type === "item" || entry.event.type === "item_update"));
+    assert.ok(rows.length >= 1);
+    const mine = at.received.filter((event) => event.threadId === at.thread.id && (event.type === "item" || event.type === "item_update"));
+    assert.deepEqual(mine, rows.map((entry) => entry.event), "each row applied once, though it was sent twice");
+  } finally {
+    await at.dispose();
+  }
+});
