@@ -794,6 +794,19 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
 
 ## In flight
 
+- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The release ships everything under "On main,
+  unreleased":
+  - read-only routines on a timer, on one decision service for Jev;
+  - the notes fixes from v0.1.0's review (#241);
+  - Copy details and Retry on every inline error;
+  - the Analytics restyle and the Images "queued" fix.
+
+  Val chose the version. The full test suite, typecheck and a signed, notarized rehearsal ran
+  locally. Remaining: the packaged E2E on the signed tag, the hosted native updater scenarios,
+  independent download checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac,
+  and the TestFlight upload of Companion build 7, which carries thread archiving from the phone.
+  [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
+
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts
   to the exact tag/source/run, and prepares a draft with five installers, checksums and
