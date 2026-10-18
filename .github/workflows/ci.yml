@@ -61,6 +61,7 @@ jobs:
         # runs included; every UI-test wait is this multiple of its base (UITestBudget, docs/ios-companion.md).
         env:
           MODEX_UI_TIMEOUT_SCALE: "4"
+          MODEX_IOS_MEMORY_LOG: ${{ runner.temp }}/modex-ios-tests/Logs/Test/memory.log
         run: apps/ios/ModexCompanion/Scripts/test-e2e.sh
       - name: Upload iPhone test results
         if: always()
