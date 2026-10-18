@@ -560,8 +560,9 @@ replacement tag also carries #246 and #247. The independently downloaded install
 checksum, manifest, signature, Gatekeeper, ticket, version and architecture checks. The DMG and
 ZIP apps have identical code hashes. The packaged suite passed again against the download (314 cases). GitHub's latest release
 reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its ZIP and digest.
-On 2026-10-17 Val reported the first published-to-published upgrade. A v0.0.12 install updated to
-v0.1.0 through its own banner, relaunched by itself, showed 0.1.0 in About and kept an unsent draft.
+On 2026-10-18 the release Mac's v0.0.12 install updated itself to v0.1.0 through its banner, the
+first published-to-published upgrade. It installed the published ZIP (matching sha512), relaunched by
+itself, shows 0.1.0 in About and kept its unsent drafts.
 [Release review](reviews/2026-10-15-v0.1.0-release-review.md).
 
 - **Analytics export and recovery.** The native dashboard permits its own CSV
@@ -1086,32 +1087,6 @@ v0.1.0 through its own banner, relaunched by itself, showed 0.1.0 in About and k
   with `features.multi_agent` off and the failure card says to start a new thread. Threads
   poisoned before the fix stay poisoned in Modex; see [chatgpt-signin.md](chatgpt-signin.md).
 
-## Blocked
-
-Waiting on a decision only Val can give, as of 2026-10-18. The rest of the post-v0.1.0 queue has
-landed or been decided:
-- The update check is recorded.
-- #250 is closed, so Modex keeps `claude -p`.
-- Val turned on the 1Password CLI integration.
-- The nine stale remote branches are deleted.
-
-- **Worktrees the pruning tool cannot prove merged.** With Val's approval, the Codex coordinator's
-  worktrees were retired.
-  - Removed through `scripts/worktree.sh remove`: `fix-thread-delete`, `release-reviewed-batch` and
-    `review-batch-integration`. `analytics-fit` was pruned once its preview server exited.
-  - Archived outside the repository but kept: eighteen more, each with its branch bundle, staged and
-    unstaged changes, and untracked and ignored files. They stay because their PRs merged into stack
-    branches, not `main`, or never merged: `e2e-show-observer`, `review-fallback`,
-    `review-archive`, `review-integration`, `review-analytics`, `review-paste`, `review-notes`,
-    `review-coverage`, `paste-main-reconcile`, `coverage-main-reconcile`, `notes-stack-review`,
-    `notes-final-review`, `notes-scope-repair`, `notes-tree-repair`, `notes-file-read-repair`,
-    `notes-land`, `pr210-conflicts` and `notes-files`.
-  - `pr250-e2e` (#250's test checkout) and `status-blocked` (superseded by #268) stay for the same
-    reason.
-
-  Removing them needs either merge proof that follows a stack through to `main`, or Val's approval
-  to remove them outside the tool.
-
 ## Next
 
 Roughly in the order they earn their place; none is scheduled.
@@ -1122,7 +1097,12 @@ Roughly in the order they earn their place; none is scheduled.
 2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
-3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+3. **#250's lifecycle fixes on the `claude -p` backend.** #250 (Claude through the Agent SDK) was
+   closed so that Modex keeps `claude -p`; see its closing comment. Its graceful interrupt before
+   SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
+   stderr and exit codes all apply to `backends/claude.ts` without the SDK. The author is invited to
+   send them; otherwise they come after the next release.
+4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
