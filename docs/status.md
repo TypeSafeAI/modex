@@ -107,8 +107,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
     every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
     window wraps its text and buttons instead of pushing Deny out of view.
-  - **Still open:** the Markdown parser (#283), CF-6's request half, CF-7's clarifications,
-    live-provider acceptance and human VoiceOver checks.
+  - **Still open:** CF-4's remaining Markdown checks (#277), CF-6's request half, CF-7's
+    clarifications, live-provider acceptance and human VoiceOver checks.
 
 - **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
   transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
