@@ -831,6 +831,8 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   - The turn ends when the process has exited. Modex sends SIGTERM 1.5 s after Stop and SIGKILL
     1.5 s later. A process that still has not exited is reported unconfirmed, with its pid, and
     its thread and worktree are kept.
+  - A failure received just before Stop retains its error and process ownership: the failure's
+    drain deadline cannot permit deletion before exit or bounded stop confirmation.
   - Permission cards Claude withdraws close inert, and late answers are dropped.
   - Built on CF-1's event contract: a tool call that Stop interrupted reads Stopped, not Failed.
   - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result

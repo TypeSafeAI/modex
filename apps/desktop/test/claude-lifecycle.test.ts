@@ -489,3 +489,39 @@ test("runner: a resumed session's replayed background result does not finish the
   assert.match(notices(runner.items(thread.id)).at(-1) ?? "", /ended the turn without replying/);
   assert.equal(runner.status(thread.id), "error");
 });
+
+test("a failure before Stop retains an unconfirmed process report and the original error", async () => {
+  const proc = new FakeProcess();
+  proc.ignore.add("SIGTERM").add("SIGKILL");
+  const t = turn(proc, { drainMs: 5, interruptGraceMs: 20, killGraceMs: 20, exitConfirmMs: 20 });
+  await proc.waitFor(isUser);
+  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, result: "boom", errors: ["boom"], num_turns: 1 });
+  t.abort.abort();
+  const result = await t.run;
+  assert.equal(result.status, "failed");
+  assert.equal(result.error, "boom");
+  assert.deepEqual(result.stop && { outcome: result.stop.outcome, pid: result.stop.pid }, { outcome: "unconfirmed", pid: proc.pid });
+  assert.deepEqual(proc.signals, ["SIGTERM", "SIGKILL"]);
+});
+
+test("runner: a failure before Stop keeps its live process's worktree until exit is confirmed", async () => {
+  const proc = new FakeProcess();
+  proc.ignore.add("SIGTERM").add("SIGKILL");
+  let alive = true;
+  const { h, runner, project } = await claudeThread([proc], { drainMs: 5, interruptGraceMs: 20, killGraceMs: 20, exitConfirmMs: 20 }, { isProcessAlive: (pid) => pid === proc.pid && alive });
+  const thread = await runner.createThread(project.id, { backend: "claude", mode: "agent", auto: false, worktree: true });
+  runner.updateThread(thread.id, { title: "Failed then stopped" });
+  const run = runner.send(thread.id, "go");
+  await proc.waitFor(isUser);
+  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, result: "boom", errors: ["boom"], num_turns: 1 });
+  runner.stop(thread.id);
+  await run;
+  const worktree = h.store.thread(thread.id)!.worktree!.path;
+  assert.ok(runner.items(thread.id).some((i) => i.kind === "notice" && i.failure && i.text.includes("boom")), "the original failure remains visible");
+  await assert.rejects(runner.deleteThread(thread.id, true), /has not confirmed/);
+  assert.ok(fs.existsSync(worktree));
+  assert.ok(h.store.thread(thread.id));
+  alive = false;
+  await runner.deleteThread(thread.id, true);
+  assert.ok(!fs.existsSync(worktree));
+});

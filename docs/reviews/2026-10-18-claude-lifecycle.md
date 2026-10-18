@@ -249,6 +249,49 @@ Unset every `CLAUDE*`/`ANTHROPIC*` variable when you run it from inside a Claude
 
 ## Independent review
 
+### Failure before Stop: reconciliation of `a6ea0b0`
+
+A separate reconciliation reproduced a remaining ownership race on PR #286's head
+`a6ea0b03df2eb2d93512fa2ea1fc85db65595b7d`. A failed result armed the drain deadline;
+Stop then armed its longer termination deadlines. The drain settled the failed turn before
+the process exited, without a stop report. The runner only retained unconfirmed pids for
+interrupted results, so deleting the failed thread could remove a live process's worktree.
+
+Two new regressions failed before the repair: the backend returned no unconfirmed stop
+report, and `deleteThread` resolved instead of refusing while the process-liveness probe
+still returned true. The tests use the actual backend and runner with the existing fake
+process; they are not live-provider evidence.
+
+The repair waits for exit or bounded Stop confirmation even when a failure arrived first.
+The result retains both the original failure and its stop report. The runner tracks an
+unconfirmed pid regardless of turn outcome, refusing deletion until the process exits.
+The regression also checks that deletion succeeds once the liveness probe reports exit.
+Verification results for this reconciliation are recorded separately from the earlier runs.
+
+Live acceptance was repeated on the repaired build at 10:16 UTC with Claude Code 2.1.302
+and Haiku. The opt-in spec passed all four steps: the pending card stopped in 936 ms,
+the approved command stopped via SIGTERM in 2,336 ms without writing its file, the same
+thread replied `resumed`, and streaming Stop kept 2,182 characters without a failure card.
+The [new live report](2026-10-18-claude-lifecycle/reconciliation-live-app-run.json) records
+those observations. The stuck-process failure-before-Stop race itself remains simulated;
+this live run checks the existing native behavior after the repair.
+
+The first full unit run passed worktrees (109) and core (16), then desktop reported
+1,532 passed, 16 skipped and five failures in `knowledge.test.ts`. These were existing
+server reuse, separate status stdout/stderr, failed-status diagnostics, malformed status,
+and invalid-server refusal cases. The run included `kill EPERM`, readiness timeouts,
+and missed rejection assertions. Running that unchanged file alone passed all 11 tests.
+No timeouts or Knowledge code were changed. These failures remain part of the evidence.
+
+The final repaired tree passed `pnpm build`, `pnpm typecheck`, and the complete `pnpm test`
+command: worktrees 109/109, core 16/16, desktop 1,537 passed and 16 skipped (of 1,553),
+desktop native/update 21/21, site 10/10, and Store desktop 16/16. Both new regressions pass
+in that full run. The 16 skips are the existing 15 Windows-only cases and opt-in
+OpenKnowledge integration. Full E2E and exact-commit CI results are recorded in the repair
+PR linked from [#286](https://github.com/TypeSafeAI/modex/pull/286).
+
+### Earlier review
+
 A read-only review of `62fccb9..feb2166` found nothing high-severity. It confirmed:
 - every Stop path is bounded;
 - requests settle once;
