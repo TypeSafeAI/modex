@@ -491,7 +491,9 @@ test("every Codex 0.163.0 phase and tool status has a mapping, and none but a cl
   assert.equal(codexOutcome({ type: "commandExecution", status: "completed", exitCode: null }), "unknown");
   assert.equal(codexOutcome({ type: "commandExecution", exitCode: 0 }), "succeeded", "no status: the exit code decides");
   assert.equal(codexOutcome({ type: "commandExecution", exitCode: 1 }), "failed");
-  assert.equal(codexOutcome({ type: "webSearch" }), "unknown", "web search reports no status");
+  // codex-cli 0.163.0's webSearch item has neither a status nor an error field, so item/completed is
+  // the only report a search makes: it finished. Unknown stays for work that never reported (#277).
+  assert.equal(codexOutcome({ type: "webSearch" }), "succeeded", "a web search that completed finished");
   assert.equal(codexOutcome({ type: "mcpToolCall", error: { message: "boom" } }), "failed");
 });
 

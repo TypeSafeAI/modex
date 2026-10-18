@@ -808,6 +808,10 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   knowledge base opens its file under the new name instead of failing on the old one. (#241)
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
+- **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
+  unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
+  search no status or error field. Its completion is its only report, so a completed search now
+  reads as done and folds like other finished work (#277).
 
 ## In flight
 
