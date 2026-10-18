@@ -391,6 +391,13 @@ export function mobileItem(item: ThreadItem): Record<string, unknown> {
     case "route": return { id: item.id, kind: item.kind, text: `${item.backend} · ${item.model || "default"}`, at: item.at };
     // A phone that predates plans shows a kind it does not know as its text.
     case "plan": return { id: item.id, kind: item.kind, text: `Plan · ${item.steps.filter((s) => s.status === "completed").length} of ${item.steps.length} reported done`, steps: item.steps, revision: item.revision, ...(item.outcome ? { outcome: item.outcome } : {}), at: item.at };
+    // A kind this build does not know, such as one a newer Modex saved before a downgrade: an inert
+    // notice, never `undefined`, which goes out as null and makes the phone reject the whole snapshot.
+    // Its own fields are not forwarded, since they may hold anything.
+    default: {
+      const unknown = item as { id: string; at: string };
+      return { id: unknown.id, kind: "notice", level: "info", text: "An item from a newer version of Modex. Update Modex on your Mac to see it.", at: unknown.at };
+    }
   }
 }
 

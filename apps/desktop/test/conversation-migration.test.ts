@@ -136,3 +136,16 @@ test("loading a thread with nothing to settle sends nothing and leaves its file 
     await runner.dispose();
   } finally { old.journal.close(); }
 });
+
+test("an item kind this Mac does not know reaches the phone as a readable, inert notice, never as null", () => {
+  // After a downgrade, the state files can hold items a newer Modex wrote. One null item makes the
+  // phone reject its whole snapshot, so every item must map to something it can show.
+  const future = { id: "w1", kind: "widget", at: "2026-10-18T00:00:00.000Z", body: "whatever a newer Modex put here" } as unknown as ThreadItem;
+  const phone = mobileItem(future);
+  assert.ok(phone, "never null or undefined");
+  assert.equal(phone.id, "w1");
+  assert.equal(phone.kind, "notice", "a kind every phone build renders, with nothing to act on");
+  assert.equal(typeof phone.text, "string");
+  assert.ok(!JSON.stringify(phone).includes("whatever a newer Modex"), "an unknown item's fields are not forwarded: they may hold anything");
+  assert.ok(!JSON.stringify([future, future].map(mobileItem)).includes("null"), "a snapshot with unknown items has no null entries");
+});
