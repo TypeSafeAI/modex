@@ -192,3 +192,53 @@ test("a desktop whose cursor the host cannot resume reloads, and a stopped journ
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+// ── Journal faults through the real host and client (CF-6, journal mechanics) ──────────────────────
+
+const note = (id: string, text = id): ThreadItem => ({ id, kind: "user", text, at: new Date().toISOString() }) as ThreadItem;
+const until = async (check: () => boolean, ms = 5000): Promise<void> => {
+  for (const end = Date.now() + ms; !check(); await new Promise((resolve) => setTimeout(resolve, 20))) {
+    if (Date.now() > end) throw new Error("timed out");
+  }
+};
+
+/** A journal-backed host with one paired desktop client, collecting what the client sees. */
+async function pairedOverJournal(prefix: string) {
+  const home = tmpdir(prefix);
+  let journal: EventJournal | undefined = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
+  const host = new DesktopHost(home, { version: "test", channels: () => [], async invoke() { return null; }, journal: () => journal });
+  let unsubscribe = journal.subscribe((entries) => host.broadcastJournal(entries));
+  const client = new DesktopClient(() => {});
+  const connections: boolean[] = [];
+  client.on("connected", ({ resumed }: { resumed: boolean }) => connections.push(resumed));
+  const ids: string[] = [];
+  client.on("thread", (event: ThreadEvent) => { if (event.type === "item") ids.push(event.item.id); });
+  await host.start();
+  await client.pair(host.invite(), "a".repeat(64));
+  await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+  return {
+    home, host, client, connections, ids,
+    get journal() { return journal!; },
+    /** Swap in another journal, as a relaunch over the same home would. */
+    replace(next: EventJournal | undefined) { unsubscribe(); journal = next; if (next) unsubscribe = next.subscribe((entries) => host.broadcastJournal(entries)); },
+    async dispose() { client.dispose(); await host.dispose(); journal?.close(); fs.rmSync(home, { recursive: true, force: true }); },
+  };
+}
+
+test("a thread event too big for the client's frame buffer reloads once instead of resuming into it forever", async () => {
+  const paired = await pairedOverJournal("modex-journal-big-");
+  try {
+    paired.journal.record({ threadId: "t1", type: "item", item: note("small") });
+    await until(() => paired.ids.includes("small"));
+    paired.journal.record({ threadId: "t1", type: "item", item: note("big", "y".repeat(1_100_000)) });
+    await until(() => paired.connections.length >= 2);
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // a client that resumes into the frame reconnects again and again here
+    assert.equal(paired.connections[1], false, "the client reloads state after a frame it cannot read");
+    assert.ok(paired.connections.length <= 3, `it settles instead of looping (${paired.connections.length} connections)`);
+    paired.journal.record({ threadId: "t1", type: "item", item: note("later") });
+    await until(() => paired.ids.includes("later"));
+    assert.ok(!paired.ids.includes("big"), "the oversized frame itself never arrives; the reload carries that item");
+  } finally {
+    await paired.dispose();
+  }
+});
