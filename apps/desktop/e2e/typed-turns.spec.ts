@@ -164,7 +164,10 @@ test("typed turns stay readable in every theme at the 900×600 minimum", async (
   ]);
   await resizeWindow(app, page, 900, 600);
   const turn = page.locator(".turn-content").filter({ has: page.getByText("Themes checked.") });
+  // Unfold this turn's work once it has rendered: before that, the last header is an earlier turn's.
+  await expect(turn.getByText("Themes checked.")).toBeVisible();
   await tid(page, "turn-label").last().click();
+  await expect(tid(page, "turn-label").last()).toHaveAttribute("aria-expanded", "true");
   for (const theme of ["graphite", "jev", "coven"]) {
     await page.evaluate((value) => window.modex!.invoke("settings:update", { theme: value }), theme);
     await turn.scrollIntoViewIfNeeded();
