@@ -158,17 +158,22 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The release ships everything under "On main,
-  unreleased":
+- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The signed `v0.2.0` tag is on `01b1b8a`
+  (#272), so the release ships `main` up to there. The conversation-fidelity slices from #282 on,
+  under "On main, unreleased", are not in it. It ships:
   - read-only routines on a timer, on one decision service for Jev;
   - the notes fixes from v0.1.0's review (#241);
   - Copy details and Retry on every inline error;
   - the Analytics restyle and the Images "queued" fix.
 
   Val chose the version. The full test suite, typecheck and a signed, notarized rehearsal ran
-  locally. Remaining: the packaged E2E on the signed tag, the hosted native updater scenarios,
-  independent download checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac,
-  and the TestFlight upload of Companion build 7, which carries thread archiving from the phone.
+  locally. On 2026-10-18 the tag passed
+  [release run 39100984341](https://github.com/TypeSafeAI/modex/actions/runs/39100984341). It
+  covered signing, notarization and stapling, the E2E suite against the packaged app, all three
+  signed native updater scenarios and the Windows and Linux installers. Its draft release holds the
+  five installers, `RELEASE-MANIFEST.json` and `SHA256SUMS.txt`. Remaining: independent download
+  checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac, and the TestFlight
+  upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
 
 - **Truthful Claude Stop on `claude -p` (CF-2, #275).** This is #250's lifecycle work without the
