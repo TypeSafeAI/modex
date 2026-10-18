@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { EventJournal, replayItems } from "../src/main/engine/event-journal.js";
 import { Store } from "../src/main/engine/store.js";
@@ -112,7 +113,26 @@ test("work a dead process left running becomes unknown in the snapshot, the jour
     old.journal.flush();
     assert.deepEqual(view(replayItems(old.journal.since(0, { threadId: old.threadId }), old.threadId)), expected, "paired clients catching up from the journal");
     assert.ok(emitted.some((event) => event.type === "item_update" && event.id === "dead:5"), "and the open window is told");
+    // Only what changed is sent, and only for the items that changed.
+    assert.deepEqual(emitted.map((event) => event.type === "item_update" ? [event.id, Object.keys(event.patch).sort()] : [event.type]),
+      [["dead:5", ["outcome", "status"]], ["dead:6", ["outcome"]], ["x:agent", ["agent", "status"]]]);
     assert.equal(ran, 0, "nothing is run again");
+    await runner.dispose();
+  } finally { old.journal.close(); }
+});
+
+test("loading a thread with nothing to settle sends nothing and leaves its file as it was", async () => {
+  const old = await legacyThread();
+  try {
+    const file = path.join(old.home, "app", "threads", `${old.threadId}.json`);
+    const typed: ThreadItem[] = [...LEGACY, { id: "t:1", kind: "tool", name: "Bash", title: "$ ls", args: { command: "ls" }, status: "done", outcome: "succeeded", ok: true,
+      exec: { command: "ls" }, origin: { thread: old.threadId, turn: "u1", attempt: "a", backend: "claude", native: { runtime: "r", item: "toolu" } }, at }];
+    new Store(old.home).saveItems(old.threadId, typed);
+    const inode = fs.statSync(file).ino;
+    const { runner, emitted } = runnerOn(old.home, old.journal);
+    assert.deepEqual(runner.items(old.threadId), typed);
+    assert.deepEqual(emitted, [], "no item_update for items that did not change");
+    assert.equal(fs.statSync(file).ino, inode, "the file is not rewritten");
     await runner.dispose();
   } finally { old.journal.close(); }
 });
