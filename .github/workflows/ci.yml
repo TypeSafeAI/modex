@@ -21,16 +21,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - name: Sample memory through the job
+        # Paired-test failures came from the whole runner paging (docs/status.md, Known rough edges).
+        # The log goes up with the test results; the last step prints its low point.
+        run: nohup apps/ios/ModexCompanion/Scripts/sample-memory.sh "$RUNNER_TEMP/modex-ios-tests/Logs/Test/memory.log" > /dev/null 2>&1 &
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
-      - name: Install build tools
-        run: |
-          brew install xcodegen
-          pnpm install --frozen-lockfile
-          pnpm build
       - name: Select an available iPhone simulator
         run: |
           xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
@@ -39,16 +38,27 @@ jobs:
           const { devices } = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/simulators.json`, "utf8"));
           const phone = Object.values(devices).flat().find(device => device.isAvailable && device.name.startsWith("iPhone"));
           if (!phone) throw new Error("No iPhone simulator is installed.");
+          console.log(`MODEX_IOS_UDID=${phone.udid}`);
           console.log(`MODEX_IOS_DESTINATION=platform=iOS Simulator,id=${phone.udid}`);
           console.log(`MODEX_IOS_DERIVED_DATA=${process.env.RUNNER_TEMP}/modex-ios-tests`);
           JS
       - name: Use the on-screen keyboard in the simulator
         # With a hardware keyboard connected the simulator hides the software keyboard, so
         # `app.keyboards` stays empty after a field takes focus (see typeTextWhenReady). Set before
-        # the first xcodebuild boots the simulator; CI only, so local Simulator settings are untouched.
+        # the simulator first boots; CI only, so local Simulator settings are untouched.
         run: |
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
           defaults read com.apple.iphonesimulator ConnectHardwareKeyboard
+      - name: Boot the simulator before building
+        # A fresh simulator spends minutes on first-boot work (wallpaper and widget extensions, News,
+        # Health). In run 39095765816 it took over 1.5 GB at once in the middle of the paired test.
+        # Booting now lets that work overlap the build instead.
+        run: xcrun simctl boot "$MODEX_IOS_UDID"
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          pnpm install --frozen-lockfile
+          pnpm build
       - name: Native unit tests
         working-directory: apps/ios/ModexCompanion
         run: |
@@ -62,6 +72,9 @@ jobs:
         env:
           MODEX_UI_TIMEOUT_SCALE: "4"
         run: apps/ios/ModexCompanion/Scripts/test-e2e.sh
+      - name: Memory low point
+        if: always()
+        run: apps/ios/ModexCompanion/Scripts/sample-memory.sh --summary "$RUNNER_TEMP/modex-ios-tests/Logs/Test/memory.log"
       - name: Upload iPhone test results
         if: always()
         uses: actions/upload-artifact@v5
