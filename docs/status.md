@@ -560,6 +560,9 @@ replacement tag also carries #246 and #247. The independently downloaded install
 checksum, manifest, signature, Gatekeeper, ticket, version and architecture checks. The DMG and
 ZIP apps have identical code hashes. The packaged suite passed again against the download (314 cases). GitHub's latest release
 reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its ZIP and digest.
+On 2026-10-18 the release Mac's v0.0.12 install updated itself to v0.1.0 through its banner, the
+first published-to-published upgrade. It installed the published ZIP (matching sha512), relaunched by
+itself, shows 0.1.0 in About and kept its unsent drafts.
 [Release review](reviews/2026-10-15-v0.1.0-release-review.md).
 
 - **Analytics export and recovery.** The native dashboard permits its own CSV
@@ -1097,51 +1100,22 @@ reports v0.1.0, and the updater parser in the installed v0.0.12 app selects its 
   with `features.multi_agent` off and the failure card says to start a new thread. Threads
   poisoned before the fix stay poisoned in Modex; see [chatgpt-signin.md](chatgpt-signin.md).
 
-## Blocked
-
-Waiting on a decision or access only Val can give, as of 2026-10-16. The rest of the
-post-v0.1.0 queue has landed: the #241 notes fixes (#254, #258–#261, #263, #264), the release
-tooling (#255, #256, #262, #265) and #266. No issues were opened after 2026-10-15, and this
-Mac's `~/.modex` threads showed no regression in v0.1.0.
-
-- **The first published-to-published update** (Next, item 1) needs Val at the Mac. Open a draft
-  in the installed v0.0.12, update through its banner, then confirm the relaunch, the About version
-  and that the draft survived. The result goes in the
-  [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication).
-- **#250, Claude through the Agent SDK,** waits for Val's decision. Its full suite passed locally
-  on its head: 1,436 desktop unit tests and 312 desktop e2e (3 skipped), with none failing. It
-  rewrites the CLI-only rule in `AGENTS.md`. Anthropic's Agent SDK docs do not allow third-party
-  products to offer claude.ai login or rate limits unless approved. The SDK reports each turn it
-  launches as an Agent SDK client (`CLAUDE_CODE_ENTRYPOINT=sdk-ts`), and #250 sets
-  `CLAUDE_AGENT_SDK_CLIENT_APP=modex`.
-- **1Password CLI.** `op` cannot reach the desktop app, so a full local release run and the
-  TestFlight upload wait for Val to turn on Settings → Developer → Integrate with 1Password CLI.
-  Until then, rehearse with `--sign-only` ([release signing](release-signing.md#when-1password-cannot-be-reached)).
-- **Worktree and branch cleanup** waits for Val.
-  - The Codex coordinator thread that prepared the v0.1.0 batch should hear that the batch
-    shipped before its worktrees are retired: `notes-final-review`, `release-reviewed-batch`, and
-    its `review-*` and `notes-*` repairs. Only their owner can release them.
-  - `notes-land`, `pr210-conflicts`, `notes-files` and `review-archive` hold merged PR heads that
-    the pruning tool cannot prove merged. `notes-land`'s tip is #227's merged head, and #227's
-    squash has the identical tree. Each needs Val's decision; if approved, archive it, then
-    remove it.
-  - An orphaned Vite preview server from the Analytics session (#248, merged) holds
-    `analytics-fit`.
-  - Nine remote branches of closed PRs wait for approval to delete.
-
 ## Next
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Record the first published-to-published update.** Upgrade a real v0.0.12 install to v0.1.0
-   through its own update banner, and add the result to the
-   [v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#publication). Windows and Linux
-   installers shipped with v0.1.0. Provider-account acceptance, KWallet6/full graphical sessions,
-   and historical schema migration remain unproven; see [native-platforms.md](native-platforms.md).
+1. **Windows and Linux acceptance.** Their installers shipped with v0.1.0. Provider-account
+   acceptance, KWallet6 and full graphical sessions, and historical schema migration remain
+   unproven; see [native-platforms.md](native-platforms.md).
 2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
-3. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+3. **#250's lifecycle fixes on the `claude -p` backend.** #250 (Claude through the Agent SDK) was
+   closed so that Modex keeps `claude -p`; see its closing comment. Its graceful interrupt before
+   SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
+   stderr and exit codes all apply to `backends/claude.ts` without the SDK. The author is invited to
+   send them; otherwise they come after the next release.
+4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
