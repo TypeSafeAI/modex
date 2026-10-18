@@ -190,3 +190,12 @@ export async function createThread(page: Page, prompt: string, opts: { worktree?
 
 /** The selected thread's sidebar row; its data-status is the thread's status (idle, running, waiting, error). */
 export const currentRow = (page: Page): Locator => page.locator('[data-testid="thread-row"][aria-current="true"]');
+
+/** Change themes through Settings so the renderer adopts the saved state before captures. */
+export async function selectTheme(page: Page, theme: 'graphite' | 'jev' | 'coven'): Promise<void> {
+  await tid(page, 'open-settings').click();
+  await tid(page, 'settings-nav').getByRole('button', { name: 'General', exact: true }).click();
+  await page.getByRole('radio', { name: { graphite: 'Graphite', jev: 'Jev', coven: 'OpenCoven' }[theme], exact: true }).check();
+  await tid(page, 'settings').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+}

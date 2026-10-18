@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { currentRow, items, launch, resizeWindow, seedHome, tid } from "./support";
+import { currentRow, items, launch, resizeWindow, seedHome, selectTheme, tid } from "./support";
 
 /**
  * Turns from the conversation-event contract (docs/conversation-events.md) render from their own
@@ -92,7 +92,8 @@ test("a typed turn answers with its final message, folds only work that succeede
   // A commentary message after the answer is not the answer.
   await expect(items(page, "assistant").filter({ hasText: "One more note." })).toHaveAttribute("data-phase", "commentary");
   // Expanding the header shows the folded work, reasoning labelled by what it is.
-  await tid(page, "turn-label").last().click();
+  await tid(page, "turn-label").last().focus();
+  await page.keyboard.press("Enter");
   await expect(items(page, "tool").filter({ hasText: "$ echo one" })).toBeVisible();
   await expect(tid(page.locator('[data-reasoning="summary"]'), "reasoning-tag")).toHaveText("Summary");
   const hidden = page.locator('[data-reasoning="unavailable"]');
@@ -165,8 +166,8 @@ test("typed turns stay readable in every theme at the 900×600 minimum", async (
   await resizeWindow(app, page, 900, 600);
   const turn = page.locator(".turn-content").filter({ has: page.getByText("Themes checked.") });
   await tid(page, "turn-label").last().click();
-  for (const theme of ["graphite", "jev", "coven"]) {
-    await page.evaluate((value) => window.modex!.invoke("settings:update", { theme: value }), theme);
+  for (const theme of ["graphite", "jev", "coven"] as const) {
+    await selectTheme(page, theme);
     await turn.scrollIntoViewIfNeeded();
     const transcript = tid(page, "transcript");
     expect(await transcript.evaluate((el) => el.scrollWidth - el.clientWidth), `${theme}: no sideways scroll`).toBeLessThanOrEqual(0);

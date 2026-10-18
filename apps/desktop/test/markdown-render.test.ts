@@ -181,6 +181,7 @@ test("streamed references and loose nested lists retain whole-document meaning",
   for (const reply of [
     "See [the spec][s].\n\n[s]: https://spec.commonmark.org/\n\nTail",
     "- first paragraph\n\n  second paragraph\n\n  - nested child\n\nTail",
+    "-\n\n  continued item\n\nTail",
     "- code example\n\n    ```ts\n    const first = 1;\n\n    const second = 2;\n    ```\n\nTail",
   ]) {
     const whole = await render(reply);

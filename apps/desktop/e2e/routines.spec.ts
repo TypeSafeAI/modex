@@ -120,8 +120,7 @@ test("a routine made in the editor runs read-only: its edit is refused with a re
   await expect(activity).toContainText("Run now");
   await expect(tid(activity, "activity-page")).toHaveText("Weekly summary · revision 1");
   await tid(activity, "activity-thread").click();
-  // A finished turn folds its work; the refused approval is part of it.
-  await tid(page, "turn-label").last().click();
+  // This scripted turn has an unspecified phase, so its refusal stays visible without a fold.
   const refusal = items(page, "approval");
   await expect(refusal).toHaveAttribute("data-decided-by", "never");
   await expect(tid(refusal, "approval-receipt")).toContainText("Refused: add ROUTINE.md");
