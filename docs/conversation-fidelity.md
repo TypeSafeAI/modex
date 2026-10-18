@@ -54,7 +54,23 @@ unchanged, so rolling back to an older build leaves its replay working.
 
 ## Reference captures
 
-The CF-4 typed-turn spec captures a typed turn at 900×600 in Graphite, Jev and OpenCoven
-(`MODEX_SCREENSHOTS=<dir>` keeps them). They are test captures from the mock engine and injected
-items, not provider screenshots. No reference images are committed yet; the receipt lists that as
-open.
+[`screenshots/conversation-fidelity/`](screenshots/conversation-fidelity/manifest.json) holds 33
+references, and its manifest records each one's state, theme, viewport, scale, source build and hash.
+
+- **Fidelity states.** `e2e/conversation-fidelity.spec.ts` captures a turn waiting for approval,
+  running a check, failed, completed and restored after a restart, in Graphite, Jev and OpenCoven, at
+  the 900×600 minimum and at 1440×900. They come from the real app with a fixture Claude CLI.
+- **Typed turn.** `e2e/typed-turns.spec.ts` captures a typed turn in each theme at 900×600, from
+  items sent to the window over the mock engine.
+
+None of them is a provider screenshot or a pixel baseline. Each capture checks only that nothing
+scrolls sideways. To regenerate them, run both specs after `pnpm build` with
+`MODEX_SCREENSHOTS=<dir>`.
+
+## Performance
+
+`e2e/transcript-measure.spec.ts` opens a 1,400-item transcript and streams a 3 MiB command log
+through the app. With `MODEX_MEASURE=<file>` it writes the timings and the machine they ran on. The
+receipt compares one Mac before and after these changes. The spec asserts two bounds that hold on any
+machine: no streamed update carries more than the 256 KB preview, and opening a saved thread resends
+none of its items.
