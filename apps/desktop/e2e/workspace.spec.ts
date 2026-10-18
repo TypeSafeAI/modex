@@ -182,6 +182,27 @@ test("a delayed browser snapshot cannot replace an address being edited", async 
   await expect(input).toHaveValue("https://example.com/fast");
 });
 
+test("a new tab's late focus never takes the caret from where you started typing", async () => {
+  // Hold animation frames, as Chromium does for an inactive or busy window.
+  await page.evaluate(() => {
+    const w = window as unknown as { __frames: FrameRequestCallback[]; __raf: typeof requestAnimationFrame };
+    w.__frames = []; w.__raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (callback) => { w.__frames.push(callback); return w.__frames.length; };
+  });
+  await page.keyboard.press("Meta+Shift+b");
+  await expect(tid(page, "workspace-address")).toBeFocused();
+  await tid(page, "composer-input").focus();
+  await page.evaluate(() => {
+    const w = window as unknown as { __frames: FrameRequestCallback[]; __raf: typeof requestAnimationFrame };
+    window.requestAnimationFrame = w.__raf;
+    for (const callback of w.__frames.splice(0)) callback(performance.now());
+  });
+  await expect(tid(page, "composer-input")).toBeFocused();
+  await page.keyboard.type("Keep this draft");
+  await expect(tid(page, "composer-input")).toHaveValue("Keep this draft");
+  await expect(tid(page, "workspace-address")).toHaveValue("");
+});
+
 test("superseded navigation, overlays, guest shortcuts and window destruction preserve browser lifecycle", async () => {
   const { createServer } = await import("node:http");
   const server = createServer((req, res) => { if (req.url === "/slow") return; res.writeHead(200, { "Content-Type": "text/html" }); res.end("<title>Fast destination</title><h1>Ready</h1>"); });

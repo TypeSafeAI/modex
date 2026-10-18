@@ -177,7 +177,7 @@ doesn't do:
 - v0.1.0 doesn't prune and has no cursors, so retention isn't enforced until this build opens the
   file again.
 - v0.1.0's and v0.2.0's phone mapping has no case for kinds newer than themselves, such as `plan`
-  (#289). It sends them as `null`, and the phone then rejects the snapshot until that thread's
+  (#289) and `question` (#293). It sends them as `null`, and the phone then rejects the snapshot until that thread's
   items are gone or Modex is upgraded again.
 
 The journal is never authoritative, so deleting `events.sqlite` is always a safe rollback. It
