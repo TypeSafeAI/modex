@@ -73,6 +73,17 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Replay and clients.** Journal replay, paired desktops and the phone agree on the same items;
     a duplicated frame no longer doubles an item. On the phone, a failed or denied tool says so in its
     title. Work a crashed Modex left running is saved and sent as unknown instead of spinning forever.
+  - **Journal faults (CF-6 #279).** These apply with `MODEX_EVENT_JOURNAL=1`.
+    - A write that fails while a client reads turns the journal off, and clients reload. Before, that
+      batch was lost silently.
+    - A journal a crash or a failed write left open takes a new identity. Cursors from before then
+      reload instead of resuming past the gap, so an answered card no longer looks open on a paired
+      desktop after a crash.
+    - A paired desktop reloads after a frame over 1 MB instead of reconnecting forever.
+    - The phone gets a notice for an item kind its Mac doesn't know, instead of rejecting the
+      snapshot.
+
+    [Faults and rollback](event-journal.md#compatibility-and-rollback).
   - **Evidence (CF-5 #278, first part).** A command shows exactly what ran, where, and its exit code
     as the CLI reported it. Tool output keeps its last 256 KB with a visible note. A patch is labelled
     as this turn's. Codex memory citations show as citations, and a "Sources:" list the model wrote
