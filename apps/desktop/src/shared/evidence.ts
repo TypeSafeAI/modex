@@ -34,6 +34,18 @@ export interface MemoryExcerpt {
   cut?: true;
 }
 
+/**
+ * One file of a Codex `fileChange`, kept in the tool's `args.files` beside the joined `args.patch`.
+ * `path` and `movePath` are as codex-cli 0.163.0 sends them (absolute). `lines` counts the lines of
+ * `patch` that are this file's diff, in order, so each diff is stored once.
+ */
+export interface CodexPatchFile {
+  path: string;
+  kind: string;
+  movePath?: string;
+  lines: number;
+}
+
 /** Main-owned: reads a memory citation's lines. On the Mac only; never offered to a paired desktop. */
 export interface EvidenceCommands {
   "evidence:memory": { req: { path: string; lineStart: number; lineEnd: number }; res: MemoryExcerpt };
