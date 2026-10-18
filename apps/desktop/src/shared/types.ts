@@ -7,6 +7,7 @@ import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceSho
 import type { Theme } from "./theme.js";
 import type { UsageEvent } from "./usage.js";
 import type { ExecutionOutcome, ItemOrigin, MessagePhase, ReasoningRepresentation } from "./conversation-events.js";
+import type { Evidence, Exec } from "./evidence.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -104,9 +105,10 @@ export type ThreadItem =
    * contract (shared/conversation-events.ts). Items saved before it have none; read them through `itemFacts`.
    * `nativePhase` is the CLI's own phase value, kept verbatim.
    */
-  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
+  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin; evidence?: Evidence[] }
   /** `ok` is kept for older readers: true only for `succeeded`, false only for `failed` or `denied`. */
-  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin }
+  /** `exec`, `exitCode`, `outputBytes` and `outputTruncated` (shared/evidence.ts): the command that ran and its output, bounded. */
+  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */

@@ -731,11 +731,12 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
 
 ## On main, unreleased
 
-- **Assistant turns keep their native identity, phase and outcome** (CF-1 #282, CF-4 #284, CF-6 first
-  half, tracker #273). Codex and Claude report every message, reasoning block and tool through one
-  typed path that names the native item. The [conversation-event contract](conversation-events.md)
-  folds them into transcript items carrying origin, phase (commentary, final), reasoning (summary,
-  provider text, not shared) and outcome (succeeded, failed, denied, stopped, unknown).
+- **Assistant turns keep their native identity, phase and outcome** (CF-1 #282, CF-4 #284, CF-6
+  first half #285, CF-5 first part, tracker #273). Codex and Claude report every message, reasoning
+  block and tool through one typed path that names the native item. The [conversation-event
+  contract](conversation-events.md) folds them into transcript items carrying origin, phase
+  (commentary, final), reasoning (summary, provider text, not shared) and outcome (succeeded,
+  failed, denied, stopped, unknown).
   - **Final answers.** A turn's final answer comes from its `final` message, not the last reply.
     Every running item is live, and a retry shows as Attempt 2.
   - **Visible work.** Only work that succeeded folds away; a dropped stream reads "Status
@@ -744,6 +745,10 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   - **Replay and clients.** Journal replay, paired desktops and the phone agree on the same items;
     a duplicated frame no longer doubles an item. On the phone, a failed or denied tool says so in its
     title. Work a crashed Modex left running is saved and sent as unknown instead of spinning forever.
+  - **Evidence (CF-5 #278, first part).** A command shows exactly what ran, where, and its exit code
+    as the CLI reported it. Tool output keeps its last 256 KB with a visible note. A patch is labelled
+    as this turn's. Codex memory citations show as citations, and a "Sources:" list the model wrote
+    is labelled as links in the reply. [Evidence](conversation-evidence.md).
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
     acceptance and human VoiceOver checks.
