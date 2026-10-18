@@ -181,3 +181,14 @@ test("typed turns stay readable in every theme at the 900×600 minimum", async (
     if (process.env.MODEX_SCREENSHOTS) fs.writeFileSync(path.join(process.env.MODEX_SCREENSHOTS, `typed-turn-${theme}-900x600.png`), shot);
   }
 });
+
+test("failed and denied assistant replies name their outcome without relying on a separate notice", async () => {
+  for (const [outcome, label] of [["failed", "Reply failed"], ["denied", "Reply denied"]]) {
+    await send([
+      item({ id: "u-outcome", kind: "user", text: "show the reply outcome", at: at() }),
+      item({ ...say("outcome-reply", "Partial reply", "final", outcome), origin: { ...origin("O1", "outcome-reply"), turn: "u-outcome" } }),
+    ]);
+    const reply = items(page, "assistant").filter({ hasText: "Partial reply" });
+    await expect(tid(reply, "message-status")).toHaveText(label!);
+  }
+});

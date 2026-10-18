@@ -287,7 +287,8 @@ function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice"
 /** A reply. Commentary reads as progress, not the answer; a reply that stopped or never completed says so. */
 function AssistantItem({ text, live, phase, outcome, evidence }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"]; evidence?: Extract<ThreadItem, { kind: "assistant" }>["evidence"] }) {
   const { body, sources } = useMemo(() => (live ? { body: text, sources: [] } : splitSources(text)), [text, live]);
-  const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete" : null;
+  const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete"
+    : outcome === "failed" ? "Reply failed" : outcome === "denied" ? "Reply denied" : null;
   return (
     <div className={`msg assistant${phase === "commentary" ? " commentary" : ""}`} data-testid="item" data-item-kind="assistant" data-phase={phase} data-outcome={outcome}>
       <Markdown text={body} />
