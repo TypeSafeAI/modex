@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
-import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { CodexBackend, codexOutcome, codexPhase } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { Backend, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
@@ -110,10 +110,10 @@ async function codexTurn(lines: string[], opts: { split?: boolean; close?: numbe
   } finally { await codex.dispose(); }
 }
 
-async function claudeTurn(lines: string[], opts: { split?: boolean } = {}) {
+async function claudeTurn(lines: string[], opts: { split?: boolean; answer?: (question: string) => "yes" | "no" } = {}) {
   const proc = new FakeProcess();
   const claude = new ClaudeBackend("claude", fakeSpawn(proc).spawn);
-  const h = await harness({ claude }, "claude", (q) => (q.includes("echo") ? "yes" : "no"));
+  const h = await harness({ claude }, "claude", opts.answer ?? ((q) => (q.includes("echo") ? "yes" : "no")));
   const played = claudeStream(proc, lines, opts);
   await h.runner.send(h.thread.id, "go");
   await played;
@@ -265,11 +265,9 @@ function keepingBackend(steps: ((sink: TurnSink) => Promise<TurnResult>)[], sink
   };
 }
 
-/** Streams `text` as one message through whichever sink API the build under test has. */
+/** Streams `text` into message `item`. (Before CF-1 this went through the untyped `delta`; see the red run in 4d156e6.) */
 function say(sink: TurnSink, text: string, item = "m"): void {
-  const s = sink as unknown as { observe?: (o: unknown) => void; delta?: (t: string) => void };
-  if (s.observe) s.observe({ type: "message.delta", native: { runtime: "test", item }, text });
-  else s.delta!(text);
+  sink.observe({ type: "message.delta", native: { runtime: "test", item }, text });
 }
 
 test("a late delta from a superseded attempt never changes the attempt that replaced it", async () => {
@@ -280,8 +278,11 @@ test("a late delta from a superseded attempt never changes the attempt that repl
   const backend = keepingBackend([
     async () => ({ status: "failed", error: REFUSAL }),
     async (sink) => {
+      sink.session("fresh-session");
       say(sink, "fresh answer", "m2");
       say(sinks[0]!, " STALE FROM ATTEMPT ONE", "m2");
+      sinks[0]!.session("stale-session");
+      sinks[0]!.notice("info", "STALE NOTICE FROM ATTEMPT ONE");
       await second;
       return { status: "completed" };
     },
@@ -295,6 +296,7 @@ test("a late delta from a superseded attempt never changes the attempt that repl
   const texts = conversation(h.runner.items(h.thread.id)).map((i) => i.text);
   assert.deepEqual(texts, ["fresh answer"]);
   assert.ok(!JSON.stringify(h.runner.items(h.thread.id)).includes("STALE"));
+  assert.equal(h.store.thread(h.thread.id)?.sessionHandle, "fresh-session", "a superseded attempt cannot replace the resume handle");
 });
 
 // ── The pure projector ──────────────────────────────────────────────────────────────────────────
@@ -517,4 +519,83 @@ test("legacy history loads unchanged, starts no turn, and a stale running CF-1 i
   assert.ok(items.slice(0, 3).every((i) => !("origin" in i)), "no provenance is invented for them");
   assert.deepEqual([items[3]!.kind === "tool" && items[3]!.status, (items[3] as Loose).outcome, items[3]!.kind === "tool" && items[3]!.ok], ["done", "unknown", undefined]);
   assert.equal(ran, 0, "loading history runs nothing");
+});
+
+test("Claude: a repeated stream line (same uuid) applies once, while different lines with the same text both count", async () => {
+  const lines = fixture("claude-2.1.302-haiku-interleave.jsonl");
+  const at = lines.findIndex((l) => l.includes('"text_delta","text":"Done"'));
+  assert.ok(at > 0, "the fixture streams 'Done'");
+  const doubled = [...lines.slice(0, at + 1), lines[at]!, ...lines.slice(at + 1)];
+  const run = await claudeTurn(doubled);
+  const final = conversation(run.items).at(-1)!;
+  assert.equal(final.text, "Done ha ha ha.");
+  const streamed = run.events.flatMap((e) => (e.type === "item_update" && e.id === final.id && typeof (e.patch as { text?: string }).text === "string" ? [(e.patch as { text: string }).text] : []));
+  assert.ok(streamed.length > 0);
+  assert.ok(streamed.every((t) => !t.includes("DoneDone")), streamed.join(" | "));
+});
+
+test("every Codex 0.163.0 phase and tool status has a mapping, and none but a clean finish reads as success", () => {
+  const protocol = JSON.parse(fs.readFileSync(path.join(FIXTURES, "codex-0.163.0-protocol.json"), "utf8")) as { enums: Record<string, string[]> };
+  assert.deepEqual(protocol.enums.MessagePhase!.map(codexPhase), ["commentary", "unspecified", "final"]);
+  assert.equal(codexPhase(null), "unspecified");
+  for (const [name, type] of [["CommandExecutionStatus", "commandExecution"], ["PatchApplyStatus", "fileChange"], ["McpToolCallStatus", "mcpToolCall"], ["DynamicToolCallStatus", "dynamicToolCall"]] as const) {
+    const outcomes = Object.fromEntries(protocol.enums[name]!.map((status) => [status, codexOutcome({ type, status, exitCode: 0 })]));
+    assert.equal(outcomes.completed, "succeeded", name);
+    assert.equal(outcomes.failed, "failed", name);
+    assert.equal(outcomes.inProgress, "unknown", `${name}: a tool still in progress at completion has no outcome`);
+    if ("declined" in outcomes) assert.equal(outcomes.declined, "denied", name);
+    assert.deepEqual(Object.keys(outcomes).sort(), [...protocol.enums[name]!].sort());
+  }
+  assert.equal(codexOutcome({ type: "commandExecution", status: "completed", exitCode: 2 }), "failed");
+  assert.equal(codexOutcome({ type: "commandExecution", status: "completed", exitCode: null }), "unknown");
+  assert.equal(codexOutcome({ type: "commandExecution", exitCode: 0 }), "succeeded", "no status: the exit code decides");
+  assert.equal(codexOutcome({ type: "commandExecution", exitCode: 1 }), "failed");
+  assert.equal(codexOutcome({ type: "webSearch" }), "unknown", "web search reports no status");
+  assert.equal(codexOutcome({ type: "mcpToolCall", error: { message: "boom" } }), "failed");
+});
+
+test("Claude (synthetic 2.1.302 shape): summarized thinking is a summary, signature-only and redacted thinking stay unavailable and opaque, a refused tool is denied and a failing one failed", async () => {
+  const run = await claudeTurn(fixture("claude-2.1.302-synthetic-thinking-tools.jsonl"), { answer: () => "no" });
+  const items = conversation(run.items);
+  assert.deepEqual(items.map((i) => [i.kind, i.kind === "thinking" ? i.reasoning : i.kind === "tool" ? i.outcome : i.phase, i.kind === "tool" ? i.title : i.text]), [
+    ["thinking", "summary", "Plan: run the tests."],
+    ["assistant", "unspecified", "Running them."],
+    ["tool", "failed", "$ pnpm test"],
+    ["thinking", "unavailable", ""],
+    ["thinking", "unavailable", ""],
+    ["assistant", "unspecified", "Clearing the build folder."],
+    ["tool", "denied", "$ rm -rf build"],
+    ["assistant", "unspecified", "One test fails — ✓ build kept."],
+  ]);
+  const everything = JSON.stringify([run.saved, run.events]);
+  for (const opaque of ["opaque-signature-1", "opaque-signature-2", "opaque-redacted"]) assert.ok(!everything.includes(opaque), opaque);
+});
+
+test("Codex: a commentary message that completes without streaming is kept, labelled commentary", async () => {
+  const t = (method: string, params: Record<string, unknown>) => JSON.stringify({ method, params: { threadId: "thr", turnId: "tu", ...params } });
+  const lines = [
+    JSON.stringify({ method: "turn/started", params: { threadId: "thr", turn: { id: "tu" } } }),
+    t("item/completed", { item: { type: "agentMessage", id: "c1", text: "Reading the config first.", phase: "commentary" } }),
+    t("item/completed", { item: { type: "agentMessage", id: "f1", text: "Done.", phase: "final_answer" } }),
+    JSON.stringify({ method: "turn/completed", params: { threadId: "thr", turn: { id: "tu", status: "completed", error: null } } }),
+  ];
+  const items = conversation((await codexTurn(lines)).items);
+  assert.deepEqual(items.map((i) => [i.phase, i.text]), [["commentary", "Reading the config first."], ["final", "Done."]]);
+});
+
+test("Codex: a message that keeps streaming after a command starts stays one message (no fragment, no duplicate)", async () => {
+  // On 89c98f2 this split into a fragment plus a duplicated full copy (reproduced in 98fa961).
+  const t = (method: string, params: Record<string, unknown>) => JSON.stringify({ method, params: { threadId: "thr", turnId: "tu", ...params } });
+  const lines = [
+    JSON.stringify({ method: "turn/started", params: { threadId: "thr", turn: { id: "tu" } } }),
+    t("item/started", { item: { type: "agentMessage", id: "m1", text: "", phase: "commentary" } }),
+    t("item/agentMessage/delta", { itemId: "m1", delta: "Running the " }),
+    t("item/started", { item: { type: "commandExecution", id: "c1", command: "/bin/zsh -lc 'npm test'", cwd: "/p", status: "inProgress" } }),
+    t("item/agentMessage/delta", { itemId: "m1", delta: "tests now." }),
+    t("item/completed", { item: { type: "agentMessage", id: "m1", text: "Running the tests now.", phase: "commentary" } }),
+    t("item/completed", { item: { type: "commandExecution", id: "c1", command: "/bin/zsh -lc 'npm test'", cwd: "/p", status: "completed", exitCode: 0, aggregatedOutput: "ok" } }),
+    JSON.stringify({ method: "turn/completed", params: { threadId: "thr", turn: { id: "tu", status: "completed", error: null } } }),
+  ];
+  const items = conversation((await codexTurn(lines)).items);
+  assert.deepEqual(items.map((i) => [i.kind, i.kind === "tool" ? i.outcome : i.text]), [["assistant", "Running the tests now."], ["tool", "succeeded"]]);
 });

@@ -4,14 +4,20 @@ import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 import type { ToolStart, ToolUpdate } from "../src/main/engine/backends/types.js";
+import { okFor, type Observation } from "../src/shared/conversation-events.js";
 
 function recording() {
   const { sink, events } = collectSink();
-  const tools = new Map<string, Partial<ToolStart & ToolUpdate>>();
-  return { tools, events, sink: { ...sink,
-    toolStart: (tool: ToolStart) => tools.set(tool.id, { ...tool, status: "running" }),
-    toolUpdate: (id: string, patch: ToolUpdate) => tools.set(id, { ...tools.get(id), ...patch }),
-  } };
+  const tools = new Map<string, Partial<ToolStart & ToolUpdate & { outcome: string }>>();
+  // Tool rows as the projector would hold them, keyed by native item id.
+  const observe = (o: Observation) => {
+    sink.observe(o);
+    const id = o.native.item;
+    if (o.type === "tool.start") tools.set(id, { id, ...o.tool, status: "running" });
+    else if (o.type === "tool.update") tools.set(id, { ...tools.get(id), ...o.progress });
+    else if (o.type === "tool.done") tools.set(id, { ...tools.get(id), ...o.progress, status: "done", ok: okFor(o.outcome), outcome: o.outcome });
+  };
+  return { tools, events, sink: { ...sink, observe } };
 }
 const options = { cwd: "/repo", mode: "agent" as const, plan: false, model: "" };
 

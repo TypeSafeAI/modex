@@ -26,9 +26,12 @@ export async function generateTitle(backend: Backend, opts: TitleOptions, text: 
   let final: string | undefined;
   const noop = () => {};
   const sink: TurnSink = {
-    delta: (chunk) => { streamed += chunk; }, assistant: (value) => { final = value; },
-    approval: async () => "no", toolStart: noop, toolUpdate: noop, notice: noop,
-    thinkingDelta: noop, thinkingDone: noop, session: noop,
+    // The title is the reply's last complete message, else whatever streamed.
+    observe: (o) => {
+      if (o.type === "message.delta") streamed += o.text;
+      else if (o.type === "message.done" && o.text !== undefined) final = o.text;
+    },
+    approval: async () => "no", notice: noop, session: noop,
   };
   try {
     const result = await backend.runTurn(

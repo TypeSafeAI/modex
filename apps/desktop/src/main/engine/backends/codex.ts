@@ -5,11 +5,13 @@ import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
+import type { MessagePhase, NativeRef, SettledOutcome } from "../../../shared/conversation-events.js";
 
 /**
  * Codex's own wording when the sign-in it loaded at startup no longer matches ~/.codex/auth.json
@@ -39,6 +41,8 @@ export class CodexBackend implements Backend {
   private readonly changePaths = new Map<string, string[]>();
   /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
   private userAgent: string | null = null;
+  /** Opaque id of the running app-server process; native thread, turn and item ids are unique only within it. */
+  private generation = "";
 
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
@@ -57,6 +61,7 @@ export class CodexBackend implements Backend {
         return reject(new CodexError(`could not start ${bin} app-server: ${(err as Error).message}`, { bin, spawnError: (err as Error).message }));
       }
       this.child = child;
+      this.generation = randomUUID();
       this.loaded.clear();
       const lines = new LineBuffer();
       let stderr = "";
@@ -275,12 +280,11 @@ export class CodexBackend implements Backend {
     const tid = threadId;
     const context = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
     const input = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
-    const agents = new AgentTracker(sink);
+    const runtime = this.generation;
+    const agents = new AgentTracker(sink, runtime);
     const activities = new Set<string>();
     const tools = new Map<string, { started: number; output: string }>();
-    const reasoning = new Set<string>();
     let turnId: string | null = null;
-    const streaming = new Map<string, string>();
     // Codex announces a fatal error as an `error` notification before `turn/completed` reports the
     // failure. The notification carries the better message and an error code; it is held here and
     // reported once, with the completion, instead of as a separate red line.
@@ -329,6 +333,7 @@ export class CodexBackend implements Backend {
       const onMsg = (msg: RpcMessage) => {
         if (done) return;
         const p = (msg.params ?? {}) as Record<string, unknown>;
+        const native = (item: unknown): NativeRef => ({ runtime, thread: tid, ...(p.turnId || turnId ? { turn: String(p.turnId ?? turnId) } : {}), item: String(item) });
         if (msg.method === "thread/started") {
           const thread = p.thread as { id?: string; agentNickname?: string; source?: { subAgent?: { thread_spawn?: { parent_thread_id?: string; agent_path?: string } } } } | undefined;
           const spawn = thread?.source?.subAgent?.thread_spawn;
@@ -392,46 +397,39 @@ export class CodexBackend implements Backend {
           case "item/started": {
             const item = p.item as CodexItem;
             if (item.type === "agentMessage") {
-              streaming.set(item.id, "");
+              sink.observe({ type: "message.start", native: native(item.id), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}) });
             } else if (item.type === "reasoning") {
-              reasoning.add(item.id);
-              sink.thinkingDelta(item.id, "");
+              sink.observe({ type: "reasoning.start", native: native(item.id) });
             } else if (item.type === "commandExecution") {
               tools.set(item.id, { started: Date.now(), output: "" });
-              sink.toolStart({ id: item.id, name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd } });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd } } });
             } else if (item.type === "fileChange") {
               tools.set(item.id, { started: Date.now(), output: "" });
               const files = (item.changes ?? []).map((c) => c.path);
               this.changePaths.set(`${tid}:${item.id}`, files);
-              sink.toolStart({ id: item.id, name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "" });
               const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
-              sink.toolStart({ id: item.id, name: item.type, title: label, args: (item.arguments as Record<string, unknown>) ?? {} });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: item.type, title: label, args: (item.arguments as Record<string, unknown>) ?? {} } });
             }
             break;
           }
+          // A summary part and a reasoning-text part are different representations; they never share an item.
           case "item/reasoning/summaryTextDelta":
-          case "item/reasoning/textDelta": {
-            reasoning.add(String(p.itemId));
-            sink.thinkingDelta(String(p.itemId), String(p.delta ?? ""));
+            sink.observe({ type: "reasoning.delta", native: native(p.itemId), representation: "summary", index: partIndex(p.summaryIndex), text: String(p.delta ?? "") });
             break;
-          }
-          case "item/reasoning/summaryPartAdded": {
-            if (Number(p.summaryIndex) > 0) sink.thinkingDelta(String(p.itemId), "\n\n");
+          case "item/reasoning/textDelta":
+            sink.observe({ type: "reasoning.delta", native: native(p.itemId), representation: "provider-text", index: partIndex(p.contentIndex), text: String(p.delta ?? "") });
             break;
-          }
-          case "item/agentMessage/delta": {
-            const id = String(p.itemId);
-            streaming.set(id, (streaming.get(id) ?? "") + String(p.delta ?? ""));
-            sink.delta(String(p.delta ?? ""));
+          case "item/agentMessage/delta":
+            sink.observe({ type: "message.delta", native: native(p.itemId), text: String(p.delta ?? "") });
             break;
-          }
           case "item/commandExecution/outputDelta": {
             const t = tools.get(String(p.itemId));
             if (t) {
               t.output += String(p.delta ?? "");
-              sink.toolUpdate(String(p.itemId), { output: t.output });
+              sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output } });
             }
             break;
           }
@@ -439,18 +437,14 @@ export class CodexBackend implements Backend {
             const item = p.item as CodexItem;
             if (item.type === "fileChange") this.changePaths.delete(`${tid}:${item.id}`);
             if (item.type === "agentMessage") {
-              if (item.phase === "commentary" && !streaming.has(item.id)) break;
-              sink.assistant(item.text ?? streaming.get(item.id) ?? "");
-              streaming.delete(item.id);
+              // A message that completes without streaming is kept, commentary included: its phase says what it is.
+              sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}) });
             } else if (tools.has(item.id)) {
               const t = tools.get(item.id)!;
               const output = item.type === "commandExecution" ? (item.aggregatedOutput ?? t.output) : item.type === "fileChange" ? (item.changes ?? []).map((c) => `${c.kind?.type ?? "update"} ${c.path}\n${c.diff}`).join("\n") : JSON.stringify(item.result ?? item.error ?? "", null, 2);
-              const ok = item.type === "commandExecution" ? item.exitCode === 0 && item.status !== "declined" : item.status ? item.status === "completed" : !item.error;
-              sink.toolUpdate(item.id, { output: output || undefined, ok, status: "done", durationMs: item.durationMs ?? Date.now() - t.started });
+              sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: { ...(output ? { output } : {}), durationMs: item.durationMs ?? Date.now() - t.started } });
             } else if (item.type === "reasoning") {
-              const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n\n");
-              if (reasoning.has(item.id) || text) sink.thinkingDone(item.id, text || undefined);
-              reasoning.delete(item.id);
+              sink.observe({ type: "reasoning.done", native: native(item.id), summary: item.summary ?? [], text: item.content ?? [] });
             }
             break;
           }
@@ -666,4 +660,34 @@ function agentState(status: string): AgentActivity["state"] {
     case "interrupted": case "shutdown": return "stopped";
     default: return "unknown";
   }
+}
+
+/**
+ * Codex `MessagePhase` (codex-cli 0.163.0: commentary, partial_answer, final_answer, or null) as a
+ * Modex phase. `partial_answer` is neither commentary nor the final answer, and null means the
+ * model did not say: both stay unspecified, and the native value is kept beside it. Exported for tests.
+ */
+export function codexPhase(phase: string | null | undefined): MessagePhase {
+  return phase === "commentary" ? "commentary" : phase === "final_answer" ? "final" : "unspecified";
+}
+
+/**
+ * How a completed Codex tool item ended, from its own status (codex-cli 0.163.0): `declined` is a
+ * denial, `failed` a failure, `completed` a success, except a command that completed with a non-zero
+ * exit code (failed) or none at all (unknown). A command with no status is judged by its exit code.
+ * Any other item that reports no status (web search) is unknown unless it reports an error; so is a
+ * tool still `inProgress` when it completes. Exported for tests.
+ */
+export function codexOutcome(item: { type: string; status?: string; exitCode?: number | null; error?: unknown }): SettledOutcome {
+  if (item.status === "declined") return "denied";
+  if (item.status === "failed") return "failed";
+  const exit = item.exitCode === 0 ? "succeeded" : typeof item.exitCode === "number" ? "failed" : "unknown";
+  if (item.status === "completed") return item.type === "commandExecution" ? exit : "succeeded";
+  if (item.status === undefined && item.type === "commandExecution" && exit !== "unknown") return exit;
+  return item.error ? "failed" : "unknown";
+}
+
+function partIndex(value: unknown): number {
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= 0 ? n : 0;
 }

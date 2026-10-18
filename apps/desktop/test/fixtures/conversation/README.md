@@ -14,6 +14,7 @@ Captured on 2026-10-18 on macOS (Apple Silicon) with `sanitize.mjs` applied afte
 | `codex-0.163.0-interleave.jsonl` | codex-cli 0.163.0, `codex app-server` over stdio, read-only sandbox, approval policy `untrusted` | gpt-6-astra, effort low | Commentary `Checking one — café ✓.`, `echo one` (accepted), commentary `Checking two.`, `touch denied.txt` (declined), final answer `Done ha ha ha.` |
 | `codex-0.163.0-reasoning.jsonl` | codex-cli 0.163.0 | gpt-6-astra, effort high | One reasoning item with one summary part and no reasoning text, then a final answer. |
 | `codex-0.163.0-interrupt.jsonl` | codex-cli 0.163.0 | gpt-6-astra, effort low | A reasoning item with no summary or text; the final answer streams eight deltas, then `turn/interrupt`: the message never completes and the turn ends `interrupted`. |
+| `claude-2.1.302-synthetic-thinking-tools.jsonl` | **Synthetic**, written by the #273 tracker session (its stopped CF-1 attempt, 98fa961), shaped like Claude Code 2.1.302: live line order, `thinking_display` from the CLI's own enum (`summarized`, `omitted`, `highlights`), signature-only thinking, a `redacted_thinking` block, and `can_use_tool` with `tool_use_id`. Content is invented. | — | Summarized thinking text, a failing `pnpm test`, signature-only and redacted thinking, a denied `rm -rf build`, a final answer with `—` and `✓`. |
 | `codex-0.163.0-protocol.json` | codex-cli 0.163.0 `app-server generate-json-schema` | — | The native enums and notification fields the Codex mappings use. |
 
 What the captures established, which the contract relies on:
@@ -25,7 +26,9 @@ What the captures established, which the contract relies on:
   can complete with empty `summary` and `content`. A declined command completes with status
   `declined` and `exitCode: null`. An interrupted turn leaves its streaming message without
   `item/completed`.
-- **Claude.** Each content block is identified by `message.id` and its stream `index`; the CLI
+- **Claude.** `thinking_display` rides on `message_start` and on every line of the message (`updates`
+  in the live capture), so a block's representation is known before its text streams. The 2.1.302
+  binary accepts `summarized`, `omitted` and `highlights` as display modes. Each content block is identified by `message.id` and its stream `index`; the CLI
   sends one `assistant` message per block, before that block's `content_block_stop`, and every line
   has its own `uuid`. Haiku 5.5's thinking arrived with empty `thinking` text and only a signature
   (`thinking_display: "updates"`). A denied tool comes back as a `tool_result` with `is_error: true`

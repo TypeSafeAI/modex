@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateTitle } from "../src/main/engine/titles.js";
 import type { Backend } from "../src/main/engine/backends/types.js";
+import { local } from "./fakeproc.js";
 
 function backend(output: string, status: "completed" | "failed" = "completed"): Backend {
   return {
@@ -11,8 +12,8 @@ function backend(output: string, status: "completed" | "failed" = "completed"): 
       assert.equal(opts.mode, "chat");
       assert.equal(opts.resume, undefined);
       assert.equal(await sink.approval({ question: "run tool?", canAlways: true }), "no");
-      sink.delta("partial");
-      sink.assistant(output);
+      local(sink).delta("partial");
+      local(sink).assistant(output);
       sink.session("title-session");
       return { status };
     },

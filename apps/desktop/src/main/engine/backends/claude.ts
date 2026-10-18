@@ -2,6 +2,7 @@ import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
@@ -10,6 +11,7 @@ import { LineBuffer, shortJson, stderrTail } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { BackendHealth } from "../../../shared/types.js";
+import type { NativeRef, Observation } from "../../../shared/conversation-events.js";
 import { isModelOutOfCredits } from "../../../shared/failures.js";
 
 /**
@@ -118,11 +120,12 @@ export class ClaudeBackend implements Backend {
       }
       const lines = new LineBuffer();
       const started = new Map<string, number>();
-      // Extended-thinking blocks are keyed by content-block index within the current assistant message.
-      const thinking = new Map<number, string>();
-      let thinkingSeq = 0;
-      let streaming = "";
-      const agents = new AgentTracker(sink);
+      // One opaque id for this CLI process: its session, message and tool ids are scoped by it.
+      const runtime = randomUUID();
+      const blocks: Blocks = { message: null, types: new Map(), local: 0, seen: new Map(), streamed: new Set() };
+      const denied = new Set<string>();
+      const session = { id: undefined as string | undefined };
+      const agents = new AgentTracker(sink, runtime);
       const tasks = new Map<string, string>();
       // The one record of background work still running (keyed by tool_use id, else task id). The
       // agent display reads it, and the turn may end only while it is empty; see `onResult`.
@@ -252,7 +255,12 @@ export class ClaudeBackend implements Backend {
           // failure card shows it once; as a reply bubble it would also outlive a model fallback.
           if (isApiErrorReply(msg)) return;
           // `handle` updates `background` before it first awaits, so the checks below see this message's effect.
-          const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, thinking, init, agents, tasks, background, listed, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } });
+          if (msg.session_id) session.id = msg.session_id;
+          // Every line has its own uuid; the observations a line makes are numbered after it.
+          let part = 0;
+          const observe = (o: Observation) => sink.observe({ ...o, ...(msg.uuid ? { source: `${msg.uuid}#${part++}` } : {}) });
+          const native = (item: string, block?: number): NativeRef => ({ runtime, ...(session.id ? { thread: session.id } : {}), item, ...(block !== undefined ? { part: String(block) } : {}) });
+          const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, init, agents, tasks, background, listed, blocks, denied, observe, native });
           if (msg.type === "control_request") {
             approvals++;
             void handled.finally(() => {
@@ -277,7 +285,7 @@ export class ClaudeBackend implements Backend {
   }
 
   /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; init: Record<string, unknown>; nextThinkingId: () => string }): Promise<void> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
@@ -337,34 +345,60 @@ export class ClaudeBackend implements Backend {
         }
         return;
       case "stream_event": {
+        // A content block is named by its message id and stream index. Thinking text is a summary when
+        // the CLI says the display is `summarized`, otherwise the provider's own text; a block with no
+        // text (signature only) or a redacted one stays unavailable. Signatures and redacted data are
+        // opaque and are never read.
         const ev = msg.event;
-        if (ev?.type === "message_start") ctx.thinking.clear();
-        else if (ev?.type === "content_block_start" && ev.content_block?.type === "thinking" && ev.index !== undefined) {
-          const id = ctx.nextThinkingId();
-          ctx.thinking.set(ev.index, id);
-          sink.thinkingDelta(id, ev.content_block.thinking ?? "");
-        } else if (ev?.type === "content_block_delta" && ev.delta?.type === "thinking_delta" && ev.index !== undefined) {
-          const id = ctx.thinking.get(ev.index);
-          if (id && ev.delta.thinking) sink.thinkingDelta(id, ev.delta.thinking);
-        } else if (ev?.type === "content_block_stop" && ev.index !== undefined && ctx.thinking.has(ev.index)) {
-          // Keep the index mapped so the full `assistant` message does not re-emit this block.
-          sink.thinkingDone(ctx.thinking.get(ev.index)!);
-        } else if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
-          ctx.streaming += ev.delta.text;
-          sink.delta(ev.delta.text);
+        const b = ctx.blocks;
+        if (!ev) return;
+        if (msg.thinking_display) b.display = msg.thinking_display;
+        if (ev.type === "message_start") {
+          // A message the CLI gave no id (older builds) gets one here, at ingress.
+          b.message = ev.message?.id ?? `local-${++b.local}`;
+          b.types.clear();
+          b.last = undefined;
+          b.display = msg.thinking_display;
+          return;
+        }
+        if (!ev.type.startsWith("content_block_")) return;
+        b.message ??= `local-${++b.local}`;
+        // A delta with no index continues the block before it; one with no start says its type in the delta.
+        const index = ev.index ?? b.last ?? 0;
+        b.last = index;
+        const native = ctx.native(b.message, index);
+        const deltaType = ev.delta?.type === "text_delta" ? "text" : ev.delta?.type === "thinking_delta" || ev.delta?.type === "signature_delta" ? "thinking" : undefined;
+        const type = ev.type === "content_block_start" ? ev.content_block?.type : b.types.get(index) ?? deltaType;
+        if (type && !b.types.has(index)) b.types.set(index, type);
+        if (type === "thinking" || type === "redacted_thinking") {
+          b.streamed.add(`${b.message}:${index}`);
+          if (ev.type === "content_block_start") ctx.observe({ type: "reasoning.start", native });
+          const text = ev.type === "content_block_start" ? ev.content_block?.thinking : ev.delta?.type === "thinking_delta" ? ev.delta.thinking : undefined;
+          if (type === "thinking" && text) ctx.observe({ type: "reasoning.delta", native, representation: thinkingRepresentation(b.display), index: 0, text });
+          if (ev.type === "content_block_stop") ctx.observe({ type: "reasoning.done", native });
+        } else if (type === "text") {
+          if (ev.type === "content_block_start") ctx.observe({ type: "message.start", native, phase: "unspecified" });
+          else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) ctx.observe({ type: "message.delta", native, text: ev.delta.text });
+          else if (ev.type === "content_block_stop") ctx.observe({ type: "message.done", native });
         }
         return;
       }
       case "assistant": {
-        for (const [i, block] of (msg.message?.content ?? []).entries()) {
-          if (block.type === "thinking" && block.thinking && !ctx.thinking.has(i)) {
+        // The CLI sends one `assistant` message per content block, in stream order, so the k-th block
+        // seen for a message id is stream block k. Its text is the block's final snapshot.
+        // Without an id it is the message streaming now, or one of its own.
+        const message = msg.message?.id ?? ctx.blocks.message ?? `local-${++ctx.blocks.local}`;
+        for (const block of msg.message?.content ?? []) {
+          const k = ctx.blocks.seen.get(message) ?? 0;
+          ctx.blocks.seen.set(message, k + 1);
+          const native = ctx.native(message, k);
+          if ((block.type === "thinking" || block.type === "redacted_thinking") && !ctx.blocks.streamed.has(`${message}:${k}`)) {
             // Without partial messages the whole block arrives at once.
-            const id = ctx.nextThinkingId();
-            sink.thinkingDelta(id, block.thinking);
-            sink.thinkingDone(id, block.thinking);
+            ctx.observe({ type: "reasoning.start", native });
+            if (block.type === "thinking" && block.thinking) ctx.observe({ type: "reasoning.delta", native, representation: thinkingRepresentation(msg.thinking_display ?? ctx.blocks.display), index: 0, text: block.thinking });
+            ctx.observe({ type: "reasoning.done", native });
           } else if (block.type === "text" && block.text) {
-            sink.assistant(block.text);
-            ctx.streaming = "";
+            ctx.observe({ type: "message.done", native, text: block.text });
           } else if (block.type === "tool_use" && block.id) {
             // Agent runs in the background unless told otherwise; any tool may be asked to.
             if (block.input?.run_in_background === true || (block.name === "Agent" && block.input?.run_in_background !== false)) ctx.background.add(block.id);
@@ -373,7 +407,7 @@ export class ClaudeBackend implements Backend {
               continue;
             }
             ctx.started.set(block.id, Date.now());
-            sink.toolStart({ id: block.id, name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {} });
+            ctx.observe({ type: "tool.start", native: ctx.native(block.id), tool: { name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {} } });
           }
         }
         return;
@@ -389,7 +423,9 @@ export class ClaudeBackend implements Backend {
               continue;
             }
             const t0 = ctx.started.get(block.tool_use_id);
-            sink.toolUpdate(block.tool_use_id, { output: content, ok: !block.is_error, status: "done", durationMs: t0 ? Date.now() - t0 : undefined });
+            // An error result is a denial only when Modex itself refused this tool_use; otherwise it failed.
+            const outcome = !block.is_error ? "succeeded" : ctx.denied.has(block.tool_use_id) ? "denied" : "failed";
+            ctx.observe({ type: "tool.done", native: ctx.native(block.tool_use_id), outcome, progress: { output: content, ...(t0 ? { durationMs: Date.now() - t0 } : {}) } });
           }
         }
         return;
@@ -410,6 +446,7 @@ export class ClaudeBackend implements Backend {
         };
         const answer = await sink.approval(request);
         const allow = answer !== "no";
+        if (!allow && req.tool_use_id) ctx.denied.add(req.tool_use_id);
         ctx.write({
           type: "control_response",
           response: {
@@ -426,6 +463,22 @@ export class ClaudeBackend implements Backend {
         return;
     }
   }
+}
+
+/**
+ * Content blocks of the parent's messages: the message streaming now, its block types by stream
+ * index, the last index seen, blocks seen per message, thinking blocks already streamed, and a
+ * counter for messages that came without an id.
+ */
+interface Blocks {
+  message: string | null;
+  /** The message's `thinking_display`, which the CLI sends from `message_start` on. */
+  display?: string;
+  types: Map<number, string>;
+  last?: number;
+  local: number;
+  seen: Map<string, number>;
+  streamed: Set<string>;
 }
 
 interface ContentBlock {
@@ -467,9 +520,13 @@ interface ClaudeMessage {
   error?: unknown;
   /** `result`: the turn's token totals. */
   usage?: ClaudeUsage;
-  event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
+  event?: { type: string; index?: number; message?: { id?: string }; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
   request_id?: string;
-  request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] };
+  request?: { subtype?: string; tool_name?: string; tool_use_id?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] };
+  /** Every line's own id. */
+  uuid?: string;
+  /** How the CLI displays thinking for this message: `summarized`, `omitted`, `highlights` (2.1.302's settings), `updates` (seen live). */
+  thinking_display?: string;
   is_error?: boolean;
   result?: unknown;
   /** `result` extras and `system/init` facts, kept for failure reports. */
@@ -513,6 +570,14 @@ export function isApiErrorReply(msg: { type: string; parent_tool_use_id?: string
   if (msg.type !== "assistant" || msg.parent_tool_use_id || msg.message?.model !== "<synthetic>") return false;
   if (typeof msg.error === "string" && msg.error) return true;
   return (msg.message.content ?? []).some((block) => block.type === "text" && typeof block.text === "string" && isModelOutOfCredits(block.text));
+}
+
+/**
+ * Claude thinking text as a reasoning representation: a summary only when the CLI says the display
+ * is `summarized`; any other text is the provider's own. Exported for tests.
+ */
+export function thinkingRepresentation(display: string | undefined): "summary" | "provider-text" {
+  return display === "summarized" ? "summary" : "provider-text";
 }
 
 /** A `result` message as a turn outcome. */
