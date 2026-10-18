@@ -22,6 +22,7 @@ import type { PagesAgents, PagesLease } from "./pages-agents.js";
 import type { UsageLedger } from "./usage-ledger.js";
 import type { KnowledgeAgents, KnowledgeLease } from "./knowledge-agents.js";
 import { AttachmentStore, type AttachmentDraft } from "./attachments.js";
+import { ToolLogStore, type ToolLogPage } from "./tool-logs.js";
 import { describeAttachments, type Attachment } from "../../shared/attachments.js";
 import type { TurnAttachment } from "./backends/types.js";
 import type { PendingCreation, PendingSendRecord } from "./pending-sends.js";
@@ -31,7 +32,7 @@ import type { DraftRemovalScope } from "../../shared/native-drafts.js";
 import { boundOutput } from "../../shared/evidence.js";
 import { taskMarkdown, taskRecord } from "../../shared/task-context.js";
 import { actionDigest, emptyRequests, publicAnswers, register as registerRequest, resolve as resolveRequest, settle as settleRequest, validateAnswers, withdraw as withdrawRequests, type Question, type RequestBinding, type RequestsState, type Resolution } from "../../shared/human-requests.js";
-import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
+import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, toolItemId, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
 /** Refused approvals in a routine run: the routine is read-only, and nobody is there to answer. */
 const UNATTENDED_RECEIPT: ApprovalReceipt = { source: "policy", ruleId: "policy:routine", when: "Routine run: approvals are refused while it runs unattended", decision: "never", via: "policy", ms: 0 };
@@ -132,9 +133,12 @@ export class ThreadRunner {
   /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
   readonly router: Router;
   readonly attachments: AttachmentStore;
+  /** Raw output of tools that outgrew the transcript's preview (main/engine/tool-logs.ts). */
+  readonly toolLogs: ToolLogStore;
 
   constructor(private readonly o: RunnerOptions) {
     this.attachments = o.attachments ?? new AttachmentStore(path.join(o.home, "attachments"));
+    this.toolLogs = new ToolLogStore(path.join(o.home, "app", "tool-logs"));
     const s = () => o.store.settings;
     const cliSettings = s(); // Explicit override changes take effect after restart; auto paths resolve per launch.
     this.backends = {
@@ -354,6 +358,14 @@ export class ThreadRunner {
     return { pageId: page.id, title: page.title, revision: page.revision, created: !untouched, preserved: Boolean(existing && !untouched) };
   }
 
+  /** A tool's kept raw output from `offset`, a page at a time; null when its output fit in the preview. */
+  toolLog(threadId: string, itemId: string, offset: number): ToolLogPage | null {
+    const item = this.items(threadId).find((i) => i.id === itemId);
+    if (!item) throw new Error("That output is no longer in this thread.");
+    if (item.kind !== "tool") throw new Error("That item is not a tool.");
+    return this.toolLogs.read(threadId, itemId, offset);
+  }
+
   /** A receipt in the transcript for something Modex did on the thread's behalf. */
   addNotice(threadId: string, level: "info" | "warn" | "error", text: string): void {
     this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: new Date().toISOString() });
@@ -507,6 +519,7 @@ export class ThreadRunner {
       clearTimeout(l?.flushTimer);
       this.o.store.deleteThread(threadId);
       this.attachments.removeThread(threadId);
+      this.toolLogs.removeThread(threadId);
       this.live.delete(threadId);
     } finally {
       this.deleting.delete(threadId);
@@ -1152,7 +1165,10 @@ export class ThreadRunner {
       this.project(threadId, l, stamp(redactObservation(observation)));
     });
     this.project(threadId, l, stamp({ type: "attempt.start" }));
-    return { sink, end: (outcome) => { if (this.live.get(threadId) === l) this.project(threadId, l, stamp({ type: "attempt.end", outcome })); } };
+    return { sink, end: (outcome) => {
+      this.toolLogs.endThread(threadId);
+      if (this.live.get(threadId) === l) this.project(threadId, l, stamp({ type: "attempt.end", outcome }));
+    } };
   }
 
   /** Applies one event to the turn's conversation and emits what changed as item events. */
@@ -1186,7 +1202,20 @@ export class ThreadRunner {
     // Requests a rule refused, with the rule's "when" text, for backends that pass a reason to the model.
     const refusals = new WeakMap<ApprovalRequest, string>();
     return {
-      observe: (observation) => { if (active()) observe(observation); },
+      observe: (observation) => {
+        if (!active()) return;
+        observe(observation);
+        if (observation.type === "tool.done" && turn) {
+          const id = toolItemId(l.conversation, turn, observation.native);
+          if (id) this.toolLogs.end(threadId, id);
+        }
+      },
+      // Raw output stays in main: kept for the item once it outgrows the preview, never sent on.
+      output: (native, chunk) => {
+        if (!active() || !turn) return;
+        const id = toolItemId(l.conversation, turn, native);
+        if (id) this.toolLogs.append(threadId, id, chunk);
+      },
       approval: (req, withdrawn) => {
         if (this.unattended.has(threadId)) {
           // A routine runs read-only with no one to ask: refuse, and say so on the card.

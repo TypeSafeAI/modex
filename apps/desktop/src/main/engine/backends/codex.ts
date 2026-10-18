@@ -448,6 +448,7 @@ export class CodexBackend implements Backend {
             const t = tools.get(String(p.itemId));
             if (t) {
               const delta = String(p.delta ?? "");
+              sink.output?.(native(p.itemId), delta);
               t.bytes += byteLength(delta);
               t.output = boundOutput(t.output + delta).text;
               sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output, ...(t.bytes > byteLength(t.output) ? { outputBytes: t.bytes, outputTruncated: true } : {}) } });
