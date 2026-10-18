@@ -221,3 +221,61 @@ App Store distribution acceptance.
 
 Private receipts, source snapshot, signed applications and disposable workspace:
 `/Users/buns/Documents/Codex/artifacts/modex-store-signed-acceptance-2026-10-11/`.
+
+## Status summary
+
+Moved from `docs/status.md` on 2026-10-18, where this was the Mac App Store edition entry under
+In flight. The text is unchanged except that links now resolve from `docs/reviews/`.
+
+- **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
+  with a separately installed signed host to retain full desktop functionality. Apple's
+  sandbox and standalone-app rules require an architecture and review gate. The
+  [investigation and parity matrix](../mac-app-store.md) records the proposed ownership and
+  end-to-end acceptance gates. A fail-closed MAS packaging and App Store Connect validation
+  command is documented. The authenticated October 11 readback confirms approved beta
+  reviews for Mac Store 0.0.8 and Companion 0.1.0 (5): the Mac is `BETA_APPROVED`,
+  and Companion is in external `IN_BETA_TESTING`. Both latest builds are assigned to
+  internal and public-link-enabled external groups. [Current Apple receipt](2026-10-11-apple-status.md).
+  The [current parity matrix and listing packet](2026-10-11-store-readiness.md)
+  records implemented host discovery/launch, signed/live acceptance gaps, and Store exclusions. Both beta review records contain
+  offline demo instructions, and both reviewer replies are posted; the iOS reply includes
+  the reusable QR. The [review access ledger](2026-10-06-review-demo-access.md)
+  records build IDs and verification. The production Mac draft is 0.0.8 with its build
+  and review notes selected, but still needs screenshots, description, keywords, and
+  support URL, privacy-policy URL, and copyright. Three source-built Store screenshots and
+  listing text are prepared locally. Current-account signed candidates passed running-host
+  discovery, real Codex and Claude turns, native code comparison/denial, and credential persistence
+  after relaunch using an isolated runtime keychain name. Store Stop ended a real Claude
+  background task. A later bounded native run passed host-restart reconnect with the same
+  Store process and unsent draft, matching-code approval, and revocation with credential
+  removal. All disposable grants were revoked and test apps stopped. Fresh-user setup,
+  installed-host auto-launch and sleep/wake remain unaccepted.
+  Sandboxed lookup could not read the Documents fixture; an unchanged copy in Applications
+  passed exact-host selection from both original and relocated Store apps. A later Open
+  action launched the isolated Preview, and the user confirmed clicking Allow; native
+  revocation removed that grant. The intended Cancel observation was missed. This also
+  exposed a regular-host activation gap: App Sandbox discards launch arguments, while the
+  Preview starts its service automatically. A URL activation handoff is implemented with
+  an additive signed capability check; focused startup, capability and authorization tests
+  pass. The main `312a138` integration passed build/typecheck, 488 unit tests plus one
+  expected skip, and 177 desktop plus seven site UI tests. The signed sandbox helper then
+  launched regular Modex through that URL without flags and reused the same process,
+  port, and certificate with zero grants. This used an explicit candidate path; the full
+  welcome Open sequence remains unaccepted. The subsequent GUI Connect acquired a grant
+  before native confirmation capture, so its Cancel check stopped. That grant was revoked
+  and complete credential/process/profile cleanup passed; attribution is awaiting Val's
+  response. The temporary applications were unregistered and moved back into private
+  artifacts. The `edf52fc` main integration retains the Companion and Store recovery
+  changes alongside Canvas, native platform support, Knowledge and worktree maintenance.
+  Browser-tools recovery preserves keyboard access to connection controls, and native
+  Workspace commands pause while browser tools are open. Both regressions failed before
+  the guards and passed afterward. Fresh build/typecheck passed, with 834 unit passes and
+  12 native Windows cases skipped on macOS, plus all 241 desktop and seven site UI tests
+  with OpenKnowledge enabled. An isolated iPhone simulator passed all 41 native unit and
+  28 UI tests with zero skips. The complete tested source matched the actual-main
+  integration; subsequent changes only record this verification. Earlier upstream iPhone
+  CI action failures remain separately recorded and undiagnosed. Fresh hosted checks,
+  protected landing and the remaining native acceptance gates stay open.
+  [Signed acceptance evidence and limits](2026-10-11-store-signed-acceptance.md).
+  Beta approval covers the October 6 builds; production
+  approval and acceptance of this branch's changes remain open.

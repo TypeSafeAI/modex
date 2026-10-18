@@ -2,7 +2,7 @@
 
 Implemented in the owned `images-plugins` worktree and reconciled with `origin/main`
 at `f52e033`, retaining Analytics, the Fable credit fallback, the Notes migration and the
-Notes workspace tree. This feature is unreleased.
+Notes workspace tree. It shipped in v0.1.0 (#236).
 
 ## Delivered
 

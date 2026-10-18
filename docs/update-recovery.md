@@ -9,7 +9,8 @@ the release workflow. Builds before v0.0.12 install it manually once.
 
 Supported packaged Macs offer **Download update**, progress and cancellation, then
 **Restart to update** after verification. Development, demo, automated-test, and Host Preview
-builds keep automatic installation disabled. Windows and Linux retain manual update links.
+builds keep automatic installation disabled. Windows and Linux show no update banner; install
+a newer release by hand.
 Missing archive integrity metadata also leaves manual installation available.
 
 The downloaded ZIP must match its size and digest. The running app and candidate must pass
@@ -94,7 +95,9 @@ owner removal, automatic retirement, terminal lifecycle, partial-shutdown reload
 actual recovery Quit. See the [local acceptance report](reviews/2026-10-12-updater-local-acceptance.md).
 
 Controller UI tests simulate download, staging, and publisher verification and assert zero
-native updater calls. The signed hosted native matrix remains open. The native harness
+native updater calls. The signed hosted native matrix (upgrade, failed download, interrupted
+download) passed in the v0.0.12 and v0.1.0 release runs, and on 2026-10-18 an installed v0.0.12
+updated itself to v0.1.0. The native harness
 verifies exact schema-2 project ownership and retains real signing checks and Squirrel
 events, but its local tests do not prove an installed upgrade. See the
 [native updater release gate](release-signing.md#native-updater-release-gate) and

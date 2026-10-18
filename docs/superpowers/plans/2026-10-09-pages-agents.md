@@ -1,5 +1,9 @@
 # Pages agent maintenance implementation plan
 
+**Status (2026-10-18): delivered** in #150 and shipped in v0.0.10. Since v0.1.0 (#222) the
+Pages tools work on the Markdown notes folder instead of the SpaceStore this plan describes; see
+[notes.md](../../notes.md) and [pages-maintenance.md](../../pages-maintenance.md).
+
 > **For agentic workers:** Use subagent-driven-development or executing-plans. Track evidence below.
 
 **Goal:** Agents manage Modex Space notes end to end through our own Pages MCP server.

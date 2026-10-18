@@ -21,7 +21,7 @@ counts. Prompts, files and replies are never recorded.
   unpriced rather than free.
 - **Recording is best-effort.** A failed write is logged and never changes the turn. Reading skips lines that
   don't parse, so a torn last line after a crash costs one row.
-- Usage from before this release, from other tools, and from outside Modex is not imported.
+- Usage from before v0.1.0, from other tools, and from outside Modex is not imported.
 
 ## How it is shown
 
@@ -121,7 +121,7 @@ mobile navigation after desktop collapse, Copilot filtering, unknown costs,
 account attribution, and a real CSV download. Browser interaction checks
 complement these; they do not constitute VoiceOver or human keyboard-only acceptance.
 
-Safari verification on 2026-10-07 covered both appearances, navigation, empty
+Before the #248 restyle, Safari verification on 2026-10-07 covered both appearances, navigation, empty
 search, custom dates, call details, and exact project drill-downs. Phone and
 tablet iframe checks (390 and 768 CSS pixels including scrollbars) confirmed no
 page-level horizontal overflow. CSV serialization tests pass; Safari displayed
