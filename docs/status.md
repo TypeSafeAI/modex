@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-16._
+_Last updated 2026-10-18._
 
 ## Shipped
 
@@ -806,6 +806,19 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   independent download checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac,
   and the TestFlight upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
+
+- **Native conversation fidelity: the event contract (CF-1, #274).** Tracker #273 splits the work
+  into eight issues; this is the first, on branch `cf1-contract`. Backends report assistant text,
+  reasoning and tool work through one typed `observe` path that names each native item and part;
+  the runner stamps every observation with the Modex turn and attempt and folds it into transcript
+  items with a pure projector. Items now carry their origin, message phase (commentary, final,
+  unspecified), reasoning representation (summary, provider text, unavailable) and outcome
+  (succeeded, failed, denied, interrupted, unknown). Interleaved messages no longer merge, Codex
+  summaries no longer absorb reasoning text, a dropped stream no longer marks open work failed, and
+  a credit-fallback rerun can no longer be written into by the first run. Older transcripts read
+  through an explicit legacy adapter, unchanged. Checked against sanitized captures from Claude
+  Code 2.1.302 and codex-cli 0.163.0; no live-provider acceptance yet.
+  [Contract](conversation-events.md).
 
 - **Verified multiplatform release candidates.** The release workflow now joins native
   Windows/Linux checks with signed macOS acceptance, binds installer bytes and receipts

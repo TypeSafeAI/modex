@@ -8,6 +8,7 @@ import { UsageLedger } from "../src/main/engine/usage-ledger.js";
 import { ANALYTICS_CSP, respondAnalytics } from "../src/main/engine/analytics-assets.js";
 import type { Backend, TurnResult, TurnUsage } from "../src/main/engine/backends/types.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { local } from "./fakeproc.js";
 
 const usage: TurnUsage = { first: { cacheRead: 0, cacheWrite: 30_000, uncached: 5 }, contextTokens: 31_000, outputTokens: 420, calls: 2, totals: { input: 9, cached: 30_500, cacheWrite: 30_100 } };
 const turn = (over: Partial<Parameters<UsageLedger["record"]>[0]> = {}) => ({ at: "2026-10-15T08:00:00.000Z", backend: "claude", model: "opus", threadId: "t1", project: "modex", account: "", usage, ...over });
@@ -48,7 +49,7 @@ const backendReturning = (results: TurnResult[]): Backend => ({
   id: "codex",
   listModels: async () => [{ id: "gpt-6-luna", label: "Luna", efforts: ["low", "high"], isDefault: true }],
   dispose: async () => {},
-  async runTurn(_text, _opts, sink) { sink.assistant("done"); return results.shift() ?? { status: "completed" }; },
+  async runTurn(_text, _opts, sink) { local(sink).assistant("done"); return results.shift() ?? { status: "completed" }; },
 });
 
 test("every turn that called a model is recorded, Auto or not, and a ledger failure never fails the turn", async () => {

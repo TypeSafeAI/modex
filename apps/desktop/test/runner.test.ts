@@ -7,7 +7,7 @@ import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
-import { FakeProcess, fakeSpawn } from "./fakeproc.js";
+import { FakeProcess, fakeSpawn, local } from "./fakeproc.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import type { PagesChange } from "../src/shared/pages.js";
@@ -325,7 +325,7 @@ test("dispose waits for interrupted turns to finalize and persist", async () => 
   let finish!: (value: TurnResult) => void;
   let started = false;
   const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn(_text, _opts, sink) {
-    sink.delta("last live text");
+    local(sink).delta("last live text");
     started = true;
     return new Promise((resolve) => { finish = resolve; });
   } };
@@ -412,12 +412,16 @@ test("agent mode: a prompt runs tools, edits the project, emits items, persists,
   assert.equal(think.text, "Check the tree first.");
   assert.equal(think.status, "done");
   assert.ok(think.durationMs != null && think.durationMs >= 0);
-  // streaming: the first assistant item was created empty, grew via item_update, and ended with the full text
+  // streaming: the assistant item appeared, still running, with its first streamed text, and settled with the full text
   const first = items[2] as { id: string; text: string };
   assert.equal(first.text, "Looking.");
-  const updates = h.events.filter((e) => e.type === "item_update" && e.id === first.id).map((e) => (e as { patch: { text?: string } }).patch.text);
-  assert.ok(updates.length >= 1 && updates.at(-1) === "Looking.");
-  assert.equal((h.events.find((e) => e.type === "item" && (e as { item: ThreadItem }).item.id === first.id) as { item: { text: string } }).item.text, "");
+  const opened = (h.events.find((e) => e.type === "item" && (e as { item: ThreadItem }).item.id === first.id) as { item: { text: string; outcome?: string } }).item;
+  assert.ok(opened.text.length > 0 && "Looking.".startsWith(opened.text), opened.text);
+  assert.equal(opened.outcome, "running", "it appeared while streaming");
+  // Patches carry only what changed; the last one settles it.
+  const patches = h.events.filter((e) => e.type === "item_update" && e.id === first.id).map((e) => (e as { patch: { text?: string; outcome?: string } }).patch);
+  assert.equal(patches.at(-1)?.outcome, "succeeded");
+  assert.equal(patches.flatMap((p) => p.text ?? []).at(-1) ?? opened.text, "Looking.");
   const tools = items.filter((i): i is Extract<ThreadItem, { kind: "tool" }> => i.kind === "tool");
   assert.equal(tools[0]!.title, "$ ls");
   assert.equal(tools[0]!.status, "done");
@@ -500,7 +504,7 @@ test("two threads in the same project run concurrently and independently", { tim
     async runTurn(text: string, _o: TurnOptions, sink: TurnSink): Promise<TurnResult> {
       entered.push(text);
       if (!cleaning) await new Promise<void>(resolve => { releases.set(text, resolve); });
-      sink.assistant("finished");
+      local(sink).assistant("finished");
       return { status: "completed" };
     },
   };
@@ -571,9 +575,9 @@ test("reasoning with no text still yields a finished Thinking row; completion-on
   const h = harness();
   const project = h.store.addProject(gitRepo());
   const quiet: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink) {
-    sink.thinkingDelta("r-empty", ""); sink.thinkingDone("r-empty");
-    sink.thinkingDone("r-late", "Decided to answer directly.");
-    sink.assistant("hi"); return { status: "completed" };
+    local(sink).thinkingDelta("r-empty", ""); local(sink).thinkingDone("r-empty");
+    local(sink).thinkingDone("r-late", "Decided to answer directly.");
+    local(sink).assistant("hi"); return { status: "completed" };
   } };
   const runner = new ThreadRunner({ ...h, backends: { mock: quiet } });
   const thread = await runner.createThread(project.id);
@@ -659,7 +663,7 @@ test("Retry runs the last message again in place: one user bubble, then the new 
   let attempts = 0;
   const flaky: Backend = { id: "codex", listModels: async () => [], dispose: async () => {}, runTurn: async (text, _opts, sink) => {
     if (++attempts === 1) return { status: "failed", error: "stream disconnected before completion" };
-    sink.assistant(`ok: ${text}`);
+    local(sink).assistant(`ok: ${text}`);
     return { status: "completed" };
   } };
   const runner = new ThreadRunner({ ...h, backends: { codex: flaky } });
@@ -711,7 +715,7 @@ test("Auto threads: a route item lands before the turn, the pick is applied, and
     id: "mock",
     listModels: async () => [{ id: "mini", label: "Mini", description: "fastest", efforts: ["low", "high"] }, { id: "big", label: "Big", efforts: ["low", "high"] }],
     dispose: async () => {},
-    async runTurn(_t, o, sink) { seen.push(o); sink.session("s1"); sink.assistant("ok"); return { status: "completed" }; },
+    async runTurn(_t, o, sink) { seen.push(o); sink.session("s1"); local(sink).assistant("ok"); return { status: "completed" }; },
   };
   const { Router } = await import("../src/main/engine/routing/router.js");
   const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: await two.listModels() }), transport: null });
@@ -751,7 +755,7 @@ test("Auto fast mode the CLI refused: the receipt says why, and the thread recor
     id: "mock",
     listModels: async () => [{ id: "mini", label: "Mini", description: "fastest", efforts: ["low", "high"], serviceTiers: ["fast"] }, { id: "big", label: "Big", efforts: ["low", "high"] }],
     dispose: async () => {},
-    async runTurn(_t, o, sink) { seen.push(o); sink.assistant("ok"); const fastMode = reports[seen.length - 1]; return fastMode ? { status: "completed", fastMode } : { status: "completed" }; },
+    async runTurn(_t, o, sink) { seen.push(o); local(sink).assistant("ok"); const fastMode = reports[seen.length - 1]; return fastMode ? { status: "completed", fastMode } : { status: "completed" }; },
   };
   const { Router } = await import("../src/main/engine/routing/router.js");
   const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: await backend.listModels() }), transport: null });
@@ -794,10 +798,10 @@ test("reused backend item ids cannot overwrite an earlier turn", async () => {
   const h = harness();
   const project = h.store.addProject(gitRepo());
   const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(text, _o, sink) {
-    sink.thinkingDelta("think-1", text);
-    sink.thinkingDone("think-1");
-    sink.toolStart({ id: "tool-1", name: "shell", title: text, args: {} });
-    sink.toolUpdate("tool-1", { output: text, status: "done", ok: true });
+    local(sink).thinkingDelta("think-1", text);
+    local(sink).thinkingDone("think-1");
+    local(sink).toolStart({ id: "tool-1", name: "shell", title: text, args: {} });
+    local(sink).toolUpdate("tool-1", { output: text, status: "done", ok: true });
     return { status: "completed" };
   } };
   const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
@@ -818,8 +822,8 @@ test("tool streaming coalesces disk writes and flushes final output", async (t) 
   let writes = 0;
   h.store.saveItems = (...args) => { writes++; save(...args); };
   const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _o, sink) {
-    sink.toolStart({ id: "tool", name: "shell", title: "$ build", args: {} });
-    for (let i = 1; i <= 1000; i++) sink.toolUpdate("tool", { output: "x".repeat(i) });
+    local(sink).toolStart({ id: "tool", name: "shell", title: "$ build", args: {} });
+    for (let i = 1; i <= 1000; i++) local(sink).toolUpdate("tool", { output: "x".repeat(i) });
     // A crash may omit item/completed; the turn boundary must still save the tail.
     return { status: "failed", error: "process crashed" };
   } };
@@ -853,8 +857,8 @@ test("deletion waits for the active turn and rejects late output after removal",
   finish({ status: "interrupted" });
   await Promise.all([run, deletion]);
   const count = h.events.length;
-  sink.delta("late reply");
-  sink.toolUpdate("old", { output: "late" });
+  local(sink).delta("late reply");
+  local(sink).toolUpdate("old", { output: "late" });
   assert.equal(h.events.length, count);
   assert.equal(h.store.thread(thread.id), undefined);
   assert.equal(fs.existsSync(path.join(h.home, "app/threads", `${thread.id}.json`)), false);
@@ -931,7 +935,9 @@ test("thread snapshots include live output before the next disk flush", async ()
   const project = h.store.addProject(gitRepo());
   let finish!: (result: TurnResult) => void;
   const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn(_text, _opts, sink) {
-    sink.delta("not flushed yet");
+    // The first delta creates the item, which is saved at once; the next waits for the timed flush.
+    local(sink).delta("not ");
+    local(sink).delta("flushed yet");
     return new Promise((resolve) => { finish = resolve; });
   } };
   const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
@@ -939,7 +945,7 @@ test("thread snapshots include live output before the next disk flush", async ()
   const run = runner.send(thread.id, "go");
   // The renderer's thread:items handler calls runner.items, not Store.items.
   // Read both synchronously so the 250 ms persistence timer cannot run between them.
-  assert.equal(h.store.items(thread.id).find((item) => item.kind === "assistant")?.text, "");
+  assert.equal(h.store.items(thread.id).find((item) => item.kind === "assistant")?.text, "not ");
   assert.equal(runner.items(thread.id).find((item) => item.kind === "assistant")?.text, "not flushed yet");
   finish({ status: "completed" });
   await run;
@@ -1058,12 +1064,12 @@ test("autonaming uses the successful attempt's last assistant reply, excluding e
   const backend: Backend = {
     ...h.backends.mock, id: "mock", listModels: async () => [], dispose: async () => {},
     async runTurn(_text, _opts, sink) {
-      if (++attempts === 1) { sink.assistant("Wrong diagnosis from failed attempt"); return { status: "failed", error: "try again" }; }
-      sink.assistant("Investigating login");
-      sink.toolStart({ id: "tool", name: "read", title: "read file", args: {} });
-      sink.toolUpdate("tool", { output: "PRIVATE_FILE_CONTENT", status: "done" });
-      sink.thinkingDelta("thinking", "PRIVATE_REASONING");
-      sink.assistant("Fixed cookie path handling");
+      if (++attempts === 1) { local(sink).assistant("Wrong diagnosis from failed attempt"); return { status: "failed", error: "try again" }; }
+      local(sink).assistant("Investigating login");
+      local(sink).toolStart({ id: "tool", name: "read", title: "read file", args: {} });
+      local(sink).toolUpdate("tool", { output: "PRIVATE_FILE_CONTENT", status: "done" });
+      local(sink).thinkingDelta("thinking", "PRIVATE_REASONING");
+      local(sink).assistant("Fixed cookie path handling");
       return { status: "completed" };
     },
     async generateTitle(_text, opts: { model: string; reply?: string }) { context = opts.reply; return "Fix cookie path handling"; },
@@ -1128,7 +1134,7 @@ test("follow-up: none while a turn runs, one cached suggestion once it completes
 function asking(action: NonNullable<Parameters<TurnSink["approval"]>[0]["action"]>, answers: string[]): Backend {
   return { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink) {
     answers.push(await sink.approval({ question: `Allow ${action.title}?`, detail: "detail", canAlways: true, action }));
-    sink.assistant("done");
+    local(sink).assistant("done");
     return { status: "completed" };
   } };
 }

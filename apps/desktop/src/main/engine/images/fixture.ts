@@ -3,6 +3,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Backend } from "../backends/types.js";
+import { LocalItems } from "../backends/local-items.js";
 import type { PluginExecution } from "../plugins.js";
 /** Deterministic, explicitly labelled demo data. Never calls a real provider or native plugin CLI. */
 export function fixturePlugins(): PluginExecution {
@@ -60,7 +61,8 @@ export const imageFixtureBackend: Backend = {
   listModels: async () => [],
   dispose: async () => {},
   runTurn: async (_text, options, sink, signal) => {
-    sink.assistant(
+    const local = new LocalItems(sink);
+    local.assistant(
       "Offline image fixture: this is a simulated generation job.",
     );
     const answer = await sink.approval({
@@ -93,7 +95,7 @@ export const imageFixtureBackend: Backend = {
       });
       if (result.isError)
         return { status: "failed", error: "Fixture registration failed." };
-      sink.assistant("Saved a synthetic image to the library.");
+      local.assistant("Saved a synthetic image to the library.");
       return { status: "completed" };
     } finally {
       await client.close();

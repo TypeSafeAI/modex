@@ -7,6 +7,7 @@ import { policyAnswer, policyReceipt } from "../src/main/engine/approvals/policy
 import type { Backend, TurnSink } from "../src/main/engine/backends/types.js";
 import type { ApprovalDowngrade, ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { local } from "./fakeproc.js";
 
 const bash = { backend: "claude" as const, tool: "Bash", title: "$ make", input: { command: "make" } };
 const escalating = { backend: "codex" as const, tool: "permissions", title: "network access", escalation: true };
@@ -47,7 +48,7 @@ function setup() {
   const answers: string[] = [];
   const backend: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink: TurnSink) {
     for (const action of [bash, escalating]) answers.push(await sink.approval({ question: `Allow ${action.title}?`, canAlways: true, action }));
-    sink.assistant("done");
+    local(sink).assistant("done");
     return { status: "completed" };
   } };
   const runner = new ThreadRunner({ home, store, router, emit: (e) => events.push(e), backends: { mock: backend } });

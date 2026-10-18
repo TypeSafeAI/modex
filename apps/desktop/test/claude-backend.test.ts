@@ -112,10 +112,11 @@ test("ClaudeBackend: streams deltas, tools, answers a permission request, resume
   assert.equal(r.status, "completed");
   assert.deepEqual(events, [
     "session:sess-1",
-    "think:think-1:",
-    "think:think-1:Plan: ",
-    "think:think-1:write it.",
-    "think_done:think-1:",
+    // The CLI gave this message no id, so Modex named it at ingress; the block keeps its stream index.
+    "think:local-1#0:",
+    "think:local-1#0:Plan: ",
+    "think:local-1#0:write it.",
+    "think_done:local-1#0:",
     "delta:Sure, ",
     "delta:writing.",
     "assistant:Sure, writing.",

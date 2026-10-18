@@ -16,6 +16,7 @@ import type {
   TurnSink,
 } from "../src/main/engine/backends/types.js";
 import { PNG_B64 } from "./helpers.js";
+import { local } from "./fakeproc.js";
 const png = Buffer.from(PNG_B64, "base64");
 function fixture() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-images-test-"));
@@ -196,7 +197,7 @@ test("generation registers actual output through job-scoped MCP, rejects travers
         name: "register",
         arguments: { file: "result.png" },
       });
-      sink.assistant("Created an image.");
+      local(sink).assistant("Created an image.");
     } finally {
       await client.close();
     }
@@ -228,7 +229,7 @@ test("generation registers actual output through job-scoped MCP, rejects travers
 });
 test("text-only success fails; explicit retries get distinct attempts and running cancellation keeps stopped state", async () => {
   const f = await jobsFixture(async (_options, sink) => {
-    sink.assistant("Done, but no image.");
+    local(sink).assistant("Done, but no image.");
   });
   try {
     const input = {
@@ -253,7 +254,7 @@ test("text-only success fails; explicit retries get distinct attempts and runnin
 });
 test("restart marks pending jobs interrupted without replaying and retains drafts", async () => {
   const f = await jobsFixture(async (_options, sink) => {
-    sink.assistant("No result");
+    local(sink).assistant("No result");
   });
   try {
     f.jobs.saveDraft({
@@ -299,7 +300,7 @@ test("a replaced output root cannot authorize reading an external image", async 
     await client.connect(new StreamableHTTPClientTransport(new URL(options.images!.url)));
     try {
       assert.equal((await client.callTool({ name: "register", arguments: { file: "private.png" } })).isError, true);
-      sink.assistant("Rejected symlink output.");
+      local(sink).assistant("Rejected symlink output.");
     } finally { await client.close(); }
   });
   try {

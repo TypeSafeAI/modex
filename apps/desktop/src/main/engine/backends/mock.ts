@@ -1,5 +1,6 @@
 import { Agent, MockProvider, defaultConfig, systemPrompt, type ModexConfig, type UI } from "@modex/core";
 import type { ApprovalAction, Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import { LocalItems } from "./local-items.js";
 
 /**
  * Offline backend: the bundled @modex/core engine driven by a scripted MockProvider.
@@ -39,20 +40,22 @@ export class MockBackend implements Backend {
     };
     let thinkingId: string | null = null;
     let thinkingSeq = 0;
+    // The scripted engine names tools but not messages or reasoning: ids for those are assigned here.
+    const local = new LocalItems(sink);
     const agent = new Agent({
       cfg, provider, ui, cwd: opts.cwd, signal, history: this.histories.get(handle),
       systemPrompt: systemPrompt(cfg, opts.cwd, ""),
       onEvent: (e) => {
         if (e.type === "thinking_delta") {
           thinkingId ??= `think-${handle}-${++thinkingSeq}`;
-          sink.thinkingDelta(thinkingId, e.text);
+          local.thinkingDelta(thinkingId, e.text);
         } else if (e.type === "thinking_done") {
-          if (thinkingId) sink.thinkingDone(thinkingId);
+          if (thinkingId) local.thinkingDone(thinkingId);
           thinkingId = null;
-        } else if (e.type === "assistant_delta") sink.delta(e.text);
-        else if (e.type === "assistant") sink.assistant(e.content);
-        else if (e.type === "tool_start") sink.toolStart({ id: e.id, name: e.name, title: e.title, args: e.args });
-        else if (e.type === "tool_end") sink.toolUpdate(e.id, { output: e.output, ok: e.ok, status: "done", durationMs: e.durationMs });
+        } else if (e.type === "assistant_delta") local.delta(e.text);
+        else if (e.type === "assistant") local.assistant(e.content);
+        else if (e.type === "tool_start") local.toolStart({ id: e.id, name: e.name, title: e.title, args: e.args });
+        else if (e.type === "tool_end") local.toolUpdate(e.id, { output: e.output, ok: e.ok, status: "done", durationMs: e.durationMs });
       },
     });
     try {
