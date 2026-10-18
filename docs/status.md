@@ -819,9 +819,13 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result
     now survive. Failure details no longer copy MCP route tokens.
 
-  Measured live on Claude Code 2.1.302 until the account's weekly limit. Modex's own path was
-  covered with scripted CLIs; no live-model Stop has run through the app yet.
-  [Evidence](reviews/2026-10-18-claude-lifecycle.md).
+  Claude Code 2.1.302 with Haiku, through the app on 2026-10-18 (opt-in `e2e/claude-live-stop.spec.ts`):
+  - Stop with a card waiting: idle in 0.9 s.
+  - Stop during a running command: SIGTERM after the 1.5 s grace, and the command's file was never written.
+  - Resume after Stop: answers normally.
+  - Stop mid-stream: the text so far is kept.
+
+  Windows and Linux escalation is unproven. [Evidence](reviews/2026-10-18-claude-lifecycle.md).
 
 - **Native conversation fidelity: the event contract (CF-1, #274).** Tracker #273 splits the work
   into eight issues; this is the first, on branch `cf1-contract`. Backends report assistant text,

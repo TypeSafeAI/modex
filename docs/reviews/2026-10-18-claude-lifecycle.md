@@ -14,7 +14,10 @@ There is no Agent SDK and no API mode.
   - `f0b383b`: these records.
   - `6856bf3`: merge of `main` at `7780093`, which landed CF-1 (#282, the conversation-event contract).
   - `172b13f`: a tool call Stop interrupted reads `interrupted`.
-- Tested code: `172b13f586853924a390953281adafdd3649fea`. Commits after it change only these records.
+  - `20a1eea`: records after the CF-1 merge.
+  - `52b159a`: merge of `main` at `8e26534`, which landed CF-4 (#284, typed turn layout). No conflicts.
+  - The next commit adds the opt-in live acceptance spec and these records.
+- Tested code: `52b159abd6b3f16f9a347653b37afc4a1c60d264`. The commit after it adds only an E2E spec that is skipped unless `MODEX_CLAUDE_LIVE=1`, plus these records.
 
 ## CLI versions
 
@@ -121,7 +124,41 @@ At `feb2166`:
 
 The review fixes in `62ac15c` were red first (3/3 failing for the reported reasons). At `62ac15c`, 147/147 pass across the lifecycle, Claude backend, background, runner, routines and subagent suites.
 
-### Final checks at `172b13f`
+### Final checks at `52b159a` (up to date with `main`)
+
+Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 09:19–09:47 UTC, after merging CF-4:
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | pass |
+| `pnpm build` | pass |
+| `pnpm typecheck` | pass |
+| `pnpm test` | pass (204 s), broken down below |
+| `pnpm test:e2e` (desktop) | 321 passed, 4 skipped, 2 failed |
+| `pnpm --filter @modex/site test:e2e` | 7/7 |
+
+`pnpm test`, by suite:
+
+| Suite | Result |
+| --- | --- |
+| worktrees | 109/109 |
+| core | 16/16 |
+| desktop | 1,529 passed, 16 skipped, of 1,545 |
+| desktop native/update | 21/21 |
+| site | 10/10 |
+| store-desktop | 16/16 |
+
+Notes on the desktop E2E run:
+- **Skips:** the 4 skips are the 3 opt-in real Open Knowledge specs and the new opt-in live spec.
+- **The 2 failures were the disk filling up:** two `browser-document.spec.ts` cases (`prepared credential request cancels on reload` and `… on same-document`). Each failed in setup: `git init` in `seedHome` reported `No space left on device`. The data volume was at 99%, from other work on the machine, and this session deleted nothing to make room.
+- **Rerun:** `browser-document.spec.ts` alone passed 18/18, including both cases.
+- **Site suite:** it didn't run inside `pnpm test:e2e`, because the desktop step failed first, so it was run separately and passed 7/7.
+
+Targeted checks at `52b159a`, before the full run:
+- 193/193 across the lifecycle, Claude backend, background, runner, conversation-events, turn-layout, routines, subagent and credit-fallback suites;
+- 18/18 Electron cases across `claude-lifecycle`, `titles`, `typed-turns` and `approvals`.
+
+### Checks at `172b13f`
 
 Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 08:19–08:46 UTC, after the CF-1 merge:
 
@@ -184,6 +221,32 @@ On a machine with load average around 200, an earlier full desktop run at `feb21
 
 An earlier full E2E run at `feb2166` was stopped deliberately after 106/321 tests, all passing. The review fixes then changed the backend, and `dist/` had been rebuilt mid-run, so that run is not counted.
 
+## Live acceptance through the app (2026-10-18, 09:50 UTC)
+
+The usage limit had lifted by 09:19 UTC. `e2e/claude-live-stop.spec.ts` then drove the built app at `52b159a` with the real Claude Code 2.1.302 and Haiku. It ran in Chat mode, in a throwaway repository, from a shell without `CLAUDE*`/`ANTHROPIC*` variables. It passed: [report](2026-10-18-claude-lifecycle/live-app-run.json).
+
+| Step | Observed |
+| --- | --- |
+| Stop while a `touch` permission card waits | Idle 0.86 s after Stop, notice "Stopped.". The card reads "Not answered — the turn was stopped". No failure card, and the file was never created. |
+| Approve a 30 s Python command, Stop 3 s later | Idle 2.33 s after Stop. The notice reads "Stopped. Claude did not end the turn within 1.5 s of the interrupt, so Modex terminated it." The tool row is `done` / `interrupted`. 31 s later the command's file still did not exist, so the child did not outlive the stop. |
+| Same thread: "Reply with the single word: resumed" | Reply "resumed": the session resumes cleanly after an interrupted turn. No failure card. |
+| Stop while a story streams | Idle 0.86 s after Stop, notice "Stopped.". The 670 characters already streamed are kept. No failure card. |
+
+The first attempt at this spec failed for two reasons:
+- **My wait, not the app:** it waited for `idle` right after Send. That wait returned in 148 ms, before the turn started, and then read the previous reply.
+- **The CLI's own guard:** Claude Code refuses a long foreground `sleep`, so that step never ran a long command.
+
+The spec now waits for the new reply and uses a Python sleep. Steps 1 and 2 of that first attempt also passed: idle in 0.84 s and 1.31 s, "Stopped." both times.
+
+To rerun:
+
+```sh
+cd apps/desktop
+env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT MODEX_CLAUDE_LIVE=1 MODEX_CLAUDE_BIN=~/.local/share/claude/versions/2.1.302 pnpm exec playwright test e2e/claude-live-stop.spec.ts
+```
+
+Unset every `CLAUDE*`/`ANTHROPIC*` variable when you run it from inside a Claude session. Each run spends about five Haiku turns.
+
 ## Independent review
 
 A read-only review of `62fccb9..feb2166` found nothing high-severity. It confirmed:
@@ -216,12 +279,7 @@ A fourth point stays as a known limit:
 
 ## Not established here
 
-- **No live model Stop through the Modex UI.** The account hit its weekly limit mid-probe. Everything through Modex itself used scripted executables shaped on the live captures. To rerun after the reset:
-1. Start a Claude thread in Agent mode and ask for `sleep 20 && touch x`.
-2. Approve, then press Stop.
-3. Expect the thread to go idle within about 3 s with no failure card, and with exactly one stop notice. Since 2.1.302 took 3.2 s to abort a running Bash call, that notice will likely be "…so Modex terminated it."
-4. Then send a `--resume` turn and expect it to answer normally.
-5. Repeat, pressing Stop while the permission card is still pending. Expect "Not answered — the turn was stopped".
+- **Native withdrawal outside Stop (live).** The live run covers Stop. A `control_cancel_request` that the CLI sends while no Stop is pending is covered only by scripted fixtures; no live way to trigger one was found.
 - **Windows and Linux.** The interrupt is protocol-level, so it applies everywhere. The SIGTERM/SIGKILL escalation and the `unconfirmed` probe were exercised only on macOS. Windows launches through `cli-supervisor.exe`, where `kill` semantics differ.
 - **The Companion** still renders a withdrawn card as "Denied", because its item projection does not carry `withdrawn`. The card is inert there: answering returns 409. Carrying the reason to paired clients belongs to CF-6 (#279).
 - **Reused pids:** an `unconfirmed` pid that the OS reuses keeps deletion refused until Modex restarts (see the independent review above).
