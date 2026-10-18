@@ -248,6 +248,40 @@ test("Failure details name the MCP routes without their capability tokens", asyn
   assert.ok(detail.includes("127.0.0.1:4100/mcp/"), "the route itself is still named");
 });
 
+test("Stop pressed while a failed result drains keeps the failure and still ends the process", async () => {
+  const proc = new FakeProcess(); // ends neither on stdin's end nor by itself, as with background work running
+  const t = turn(proc, { drainMs: 30, interruptGraceMs: 60, killGraceMs: 2000 });
+  await proc.waitFor(isUser);
+  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, result: "API Error: 529 overloaded", errors: ["529"], num_turns: 1 });
+  await tick(5);
+  t.abort.abort();
+  const r = await t.run;
+  assert.equal(r.status, "failed", "the turn had already failed when Stop was pressed");
+  assert.equal(r.error, "API Error: 529 overloaded");
+  await until(() => proc.signals.length > 0);
+  assert.deepEqual(proc.signals, ["SIGTERM"], "and Stop still ends the process the turn left running");
+});
+
+test("A success result inside a failure's drain window does not turn the failure into a completion", async () => {
+  const proc = new FakeProcess();
+  const t = turn(proc, { drainMs: 50 });
+  await proc.waitFor(isUser);
+  proc.emitLine({ type: "result", subtype: "error_during_execution", is_error: true, result: "boom", errors: ["boom"], num_turns: 1 });
+  proc.emitLine({ type: "assistant", message: { content: [{ type: "text", text: "late" }] } });
+  proc.emitLine({ type: "result", subtype: "success", is_error: false, num_turns: 1, session_id: "s" });
+  const r = await t.run;
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, "boom");
+});
+
+test("A launch that throws reports its argv without MCP route tokens", async () => {
+  const token = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d";
+  const backend = new ClaudeBackend("claude", (() => { throw new Error("unsupported launcher"); }) as unknown as typeof import("node:child_process").spawn);
+  const r = await backend.runTurn("go", { ...options, knowledge: { url: `http://127.0.0.1:4101/mcp/${token}`, instructions: "Knowledge" } }, collectSink().sink, new AbortController().signal);
+  assert.equal(r.status, "failed");
+  assert.ok(!JSON.stringify(r.detail).includes(token));
+});
+
 // ---- Through the runner: cards, notices, statuses, deletion and the next turn. ----
 
 function harness() {

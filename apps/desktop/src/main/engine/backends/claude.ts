@@ -116,7 +116,7 @@ export class ClaudeBackend implements Backend {
         bin = this.bin;
         child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin) });
       } catch (err) {
-        return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv, spawnError: (err as Error).message } });
+        return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv: reportArgv(argv), spawnError: (err as Error).message } });
       }
       const lines = new LineBuffer();
       const started = new Map<string, number>();
@@ -199,6 +199,8 @@ export class ClaudeBackend implements Backend {
         // After Stop, this is the interrupted turn closing (`error_during_execution`, terminal_reason `aborted_*`).
         // It is no failure, and it does not end the turn: the process's exit does.
         if (stopAt !== undefined) return endInput();
+        // The turn has failed already; nothing the CLI reports while it winds down changes that.
+        if (failure) return;
         const r = resultOf(msg);
         // An error ends the turn at once, as on a turn without background work; holding it would hide it.
         if (r.status === "failed") {
@@ -247,9 +249,11 @@ export class ClaudeBackend implements Backend {
         if (finished) return;
         finished = true;
         agents.finish(signal.aborted || r.status === "interrupted");
-        for (const t of [idleTimer, capTimer, drainTimer, graceTimer, confirmTimer]) clearTimeout(t);
+        // Stop's escalation outlives the turn: one that failed before Stop still has a process to end.
+        for (const t of [idleTimer, capTimer, drainTimer, confirmTimer]) clearTimeout(t);
         signal.removeEventListener("abort", onAbort);
-        const out: TurnResult = signal.aborted ? { status: "interrupted", ...(r.stop ? { stop: r.stop } : {}) }
+        // A turn that failed before Stop was pressed reports its failure, not the stop.
+        const out: TurnResult = signal.aborted && !failure ? { status: "interrupted", ...(r.stop ? { stop: r.stop } : {}) }
           : r.status === "failed" ? { ...r, detail: { bin, argv: reportArgv(argv), pid: child.pid, ...init, ...r.detail, stderr: stderrTail(stderr) || undefined } } : r;
         const fastMode = fastModeOf(fast.state, fast.reason);
         resolve(withUsage(fastMode ? { ...out, fastMode } : out, meter));
@@ -260,9 +264,9 @@ export class ClaudeBackend implements Backend {
         lines.flush(onLine);
         stderr = (stderr + stderrText.end()).slice(-16_384);
         if (finished) return;
-        if (signal.aborted) return finish({ status: "interrupted", stop: stopReport(escalation ?? "exited") });
         const exited = exit && (exit.code !== null ? { exitCode: exit.code } : {}), signalled = exit?.signal ? { signal: exit.signal } : {};
         if (failure) return finish({ ...failure, detail: { ...failure.detail, ...exited, ...signalled } });
+        if (signal.aborted) return finish({ status: "interrupted", stop: stopReport(escalation ?? "exited") });
         const err = stderr.trim().split("\n").filter((l) => !/^\s*$/.test(l)).slice(-3).join("\n");
         const how = exit?.signal ? `was terminated by ${exit.signal}` : `exited with code ${exit?.code}`;
         finish(exit?.code === 0 ? held ?? { status: "completed" } : { status: "failed", error: err || `${bin} ${how}`, detail: { exitCode: exit?.code ?? null, signal: exit?.signal ?? undefined } });
