@@ -1,0 +1,157 @@
+{
+ "bin": "claude 2.1.302 (~/.local/share/claude/versions/2.1.302)",
+ "scenario": "running-tool",
+ "args": [
+  "-p",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+  "--include-partial-messages",
+  "--permission-prompt-tool",
+  "stdio",
+  "--permission-mode",
+  "default",
+  "--model",
+  "haiku",
+  "--effort",
+  "low"
+ ],
+ "log": [
+  {
+   "t": 4,
+   "dir": "in",
+   "type": "user"
+  },
+  {
+   "t": 1514,
+   "dir": "out",
+   "type": "system",
+   "subtype": "init",
+   "caps": [
+    "interrupt_receipt_v1",
+    "interrupt_cancel_queued_v1",
+    "interrupt_send_now_v1",
+    "msg_lifecycle_v1",
+    "request_marker_lists_v1",
+    "sdk_mcp_tools_list_changed",
+    "sdk_mcp_manifests",
+    "mcp_read_resource_v1",
+    "mcp_tool_ui_meta_v1",
+    "ui_surface_v1",
+    "mcp_call_result_not_for_model_v1"
+   ],
+   "version": "2.1.302"
+  },
+  {
+   "t": 1516,
+   "dir": "out",
+   "type": "system",
+   "subtype": "status"
+  },
+  {
+   "t": 2515,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "message_start"
+  },
+  {
+   "t": 2919,
+   "dir": "out",
+   "type": "assistant",
+   "request_id": "req_011Cg9DpbgeVsqw67AknSZEa",
+   "content": [
+    "tool_use:Bash"
+   ]
+  },
+  {
+   "t": 2934,
+   "dir": "out",
+   "type": "control_request",
+   "subtype": "can_use_tool",
+   "request_id": "da249e64-560b-4f05-92eb-6d98e64ed554"
+  },
+  {
+   "t": 2934,
+   "dir": "in",
+   "type": "control_response",
+   "subtype": "success",
+   "request_id": "da249e64-560b-4f05-92eb-6d98e64ed554"
+  },
+  {
+   "t": 2937,
+   "dir": "out",
+   "type": "stream_event",
+   "ev": "message_stop"
+  },
+  {
+   "t": 2938,
+   "dir": "out",
+   "type": "rate_limit_event"
+  },
+  {
+   "t": 5438,
+   "dir": "in",
+   "type": "control_request",
+   "subtype": "interrupt",
+   "request_id": "int-1"
+  },
+  {
+   "t": 5440,
+   "dir": "out",
+   "type": "control_response",
+   "subtype": "success",
+   "request_id": "int-1",
+   "response": {
+    "still_queued": []
+   }
+  },
+  {
+   "t": 10440,
+   "dir": "in",
+   "type": "stdin-end"
+  },
+  {
+   "t": 10652,
+   "dir": "out",
+   "type": "user",
+   "content": [
+    "tool_result:\"The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a fil:ERR"
+   ]
+  },
+  {
+   "t": 10657,
+   "dir": "out",
+   "type": "user",
+   "content": [
+    "text:[Request interrupted by user for tool use]"
+   ]
+  },
+  {
+   "t": 10665,
+   "dir": "out",
+   "type": "result",
+   "subtype": "error_during_execution",
+   "is_error": true,
+   "num_turns": 3,
+   "stop_reason": "tool_use",
+   "terminal_reason": "aborted_tools",
+   "errors": [
+    "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"
+   ]
+  },
+  {
+   "t": 11340,
+   "dir": "exit",
+   "code": 1,
+   "sig": null
+  },
+  {
+   "t": 11341,
+   "dir": "summary",
+   "exitAfterStdinEndMs": 900,
+   "stderrTail": ""
+  }
+ ]
+}
