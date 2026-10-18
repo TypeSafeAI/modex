@@ -25,7 +25,10 @@ There is no Agent SDK and no API mode.
   - `3b1c1be`: records for `13faaeb`.
   - `4679fb5`: merge of `main` at `04b7ec7` (#292, steward docs). Docs only.
   - `61cc65d`: merge of #291, which Val authorized. It is the stacked repair from another session, keeping a turn that failed before Stop owned until exit is confirmed (see "Failure before Stop" below).
-- Tested code: `61cc65dccb5774aa6ed7fad27bfafc6092577b2b`, up to date with `main` at `04b7ec7`. Commits after it change only these records.
+  - `305fca3`: records for `61cc65d`.
+  - `31de358`: merge of `main` at `d3dfe76` (CF-8 first part, #294: end-to-end conversation acceptance, including a Stop through the `claude -p` adapter). No conflicts.
+- Fully checked code: `61cc65dccb5774aa6ed7fad27bfafc6092577b2b` (local and CI, below).
+- `31de358` adds only CF-8's acceptance spec and docs from `main`. At `31de358`, `conversation-fidelity.spec.ts` passes against CF-2's interrupt-then-grace Stop, and so do `claude-lifecycle` and `titles`: 13/13. PR CI covers this head in full; its result is recorded on #275.
 
 ## CLI versions
 
