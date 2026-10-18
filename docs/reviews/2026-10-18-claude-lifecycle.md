@@ -617,3 +617,15 @@ Local verification on the repair tree based on `80d35df`: `pnpm build`, `pnpm ty
 and `pnpm test` passed. The full test command reported 1,726 passing tests and 16 existing
 platform/opt-in skips, including all 16 Knowledge cases. This fixture/docs-only repair does
 not replace the parent PR's required macOS E2E and companion CI checks.
+
+Fresh live acceptance on signed repair head `037120152bbad40dbf9390c45e9e9d4632c08c48`
+passed at 2026-10-18 19:27 UTC with Claude Code 2.1.302 and Haiku. Pending-card Stop took
+860 ms; the running command stopped by SIGTERM in 2,359 ms and never wrote its file;
+the same thread resumed with `resumed`; streaming Stop took 1,043 ms and kept 374 characters.
+Every step reported zero failures. [Machine receipt](2026-10-18-claude-lifecycle/landing-live-app-run.json).
+This is live macOS evidence only; the platform and native-withdrawal limits above remain.
+
+While the repair was in CI, another session squash-merged #286 at `6db0818` on 2026-10-18
+19:29 UTC. Its tree exactly matches the verified parent `80d35df`. GitHub retargeted repair
+PR #305 to `main`; reconciling that squash changed only documentation conflict metadata,
+with the repair's test code unchanged.
