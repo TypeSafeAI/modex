@@ -48,7 +48,10 @@ test.beforeAll(async () => {
       evidence: [{ kind: "memory", source: "codex", path: "notes/build.md", lineStart: 3, lineEnd: 5, note: "Build flags 🛠" }] }),
     { type: "status", threadId, status: "idle" },
   ]);
+  // Unfold the evidence turn's work, once it has rendered: before that, the last header is the first turn's.
+  await expect(tid(page, "turn-label")).toHaveCount(2);
   await tid(page, "turn-label").last().click();
+  await expect(tid(page, "turn-label").last()).toHaveAttribute("aria-expanded", "true");
 });
 
 test.afterAll(async () => {
