@@ -1,5 +1,6 @@
 import { StringDecoder } from "node:string_decoder";
 import type { AgentActivity, ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
+import type { Observation } from "../../../shared/conversation-events.js";
 
 export type { ModelInfo };
 
@@ -50,10 +51,12 @@ export interface ApprovalRequest {
 
 /** Callbacks a backend uses to report one turn to the ThreadRunner. */
 export interface TurnSink {
-  delta(text: string): void;
-  assistant(text: string): void;
-  toolStart(tool: ToolStart): void;
-  toolUpdate(id: string, patch: ToolUpdate): void;
+  /**
+   * Assistant text, reasoning and tool work, each named by its native identity: the one path for
+   * all three (shared/conversation-events.ts, docs/conversation-events.md). The runner stamps it
+   * with the turn and attempt and projects it into transcript items.
+   */
+  observe(observation: Observation): void;
   /**
    * Asks for a decision. `withdrawn` aborts when the backend's CLI no longer needs the answer (Claude's
    * `control_cancel_request`): the sink then settles the request once as "no" and leaves nothing actionable.
@@ -65,10 +68,6 @@ export interface TurnSink {
    */
   refusedByRule?(req: ApprovalRequest): string | undefined;
   notice(level: "info" | "warn" | "error", text: string): void;
-  /** Reasoning text as it streams; the first delta for an id opens a Thinking item. */
-  thinkingDelta(id: string, delta: string): void;
-  /** Closes a Thinking item, optionally replacing its text with the final version. */
-  thinkingDone(id: string, text?: string): void;
   /** Called once the backend has a resumable handle (Claude session id, Codex thread id). */
   session(handle: string): void;
 }

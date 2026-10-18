@@ -1,4 +1,5 @@
-import { toolSummary } from "../../shared/tool-summary";
+import { toolFoldsAsWork, toolStatusLabel, toolSummary } from "../../shared/tool-summary";
+import { finalAnswerIndex } from "../../shared/conversation-events";
 import { useId, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
@@ -223,9 +224,10 @@ function groupTurns(items: ThreadItem[]): Turn[] {
 function TurnContent({ turn, status, render }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem) => ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const historyId = useId();
-  const finalIndex = turn.rest.map(item => item.kind).lastIndexOf("assistant");
+  // A typed final answer when the CLI gave phases; otherwise the last reply, as always.
+  const finalIndex = finalAnswerIndex(turn.rest);
   const isWork = (item: ThreadItem, index: number) => index < finalIndex && (
-    (item.kind === "tool" && item.status === "done" && item.ok !== false && item.agent?.state !== "running" && item.agent?.state !== "waiting") ||
+    (item.kind === "tool" && toolFoldsAsWork(item)) ||
     (item.kind === "thinking" && item.status === "done") || item.kind === "route" || item.kind === "assistant" ||
     (item.kind === "approval" && Boolean(item.answer))
   );
@@ -498,12 +500,6 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
       {isOpen && (item.text.trim() ? <div className="thinking-body" data-testid="item-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim" data-testid="item-body">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
     </div>
   );
-}
-
-function toolStatusLabel(item: Extract<ThreadItem, { kind: "tool" }>): string {
-  if (item.agent) return { running: "Working", waiting: "Waiting", completed: "Done", failed: "Failed", stopped: "Stopped", unknown: "Status unavailable" }[item.agent.state];
-  if (item.status === "running") return "Working";
-  return item.ok === false ? "Failed" : "Done";
 }
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {

@@ -8,6 +8,7 @@ import { isApiErrorReply } from "../src/main/engine/backends/claude.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import { classifyFailure, creditFallbackModel, describeFailure, isModelOutOfCredits, modelFamilyName } from "../src/shared/failures.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { local } from "./fakeproc.js";
 
 // Claude Code 2.1.300's own words, from a real refused Fable turn on 2026-10-15.
 const REFUSAL = "You're out of usage credits. Switch to another model, or manage usage credits at https://claude.ai/settings/usage?from=cc_cli_limit_message, to continue.";
@@ -50,7 +51,7 @@ const claudeBackend = (steps: Step[], seen: TurnOptions[]): Backend => ({
   },
 });
 const refused: Step = () => ({ status: "failed", error: REFUSAL, detail: { resultSubtype: "success" } });
-const replies: Step = (sink) => { sink.assistant("done"); return { status: "completed" }; };
+const replies: Step = (sink) => { local(sink).assistant("done"); return { status: "completed" }; };
 
 async function harness(steps: Step[], settings: { model_fallback?: boolean } = {}) {
   const home = tmpdir("modex-credit-");
@@ -108,7 +109,7 @@ test("with the fallback off, the refusal keeps its failure card and the thread s
 });
 
 test("a refusal after work started is not rerun, so nothing runs twice", async () => {
-  const toolThenRefused: Step = (sink) => { sink.toolStart({ id: "t1", name: "Bash", title: "$ ls", args: {} }); return { status: "failed", error: REFUSAL }; };
+  const toolThenRefused: Step = (sink) => { local(sink).toolStart({ id: "t1", name: "Bash", title: "$ ls", args: {} }); return { status: "failed", error: REFUSAL }; };
   const { runner, seen, thread } = await harness([toolThenRefused]);
   try {
     await runner.send(thread.id, "hello");

@@ -28,6 +28,7 @@ import type { PendingCreation, PendingSendRecord } from "./pending-sends.js";
 import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
+import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
 /** Refused approvals in a routine run: the routine is read-only, and nobody is there to answer. */
 const UNATTENDED_RECEIPT: ApprovalReceipt = { source: "policy", ruleId: "policy:routine", when: "Routine run: approvals are refused while it runs unattended", decision: "never", via: "policy", ms: 0 };
@@ -53,8 +54,10 @@ interface Live {
   pending: Map<string, (a: ApprovalAnswer) => void>;
   items: ThreadItem[];
   status: ThreadStatus;
-  /** Assistant item currently receiving streamed text, if any. */
-  streaming: { id: string; text: string } | null;
+  /** The running turn's projected conversation (shared/conversation-events.ts); reset per turn. */
+  conversation: ConversationState;
+  /** The attempt whose sink may still write; an older attempt's sink is inert. */
+  attempt: string | null;
   /** The last turn ended completed: not failed, stopped or silent. */
   completed?: boolean;
   /** The follow-up suggestion for the transcript as it stands; `key` says which transcript and settings it answers. */
@@ -192,10 +195,14 @@ export class ThreadRunner {
       // Disk history has no live CLI stream after a process restart. Keep the last
       // result truthful, and never revive these agents when the parent runs again.
       const items = this.o.store.items(threadId).map((item): ThreadItem => {
+        // Work a previous process saw start but never saw end: its outcome is unknown, not running.
+        if ((item.kind === "tool" || item.kind === "thinking" || item.kind === "assistant") && item.origin && item.outcome === "running") {
+          item = item.kind === "assistant" ? { ...item, outcome: "unknown" } : item.kind === "tool" ? { ...item, status: "done", outcome: "unknown", ok: okFor("unknown") } : { ...item, status: "done", outcome: "unknown" };
+        }
         if (item.kind !== "tool" || !item.agent || !["running", "waiting"].includes(item.agent.state)) return item;
         return { ...item, status: "done", ok: undefined, agent: { ...item.agent, state: "unknown", detail: "Modex restarted without a final agent status" } };
       });
-      l = { abort: null, run: null, backend: null, pending: new Map(), items, status: "idle", streaming: null };
+      l = { abort: null, run: null, backend: null, pending: new Map(), items, status: "idle", conversation: initialConversation(), attempt: null };
       this.live.set(threadId, l);
     }
     return l;
@@ -579,8 +586,10 @@ export class ThreadRunner {
     const shouldName = firstTurn && thread.titleSource !== "manual" && (thread.title === "New thread" || (retry && thread.title === derivedTitle));
     l.followUp?.abort.abort();
     l.followUp = undefined;
+    // The Modex turn is the user message it answers: Retry runs the same turn again as a new attempt.
+    const turnId = reuse ?? prepared?.id ?? newId();
     if (!retry) {
-      const item: UserItem = { id: prepared?.id ?? newId(), kind: "user", text: prepared?.rawText ?? text,
+      const item: UserItem = { id: turnId, kind: "user", text: prepared?.rawText ?? text,
         at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}) };
       this.addItem(threadId, item, prepared ? () => {
         const receipt = Object.freeze({ ...item, ...(item.attachments ? { attachments: Object.freeze(item.attachments.map(file => Object.freeze({ ...file }))) } : {}) });
@@ -593,7 +602,8 @@ export class ThreadRunner {
     const fallbackTitle = thread.title;
     const abort = new AbortController();
     l.abort = abort;
-    l.streaming = null;
+    l.conversation = initialConversation();
+    l.attempt = null;
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
     let fast = false;
@@ -675,17 +685,28 @@ export class ThreadRunner {
         if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
         return { name: f.name, mime: f.mime, kind: f.kind, path: file };
       });
-      const runOn = (ran: Thread) => backend.runTurn(
-        describeAttachments(text, turnFiles),
-        {
-          cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account,
-          // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
-          addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
-          ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
-        },
-        sink,
-        abort.signal,
-      );
+      // Each run of the backend is one attempt with its own sink; ending it settles whatever it left open.
+      const runOn = async (ran: Thread): Promise<TurnResult> => {
+        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: backend.id, ...(account ? { account } : {}) });
+        try {
+          const result = await backend.runTurn(
+            describeAttachments(text, turnFiles),
+            {
+              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account,
+              // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
+              addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
+              ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
+            },
+            attempt.sink,
+            abort.signal,
+          );
+          attempt.end(abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          return result;
+        } catch (err) {
+          attempt.end(abort.signal.aborted ? "interrupted" : "failed");
+          throw err;
+        }
+      };
       // A model refused for usage credits recently is refused again: start on its fallback instead.
       const skip = this.recentCreditFallback(thread);
       if (skip) thread = this.fallBack(threadId, thread, skip, routeId, false);
@@ -740,9 +761,10 @@ export class ThreadRunner {
         pages?.close().catch(err => sink.notice("warn", `Pages connection could not close: ${(err as Error).message}`)),
         knowledge?.close().catch(err => sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`)),
       ]);
-      // A CLI can exit without closing its last streamed items. Save their tail and stop spinners.
+      // Attempts settle their own items. An item from before the conversation contract can still be
+      // marked running on disk: save its tail and stop its spinner, as before.
       for (const item of l.items) {
-        if ((item.kind === "thinking" || item.kind === "tool") && item.status === "running") {
+        if ((item.kind === "thinking" || item.kind === "tool") && item.status === "running" && !item.origin) {
           this.patchItem(threadId, item.id, { status: "done", durationMs: Date.now() - Date.parse(item.at), ...(item.kind === "tool" ? { ok: false } : {}) }, { persist: false });
         }
       }
@@ -751,7 +773,7 @@ export class ThreadRunner {
       this.persistItems(threadId, l);
       l.abort = null;
       l.backend = null;
-      l.streaming = null;
+      l.attempt = null;
     }
   }
 
@@ -995,39 +1017,58 @@ export class ThreadRunner {
     this.o.store.updateThread(threadId, { lastTurn });
   }
 
-  private sinkFor(threadId: string, l: Live): TurnSink {
+  /**
+   * Starts one attempt at the running turn: a sink bound to `turn`, which stamps each observation
+   * with an id, its ingress order and time, and projects it into transcript items. Starting an
+   * attempt makes every earlier attempt's sink inert.
+   */
+  private beginAttempt(threadId: string, l: Live, turn: TurnRef): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
+    l.attempt = turn.attempt;
+    let seq = 0;
+    const seen = new Set<string>();
+    const stamp = (body: Observation | AttemptMark): ConversationEvent => {
+      seq++;
+      const id = "source" in body && body.source ? `${body.native.runtime}:${body.source}` : `${turn.attempt}:${seq}`;
+      return { ...body, schema: CONVERSATION_SCHEMA, id, seq, at: new Date().toISOString(), turn } as ConversationEvent;
+    };
+    const sink = this.sinkFor(threadId, l, turn.attempt, (observation) => {
+      // The CLI's own event id, when it gives one, is applied once: a repeated line is the same event.
+      if (observation.source) {
+        if (seen.has(observation.source)) return;
+        seen.add(observation.source);
+      }
+      this.project(threadId, l, stamp(redactObservation(observation)));
+    });
+    this.project(threadId, l, stamp({ type: "attempt.start" }));
+    return { sink, end: (outcome) => { if (this.live.get(threadId) === l) this.project(threadId, l, stamp({ type: "attempt.end", outcome })); } };
+  }
+
+  /** Applies one event to the turn's conversation and emits what changed as item events. */
+  private project(threadId: string, l: Live, event: ConversationEvent): void {
+    const before = l.conversation;
+    const after = applyConversationEvent(before, event);
+    if (after === before) return;
+    l.conversation = after;
+    // Streaming text and output is written at most every 250 ms; everything else at once.
+    const persist = event.type !== "message.delta" && event.type !== "reasoning.delta" && event.type !== "tool.update";
+    after.items.forEach((item, i) => {
+      const old = before.items[i];
+      if (item === old) return;
+      if (!old) return this.addItem(threadId, item);
+      const patch = Object.fromEntries(Object.entries(item).filter(([key, value]) => (old as Record<string, unknown>)[key] !== value));
+      this.patchItem(threadId, item.id, patch as Partial<ThreadItem>, { persist });
+    });
+  }
+
+  /** A sink for the running turn. One bound to `attempt` goes inert, every method of it, once another attempt starts. */
+  private sinkFor(threadId: string, l: Live, attempt?: string, observe: (observation: Observation) => void = () => {}): TurnSink {
     const at = () => new Date().toISOString();
     const abort = l.abort;
-    const active = () => this.live.get(threadId) === l && l.abort === abort && abort !== null;
-    // Backend ids are only guaranteed unique inside a turn (Claude and mock restart at think-1).
-    const prefix = newId();
-    const scoped = (id: string) => `${prefix}:${id}`;
+    const active = () => this.live.get(threadId) === l && l.abort === abort && abort !== null && (attempt === undefined || l.attempt === attempt);
     // Requests a rule refused, with the rule's "when" text, for backends that pass a reason to the model.
     const refusals = new WeakMap<ApprovalRequest, string>();
     return {
-      delta: (text) => {
-        if (!active()) return;
-        if (!l.streaming) {
-          l.streaming = { id: newId(), text: "" };
-          this.addItem(threadId, { id: l.streaming.id, kind: "assistant", text: "", at: at() });
-        }
-        l.streaming.text += text;
-        this.patchItem(threadId, l.streaming.id, { text: l.streaming.text }, { persist: false });
-      },
-      assistant: (text) => {
-        if (!active()) return;
-        if (l.streaming) this.patchItem(threadId, l.streaming.id, { text });
-        else if (text.trim()) this.addItem(threadId, { id: newId(), kind: "assistant", text, at: at() });
-        l.streaming = null;
-      },
-      toolStart: (t) => {
-        if (!active()) return;
-        l.streaming = null;
-        this.addItem(threadId, { id: scoped(t.id), kind: "tool", name: t.name, title: t.title, args: redact(t.args), ...(t.agent ? { agent: t.agent } : {}), status: "running", at: at() });
-      },
-      toolUpdate: (id, patch) => {
-        if (active()) this.patchItem(threadId, scoped(id), { ...patch, ...(patch.args ? { args: redact(patch.args) } : {}) }, { persist: patch.status === "done" || patch.ok !== undefined });
-      },
+      observe: (observation) => { if (active()) observe(observation); },
       approval: (req, withdrawn) => {
         if (this.unattended.has(threadId)) {
           // A routine runs read-only with no one to ask: refuse, and say so on the card.
@@ -1076,29 +1117,6 @@ export class ThreadRunner {
       },
       refusedByRule: (req) => refusals.get(req),
       notice: (level, text) => { if (active()) this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }); },
-      thinkingDelta: (id, delta) => {
-        if (!active()) return;
-        id = scoped(id);
-        const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
-        // Backends announce a reasoning block before any text exists. The row appears immediately
-        // ("Thinking…") so the user sees the model reasoning; if the CLI never shares the text the
-        // finished row stays as a compact "Thought for Ns" line and says so when expanded.
-        if (!existing) {
-          l.streaming = null;
-          this.addItem(threadId, { id, kind: "thinking", text: delta, status: "running", at: at() });
-        } else this.patchItem(threadId, id, { text: existing.text + delta }, { persist: false });
-      },
-      thinkingDone: (id, text) => {
-        if (!active()) return;
-        id = scoped(id);
-        const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
-        if (!existing) {
-          // A reasoning block that only produced text at completion (no deltas) still gets an item.
-          if (text?.trim()) this.addItem(threadId, { id, kind: "thinking", text, status: "done", durationMs: 0, at: at() });
-          return;
-        }
-        this.patchItem(threadId, id, { text: text ?? existing.text, status: "done", durationMs: Date.now() - new Date(existing.at).getTime() });
-      },
       session: (handle) => {
         if (!active()) return;
         const t = this.o.store.thread(threadId);
@@ -1168,6 +1186,16 @@ export class ThreadRunner {
     if (this.o.store.thread(threadId)) this.o.store.updateThread(threadId, { status });
     this.o.emit({ threadId, type: "status", status });
   }
+}
+
+/** How a backend's turn result ends its attempt. */
+const ATTEMPT_OUTCOME: Record<TurnResult["status"], SettledOutcome> = { completed: "succeeded", interrupted: "interrupted", failed: "failed" };
+
+/** Tool args at the size the UI keeps. */
+function redactObservation(o: Observation): Observation {
+  if (o.type === "tool.start") return { ...o, tool: { ...o.tool, args: redact(o.tool.args) } };
+  if ((o.type === "tool.update" || o.type === "tool.done") && o.progress?.args) return { ...o, progress: { ...o.progress, args: redact(o.progress.args) } };
+  return o;
 }
 
 /** Whether a process exists (signal 0 delivers nothing; EPERM means it exists under another user). */

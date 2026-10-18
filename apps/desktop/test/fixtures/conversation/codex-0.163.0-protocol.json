@@ -1,0 +1,144 @@
+{
+  "source": "codex app-server generate-json-schema (codex-cli 0.163.0); excerpt of codex_app_server_protocol.v2.schemas.json",
+  "enums": {
+    "MessagePhase": [
+      "commentary",
+      "partial_answer",
+      "final_answer"
+    ],
+    "TurnStatus": [
+      "completed",
+      "interrupted",
+      "failed",
+      "inProgress"
+    ],
+    "CommandExecutionStatus": [
+      "inProgress",
+      "completed",
+      "failed",
+      "declined"
+    ],
+    "PatchApplyStatus": [
+      "inProgress",
+      "completed",
+      "failed",
+      "declined"
+    ],
+    "McpToolCallStatus": [
+      "inProgress",
+      "completed",
+      "failed"
+    ],
+    "DynamicToolCallStatus": [
+      "inProgress",
+      "completed",
+      "failed"
+    ],
+    "CollabAgentToolCallStatus": [
+      "inProgress",
+      "completed",
+      "failed",
+      "interrupted"
+    ]
+  },
+  "notifications": {
+    "AgentMessageDeltaNotification": {
+      "required": [
+        "delta",
+        "itemId",
+        "threadId",
+        "turnId"
+      ],
+      "properties": [
+        "delta",
+        "itemId",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "ReasoningSummaryTextDeltaNotification": {
+      "required": [
+        "delta",
+        "itemId",
+        "summaryIndex",
+        "threadId",
+        "turnId"
+      ],
+      "properties": [
+        "delta",
+        "itemId",
+        "summaryIndex",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "ReasoningTextDeltaNotification": {
+      "required": [
+        "contentIndex",
+        "delta",
+        "itemId",
+        "threadId",
+        "turnId"
+      ],
+      "properties": [
+        "contentIndex",
+        "delta",
+        "itemId",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "ReasoningSummaryPartAddedNotification": {
+      "required": [
+        "itemId",
+        "summaryIndex",
+        "threadId",
+        "turnId"
+      ],
+      "properties": [
+        "itemId",
+        "summaryIndex",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "ItemStartedNotification": {
+      "required": [
+        "item",
+        "startedAtMs",
+        "threadId",
+        "turnId"
+      ],
+      "properties": [
+        "item",
+        "startedAtMs",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "ItemCompletedNotification": {
+      "required": [
+        "completedAtMs",
+        "item",
+        "threadId",
+        "turnId"
+      ],
+      "properties": [
+        "completedAtMs",
+        "item",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "TurnCompletedNotification": {
+      "required": [
+        "threadId",
+        "turn"
+      ],
+      "properties": [
+        "threadId",
+        "turn"
+      ]
+    }
+  }
+}

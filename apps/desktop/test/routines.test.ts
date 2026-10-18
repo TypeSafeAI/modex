@@ -11,6 +11,7 @@ import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/eng
 import type { ApprovalAnswer, BackendId, ThreadItem } from "../src/shared/types.js";
 import type { RoutineDraft, RoutineRun } from "../src/shared/routines.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { local } from "./fakeproc.js";
 
 const HOUR = 60 * 60_000;
 const T0 = Date.parse("2026-10-15T09:00:30.000Z");
@@ -24,11 +25,11 @@ class FakeCli implements Backend {
   async runTurn(_text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     this.turns.push(opts);
     this.answers.push(await sink.approval({ question: "Run `ls`?", canAlways: false, action: { backend: this.id, tool: "Bash", title: "$ ls", cwd: opts.cwd } }));
-    if (this.behave.partial) sink.delta(this.behave.partial);
+    if (this.behave.partial) local(sink).delta(this.behave.partial);
     if (this.behave.hold) await new Promise<void>((resolve) => { this.release = resolve; if (!this.behave.stubborn) signal.addEventListener("abort", () => resolve(), { once: true }); });
     if (signal.aborted) return { status: "interrupted" };
     if (this.behave.fail) return { status: "failed", error: this.behave.fail };
-    sink.assistant(this.behave.reply ?? "Nothing changed overnight.");
+    local(sink).assistant(this.behave.reply ?? "Nothing changed overnight.");
     return { status: "completed" };
   }
   async listModels() { return []; }

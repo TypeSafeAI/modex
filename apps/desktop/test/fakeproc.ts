@@ -1,4 +1,6 @@
-import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
+import type { ApprovalRequest, TurnSink } from "../src/main/engine/backends/types.js";
+import { okFor, type NativeRef, type Observation } from "../src/shared/conversation-events.js";
+import { LocalItems } from "../src/main/engine/backends/local-items.js";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
@@ -128,19 +130,39 @@ export function fakeSpawn(proc: FakeProcess | FakeProcess[]): { spawn: typeof im
 
 export function collectSink(answers: ("yes" | "no" | "always")[] = ["yes"]) {
   const events: string[] = [];
+  /** Every observation as the backend made it. */
+  const observations: Observation[] = [];
   /** Every approval request as the backend sent it, including its structured `action`. */
   const requests: ApprovalRequest[] = [];
   const queue = [...answers];
-  const sink = {
-    delta: (t: string) => events.push(`delta:${t}`),
-    assistant: (t: string) => events.push(`assistant:${t}`),
-    toolStart: (t: { id: string; name: string; title: string }) => events.push(`tool_start:${t.id}:${t.title}`),
-    toolUpdate: (id: string, p: { output?: string; ok?: boolean; status?: string }) => events.push(`tool_update:${id}:${p.status ?? ""}:${p.ok ?? ""}:${(p.output ?? "").slice(0, 40)}`),
-    approval: async (req: ApprovalRequest) => { events.push(`approval:${req.question}`); requests.push(req); return queue.shift() ?? "no"; },
-    notice: (level: string, text: string) => events.push(`notice:${level}:${text}`),
-    thinkingDelta: (id: string, delta: string) => events.push(`think:${id}:${delta}`),
-    thinkingDone: (id: string, text?: string) => events.push(`think_done:${id}:${text ?? ""}`),
-    session: (h: string) => events.push(`session:${h}`),
+  // Observations read back as the short lines these tests have always compared.
+  const id = (n: NativeRef) => (n.part !== undefined ? `${n.item}#${n.part}` : n.item);
+  const describe = (o: Observation): string | null => {
+    switch (o.type) {
+      case "message.start": return null;
+      case "message.delta": return `delta:${o.text}`;
+      case "message.done": return o.text !== undefined ? `assistant:${o.text}` : null;
+      case "reasoning.start": return `think:${id(o.native)}:`;
+      case "reasoning.delta": return `think:${id(o.native)}:${o.representation === "summary" ? `summary[${o.index}]:` : ""}${o.text}`;
+      case "reasoning.done": return `think_done:${id(o.native)}:${(o.summary ?? []).join("|")}${o.text?.length ? `/text:${o.text.join("|")}` : ""}`;
+      case "tool.start": return `tool_start:${id(o.native)}:${o.tool.title}`;
+      case "tool.update": return `tool_update:${id(o.native)}:::${(o.progress.output ?? "").slice(0, 40)}`;
+      case "tool.done": return `tool_update:${id(o.native)}:done:${okFor(o.outcome) ?? ""}:${(o.progress?.output ?? "").slice(0, 40)}`;
+    }
   };
-  return { sink, events, requests };
+  const sink: TurnSink = {
+    observe: (o) => { observations.push(o); const line = describe(o); if (line !== null) events.push(line); },
+    approval: async (req: ApprovalRequest) => { events.push(`approval:${req.question}`); requests.push(req); return queue.shift() ?? "no"; },
+    notice: (level: string, text: string) => { events.push(`notice:${level}:${text}`); },
+    session: (h: string) => { events.push(`session:${h}`); },
+  };
+  return { sink, events, requests, observations };
+}
+
+const locals = new WeakMap<TurnSink, LocalItems>();
+/** One LocalItems per sink, so a scripted backend's calls stream like one engine's (ids assigned at ingress). */
+export function local(sink: TurnSink): LocalItems {
+  let items = locals.get(sink);
+  if (!items) { items = new LocalItems(sink); locals.set(sink, items); }
+  return items;
 }

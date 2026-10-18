@@ -123,3 +123,27 @@ test("token-bearing protocol text is redacted before callbacks", async () => {
   assert.equal(sink.events.some((event) => event.includes("SECRET")), false);
   await f.backend.dispose();
 });
+
+test("each account's app-server is its own runtime: the same native item id from two accounts never shares a runtime", async () => {
+  const f = fixture(); const a = collectSink(); const b = collectSink(); const controller = new AbortController();
+  try {
+    const opts = (account: string) => ({ cwd: "/workspace", model: "model", mode: "chat" as const, plan: false, account });
+    const first = f.backend.runTurn("one", opts("account-a"), a.sink, controller.signal);
+    while (f.calls.length < 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    await f.calls[0]!.child.waitFor((line) => line.includes('"turn/start"'));
+    f.select("account-b");
+    const second = f.backend.runTurn("two", opts("account-b"), b.sink, controller.signal);
+    while (f.calls.length < 2) await new Promise((resolve) => setTimeout(resolve, 5));
+    await f.calls[1]!.child.waitFor((line) => line.includes('"turn/start"'));
+    for (let index = 0; index < 2; index++) {
+      const child = f.calls[index]!.child, threadId = `thread-${index}`;
+      child.emitLine({ method: "item/started", params: { threadId, turnId: "turn", item: { type: "agentMessage", id: "msg_same", text: "", phase: "final_answer" } } });
+      child.emitLine({ method: "item/agentMessage/delta", params: { threadId, turnId: "turn", itemId: "msg_same", delta: `from ${index}` } });
+      child.emitLine({ method: "turn/completed", params: { threadId, turn: { id: "turn", status: "completed" } } });
+    }
+    await first; await second;
+    const [na, nb] = [a, b].map((s) => s.observations.find((o) => o.type === "message.delta")!.native);
+    assert.equal(na!.item, "msg_same"); assert.equal(nb!.item, "msg_same");
+    assert.ok(na!.runtime && nb!.runtime && na!.runtime !== nb!.runtime, "two app-servers, two runtimes");
+  } finally { await f.backend.dispose(); }
+});

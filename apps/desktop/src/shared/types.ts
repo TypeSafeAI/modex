@@ -6,6 +6,7 @@ import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 import type { UsageEvent } from "./usage.js";
+import type { ExecutionOutcome, ItemOrigin, MessagePhase, ReasoningRepresentation } from "./conversation-events.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -98,8 +99,14 @@ export interface AgentActivity {
 export type ThreadItem =
   /** `attachments` are the files sent with the message; main keeps them under its attachments folder. */
   | { id: string; kind: "user"; text: string; at: string; attachments?: import("./attachments.js").Attachment[] }
-  | { id: string; kind: "assistant"; text: string; at: string }
-  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity }
+  /**
+   * `origin`, `phase`, `outcome` (and `reasoning` on thinking items) come from the conversation-event
+   * contract (shared/conversation-events.ts). Items saved before it have none; read them through `itemFacts`.
+   * `nativePhase` is the CLI's own phase value, kept verbatim.
+   */
+  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
+  /** `ok` is kept for older readers: true only for `succeeded`, false only for `failed` or `denied`. */
+  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   /**
    * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn
@@ -109,8 +116,8 @@ export type ThreadItem =
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
-  /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
-  | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
+  /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. `reasoning` says which. */
+  | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string; reasoning?: ReasoningRepresentation; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** An Auto routing decision made before a turn: what was picked and why. */
   | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
 
