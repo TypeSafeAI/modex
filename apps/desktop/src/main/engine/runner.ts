@@ -192,7 +192,8 @@ export class ThreadRunner {
     if (!l) {
       // Disk history has no live CLI stream after a process restart. Keep the last
       // result truthful, and never revive these agents when the parent runs again.
-      const items = this.o.store.items(threadId).map((item): ThreadItem => {
+      const stored = this.o.store.items(threadId);
+      const items = stored.map((item): ThreadItem => {
         // Work a previous process saw start but never saw end: its outcome is unknown, not running.
         if ((item.kind === "tool" || item.kind === "thinking" || item.kind === "assistant") && item.origin && item.outcome === "running") {
           item = item.kind === "assistant" ? { ...item, outcome: "unknown" } : item.kind === "tool" ? { ...item, status: "done", outcome: "unknown", ok: okFor("unknown") } : { ...item, status: "done", outcome: "unknown" };
@@ -204,7 +205,7 @@ export class ThreadRunner {
       this.live.set(threadId, l);
       // Settle it everywhere once, not only in this window: save it for the next process, and send the
       // change through the event stream so the journal and paired clients that resume from it see it too.
-      const stored = this.o.store.items(threadId);
+      // An item that needed no settling is the very object read above, so it is neither sent nor saved.
       const settled = items.flatMap((item, i) => {
         const before = stored[i];
         if (!before || item === before) return [];
