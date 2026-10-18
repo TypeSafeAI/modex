@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useStreamerMode } from "../streamer";
 import { bridge } from "../bridge";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 /**
  * The Analytics surface. The dashboard is its own document in a native view over this canvas, so its
@@ -11,6 +12,8 @@ export function AnalyticsView({ active }: { active: boolean }) {
   const streamerMode = useStreamerMode();
   const canvas = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by the error's Retry: shows the dashboard again.
+  const [attempt, setAttempt] = useState(0);
 
   useLayoutEffect(() => {
     let alive = true;
@@ -31,11 +34,11 @@ export function AnalyticsView({ active }: { active: boolean }) {
     mutations.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-panel-resizing"] });
     window.addEventListener("resize", update);
     return () => { alive = false; resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("analytics:show", {}).catch(() => {}); };
-  }, [active, streamerMode]);
+  }, [active, streamerMode, attempt]);
 
   return <section className="analytics-surface" data-testid="analytics" aria-label="Analytics" hidden={!active}>
     {streamerMode && <p className="analytics-note" role="status">Analytics is hidden while Streamer Mode is on.</p>}
-    {error && <p className="analytics-note" role="alert">{error}</p>}
+    {error && <ErrorNotice className="analytics-note" testId="analytics-error" where="Analytics" message={error} onRetry={() => { setError(null); setAttempt((n) => n + 1); }} />}
     <div ref={canvas} className="analytics-canvas" data-testid="analytics-canvas" />
   </section>;
 }

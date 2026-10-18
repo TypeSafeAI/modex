@@ -5,6 +5,7 @@ import { knowledgeBusy, type KnowledgeState } from "../../shared/knowledge";
 import type { Project } from "../../shared/types";
 import { bridge } from "../bridge";
 import { Icon } from "../components/ui/Icon";
+import { ErrorNotice } from "../components/ui/ErrorNotice";
 import "./knowledge.css";
 
 export function KnowledgeView({ active, onPages, onReadyChange }: { active: boolean; onPages: () => void; onReadyChange?: (ready: boolean) => void }) {
@@ -107,7 +108,7 @@ export function KnowledgeView({ active, onPages, onReadyChange }: { active: bool
       {!projects.length && <p>Add a project in Home to enable automatic maintenance.</p>}
       {projects.map(project => <label key={project.id}><SecretInput type="checkbox" aria-label={`Maintain knowledge for ${project.name}`} checked={saving?.id === project.id ? saving.enabled : project.knowledgeMaintenance === true} disabled={saving !== null} onChange={e => void maintain(project.id, e.target.checked)} /><span>{project.name}</span></label>)}
     </section>
-    {(error || state?.error || viewError) && <div className="space-error" role="alert"><span>{error ?? state?.error ?? viewError}</span>{ready && <button className="btn small" onClick={() => void extra("knowledge:reload")}>Retry</button>}</div>}
+    {(error || state?.error || viewError) && <ErrorNotice className="space-error" testId="knowledge-error" where="Knowledge" message={error ?? state?.error ?? viewError ?? ""} onRetry={ready ? () => void extra("knowledge:reload") : undefined} />}
     {ready ? <div ref={canvas} className="knowledge-canvas" data-testid="knowledge-canvas" aria-label="Open Knowledge editor">{streamerMode && <p className="streamer-guest-cover" data-testid="streamer-knowledge-cover">Knowledge content is covered while Streamer Mode is on.</p>}</div> : <div className="knowledge-setup">
       <div className="knowledge-intro"><span className="space-eyebrow">SPACE / KNOWLEDGE</span><div className="knowledge-emblem"><Icon name="space" size={34} /></div><h1>Give your knowledge a home.</h1><p>Bring your notes, docs, and decisions together.<br />Explore them with Open Knowledge, right here in Space.</p></div>
       <section className="knowledge-folder" aria-label="Knowledge folder">

@@ -8,6 +8,7 @@ import type {
 import type { Project } from "../../shared/types";
 import { bridge } from "../bridge";
 import { SecretInput, SecretOption, useRedact } from "../streamer";
+import { ErrorNotice } from "../components/ui/ErrorNotice";
 export function PluginSurface({
   projects,
   onImages,
@@ -24,9 +25,12 @@ export function PluginSurface({
   const [entry, setEntry] = useState("");
   const [edit, setEdit] = useState(false);
   const [error, setError] = useState("");
+  // The binding behind `error`, for its Retry. A skill in the wrong scope has none: it fails the same way again.
+  const [failedChoice, setFailedChoice] = useState<{ message: string; plugin: NativePlugin; context: PluginContext } | null>(null);
   const [busy, setBusy] = useState(false);
   const choose = async (plugin: NativePlugin, context: PluginContext) => {
     setError("");
+    setFailedChoice(null);
     try {
       if (context.scope !== "user")
         throw new Error(
@@ -40,7 +44,9 @@ export function PluginSurface({
       setEdit(false);
       setBinding({ plugin, context, details });
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+      if (context.scope === "user") setFailedChoice({ message, plugin, context });
     }
   };
   return (
@@ -50,12 +56,14 @@ export function PluginSurface({
         onUseForImages={(plugin, context) => void choose(plugin, context)}
       />
       {error && (
-        <div className="plugin-binding" role="alert">
-          {redact(error)}
-          <button className="btn" onClick={() => setError("")}>
-            Dismiss
-          </button>
-        </div>
+        <ErrorNotice
+          className="plugin-binding"
+          testId="plugin-binding-error"
+          where="Plugins · use for Images"
+          message={error}
+          onRetry={failedChoice?.message === error ? () => void choose(failedChoice.plugin, failedChoice.context) : undefined}
+          onDismiss={() => setError("")}
+        />
       )}
       {binding && (
         <section className="plugin-binding" aria-label="Configure image skill">

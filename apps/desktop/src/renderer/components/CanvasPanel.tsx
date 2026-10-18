@@ -3,6 +3,7 @@ import type { Thread } from "../../shared/types";
 import { canvasFile, type CanvasSnapshot } from "../../shared/canvas";
 import { bridge } from "../bridge";
 import { IconButton } from "./ui/IconButton";
+import { ErrorNotice } from "./ui/ErrorNotice";
 import { SecretOption, useStreamerMode } from "../streamer";
 
 export function CanvasPanel({ id, thread, visible, suspended, full }: { id: string; thread: Thread; visible: boolean; suspended: boolean; full: boolean }) {
@@ -72,6 +73,11 @@ export function CanvasPanel({ id, thread, visible, suspended, full }: { id: stri
     window.addEventListener("resize", update);
     return () => { resize.disconnect(); mutations.disconnect(); window.removeEventListener("resize", update); void bridge.invoke("canvas:show", { id: null }).catch(() => {}); };
   }, [id, visible, suspended, full, error, snapshot?.error, openedPath, selected, streamerMode]);
+  // After a failed open, reopen the preview from scratch; otherwise ask the open preview to reload.
+  const reloadCanvas = () => {
+    if (error) setRevision(r => r + 1);
+    else reload.current?.();
+  };
   return <section className="workspace-canvas" hidden={!visible} aria-label="Canvas">
     <header className="review-toolbar canvas-toolbar">
       <label htmlFor={`canvas-file-${id}`}>Canvas</label>
@@ -80,12 +86,10 @@ export function CanvasPanel({ id, thread, visible, suspended, full }: { id: stri
         {selected && !paths.includes(selected) && <SecretOption value={selected}>{selected}</SecretOption>}
         {paths.map(p => <SecretOption key={p} value={p}>{p}</SecretOption>)}
       </select>
-      <IconButton icon="restart" label="Reload Canvas" disabled={!selected} onClick={() => {
-        if (error) setRevision(r => r + 1);
-        else reload.current?.();
-      }} />
+      <IconButton icon="restart" label="Reload Canvas" disabled={!selected} onClick={reloadCanvas} />
     </header>
-    {(error || snapshot?.error || listingError) && <p className="workspace-error" role="alert" data-testid="canvas-error">{error || snapshot?.error || listingError}</p>}
+    {/* A listing error clears itself: the file list is re-read every 2 s. Preview errors reload like the header button. */}
+    {(error || snapshot?.error || listingError) && <ErrorNotice className="workspace-error" testId="canvas-error" where="Canvas" message={error || snapshot?.error || listingError} onRetry={selected && (error || snapshot?.error) ? reloadCanvas : undefined} retryLabel="Reload preview" context={{ threadId: thread.id, cwd: thread.cwd, file: selected || undefined }} />}
     {!selected && <p className="hint pad">Preview an HTML, SVG or Markdown file. Canvas refreshes when the file or its local assets change.</p>}
     {snapshot?.loading && <span className="hint canvas-loading" role="status">Loading preview…</span>}
     <div className="workspace-guest" ref={host} data-testid="canvas-preview">{streamerMode && <p className="streamer-guest-cover" data-testid="streamer-canvas-cover">Canvas content is covered while Streamer Mode is on.</p>}</div>

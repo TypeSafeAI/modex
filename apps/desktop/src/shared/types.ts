@@ -617,5 +617,6 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "shell:openPath": { req: { path: string }; res: void };
   "shell:openTerminal": { req: { path: string }; res: void };
   /** System clipboard via main: works whether or not the window has focus (the Web API needs focus). */
-  "clipboard:write": { req: { text: string }; res: void };
+  /** `appInfo` appends the app version and platform (an error report's footer); hosts without them ignore it. */
+  "clipboard:write": { req: { text: string; appInfo?: boolean }; res: void };
 }

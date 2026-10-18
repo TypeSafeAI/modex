@@ -3,14 +3,16 @@ import type { NativeDraftReadOnlyOpen } from "../../shared/native-drafts";
 import type { Attachment } from "../../shared/attachments";
 import { bridge } from "../bridge";
 import { SecretTextarea } from "../streamer";
+import { ErrorNotice } from "./ui/ErrorNotice";
 
 export function UpdateRecoveryView({ recovery: { drafts, pending, recovery } }: { recovery: NativeDraftReadOnlyOpen }) {
-  const [error, setError] = useState<string>();
+  // The failed action and what it reported, for the error's Retry and Copy details.
+  const [error, setError] = useState<{ channel: "updates:quit" | "updates:recovery-folder"; detail: string }>();
   const [busy, setBusy] = useState(false);
   const run = async (channel: "updates:quit" | "updates:recovery-folder") => {
     setBusy(true); setError(undefined);
     try { await bridge.invoke(channel, undefined); }
-    catch { setError("The action could not finish. Your recovery files are preserved. Try again."); }
+    catch (err) { setError({ channel, detail: (err as Error)?.message ?? String(err) }); }
     finally { setBusy(false); }
   };
   const version = recovery.targetVersion;
@@ -33,7 +35,8 @@ export function UpdateRecoveryView({ recovery: { drafts, pending, recovery } }: 
         <h2>Saved messages</h2><p>These original messages have been preserved. They will not be sent automatically.</p>
         {pending.map(record => saved(`Saved message ${record.id}`, record.rawText, record.files, record.id))}
       </div>}
-      {error && <p role="alert">{error}</p>}
+      {error && <ErrorNotice testId="update-recovery-error" where={error.channel === "updates:quit" ? "Update recovery · quit" : "Update recovery · open folder"}
+        message={`The action could not finish. Your recovery files are preserved. (${error.detail})`} onRetry={busy ? undefined : () => void run(error.channel)} context={{ target: recovery.targetVersion }} />}
       <div className="update-recovery-actions">
         <button className="btn" disabled={busy} onClick={() => void run("updates:quit")}>Quit Modex</button>
         <a className="btn" href={url} target="_blank" rel="noreferrer">Open release page</a>

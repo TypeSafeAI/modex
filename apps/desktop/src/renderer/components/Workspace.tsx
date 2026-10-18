@@ -9,6 +9,7 @@ import { Icon, type IconName } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem } from "./ui/Menu";
 import { BrowserToolsDialog } from "./BrowserToolsDialog";
+import { ErrorNotice } from "./ui/ErrorNotice";
 import "../workspace.css";
 
 type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browser" | "canvas"; title: string; browser?: BrowserSnapshot };
@@ -36,6 +37,8 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   const addressEdited = useRef(false);
   const addressTab = useRef(active);
   const [error, setError] = useState("");
+  // The browser action behind `error`, for its Retry. It applies only while `error` is still that message.
+  const [failed, setFailed] = useState<{ message: string; retry: () => void } | null>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const toolsRef = useRef<HTMLButtonElement>(null);
   const terminalRef = useRef<HTMLButtonElement>(null);
@@ -121,7 +124,12 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     try {
       const snapshot = await bridge.invoke("browser:command", { id, action, url: value });
       if (snapshot) setTabs((prev) => prev.map((t) => t.id === id ? { ...t, kind: "browser", title: snapshot.title || "New tab", browser: snapshot } : t));
-    } catch (error) { setError((error as Error).message); }
+    } catch (error) {
+      const message = (error as Error).message;
+      setError(message);
+      // A rejected address fails the same way again; the fix is a different address.
+      setFailed(action === "navigate" ? null : { message, retry: () => void browserCommand(action, value) });
+    }
   };
   const browserAction = async (action: "fill" | "external") => {
     const id = current.id;
@@ -130,7 +138,12 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     try {
       if (action === "external") await bridge.invoke("browser:external", { id });
       else if (await bridge.invoke("browser:fillLogin", { id }) && currentRef.current.id === id) setBrowserNotice("Login filled. Review the fields, then sign in.");
-    } catch (error) { if (currentRef.current.id === id) setError((error as Error).message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "")); }
+    } catch (error) {
+      if (currentRef.current.id !== id) return;
+      const message = (error as Error).message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "");
+      setError(message);
+      setFailed({ message, retry: () => void browserAction(action) });
+    }
     finally { setSigningIn(false); }
   };
   // Poll only the visible page. No page gets the app's preload or IPC authority.
@@ -203,7 +216,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
           <IconButton icon="gear" label="Browser extensions and sign-in" className="workspace-circle" size="md" onClick={() => setBrowserTools(true)} />
           <span className="workspace-menu-anchor"><IconButton ref={pageRef} icon="more" label="Page options" className="workspace-circle" size="md" aria-haspopup="menu" aria-expanded={pageMenu} onClick={() => setPageMenu(!pageMenu)} /><Menu open={pageMenu} anchorRef={pageRef} onClose={() => setPageMenu(false)} label="Page options" placement="bottom-end"><MenuItem disabled={!current.browser?.url?.startsWith("https:") || signingIn} onClick={() => void browserAction("fill")}>Fill with 1Password</MenuItem><MenuItem disabled={!current.browser?.url} onClick={() => void browserAction("external")}>Open in system browser</MenuItem><MenuItem disabled={!current.browser?.url} onClick={() => { void bridge.invoke("clipboard:write", { text: current.browser?.url ?? "" }); setPageMenu(false); }}>Copy page URL</MenuItem><MenuItem onClick={() => { closeTab(current); setPageMenu(false); }}>Close tab</MenuItem></Menu></span>
         </div>
-        {(error || current.browser?.error) && <p className="workspace-error" role="alert">{error || current.browser?.error}</p>}
+        {(error || current.browser?.error) && <ErrorNotice className="workspace-error" testId="workspace-error" where="Browser" message={error || current.browser?.error || ""}
+          onRetry={error ? (failed?.message === error ? () => { setError(""); failed.retry(); } : undefined) : () => void browserCommand("reload")}
+          retryLabel={error ? "Retry" : "Reload page"} context={{ threadId: thread.id, page: current.browser?.url }} />}
         {(signingIn || browserNotice) && <p className="hint pad" role="status">{signingIn ? "Waiting for 1Password…" : browserNotice}</p>}
         {current.kind === "browser" ? <div className="workspace-guest" data-testid="workspace-browser" ref={guestHost}>{streamerMode && <p className="streamer-guest-cover" data-testid="streamer-browser-cover">Browser content is covered while Streamer Mode is on.</p>}{!streamerMode && current.browser?.loading && <p className="hint pad" role="status">Loading page…</p>}</div> :
           <div className="workspace-start">
@@ -244,9 +259,9 @@ function FilesPanel({ thread }: { thread: Thread }) {
   const paths = (listing?.paths ?? []).filter((p) => p.toLowerCase().includes(filter.toLowerCase()));
   return <section className="workspace-files">
     <header className="review-toolbar"><span>Files</span><span className="spacer" /><IconButton icon="restart" label="Refresh files" onClick={() => setRevision((n) => n + 1)} /></header>
-    {error && <p className="workspace-error" role="alert">{error}</p>}
+    {error && <ErrorNotice className="workspace-error" testId="files-error" where="Files · list" message={error} onRetry={() => setRevision((n) => n + 1)} context={{ threadId: thread.id, cwd: thread.cwd }} />}
     <div className="review-body">
-      <div className="review-diff"><div className="review-file-heading">{selected || "Select a file"}</div>{selected && (!result ? <p className="hint pad">Loading file…</p> : result.error ? <p className="workspace-error" role="alert">{result.error}</p> : <pre className="workspace-file-content" data-testid="workspace-file-content">{result.text.split("\n").map((line, i) => <div key={i}><span className="line-number">{i + 1}</span><code>{line || " "}</code></div>)}</pre>)}</div>
+      <div className="review-diff"><div className="review-file-heading">{selected || "Select a file"}</div>{selected && (!result ? <p className="hint pad">Loading file…</p> : result.error ? <ErrorNotice className="workspace-error" testId="file-read-error" where="Files · read" message={result.error} onRetry={() => setRevision((n) => n + 1)} context={{ threadId: thread.id, cwd: thread.cwd, path: selected }} /> : <pre className="workspace-file-content" data-testid="workspace-file-content">{result.text.split("\n").map((line, i) => <div key={i}><span className="line-number">{i + 1}</span><code>{line || " "}</code></div>)}</pre>)}</div>
       <aside className="review-tree"><label className="review-filter"><Icon name="search" size={13} /><SecretInput autoFocus aria-label="Find a file" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
         {!listing && !error && <p className="hint pad">Loading files…</p>}{listing && !paths.length && <p className="hint pad">No matching files.</p>}
         {paths.map((p) => <button key={p} className={`review-file-select workspace-file${selected === p ? " selected" : ""}`} aria-label={`Open ${p}`} title={p} onClick={() => setSelected(p)}><FileIcon path={p} /><span>{p}</span></button>)}
