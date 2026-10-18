@@ -835,18 +835,6 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   Slices that landed are under "On main, unreleased". Open: #283 and #288 (CF-4), #286 (CF-2)
   and #289 (CF-7). The tracker keeps the dependency order and each slice's evidence.
 
-- **Local work recovery (October 11).** The seven Space/Knowledge snapshots have
-  no remaining product or test patch beyond #144, #150, and #154. The
-  [recovery audit](reviews/2026-10-11-space-recovery-audit.md) records exact
-  comparison results and corrects historical runs left marked in progress.
-  On 2026-10-14 Val approved removing those dirty source trees with the other unmerged
-  worktrees. Each is archived outside the repository with its commit bundle, uncommitted patch,
-  and untracked and ignored files. Each archive folder's README gives the restore steps. The recovered
-  [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md)
-  is a historical proposal: native identity-only sign-in shipped separately in
-  #141. Repository authorization still needs a dedicated GitHub App owner and
-  hosted service destination before implementation and live acceptance.
-
 - **Mac App Store edition.** Val selected investigation of a sandboxed Store front end
   with a separately installed signed host to retain full desktop functionality. Apple's
   sandbox and standalone-app rules require an architecture and review gate. The
@@ -962,22 +950,6 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   truncated-suffix false allow; the quoted-test-name case remains open.
   [Recovery verification](reviews/2026-10-12-approval-recovery.md) passed 1,376 unit tests
   (15 skipped), 271 desktop E2E cases and seven site cases. The gate remains off by default.
-- **Retired worktrees.** None from this list awaits a disposition. All six were retired after
-  their work landed, and their uncommitted work or unique commits were saved as patches outside
-  the repository first. On 2026-10-14, the guard pruned every merged worktree and branch, keeping
-  its recovery bundles. With Val's approval, 32 unmerged or dirty worktrees and 8 branches were
-  archived and then removed. These included recovered snapshots, closed PRs #145, #174, #177
-  and #182, and the `backup/*` branches. Each archive was verified before removal: bundle
-  verify, a patch reverse-applied on the live tree, and tar member counts. Only open-PR and
-  in-use worktrees remain.
-  - `auth-retry` (2026-10-09): the retry and auth recovery work is on `main` via #104.
-  - `finish-auth-approvals` (2026-10-09): reconciled in #107, with the auth fix in #104. Its
-    remote branch stays because closed PR #68 references it.
-  - `approval-receipts` (2026-10-07): superseded by #107.
-  - `pr-review-browser` (2026-10-07): the browser bridge merged in #105.
-  - `status-reviews` (2026-10-07): its 2026-10-01 docs snapshot was outdated by later status
-    rewrites.
-  - `livestream-redaction` (2026-10-07): superseded by #100.
 
 ## Known rough edges
 
@@ -1138,7 +1110,12 @@ Roughly in the order they earn their place; none is scheduled.
    SIGTERM, draining of late messages, withdrawal of cancelled approval cards and preserved CLI
    stderr and exit codes all apply to `backends/claude.ts` without the SDK. They are open in #286
    (CF-2, #275).
-4. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
+4. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting
+   on repositories needs a dedicated GitHub App owner and a hosted service destination before
+   implementation and live acceptance. The
+   [October 7 GitHub architecture review](reviews/2026-10-07-workos-github-integration.md) is the
+   historical proposal.
+5. **Codex Cloud tasks and other scheduled automation.** Out of scope; Modex stays CLI-only
    for coding turns (no API execution mode — see `AGENTS.md`).
 
 ## Conventions that keep this page true
