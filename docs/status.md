@@ -791,6 +791,14 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
   knowledge base opens its file under the new name instead of failing on the old one. (#241)
 - **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
   sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
+- **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
+  transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
+  quotes, nested lists, strikethrough, footnotes and reference links. A code fence keeps its
+  language, and shows its code while it is still streaming. Raw HTML stays text, only http(s) links
+  are links, and an image becomes a link to it instead of being fetched. While a reply streams, only
+  its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
+  thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
+  about 40 ms before); reopening it reuses the result.
 
 ## In flight
 
