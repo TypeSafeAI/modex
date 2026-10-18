@@ -23,7 +23,7 @@ export function groupTurns(items: ThreadItem[]): Turn[] {
  * Keep the final answer and actionable items visible; completed work stays inspectable. Which item
  * answers, which are live and which may fold comes from `layoutTurn` (shared/turn-layout.ts).
  */
-export function TurnContent({ turn, status, render }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem, live: boolean) => ReactNode }) {
+export function TurnContent({ turn, status, render, footer }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem, live: boolean) => ReactNode; footer?: (turn: Turn) => ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const historyId = useId();
   const live = status !== undefined;
@@ -41,6 +41,7 @@ export function TurnContent({ turn, status, render }: { turn: Turn; status?: Thr
         <div key={item.id} hidden={layout.work[index] && !showWork} data-final={index === layout.final ? "true" : undefined} data-live={layout.live[index] ? "true" : undefined}>{render(item, layout.live[index]!)}</div>,
       ])}
     </div>
+    {!live && turn.user && turn.rest.length > 0 && footer?.(turn)}
   </>;
 }
 

@@ -389,6 +389,8 @@ export function mobileItem(item: ThreadItem): Record<string, unknown> {
     case "tool": return { id: item.id, kind: item.kind, title: item.status === "done" && (item.outcome ? item.outcome !== "succeeded" : item.ok === false) ? `${item.title} · ${toolStatusLabel(item)}` : item.title,
       status: item.status, ok: item.ok, ...(item.outcome ? { outcome: item.outcome } : {}), at: item.at };
     case "route": return { id: item.id, kind: item.kind, text: `${item.backend} · ${item.model || "default"}`, at: item.at };
+    // A phone that predates plans shows a kind it does not know as its text.
+    case "plan": return { id: item.id, kind: item.kind, text: `Plan · ${item.steps.filter((s) => s.status === "completed").length} of ${item.steps.length} reported done`, steps: item.steps, revision: item.revision, ...(item.outcome ? { outcome: item.outcome } : {}), at: item.at };
   }
 }
 
