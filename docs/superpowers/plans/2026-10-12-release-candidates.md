@@ -1,7 +1,7 @@
 # Verified release candidates implementation plan
 
 **Status (2026-10-18): delivered** in #186. The combined workflow first ran on the v0.0.12 tag,
-and v0.1.0 published its Windows and Linux installers ([status](../../status.md#v010-release)).
+and v0.1.0 published its Windows and Linux installers ([v0.1.0 review](../../reviews/2026-10-15-v0.1.0-release-review.md#status-summary)).
 
 > Execute inline with the roadmap owner using the repository verification and landing procedure. PR #181 merged as 7c9229a; this follow-up is isolated in the release-candidates worktree.
 

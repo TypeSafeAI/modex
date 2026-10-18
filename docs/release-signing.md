@@ -183,8 +183,9 @@ Without these secrets the workflow fails at its first step, which is the intende
 From v0.0.5 the published artifacts come from the `Release` workflow. The local build is the
 rehearsal that gates the merge.
 
-1. In a `release-<ver>` worktree, bump the version, update `docs/status.md`, and write the
-   review in `docs/reviews/`. Run `scripts/release-mac.sh`, then build the Store client and run
+1. In a `release-<ver>` worktree, bump the version, update `docs/status.md` (a Shipped row
+   that links the review), and write the review in `docs/reviews/`, which holds the release's
+   details. Run `scripts/release-mac.sh`, then build the Store client and run
    the packaged e2e, as the `Release` workflow does:
 
    ```sh
@@ -234,7 +235,7 @@ These scenarios cover native download failure and interruption before staging co
 They do not prove recovery from arbitrary ShipIt replacement failures, interruption after
 `update-downloaded`, or historical schema migration. The private A build uses the same source
 with version `0.0.0`. The first published-to-published upgrade, v0.0.12 to v0.1.0, passed on the
-release Mac on 2026-10-18 ([status](status.md#v010-release)).
+release Mac on 2026-10-18 ([v0.1.0 review](reviews/2026-10-15-v0.1.0-release-review.md#status-summary)).
 
 Keep the `macos-native-update-*` artifacts with the release review. All three hosted native
 scenarios passed on the v0.0.12 and v0.1.0 release runs (38465731604, 38825544975). Signed

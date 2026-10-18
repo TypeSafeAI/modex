@@ -2,7 +2,7 @@
 
 **Status (2026-10-18): delivered.** Native Modex sign-in with GitHub through WorkOS merged in
 #141 and shipped in v0.0.9, whose signed app passed the production sign-in lifecycle
-([status](../../status.md#v009-release)). The boxes below stopped being updated before delivery
+([v0.0.9 review](../../reviews/2026-10-08-v0.0.9-release-review.md#status-summary)). The boxes below stopped being updated before delivery
 and are historical. Behaviour: [modex-signin.md](../../modex-signin.md).
 
 > **For agentic workers:** Use the executing-plans workflow for the tasks below.
