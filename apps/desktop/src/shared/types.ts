@@ -119,14 +119,16 @@ export type ThreadItem =
   /**
    * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn
    * was stopped (`stopped`), or it ended first (`ended`). Such a card also carries `answer: "no"`, so clients
-   * that predate the field show it closed, never actionable.
+   * that predate the field show it closed, never actionable. `answeredBy` and `delivery` are a person's answer's
+   * lifecycle (docs/human-requests.md#across-replay-and-reconnect).
    */
-  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; at: string }
+  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; answeredBy?: string; delivery?: AnswerDelivery; at: string }
   /**
    * A question the CLI asked a person (docs/human-requests.md; Codex `item/tool/requestUserInput`). `answers`
-   * are the answers as they may be shown, saved or exported: a secret one is "(hidden)". `withdrawn` as on approvals.
+   * are the answers as they may be shown, saved or exported: a secret one is "(hidden)". `withdrawn`, `answeredBy`
+   * and `delivery` as on approvals.
    */
-  | { id: string; kind: "question"; questions: Question[]; blocking: boolean; answers?: Record<string, string[]>; withdrawn?: "native" | "stopped" | "ended"; at: string }
+  | { id: string; kind: "question"; questions: Question[]; blocking: boolean; answers?: Record<string, string[]>; withdrawn?: "native" | "stopped" | "ended"; answeredBy?: string; delivery?: AnswerDelivery; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. `reasoning` says which. */
@@ -135,6 +137,12 @@ export type ThreadItem =
   | { id: string; kind: "plan"; steps: PlanStep[]; explanation?: string; from: PlanSource; revision: number; at: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** An Auto routing decision made before a turn: what was picked and why. */
   | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
+
+/**
+ * Whether a person's accepted answer reached the CLI: `sending` from acceptance until the hand-off, then `sent`.
+ * `uncertain` when Modex stopped in between, so nobody can tell; such an answer is never sent again.
+ */
+export type AnswerDelivery = "sending" | "sent" | "uncertain";
 
 /** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
 export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unsupported_history" | "unknown";
