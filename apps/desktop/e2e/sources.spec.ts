@@ -52,7 +52,7 @@ test("links in an answer are links, and its Sources list becomes numbered cards"
   await expect(answer.getByRole("link", { name: "https://example.com/pricing", exact: true })).toHaveAttribute("href", "https://example.com/pricing");
 
   const sources = tid(answer, "sources");
-  await expect(sources).toContainText("Sources · 2");
+  await expect(sources).toContainText("Links in the reply · 2");
   const cards = tid(sources, "source-link");
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0)).toHaveAttribute("href", ANNOUNCEMENT);
