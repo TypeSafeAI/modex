@@ -720,6 +720,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   };
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));
+  const answerQuestion = async (itemId: string, answers: Record<string, string[]>) => thread ? bridge.invoke("thread:answer-question", { threadId: thread.id, itemId, answers }) : undefined;
   const updateThread = (patch: ThreadPatch) => thread && act(async () => {
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
@@ -953,6 +954,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               onSend={send}
               onStop={stop}
               onAnswer={answer}
+              onAnswerQuestion={answerQuestion}
               onUpdate={updateThread}
               onRetry={() => void retry()}
               onFix={applyFix}

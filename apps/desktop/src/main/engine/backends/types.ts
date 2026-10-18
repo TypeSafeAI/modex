@@ -41,13 +41,31 @@ export interface ApprovalAction {
   escalation?: boolean;
 }
 
+/** The CLI's own name for a request (docs/human-requests.md): its runtime generation, request id and the native item it is about. */
+export interface NativeRequest {
+  runtime: string;
+  request: string;
+  item?: string;
+}
+
 export interface ApprovalRequest {
   question: string;
   detail?: string;
   /** Whether the backend can honour an "always" answer for this request. */
   canAlways: boolean;
   action?: ApprovalAction;
+  native?: NativeRequest;
 }
+
+/** Questions the CLI asks a person, already checked by the backend's mapping (shared/human-requests.ts). */
+export interface QuestionRequest {
+  questions: import("../../../shared/human-requests.js").Question[];
+  blocking: boolean;
+  native?: NativeRequest;
+}
+
+/** The answers to send, or why there are none. A withdrawn question is never sent as an empty answer. */
+export type QuestionReply = { answers: Record<string, string[]> } | { withdrawn: "native" | "stopped" | "ended" };
 
 /** Callbacks a backend uses to report one turn to the ThreadRunner. */
 export interface TurnSink {
@@ -62,6 +80,12 @@ export interface TurnSink {
    * `control_cancel_request`): the sink then settles the request once as "no" and leaves nothing actionable.
    */
   approval(req: ApprovalRequest, withdrawn?: AbortSignal): Promise<ApprovalAnswer>;
+  /**
+   * Asks a person the CLI's questions. Settles once: with answers validated against the questions, or
+   * withdrawn (the CLI resolved it itself through `withdrawn`, the turn was stopped, or it ended). Sinks
+   * without a person to ask leave it out, and the backend declines the request.
+   */
+  question?(req: QuestionRequest, withdrawn?: AbortSignal): Promise<QuestionReply>;
   /**
    * After `approval(req)` answered "no": the "when" text of the approval rule that refused it on the
    * user's behalf, so the backend can tell the model why. Undefined when a human answered.
