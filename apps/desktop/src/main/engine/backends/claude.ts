@@ -39,7 +39,7 @@ export class ClaudeBackend implements Backend {
     private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
     private readonly spawnImpl = cliSpawn,
     /** How long a turn waits on background work; tests shorten these. */
-    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number } = {},
+    private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number; interruptGraceMs?: number; killGraceMs?: number; exitConfirmMs?: number; drainMs?: number } = {},
   ) {}
 
   /** `claude --effort` levels (from `claude --help`); no default so the CLI's own setting applies. */

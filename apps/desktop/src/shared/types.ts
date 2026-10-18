@@ -101,7 +101,12 @@ export type ThreadItem =
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
-  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; at: string }
+  /**
+   * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn
+   * was stopped (`stopped`), or it ended first (`ended`). Such a card also carries `answer: "no"`, so clients
+   * that predate the field show it closed, never actionable.
+   */
+  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */

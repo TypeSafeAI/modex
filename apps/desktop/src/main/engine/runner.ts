@@ -85,6 +85,8 @@ export interface RunnerOptions {
   withOwnerRemoval?: (scope: DraftRemovalScope, operation: () => Promise<void>) => Promise<void>;
   /** Where attached files live; defaults to `<home>/attachments`. */
   attachments?: AttachmentStore;
+  /** Whether a process still exists; tests replace the signal-0 probe. */
+  isProcessAlive?: (pid: number) => boolean;
 }
 
 /**
