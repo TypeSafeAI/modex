@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { THEMES, type Theme } from "../src/shared/theme";
 
 /**
  * Shared setup for the Electron e2e specs. Specs select elements by `data-testid` and ARIA
@@ -155,6 +156,20 @@ export async function resizeWindow(app: ElectronApplication, page: Page, width: 
 
 /** `data-testid` lookup, scoped to a page or a parent locator. */
 export const tid = (scope: Page | Locator, id: string): Locator => scope.locator(`[data-testid="${id}"]`);
+
+/**
+ * Switches the theme the way a person does, in Settings → General, and waits for the window to show it.
+ * `settings:update` alone saves the theme but leaves the window as it was until something refreshes it.
+ */
+export async function setTheme(page: Page, theme: Theme): Promise<void> {
+  if (await page.evaluate(() => document.documentElement.dataset.theme) === theme) return;
+  await tid(page, "open-settings").click();
+  await tid(page, "settings-nav").getByRole("button", { name: "General", exact: true }).click();
+  await page.getByRole("radio", { name: THEMES[theme].name, exact: true }).check();
+  await tid(page, "settings").getByRole("button", { name: "Save", exact: true }).click();
+  await expect(tid(page, "settings")).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
+}
 
 /** Transcript items of one kind (`user`, `assistant`, `tool`, `approval`, `notice`, `thinking`, `route`). */
 export const items = (page: Page, kind?: string): Locator =>
