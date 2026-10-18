@@ -11,7 +11,10 @@ There is no Agent SDK and no API mode.
   - `feb2166`: the runner and UI.
   - `62ac15c`: fixes from independent review.
   - `d11cdb6`: the title-naming E2E fixture answers the native interrupt.
-- Tested app code: `62ac15c6bcde511c1bb6b4d1048a5519dec534b2`. `d11cdb6` changes only an E2E fixture, and the commit after it adds only these records.
+  - `f0b383b`: these records.
+  - `6856bf3`: merge of `main` at `7780093`, which landed CF-1 (#282, the conversation-event contract).
+  - `172b13f`: a tool call Stop interrupted reads `interrupted`.
+- Tested code: `172b13f586853924a390953281adafdd3649fea`. Commits after it change only these records.
 
 ## CLI versions
 
@@ -73,7 +76,7 @@ Unchanged, and their existing tests pass:
 
 No test timeout was raised.
 
-## Interfaces (additive; coordinated with CF-1 #274)
+## Interfaces (additive, on CF-1's contract)
 
 - `TurnSink.approval(req, withdrawn?: AbortSignal)`.
 - `TurnResult.stop?: StopReport`:
@@ -85,10 +88,15 @@ No test timeout was raised.
 
 Late callbacks are scoped by what already identifies an execution:
 - the backend's per-run closure, inert after `finish`;
-- the runner's abort-identity `active()` check;
+- the runner's `active()` check, which compares abort identity and, since CF-1, the current attempt;
+- each Claude process's runtime id on native refs (CF-1);
 - unique card ids.
 
-No turn/attempt/generation ids were invented. CF-1 owns that contract (branch `cf1-contract`).
+CF-2 adds no turn/attempt/generation ids of its own; CF-1 owns that contract.
+
+CF-1 landed while this branch was under test, and `6856bf3` merges it:
+- Backends now report through `observe`; CF-2's withdrawal signal, `stop` report and `withdrawn` reason ride beside it unchanged.
+- One mapping changed in `172b13f`. After Stop, Claude closes each call it interrupted with an error `tool_result` ("The user doesn't want to proceed with this tool use."). That result now settles the tool as `interrupted` instead of `failed`, and the Claude table in `docs/conversation-events.md` says so.
 
 These interface changes were sent on 2026-10-18 to:
 - the tracker #273 session, which received them;
@@ -113,7 +121,32 @@ At `feb2166`:
 
 The review fixes in `62ac15c` were red first (3/3 failing for the reported reasons). At `62ac15c`, 147/147 pass across the lifecycle, Claude backend, background, runner, routines and subagent suites.
 
-### Full checks at `62ac15c`
+### Final checks at `172b13f`
+
+Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, 08:19–08:46 UTC, after the CF-1 merge:
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | pass |
+| `pnpm build` | pass (53 s) |
+| `pnpm typecheck` | pass (18 s) |
+| `pnpm test` | pass (205 s), broken down below |
+| `pnpm test:e2e` | desktop: 318 passed, 3 skipped (the opt-in real Open Knowledge specs), 0 failed, 21.3 min; site: 7/7 |
+
+`pnpm test`, by suite:
+
+| Suite | Result |
+| --- | --- |
+| worktrees | 109/109 |
+| core | 16/16 |
+| desktop | 1,521 passed, 16 skipped, of 1,537 |
+| desktop native/update | 21/21 |
+| site | 10/10 |
+| store-desktop | 16/16 |
+
+The 16 desktop skips are the same as below. The tool-outcome change in `172b13f` went red first: the stopped call read `failed`. Afterwards, 185/185 passed across the lifecycle, Claude backend, background, runner, conversation-events, routines, subagent and credit-fallback suites.
+
+### Earlier full checks at `62ac15c`
 
 Run on macOS (Apple Silicon), Node 24.18.1 and pnpm 10.34.5, from 2026-10-18 07:23 UTC:
 
@@ -174,7 +207,7 @@ A fourth point stays as a known limit:
 
 | Criterion (#275) | Evidence |
 | --- | --- |
-| Native interrupt, slow ack, forced termination, repeated Stop: explicit outcomes, no duplicate terminal event | Unit cases:<br>- "Stop interrupts Claude natively…" (`exited`, no signal)<br>- "…terminates a Claude that does not exit…" (`terminated`, SIGTERM only after the grace)<br>- "…kills a Claude that also ignores SIGTERM"<br>- "…never confirms its exit… unconfirmed"<br>- "Stop pressed while a failed result drains keeps the failure and still ends the process"<br><br>Runner cases:<br>- "Stop with a pending card…" (Stop pressed 3×: one interrupt, one notice, one `idle`)<br>- "a Stop Claude does not acknowledge says how Modex ended it"<br><br>E2E steps 1 and 3. |
+| Native interrupt, slow ack, forced termination, repeated Stop: explicit outcomes, no duplicate terminal event | Unit cases:<br>- "Stop interrupts Claude natively…" (`exited`, no signal)<br>- "…terminates a Claude that does not exit…" (`terminated`, SIGTERM only after the grace)<br>- "…kills a Claude that also ignores SIGTERM"<br>- "…never confirms its exit… unconfirmed"<br>- "Stop pressed while a failed result drains keeps the failure and still ends the process"<br><br>Runner cases:<br>- "Stop with a pending card…" (Stop pressed 3×: one interrupt, one notice, one `idle`; the stopped call reads `interrupted`)<br>- "a Stop Claude does not acknowledge says how Modex ended it"<br><br>E2E steps 1 and 3. |
 | Cancelling a pending request removes its actionability; a late answer cannot execute it or satisfy a later request | Unit cases:<br>- "A permission request Claude cancels is withdrawn…"<br>- "An answer that arrives after the turn settled…"<br><br>Runner cases:<br>- "a card Claude cancels becomes inert…" (late `answer()` on the old card while r2 waits: nothing written for r1 or r2)<br>- "a request withdrawn while the approval gate is still deciding never shows a card"<br><br>E2E steps 1 (late `thread:answer` over IPC) and 2. |
 | Late background notifications and zero-model-call results do not finish the next turn; genuine empty outcomes still fail visibly | Runner "a resumed session's replayed background result…" (held, then the silent run gets the `ended the turn without replying` card).<br>Runner "an unconfirmed stop…" (the old process's late success does not complete or write into the new turn).<br>Existing `claude-background` replay cases pass. |
 | Split JSON/UTF-8 and stderr just before exit survive bounded draining; exit/signal reported without credentials | "Split JSON lines, split UTF-8…"<br>"A failure result waits briefly for stderr…"<br>"Output after exit is drained…"<br>"A process killed by a signal says so"<br>"Failure details name the MCP routes without their capability tokens"<br>"A launch that throws reports its argv without MCP route tokens"<br>"A success result inside a failure's drain window does not turn the failure into a completion" |

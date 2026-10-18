@@ -815,6 +815,7 @@ itself, shows 0.1.0 in About and kept its unsent drafts.
     1.5 s later. A process that still has not exited is reported unconfirmed, with its pid, and
     its thread and worktree are kept.
   - Permission cards Claude withdraws close inert, and late answers are dropped.
+  - Built on CF-1's event contract: a tool call that Stop interrupted reads Stopped, not Failed.
   - The final unterminated line, split UTF-8 stderr, and stderr or exit codes after a failed result
     now survive. Failure details no longer copy MCP route tokens.
 
