@@ -190,8 +190,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     revocation. [Signed acceptance](reviews/2026-10-11-store-signed-acceptance.md#status-summary).
   - **Open:** the full parity matrix, graceful host shutdown, fresh-user setup, installed-host
     auto-launch, sleep/wake, the full welcome Open sequence and its Cancel check, a macOS
-    TestFlight install, App Review, and Val's attribution of one GUI Connect grant.
-    [Readiness](reviews/2026-10-11-store-readiness.md).
+    TestFlight install, and App Review. [Readiness](reviews/2026-10-11-store-readiness.md).
 
 - **Modex Companion TestFlight.** The native iPhone MVP merged in #103. A phone can view
   threads, start Local or Worktree threads, send follow-ups, and answer approvals while the

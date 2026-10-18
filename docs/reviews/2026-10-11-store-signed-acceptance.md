@@ -279,3 +279,11 @@ In flight. The text is unchanged except that links now resolve from `docs/review
   [Signed acceptance evidence and limits](2026-10-11-store-signed-acceptance.md).
   Beta approval covers the October 6 builds; production
   approval and acceptance of this branch's changes remain open.
+
+## Attribution resolved (2026-10-18)
+
+The second GUI Connect observation above recorded that a grant and saved credential appeared
+before the Host dialog was captured, that the agent did not click Allow, and that attribution
+was awaiting Val's response. On 2026-10-18 Val confirmed on #290 that this grant came from
+Val's own manual testing. The rest of the record stands: no Cancel success was recorded, so the
+welcome Open sequence and its Cancel check remain unaccepted.
