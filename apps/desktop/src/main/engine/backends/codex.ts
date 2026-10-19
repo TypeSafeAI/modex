@@ -420,7 +420,7 @@ export class CodexBackend implements Backend {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
               this.changePaths.set(`${tid}:${item.id}`, files);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } } });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
@@ -655,6 +655,12 @@ interface CodexModel {
   serviceTiers?: { id: string; name?: string; description?: string }[];
   defaultServiceTier?: string | null;
 }
+
+/** One file of a fileChange, beside the joined patch: `lines` is how much of it is this file's diff (shared/evidence.ts). */
+function patchFile(c: NonNullable<CodexItem["changes"]>[number]): import("../../../shared/evidence.js").CodexPatchFile {
+  return { path: c.path, kind: c.kind?.type ?? "update", ...(c.kind?.move_path ? { movePath: c.kind.move_path } : {}), lines: (c.diff ?? "").split("\n").length };
+}
+
 interface CodexItem {
   type: string;
   id: string;
@@ -666,7 +672,7 @@ interface CodexItem {
   aggregatedOutput?: string | null;
   exitCode?: number | null;
   durationMs?: number | null;
-  changes?: { path: string; kind?: { type: string }; diff: string }[];
+  changes?: { path: string; kind?: { type: string; move_path?: string | null }; diff: string }[];
   summary?: string[];
   content?: string[];
   server?: string;

@@ -174,6 +174,7 @@ change for this contract. Streaming deltas and tool updates are written to disk 
 | `item/reasoning/summaryPartAdded` | nothing: parts are keyed by index |
 | `item/completed` `reasoning` | `reasoning.done` with `summary` and `content` as snapshots |
 | `item/started` `commandExecution`, `fileChange`, `mcpToolCall`, `dynamicToolCall`, `webSearch` | `tool.start` |
+| (`fileChange`) | `apply_patch` with `args.patch` (the diffs, joined) and `args.files` (each file's `path`, `kind`, `movePath`, and `lines` of `patch`; [evidence](conversation-evidence.md)) |
 | `item/commandExecution/outputDelta` | `tool.update` |
 | `item/completed` for those tools | `tool.done` |
 | collaboration and sub-agent items | `tool.*` for `agent:<thread id>` |
