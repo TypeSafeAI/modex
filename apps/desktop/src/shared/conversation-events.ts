@@ -352,6 +352,11 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
   return ok ? value as unknown as ConversationEvent : null;
 }
 
+/** The transcript item a native tool became in this attempt, once its tool.start was applied. */
+export function toolItemId(state: ConversationState, turn: TurnRef, native: NativeRef): string | undefined {
+  return state.entries[nativeKey(turn, native)]?.ids.tool;
+}
+
 function nativeKey(turn: TurnRef, native: NativeRef): string {
   return JSON.stringify([turn.thread, turn.account ?? null, turn.attempt, native.runtime, native.thread ?? null, native.turn ?? null, native.item, native.part ?? null]);
 }

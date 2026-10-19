@@ -273,7 +273,9 @@ export class DesktopClient extends EventEmitter {
         res.on("data", (chunk: string) => {
           if (generation !== this.generation || ended) return;
           buffer += chunk;
-          if (buffer.length > 1024 * 1024) { res.destroy(); return; }
+          // A frame this large is dropped. Resuming would replay it into the same limit forever, so
+          // forget the cursor: the reconnect reloads state, which carries the item another way.
+          if (buffer.length > 1024 * 1024) { this.journal = undefined; res.destroy(); return; }
           let end: number;
           while ((end = buffer.indexOf("\n\n")) >= 0) {
             const frame = buffer.slice(0, end);

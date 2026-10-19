@@ -74,6 +74,17 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Replay and clients.** Journal replay, paired desktops and the phone agree on the same items;
     a duplicated frame no longer doubles an item. On the phone, a failed or denied tool says so in its
     title. Work a crashed Modex left running is saved and sent as unknown instead of spinning forever.
+  - **Journal faults (CF-6 #279).** These apply with `MODEX_EVENT_JOURNAL=1`.
+    - A write that fails while a client reads turns the journal off, and clients reload. Before, that
+      batch was lost silently.
+    - A journal a crash or a failed write left open takes a new identity. Cursors from before then
+      reload instead of resuming past the gap, so an answered card no longer looks open on a paired
+      desktop after a crash.
+    - A paired desktop reloads after a frame over 1 MB instead of reconnecting forever.
+    - The phone gets a notice for an item kind its Mac doesn't know, instead of rejecting the
+      snapshot.
+
+    [Faults and rollback](event-journal.md#compatibility-and-rollback).
   - **Evidence (CF-5 #278, first part).** A command shows exactly what ran, where, and its exit code
     as the CLI reported it. Tool output keeps its last 256 KB with a visible note. A patch is labelled
     as this turn's. Codex memory citations show as citations, and a "Sources:" list the model wrote
@@ -119,8 +130,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Clarifications in the task record (CF-7 #280, second part).** A question Codex asks while it
     plans is answered on its card, and the turn's record and Save to Notes list it with its answer,
     a secret hidden. One nobody answered reads "not answered" with why, and is never filled in.
-  - **Still open:** CF-4's remaining Markdown checks (#277), live-provider acceptance and human
-    VoiceOver checks.
+  - **Still open:** live Codex question capture (CF-3 #276), the remaining Markdown checks (CF-4
+    #277), structured web-search results (CF-5 #278), the remaining replay findings (CF-6 #279),
+    verified steps and the read-only task view (CF-7 #280), and live-provider acceptance with human
+    keyboard and VoiceOver checks (CF-8 #281).
 
 - **Updates install over the air on macOS** (#317). A check that finds a newer release downloads and
   verifies it in the background; nobody has to click Download. The banner then offers Restart to
@@ -147,7 +160,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   reported as applied has **Compare with working tree**. Each file it touched reads as left by the
   turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
   Main reads only the named files inside the thread's folder and returns verdicts, never contents.
-  Codex file changes now keep their per-file paths beside the patch.
+  Codex file changes now keep their per-file paths beside the patch. Edits that only removed text
+  and notebook cells (replaced, inserted or deleted) are compared too.
 - **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
   unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
   search no status or error field. Its completion is its only report, so a completed search now
@@ -155,6 +169,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 - **A project can move to a new workspace from the chat sidebar.** Its menu has **Move to new
   workspace…**, which names a workspace and moves the project into it in one step, even while there
   is only the default workspace. Before, a new workspace had to be made in Space first.
+- **A long command's full log can be read** (part of #278). A command whose output passed the 256 KB
+  preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
+  back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
+  characters of a result by default, so Claude output never needs it.
 
 ## In flight
 

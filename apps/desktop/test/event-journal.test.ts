@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { EventJournal, replayItems } from "../src/main/engine/event-journal.js";
 import { Store } from "../src/main/engine/store.js";
@@ -9,6 +10,7 @@ import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import type { MockStep } from "@modex/core";
 import { gitRepo, tmpdir, writeScript } from "./helpers.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { mobileItem } from "../src/main/engine/companion.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { CODEX_THREAD, codexServer, fixture } from "./conversation-fixtures.js";
@@ -296,4 +298,130 @@ test("attempts stay separate through the journal: a retry that reuses a native i
     await runner.dispose();
     journal.close();
   }
+});
+
+// ── Journal faults (CF-6, journal mechanics) ──────────────────────────────────────────────────────
+
+/** Every file under `home` except the journal's own, by its bytes, so a test can show nothing else changed. */
+function besideJournal(home: string): Map<string, string> {
+  const files = new Map<string, string>();
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (!entry.name.startsWith("events.sqlite")) files.set(path.relative(home, file), fs.readFileSync(file).toString("base64"));
+    }
+  };
+  walk(home);
+  return files;
+}
+
+/** The process dies: nothing flushes and nothing closes, but the file is no longer held open. */
+function crash(journal: EventJournal): void {
+  const inner = journal as unknown as { timer?: ReturnType<typeof setTimeout>; db: { close(): void } };
+  clearTimeout(inner.timer);
+  inner.db.close();
+}
+
+test("a write that fails while a client reads is reported and turns the journal off: no cursor resumes past the lost rows", () => {
+  const errors: unknown[] = [];
+  const journal = new EventJournal(path.join(tmpdir("modex-journal-"), "events.sqlite"), { flushMs: 60_000, onError: (error) => errors.push(error) });
+  journal.record({ threadId: "t1", type: "item", item: note("a") });
+  const cursor = journal.latest();
+  journal.record({ threadId: "t1", type: "item", item: note("b") });
+  const inner = journal as unknown as { insert: unknown };
+  const insert = inner.insert;
+  inner.insert = { run() { throw new Error("SQLITE_FULL: database or disk is full"); } };
+  // The host's /events and the phone's /v1/snapshot read like this, and reading flushes.
+  const during = journal.resume(journal.id, cursor);
+  assert.equal(during.entries, undefined, "the client reloads instead of resuming");
+  assert.equal(errors.length, 1, "the failure is reported, as a timed flush's is");
+  assert.match(String(errors[0]), /SQLITE_FULL/);
+  inner.insert = insert; // the disk has room again
+  journal.record({ threadId: "t1", type: "item", item: note("c") });
+  assert.equal(journal.resume(journal.id, cursor).entries, undefined, "a cursor from before the lost rows never resumes past them");
+  assert.equal(errors.length, 1, "reported once");
+  journal.close();
+});
+
+test("a journal Modex did not close cleanly gets a new id, so every cursor issued before the crash reloads", () => {
+  const file = path.join(tmpdir("modex-journal-"), "events.sqlite");
+  const before = new EventJournal(file, { flushMs: 60_000 });
+  before.record({ threadId: "t1", type: "item", item: note("a") });
+  const cursor = before.latest();
+  // Answered on disk, still in the batch window when the process dies.
+  before.record({ threadId: "t1", type: "item_update", id: "a", patch: { text: "answered" } });
+  crash(before);
+  const after = new EventJournal(file);
+  assert.notEqual(after.id, before.id, "the reopened journal has a new identity");
+  assert.equal(after.resume(before.id, cursor).entries, undefined, "a pre-crash cursor reloads instead of resuming past the lost update");
+  assert.ok(after.latest() >= cursor, "cursors still only grow");
+  after.close();
+  const relaunched = new EventJournal(file);
+  assert.equal(relaunched.id, after.id, "a clean close keeps the identity, so an ordinary relaunch still resumes");
+  relaunched.close();
+});
+
+test("a cursor from a deleted journal reloads, and journal faults leave every other file under MODEX_HOME as it was", () => {
+  const home = tmpdir("modex-journal-home-");
+  const store = new Store(home);
+  store.addProject(gitRepo());
+  fs.writeFileSync(path.join(store.dir, "update-recovery.json"), JSON.stringify({ drafts: [{ threadId: "t1", text: "half a reply" }] }));
+  const files = besideJournal(home);
+  const file = path.join(home, "app", "events.sqlite");
+  const first = new EventJournal(file, { flushMs: 60_000 });
+  first.record({ threadId: "t1", type: "item", item: note("a") });
+  const cursor = { id: first.id, at: first.latest() };
+  crash(first);
+  for (const suffix of ["", "-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
+  const fresh = new EventJournal(file, { flushMs: 60_000, onError: () => {} });
+  assert.notEqual(fresh.id, cursor.id);
+  assert.equal(fresh.resume(cursor.id, cursor.at).entries, undefined, "a cursor from the deleted file reloads");
+  assert.equal(fresh.resume(fresh.id, cursor.at).entries, undefined, "even when its number names a row the new file never had");
+  fresh.record({ threadId: "t1", type: "item", item: note("b") });
+  (fresh as unknown as { insert: { run(): never } }).insert = { run() { throw new Error("disk full"); } };
+  fresh.resume(fresh.id, 0);
+  crash(fresh);
+  new EventJournal(file).close();
+  assert.deepEqual(besideJournal(home), files, "drafts and state files are untouched by a crash, a deleted journal and a failed write");
+});
+
+test("an MCP route's capability token reaches no event, journal row or file when a failed turn reports its launch", async () => {
+  const home = tmpdir("modex-journal-secret-");
+  const store = new Store(home);
+  const journal = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
+  const token = "3f0c2a6e-8b1d-4c55-9e0f-7a2b1c3d4e5f";
+  const proc = new FakeProcess();
+  const emitted: ThreadEvent[] = [];
+  const pages = { prepare: async () => ({ connection: { url: `http://127.0.0.1:4100/mcp/${token}`, instructions: "Notes" }, close: async () => {} }) };
+  const runner = new ThreadRunner({ home, store, emit: (event) => { emitted.push(event); journal.record(event); },
+    backends: { claude: new ClaudeBackend("claude", fakeSpawn(proc).spawn) },
+    pages: pages as unknown as NonNullable<ConstructorParameters<typeof ThreadRunner>[0]["pages"]> });
+  const project = store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+  store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+  try {
+    const turn = runner.send(thread.id, "go");
+    await proc.waitFor((line) => line.includes('"type":"user"'));
+    proc.stderr.write("fatal\n");
+    proc.close(1);
+    await turn;
+    journal.flush();
+    assert.ok(JSON.stringify(runner.items(thread.id)).includes("127.0.0.1:4100/mcp/"), "the failure still names the route it launched with");
+    assert.ok(!JSON.stringify(emitted).includes(token), "no event carries the token");
+    assert.ok(!journal.since(0).some((entry) => JSON.stringify(entry.event).includes(token)), "no journal row carries it");
+  } finally {
+    await runner.dispose();
+    journal.close();
+  }
+  const leaks: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (fs.readFileSync(file).includes(token)) leaks.push(path.relative(home, file));
+    }
+  };
+  walk(home);
+  assert.deepEqual(leaks, [], "no file under MODEX_HOME holds it, the SQLite file and its WAL included");
 });
