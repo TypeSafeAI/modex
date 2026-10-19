@@ -156,6 +156,7 @@ let shuttingDown = false;
 let servicesTouched = false;
 let shutdownComplete = false;
 let checkingWindowClose = false;
+let installOnQuitTried = false;
 let desktopHost: DesktopHost | undefined;
 const desktopHostActivation = createDesktopHostActivation({
   available: () => !demo && !shuttingDown && !servicesTouched && !checkingWindowClose && !restartAdmission.held && !nativeDraftFailure && !nativeStartup?.recovery,
@@ -553,15 +554,15 @@ function drainServices(): Promise<void> {
 const automaticUpdates = Boolean(app.isPackaged && process.platform === "darwin" && ["arm64", "x64"].includes(process.arch)
   && !demo && !process.env.MODEX_E2E && !hostPreview && nativeDrafts && !nativeDraftFailure && !nativeStartup?.recovery);
 const updateInstallation = new UpdateInstallation({
-  enabled: automaticUpdates, parent: path.join(home, "updates"),
+  enabled: automaticUpdates, autoDownload: automaticUpdates, parent: path.join(home, "updates"),
   runningApp: path.resolve(path.dirname(process.execPath), "../.."), arch: process.arch === "x64" ? "x64" : "arm64",
   checker: updates,
   changed: state => {
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("updates:state", state);
   },
-  restart: candidate => {
+  restart: (candidate, options) => {
     if (!restartCoordinator) throw new Error("Automatic installation is unavailable.");
-    return restartCoordinator.restart(candidate);
+    return restartCoordinator.restart(candidate, options);
   },
 });
 if (automaticUpdates) {
@@ -1171,6 +1172,16 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (restartCoordinator && ["preparing", "draining", "staging"].includes(restartCoordinator.state)) return;
   if (shuttingDown || checkingWindowClose) return;
+  // A verified update nobody restarted into installs on this quit. The same restart
+  // preflight saves drafts and drains services; Squirrel installs the staged bundle as
+  // Modex exits, without relaunching. Any refusal (a running turn, an open page) only
+  // skips the install: this quit goes ahead and the next launch downloads it again.
+  if (!installOnQuitTried && restartCoordinator?.state === "idle" && updateInstallation.state().phase === "ready"
+    && win && !win.isDestroyed() && !currentDraftRecovery()) {
+    installOnQuitTried = true;
+    void updateInstallation.install({ relaunch: false }).catch(() => {}).finally(() => app.quit());
+    return;
+  }
   // Let unsaved-page beforeunload handlers veto quitting while services and IPC
   // are still usable. Teardown starts only after the renderer accepts closing.
   if (win && !win.isDestroyed()) {
@@ -1178,6 +1189,7 @@ app.on("before-quit", (event) => {
     checkingWindowClose = true;
     const cancelled = () => {
       checkingWindowClose = false;
+      installOnQuitTried = false;
       releaseRecoveryQuit();
       window.removeListener("closed", closed);
     };

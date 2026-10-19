@@ -17,9 +17,14 @@ test("renderer reload after an updater partial drain opens read-only and ordinar
     const page = await app.firstWindow(); await page.waitForLoadState("domcontentloaded");
     page.on("dialog", dialog => { if (dialog.type() !== "beforeunload") void dialog.dismiss(); });
     await tid(page, "composer-input").fill(raw);
-    await page.getByRole("button", { name: "Download update", exact: true }).click();
-    await page.getByRole("button", { name: "Restart to update", exact: true }).click();
-    await expect(tid(page, "update-restart-status")).toContainText("could not finish preparing to restart");
+    // The update downloaded by itself; only the restart needs a click. Right after launch a
+    // startup request can still be admitted, and that refusal keeps the update ready to retry.
+    const restart = page.getByRole("button", { name: "Restart to update", exact: true }), status = tid(page, "update-restart-status");
+    await expect(async () => {
+      if (await restart.isVisible()) await restart.click();
+      await expect(status).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(status).toContainText("could not finish preparing to restart");
     const before = fs.readFileSync(file); expect(JSON.parse(before.toString()).drafts.projects[0].text).toBe(raw);
     await page.reload();
     await expect(tid(page, "update-recovery")).toBeVisible();
@@ -77,7 +82,7 @@ test("actual main restart retains drafts after partial drain and retries fresh r
     await page.getByRole("textbox", { name: "Page title" }).fill("Dirty page saved through main restart admission");
     await expect(page.getByLabel("Save status")).toHaveText("Not saved");
     await page.getByRole("button", { name: "Chat", exact: true }).click();
-    await page.getByRole("button", { name: "Download update", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Restart to update", exact: true })).toBeVisible();
     unblockNoteWrites(home);
     await page.getByRole("button", { name: "Restart to update", exact: true }).click();
     const panel = tid(page, "update-restart-status");
