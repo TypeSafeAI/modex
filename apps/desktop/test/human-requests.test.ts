@@ -35,7 +35,7 @@ test("a wrong thread, account, attempt or runtime, an unknown id or a changed ac
   const state = register(emptyRequests(), approval);
   const reason = (r: ReturnType<typeof resolve>) => (r.ok ? "ok" : r.reason);
   assert.equal(reason(resolve(state, "nope", yes, { binding, digest: approval.digest, by: "desktop" })), "unknown");
-  for (const wrong of [{ thread: "T2" }, { attempt: "A2" }, { runtime: "R2" }, { account: "other" }, { nativeRequestId: "18" }] as Partial<RequestBinding>[]) {
+  for (const wrong of [{ thread: "T2" }, { turn: "U2" }, { backend: "claude" }, { item: "other" }, { attempt: "A2" }, { runtime: "R2" }, { account: "other" }, { nativeRequestId: "18" }] as Partial<RequestBinding>[]) {
     assert.equal(reason(resolve(state, "req-1", yes, { binding: { ...binding, ...wrong }, digest: approval.digest, by: "desktop" })), "wrong-identity", JSON.stringify(wrong));
   }
   const changed = actionDigest({ ...action, input: { command: "npm test && rm -rf /" } });
@@ -110,4 +110,30 @@ test("a closed card says when the phone answered and when nobody can tell whethe
   assert.equal(answerNote({ answeredBy: "phone", delivery: "sent" }), "Answered on your phone.");
   assert.equal(answerNote({ answeredBy: "desktop", delivery: "uncertain" }), "Modex stopped before it could confirm the agent received this answer.");
   assert.equal(answerNote({ answeredBy: "phone", delivery: "uncertain" }), "Answered on your phone. Modex stopped before it could confirm the agent received this answer.");
+});
+
+test("registered actions and identity are snapshots, not mutable caller references", () => {
+  const request = structuredClone(approval);
+  const state = register(emptyRequests(), request);
+  request.binding.runtime = "changed";
+  (request.action as typeof action).input.command = "changed";
+  assert.equal(state.requests[request.id]!.request.binding.runtime, binding.runtime);
+  assert.deepEqual((state.requests[request.id]!.request as typeof approval).action, action);
+});
+
+test("approval values and unsupported always decisions fail closed", () => {
+  const request = { ...approval, canAlways: false };
+  const state = register(emptyRequests(), request);
+  for (const answer of ["always", "unexpected", null]) {
+    const result = resolve(state, request.id, { kind: "approval", answer } as never, { binding, digest: request.digest, by: "desktop" });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.reason, "invalid");
+  }
+});
+
+test("Codex questions reject ambiguous ids and malformed sensitivity flags", () => {
+  const q = { id: "q", header: "Token", question: "Token?", isOther: true, isSecret: true, options: null };
+  for (const questions of [[q, q], [{ ...q, isSecret: "true" }], [{ ...q, isOther: "false" }], [{ ...q, header: 7 }], [{ ...q, options: [{ label: "same" }, { label: "same" }] }]]) {
+    assert.equal(codexQuestions({ questions }), null);
+  }
 });

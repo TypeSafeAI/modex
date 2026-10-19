@@ -75,7 +75,7 @@ export function emptyRequests(): RequestsState {
 
 export function register(state: RequestsState, request: HumanRequest): RequestsState {
   if (state.requests[request.id]) return state;
-  return { ...state, requests: { ...state.requests, [request.id]: { request, state: "pending" } } };
+  return { ...state, requests: { ...state.requests, [request.id]: { request: structuredClone(request), state: "pending" } } };
 }
 
 /**
@@ -91,8 +91,10 @@ export function resolve(state: RequestsState, id: string, resolution: Resolution
   if (!sameBinding(record.request.binding, claim.binding)) return refuse("wrong-identity");
   if (claim.digest !== record.request.digest) return refuse("changed-action");
   if (resolution.kind !== record.request.kind) return refuse("invalid");
+  if (resolution.kind === "approval" && record.request.kind === "approval" &&
+      (!["yes", "no", "always"].includes(resolution.answer) || (resolution.answer === "always" && !record.request.canAlways))) return refuse("invalid");
   if (resolution.kind === "question" && record.request.kind === "question" && !validateAnswers(record.request.questions, resolution.answers).ok) return refuse("invalid");
-  return { ok: true, state: { ...state, requests: { ...state.requests, [id]: { ...record, state: "resolving", resolution, by: claim.by } } } };
+  return { ok: true, state: { ...state, requests: { ...state.requests, [id]: { ...record, state: "resolving", resolution: structuredClone(resolution), by: claim.by } } } };
 }
 
 /** Records the outcome of sending an accepted answer. Only a `resolving` request changes. */
@@ -160,11 +162,16 @@ export function publicAnswers(questions: readonly Question[], answers: Record<st
 export function codexQuestions(params: unknown): { questions: Question[]; blocking: boolean } | null {
   if (!isRecord(params) || !Array.isArray(params.questions) || !params.questions.length) return null;
   const questions: Question[] = [];
+  const ids = new Set<string>();
   for (const q of params.questions) {
     if (!isRecord(q) || typeof q.id !== "string" || !q.id || typeof q.question !== "string") return null;
+    if (ids.has(q.id) || (q.header !== undefined && typeof q.header !== "string") ||
+        (q.isOther !== undefined && typeof q.isOther !== "boolean") || (q.isSecret !== undefined && typeof q.isSecret !== "boolean")) return null;
+    ids.add(q.id);
     let options: QuestionOption[] | null = null;
     if (q.options !== null && q.options !== undefined) {
       if (!Array.isArray(q.options) || !q.options.every((o) => isRecord(o) && typeof o.label === "string" && (o.description === undefined || typeof o.description === "string"))) return null;
+      if (new Set(q.options.map(o => (o as Record<string, unknown>).label)).size !== q.options.length) return null;
       options = (q.options as { label: string; description?: string }[]).map((o) => ({ label: o.label, description: o.description ?? "" }));
     }
     questions.push({ id: q.id, header: typeof q.header === "string" ? q.header : "", text: q.question, options, allowOther: q.isOther === true || options === null, secret: q.isSecret === true });

@@ -211,6 +211,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   upload of Companion build 7, which carries thread archiving from the phone.
   [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
 
+- **CF-3 human-request reconciliation (#276, #293).** Native question cards and one accepted
+  answer per request are under review. The repair separates local acceptance from the native
+  write receipt, keeps interrupted sends uncertain without retries, and preserves sensitive-answer
+  redaction. Fixture acceptance and live native acceptance remain separate gates.
+  [Human requests](human-requests.md).
+
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
   each slice's evidence, and its child issues link their open PRs.
