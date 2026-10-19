@@ -25,7 +25,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). [Review](reviews/2026-10-12-v0.0.11-release-review.md). |
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). [Review](reviews/2026-10-13-v0.0.12-release-review.md). |
 | v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). [Review](reviews/2026-10-15-v0.1.0-release-review.md). |
-| v0.2.0 | 2026-10-18 | #253, #257, #267, #269, #272 | Read-only routines on a timer, on one decision service for Jev; the journal resumes paired desktops and the phone; Copy details and Retry on every inline error; the notes fixes from v0.1.0's review; the Analytics restyle. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
+| v0.2.0 | 2026-10-18 | #253, #257, #266, #267, #269, #248, #272 | Read-only routines on a timer, on one decision service for Jev; the notes fixes from v0.1.0's review (#241); Copy details and Retry on every inline error; Analytics restyled; new image jobs no longer stuck at "queued". [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -134,12 +134,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **v0.2.0 follow-ups.** Desktop v0.2.0 was published on 2026-10-18 from the signed tag on
-  `01b1b8a` ([release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0),
-  [review](reviews/2026-10-18-v0.2.0-release-review.md)). No receipt yet records three gates:
-  - the independent download checks;
-  - the v0.1.0 → v0.2.0 banner upgrade on the release Mac;
-  - the TestFlight upload of Companion 0.2.0 (7), which carries thread archiving from the phone.
+- **v0.2.0 after publication.** v0.2.0 was published on 2026-10-18 from the signed tag on
+  `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through
+  its own update banner, and uploading Companion 0.2.0 (7) to TestFlight, which carries thread
+  archiving from the phone. [Review](reviews/2026-10-18-v0.2.0-release-review.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
@@ -278,7 +276,7 @@ Roughly in the order they earn their place; none is scheduled.
 1. **Windows and Linux acceptance.** Their installers shipped with v0.1.0. Provider-account
    acceptance, KWallet6 and full graphical sessions, and historical schema migration remain
    unproven; see [native-platforms.md](native-platforms.md).
-2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
+2. **Routines that change code** (Routines Phase 2). Read-only routines shipped in v0.2.0. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
 3. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting
