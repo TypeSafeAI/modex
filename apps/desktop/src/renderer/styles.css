@@ -641,6 +641,7 @@ a.thread-pr:hover { text-decoration: underline; }
 .shield { color: var(--warn); }
 .approval .detail { max-height: 200px; margin: 0 0 12px; padding: 8px 10px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-2); white-space: pre-wrap; }
 .approval-answer { color: var(--text-3); font-size: var(--text-sm); }
+.answer-note { margin-top: 4px; color: var(--text-3); font-size: var(--text-sm); }
 .approval-reason { margin: -4px 0 10px; color: var(--text-3); font-size: var(--text-sm); }
 /* Question card: the approval frame, one block per question, each with its own control. */
 .question-field { margin: 0 0 12px; }

@@ -466,3 +466,30 @@ test("a phone sees a question card as text it cannot answer, never a secret, and
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("the phone acts on a thread created on the Mac, whose id is the full UUID its draft reserved", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-uuid-"));
+  const threadId = "9b968fef-82d1-44b7-8ffb-de2b5ca63002";
+  const answered: string[] = [];
+  let status = "waiting";
+  const items: ThreadItem[] = [{ id: "approval-1", kind: "approval", question: "Apply this patch?", at: "now" }];
+  const state = { projects: [{ id: "p1", name: "example", path: "/private/source", addedAt: "now" }], threads: [{ id: threadId, projectId: "p1", title: "Drafted on the Mac", backend: "mock", status: "waiting", cwd: "/private/source", mode: "chat", model: "mock", plan: false, createdAt: "now", updatedAt: "now" }], version: 1, settings: {} } as AppState;
+  const server = new CompanionServer(home, { state: () => state, items: () => items, status: () => status, send: async () => ({ ok: true }),
+    answer: (_id, _item, value) => { answered.push(value); (items[0] as Extract<ThreadItem, { kind: "approval" }>).answer = value; status = "running"; } }, () => ["127.0.0.1"]);
+  try {
+    const pairing = await server.start();
+    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
+    const post = (route: string, body: unknown) => new Promise<number>((resolve, reject) => {
+      const req = https.request(`${credentials.url}${route}`, { method: "POST", ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, "content-type": "application/json" } }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode!)); });
+      req.on("error", reject);
+      req.end(JSON.stringify(body));
+    });
+    assert.equal(await post(`/v1/threads/${threadId}/answer`, { itemId: "approval-1", answer: "yes" }), 200);
+    assert.deepEqual(answered, ["yes"]);
+    assert.equal(await post("/v1/threads/not-a-thread/answer", { itemId: "approval-1", answer: "yes" }), 404, "an id that is no thread is still not found");
+    assert.equal(await post("/v1/threads/..%2F..%2Fetc/answer", { itemId: "approval-1", answer: "yes" }), 404);
+  } finally {
+    await server.dispose();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
