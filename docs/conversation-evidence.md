@@ -59,8 +59,25 @@ Observed on 2026-10-18:
 - **Bounded output.** A tool item keeps the last 256 KiB of its output (`OUTPUT_PREVIEW_BYTES`), cut on
   a UTF-8 character boundary, with `outputBytes` (the total seen) and `outputTruncated`. The view
   says "Showing the last 256 KB of 3.0 MB." Codex output is bounded as it streams, so no update
-  carries a whole log, and the runner bounds every tool's output before it is saved or sent. The rest
-  of the log is not kept; the CLI's own logs have it.
+  carries a whole log, and the runner bounds every tool's output before it is saved or sent.
+- **The full log.** A tool whose output passed the preview has **Show full log** under its
+  truncation notice. It asks main (`evidence:tool-log`) for the kept output, a page at a time.
+  - **What main keeps.** Codex streams every chunk (`item/commandExecution/outputDelta`). Its backend
+    hands each raw chunk to `TurnSink.output`, which only main sees: it is never journaled or sent
+    to the window. `main/engine/tool-logs.ts` holds a tool's output in memory until it passes the
+    preview, then keeps it **from the first byte**, up to 10 MiB, in
+    `app/tool-logs/<thread>/<item, hex>.log`, and records the total when the tool finishes. Output
+    that fits in the preview is never written. The logs go when their thread is deleted.
+  - **Reading it.** 256 KiB pages that end on a character boundary, with Earlier, Later, Copy page
+    and Hide. The status says "Kept all 3.1 MB", "Kept the first 10.0 MB of 12.0 MB", or that the
+    tool never finished, so the rest is unknown. Nothing is read until asked, and reading runs
+    nothing. Streamer Mode masks the page; Copy puts the page itself on the clipboard.
+  - **Ids never become paths.** Thread ids are checked, item ids are hex-encoded, and main only reads
+    a log for a tool item of that thread.
+  - **Claude.** Claude Code 2.1.302 hands Claude at most `bashOutputMaxChars` (default 30,000
+    characters, clamped to 4,000–128,000) of a Bash result and keeps the rest in its own file, with
+    the path in the result. A Claude result never outgrows the preview, so there is no Claude log to
+    keep. Modex does not read the path Claude Code names.
 - **Patches.** A patch tool (`apply_patch`, `Edit`, `MultiEdit`, `Write`, `NotebookEdit`) is labelled
   "The patch as this turn applied it. The working tree may have changed since; Changes shows it now."
 - **Comparing a patch with the working tree.** A patch the CLI reported as applied has **Compare
@@ -103,4 +120,3 @@ adds no new artifact store. Its only new reads are a memory citation's lines and
 - Native web-search results as structured evidence. Codex's `results` are opaque JSON, and Claude's
   arrive as tool text.
 - Comparing a patch whose edit only removed text, and notebook edits.
-- A retained full log beyond the 256 KiB preview.
