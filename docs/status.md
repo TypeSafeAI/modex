@@ -122,7 +122,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Still open:** CF-4's remaining Markdown checks (#277), live-provider acceptance and human
     VoiceOver checks.
 
-- **Updates install over the air on macOS.** A check that finds a newer release downloads and
+- **Updates install over the air on macOS** (#317). A check that finds a newer release downloads and
   verifies it in the background; nobody has to click Download. The banner then offers Restart to
   update, and an update nobody restarted into installs the next time you quit, without reopening
   Modex. The release page is only a "What’s new" link. A cancelled download stays cancelled for
