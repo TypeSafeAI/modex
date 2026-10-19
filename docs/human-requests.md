@@ -160,12 +160,46 @@ type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string 
 - **Store demo.** `thread:answer` returns `{ ok: true }`. The demo asks no questions, so
   `thread:answer-question` refuses with `unknown`.
 
+## Across replay and reconnect
+
+The card is the record. A request's lifecycle travels in the card's own fields, in the `item` and
+`item_update` events every client already reads, so the [event journal](event-journal.md), snapshots,
+paired desktops and the phone carry it with no new event type. This is the request half of CF-6
+([#279](https://github.com/TypeSafeAI/modex/issues/279)).
+
+| Broker step | On the card |
+| --- | --- |
+| `register` | The card appears, with no answer. |
+| `resolve` | `answer` or `answers`, `answeredBy` (`"desktop"` or `"phone"`) and `delivery: "sending"`, saved before the CLI hears anything. |
+| `settle(…, "sent")` | `delivery: "sent"` once the answer is handed to the CLI. |
+| `withdraw` | `withdrawn: "native" \| "stopped" \| "ended"`, as above. |
+| `uncertain` | `delivery: "uncertain"`. |
+
+- **A restart** turns a card still `sending` into `uncertain`: Modex stopped between taking the answer
+  and recording the hand-off, so nobody can tell whether the CLI got it. The answer is never sent again,
+  and the card says so: "Modex stopped before it could confirm the agent received this answer." Cards
+  nobody answered close as `ended`, as before. A card answered before these fields existed keeps no
+  `delivery` and is left as it was.
+- **Replay** applies the same whole field values, so a frame delivered twice changes nothing, and a
+  client that resumes after a decision sees the card answered. A cursor the journal no longer covers
+  reloads to a snapshot with the same fields.
+- **Late answers** to an answered, uncertain or withdrawn card are refused (`already-resolved` or
+  `withdrawn`). Nothing replayed, reloaded or reconnected answers a request.
+- **Two clients at once.** The desktop and the phone race through one broker: one answer is accepted,
+  the card names who gave it, and the other is refused, with a 409 for the phone.
+- **The phone** gets `answeredBy`, `delivery` and `withdrawn` on approvals. Today's iPhone build reads
+  only `answer`, so a withdrawn approval still reads as declined there. A question's notice says when
+  delivery is uncertain.
+- **The window** adds "Answered on your phone." under a card the phone answered, and the uncertain line
+  above. An answer given in the window and sent adds nothing.
+
 ## Secrets
 
 A secret answer is held only in the turn's memory and written only to the CLI's stdin. It is never in a
 saved item, an `item`/`item_update` event, the event journal, a snapshot, the phone's view or an
-export. Tests check the saved store and the emitted events (`test/human-requests-runner.test.ts`), and
-every file under `MODEX_HOME/app` (`e2e/human-requests.spec.ts`).
+export. Tests check the saved store and the emitted events (`test/human-requests-runner.test.ts`), every
+file under `MODEX_HOME` with the journal on and the phone's snapshot (`test/request-journal.test.ts`), and
+every file under `MODEX_HOME/app` with the journal off and on (`e2e/human-requests.spec.ts`).
 
 ## Tests
 
@@ -181,6 +215,15 @@ every file under `MODEX_HOME/app` (`e2e/human-requests.spec.ts`).
   - Stop sends an error reply;
   - `serverRequest/resolved` withdraws a question with no reply sent;
   - after a restart, open cards are inert, saved and emitted.
+- `test/request-journal.test.ts` covers the lifecycle across replay and reconnect, with a real journal,
+  paired desktop and phone:
+  - who answered and the delivery, in the window, the snapshot, the journal replayed once and twice,
+    the phone, and after a restart, with no second decision;
+  - simultaneous desktop and phone answers: one accepted, the other refused with a 409;
+  - a paired desktop that reconnects after the decision was sent;
+  - an expired cursor;
+  - a crash between taking an answer and recording its hand-off;
+  - a secret answer kept out of every file, event and the phone's view, with the journal on.
 - `test/companion.test.ts` covers the phone: the question fallback text, and refusals as 409.
 - `test/turn-layout.test.ts` checks that an open question never folds away.
 - `e2e/human-requests.spec.ts` runs a fixture Codex app-server through the real UI:
@@ -190,10 +233,11 @@ every file under `MODEX_HOME/app` (`e2e/human-requests.spec.ts`).
   - one reply carrying the answers;
   - a refused second answer;
   - Stop gives an error reply;
-  - no secret on disk.
+  - no secret on disk;
+  - with the journal on, a restart after a crash mid-send: answered and stopped cards are inert, the
+    uncertain one says so, and Codex hears nothing more.
 
 ## Not done here
 
 - Answering questions from the phone.
-- Request lifecycle events in the event journal (the second half of CF-6).
 - Clarifying a task plan through a question card (the second half of CF-7).

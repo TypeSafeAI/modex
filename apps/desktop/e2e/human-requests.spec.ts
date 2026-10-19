@@ -149,3 +149,71 @@ test("Codex questions: the card answers by its schema, the CLI hears once, the s
     fs.rmSync(logs, { recursive: true, force: true });
   }
 });
+
+test("with the journal on, a restart shows answered and stopped cards inert, says when an answer was never confirmed, and re-sends nothing", async () => {
+  const { home } = seedHome({ default_backend: "codex", default_mode: "agent" });
+  const logs = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-codex-questions-"));
+  const statePath = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  state.settings.codex_bin = fixture(logs);
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  const journal = process.env.MODEX_EVENT_JOURNAL;
+  process.env.MODEX_EVENT_JOURNAL = "1";
+  let app: ElectronApplication | undefined;
+  try {
+    let opened = await launch(home); app = opened.app;
+    let page = opened.page;
+    await send(page, "deploy it");
+    const card = items(page, "question").first();
+    await card.getByRole("radio", { name: "staging" }).check();
+    await card.getByLabel("Token").fill("s3cr3t-token");
+    await tid(card, "question-submit").click();
+    await expect(tid(card, "question-answer")).toHaveText(["staging", "(hidden)"]);
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    await expect(tid(card, "answer-note")).toHaveCount(0);
+    // A follow-up in the same thread asks again; Stop closes that card unanswered.
+    await tid(page, "composer-input").fill("deploy again");
+    await page.keyboard.press("Meta+Enter");
+    await expect(tid(items(page, "question").nth(1), "question-submit")).toBeVisible();
+    await tid(page, "stop").click();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
+    const lifecycle = (list: { kind: string; answeredBy?: string; delivery?: string; withdrawn?: string }[]) =>
+      list.filter((i) => i.kind === "question").map((i) => [i.answeredBy ?? null, i.delivery ?? null, i.withdrawn ?? null]);
+    expect(lifecycle(await page.evaluate((id) => window.modex!.invoke("thread:items", { threadId: id }), threadId) as never)).toEqual([["desktop", "sent", null], [null, null, "stopped"]]);
+    await app.close();
+    app = undefined;
+    expect(replies(logs)).toHaveLength(2);
+
+    // As if Modex had died after taking the first answer and before recording its hand-off to Codex.
+    const file = path.join(home, "app", "threads", `${threadId}.json`);
+    const saved = JSON.parse(fs.readFileSync(file, "utf8")) as { kind: string; delivery?: string }[];
+    saved.find((i) => i.kind === "question")!.delivery = "sending";
+    fs.writeFileSync(file, JSON.stringify(saved));
+
+    opened = await launch(home); app = opened.app;
+    page = opened.page;
+    await page.locator(`[data-testid="thread-row"][data-thread-id="${threadId}"] button.thread-main`).click();
+    const [first, second] = [items(page, "question").first(), items(page, "question").nth(1)];
+    await expect(tid(first, "question-answer")).toHaveText(["staging", "(hidden)"]);
+    await expect(tid(first, "answer-note")).toHaveText("Modex stopped before it could confirm the agent received this answer.");
+    await expect(tid(second, "question-closed")).toHaveText("Not answered — the turn was stopped");
+    await expect(page.locator('[data-testid="question-submit"]')).toHaveCount(0);
+    expect(lifecycle(await page.evaluate((id) => window.modex!.invoke("thread:items", { threadId: id }), threadId) as never)).toEqual([["desktop", "uncertain", null], [null, null, "stopped"]]);
+    // An old window answering the uncertain card again is refused, and nothing reaches Codex.
+    expect(await page.evaluate(async (id) => {
+      const list = await window.modex!.invoke("thread:items", { threadId: id }) as { id: string; kind: string }[];
+      return window.modex!.invoke("thread:answer-question", { threadId: id, itemId: list.find((i) => i.kind === "question")!.id, answers: { "q-env": ["production"], "q-token": ["other"] } });
+    }, threadId)).toEqual({ ok: false, reason: "already-resolved" });
+    expect(replies(logs)).toHaveLength(2);
+    await app.close();
+    app = undefined;
+    // The journal recorded all of it, and no file Modex wrote holds the secret.
+    expect(fs.existsSync(path.join(home, "app", "events.sqlite"))).toBe(true);
+    expect(everything(path.join(home, "app")).includes("s3cr3t-token")).toBe(false);
+  } finally {
+    if (journal === undefined) delete process.env.MODEX_EVENT_JOURNAL; else process.env.MODEX_EVENT_JOURNAL = journal;
+    await app?.close();
+    fs.rmSync(logs, { recursive: true, force: true });
+  }
+});

@@ -124,7 +124,10 @@ replays them unchanged.
   finished tool that did not succeed also says how it ended in its title: "· Failed", "· Denied",
   "· Stopped" or "· Status unavailable".
 
-Approval and question state across replay waits for the human-request lifecycle (#276).
+- **Approvals and questions.** A card carries who answered (`answeredBy`), whether the answer reached the
+  CLI (`delivery`) and why an unanswered card closed (`withdrawn`), as whole field values like every other
+  item field. Replay and resume show resolved and withdrawn cards inert and never send an answer. A secret
+  answer is never written here. See [across replay and reconnect](human-requests.md#across-replay-and-reconnect).
 
 ## Retention
 
