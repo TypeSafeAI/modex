@@ -1,7 +1,7 @@
 # Routines: persistent agent work in Modex
 
 Status: **direction accepted 2026-10-11** (decisions D1–D6 below). Phase 1 and most of
-Phase 0 are on `main`, unreleased: the decision service (#257), the event journal (#206, #253)
+Phase 0 shipped in v0.2.0: the decision service (#257), the event journal (#206, #253)
 and read-only routines (#267). Phase 0's approval gate decision is still open, and Phase 2
 waits on it. Each phase lands in its own PR with its own tests and a `docs/status.md` update.
 
