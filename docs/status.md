@@ -97,6 +97,14 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     CLI only. Stop sends Codex an error, never an empty answer. A request Codex settles itself closes
     as withdrawn, and cards a restarted Modex left open close as ended everywhere. Phones show
     questions as text to answer on the Mac. Scripted fixtures only. [Human requests](human-requests.md).
+  - **Requests across replay and reconnect (CF-6 #279, request half).** A card records who answered
+    (the Mac or the phone) and whether the answer reached the CLI, and the journal, snapshots, paired
+    desktops and the phone carry it. Replay and reconnect show answered and withdrawn cards inert and
+    never send an answer again. An answer Modex took but could not confirm before a crash says so after
+    the restart. A secret answer reaches no file, even with the journal on.
+    [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+  - **The phone acts on threads started on the Mac again.** Since v0.0.12, answering, sending, setting
+    the approval policy or archiving from the phone failed on any thread created from a Mac draft.
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
     plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
@@ -107,8 +115,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
     every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
     window wraps its text and buttons instead of pushing Deny out of view.
-  - **Still open:** CF-4's remaining Markdown checks (#277), CF-6's request half, CF-7's
-    clarifications, live-provider acceptance and human VoiceOver checks.
+  - **Still open:** CF-4's remaining Markdown checks (#277), CF-7's clarifications, live-provider
+    acceptance and human VoiceOver checks.
 
 - **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
   transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block

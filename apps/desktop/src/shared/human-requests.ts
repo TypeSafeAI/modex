@@ -7,7 +7,7 @@
  *
  * Pure and serializable, shared by main (which owns the authoritative state) and clients.
  */
-import type { BackendId } from "./types.js";
+import type { AnswerDelivery, BackendId } from "./types.js";
 
 export const HUMAN_REQUEST_SCHEMA = 1 as const;
 
@@ -133,6 +133,18 @@ export function validateAnswers(questions: readonly Question[], answers: unknown
     if (q.options && !q.allowOther && !given.every((a) => q.options!.some((o) => o.label === a))) return { ok: false, error: `${q.header || q.text}: choose one of the options.` };
   }
   return { ok: true, answers: answers as Record<string, string[]> };
+}
+
+/**
+ * What a closed card adds under its answer: that the phone gave it, and that nobody can tell whether the CLI
+ * received it. An answer given in this window and sent, or saved before these fields existed, adds nothing.
+ */
+export function answerNote(card: { answeredBy?: string; delivery?: AnswerDelivery }): string | null {
+  const notes = [
+    card.answeredBy === "phone" ? "Answered on your phone." : "",
+    card.delivery === "uncertain" ? "Modex stopped before it could confirm the agent received this answer." : "",
+  ].filter(Boolean);
+  return notes.length ? notes.join(" ") : null;
 }
 
 /** Answers as they may be shown, saved or exported: a secret answer is "(hidden)". */
