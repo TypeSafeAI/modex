@@ -144,6 +144,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
   search no status or error field. Its completion is its only report, so a completed search now
   reads as done and folds like other finished work (#277).
+- **A project can move to a new workspace from the chat sidebar.** Its menu has **Move to new
+  workspace…**, which names a workspace and moves the project into it in one step, even while there
+  is only the default workspace. Before, a new workspace had to be made in Space first.
 
 ## In flight
 

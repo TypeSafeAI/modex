@@ -538,6 +538,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, [projectKey, surface, spaceEnabled]);
   const openNotes = (projectId: string) => { setOpenProject({ projectId, nonce: Date.now() }); setSpaceOpened(true); setSurface("space"); };
   const moveToWorkspace = (projectId: string, workspaceId: string) => void act(async () => { setWorkspaces(await bridge.invoke("project:workspace", { projectId, workspaceId })); });
+  const moveToNewWorkspace = (projectId: string, name: string) => void act(async () => { setWorkspaces(await bridge.invoke("project:new-workspace", { projectId, name })); });
   const act = async <T,>(fn: () => Promise<T>, { retry = true }: { retry?: boolean } = {}): Promise<T | undefined> => {
     try {
       if (nativeHoldRef.current || nativeLoading || nativeRecoveryError) throw new Error("Wait for draft recovery to finish.");
@@ -928,7 +929,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
             onRemoveProject={removeProject}
             unsent={unsent}
             agents={activeAgents}
-            {...(spaceEnabled ? { workspaces, onOpenNotes: openNotes, onMoveToWorkspace: moveToWorkspace } : {})}
+            {...(spaceEnabled ? { workspaces, onOpenNotes: openNotes, onMoveToWorkspace: moveToWorkspace, onMoveToNewWorkspace: moveToNewWorkspace } : {})}
           />
         )}
         <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
