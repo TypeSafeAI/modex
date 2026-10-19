@@ -389,7 +389,7 @@ test("companion sets a thread's approval policy, and 'Always allow' answers the 
   const server = new CompanionServer(home, {
     state: () => state, items: () => items, status: () => "waiting", send: async () => ({ ok: true }),
     answer: (_id, item, value) => { calls.push(`answer:${item}:${value}`); },
-    setApprovals: (_id, policy) => { calls.push(`policy:${policy}`); },
+    setApprovals: (_id, policy, by?: string) => { calls.push(`policy:${policy}:${by}`); },
     pullRequest: () => ({ state: "open", number: 7, title: "private title", url: "https://github.com/o/r/pull/7" }),
   }, () => ["127.0.0.1"]);
   try {
@@ -415,7 +415,7 @@ test("companion sets a thread's approval policy, and 'Always allow' answers the 
     assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "no", policy: "always" })).status, 400, "Always allow cannot ride on a denial");
     assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes", policy: "yolo" })).status, 400, "YOLO is set on its own, never as a side effect of answering");
     assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes", policy: "always" })).status, 200);
-    assert.deepEqual(calls, ["policy:always", "policy:always", "answer:approval-1:yes"]);
+    assert.deepEqual(calls, ["policy:always:phone", "policy:always:phone", "answer:approval-1:yes"], "a policy the phone sets says so, since YOLO answers what is waiting");
   } finally {
     await server.stop();
     fs.rmSync(home, { recursive: true, force: true });

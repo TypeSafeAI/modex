@@ -21,8 +21,8 @@ interface CompanionSource {
   send(threadId: string, text: string): Promise<{ ok: boolean; error?: string }>;
   /** `by` names the client for the request broker (docs/human-requests.md). A refusal is a 409 for the phone. */
   answer(threadId: string, itemId: string, answer: ApprovalAnswer, by?: string): AnswerResult | void;
-  /** Sets the thread's standing answer to approvals (Always allow / YOLO). */
-  setApprovals?(threadId: string, approvals: ApprovalPolicy): void;
+  /** Sets the thread's standing answer to approvals (Always allow / YOLO). `by` answers what YOLO clears. */
+  setApprovals?(threadId: string, approvals: ApprovalPolicy, by?: string): void;
   /** Puts a thread away or brings it back. The Mac refuses while the thread is working. */
   setArchived?(threadId: string, archived: boolean): void;
   /** The pull request last seen for a worktree task, if any. */
@@ -324,7 +324,7 @@ export class CompanionServer {
       const policy = input.policy;
       if (typeof policy !== "string" || !APPROVAL_POLICIES.includes(policy as ApprovalPolicy)) { this.reply(res, 400, { error: "Choose Ask, Always allow or YOLO." }); return; }
       if (!this.source.setApprovals) { this.reply(res, 501, { error: "Approval settings are unavailable." }); return; }
-      this.source.setApprovals(threadId, policy as ApprovalPolicy);
+      this.source.setApprovals(threadId, policy as ApprovalPolicy, "phone");
       this.reply(res, 200, { ok: true });
       return;
     }
@@ -356,7 +356,7 @@ export class CompanionServer {
     if (standing === "always" && answer !== "yes") { this.reply(res, 400, { error: "Always allow only applies to an approval." }); return; }
     const pending = this.source.items(threadId).some((item) => item.kind === "approval" && item.id === itemId && !item.answer);
     if (!pending || this.source.status(threadId) !== "waiting") { this.reply(res, 409, { error: "This approval is no longer pending." }); return; }
-    if (standing === "always") this.source.setApprovals?.(threadId, "always");
+    if (standing === "always") this.source.setApprovals?.(threadId, "always", "phone");
     const result = this.source.answer(threadId, itemId, answer, "phone");
     if (result && !result.ok) { this.reply(res, 409, { error: "This approval is no longer pending." }); return; }
     this.reply(res, 200, { ok: true });
