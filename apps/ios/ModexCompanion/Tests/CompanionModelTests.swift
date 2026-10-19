@@ -577,6 +577,35 @@ import XCTest
         XCTAssertNil(model.error)
     }
 
+    func testARefusedAnswerRefreshesSoTheCardShowsWhatHappenedOnTheMac() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        let before = await client.snapshotRequests
+        let refused = Pending<Void>(requested: expectation(description: "answer"))
+        await refused.resolve(.failure(CompanionError.message("This approval is no longer pending.")))
+        await client.enqueueAnswer(refused)
+        await model.answer(itemId: "approval-a", approve: true)
+        await fulfillment(of: [refused.requested], timeout: 2)
+        let after = await client.snapshotRequests
+        XCTAssertEqual(after, before + 1, "A 409 most often means the Mac or another client already settled it, so read its current state.")
+        XCTAssertEqual(model.error, "This approval is no longer pending.")
+        XCTAssertNil(model.answeringId)
+    }
+
+    func testARefusedAlwaysAllowAlsoRefreshes() async {
+        let (model, client) = fixture()
+        await model.select("a")
+        let before = await client.snapshotRequests
+        let refused = Pending<Void>(requested: expectation(description: "answer"))
+        await refused.resolve(.failure(CompanionError.message("This approval is no longer pending.")))
+        await client.enqueueAnswer(refused)
+        await model.approveAlways(itemId: "approval-a")
+        await fulfillment(of: [refused.requested], timeout: 2)
+        let after = await client.snapshotRequests
+        XCTAssertEqual(after, before + 1)
+        XCTAssertEqual(model.error, "This approval is no longer pending.")
+    }
+
     func testPendingRetainsTheFirstResultBeforeARequest() async {
         let results: [Result<Int, Error>] = [.success(42), .failure(PendingFixtureFailure.expected)]
         for result in results {

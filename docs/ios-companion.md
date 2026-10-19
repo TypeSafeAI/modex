@@ -34,7 +34,9 @@ The server needs the Mac app to be running. There is no relay or internet endpoi
 An approval card offers **Approve once**, **Deny**, and **Always allow in this thread**, each
 confirmed on the phone. The thread's Approvals menu sets Ask each time, Always allow, or YOLO;
 see [thread policy](approval-rules.md#thread-policy-always-allow-and-yolo). Approvals the Mac
-answered itself show how ("Approved automatically · YOLO").
+answered itself show how ("Approved automatically · YOLO"). When the Mac refuses an answer, most often
+because the request was already answered there, withdrawn or stopped, the phone shows the Mac's reason
+and reads the thread again at once, so the card does not stay actionable until the next poll.
 
 The skill and command picker shows each skill's complete description, wrapped, with the command
 above it. Descriptions are read from the skill's frontmatter on the Mac; the user's home folder
