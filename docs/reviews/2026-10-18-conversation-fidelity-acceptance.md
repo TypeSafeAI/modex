@@ -7,20 +7,21 @@ recorded as live-provider or human acceptance.
 
 ## Candidate
 
-No integrated candidate is pinned yet: CF-2 (#275, PR #286) and CF-3 (#276) have not landed, and
-several children have parts still open. Each row names the build it was checked on.
+Every child's slice for this gate has landed, so the fixture rows below run on `main`. No candidate
+is pinned yet, because the live-provider and human gates are still open. Each row names the build it
+was checked on.
 
 ## Children
 
 | Child | Landed | State |
 | --- | --- | --- |
 | CF-1 #274: identity, phases, outcomes | #282 → `7780093` | Done; closed |
-| CF-2 #275: Claude Stop and cleanup | PR #286, green, waiting to update over CF-4 | Owned by another session |
-| CF-3 #276: human requests | In progress, stacked on PR #286 | Not landed |
-| CF-4 #277: typed turns, Markdown | #284 → `8e26534` (typed turns); Markdown slice is PR #283 | Partial |
+| CF-2 #275: Claude Stop and cleanup | #286 → `6db0818` | Landed |
+| CF-3 #276: human requests | #293 → `57e7607` | Landed; a live Codex question capture is open |
+| CF-4 #277: typed turns, Markdown | #284 → `8e26534` (typed turns); #283 → `a4039b2` (Markdown) | Partial: remaining Markdown checks |
 | CF-5 #278: evidence | #287 → `d3711c6` (first part) | Partial |
-| CF-6 #279: journal and clients | #285 → `fb76aac` (CF-1 half) | Partial; request half waits for CF-3 |
-| CF-7 #280: plans and Notes | #289 → `f6976df` (first part) | Partial; question cards wait for CF-3 |
+| CF-6 #279: journal and clients | #285 → `fb76aac` (CF-1 half); #308 → `d625eda` (request half) | Landed; phone question answers are open |
+| CF-7 #280: plans and Notes | #289 → `f6976df` (first part); #312 → `f4cd67f` (clarifications) | Landed; verified steps are open |
 
 ## Integration matrix
 
