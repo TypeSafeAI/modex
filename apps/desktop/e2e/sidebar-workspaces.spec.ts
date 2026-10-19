@@ -51,6 +51,42 @@ test("each project has notes, and a second workspace groups the sidebar's projec
   }
 });
 
+test("Move to new workspace makes the workspace and moves the project in one step; Escape makes nothing", async () => {
+  const { home, repo } = seedHome();
+  const project = path.basename(repo);
+  const { app, page } = await launch(home);
+  try {
+    await expect.poll(() => fs.existsSync(path.join(home, "notes", "Personal", project, ".modex-project.json"))).toBe(true);
+    const field = page.getByRole("textbox", { name: "New workspace name" });
+
+    // Escape leaves everything as it was.
+    await tid(page, "project-menu").click();
+    await tid(page, "project-new-workspace").click();
+    await expect(field).toBeFocused();
+    await field.fill("Nowhere");
+    await page.keyboard.press("Escape");
+    await expect(field).toHaveCount(0);
+    expect(fs.existsSync(path.join(home, "notes", "Nowhere"))).toBe(false);
+    await expect(tid(page, "workspace-group")).toHaveCount(0);
+
+    // With only the default workspace, the project can still go to a new one.
+    await tid(page, "project-menu").click();
+    await tid(page, "project-new-workspace").click();
+    await field.fill("Clients");
+    await page.keyboard.press("Enter");
+    await expect(tid(page, "workspace-group")).toHaveCount(1);
+    await expect(tid(page, "workspace-group")).toHaveAccessibleName("Clients");
+    await expect(tid(page, "workspace-group").locator('[data-testid="project"]')).toHaveCount(1);
+    await expect(field).toHaveCount(0);
+    expect(fs.existsSync(path.join(home, "notes", "Clients", project, ".modex-project.json"))).toBe(true);
+    expect(fs.existsSync(path.join(home, "notes", "Personal", project))).toBe(false);
+  } finally {
+    await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("Open notes consumes its focus across polls and remounts, and accepts a fresh request", async () => {
   const { home, repo } = seedHome();
   const project = path.basename(repo);

@@ -31,12 +31,16 @@ interface Props {
   /** Opens the project's notes in Space. */
   onOpenNotes?: (projectId: string) => void;
   onMoveToWorkspace?: (projectId: string, workspaceId: string) => void;
+  /** Makes a notes workspace with this name and moves the project into it. */
+  onMoveToNewWorkspace?: (projectId: string, name: string) => void;
 }
 
 /** Threads shown per project before "Show more". */
 export const THREADS_PER_PROJECT = 5;
 
-export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onArchiveThread, onRemoveProject, unsent, agents = [], workspaces, onOpenNotes, onMoveToWorkspace }: Props) {
+export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onArchiveThread, onRemoveProject, unsent, agents = [], workspaces, onOpenNotes, onMoveToWorkspace, onMoveToNewWorkspace }: Props) {
+  /** The project whose "Move to new workspace" name field is open, and what is typed in it. */
+  const [naming, setNaming] = useState<{ projectId: string; value: string } | null>(null);
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState<Record<string, boolean>>({});
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -152,10 +156,38 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
                   <RowMenu label="Project actions" testId="project-menu">
                     {onOpenNotes && <MenuItem data-testid="project-notes" onClick={() => onOpenNotes(p.id)}>Open notes</MenuItem>}
                     {grouped && onMoveToWorkspace && ordered.filter(w => w.id !== homeOf(p.id)?.id).map(w => <MenuItem key={w.id} onClick={() => onMoveToWorkspace(p.id, w.id)}>Move to {w.name}</MenuItem>)}
+                    {onMoveToNewWorkspace && <MenuItem data-testid="project-new-workspace" onClick={() => setNaming({ projectId: p.id, value: "" })}>Move to new workspace…</MenuItem>}
                     <MenuItem data-testid="project-remove" className="danger" onClick={() => onRemoveProject(p.id)}>Remove project</MenuItem>
                   </RowMenu>
                 </span>
               </div>
+              {naming?.projectId === p.id && (
+                <div className="sidebar-search workspace-name">
+                  <Icon name="grid" size={14} />
+                  {/* Enter makes the workspace and moves the project; Escape or leaving the field makes nothing. */}
+                  <SecretInput
+                    autoFocus
+                    aria-label="New workspace name"
+                    placeholder="Workspace name"
+                    value={naming.value}
+                    spellCheck={false}
+                    onChange={(e) => setNaming({ projectId: p.id, value: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const name = naming.value.trim();
+                        setNaming(null);
+                        if (name) onMoveToNewWorkspace?.(p.id, name);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setNaming(null);
+                      }
+                    }}
+                    onBlur={() => setNaming(null)}
+                  />
+                </div>
+              )}
               {!isCollapsed && (
                 <ul className="threads">
                   {all.length === 0 && <li className="side-hint small">No threads</li>}

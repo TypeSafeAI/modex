@@ -140,6 +140,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
   Main reads only the named files inside the thread's folder and returns verdicts, never contents.
   Codex file changes now keep their per-file paths beside the patch.
+- **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
+  unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
+  search no status or error field. Its completion is its only report, so a completed search now
+  reads as done and folds like other finished work (#277).
+- **A project can move to a new workspace from the chat sidebar.** Its menu has **Move to new
+  workspace…**, which names a workspace and moves the project into it in one step, even while there
+  is only the default workspace. Before, a new workspace had to be made in Space first.
 - **A long command's full log can be read** (part of #278). A command whose output passed the 256 KB
   preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
   back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000

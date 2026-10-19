@@ -66,6 +66,28 @@ test("the workspace summary says which Modex projects each workspace holds", () 
   assert.equal(notes.projectFor("p1")?.rel, "Clients/site", "a project moved between workspaces keeps its link");
 });
 
+test("a project moves into a new workspace in one step, and a failed move leaves no empty workspace", () => {
+  const home = tmpdir("modex-notes-projects-");
+  const store = new Store(home);
+  const repo = gitRepo();
+  const project = store.addProject(repo);
+  const summaries = store.space.moveProjectToNewWorkspace(project, "Clients");
+  assert.deepEqual(summaries.map(w => w.name).sort(), ["Clients", "Personal"]);
+  assert.deepEqual(summaries.find(w => w.name === "Clients")!.modexProjectIds, [project.id]);
+  assert.equal(marker(home, "Clients", path.basename(repo)).modexProjectId, project.id);
+  assert.equal(fs.existsSync(path.join(home, "notes", "Personal", path.basename(repo))), false);
+
+  const other = store.addProject(gitRepo());
+  const move = store.space.moveNodes;
+  store.space.moveNodes = () => { throw new Error("disk full"); };
+  try { assert.throws(() => store.space.moveProjectToNewWorkspace(other, "Archive"), /disk full/); }
+  finally { store.space.moveNodes = move; }
+  assert.deepEqual(store.space.workspaces().map(w => w.name).sort(), ["Clients", "Personal"], "the workspace made for a failed move is gone again");
+  assert.equal(fs.existsSync(path.join(home, "notes", "Archive")), false);
+  assert.throws(() => store.space.moveProjectToNewWorkspace(other, "   "), /Name the workspace/);
+  assert.equal(store.space.workspaces().length, 2);
+});
+
 test("a project folder copied in Finder becomes a project of its own instead of making the notes unreadable", () => {
   const home = tmpdir("modex-notes-copies-");
   const notes = new NotesStore(path.join(home, "notes"));

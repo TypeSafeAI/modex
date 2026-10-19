@@ -385,6 +385,7 @@ body[data-streamer-mode="true"] ::search-text { color: transparent; background-c
 .sidebar-search:focus-within { border-color: var(--accent); }
 .sidebar-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-1); font-size: var(--text-md); }
 .sidebar-search input::placeholder { color: var(--text-placeholder); }
+.sidebar-search.workspace-name { margin: 2px 19px 4px 24px; }
 
 .side-row { position: relative; display: flex; align-items: center; height: var(--row-h); flex: none; margin: 0 8px 1px; border-radius: var(--radius-row); color: var(--text-2); font-size: var(--text-md); }
 .side-row:hover { background: var(--bg-row-hover); }
