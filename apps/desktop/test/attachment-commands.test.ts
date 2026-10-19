@@ -62,6 +62,18 @@ test("attachment commands reveal every type through store resolution and refuse 
   fs.rmSync(home, { recursive: true, force: true });
 });
 
+test("an attachment whose file was deleted cannot be opened, and nothing is revealed", async () => {
+  const { registerAttachmentCommands } = await import("../src/main/attachment-commands.js");
+  const home = tmpdir(); const store = new AttachmentStore(path.join(home, "attachments"));
+  const handlers = new Map<string, (payload: any) => any>(); const revealed: string[] = [];
+  registerAttachmentCommands(((channel, handler) => handlers.set(channel, handler)) as RegisterCommand, store, { bytesOnly: true, reveal: file => { revealed.push(file); } });
+  const attachment = store.stage([{ name: "notes.txt", mime: "text/plain", data: Buffer.from("kept for later").toString("base64") }]).staged[0]!;
+  fs.rmSync(store.resolve(attachment.rel)!);
+  await assert.rejects(handlers.get("attachments:open")!({ rel: attachment.rel }), /no longer on disk/);
+  assert.deepEqual(revealed, []);
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
 test("thumbnail descriptor revalidation rejects a file replaced during the read", () => {
   const home = tmpdir(); const store = new AttachmentStore(path.join(home, "attachments"));
   const data = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
