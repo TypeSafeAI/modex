@@ -5,8 +5,10 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { DESKTOP_PROTOCOL } from "../../shared/desktop-protocol.js";
+import { DESKTOP_ITEM_KINDS_HEADER, DESKTOP_PROTOCOL } from "../../shared/desktop-protocol.js";
+import type { ThreadEvent, ThreadItem } from "../../shared/types.js";
 import { publishDesktop } from "./desktop-discovery.js";
+import { clientKinds, eventForClient, itemForClient } from "./desktop-items.js";
 import type { EventJournal, JournalEntry } from "./event-journal.js";
 
 const hash = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
@@ -28,6 +30,8 @@ interface HostSource {
    * cursors (`broadcastJournal`), and a reconnecting client resumes after its cursor.
    */
   journal?(): Pick<EventJournal, "resume"> | undefined;
+  /** A transcript item as it is now, sent whole to a client that cannot draw its kind when it changes. */
+  item?(threadId: string, itemId: string): ThreadItem | undefined;
 }
 
 /** Full desktop authority requires its own invitation; phone credentials never enter this transport. */
@@ -39,6 +43,8 @@ export class DesktopHost {
   private port = 0;
   private invitation?: { hash: string; expires: number };
   private readonly streams = new Map<ServerResponse, string>();
+  /** The item kinds each stream's client draws (desktop-items.ts). */
+  private readonly kinds = new WeakMap<ServerResponse, ReadonlySet<string>>();
   private readonly pending = new Set<ServerResponse>();
   private unpublish?: () => void;
   private authorizing = false;
@@ -116,12 +122,22 @@ export class DesktopHost {
   }
 
   broadcast(kind: "thread" | "terminal", event: unknown): void {
-    this.write(`event: ${kind}\ndata: ${JSON.stringify(event)}\n\n`);
+    if (kind === "terminal") this.write(() => `event: terminal\ndata: ${JSON.stringify(event)}\n\n`);
+    else this.write((kinds) => `event: thread\ndata: ${JSON.stringify(this.eventFor(event as ThreadEvent, kinds))}\n\n`);
   }
 
   /** Journaled thread events, each with its cursor, as the journal writes them. */
   broadcastJournal(entries: JournalEntry[]): void {
-    if (entries.length) this.write(entries.map(threadFrame).join(""));
+    if (entries.length) this.write((kinds) => entries.map((entry) => threadFrame(this.entryFor(entry, kinds))).join(""));
+  }
+
+  private eventFor(event: ThreadEvent, kinds: ReadonlySet<string>): ThreadEvent {
+    return eventForClient(event, kinds, (threadId, itemId) => this.source.item?.(threadId, itemId));
+  }
+
+  private entryFor(entry: JournalEntry, kinds: ReadonlySet<string>): JournalEntry {
+    const event = this.eventFor(entry.event, kinds);
+    return event === entry.event ? entry : { ...entry, event };
   }
 
   /** End every event stream so each client reconnects and reloads; used when the journal stops. */
@@ -130,8 +146,14 @@ export class DesktopHost {
     this.streams.clear();
   }
 
-  private write(message: string): void {
+  /** Writes to every stream, framing once for each set of item kinds its clients draw. */
+  private write(frame: (kinds: ReadonlySet<string>) => string): void {
+    const framed = new Map<string, string>();
     for (const stream of this.streams.keys()) {
+      const kinds = this.kinds.get(stream) ?? clientKinds(undefined);
+      const key = [...kinds].sort().join(",");
+      const message = framed.get(key) ?? frame(kinds);
+      framed.set(key, message);
       stream.write(message);
       if (stream.writableLength > STREAM_BACKLOG) {
         stream.destroy();
@@ -235,13 +257,15 @@ export class DesktopHost {
       const after = params.get("after");
       const cursor = after !== null && /^\d{1,15}$/.test(after) ? Number(after) : undefined;
       const resume = this.source.journal?.()?.resume(params.get("journal") ?? undefined, cursor);
-      let replay = resume?.entries?.map(threadFrame).join("");
+      const kinds = clientKinds(req.headers[DESKTOP_ITEM_KINDS_HEADER]);
+      let replay = resume?.entries?.map((entry) => threadFrame(this.entryFor(entry, kinds))).join("");
       if (replay !== undefined && Buffer.byteLength(replay) > REPLAY_BYTES) replay = undefined;
       const journal = resume && { id: resume.id, cursor: replay !== undefined ? cursor! : resume.latest, resumed: replay !== undefined };
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
       res.write(`event: connected\ndata: ${JSON.stringify({ protocol: DESKTOP_PROTOCOL, version: this.source.version, ...(journal ? { journal } : {}) })}\n\n`);
       if (replay) res.write(replay);
       this.streams.set(res, grant.id);
+      this.kinds.set(res, kinds);
       const heartbeat = setInterval(() => { if (!res.write(": heartbeat\n\n")) res.destroy(); }, 15_000);
       res.on("close", () => { clearInterval(heartbeat); this.streams.delete(res); });
       return;
@@ -257,7 +281,9 @@ export class DesktopHost {
       if (!authorized()) return this.reply(res, 401, { error: "Desktop access was revoked." });
       const value = await this.source.invoke(channel, payload, authorized);
       if (!authorized()) return this.reply(res, 401, { error: "Desktop access was revoked." });
-      this.reply(res, 200, { value });
+      // A Store build from before CF-3 loads a transcript only through thread:items.
+      const kinds = clientKinds(req.headers[DESKTOP_ITEM_KINDS_HEADER]);
+      this.reply(res, 200, { value: channel === "thread:items" && Array.isArray(value) ? value.map((item: ThreadItem) => itemForClient(item, kinds)) : value });
     } catch (error) {
       this.reply(res, 400, { error: error instanceof Error ? error.message : "Desktop command failed." });
     }

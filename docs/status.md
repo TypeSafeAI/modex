@@ -108,6 +108,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     CLI only. Stop sends Codex an error, never an empty answer. A request Codex settles itself closes
     as withdrawn, and cards a restarted Modex left open close as ended everywhere. Phones show
     questions as text to answer on the Mac. Scripted fixtures only. [Human requests](human-requests.md).
+  - **Older paired desktops read questions (CF-6 #279).** A Store build from before CF-3, such as
+    TestFlight Store 0.0.8, showed nothing for a Codex question or a plan, so the thread looked stuck.
+    Current clients name the item kinds they draw, and the host sends a client that names none those
+    two as notices with the question text and its state. [Older paired desktops](human-requests.md).
   - **Requests across replay and reconnect (CF-6 #279, request half).** A card records who answered
     (this Mac's window, a paired desktop or the phone) and whether the answer reached the CLI, and the
     journal, snapshots, paired desktops and the phone carry it. Switching a thread to YOLO answers what

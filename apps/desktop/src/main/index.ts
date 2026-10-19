@@ -1056,6 +1056,7 @@ function startDesktopHost(): Promise<void> {
     desktopHost = new DesktopHost(home, {
       version: app.getVersion(),
       journal: () => journal,
+      item: (threadId, itemId) => runner.items(threadId).find((item) => item.id === itemId),
       channels: () => [...desktopCommands.keys()],
       authorize: (confirmationCode, signal) => restartAdmission.run(async () => {
         check();
