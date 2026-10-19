@@ -1047,7 +1047,8 @@ export class ThreadRunner {
     this.o.emit({ threadId, type: "thread", thread: t });
   }
 
-  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean } = {}): Thread {
+  /** `by` is the client that made the change; switching to YOLO answers what is waiting as that client. */
+  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean; automaticTitle?: boolean; by?: string } = {}): Thread {
     // Already-admitted turns can finish routing and naming during owner removal.
     // External edits remain fenced until the renderer adopts the canonical state.
     if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
@@ -1068,7 +1069,7 @@ export class ThreadRunner {
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch, ...titleSource });
     this.o.emit({ threadId, type: "thread", thread: t });
     // Switching to YOLO also clears what is already waiting; Always allow leaves it, since it cannot tell which of those are escalations.
-    if (patch.approvals === "yolo") for (const [id, pending] of [...this.slot(threadId).pending]) if (pending.kind === "approval") this.answer(threadId, id, "yes");
+    if (patch.approvals === "yolo") for (const [id, pending] of [...this.slot(threadId).pending]) if (pending.kind === "approval") this.answer(threadId, id, "yes", opts.by);
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
     const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");

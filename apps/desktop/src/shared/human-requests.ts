@@ -136,12 +136,12 @@ export function validateAnswers(questions: readonly Question[], answers: unknown
 }
 
 /**
- * What a closed card adds under its answer: that the phone gave it, and that nobody can tell whether the CLI
- * received it. An answer given in this window and sent, or saved before these fields existed, adds nothing.
+ * What a closed card adds under its answer: that the phone or a paired desktop gave it, and that nobody can tell
+ * whether the CLI received it. An answer given in this window and sent, or saved before these fields existed, adds nothing.
  */
 export function answerNote(card: { answeredBy?: string; delivery?: AnswerDelivery }): string | null {
   const notes = [
-    card.answeredBy === "phone" ? "Answered on your phone." : "",
+    card.answeredBy === "phone" ? "Answered on your phone." : card.answeredBy === "paired-desktop" ? "Answered from a paired desktop." : "",
     card.delivery === "uncertain" ? "Modex stopped before it could confirm the agent received this answer." : "",
   ].filter(Boolean);
   return notes.length ? notes.join(" ") : null;
