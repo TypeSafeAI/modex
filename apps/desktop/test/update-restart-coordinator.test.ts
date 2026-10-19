@@ -223,3 +223,12 @@ test("renderer navigation during service drain cannot admit a native update", as
   assert.equal(h.recovery.read().attempt, null);
   assert.equal(h.admission.held, true);
 });
+
+test("install-on-quit stages the update without asking Squirrel to relaunch", async t => {
+  const h = harness(t);
+  assert.deepEqual(await h.coordinator.restart(candidate, { relaunch: false }), { outcome: "staged" });
+  assert.ok(h.events.indexOf("drain") < h.events.indexOf("native"));
+  assert.equal(h.events.includes("quit"), false, "the ordinary quit that follows installs the staged update");
+  assert.equal(h.recovery.read().attempt?.outcome, "staged");
+  assert.equal(h.coordinator.state, "staged");
+});

@@ -26,7 +26,9 @@ async function counts(app: ElectronApplication) {
   });
 }
 
+/** Quits, checks the evidence every test shares and returns it for the test's own checks. */
 async function cleanup(app: ElectronApplication, home: string, repo: string) {
+  let final: { nativeCalls: number; downloadedDisposed: number; stagedDisposed: number; quitStages: number } | undefined;
   try {
     // An assertion can fail while the fake verifier is suspended. Release it so
     // production disposal can finish and the failed test cannot retain Electron.
@@ -34,8 +36,9 @@ async function cleanup(app: ElectronApplication, home: string, repo: string) {
   } finally {
     try {
       await app.close();
-      const final = JSON.parse(fs.readFileSync(path.join(home, "final-installation-evidence.json"), "utf8"));
-      expect(final.nativeCalls).toBe(0); expect(final.downloadedDisposed).toBe(final.stagedDisposed);
+      final = JSON.parse(fs.readFileSync(path.join(home, "final-installation-evidence.json"), "utf8"));
+      // quitAndInstall relaunches; install-on-quit only stages and lets the quit finish.
+      expect(final!.nativeCalls).toBe(0); expect(final!.downloadedDisposed).toBe(final!.stagedDisposed);
       const receipt = test.info().outputPath("installation-controller-evidence.json");
       fs.writeFileSync(receipt, JSON.stringify(final));
       await test.info().attach("installation-controller-evidence", { path: receipt, contentType: "application/json" });
@@ -45,28 +48,34 @@ async function cleanup(app: ElectronApplication, home: string, repo: string) {
       fs.rmSync(repo, { recursive: true, force: true });
     }
   }
+  return final!;
 }
 
-test("installation UI shows progress, cancels and retries, then refuses restart with open Settings", async () => {
+test("installation downloads by itself, cancels and retries, refuses restart with open Settings, then installs on quit", async () => {
   test.skip(process.platform !== "darwin", "macOS native update controller");
   const { home, repo, app, page } = await launchInstallation();
+  let final;
   try {
     const banner = tid(page, "update-banner");
-    await expect(banner.getByRole("button", { name: "Download update", exact: true })).toBeVisible();
-    await banner.getByRole("button", { name: "Download update", exact: true }).click();
+    // Nobody clicks: finding the release starts the download.
     await expect(page.getByRole("progressbar", { name: "Update download" })).toHaveAttribute("value", "25");
     await expect(banner).toContainText("Downloading the update…");
     await expect(banner.getByRole("button", { name: "Dismiss update notification" })).toHaveCount(0);
     await banner.getByRole("button", { name: "Cancel download", exact: true }).click();
     await expect(banner).toContainText("Update preparation cancelled.");
+    // A cancelled version stays cancelled when the window regains focus.
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(banner.getByRole("button", { name: "Download update", exact: true })).toBeVisible();
+    expect((await counts(app)).downloads).toBe(1);
     await banner.getByRole("button", { name: "Download update", exact: true }).click();
     await expect(banner).toContainText("Downloading the update…");
     await finishDownload(app);
     await expect(banner).toContainText("Verifying the publisher and update…");
     await finishVerification(app, true);
     await expect(banner.getByRole("button", { name: "Restart to update", exact: true })).toBeEnabled();
-    await expect(banner).toContainText("Verified and ready.");
-    await expect(banner.getByRole("button", { name: "Dismiss update notification" })).toHaveCount(0);
+    await expect(banner).toContainText("Modex 999.0.0 is ready to install");
+    await expect(banner).toContainText("installs the next time you quit");
+    await expect(banner.getByRole("link", { name: "What’s new" })).toHaveAttribute("href", "https://github.com/TypeSafeAI/modex/releases/tag/v999.0.0");
     await tid(page, "open-settings").click();
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     // Settings may still have admitted a model/health request. Its ordinary-work
@@ -84,8 +93,9 @@ test("installation UI shows progress, cancels and retries, then refuses restart 
     expect(await counts(app)).toEqual({ downloads: 2, downloadedDisposed: 1, stagedDisposed: 0, nativeCalls: 0 });
     await banner.screenshot({ path: test.info().outputPath("update-ready-after-refusal.png") });
   } finally {
-    await cleanup(app, home, repo);
+    final = await cleanup(app, home, repo);
   }
+  expect(final.quitStages).toBe(1);
 });
 
 test("failed publisher verification offers retry and never exposes an install action", async () => {
@@ -93,8 +103,6 @@ test("failed publisher verification offers retry and never exposes an install ac
   const { home, repo, app, page } = await launchInstallation();
   try {
     const banner = tid(page, "update-banner");
-    await expect(banner.getByRole("button", { name: "Download update", exact: true })).toBeVisible();
-    await banner.getByRole("button", { name: "Download update", exact: true }).click();
     await expect(banner).toContainText("Downloading the update…");
     await finishDownload(app);
     await expect(banner).toContainText("Verifying the publisher and update…");
@@ -102,7 +110,7 @@ test("failed publisher verification offers retry and never exposes an install ac
     await expect(banner).toContainText("could not be downloaded or verified");
     await expect(tid(banner, "update-error-detail")).toHaveText("Publisher verification failed");
     await expect(banner.getByRole("button", { name: "Restart to update", exact: true })).toHaveCount(0);
-    await expect(banner.getByRole("link", { name: "View update" })).toHaveAttribute("href", "https://github.com/TypeSafeAI/modex/releases/tag/v999.0.0");
+    await expect(banner.getByRole("link", { name: "What’s new" })).toHaveAttribute("href", "https://github.com/TypeSafeAI/modex/releases/tag/v999.0.0");
     await expect.poll(() => counts(app)).toEqual({ downloads: 1, downloadedDisposed: 1, stagedDisposed: 1, nativeCalls: 0 });
     await banner.getByRole("button", { name: "Download update", exact: true }).click();
     await expect(banner).toContainText("Downloading the update…");
