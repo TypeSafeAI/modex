@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AnswerResult, ThreadItem } from "../../../shared/types";
-import type { Question } from "../../../shared/human-requests";
+import { answerNote, type Question } from "../../../shared/human-requests";
 
 type QuestionEntry = Extract<ThreadItem, { kind: "question" }>;
 
@@ -85,6 +85,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
           )}
         </div>
       ))}
+      {item.answers && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
       {item.withdrawn ? <div className="approval-answer" data-testid="question-closed">{CLOSED[item.withdrawn]}</div> : open && (
         <div className="row">
           <button className="btn primary small" data-testid="question-submit" disabled={sending} onClick={() => void submit()}>Send answers</button>

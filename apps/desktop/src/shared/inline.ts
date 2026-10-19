@@ -1,6 +1,7 @@
 /**
- * Inline Markdown as tokens: code, bold, links and bare URLs. Pure, so the renderer's Markdown is a
- * thin mapper over it and the rules are unit-tested from test/inline.test.ts.
+ * Inline Markdown as tokens: code, bold, links and bare URLs. Pure, so Canvas's Markdown preview is a
+ * thin mapper over it and the rules are unit-tested from test/inline.test.ts. The transcript parses
+ * with micromark and uses only `safeHref`.
  */
 export type InlineToken =
   | { type: "text"; text: string }

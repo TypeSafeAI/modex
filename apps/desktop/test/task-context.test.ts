@@ -118,6 +118,37 @@ test("a task record summarises request, plan, files, checks and loose ends, with
   for (const absent of ["PRIVATE REASONING", "LOTS OF LOG", "/Users/val", "verified", "Verified"]) assert.ok(!md.includes(absent), `must not include: ${absent}`);
 });
 
+test("a task record lists each clarification with its answer, a secret hidden, and says when one was not answered or not confirmed; it invents none", () => {
+  const at = "2026-10-18T09:00:00.000Z";
+  const q = (id: string, header: string, text: string, secret = false) => ({ id, header, text, options: null, allowOther: true, secret });
+  const items: ThreadItem[] = [
+    { id: "u1", kind: "user", text: "Deploy the fix", at },
+    { id: "ask-1", kind: "question", blocking: true, questions: [q("env", "Environment", "Which environment?"), q("token", "Token", "Paste the deploy token", true)],
+      answers: { env: ["staging"], token: ["(hidden)"] }, answeredBy: "desktop", delivery: "sent", at },
+    { id: "ask-2", kind: "question", blocking: true, questions: [q("branch", "Branch", "Which branch?")], withdrawn: "stopped", at },
+    { id: "ask-3", kind: "question", blocking: true, questions: [q("notes", "Notes", "Add release notes?")], answers: { notes: ["yes"] }, answeredBy: "phone", delivery: "uncertain", at },
+    { id: "ask-4", kind: "question", blocking: false, questions: [q("region", "Region", "Which region?")], withdrawn: "native", at },
+    { id: "f", kind: "assistant", text: "Deployed to staging.", phase: "final", outcome: "succeeded", at },
+  ] as ThreadItem[];
+  const record = taskRecord(items, { threadId: "T", title: "Deploy", cwd: "/repo" });
+  assert.deepEqual(record.clarifications, [
+    { question: "Which environment?", answer: ["staging"] },
+    { question: "Paste the deploy token", answer: ["(hidden)"] },
+    { question: "Which branch?", answer: null, closed: "stopped" },
+    { question: "Add release notes?", answer: ["yes"], uncertain: true },
+    { question: "Which region?", answer: null, closed: "native" },
+  ]);
+  const md = taskMarkdown(record);
+  for (const expected of ["## Clarifications", "- Which environment? — staging", "- Paste the deploy token — (hidden)", "- Which branch? — not answered: the turn was stopped",
+    "- Add release notes? — yes (Modex could not confirm the agent received this answer)", "- Which region? — not answered: the agent withdrew it"]) {
+    assert.ok(md.includes(expected), `missing: ${expected}\n${md}`);
+  }
+  assert.match(md, /## Not settled\n[\s\S]*Which branch\? — not answered[\s\S]*Add release notes\?/);
+  assert.ok(!/Which environment\?[^\n]*\n[\s\S]*## Not settled[\s\S]*Which environment/.test(md), "an answered, sent clarification is settled");
+  // A turn with no questions has no section, and old records read as before.
+  assert.equal(taskMarkdown(taskRecord(items.filter((i) => i.kind !== "question"), { threadId: "T", title: "Deploy", cwd: "/repo" })).includes("Clarifications"), false);
+});
+
 test("Save task to Notes writes the turn's record into its project's notes; saving again updates it, and a note edited since is kept", async () => {
   const { Store } = await import("../src/main/engine/store.js");
   const { ThreadRunner } = await import("../src/main/engine/runner.js");

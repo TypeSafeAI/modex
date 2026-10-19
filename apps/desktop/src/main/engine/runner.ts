@@ -221,6 +221,9 @@ export class ThreadRunner {
         // A card nobody answered: the process that could take the answer is gone, so it closes as ended.
         if (item.kind === "approval" && !item.answer) return { ...item, answer: "no", withdrawn: "ended" };
         if (item.kind === "question" && !item.answers && !item.withdrawn) return { ...item, withdrawn: "ended" };
+        // An answer taken but not recorded as handed to the CLI: nobody can tell whether the CLI got it, and it is
+        // never sent again.
+        if ((item.kind === "approval" || item.kind === "question") && item.delivery === "sending") return { ...item, delivery: "uncertain" };
         if (item.kind !== "tool" || !item.agent || !["running", "waiting"].includes(item.agent.state)) return item;
         return { ...item, status: "done", ok: undefined, agent: { ...item.agent, state: "unknown", detail: "Modex restarted without a final agent status" } };
       });
@@ -944,10 +947,10 @@ export class ThreadRunner {
     const pending = l.pending.get(itemId);
     if (!accepted.ok || pending?.kind !== "approval") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
     l.pending.delete(itemId);
-    this.patchItem(threadId, itemId, { answer });
+    this.patchItem(threadId, itemId, { answer, answeredBy: by, delivery: "sending" });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     pending.settle(answer);
-    l.requests = settleRequest(l.requests, itemId, "sent");
+    this.sent(threadId, l, itemId);
     return { ok: true };
   }
 
@@ -966,11 +969,17 @@ export class ThreadRunner {
     if (!accepted.ok || pending?.kind !== "question") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
     const given = answers as Record<string, string[]>;
     l.pending.delete(itemId);
-    this.patchItem(threadId, itemId, { answers: publicAnswers(pending.questions, given) });
+    this.patchItem(threadId, itemId, { answers: publicAnswers(pending.questions, given), answeredBy: by, delivery: "sending" });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     pending.settle({ answers: given });
-    l.requests = settleRequest(l.requests, itemId, "sent");
+    this.sent(threadId, l, itemId);
     return { ok: true };
+  }
+
+  /** Records that an accepted answer was handed to the CLI, in the broker and on the card. */
+  private sent(threadId: string, l: Live, itemId: string): void {
+    l.requests = settleRequest(l.requests, itemId, "sent");
+    this.patchItem(threadId, itemId, { delivery: "sent" });
   }
 
   /** Takes one answer for a waiting request through the broker, or says why not. */

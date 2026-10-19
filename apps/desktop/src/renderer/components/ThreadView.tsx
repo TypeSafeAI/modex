@@ -4,6 +4,7 @@ import type { AnswerResult, ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
+import { answerNote } from "../../shared/human-requests";
 import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from "../../shared/sources";
 import type { AttachmentActions } from "../composer-attachments";
 import type { Attachment } from "../../shared/attachments";
@@ -380,7 +381,10 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {r?.decision === "ask" && <div className="approval-reason" data-testid="approval-reason">{askedBecause(r)}</div>}
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
-        <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+        <>
+          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+          {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
+        </>
       ) : (
         <div className="row">
           <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
