@@ -79,7 +79,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
       batch was lost silently.
     - A journal a crash or a failed write left open takes a new identity. Cursors from before then
       reload instead of resuming past the gap, so an answered card no longer looks open on a paired
-      desktop after a crash.
+      desktop after a crash, and a card nobody answered reads closed on the phone's first poll.
     - A paired desktop reloads after a frame over 1 MB instead of reconnecting forever.
     - The phone gets a notice for an item kind its Mac doesn't know, instead of rejecting the
       snapshot.
@@ -113,8 +113,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     Current clients name the item kinds they draw, and the host sends a client that names none those
     two as notices with the question text and its state. [Older paired desktops](human-requests.md).
   - **Requests across replay and reconnect (CF-6 #279, request half).** A card records who answered
-    (the Mac or the phone) and whether the answer reached the CLI, and the journal, snapshots, paired
-    desktops and the phone carry it. Replay and reconnect show answered and withdrawn cards inert and
+    (this Mac's window, a paired desktop or the phone) and whether the answer reached the CLI, and the
+    journal, snapshots, paired desktops and the phone carry it. Switching a thread to YOLO answers what
+    is waiting as whoever switched it. Replay and reconnect show answered and withdrawn cards inert and
     never send an answer again. An answer Modex took but could not confirm before a crash says so after
     the restart. A secret answer reaches no file, even with the journal on.
     [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
@@ -134,8 +135,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Clarifications in the task record (CF-7 #280, second part).** A question Codex asks while it
     plans is answered on its card, and the turn's record and Save to Notes list it with its answer,
     a secret hidden. One nobody answered reads "not answered" with why, and is never filled in.
-  - **Still open:** CF-4's remaining Markdown checks (#277), live-provider acceptance and human
-    VoiceOver checks.
+  - **Still open:** live Codex question capture (CF-3 #276), the remaining Markdown checks (CF-4
+    #277), structured web-search results (CF-5 #278), the remaining replay findings (CF-6 #279),
+    verified steps and the read-only task view (CF-7 #280), and live-provider acceptance with human
+    keyboard and VoiceOver checks (CF-8 #281).
 
 - **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
   transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
@@ -154,7 +157,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   reported as applied has **Compare with working tree**. Each file it touched reads as left by the
   turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
   Main reads only the named files inside the thread's folder and returns verdicts, never contents.
-  Codex file changes now keep their per-file paths beside the patch.
+  Codex file changes now keep their per-file paths beside the patch. Edits that only removed text
+  and notebook cells (replaced, inserted or deleted) are compared too.
 - **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
   unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
   search no status or error field. Its completion is its only report, so a completed search now

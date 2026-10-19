@@ -17,14 +17,19 @@ export const PATCH_FILE_MAX_BYTES = 8 * 1024 * 1024;
 
 type Tool = Extract<ThreadItem, { kind: "tool" }>;
 
-/** What the turn left at `path`. `gone`: a moved file's old path, which must stay absent. */
+/**
+ * What the turn left at `path`. `contains`: text that must be there; `lacks`: text a removal took out,
+ * which must still be gone. `gone`: a moved file's old path, which must stay absent. `cell`: a notebook
+ * cell, by its source (replaced or inserted) or by its id being gone (deleted).
+ */
 type Expectation =
   | { path: string; whole: string; gone?: string }
-  | { path: string; contains: string[]; byLine?: true; gone?: string }
+  | { path: string; contains: string[]; lacks?: string[]; byLine?: true; gone?: string }
   | { path: string; absent: true }
+  | { path: string; cell: { id?: string; source?: string; deleted?: true } }
   | { path: string; unknown: string };
 
-const REMOVED_ONLY = "This edit only removed text, so Modex can't tell from it whether the text is still removed.";
+const NOTHING = "This edit has no text on either side, so there is nothing to compare.";
 const NO_RECORD = "This patch was recorded with no per-file record, so Modex can't compare it file by file.";
 const OUTSIDE = "This file is outside this thread's folder, so Modex does not read it.";
 const ESCAPES = "This path leads outside this thread's folder through a link, so Modex does not read it.";
@@ -51,17 +56,28 @@ function expectations(item: Tool): Expectation[] {
   switch (item.name) {
     case "Write":
       return file ? [text(args.content) !== undefined ? { path: file, whole: text(args.content)! } : { path: file, unknown: "This write has no recorded content." }] : [];
-    case "Edit": {
-      const added = text(args.new_string);
-      return file ? [added ? { path: file, contains: [added] } : { path: file, unknown: REMOVED_ONLY }] : [];
-    }
+    // Claude Code's Edit needs old_string to be unique unless replace_all is set, so text an edit only
+    // removed is not in the file afterwards: it holds while that text stays gone.
+    case "Edit":
     case "MultiEdit": {
-      const added = (Array.isArray(args.edits) ? args.edits : []).map((e) => text((e as Record<string, unknown> | null)?.new_string)).filter((t): t is string => Boolean(t));
-      return file ? [added.length ? { path: file, contains: added } : { path: file, unknown: REMOVED_ONLY }] : [];
+      const edits = item.name === "Edit" ? [args] : (Array.isArray(args.edits) ? args.edits as Record<string, unknown>[] : []);
+      const added = edits.map((e) => text(e?.new_string)).filter((t): t is string => Boolean(t));
+      // A removal another edit's new text contains may rightly be back, so it proves nothing.
+      const removed = edits.filter((e) => !text(e?.new_string)).map((e) => text(e?.old_string)).filter((t): t is string => Boolean(t) && !added.some((a) => a.includes(t!)));
+      if (!file) return [];
+      return [added.length || removed.length ? { path: file, contains: added, ...(removed.length ? { lacks: removed } : {}) } : { path: file, unknown: NOTHING }];
     }
+    // Claude Code 2.1.302: notebook_path, cell_id?, new_source, cell_type?, edit_mode (replace, insert, delete).
     case "NotebookEdit": {
       const notebook = text(args.notebook_path);
-      return notebook ? [{ path: notebook, unknown: "Modex does not compare notebook edits." }] : [];
+      if (!notebook) return [];
+      const id = text(args.cell_id) || undefined;
+      const mode = text(args.edit_mode) ?? "replace";
+      if (mode === "delete") return [id ? { path: notebook, cell: { id, deleted: true } } : { path: notebook, unknown: "This delete names no cell, so there is nothing to look for." }];
+      const source = text(args.new_source);
+      if (source === undefined) return [{ path: notebook, unknown: "This notebook edit has no recorded source." }];
+      // An inserted cell gets a new id; cell_id there names the cell it went after.
+      return [{ path: notebook, cell: { ...(mode === "replace" && id ? { id } : {}), source } }];
     }
     default:
       return codexExpectations(args);
@@ -120,7 +136,16 @@ async function check(root: Root, e: Expectation): Promise<PatchFileCheck> {
   if ("missing" in at) return { path: at.rel, state: "deleted" };
   const read = await readBounded(at.real);
   if (typeof read !== "string") return { path: at.rel, state: "unknown", reason: read.reason };
-  const left = "whole" in e ? read === e.whole : e.contains.every((t) => (e.byLine ? `\n${read}\n`.includes(`\n${t}\n`) : read.includes(t)));
+  if ("cell" in e) {
+    const cells = notebookCells(read);
+    if (!cells) return { path: at.rel, state: "unknown", reason: "This is not a readable notebook." };
+    const { id, source, deleted } = e.cell;
+    const holds = deleted ? !cells.some((c) => c.id === id)
+      : cells.some((c) => (id === undefined || c.id === id) && sameSource(c.source, source!));
+    return { path: at.rel, state: holds ? "has-edit" : "changed" };
+  }
+  const left = "whole" in e ? read === e.whole
+    : e.contains.every((t) => (e.byLine ? `\n${read}\n`.includes(`\n${t}\n`) : read.includes(t))) && (e.lacks ?? []).every((t) => !read.includes(t));
   // A moved file's old path counts only when a file is back there, inside the folder.
   if (left && e.gone && "real" in (await locate(root, e.gone))) return { path: at.rel, state: "changed" };
   return { path: at.rel, state: left ? ("whole" in e ? "as-left" : "has-edit") : "changed" };
@@ -163,6 +188,23 @@ function inside(base: string, target: string): string | null {
 function display(root: Root, file: string): string {
   const lexical = path.resolve(root.lexical, file);
   return inside(root.lexical, lexical) ?? inside(root.real, lexical) ?? file;
+}
+
+/** An .ipynb file's cells, with each source joined as Jupyter splits it into lines; null when it is not one. */
+function notebookCells(content: string): { id?: string; source: string }[] | null {
+  try {
+    const value = JSON.parse(content) as { cells?: unknown };
+    if (!Array.isArray(value.cells)) return null;
+    return value.cells.map((c: { id?: unknown; source?: unknown }) => ({
+      ...(typeof c.id === "string" ? { id: c.id } : {}),
+      source: Array.isArray(c.source) ? c.source.join("") : typeof c.source === "string" ? c.source : "",
+    }));
+  } catch { return null; }
+}
+
+/** Jupyter may add or drop a final newline when it saves a cell. */
+function sameSource(a: string, b: string): boolean {
+  return a.replace(/\n$/, "") === b.replace(/\n$/, "");
 }
 
 function text(value: unknown): string | undefined {

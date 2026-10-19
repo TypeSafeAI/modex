@@ -47,12 +47,27 @@ test("an Edit still has the turn's edit while its new text is in the file, and c
   assert.deepEqual(await states(p.cwd, edit), [["greeting.txt", "changed"]]);
 });
 
-test("an Edit that only removed text cannot be checked by its new text and says so", async () => {
+test("an Edit that only removed text holds while the text stays gone, and changed once it is back", async () => {
   const p = project();
   p.write("a.txt", "kept\n");
-  const file = (await checkPatch(p.cwd, tool("Edit", { file_path: p.abs("a.txt"), old_string: "gone\n", new_string: "" }))).files[0]!;
-  assert.equal(file.state, "unknown");
-  assert.match(file.reason!, /removed text/);
+  // Claude Code's Edit requires old_string to be unique, so after the edit it is not in the file.
+  const edit = tool("Edit", { file_path: p.abs("a.txt"), old_string: "gone\n", new_string: "" });
+  assert.deepEqual(await states(p.cwd, edit), [["a.txt", "has-edit"]]);
+  p.write("a.txt", "kept\ngone\n");
+  assert.deepEqual(await states(p.cwd, edit), [["a.txt", "changed"]]);
+  fs.rmSync(p.abs("a.txt"));
+  assert.deepEqual(await states(p.cwd, edit), [["a.txt", "deleted"]]);
+  const empty = (await checkPatch(p.cwd, tool("Edit", { file_path: p.abs("a.txt"), old_string: "", new_string: "" }))).files[0]!;
+  assert.equal(empty.state, "unknown", "an edit with no text on either side says nothing about the file");
+});
+
+test("a MultiEdit checks its added text and its removed text together", async () => {
+  const p = project();
+  p.write("m.ts", "const one = 1;\n");
+  const multi = tool("MultiEdit", { file_path: p.abs("m.ts"), edits: [{ old_string: "const zero = 0;\n", new_string: "" }, { old_string: "a", new_string: "const one = 1;" }] });
+  assert.deepEqual(await states(p.cwd, multi), [["m.ts", "has-edit"]]);
+  p.write("m.ts", "const zero = 0;\nconst one = 1;\n");
+  assert.deepEqual(await states(p.cwd, multi), [["m.ts", "changed"]], "the removed line is back");
 });
 
 test("a MultiEdit has the turn's edit only while every new text is in the file", async () => {
@@ -153,10 +168,38 @@ test("a directory or an oversized file is not compared", async () => {
   assert.match(big.files[0]!.reason!, /too large/);
 });
 
-test("a notebook edit is listed but not compared", async () => {
+/** An nbformat 4.5 notebook, with each cell's source split into lines as Jupyter writes it. */
+const notebook = (cells: { id: string; source: string; cell_type?: string }[]) => JSON.stringify({
+  nbformat: 4, nbformat_minor: 5, metadata: {},
+  cells: cells.map((c) => ({ id: c.id, cell_type: c.cell_type ?? "code", metadata: {}, source: c.source.split(/(?<=\n)/), ...(c.cell_type === "markdown" ? {} : { outputs: [], execution_count: null }) })),
+});
+
+test("a notebook cell the turn replaced or inserted holds while its source is there", async () => {
   const p = project();
-  p.write("n.ipynb", "{}");
-  assert.deepEqual((await checkPatch(p.cwd, tool("NotebookEdit", { notebook_path: p.abs("n.ipynb"), new_source: "x" }))).files.map((f) => [f.path, f.state]), [["n.ipynb", "unknown"]]);
+  p.write("n.ipynb", notebook([{ id: "a1", source: "import os\nprint(os.getcwd())\n" }, { id: "b2", source: "# Notes" , cell_type: "markdown" }]));
+  const replaced = tool("NotebookEdit", { notebook_path: p.abs("n.ipynb"), cell_id: "a1", new_source: "import os\nprint(os.getcwd())\n", edit_mode: "replace" });
+  assert.deepEqual(await states(p.cwd, replaced), [["n.ipynb", "has-edit"]]);
+  const inserted = tool("NotebookEdit", { notebook_path: p.abs("n.ipynb"), new_source: "# Notes", cell_type: "markdown", edit_mode: "insert" });
+  assert.deepEqual(await states(p.cwd, inserted), [["n.ipynb", "has-edit"]], "an inserted cell is found by its source");
+  p.write("n.ipynb", notebook([{ id: "a1", source: "print('changed')\n" }, { id: "b2", source: "# Notes", cell_type: "markdown" }]));
+  assert.deepEqual(await states(p.cwd, replaced), [["n.ipynb", "changed"]]);
+  fs.rmSync(p.abs("n.ipynb"));
+  assert.deepEqual(await states(p.cwd, replaced), [["n.ipynb", "deleted"]]);
+});
+
+test("a deleted notebook cell holds while no cell has its id; an unreadable notebook is not compared", async () => {
+  const p = project();
+  p.write("n.ipynb", notebook([{ id: "keep", source: "x = 1\n" }]));
+  const deleted = tool("NotebookEdit", { notebook_path: p.abs("n.ipynb"), cell_id: "gone", new_source: "", edit_mode: "delete" });
+  assert.deepEqual(await states(p.cwd, deleted), [["n.ipynb", "has-edit"]]);
+  p.write("n.ipynb", notebook([{ id: "keep", source: "x = 1\n" }, { id: "gone", source: "y = 2\n" }]));
+  assert.deepEqual(await states(p.cwd, deleted), [["n.ipynb", "changed"]]);
+  const noId = (await checkPatch(p.cwd, tool("NotebookEdit", { notebook_path: p.abs("n.ipynb"), new_source: "", edit_mode: "delete" }))).files[0]!;
+  assert.equal(noId.state, "unknown", "a delete without a cell id names nothing to look for");
+  p.write("n.ipynb", "{ not json");
+  const broken = (await checkPatch(p.cwd, tool("NotebookEdit", { notebook_path: p.abs("n.ipynb"), cell_id: "keep", new_source: "x = 1\n" }))).files[0]!;
+  assert.equal(broken.state, "unknown");
+  assert.match(broken.reason!, /not a readable notebook/);
 });
 
 test("only a patch the CLI reported as applied is compared", async () => {

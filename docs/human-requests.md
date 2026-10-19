@@ -177,7 +177,7 @@ paired desktops and the phone carry it with no new event type. This is the reque
 | Broker step | On the card |
 | --- | --- |
 | `register` | The card appears, with no answer. |
-| `resolve` | `answer` or `answers`, `answeredBy` (`"desktop"` or `"phone"`) and `delivery: "sending"`, saved before the CLI hears anything. |
+| `resolve` | `answer` or `answers`, `answeredBy` (`"desktop"`, `"paired-desktop"` or `"phone"`) and `delivery: "sending"`, saved before the CLI hears anything. |
 | `settle(…, "sent")` | `delivery: "sent"` once the answer is handed to the CLI. |
 | `withdraw` | `withdrawn: "native" \| "stopped" \| "ended"`, as above. |
 | `uncertain` | `delivery: "uncertain"`. |
@@ -197,8 +197,11 @@ paired desktops and the phone carry it with no new event type. This is the reque
 - **The phone** gets `answeredBy`, `delivery` and `withdrawn` on approvals. Today's iPhone build reads
   only `answer`, so a withdrawn approval still reads as declined there. A question's notice says when
   delivery is uncertain.
-- **The window** adds "Answered on your phone." under a card the phone answered, and the uncertain line
-  above. An answer given in the window and sent adds nothing.
+- **Who answered** is the client that made the decision: this Mac's window (`desktop`), a desktop
+  paired through the host (`paired-desktop`), or the phone. Switching a thread to YOLO answers what is
+  waiting as whichever of them switched it.
+- **The window** adds "Answered on your phone." or "Answered from a paired desktop." under a card one
+  of them answered, and the uncertain line above. An answer given in the window and sent adds nothing.
 
 ## Secrets
 
