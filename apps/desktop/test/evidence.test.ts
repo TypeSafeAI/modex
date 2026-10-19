@@ -1,4 +1,6 @@
 import { test } from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { OUTPUT_PREVIEW_BYTES, boundOutput, memoryEvidence } from "../src/shared/evidence.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
@@ -144,3 +146,41 @@ test("the runner bounds any tool's output, keeps its outcome, and saves the tota
   assert.ok(sent.every((o) => Buffer.byteLength(o) <= OUTPUT_PREVIEW_BYTES), "no update carries the whole log");
   await runner.dispose();
 });
+
+test("the runner keeps a long tool's raw output for its item, reads it back in pages, and deletes it with the thread", async () => {
+  const home = tmpdir("modex-evidence-");
+  const store = new Store(home);
+  const events: ThreadEvent[] = [];
+  const big = "row of output\n".repeat(60_000); // about 840 KB, past the 256 KiB preview
+  const backend: Backend = { id: "claude", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink) {
+    const native = { runtime: "claude", thread: "nt", turn: "nu", item: "c1" };
+    sink.observe({ type: "tool.start", native, tool: { name: "Bash", title: "$ cat big.log", args: {} } });
+    for (let i = 0; i < big.length; i += 65_536) sink.output?.(native, big.slice(i, i + 65_536));
+    sink.observe({ type: "tool.done", native, outcome: "succeeded", progress: { output: big, outputBytes: Buffer.byteLength(big), outputTruncated: true } });
+    return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ home, store, emit: (e) => events.push(e), backends: { claude: backend } });
+  const project = store.addProject(gitRepo());
+  const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+  store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+  await runner.send(thread.id, "go");
+  const tool = store.items(thread.id).find((i) => i.kind === "tool")!;
+  let text = "";
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page = runner.toolLog(thread.id, tool.id, offset);
+    assert.ok(page);
+    assert.equal(page.kept, Buffer.byteLength(big));
+    text += page.text;
+    offset = page.next;
+  }
+  assert.equal(text, big, "the whole log, from its first line");
+  assert.ok(JSON.stringify(events).length < Buffer.byteLength(big), "no event carried the raw log");
+  const user = store.items(thread.id).find((i) => i.kind === "user")!;
+  assert.throws(() => runner.toolLog(thread.id, user.id, 0), /not a tool/);
+  assert.throws(() => runner.toolLog(thread.id, "missing", 0), /no longer in this thread/);
+  await runner.deleteThread(thread.id);
+  assert.equal(fs.existsSync(path.join(home, "app", "tool-logs", thread.id)), false);
+  await runner.dispose();
+});
+

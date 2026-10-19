@@ -19,7 +19,8 @@ import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
 import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
-import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS } from "../../shared/evidence";
+import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes } from "../../shared/evidence";
+import { ToolLog } from "./transcript/ToolLog";
 import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
 
 export { formatElapsed } from "./transcript/TurnContent";
@@ -485,6 +486,7 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
           {PATCH_TOOLS.has(item.name) && <PatchCompare item={item} />}
           {item.name === "apply_patch" && typeof item.args.patch === "string" ? <Patch text={item.args.patch} /> : null}
           {item.outputTruncated && item.outputBytes != null && <div className="tool-truncated" data-testid="tool-truncated">Showing the last {formatBytes(OUTPUT_PREVIEW_BYTES)} of {formatBytes(item.outputBytes)}.</div>}
+          {item.outputTruncated && <ToolLog item={item} />}
           {page && <a className="tool-link" data-testid="tool-link" href={page} target="_blank" rel="noreferrer">{page}</a>}
           {search ? <SearchResults search={search} />
             : item.output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={item.output} /></div> : <pre className="output" data-testid="tool-output">{item.output}</pre>)
@@ -536,6 +538,3 @@ function exitLabel(code: number | null | undefined): string {
   return typeof code === "number" ? `Exit code ${code}` : code === null ? "No exit code" : "Exit code not reported";
 }
 
-function formatBytes(bytes: number): string {
-  return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}

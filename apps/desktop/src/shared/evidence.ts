@@ -8,6 +8,30 @@
 /** The most tool output a transcript item keeps: its last 256 KiB. */
 export const OUTPUT_PREVIEW_BYTES = 256 * 1024;
 
+/** The most raw output main keeps for one tool item, from its first byte (main/engine/tool-logs.ts). */
+export const TOOL_LOG_MAX_BYTES = 10 * 1024 * 1024;
+/** The most text one read of a kept log returns. */
+export const TOOL_LOG_PAGE_BYTES = 256 * 1024;
+
+/**
+ * One page of a tool's kept log. `next` is where the following page starts, or null at the end. `total`
+ * is the output the tool produced and `cut` whether some of it is not kept; both are absent when the
+ * tool never finished, since Modex then does not know how much there was.
+ */
+export interface ToolLogPage {
+  text: string;
+  offset: number;
+  next: number | null;
+  kept: number;
+  total?: number;
+  cut?: boolean;
+}
+
+/** A byte count as the transcript writes it: "256 KB", "3.1 MB". */
+export function formatBytes(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** A Codex memory citation (`agentMessage.memoryCitation`, codex-cli 0.163.0): a line range in a memory file. */
 export interface MemoryEvidence {
   kind: "memory";
@@ -77,10 +101,13 @@ export interface PatchCheck {
 /**
  * Main-owned evidence reads. `evidence:memory` reads a memory citation's lines, on the Mac only and
  * never for a paired desktop. `evidence:patch` compares a turn's patch item with the thread's folder.
+ * `evidence:tool-log` reads back a long tool's kept output.
  */
 export interface EvidenceCommands {
   "evidence:memory": { req: { path: string; lineStart: number; lineEnd: number }; res: MemoryExcerpt };
   "evidence:patch": { req: { threadId: string; itemId: string }; res: PatchCheck };
+  /** A page of a tool's kept raw output, from `offset`; null when its output fit in the transcript. */
+  "evidence:tool-log": { req: { threadId: string; itemId: string; offset?: number }; res: ToolLogPage | null };
 }
 
 /** Native evidence attached to an assistant message. Links the model wrote are not evidence of this kind. */

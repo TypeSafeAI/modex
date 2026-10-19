@@ -97,6 +97,10 @@ Each Modex project has a notes project, made in the default workspace when the p
 its code folder. Removing the project from Modex keeps the notes and unlinks them; adding the
 same folder again links them back. Moving a project's notes to another workspace regroups it in
 the chat sidebar.
+A project's menu in the chat sidebar also has **Move to new workspace…**: name it, press Enter,
+and Modex makes the workspace and moves the project's notes into it in one step
+(`project:new-workspace`). It works while there is only the default workspace. Escape or leaving
+the field makes nothing, and if the move fails, the new workspace is removed again.
 
 ## History and revisions
 
