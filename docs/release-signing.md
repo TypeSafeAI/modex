@@ -213,6 +213,21 @@ rehearsal that gates the merge.
    [Verifying a download](#verifying-a-download): `shasum -c`, Gatekeeper, stapler and the
    signing certificate. Attach the verification log, write the notes, then publish the draft.
 
+### Rehearsing with an rc tag
+
+When the release workflow or the updater path changed since the last release, rehearse
+before step 2. Tag the release branch's head with `git tag -s v<ver>-rc.<N>` and push only
+the tag. The package version stays `<ver>`; the identity check accepts `v<ver>` or
+`v<ver>-rc.<N>` (N from 1, no leading zero) and nothing else. The run is the real workflow:
+the same reviewer approval, signing, notarization, packaged e2e and native acceptance. Its
+assets are named for `<ver>` and land on a draft named after the rc tag. Never publish that
+draft. Delete it and the rc tag once the run has told you what it needed to:
+
+```sh
+gh release delete v<ver>-rc.<N> --yes
+git push origin :refs/tags/v<ver>-rc.<N> && git tag -d v<ver>-rc.<N>
+```
+
 
 ## Native updater release gate
 
