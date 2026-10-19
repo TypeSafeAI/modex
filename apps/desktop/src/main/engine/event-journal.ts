@@ -23,7 +23,10 @@ export const RESUME_LIMIT = 10_000;
 export interface EventJournalOptions {
   flushMs?: number;
   retention?: JournalRetention;
-  /** A timed flush failed. The journal stays usable for the caller to close. */
+  /**
+   * A write failed, on a timer or while a client read. Rows were lost, so the journal records
+   * nothing more and resumes no cursor; it stays usable for the caller to close. Called once.
+   */
   onError?: (error: unknown) => void;
 }
 
@@ -52,7 +55,11 @@ export class EventJournal {
   private listeners = new Set<(entries: JournalEntry[]) => void>();
   /** The highest cursor retention has deleted; 0 before any pruning. */
   private prunedThrough: number;
+  /** The highest cursor written, so a reload can still name one after a failed write. */
+  private written: number;
   private closed = false;
+  /** A write failed and its rows are gone: nothing more is recorded and no cursor resumes. */
+  private failed = false;
 
   constructor(file: string, options: EventJournalOptions = {}) {
     this.flushMs = options.flushMs ?? 250;
@@ -71,9 +78,15 @@ export class EventJournal {
       );
       CREATE INDEX IF NOT EXISTS events_thread ON events (thread_id, seq);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
-    this.db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('id', ?)").run(crypto.randomUUID());
+    // `open` stays "1" until a clean close. A journal still marked open was left by a process that
+    // died, or one whose write failed, so its last batch may be missing while the state files have
+    // it: a new identity makes every cursor issued before then reload instead of resuming past it.
+    if (this.meta("open") === "1") this.setMeta("id", crypto.randomUUID());
+    else this.db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('id', ?)").run(crypto.randomUUID());
+    this.setMeta("open", "1");
     this.id = this.meta("id")!;
     this.prunedThrough = Number(this.meta("pruned_through") ?? 0);
+    this.written = Number((this.db.prepare("SELECT COALESCE(MAX(seq), 0) AS seq FROM events").get() as { seq: number }).seq);
     this.insert = this.db.prepare("INSERT INTO events (at, thread_id, type, event) VALUES (?, ?, ?, ?)");
   }
 
@@ -81,8 +94,21 @@ export class EventJournal {
     return (this.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value;
   }
 
+  private setMeta(key: string, value: string): void {
+    this.db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(key, value);
+  }
+
+  /** Rows were lost: record nothing more, resume no cursor, and tell the caller once. */
+  private fail(error: unknown): void {
+    if (this.failed) return;
+    this.failed = true;
+    this.pending = [];
+    this.slots = new Map();
+    this.onError?.(error);
+  }
+
   record(event: ThreadEvent): void {
-    if (this.closed) return;
+    if (this.closed || this.failed) return;
     const key = mergeKey(event);
     const slot = key === undefined ? undefined : this.slots.get(key);
     if (slot !== undefined) this.pending[slot] = merge(this.pending[slot]!, event);
@@ -94,7 +120,7 @@ export class EventJournal {
     }
     this.timer ??= setTimeout(() => {
       this.timer = undefined;
-      try { this.flush(); } catch (error) { this.onError?.(error); }
+      try { this.flush(); } catch { /* flush reported it */ }
     }, this.flushMs);
     this.timer.unref?.();
   }
@@ -108,14 +134,20 @@ export class EventJournal {
     this.slots = new Map();
     const at = new Date().toISOString();
     const entries: JournalEntry[] = [];
-    this.db.exec("BEGIN");
     try {
-      for (const event of batch) entries.push({ seq: Number(this.insert.run(at, event.threadId, event.type, JSON.stringify(event)).lastInsertRowid), at, event });
-      this.db.exec("COMMIT");
+      this.db.exec("BEGIN");
+      try {
+        for (const event of batch) entries.push({ seq: Number(this.insert.run(at, event.threadId, event.type, JSON.stringify(event)).lastInsertRowid), at, event });
+        this.db.exec("COMMIT");
+      } catch (error) {
+        try { this.db.exec("ROLLBACK"); } catch { /* the write already failed */ }
+        throw error;
+      }
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      this.fail(error);
       throw error;
     }
+    this.written = entries.at(-1)!.seq;
     for (const listener of this.listeners) {
       try { listener(entries); }
       catch (error) { console.error("[modex] event journal subscriber failed:", error); }
@@ -152,9 +184,11 @@ export class EventJournal {
    * usable cursor, the answer is "reload state" with the cursor to continue from after that reload.
    */
   resume(id: string | undefined, cursor: number | undefined, opts: { threadId?: string } = {}): JournalResume {
-    const latest = this.latest();
+    let latest: number;
+    // Reading flushes. A write that fails here is reported, and the client reloads.
+    try { latest = this.latest(); } catch { return { id: this.id, latest: Math.max(this.prunedThrough, this.written) }; }
     const reload = { id: this.id, latest };
-    if (id !== this.id || cursor === undefined || !Number.isSafeInteger(cursor) || cursor < this.prunedThrough || cursor > latest) return reload;
+    if (this.failed || id !== this.id || cursor === undefined || !Number.isSafeInteger(cursor) || cursor < this.prunedThrough || cursor > latest) return reload;
     const count = Number(((opts.threadId
       ? this.db.prepare("SELECT COUNT(*) AS n FROM events WHERE seq > ? AND thread_id = ?").get(cursor, opts.threadId)
       : this.db.prepare("SELECT COUNT(*) AS n FROM events WHERE seq > ?").get(cursor)) as { n: number }).n);
@@ -191,6 +225,10 @@ export class EventJournal {
     try { this.flush(); } finally {
       this.closed = true;
       this.listeners.clear();
+      // Only a journal that lost nothing closes clean; otherwise the next open takes a new identity.
+      if (!this.failed) {
+        try { this.setMeta("open", "0"); } catch { /* left open: the next open is treated as a crash */ }
+      }
       this.db.close();
     }
   }
