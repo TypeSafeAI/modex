@@ -275,8 +275,8 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks stay out of scope. Read-only [routines](docs/routines.md) are on `main`,
-unreleased; routines that change code wait on the approval gate decision. Windows and Linux
+Codex Cloud tasks stay out of scope. Read-only [routines](docs/routines.md) ship from v0.2.0;
+routines that change code wait on the approval gate decision. Windows and Linux
 installers ship from v0.1.0, and their [acceptance gaps](docs/native-platforms.md) are still
 open. Modex has no HTTP-API execution mode; if a CLI is not installed or logged in, the thread
 says so.
