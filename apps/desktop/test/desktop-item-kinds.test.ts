@@ -6,7 +6,7 @@ import path from "node:path";
 import https from "node:https";
 import { once } from "node:events";
 import { DesktopHost } from "../src/main/engine/desktop-host.js";
-import { DesktopClient, type DesktopCredentials } from "../src/main/engine/desktop-client.js";
+import { DesktopClient, pinnedDesktopCertificate, type DesktopCredentials } from "../src/main/engine/desktop-client.js";
 import { DESKTOP_PROTOCOL } from "../src/shared/desktop-protocol.js";
 import type { JournalEntry } from "../src/main/engine/event-journal.js";
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
@@ -30,9 +30,10 @@ async function connected(client: DesktopClient): Promise<void> {
   await once(client, "connected", { signal: AbortSignal.timeout(5000) });
 }
 
-/** Requests made the way Store builds before CF-3 make them: same token and protocol, no item kinds. */
-function legacy(credentials: DesktopCredentials) {
-  const options = (route: string, method: string) => ({ hostname: "127.0.0.1", port: credentials.port, path: route, method, rejectUnauthorized: false,
+/** Requests made the way Store builds before CF-3 make them: same pinned host, token and protocol, no item kinds. */
+async function legacy(credentials: DesktopCredentials) {
+  const ca = await pinnedDesktopCertificate(credentials.port, credentials.fingerprint);
+  const options = (route: string, method: string) => ({ hostname: "127.0.0.1", port: credentials.port, path: route, method, ca, rejectUnauthorized: true,
     headers: { Authorization: `Bearer ${credentials.token}`, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) } });
   const invoke = (channel: string, payload: unknown) => new Promise<unknown>((resolve, reject) => {
     const req = https.request(options("/invoke", "POST"), (res) => {
@@ -82,7 +83,7 @@ test("a paired desktop that names no item kinds gets a question or a plan as a n
   try {
     await host.start();
     await client.pair(host.invite(), "a".repeat(64)); await connected(client);
-    const old = legacy(credentials!);
+    const old = await legacy(credentials!);
 
     // A thread's transcript, as each client loads it.
     assert.deepEqual(await client.invoke("thread:items", { threadId: "t1" }), items, "a current client gets every kind unchanged");
@@ -132,7 +133,7 @@ test("journal replay and journaled events reach a paired desktop that names no i
   try {
     await host.start();
     await client.pair(host.invite(), "a".repeat(64)); await connected(client);
-    stream = await legacy(credentials!).events("/events?journal=j&after=0");
+    stream = await (await legacy(credentials!)).events("/events?journal=j&after=0");
     await waitFor(() => stream!.thread.length === 1);
     const replayed = stream.thread[0] as Extract<ThreadEvent, { type: "item" }>;
     assert.deepEqual([replayed.item.id, replayed.item.kind], ["q", "notice"], "replay");
