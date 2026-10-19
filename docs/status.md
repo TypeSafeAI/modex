@@ -130,8 +130,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - **Clarifications in the task record (CF-7 #280, second part).** A question Codex asks while it
     plans is answered on its card, and the turn's record and Save to Notes list it with its answer,
     a secret hidden. One nobody answered reads "not answered" with why, and is never filled in.
-  - **Still open:** CF-4's remaining Markdown checks (#277), live-provider acceptance and human
-    VoiceOver checks.
+  - **Still open:** live Codex question capture (CF-3 #276), the remaining Markdown checks (CF-4
+    #277), structured web-search results and removal-only and notebook comparison (CF-5 #278), the
+    remaining replay findings (CF-6 #279), verified steps and the read-only task view (CF-7 #280),
+    and live-provider acceptance with human keyboard and VoiceOver checks (CF-8 #281).
 
 - **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
   transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
