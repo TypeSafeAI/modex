@@ -159,6 +159,13 @@ type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string 
   Mac.", "Not answered."), never the answers.
 - **Store demo.** `thread:answer` returns `{ ok: true }`. The demo asks no questions, so
   `thread:answer-question` refuses with `unknown`.
+- **Older paired desktops.** A paired desktop names the item kinds it draws in an
+  `x-modex-item-kinds` header on every request. Store builds cut before CF-3, such as TestFlight Store
+  0.0.8, send none and have no `question` or `plan` in their renderer, so they showed nothing for one
+  and the thread looked stuck. The host sends such a client a question, or a plan, as an `info` notice
+  with the same id, the question text and its state, never the answers: in `thread:items`, in live and
+  journaled events, and in journal replay. An update to one arrives as the whole notice again. Its
+  answer is refused, as before. `test/desktop-item-kinds.test.ts` covers each path.
 
 ## Across replay and reconnect
 

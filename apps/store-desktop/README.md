@@ -48,6 +48,10 @@ or trust a new certificate. Choose **Forget access and reconnect** to remove the
 and explicitly connect again. Ordinary outages still reconnect automatically; host revocation
 removes saved access.
 
+The client names the transcript item kinds it draws in an `x-modex-item-kinds` header. A host shows a
+client that names none, a Store build from before CF-3, a question or a plan as a notice it can read
+([older paired desktops](../../docs/human-requests.md)).
+
 The native **Workspace** menu uses the same actions as workspace shortcuts. Menu actions and
 shortcuts pause while the host is disconnected or a workspace overlay is open. Modex account
 sign-in remains unavailable in the Store client, with an explanation in Settings. Claude and
