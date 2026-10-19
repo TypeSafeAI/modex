@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 const repo = "https://github.com/TypeSafeAI/modex";
 const invite = "https://testflight.apple.com/join/Qr14JKCh";
-function feed(version = "0.1.0") {
+function feed(version = "0.2.0") {
   return {
     release: {
       version,
@@ -36,7 +36,7 @@ test("finds a new release while the page stays open, with accurate counts and pu
     return route.fulfill({ json: latest });
   });
   await page.goto("/");
-  await expectVersion(page, "0.1.0");
+  await expectVersion(page, "0.2.0");
   await expect(
     page.getByRole("link", { name: "1,234 GitHub stars", exact: true }),
   ).toBeVisible();
@@ -52,18 +52,18 @@ test("finds a new release while the page stays open, with accurate counts and pu
   ).toBeVisible();
   await expect(page.locator(`a[href="${invite}"]`)).toHaveCount(2);
   await expect(page.locator("body")).not.toContainText("Coming soon");
-  latest = feed("0.1.1");
+  latest = feed("0.2.1");
   await page.clock.fastForward(5 * 60_000);
-  await expectVersion(page, "0.1.1");
+  await expectVersion(page, "0.2.1");
   await page.evaluate(() => {
     for (let i = 0; i < 10; i++) window.dispatchEvent(new Event("focus"));
   });
   expect(calls).toBe(2);
   // An older CDN response cannot roll back links already seen in this page.
-  latest = feed("0.1.0");
+  latest = feed("0.2.0");
   await page.clock.fastForward(5 * 60_000);
   await expect.poll(() => calls).toBe(3);
-  await expectVersion(page, "0.1.1");
+  await expectVersion(page, "0.2.1");
 });
 
 test("offline, partial and hostile responses keep all verified fallback links usable", async ({
@@ -75,7 +75,7 @@ test("offline, partial and hostile responses keep all verified fallback links us
   );
   for (const candidate of [
     undefined,
-    { release: { version: "0.1.0" } },
+    { release: { version: "0.2.0" } },
     {
       ...feed(),
       release: {
@@ -87,7 +87,7 @@ test("offline, partial and hostile responses keep all verified fallback links us
   ]) {
     response = candidate;
     await page.goto("/");
-    await expectVersion(page, "0.1.0");
+    await expectVersion(page, "0.2.0");
     await expect(page.locator(".community-stats")).toBeHidden();
     await expect(
       page.getByRole("link", { name: "View TestFlight beta" }),
@@ -308,7 +308,7 @@ test("downloads, setup, FAQ and original screenshots work without JavaScript", a
     "content",
     "https://modex.codes/assets/social-preview.png",
   );
-  await expectVersion(page, "0.1.0");
+  await expectVersion(page, "0.2.0");
   await expect(
     page.getByRole("link", { name: "View TestFlight beta" }),
   ).toHaveAttribute("href", invite);

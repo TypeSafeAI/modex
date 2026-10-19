@@ -2,12 +2,14 @@ import type { PluginCommands } from "./plugins.js";
 import type { ImageCommands } from "./images.js";
 import type { RoutineCommands } from "./routines.js";
 import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
+import type { EvidenceCommands } from "./evidence.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 import type { UsageEvent } from "./usage.js";
 import type { ExecutionOutcome, ItemOrigin, MessagePhase, PlanSource, PlanStep, ReasoningRepresentation } from "./conversation-events.js";
 import type { Evidence, Exec } from "./evidence.js";
+import type { Question, Refusal } from "./human-requests.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -99,6 +101,9 @@ export interface AgentActivity {
   detail?: string;
 }
 
+/** What answering a card did: accepted once, or refused with the reason (docs/human-requests.md). `error` explains an invalid answer. */
+export type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string };
+
 export type ThreadItem =
   /** `attachments` are the files sent with the message; main keeps them under its attachments folder. */
   | { id: string; kind: "user"; text: string; at: string; attachments?: import("./attachments.js").Attachment[] }
@@ -115,9 +120,16 @@ export type ThreadItem =
   /**
    * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn
    * was stopped (`stopped`), or it ended first (`ended`). Such a card also carries `answer: "no"`, so clients
-   * that predate the field show it closed, never actionable.
+   * that predate the field show it closed, never actionable. `answeredBy` and `delivery` are a person's answer's
+   * lifecycle (docs/human-requests.md#across-replay-and-reconnect).
    */
-  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; at: string }
+  | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; title?: string; answer?: ApprovalAnswer; decidedBy?: ApprovalReceipt; withdrawn?: "native" | "stopped" | "ended"; answeredBy?: string; delivery?: AnswerDelivery; at: string }
+  /**
+   * A question the CLI asked a person (docs/human-requests.md; Codex `item/tool/requestUserInput`). `answers`
+   * are the answers as they may be shown, saved or exported: a secret one is "(hidden)". `withdrawn`, `answeredBy`
+   * and `delivery` as on approvals.
+   */
+  | { id: string; kind: "question"; questions: Question[]; blocking: boolean; answers?: Record<string, string[]>; withdrawn?: "native" | "stopped" | "ended"; answeredBy?: string; delivery?: AnswerDelivery; at: string }
   /** `failure` is set on the error notice that ends a turn: it carries the CLI's message, a remedy, and debug context. */
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string; failure?: TurnFailure; knowledge?: import("./knowledge.js").KnowledgeChange; pages?: import("./pages.js").PagesChange }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. `reasoning` says which. */
@@ -126,6 +138,12 @@ export type ThreadItem =
   | { id: string; kind: "plan"; steps: PlanStep[]; explanation?: string; from: PlanSource; revision: number; at: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** An Auto routing decision made before a turn: what was picked and why. */
   | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
+
+/**
+ * Whether a person's accepted answer reached the CLI: `sending` from acceptance until the hand-off, then `sent`.
+ * `uncertain` when Modex stopped in between, so nobody can tell; such an answer is never sent again.
+ */
+export type AnswerDelivery = "sending" | "sent" | "uncertain";
 
 /** Why a turn did not complete, read from the CLI's own message (see shared/failures.ts). */
 export type FailureCode = "auth" | "not_installed" | "rate_limited" | "network" | "crashed" | "unsupported_history" | "unknown";
@@ -494,7 +512,7 @@ export interface CompanionStatus {
 
 export interface ReleaseUpdate { version: string; url: string; }
 
-export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands {
+export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands, EvidenceCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
   "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };
@@ -574,7 +592,9 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** Runs the thread's last message again in place (no second user bubble); the Retry on a failure card. */
   "thread:retry": { req: { threadId: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
-  "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
+  "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: AnswerResult };
+  /** Answers a question card: one answer list per question, checked against the questions before anything reaches the CLI. */
+  "thread:answer-question": { req: { threadId: string; itemId: string; answers: Record<string, string[]> }; res: AnswerResult };
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
   /** Analytics: recorded per-turn model usage, oldest first. ISO bounds are inclusive and optional. */
   "usage:list": { req: { since?: string; until?: string } | undefined; res: UsageEvent[] };

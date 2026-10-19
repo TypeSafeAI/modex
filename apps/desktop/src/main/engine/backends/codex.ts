@@ -6,13 +6,14 @@ import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { Backend, ModelInfo, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
+import type { Backend, ModelInfo, NativeRequest, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LineBuffer, stderrTail } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
 import { boundOutput, byteLength, memoryEvidence } from "../../../shared/evidence.js";
+import { codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
 /**
  * Codex's own wording when the sign-in it loaded at startup no longer matches ~/.codex/auth.json
@@ -44,6 +45,11 @@ export class CodexBackend implements Backend {
   private userAgent: string | null = null;
   /** Opaque id of the running app-server process; native thread, turn and item ids are unique only within it. */
   private generation = "";
+  /**
+   * Server requests waiting on a person, keyed `generation:id`. Codex's `serverRequest/resolved` for one still
+   * here means Codex settled it itself (codex-cli 0.163.0): the card is withdrawn and no answer is sent.
+   */
+  private readonly openRequests = new Map<string, AbortController>();
 
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
@@ -344,6 +350,10 @@ export class CodexBackend implements Backend {
           }
           return;
         }
+        if (msg.method === "serverRequest/resolved") {
+          this.openRequests.get(`${runtime}:${String(p.requestId)}`)?.abort();
+          return;
+        }
         if (p.threadId && p.threadId !== tid) {
           const id = String(p.threadId);
           if (!agents.has(id)) return;
@@ -410,7 +420,7 @@ export class CodexBackend implements Backend {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
               this.changePaths.set(`${tid}:${item.id}`, files);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } } });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
@@ -538,7 +548,19 @@ export class CodexBackend implements Backend {
   }
 
   private async handleServerRequest(msg: RpcMessage, sink: TurnSink): Promise<void> {
+    const key = `${this.generation}:${String(msg.id)}`;
+    const withdrawn = new AbortController();
+    this.openRequests.set(key, withdrawn);
+    try {
+      await this.answerServerRequest(msg, sink, withdrawn.signal);
+    } finally {
+      if (this.openRequests.get(key) === withdrawn) this.openRequests.delete(key);
+    }
+  }
+
+  private async answerServerRequest(msg: RpcMessage, sink: TurnSink, withdrawn: AbortSignal): Promise<void> {
     const p = (msg.params ?? {}) as Record<string, unknown>;
+    const native: NativeRequest = { runtime: this.generation, request: String(msg.id), ...(typeof p.itemId === "string" && p.itemId ? { item: p.itemId } : {}) };
     if (msg.method === "item/commandExecution/requestApproval") {
       const cmd = stripShell(String(p.command ?? ""));
       const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : undefined;
@@ -547,7 +569,9 @@ export class CodexBackend implements Backend {
         detail: [p.reason ? `Reason: ${String(p.reason)}` : "", `cwd: ${String(p.cwd ?? "")}`].filter(Boolean).join("\n"),
         canAlways: true,
         action: { backend: "codex", tool: "command", title: cmd, ...(cwd ? { cwd } : {}), input: { command: cmd } },
-      });
+        native,
+      }, withdrawn);
+      if (withdrawn.aborted) return;
       this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/fileChange/requestApproval") {
       const grantRoot = typeof p.grantRoot === "string" && p.grantRoot ? p.grantRoot : undefined;
@@ -558,7 +582,9 @@ export class CodexBackend implements Backend {
         canAlways: true,
         // Paths only: the patch body stays out of the action, so no gate can forward it.
         action: { backend: "codex", tool: "fileChange", title: "apply file changes", input: { ...(paths.length ? { paths } : {}), ...(grantRoot ? { grantRoot } : {}) }, ...(grantRoot ? { escalation: true } : {}) },
-      });
+        native,
+      }, withdrawn);
+      if (withdrawn.aborted) return;
       this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/permissions/requestApproval") {
       const permissions = requestedPermissions(p.permissions);
@@ -567,8 +593,22 @@ export class CodexBackend implements Backend {
         this.respond(msg.id, { permissions: {}, scope: "turn" });
         return;
       }
-      const answer = await sink.approval({ question: "Allow these additional permissions for this turn?", detail: JSON.stringify({ ...p, permissions }, null, 2), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true } });
+      const answer = await sink.approval({ question: "Allow these additional permissions for this turn?", detail: JSON.stringify({ ...p, permissions }, null, 2), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true }, native }, withdrawn);
+      if (withdrawn.aborted) return;
       this.respond(msg.id, { permissions: answer === "yes" ? permissions : {}, scope: "turn" });
+    } else if (msg.method === "item/tool/requestUserInput" && sink.question) {
+      // Experimental in codex-cli 0.163.0. A request Modex cannot read is declined whole, never half-answered.
+      const asked = codexQuestions(p);
+      if (!asked) {
+        sink.notice("warn", "Codex asked a question Modex could not read; it was declined.");
+        this.send({ id: msg.id, error: { code: -32602, message: "modex could not read this requestUserInput" } });
+        return;
+      }
+      const reply = await sink.question({ ...asked, native }, withdrawn);
+      if (withdrawn.aborted) return;
+      // A withdrawn question is an error reply, never an empty answer the model could take as the user's.
+      if ("answers" in reply) this.respond(msg.id, codexAnswerResponse(reply.answers));
+      else this.send({ id: msg.id, error: { code: -32000, message: reply.withdrawn === "stopped" ? "withdrawn by modex: the turn was stopped" : "withdrawn by modex: the turn ended before anyone answered" } });
     } else {
       sink.notice("warn", `Codex asked for ${msg.method}, which Modex does not support yet; declined.`);
       this.send({ id: msg.id, error: { code: -32601, message: `unsupported by modex: ${msg.method}` } });
@@ -615,6 +655,12 @@ interface CodexModel {
   serviceTiers?: { id: string; name?: string; description?: string }[];
   defaultServiceTier?: string | null;
 }
+
+/** One file of a fileChange, beside the joined patch: `lines` is how much of it is this file's diff (shared/evidence.ts). */
+function patchFile(c: NonNullable<CodexItem["changes"]>[number]): import("../../../shared/evidence.js").CodexPatchFile {
+  return { path: c.path, kind: c.kind?.type ?? "update", ...(c.kind?.move_path ? { movePath: c.kind.move_path } : {}), lines: (c.diff ?? "").split("\n").length };
+}
+
 interface CodexItem {
   type: string;
   id: string;
@@ -626,7 +672,7 @@ interface CodexItem {
   aggregatedOutput?: string | null;
   exitCode?: number | null;
   durationMs?: number | null;
-  changes?: { path: string; kind?: { type: string }; diff: string }[];
+  changes?: { path: string; kind?: { type: string; move_path?: string | null }; diff: string }[];
   summary?: string[];
   content?: string[];
   server?: string;
@@ -694,8 +740,9 @@ export function codexPhase(phase: string | null | undefined): MessagePhase {
  * How a completed Codex tool item ended, from its own status (codex-cli 0.163.0): `declined` is a
  * denial, `failed` a failure, `completed` a success, except a command that completed with a non-zero
  * exit code (failed) or none at all (unknown). A command with no status is judged by its exit code.
- * Any other item that reports no status (web search) is unknown unless it reports an error; so is a
- * tool still `inProgress` when it completes. Exported for tests.
+ * A web search has neither a status nor an error field, so its `item/completed` is the only report it
+ * makes: it finished. Any other item without a status is unknown unless it reports an error, and so
+ * is a tool still `inProgress` when it completes. Exported for tests.
  */
 export function codexOutcome(item: { type: string; status?: string; exitCode?: number | null; error?: unknown }): SettledOutcome {
   if (item.status === "declined") return "denied";
@@ -703,7 +750,8 @@ export function codexOutcome(item: { type: string; status?: string; exitCode?: n
   const exit = item.exitCode === 0 ? "succeeded" : typeof item.exitCode === "number" ? "failed" : "unknown";
   if (item.status === "completed") return item.type === "commandExecution" ? exit : "succeeded";
   if (item.status === undefined && item.type === "commandExecution" && exit !== "unknown") return exit;
-  return item.error ? "failed" : "unknown";
+  if (item.error) return "failed";
+  return item.status === undefined && item.type === "webSearch" ? "succeeded" : "unknown";
 }
 
 function codexStepStatus(status: unknown): PlanStepStatus {

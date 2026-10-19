@@ -642,7 +642,17 @@ a.thread-pr:hover { text-decoration: underline; }
 .shield { color: var(--warn); }
 .approval .detail { max-height: 200px; margin: 0 0 12px; padding: 8px 10px; overflow: auto; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-2); white-space: pre-wrap; }
 .approval-answer { color: var(--text-3); font-size: var(--text-sm); }
+.answer-note { margin-top: 4px; color: var(--text-3); font-size: var(--text-sm); }
 .approval-reason { margin: -4px 0 10px; color: var(--text-3); font-size: var(--text-sm); }
+/* Question card: the approval frame, one block per question, each with its own control. */
+.question-field { margin: 0 0 12px; }
+.question-title { color: var(--text-1); font-weight: var(--weight-semibold); }
+.question-text { margin-top: 2px; color: var(--text-2); }
+.question-options { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.question-option { display: flex; align-items: baseline; gap: 8px; color: var(--text-1); cursor: pointer; }
+.question-hint { color: var(--text-3); font-size: var(--text-sm); }
+.question-input { width: 100%; max-width: 420px; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--border-pane); border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-1); font: inherit; }
+.question-error { color: var(--danger-text); font-size: var(--text-sm); }
 
 /* Approval answered by a rule: no card, because nothing waited on it. One quiet line, expandable like a tool. */
 .approval-receipt { margin-bottom: 6px; }
@@ -703,6 +713,23 @@ a.thread-pr:hover { text-decoration: underline; }
 .evidence-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .evidence-where { overflow-wrap: anywhere; color: var(--text-2); font: 12px var(--font-mono); }
 .evidence-note { margin-left: 8px; color: var(--text-3); }
+.evidence-actions { display: inline-flex; gap: 4px; margin-left: 8px; }
+.evidence-action { padding: 1px 7px; border: 1px solid var(--border-pane); border-radius: 5px; background: none; color: var(--text-3); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.evidence-action:hover { color: var(--text-1); border-color: var(--border-strong); }
+.evidence-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.evidence-excerpt-box { margin: 6px 0 2px; }
+.evidence-range { color: var(--text-3); font-size: var(--text-xs); margin-bottom: 4px; }
+.evidence-excerpt { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sunken); font: 12px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.evidence-action:disabled { opacity: 0.6; cursor: default; }
+.patch-compare { margin: 2px 0 8px; font-size: var(--text-xs); }
+.patch-check { margin-top: 6px; }
+.patch-checked { color: var(--text-3); }
+.patch-files { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.patch-file { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.patch-file code { margin-right: 6px; }
+.patch-file.as-left .patch-file-state, .patch-file.has-edit .patch-file-state { color: var(--ok); }
+.patch-file.changed .patch-file-state, .patch-file.deleted .patch-file-state { color: var(--warn); }
+.patch-file.unknown .patch-file-state { color: var(--text-3); }
 
 /* ── Task plans and records (docs/task-context.md). ── */
 .plan-card { margin: 4px 0 14px; padding: 10px 14px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); font-size: var(--text-sm); }

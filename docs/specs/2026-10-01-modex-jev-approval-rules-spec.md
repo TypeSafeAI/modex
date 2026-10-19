@@ -32,7 +32,9 @@ rules, prioritizing project rules and then newest rules, plus the destructive-ac
 A probability at or above the configured threshold applies; precedence is never, then ask,
 then allow. A deterministic allow also receives the destructive check when Jev is available.
 An allow becomes ask if destructive probability is at least 0.5 or the action requests a
-sandbox/permission escalation. No rule can override these downgrades. This describes the rule
+sandbox/permission escalation. Since #185 it also becomes ask when the full command line
+chains, redirects or substitutes commands, or when the digest clipped text Jev needed. No rule
+can override these downgrades. This describes the rule
 gate's result; the existing thread policy runs afterward. Always allow preserves explicit Ask
 rules and downgrades; YOLO can answer them. Neither policy overrides Never. When no rule
 applies, Always allow may answer a described, non-escalating action. See
@@ -112,8 +114,17 @@ Before a separate enablement PR can change `DEFAULT_APPROVAL_GATE.enabled`:
 4. Pass build, typecheck, unit tests, and the full macOS Electron e2e suite on the candidate.
    Review exact-head CI and failures separately from live or human acceptance.
 
+Progress (2026-10-18): #185 (2026-10-12) closed the clipped-command false allow; an allow on
+a command Jev saw only in part now asks. The quoted-command false allow is still open, and the
+corpus has not been run live since, so item 1 is unmet. The next step is a change that tells a
+quoted mention from an operation, then a live run of the corpus plus a holdout, at three repeats
+per case. Masking quoted text alone would also hide `sh -c '…'` operations from Jev. No open PR
+or worktree carries this work.
+
 Known limits: project scope compares the originating project's root; it does not inspect
 every target path or resolve symlinks. The backend sandbox owns file boundaries. Commands
-are clipped to 500 characters and titles to 200 before judgment, without a truncation
-downgrade. Exact-match globs inspect the full title but do not parse compound commands.
+are clipped to 500 characters and titles to 200 before judgment. Since #185, an allow asks
+instead when that clipping removed text Jev needed, or when the full command line chains,
+redirects or substitutes commands (`approvals/gate.ts`). Exact-match globs inspect the full
+title but do not parse compound commands.
 These limits must not be represented as semantic or filesystem enforcement.

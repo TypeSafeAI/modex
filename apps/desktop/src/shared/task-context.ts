@@ -20,7 +20,20 @@ export interface TaskRecord {
   /** Changed files outside the project: counted, never named. */
   outsideFiles: number;
   commands: TaskCommand[];
+  /** Each question the CLI asked during the turn, one entry per question on its cards. */
+  clarifications: TaskClarification[];
   answer?: string;
+}
+
+/** A question the CLI asked, with the answer as its card shows it. Nothing is filled in that the card does not hold. */
+export interface TaskClarification {
+  question: string;
+  /** The answers as shown, saved and exported (a secret one is "(hidden)"), or null when nobody answered. */
+  answer: string[] | null;
+  /** Why an unanswered question closed (docs/human-requests.md). */
+  closed?: "native" | "stopped" | "ended";
+  /** Answered, but Modex stopped before it could confirm the CLI received the answer. */
+  uncertain?: true;
 }
 
 const PATCH_TOOLS = new Set(["apply_patch", "Edit", "MultiEdit", "Write", "NotebookEdit"]);
@@ -34,7 +47,14 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
   const files = new Set<string>();
   let outsideFiles = 0;
   const commands: TaskCommand[] = [];
+  const clarifications: TaskClarification[] = [];
   for (const item of rest) {
+    if (item.kind === "question") {
+      for (const question of item.questions) {
+        const answer = item.answers ? item.answers[question.id] ?? null : null;
+        clarifications.push({ question: question.text, answer, ...(!answer && item.withdrawn ? { closed: item.withdrawn } : {}), ...(answer && item.delivery === "uncertain" ? { uncertain: true as const } : {}) });
+      }
+    }
     if (item.kind !== "tool") continue;
     if (PATCH_TOOLS.has(item.name)) {
       for (const file of patchFiles(item)) {
@@ -50,7 +70,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
   return {
     title: opts.title, threadId: opts.threadId, request: user?.kind === "user" ? user.text : "",
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
-    files: [...files], outsideFiles, commands,
+    files: [...files], outsideFiles, commands, clarifications,
     ...(answer?.kind === "assistant" && answer.text.trim() ? { answer: answer.text.trim() } : {}),
   };
 }
@@ -62,6 +82,8 @@ const FROM_WORDS: Record<PlanSource, string> = { "codex-plan": "Codex's plan", "
 export function taskMarkdown(record: TaskRecord): string {
   const lines: string[] = [`# ${record.title}`, ""];
   if (record.request.trim()) lines.push(...record.request.trim().split("\n").map((line) => `> ${line}`), "");
+  const clarifications = record.clarifications ?? [];
+  if (clarifications.length) lines.push("## Clarifications", "", ...clarifications.map((c) => `- ${clarificationLine(c)}`), "");
   if (record.plan) {
     lines.push("## Plan", "");
     for (const step of record.plan.steps) lines.push(`- [${step.status === "completed" ? "x" : " "}] ${step.text} (${STEP_WORDS[step.status]})`);
@@ -82,10 +104,18 @@ export function taskMarkdown(record: TaskRecord): string {
   const loose = [
     ...record.commands.filter((command) => !SETTLED_WELL.has(command.outcome)).map(commandLine),
     ...(record.plan?.steps.filter((step) => step.status !== "completed").map((step) => `${step.text} (${STEP_WORDS[step.status]})`) ?? []),
+    ...clarifications.filter((c) => !c.answer || c.uncertain).map(clarificationLine),
   ];
   if (loose.length) lines.push("## Not settled", "", ...loose.map((line) => `- ${line}`), "");
   lines.push("---", `From modex thread ${record.threadId}.`);
   return lines.join("\n") + "\n";
+}
+
+const CLOSED_WORDS: Record<NonNullable<TaskClarification["closed"]>, string> = { native: "the agent withdrew it", stopped: "the turn was stopped", ended: "the turn ended first" };
+
+function clarificationLine(c: TaskClarification): string {
+  if (!c.answer) return `${c.question} — not answered${c.closed ? `: ${CLOSED_WORDS[c.closed]}` : ""}`;
+  return `${c.question} — ${c.answer.join(", ")}${c.uncertain ? " (Modex could not confirm the agent received this answer)" : ""}`;
 }
 
 function commandLine(command: TaskCommand): string {
