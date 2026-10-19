@@ -7,33 +7,36 @@ recorded as live-provider or human acceptance.
 
 ## Candidate
 
-No integrated candidate is pinned yet: CF-2 (#275, PR #286) and CF-3 (#276) have not landed, and
-several children have parts still open. Each row names the build it was checked on.
+Every child's slice for this gate has landed, so the fixture rows below run on `main`. No candidate
+is pinned yet, because the live-provider and human gates are still open. Each row names the build it
+was checked on.
 
 ## Children
 
 | Child | Landed | State |
 | --- | --- | --- |
 | CF-1 #274: identity, phases, outcomes | #282 → `7780093` | Done; closed |
-| CF-2 #275: Claude Stop and cleanup | PR #286, green, waiting to update over CF-4 | Owned by another session |
-| CF-3 #276: human requests | In progress, stacked on PR #286 | Not landed |
-| CF-4 #277: typed turns, Markdown | #284 → `8e26534` (typed turns); Markdown slice is PR #283 | Partial |
+| CF-2 #275: Claude Stop and cleanup | #286 → `6db0818` | Landed |
+| CF-3 #276: human requests | #293 → `57e7607` | Landed; a live Codex question capture is open |
+| CF-4 #277: typed turns, Markdown | #284 → `8e26534` (typed turns); #283 → `a4039b2` (Markdown) | Partial: remaining Markdown checks |
 | CF-5 #278: evidence | #287 → `d3711c6` (first part) | Partial |
-| CF-6 #279: journal and clients | #285 → `fb76aac` (CF-1 half) | Partial; request half waits for CF-3 |
-| CF-7 #280: plans and Notes | #289 → `f6976df` (first part) | Partial; question cards wait for CF-3 |
+| CF-6 #279: journal and clients | #285 → `fb76aac` (CF-1 half); #308 → `d625eda` (request half) | Landed; phone question answers are open |
+| CF-7 #280: plans and Notes | #289 → `f6976df` (first part); #312 → `f4cd67f` (clarifications) | Landed; verified steps are open |
 
 ## Integration matrix
 
 | Requirement | Evidence | State |
 | --- | --- | --- |
 | Golden path: request → plan → approval → real edit → check → answer → Save to Notes → Open → restart restores, nothing re-runs | `e2e/conversation-fidelity.spec.ts` "golden path", against the real app, main process and `claude -p` adapter with a fake Claude CLI. Asserts file bytes, execution counts `{edits: 1, checksStarted: 1, checksFinished: 1}` before and after restart, plan statuses, outcomes, note revision 1 → 2 on the same page, and identical `thread:items` after restart | Verified with a fixture CLI, not a live provider |
-| A plan or clarifying question answered during the path | — | Open: needs CF-3 |
-| Paired-client reconnect in the path | CF-6 unit tests (journal replay, the phone's full and delta snapshots); `journal-resume.test.ts` | Verified in unit tests; not yet inside the golden fixture |
+| A plan or clarifying question answered during the path | "a clarifying question in the path", with a codex-cli 0.163.0-shaped fixture: answered on its card, the CLI reads one decision, then a real edit and check, Save to Notes with the clarification, and a restart where the card is inert and counts stay `{decisions: 1, edits: 1, checksStarted: 1, checksFinished: 1}`. `e2e/plan-clarification.spec.ts` adds a plan revision, a secret answer kept out of every file, and a stopped clarification saved as not answered | Verified (fixture) |
+| Paired-client reconnect in the path | The phone, journal on: "a phone that reconnects after the decision was sent" below. A paired desktop: `test/request-journal.test.ts`, over TLS with a real journal | Verified (fixture for the phone, unit for a paired desktop) |
 | Denial: file unchanged, nothing runs | "a denial leaves the file as it was and runs nothing": bytes unchanged, counts `{}` | Verified (fixture) |
 | Command failure | "a failing check is a failed command": the tool is failed, and the plan step stays in progress | Verified (fixture) |
 | Unknown outcome | CF-1 and CF-6 unit tests: a dropped stream; work left running at a restart | Verified (unit) |
 | Stop while executing | "Stop while a check runs": stopped, the check never reports, nothing retried | Verified (fixture); CF-2 refines Stop |
-| Request withdrawal; simultaneous desktop and phone answers; reconnect after a decision send | — | Open: needs CF-3 |
+| Native request withdrawal | "a native withdrawal": Claude's `control_cancel_request` closes the card as withdrawn, no answer reaches the CLI (`{}`), a late answer is refused, the file is unchanged | Verified (fixture) |
+| Simultaneous desktop and phone answers | "the desktop and the phone answer at once", over the bridge and the companion's HTTPS: exactly one is accepted, the CLI reads one decision, the card names who gave it, the loser gets `already-resolved` or a 409, and the file matches the winner | Verified (fixture) |
+| Reconnect after a decision send | "a phone that reconnects after the decision was sent", journal on: its delta shows the card answered by the desktop and sent, its late answer is a 409, and counts stay at one | Verified (fixture) |
 | Old snapshot migration | `test/conversation-migration.test.ts` | Verified (unit) |
 | Journal off | The golden fixture runs with the journal off, the default | Verified (fixture) |
 | Expired cursor | Existing `event-journal.test.ts` resume and reload cases | Verified (unit, existing) |
@@ -58,12 +61,10 @@ These are acceptance tests of behaviour CF-1 through CF-7 already built, so they
 
 ## Next
 
-1. Land CF-2 (#286) and CF-3. Then add the question, withdrawal, simultaneous-answer and
-   reconnect-after-decision variants to the golden fixture.
-2. Pin a candidate SHA and run fresh full checks on it.
-3. Run authorized live Codex and Claude smoke tasks through the app, and record versions, models and
+1. Pin a candidate SHA and run fresh full checks on it.
+2. Run authorized live Codex and Claude smoke tasks through the app, and record versions, models and
    limits.
-4. Get human keyboard and VoiceOver acceptance.
+3. Get human keyboard and VoiceOver acceptance.
 
 ## Measurements on a named Mac
 
@@ -116,6 +117,11 @@ Each one has a failing test first, then the fix, in the PR that added these chec
 - **An approval card scrolled sideways at 900×600** (CF-3 surface, #276). With the Review pane open the
   transcript column is 319 px, and a long path plus the action row pushed Deny 160 px out of view. The
   question now wraps anywhere and the actions wrap.
+- **The phone could not act on a thread started on the Mac** (companion, since #181 in v0.0.12; fixed in
+  CF-6's request half, #279). A thread created from a Mac draft keeps the full UUID its draft reserved,
+  but the companion's thread routes took only 8 hex characters, so answering, sending, setting the policy
+  or archiving from the phone got a 404. The simultaneous-answer and reconnect variants found it;
+  `test/companion.test.ts` failed first with a 404 for a UUID thread.
 - **The typed-turns theme test checked Graphite three times** (CF-4, #277). It set the theme with
   `settings:update`, which the window applies only on its next refresh. Specs now switch themes through
   Settings (`setTheme` in `e2e/support.ts`) and wait for the window to show it.
