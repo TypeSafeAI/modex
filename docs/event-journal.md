@@ -114,6 +114,10 @@ The same file covers faults, through the real host, phone server and desktop cli
 - a frame over 1 MB;
 - a batch delivered twice.
 
+`test/request-crash.test.ts` leaves an approval unanswered at a crash. The new process closes it
+only when it first reads that thread, after the phone's poll has read its cursor, so the new id is
+what makes the phone's first poll reload and show it closed. A clean quit is the control case.
+
 One mixed transcript must also look the same on every path:
 - the saved files;
 - the live projection and stream;

@@ -79,7 +79,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
       batch was lost silently.
     - A journal a crash or a failed write left open takes a new identity. Cursors from before then
       reload instead of resuming past the gap, so an answered card no longer looks open on a paired
-      desktop after a crash.
+      desktop after a crash, and a card nobody answered reads closed on the phone's first poll.
     - A paired desktop reloads after a frame over 1 MB instead of reconnecting forever.
     - The phone gets a notice for an item kind its Mac doesn't know, instead of rejecting the
       snapshot.
@@ -109,8 +109,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     as withdrawn, and cards a restarted Modex left open close as ended everywhere. Phones show
     questions as text to answer on the Mac. Scripted fixtures only. [Human requests](human-requests.md).
   - **Requests across replay and reconnect (CF-6 #279, request half).** A card records who answered
-    (the Mac or the phone) and whether the answer reached the CLI, and the journal, snapshots, paired
-    desktops and the phone carry it. Replay and reconnect show answered and withdrawn cards inert and
+    (this Mac's window, a paired desktop or the phone) and whether the answer reached the CLI, and the
+    journal, snapshots, paired desktops and the phone carry it. Switching a thread to YOLO answers what
+    is waiting as whoever switched it. Replay and reconnect show answered and withdrawn cards inert and
     never send an answer again. An answer Modex took but could not confirm before a crash says so after
     the restart. A secret answer reaches no file, even with the journal on.
     [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).

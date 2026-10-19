@@ -349,7 +349,7 @@ const companion = new CompanionServer(home, {
   journal: () => journal,
   routineRuns: () => routines.list().runs,
   pullRequest: (id) => retirer.pullRequest(id),
-  setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
+  setApprovals: (id, approvals, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }, { by }); },
   setArchived: (id, archived) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.setArchived(id, archived); },
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
@@ -829,9 +829,11 @@ handle("attachments:pick", async (req) => {
 }, { localOnly: true });
 handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
-handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
-handle("thread:answer-question", ({ threadId, itemId, answers }) => runner.answerQuestion(threadId, itemId, answers));
-handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
+// Only this Mac's window calls with an IPC event; a paired desktop's command comes through the host without one.
+const answeredFrom = (event?: NativeIPCEvent) => event ? "desktop" : "paired-desktop";
+handle("thread:answer", ({ threadId, itemId, answer }, event) => runner.answer(threadId, itemId, answer, answeredFrom(event)));
+handle("thread:answer-question", ({ threadId, itemId, answers }, event) => runner.answerQuestion(threadId, itemId, answers, answeredFrom(event)));
+handle("thread:update", ({ threadId, patch }, event) => runner.updateThread(threadId, patch, { by: answeredFrom(event) }));
 handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
   await runner.deleteThread(threadId, removeWorktree);
