@@ -25,6 +25,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.0.11 | 2026-10-13 | #152, #164, #166, #178, #180, #183, #184 | Sticky Auto routing, composer attachments, Canvas previews, browser extensions with 1Password filling, minimal review rail, multi-network Companion. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.11). [Review](reviews/2026-10-12-v0.0.11-release-review.md). |
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). [Review](reviews/2026-10-13-v0.0.12-release-review.md). |
 | v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). [Review](reviews/2026-10-15-v0.1.0-release-review.md). |
+| v0.2.0 | 2026-10-18 | #253, #257, #266, #267, #269, #248, #272 | Read-only routines on a timer, on one decision service for Jev; the notes fixes from v0.1.0's review (#241); Copy details and Retry on every inline error; Analytics restyled; new image jobs no longer stuck at "queued". [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -89,79 +90,38 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     draining without exposing MCP credentials. Live macOS checks cover pending approval, running
     command, resume and mid-stream Stop; Windows/Linux escalation remains unproven.
     [Evidence and limits](reviews/2026-10-18-claude-lifecycle.md).
+  - **Approvals and questions, answered once (CF-3 #276).** Each request is bound to its turn,
+    attempt and the CLI's own request id. The first answer is taken; any other is refused with a
+    reason, and the phone gets a 409. Codex questions (`item/tool/requestUserInput`, experimental in
+    codex-cli 0.163.0) are cards with a control for each question, and a secret answer goes to the
+    CLI only. Stop sends Codex an error, never an empty answer. A request Codex settles itself closes
+    as withdrawn, and cards a restarted Modex left open close as ended everywhere. Phones show
+    questions as text to answer on the Mac. Scripted fixtures only. [Human requests](human-requests.md).
+  - **Requests across replay and reconnect (CF-6 #279, request half).** A card records who answered
+    (the Mac or the phone) and whether the answer reached the CLI, and the journal, snapshots, paired
+    desktops and the phone carry it. Replay and reconnect show answered and withdrawn cards inert and
+    never send an answer again. An answer Modex took but could not confirm before a crash says so after
+    the restart. A secret answer reaches no file, even with the journal on.
+    [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+  - **The phone acts on threads started on the Mac again.** Since v0.0.12, answering, sending, setting
+    the approval policy or archiving from the phone failed on any thread created from a Mac draft.
   - **Old transcripts** read unchanged, with no invented provenance.
-  - **Acceptance (CF-8 #281, first part).** A fixture Claude CLI drives the real app through a
-    plan, an approval, a real edit, a check, the answer and Save to Notes, then a restart that
-    re-runs nothing. Denial, a failing check and Stop are covered too. Each of those states has
-    reference captures in every theme at 900×600 and 1440×900, and a long transcript and a 3 MiB log
-    are measured on a named Mac. [Fidelity](conversation-fidelity.md),
+  - **Acceptance (CF-8 #281).** A fixture Claude CLI drives the real app through a plan, an
+    approval, a real edit, a check, the answer and Save to Notes, then a restart that re-runs
+    nothing. Denial, a failing check and Stop are covered too, and so are a native withdrawal, the
+    Mac and the phone answering at once, a phone reconnecting after the decision, and a clarifying
+    question inside the path. The path's states have reference captures in every theme at 900×600
+    and 1440×900, and a long transcript and a 3 MiB log are measured on a named Mac. [Fidelity](conversation-fidelity.md),
     [review](reviews/2026-10-18-conversation-fidelity-acceptance.md).
   - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
     every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
     window wraps its text and buttons instead of pushing Deny out of view.
-  - **Still open:** the Markdown parser (#283), CF-6's request half (after CF-3), live-provider
-    acceptance and human VoiceOver checks.
+  - **Clarifications in the task record (CF-7 #280, second part).** A question Codex asks while it
+    plans is answered on its card, and the turn's record and Save to Notes list it with its answer,
+    a secret hidden. One nobody answered reads "not answered" with why, and is never filled in.
+  - **Still open:** CF-4's remaining Markdown checks (#277), live-provider acceptance and human
+    VoiceOver checks.
 
-- **Every inline error can be copied, and most can be retried.** A shared `ErrorNotice`
-  replaces bare error text across the terminal, Changes diff, Files, Canvas, browser and
-  browser extensions, Analytics, the iPhone companion dialog, Settings save and reset, approval
-  rule previews, the composer's attachment and model-list warnings, notes (Space, history,
-  comments, agent access, file preview), Knowledge, Routines, Plugins, Images and both update
-  screens. Copy details puts where, when, the message and context on the clipboard, and main
-  appends the app version and platform. Retry repeats exactly the action that failed and is left
-  out where repeating cannot help: a rejected URL, a skill in the wrong scope, lists that already
-  refresh themselves, and Images, whose errors have no single action. Streamer Mode redacts the
-  shown message and the whole copied report.
-
-- **Read-only routines** (Routines Phase 1). Routines in the rail run a read-only Chat or Plan turn
-  in one project, once or every N minutes, hours or days, while Modex is running with or without a
-  window. Each reply becomes a new revision of the routine's Space page, under the project's
-  `Routines` folder. Every approval the turn asks for is refused, with a receipt in the transcript.
-  Missed runs run once on wake, never as a burst. A run cut off by a quit or crash is marked
-  interrupted and never repeated. Activity lists each run's trigger, times, thread and page
-  revision, and the iPhone companion shows a banner when runs finish or fail. [Routines](routines.md).
-- **One decision service for Jev** (Routines Phase 0). Auto routing, follow-up suggestions and
-  approval rules now ask Jev through one module. It owns the key, the transport and the
-  session-wide switch-off after a rejected key. Each kind of judgment has a versioned question
-  set, and each judgment leaves a receipt in `app/decisions.jsonl`: Jev's typed answers or the
-  error, never the request. Routing, follow-ups and approvals behave as before.
-  [The decision service](auto-routing.md#the-decision-service).
-- **Analytics looks like the rest of Modex.** The dashboard takes the app's tokens and theme, and
-  its view's corners follow the app's sheet. It is laid out like Space: a sidebar titled Analytics,
-  and each view's title with its filters and Export CSV. Every view fits the window down to the
-  900×600 minimum with no page scroll; long tables and lists scroll inside their panel. The
-  standalone preview's own palette, IBM Plex fonts, light mode and marketing copy are gone.
-- **The event journal resumes paired desktops and the phone** (Routines Phase 0). With
-  `MODEX_EVENT_JOURNAL=1`, a paired desktop that reconnects after sleep receives only the thread
-  events after its last cursor, and keeps its loaded transcripts instead of reloading them. The
-  iPhone companion fetches only the transcript items that changed. A cursor the journal no longer
-  covers is told to reload. Rows older than 7 days, or past 250,000, are pruned every hour. A paired
-  sleep test covers both clients. [Event journal](event-journal.md#resuming-after-sleep-or-a-reconnect).
-- **Agents restore notes only into their own project.** A note trashed in one project whose
-  folder was then dragged into another project can no longer be restored there by the first
-  project's agent (#241).
-- **New image jobs no longer look stuck at "queued".** When a job reached its approval before
-  Images had handled the Generate click, the job stayed "queued", or showed the previous job's
-  transcript, with no Approve button until the window lost and regained focus. Images now
-  shows the new job's status and approval either way, and reloads an open job's transcript when
-  you come back to Images.
-- **Restored notes follow their folder.** A note trashed before its workspace, project or
-  folder was renamed or moved comes back in the new place, instead of making the old folder
-  again outside the project (#241).
-- **Notes stay readable around folders with a backslash.** Moving or renaming a folder whose name
-  has a `\` (Finder allows one) no longer makes Notes unreadable, even after a restart. Modex asks
-  you to move such a folder in Finder, and a rename keeps the folder's name on disk. A stuck rename
-  an earlier version left behind is set aside, and the folders stay as they are. (#241)
-- **New workspace opens only when asked.** After you make a workspace, searching pages and
-  clearing the search no longer reopens an empty New workspace field that takes your typing and
-  makes another workspace when you click away (#241).
-- **Importing files into notes keeps Modex responsive.** Files copy in the background, so a
-  large import from another disk, a network share or iCloud no longer freezes the window, and
-  each file appears in your notes only once it has copied in full (#241).
-- **Open in knowledge base finds a renamed page.** Right after you retitle a page, Open in
-  knowledge base opens its file under the new name instead of failing on the old one. (#241)
-- **Large notes trees keep up with typing.** Typing in a page no longer redraws the Space
-  sidebar's tree, and drawing a tree of about 2,000 items takes about 80 ms instead of 3 s (#241).
 - **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
   transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
   quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
@@ -171,6 +131,15 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
   thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
   about 40 ms before); reopening it reuses the result.
+- **Codex memory citations can be read in place** (part of #278). A reply's "From Codex memory"
+  citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
+  Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
+  and opens nothing. It works on the Mac only, never from a paired desktop.
+- **A turn's patch can be compared with the working tree** (part of #278). A patch the CLI
+  reported as applied has **Compare with working tree**. Each file it touched reads as left by the
+  turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
+  Main reads only the named files inside the thread's folder and returns verdicts, never contents.
+  Codex file changes now keep their per-file paths beside the patch.
 - **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
   unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
   search no status or error field. Its completion is its only report, so a completed search now
@@ -178,23 +147,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **Desktop v0.2.0 and Companion 0.2.0 (7) preparation.** The signed `v0.2.0` tag is on `01b1b8a`
-  (#272), so the release ships `main` up to there. The conversation-fidelity slices from #282 on,
-  under "On main, unreleased", are not in it. It ships:
-  - read-only routines on a timer, on one decision service for Jev;
-  - the notes fixes from v0.1.0's review (#241);
-  - Copy details and Retry on every inline error;
-  - the Analytics restyle and the Images "queued" fix.
-
-  Val chose the version. The full test suite, typecheck and a signed, notarized rehearsal ran
-  locally. On 2026-10-18 the tag passed
-  [release run 39100984341](https://github.com/TypeSafeAI/modex/actions/runs/39100984341). It
-  covered signing, notarization and stapling, the E2E suite against the packaged app, all three
-  signed native updater scenarios and the Windows and Linux installers. Its draft release holds the
-  five installers, `RELEASE-MANIFEST.json` and `SHA256SUMS.txt`. Remaining: independent download
-  checks, publication, the v0.1.0 → v0.2.0 banner upgrade on the release Mac, and the TestFlight
-  upload of Companion build 7, which carries thread archiving from the phone.
-  [Candidate review](reviews/2026-10-18-v0.2.0-release-review.md).
+- **v0.2.0 after publication.** v0.2.0 was published on 2026-10-18 from the signed tag on
+  `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through
+  its own update banner, and uploading Companion 0.2.0 (7) to TestFlight, which carries thread
+  archiving from the phone. [Review](reviews/2026-10-18-v0.2.0-release-review.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
@@ -333,7 +289,7 @@ Roughly in the order they earn their place; none is scheduled.
 1. **Windows and Linux acceptance.** Their installers shipped with v0.1.0. Provider-account
    acceptance, KWallet6 and full graphical sessions, and historical schema migration remain
    unproven; see [native-platforms.md](native-platforms.md).
-2. **Routines that change code** (Routines Phase 2). Read-only routines are on `main`. Agent-mode
+2. **Routines that change code** (Routines Phase 2). Read-only routines shipped in v0.2.0. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
 3. **Repository authorization through a GitHub App.** Modex sign-in is identity-only (#141). Acting

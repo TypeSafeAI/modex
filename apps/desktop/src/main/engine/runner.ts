@@ -2,11 +2,11 @@ import { resolveCli } from "./cli-path.js";
 import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
-import type { ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, LastTurn, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
+import type { AnswerResult, ApprovalAnswer, ApprovalReceipt, BackendId, FollowUp, LastTurn, Mode, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
 import { APPROVAL_POLICIES, BACKENDS } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
-import type { ApprovalRequest, Backend, TurnResult, TurnSink } from "./backends/types.js";
+import type { ApprovalRequest, Backend, NativeRequest, QuestionReply, TurnResult, TurnSink } from "./backends/types.js";
 import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
 import { MockBackend } from "./backends/mock.js";
@@ -30,6 +30,7 @@ import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
 import { boundOutput } from "../../shared/evidence.js";
 import { taskMarkdown, taskRecord } from "../../shared/task-context.js";
+import { actionDigest, emptyRequests, publicAnswers, register as registerRequest, resolve as resolveRequest, settle as settleRequest, validateAnswers, withdraw as withdrawRequests, type Question, type RequestBinding, type RequestsState, type Resolution } from "../../shared/human-requests.js";
 import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
 /** Refused approvals in a routine run: the routine is read-only, and nobody is there to answer. */
@@ -47,13 +48,24 @@ export interface DurableSendAdmission {
 }
 interface PreparedAdmission extends DurableSendAdmission { readonly rawText: string }
 
+type PendingRequest =
+  | { kind: "approval"; settle: (answer: ApprovalAnswer) => void }
+  | { kind: "question"; questions: Question[]; settle: (reply: QuestionReply) => void };
+
 interface Live {
   abort: AbortController | null;
   run: Promise<void> | null;
   /** Backend executing the current turn, so a force-stop reaches the right one. */
   backend: BackendId | null;
   flushTimer?: ReturnType<typeof setTimeout>;
-  pending: Map<string, (a: ApprovalAnswer) => void>;
+  /** Requests waiting on a person, by card id: an approval settles with an answer, a question with answers or a withdrawal. */
+  pending: Map<string, PendingRequest>;
+  /**
+   * The running turn's requests (shared/human-requests.ts): open, resolved or withdrawn, and the refusal for
+   * any other answer. Kept only while the turn runs, so a secret answer is gone when it ends; afterwards a
+   * card's own fields say how it closed.
+   */
+  requests: RequestsState;
   items: ThreadItem[];
   status: ThreadStatus;
   /** The running turn's projected conversation (shared/conversation-events.ts); reset per turn. */
@@ -202,10 +214,16 @@ export class ThreadRunner {
         if ((item.kind === "tool" || item.kind === "thinking" || item.kind === "assistant") && item.origin && item.outcome === "running") {
           item = item.kind === "assistant" ? { ...item, outcome: "unknown" } : item.kind === "tool" ? { ...item, status: "done", outcome: "unknown", ok: okFor("unknown") } : { ...item, status: "done", outcome: "unknown" };
         }
+        // A card nobody answered: the process that could take the answer is gone, so it closes as ended.
+        if (item.kind === "approval" && !item.answer) return { ...item, answer: "no", withdrawn: "ended" };
+        if (item.kind === "question" && !item.answers && !item.withdrawn) return { ...item, withdrawn: "ended" };
+        // An answer taken but not recorded as handed to the CLI: nobody can tell whether the CLI got it, and it is
+        // never sent again.
+        if ((item.kind === "approval" || item.kind === "question") && item.delivery === "sending") return { ...item, delivery: "uncertain" };
         if (item.kind !== "tool" || !item.agent || !["running", "waiting"].includes(item.agent.state)) return item;
         return { ...item, status: "done", ok: undefined, agent: { ...item.agent, state: "unknown", detail: "Modex restarted without a final agent status" } };
       });
-      l = { abort: null, run: null, backend: null, pending: new Map(), items, status: "idle", conversation: initialConversation(), attempt: null };
+      l = { abort: null, run: null, backend: null, pending: new Map(), requests: emptyRequests(), items, status: "idle", conversation: initialConversation(), attempt: null };
       this.live.set(threadId, l);
       // Settle it everywhere once, not only in this window: save it for the next process, and send the
       // change through the event stream so the journal and paired clients that resume from it see it too.
@@ -652,6 +670,7 @@ export class ThreadRunner {
     const abort = new AbortController();
     l.abort = abort;
     l.conversation = initialConversation();
+    l.requests = emptyRequests();
     l.attempt = null;
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
@@ -820,6 +839,7 @@ export class ThreadRunner {
       }
       // Still open when the turn ended: nobody can answer them now.
       for (const id of [...l.pending.keys()]) this.withdraw(threadId, l, id, "ended", false);
+      l.requests = emptyRequests();
       this.persistItems(threadId, l);
       l.abort = null;
       l.backend = null;
@@ -907,14 +927,63 @@ export class ThreadRunner {
     });
   }
 
-  answer(threadId: string, itemId: string, answer: ApprovalAnswer): void {
+  /** Answers an approval card. The first answer is taken; any other is refused with the reason (docs/human-requests.md). */
+  answer(threadId: string, itemId: string, answer: ApprovalAnswer, by = "desktop"): AnswerResult {
     const l = this.slot(threadId);
-    const resolve = l.pending.get(itemId);
-    if (!resolve) return;
+    const accepted = this.accept(l, itemId, { kind: "approval", answer }, by);
+    const pending = l.pending.get(itemId);
+    if (!accepted.ok || pending?.kind !== "approval") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
     l.pending.delete(itemId);
-    this.patchItem(threadId, itemId, { answer });
+    this.patchItem(threadId, itemId, { answer, answeredBy: by, delivery: "sending" });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
-    resolve(answer);
+    pending.settle(answer);
+    this.sent(threadId, l, itemId);
+    return { ok: true };
+  }
+
+  /**
+   * Answers a question card with one answer list per question. Answers are checked against the questions
+   * before anything reaches the CLI; a secret answer goes to the CLI and is saved and shown as "(hidden)".
+   */
+  answerQuestion(threadId: string, itemId: string, answers: Record<string, unknown>, by = "desktop"): AnswerResult {
+    const l = this.slot(threadId);
+    const pending = l.pending.get(itemId);
+    if (pending?.kind === "question") {
+      const checked = validateAnswers(pending.questions, answers);
+      if (!checked.ok) return { ok: false, reason: "invalid", error: checked.error };
+    }
+    const accepted = this.accept(l, itemId, { kind: "question", answers: answers as Record<string, string[]> }, by);
+    if (!accepted.ok || pending?.kind !== "question") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
+    const given = answers as Record<string, string[]>;
+    l.pending.delete(itemId);
+    this.patchItem(threadId, itemId, { answers: publicAnswers(pending.questions, given), answeredBy: by, delivery: "sending" });
+    if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
+    pending.settle({ answers: given });
+    this.sent(threadId, l, itemId);
+    return { ok: true };
+  }
+
+  /** Records that an accepted answer was handed to the CLI, in the broker and on the card. */
+  private sent(threadId: string, l: Live, itemId: string): void {
+    l.requests = settleRequest(l.requests, itemId, "sent");
+    this.patchItem(threadId, itemId, { delivery: "sent" });
+  }
+
+  /** Takes one answer for a waiting request through the broker, or says why not. */
+  private accept(l: Live, itemId: string, resolution: Resolution, by: string): AnswerResult {
+    const record = l.requests.requests[itemId];
+    if (!record) {
+      // Not this turn's request: the card, if there is one, says how it closed.
+      const item = l.items.find((i) => i.id === itemId);
+      if (!item || (item.kind !== "approval" && item.kind !== "question")) return { ok: false, reason: "unknown" };
+      if (item.kind !== resolution.kind) return { ok: false, reason: "invalid" };
+      const answered = item.kind === "approval" ? Boolean(item.answer) && !item.withdrawn : Boolean(item.answers);
+      return { ok: false, reason: answered ? "already-resolved" : "withdrawn" };
+    }
+    const result = resolveRequest(l.requests, itemId, resolution, { binding: record.request.binding, digest: record.request.digest, by });
+    if (!result.ok) return { ok: false, reason: result.reason };
+    l.requests = result.state;
+    return { ok: true };
   }
 
   /**
@@ -923,12 +992,14 @@ export class ThreadRunner {
    * thread stop waiting; Stop and the turn's end set the status themselves.
    */
   private withdraw(threadId: string, l: Live, itemId: string, why: "native" | "stopped" | "ended", persist = true): void {
-    const resolve = l.pending.get(itemId);
-    if (!resolve) return;
+    const pending = l.pending.get(itemId);
+    if (!pending) return;
     l.pending.delete(itemId);
-    this.patchItem(threadId, itemId, { answer: "no", withdrawn: why }, { persist });
+    l.requests = withdrawRequests(l.requests, { id: itemId });
+    this.patchItem(threadId, itemId, pending.kind === "approval" ? { answer: "no", withdrawn: why } : { withdrawn: why }, { persist });
     if (why === "native" && l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
-    resolve("no");
+    if (pending.kind === "approval") pending.settle("no");
+    else pending.settle({ withdrawn: why });
   }
 
   /** Stopped processes that never confirmed their exit and are still there. */
@@ -984,7 +1055,7 @@ export class ThreadRunner {
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch, ...titleSource });
     this.o.emit({ threadId, type: "thread", thread: t });
     // Switching to YOLO also clears what is already waiting; Always allow leaves it, since it cannot tell which of those are escalations.
-    if (patch.approvals === "yolo") for (const id of [...this.slot(threadId).pending.keys()]) this.answer(threadId, id, "yes");
+    if (patch.approvals === "yolo") for (const [id, pending] of [...this.slot(threadId).pending]) if (pending.kind === "approval") this.answer(threadId, id, "yes");
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
     const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");
@@ -1081,7 +1152,7 @@ export class ThreadRunner {
       const id = "source" in body && body.source ? `${body.native.runtime}:${body.source}` : `${turn.attempt}:${seq}`;
       return { ...body, schema: CONVERSATION_SCHEMA, id, seq, at: new Date().toISOString(), turn } as ConversationEvent;
     };
-    const sink = this.sinkFor(threadId, l, turn.attempt, (observation) => {
+    const sink = this.sinkFor(threadId, l, turn, (observation) => {
       // The CLI's own event id, when it gives one, is applied once: a repeated line is the same event.
       if (observation.source) {
         if (seen.has(observation.source)) return;
@@ -1111,10 +1182,16 @@ export class ThreadRunner {
   }
 
   /** A sink for the running turn. One bound to `attempt` goes inert, every method of it, once another attempt starts. */
-  private sinkFor(threadId: string, l: Live, attempt?: string, observe: (observation: Observation) => void = () => {}): TurnSink {
+  private sinkFor(threadId: string, l: Live, turn?: TurnRef, observe: (observation: Observation) => void = () => {}): TurnSink {
     const at = () => new Date().toISOString();
     const abort = l.abort;
+    const attempt = turn?.attempt;
     const active = () => this.live.get(threadId) === l && l.abort === abort && abort !== null && (attempt === undefined || l.attempt === attempt);
+    // Who asked: this turn and attempt, and the CLI's own request id when it gives one (else the card's id).
+    const bind = (id: string, native?: NativeRequest): RequestBinding => ({
+      thread: threadId, turn: turn?.turn ?? "", attempt: attempt ?? "", backend: turn?.backend ?? this.o.store.thread(threadId)?.backend ?? "mock",
+      ...(turn?.account ? { account: turn.account } : {}), runtime: native?.runtime ?? "", nativeRequestId: native?.request ?? id, ...(native?.item ? { item: native.item } : {}),
+    });
     // Requests a rule refused, with the rule's "when" text, for backends that pass a reason to the model.
     const refusals = new WeakMap<ApprovalRequest, string>();
     return {
@@ -1133,10 +1210,11 @@ export class ThreadRunner {
             if (gone()) return resolve("no");
             const id = newId();
             const close = () => this.withdraw(threadId, l, id, "native");
-            l.pending.set(id, (answer) => {
+            l.pending.set(id, { kind: "approval", settle: (answer) => {
               withdrawn?.removeEventListener("abort", close);
               resolve(answer);
-            });
+            } });
+            l.requests = registerRequest(l.requests, { kind: "approval", id, binding: bind(id, req.native), action: req.action ?? null, digest: actionDigest(req.action ?? { question: req.question, detail: req.detail ?? null }), canAlways: req.canAlways });
             this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(decidedBy ? { decidedBy } : {}), at: at() });
             this.setStatus(threadId, "waiting");
             withdrawn?.addEventListener("abort", close, { once: true });
@@ -1163,6 +1241,27 @@ export class ThreadRunner {
             if (r.answer === "no") refusals.set(req, r.decidedBy.when);
           }
           return r.answer;
+        });
+      },
+      question: (req, withdrawn) => {
+        if (this.unattended.has(threadId)) {
+          if (active()) this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: "The agent asked a question during a routine run. Nobody is there to answer, so it was declined.", at: at() });
+          return Promise.resolve({ withdrawn: "ended" as const });
+        }
+        return new Promise<QuestionReply>((resolve) => {
+          if (withdrawn?.aborted) return resolve({ withdrawn: "native" });
+          if (!active() || l.abort?.signal.aborted) return resolve({ withdrawn: "stopped" });
+          const id = newId();
+          const close = () => this.withdraw(threadId, l, id, "native");
+          l.pending.set(id, { kind: "question", questions: req.questions, settle: (reply) => {
+            withdrawn?.removeEventListener("abort", close);
+            resolve(reply);
+          } });
+          l.requests = registerRequest(l.requests, { kind: "question", id, binding: bind(id, req.native), questions: req.questions, blocking: req.blocking, digest: actionDigest(req.questions) });
+          this.addItem(threadId, { id, kind: "question", questions: req.questions, blocking: req.blocking, at: at() });
+          // A blocking question holds the turn until it is answered; a non-blocking one lets it run on.
+          if (req.blocking) this.setStatus(threadId, "waiting");
+          withdrawn?.addEventListener("abort", close, { once: true });
         });
       },
       refusedByRule: (req) => refusals.get(req),

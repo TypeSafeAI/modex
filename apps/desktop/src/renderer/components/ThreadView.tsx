@@ -1,9 +1,10 @@
 import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
+import type { AnswerResult, ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
+import { answerNote } from "../../shared/human-requests";
 import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from "../../shared/sources";
 import type { AttachmentActions } from "../composer-attachments";
 import type { Attachment } from "../../shared/attachments";
@@ -16,8 +17,10 @@ import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
+import { QuestionCard } from "./transcript/QuestionCard";
 import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
-import { OUTPUT_PREVIEW_BYTES } from "../../shared/evidence";
+import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS } from "../../shared/evidence";
+import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
 
 export { formatElapsed } from "./transcript/TurnContent";
 
@@ -34,6 +37,8 @@ interface Props {
   onSend: (text: string) => Promise<void>;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
+  /** Answers a question card; resolves to main's verdict so the card can say why it was refused. */
+  onAnswerQuestion: (itemId: string, answers: Record<string, string[]>) => Promise<AnswerResult | undefined>;
   onUpdate: (patch: ThreadPatch) => void;
   /** Runs the last message again after a failed turn (the failure card's Retry). */
   onRetry: () => void;
@@ -68,7 +73,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
@@ -163,6 +168,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
 
+      <TranscriptThread.Provider value={thread.id}>
       <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
         {items.length === 0 && (
           <div className="transcript-empty">
@@ -172,9 +178,10 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
             footer={(t) => <SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} />}
-            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
+            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
+      </TranscriptThread.Provider>
       {away && items.length > 0 && <button type="button" className="jump-latest" data-testid="jump-latest" onClick={jumpToLatest}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
       {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
         <p>This message is saved. Start its coding turn when you are ready.</p>
@@ -225,7 +232,7 @@ export function isNearBottom(el: { scrollTop: number; scrollHeight: number; clie
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
 }
 
-function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
+function Item({ item, live, onAnswer, onAnswerQuestion, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onAnswerQuestion: Props["onAnswerQuestion"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
       return (
@@ -240,6 +247,8 @@ function Item({ item, live, onAnswer, onPolicy, onFix, onRetry }: { item: Thread
       return <ToolItem item={item} />;
     case "approval":
       return <ApprovalItem item={item} onAnswer={onAnswer} onPolicy={onPolicy} />;
+    case "question":
+      return <QuestionCard item={item} onAnswer={onAnswerQuestion} />;
     case "notice":
       if (item.failure) return <FailureItem failure={item.failure} onFix={onFix} onRetry={onRetry} />;
       if (item.pages) return <div className="notice info" data-testid="item" data-item-kind="notice"><span>{item.text} </span><button className="btn small" aria-label={`Open note ${item.pages.title}`} onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: item.pages!.pageId }))}>{item.pages.title}<Icon name="arrow-right" size={12} /></button></div>;
@@ -371,7 +380,10 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {r?.decision === "ask" && <div className="approval-reason" data-testid="approval-reason">{askedBecause(r)}</div>}
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
-        <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+        <>
+          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+          {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
+        </>
       ) : (
         <div className="row">
           <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
@@ -470,6 +482,7 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
             {item.status === "done" && <span className="tool-exit" data-testid="tool-exit">{exitLabel(item.exitCode)}</span>}
           </div>}
           {PATCH_TOOLS.has(item.name) && <div className="tool-patch-note" data-testid="tool-patch-note">The patch as this turn applied it. The working tree may have changed since; Changes shows it now.</div>}
+          {PATCH_TOOLS.has(item.name) && <PatchCompare item={item} />}
           {item.name === "apply_patch" && typeof item.args.patch === "string" ? <Patch text={item.args.patch} /> : null}
           {item.outputTruncated && item.outputBytes != null && <div className="tool-truncated" data-testid="tool-truncated">Showing the last {formatBytes(OUTPUT_PREVIEW_BYTES)} of {formatBytes(item.outputBytes)}.</div>}
           {page && <a className="tool-link" data-testid="tool-link" href={page} target="_blank" rel="noreferrer">{page}</a>}
@@ -517,9 +530,6 @@ export function Patch({ text }: { text: string }) {
     </pre>
   );
 }
-
-/** Tools whose output is a patch: what the turn applied then, which the working tree may no longer match. */
-const PATCH_TOOLS = new Set(["apply_patch", "Edit", "MultiEdit", "Write", "NotebookEdit"]);
 
 /** How a command ended, as the CLI reported it: a code, an explicit none, or nothing reported. */
 function exitLabel(code: number | null | undefined): string {
