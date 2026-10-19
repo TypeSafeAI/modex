@@ -17,7 +17,7 @@ const POLICY = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const inline = (tokens: InlineToken[]): string => tokens.map(t => t.type === "text" ? escape(t.text) : t.type === "code" ? `<code>${escape(t.text)}</code>` : t.type === "bold" ? `<strong>${inline(t.children)}</strong>` : `<a href="${escape(t.href)}" rel="noreferrer">${inline(t.children)}</a>`).join("");
 
-/** The same small Markdown subset as transcript previews; source HTML is always text. */
+/** A small Markdown subset: headings, fenced code, inline code, bold, links, lists, paragraphs. Source HTML is always text. */
 function markdown(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];
