@@ -22,10 +22,16 @@ safeStorage.encryptString = value => Buffer.from(value);
 safeStorage.decryptString = value => value.toString();
 shell.openExternal = async () => { throw new Error("External navigation is disabled in this fixture."); };
 globalThis.fetch = async () => { throw new Error("Network is disabled in this fixture."); };
-const scenario = globalThis.__updateScenario = { downloads: 0, downloadedDisposed: 0, stagedDisposed: 0, nativeCalls: 0 };
+const scenario = globalThis.__updateScenario = { downloads: 0, downloadedDisposed: 0, stagedDisposed: 0, nativeCalls: 0, quitStages: 0 };
 const forbidNative = () => { scenario.nativeCalls++; throw new Error("Native installation is forbidden in this fixture."); };
 for (const name of ["setFeedURL", "checkForUpdates", "quitAndInstall"]) autoUpdater[name] = forbidNative;
-MacUpdateHandoff.prototype.stage = forbidNative;
+// Install-on-quit reaches this boundary after the real preflight and drain. Record the
+// durable receipt as Squirrel's handoff would, but never touch the native updater.
+MacUpdateHandoff.prototype.stage = async (snapshot, recordAttempt) => {
+  scenario.quitStages++;
+  await recordAttempt({ version: snapshot.version, sha512: snapshot.sha512, startedAt: new Date().toISOString() });
+  return "staged";
+};
 const release = { version: "999.0.0", url: "https://github.com/TypeSafeAI/modex/releases/tag/v999.0.0" };
 ReleaseChecker.prototype.check = async () => release;
 ReleaseChecker.prototype.archive = () => ({ version: release.version, arch: process.arch, size: 100, sha256: "ab".repeat(32) });

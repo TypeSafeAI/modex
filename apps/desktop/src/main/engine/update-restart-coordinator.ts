@@ -3,6 +3,9 @@ import type { UpdateRecovery } from "./update-recovery.js";
 import type { VerifiedUpdate } from "./update-installation.js";
 
 export type RestartPhase = "idle" | "preparing" | "draining" | "staging" | "staged" | "uncertain" | "recovery";
+/** `relaunch: false` stages the update without quitAndInstall: the caller is already
+ * quitting, and Squirrel installs a staged update when the app exits. */
+export interface RestartOptions { relaunch?: boolean }
 export type RestartResult = { outcome: "blocked"; message: string } | { outcome: "staged" | "uncertain" | "recovery" };
 export interface RestartCoordinatorOptions {
   currentVersion: string;
@@ -29,15 +32,15 @@ export class UpdateRestartCoordinator {
     try { this.options.changed(phase); } catch { console.error("[modex] restart state observer failed"); }
   }
 
-  restart(candidate: VerifiedUpdate): Promise<RestartResult> {
+  restart(candidate: VerifiedUpdate, options: RestartOptions = {}): Promise<RestartResult> {
     if (this.pending) return this.pending;
     if (this.phase !== "idle") return Promise.reject(new Error("Restart recovery is required; a restart has already started."));
     // Assign the coalescing promise before calling user/renderer observers.
-    this.pending = Promise.resolve().then(() => this.prepare(candidate)).finally(() => { this.pending = undefined; });
+    this.pending = Promise.resolve().then(() => this.prepare(candidate, options)).finally(() => { this.pending = undefined; });
     return this.pending;
   }
 
-  private async prepare(candidate: VerifiedUpdate): Promise<RestartResult> {
+  private async prepare(candidate: VerifiedUpdate, options: RestartOptions): Promise<RestartResult> {
     const releases: (() => void)[] = [];
     let rendererEntered = false;
     let servicesTouched = false;
@@ -65,7 +68,7 @@ export class UpdateRestartCoordinator {
       const persisted = this.observeNative(outcome);
       // A timeout followed by late success may already have published staged. The
       // original timeout still requires an explicit recovery action; never auto-quit it.
-      if (outcome === "staged" && persisted) {
+      if (outcome === "staged" && persisted && options.relaunch !== false) {
         try { this.options.assertRendererPrepared(); this.options.quitAndInstall(); }
         catch { console.error("[modex] update is staged but restarting failed"); }
       }
