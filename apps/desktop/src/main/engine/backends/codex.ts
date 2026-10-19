@@ -740,8 +740,9 @@ export function codexPhase(phase: string | null | undefined): MessagePhase {
  * How a completed Codex tool item ended, from its own status (codex-cli 0.163.0): `declined` is a
  * denial, `failed` a failure, `completed` a success, except a command that completed with a non-zero
  * exit code (failed) or none at all (unknown). A command with no status is judged by its exit code.
- * Any other item that reports no status (web search) is unknown unless it reports an error; so is a
- * tool still `inProgress` when it completes. Exported for tests.
+ * A web search has neither a status nor an error field, so its `item/completed` is the only report it
+ * makes: it finished. Any other item without a status is unknown unless it reports an error, and so
+ * is a tool still `inProgress` when it completes. Exported for tests.
  */
 export function codexOutcome(item: { type: string; status?: string; exitCode?: number | null; error?: unknown }): SettledOutcome {
   if (item.status === "declined") return "denied";
@@ -749,7 +750,8 @@ export function codexOutcome(item: { type: string; status?: string; exitCode?: n
   const exit = item.exitCode === 0 ? "succeeded" : typeof item.exitCode === "number" ? "failed" : "unknown";
   if (item.status === "completed") return item.type === "commandExecution" ? exit : "succeeded";
   if (item.status === undefined && item.type === "commandExecution" && exit !== "unknown") return exit;
-  return item.error ? "failed" : "unknown";
+  if (item.error) return "failed";
+  return item.status === undefined && item.type === "webSearch" ? "succeeded" : "unknown";
 }
 
 function codexStepStatus(status: unknown): PlanStepStatus {

@@ -140,6 +140,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
   Main reads only the named files inside the thread's folder and returns verdicts, never contents.
   Codex file changes now keep their per-file paths beside the patch.
+- **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
+  unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
+  search no status or error field. Its completion is its only report, so a completed search now
+  reads as done and folds like other finished work (#277).
 
 ## In flight
 
