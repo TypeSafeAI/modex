@@ -2,6 +2,7 @@ import type { PluginCommands } from "./plugins.js";
 import type { ImageCommands } from "./images.js";
 import type { RoutineCommands } from "./routines.js";
 import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
+import type { EvidenceCommands } from "./evidence.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
@@ -511,7 +512,7 @@ export interface CompanionStatus {
 
 export interface ReleaseUpdate { version: string; url: string; }
 
-export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands {
+export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands, EvidenceCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
   "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };
