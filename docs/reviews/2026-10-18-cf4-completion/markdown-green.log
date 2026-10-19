@@ -1,0 +1,22 @@
+✔ tables, blockquotes, nested and task lists, emphasis and strikethrough render as their elements (8506.80025ms)
+✔ headings keep their place below the transcript's own titles, and a fence keeps its language and indentation (3.333625ms)
+✔ a fence that is still streaming shows its code so far, and the closing fence changes nothing before it (2.018042ms)
+✔ every prefix of a streamed reply renders, and no prefix loses or doubles its text (1137.531917ms)
+✔ Unicode passes through untouched (1.442958ms)
+✔ raw HTML stays text: no element, attribute or handler reaches the page (3.044167ms)
+✔ only web links are links; other schemes stay as the text that was written (1.777958ms)
+✔ bare URLs link without the sentence's punctuation, and reference links resolve (2.616667ms)
+✔ images are never fetched: a web image becomes a link named by its alt text (3.979542ms)
+✔ a streaming reply splits at blank lines outside code fences, and the pieces join back to the text (298.875166ms)
+✔ rendering a reply piece by piece shows the same text as rendering it whole (11.544708ms)
+✔ the settled cache keeps recent renders, drops the oldest past its limit, and never holds very long text (0.548916ms)
+✔ a code block names its language and offers Copy (0.940625ms)
+✔ typed items stay with their explicit turn when another user message intervenes (718.015542ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14730.776708

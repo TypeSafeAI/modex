@@ -1,0 +1,81 @@
+
+Running 10 tests using 1 worker
+
+(node:69594) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✓   1 e2e/conversation-rendering.spec.ts:58:1 › a reply's tables, quotes, task lists and code render as elements (119ms)
+  ✓   2 e2e/conversation-rendering.spec.ts:74:1 › raw HTML, script links and images in a reply stay inert (47ms)
+  ✓   3 e2e/conversation-rendering.spec.ts:84:1 › Copy on a code block puts exactly its code on the clipboard and starts nothing (276ms)
+  ✓   4 e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code (1.1s)
+  ✘   5 e2e/conversation-rendering.spec.ts:138:1 › Markdown stays usable in every theme at minimum size, with keyboard Copy and reduced motion (767ms)
+(node:4797) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✓   6 e2e/typed-turns.spec.ts:71:1 › a typed turn answers with its final message, folds only work that succeeded, and labels reasoning honestly (128ms)
+  ✓   7 e2e/typed-turns.spec.ts:104:1 › every running item is live at once, and a stopped message says it stopped (203ms)
+  ✓   8 e2e/typed-turns.spec.ts:124:1 › a retried turn shows its new attempt, and only that attempt answers (74ms)
+  ✓   9 e2e/typed-turns.spec.ts:138:1 › scrolling up while output streams shows Jump to latest; it returns to the bottom and resumes following (125ms)
+  ✘  10 e2e/typed-turns.spec.ts:155:1 › typed turns stay readable in every theme at the 900×600 minimum (787ms)
+
+
+  1) e2e/conversation-rendering.spec.ts:138:1 › Markdown stays usable in every theme at minimum size, with keyboard Copy and reduced motion 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "0ms"
+    Received: "0s"
+
+      151 |       expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("export const answer = 42;");
+      152 |       expect(await tid(page, "transcript").evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    > 153 |       expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--duration-base").trim())).toBe("0ms");
+          |                                                                                                                                ^
+      154 |       await expect(copy).toBeFocused();
+      155 |       const name = `markdown-${theme}-${width}x${height}`;
+      156 |       const shot = await page.screenshot();
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/e2e/conversation-rendering.spec.ts:153:128
+
+    Error Context: test-results/conversation-rendering-Mar-60dbb-ard-Copy-and-reduced-motion/error-context.md
+
+    Error Context: test-results/conversation-rendering-Mar-60dbb-ard-Copy-and-reduced-motion/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/conversation-rendering-Mar-60dbb-ard-Copy-and-reduced-motion/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/conversation-rendering-Mar-60dbb-ard-Copy-and-reduced-motion/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/typed-turns.spec.ts:155:1 › typed turns stay readable in every theme at the 900×600 minimum 
+
+    Error: ENOENT: no such file or directory, open '/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/docs/reviews/2026-10-18-cf4-completion/screenshots/typed-turn-graphite-900x600.png'
+
+      178 |     await testInfo.attach(`typed-turn-${theme}-900x600`, { body: shot, contentType: "image/png" });
+      179 |     // MODEX_SCREENSHOTS=<dir> keeps them for review evidence.
+    > 180 |     if (process.env.MODEX_SCREENSHOTS) fs.writeFileSync(path.join(process.env.MODEX_SCREENSHOTS, `typed-turn-${theme}-900x600.png`), shot);
+          |                                           ^
+      181 |   }
+      182 | });
+      183 |
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/e2e/typed-turns.spec.ts:180:43
+
+    Error Context: test-results/typed-turns-typed-turns-st-752a1-heme-at-the-900×600-minimum/error-context.md
+
+    Error Context: test-results/typed-turns-typed-turns-st-752a1-heme-at-the-900×600-minimum/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/typed-turns-typed-turns-st-752a1-heme-at-the-900×600-minimum/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/typed-turns-typed-turns-st-752a1-heme-at-the-900×600-minimum/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    e2e/conversation-rendering.spec.ts:138:1 › Markdown stays usable in every theme at minimum size, with keyboard Copy and reduced motion 
+    e2e/typed-turns.spec.ts:155:1 › typed turns stay readable in every theme at the 900×600 minimum 
+  8 passed (1.3m)
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test e2e/conversation-rendering.spec.ts e2e/typed-turns.spec.ts

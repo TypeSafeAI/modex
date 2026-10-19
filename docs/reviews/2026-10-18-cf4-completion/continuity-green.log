@@ -1,0 +1,22 @@
+
+Running 12 tests using 1 worker
+
+(node:54276) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✓   1 e2e/conversation-continuity.spec.ts:42:1 › reading position, expansion and drafts survive sustained updates and switching threads (2.3s)
+  ✓   2 e2e/conversation-continuity.spec.ts:74:1 › live, waiting, failed, completed and reloaded states keep actionable rows visible (2.0s)
+
+  ✓   3 e2e/conversation-rendering.spec.ts:58:1 › a reply's tables, quotes, task lists and code render as elements (65ms)
+  ✓   4 e2e/conversation-rendering.spec.ts:74:1 › raw HTML, script links and images in a reply stay inert (185ms)
+  ✓   5 e2e/conversation-rendering.spec.ts:84:1 › Copy on a code block puts exactly its code on the clipboard and starts nothing (203ms)
+  ✓   6 e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code (1.6s)
+  ✓   7 e2e/conversation-rendering.spec.ts:138:1 › Markdown stays usable in every theme at minimum size, with keyboard Copy and reduced motion (5.9s)
+
+  ✓   8 e2e/typed-turns.spec.ts:71:1 › a typed turn answers with its final message, folds only work that succeeded, and labels reasoning honestly (696ms)
+  ✓   9 e2e/typed-turns.spec.ts:104:1 › every running item is live at once, and a stopped message says it stopped (371ms)
+  ✓  10 e2e/typed-turns.spec.ts:124:1 › a retried turn shows its new attempt, and only that attempt answers (76ms)
+  ✓  11 e2e/typed-turns.spec.ts:138:1 › scrolling up while output streams shows Jump to latest; it returns to the bottom and resumes following (392ms)
+  ✓  12 e2e/typed-turns.spec.ts:155:1 › typed turns stay readable in every theme at the 900×600 minimum (1.6s)
+
+  12 passed (36.9s)

@@ -1,0 +1,51 @@
+
+Running 1 test using 1 worker
+
+(node:45357) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✘  1 e2e/conversation-continuity.spec.ts:42:1 › reading position, expansion and drafts survive sustained updates and switching threads (16.9s)
+
+
+  1) e2e/conversation-continuity.spec.ts:42:1 › reading position, expansion and drafts survive sustained updates and switching threads 
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  locator('[data-testid="turn-label"]')
+    Expected: "true"
+    Received: "false"
+    Timeout:  15000ms
+
+    Call log:
+      - Expect "toHaveAttribute" locator('[data-testid="turn-label"]') with timeout 15000ms
+      - waiting for locator('[data-testid="turn-label"]')
+        33 × locator resolved to <button class="turn-label" aria-expanded="false" aria-controls="_r_1e_" data-testid="turn-label">…</button>
+           - unexpected value "false"
+
+
+      65 |   await row(threadId).click();
+      66 |   await expect(composer).toHaveValue('draft belonging to A');
+    > 67 |   await expect(tid(page, 'turn-label')).toHaveAttribute('aria-expanded', 'true');
+         |                                         ^
+      68 |   await expect(tid(tool, 'item-body')).toBeVisible();
+      69 |   expect(await transcript.evaluate(el => el.scrollTop)).toBe(0);
+      70 |   await tid(page, 'jump-latest').click();
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/e2e/conversation-continuity.spec.ts:67:41
+
+    Error Context: test-results/conversation-continuity-re-7e73e-dates-and-switching-threads/error-context.md
+
+    Error Context: test-results/conversation-continuity-re-7e73e-dates-and-switching-threads/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/conversation-continuity-re-7e73e-dates-and-switching-threads/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/conversation-continuity-re-7e73e-dates-and-switching-threads/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/conversation-continuity.spec.ts:42:1 › reading position, expansion and drafts survive sustained updates and switching threads 
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test e2e/conversation-continuity.spec.ts --grep reading position

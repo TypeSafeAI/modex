@@ -1,0 +1,9 @@
+
+Running 1 test using 1 worker
+
+(node:89056) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"fixtureHome":"/private/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-home-sG3rMR","fixtureRepo":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-repo-bpjffF","electronPid":89766}
+  ✓  1 e2e/owner-removal.spec.ts:98:1 › uncertain owner pruning shows fresh read-only recovery and exits through ordinary Quit (5.2s)
+
+  1 passed (6.7s)

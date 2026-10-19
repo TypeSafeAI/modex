@@ -65,11 +65,11 @@ test("attempts stay distinct: each later attempt is marked, and only the latest 
   assert.equal(layoutTurn(superseded, { busy: false }).final, -1, "an earlier attempt's answer is not this attempt's");
 });
 
-test("without typed phases (Claude) the latest attempt's last reply is the answer", () => {
+test("typed unspecified messages never invent a final answer", () => {
   const items = [say("a1", "Looking.", "unspecified"), tool("t1", "succeeded"), say("a2", "Done.", "unspecified")];
   const layout = layoutTurn(items, { busy: false });
-  assert.equal(layout.final, 2);
-  assert.deepEqual(layout.work, [true, true, false]);
+  assert.equal(layout.final, -1);
+  assert.deepEqual(layout.work, [false, false, false]);
 });
 
 test("pending requests, notices, failures, interruptions and unknown work never fold", () => {
@@ -87,3 +87,10 @@ test("an open question stays out of the fold; an answered or withdrawn one folds
   const withdrawn: ThreadItem = { id: "w", kind: "question", questions, blocking: true, withdrawn: "stopped", at };
   assert.deepEqual(layoutTurn([open, answered, withdrawn, say("a", "Done.", "final")], { busy: false }).work, [false, true, true, false]);
 });
+
+for (const outcome of ["running", "failed", "denied", "interrupted", "unknown"] as const) {
+  test(`typed ${outcome} messages and reasoning remain visible before a final answer`, () => {
+    const items = [say("partial", "Partial output", "commentary", outcome), think("reason", outcome), say("answer", "Answer", "final")];
+    assert.deepEqual(layoutTurn(items, { busy: false }).work, [false, false, false]);
+  });
+}

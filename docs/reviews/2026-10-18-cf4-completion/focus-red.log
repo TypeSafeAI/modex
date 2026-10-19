@@ -1,0 +1,53 @@
+
+Running 1 test using 1 worker
+
+(node:90692) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Downloading Electron binary...
+(node:95738) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code (15.3s)
+
+
+  1) e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code 
+
+    Error: expect(locator).toBeFocused() failed
+
+    Locator:  locator('[data-testid="item"][data-item-kind="assistant"]').filter({ hasText: 'const stable = 42;' }).locator('[data-testid="code-copy"]')
+    Expected: focused
+    Received: inactive
+    Timeout:  15000ms
+
+    Call log:
+      - Expect "toBeFocused" locator('[data-testid="item"][data-item-kind="assistant"]').filter({ hasText: 'const stable = 42;' }).locator('[data-testid="code-copy"]') with timeout 15000ms
+      - waiting for locator('[data-testid="item"][data-item-kind="assistant"]').filter({ hasText: 'const stable = 42;' }).locator('[data-testid="code-copy"]')
+        33 × locator resolved to <button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy</button>
+           - unexpected value "inactive"
+
+
+      126 |     }, { threadId, text: prefix + "Starting " + "more output ".repeat(i) });
+      127 |     await expect(answer).toContainText("more output ".repeat(i).trim());
+    > 128 |     await expect(copy).toBeFocused();
+          |                        ^
+      129 |     expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("const stable = 42;");
+      130 |   }
+      131 |   // Exercise the parser's delayed settled render as well as each streaming update.
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/e2e/conversation-rendering.spec.ts:128:24
+
+    Error Context: test-results/conversation-rendering-str-07e41-y-control-and-selected-code/error-context.md
+
+    Error Context: test-results/conversation-rendering-str-07e41-y-control-and-selected-code/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/conversation-rendering-str-07e41-y-control-and-selected-code/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/conversation-rendering-str-07e41-y-control-and-selected-code/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code 
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test e2e/conversation-rendering.spec.ts --grep streaming and settling

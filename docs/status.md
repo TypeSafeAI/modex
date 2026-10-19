@@ -156,10 +156,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
   language and has Copy, which only puts the code on the clipboard; it shows its code while the
   fence is still streaming. Raw HTML stays text, only http(s) links
-  are links, and an image becomes a link to it instead of being fetched. While a reply streams, only
-  its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
-  thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
-  about 40 ms before); reopening it reuses the result.
+  are links, and an image becomes a link to it instead of being fetched. While a plain reply streams,
+  completed blocks are reused and the changing tail is parsed again.
+  Lists, references, blockquotes and indented code retain whole-document context. Reopening a
+  thread reuses cached renders; cold-open and streaming measurements are recorded in the
+  [CF-4 checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 - **Codex memory citations can be read in place** (part of #278). A reply's "From Codex memory"
   citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
   Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
@@ -181,6 +182,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
   back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
   characters of a result by default, so Claude output never needs it.
+- **Typed turns keep their meaning, and the reader keeps their place** (CF-4 #277, from #295). A
+  reply becomes the final answer only from the CLI's own final phase, never by position. Failed,
+  denied, stopped and unknown messages and reasoning stay visible, including after a retry, and
+  reasoning summaries keep their label while streaming. A streaming reply keeps its code controls,
+  focus and selection, and returning to a thread restores what was expanded and where it was
+  scrolled, for this session. [Checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 
 ## In flight
 
