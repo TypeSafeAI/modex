@@ -308,13 +308,16 @@ export function itemFacts(item: ThreadItem): ItemFacts {
 }
 
 /**
- * Which of one turn's items is its final answer. A turn whose CLI typed its messages answers with
- * its last `final` message, or has none (-1). Without typed phases (history from before this
- * contract, Claude, older Codex models) the historical heuristic stands: the last assistant item.
+ * Which of one turn's items is its final answer. A turn whose CLI reported message phases answers
+ * with its last `final` message, or has none (-1): a phase of `final` or `commentary`, or any native
+ * phase the CLI sent (codex-cli 0.163.0's `partial_answer` is stored as unspecified beside its
+ * `nativePhase`), means the CLI types its messages, so position never makes an answer. A CLI that
+ * reports no phase at all (Claude Code, history from before this contract, older Codex models) keeps
+ * the historical heuristic: the last assistant item.
  */
 export function finalAnswerIndex(items: readonly ThreadItem[]): number {
-  const phases = items.map((item) => item.kind === "assistant" ? (item as { phase?: MessagePhase }).phase : undefined);
-  if (phases.some((phase) => phase === "final" || phase === "commentary")) return phases.lastIndexOf("final");
+  const messages = items.map((item) => item.kind === "assistant" ? item as { phase?: MessagePhase; nativePhase?: string } : undefined);
+  if (messages.some((m) => m && (m.phase === "final" || m.phase === "commentary" || m.nativePhase !== undefined))) return messages.map((m) => m?.phase).lastIndexOf("final");
   return items.map((item) => item.kind).lastIndexOf("assistant");
 }
 

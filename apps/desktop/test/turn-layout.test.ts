@@ -65,11 +65,22 @@ test("attempts stay distinct: each later attempt is marked, and only the latest 
   assert.equal(layoutTurn(superseded, { busy: false }).final, -1, "an earlier attempt's answer is not this attempt's");
 });
 
-test("typed unspecified messages never invent a final answer", () => {
-  const items = [say("a1", "Looking.", "unspecified"), tool("t1", "succeeded"), say("a2", "Done.", "unspecified")];
+test("typed unspecified messages from a CLI that reports phases never invent a final answer", () => {
+  // codex-cli 0.163.0's partial_answer is stored as unspecified, with the native phase kept beside it.
+  const partial = (id: string, text: string): ThreadItem => ({ ...(say(id, text, "unspecified") as ThreadItem & { kind: "assistant" }), nativePhase: "partial_answer" } as ThreadItem);
+  const items = [partial("a1", "Looking."), tool("t1", "succeeded"), partial("a2", "Done.")];
   const layout = layoutTurn(items, { busy: false });
   assert.equal(layout.final, -1);
   assert.deepEqual(layout.work, [false, false, false]);
+});
+
+test("a CLI that reports no message phase at all (Claude Code) answers with its last reply", () => {
+  // CF-1: Claude's messages are typed but always unspecified, so the documented fallback stands.
+  const claude = (id: string, text: string): ThreadItem => ({ id, kind: "assistant", text, phase: "unspecified", outcome: "succeeded", origin: { ...origin("A1", id), backend: "claude" }, at });
+  const items = [claude("a1", "Editing the greeting."), tool("t1", "succeeded"), claude("a2", "Changed the greeting; the check passed.")];
+  const layout = layoutTurn(items, { busy: false });
+  assert.equal(layout.final, 2);
+  assert.deepEqual(layout.work, [true, true, false]);
 });
 
 test("pending requests, notices, failures, interruptions and unknown work never fold", () => {

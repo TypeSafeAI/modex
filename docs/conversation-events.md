@@ -252,8 +252,10 @@ Items saved before this contract have none of them. Read every item through `ite
 explicit legacy adapter: an old item keeps its text and gets no invented provenance. Its phase is
 `unspecified`, its outcome `unknown`, except a tool that recorded `ok: true`, which only a
 backend's success report ever set. `finalAnswerIndex` keeps the historical heuristic, the last
-assistant item, for turns without typed phases (old history, Claude, older Codex models). A turn
-whose messages have typed phases answers with its last `final` message, or has no final answer.
+assistant item, for turns whose CLI reports no message phase at all (old history, Claude, older
+Codex models). A turn whose messages have typed phases answers with its last `final` message, or has
+no final answer. A native phase counts as typed too: codex-cli 0.163.0's `partial_answer` is stored as
+`unspecified` beside its `nativePhase`, so a turn of partial answers never makes one final by position.
 
 The original CF-1 renderer change was for compatibility. CF-4 now uses `layoutTurn`: only an
 explicit `final` in the latest typed attempt receives final-answer treatment. Typed `unspecified`
