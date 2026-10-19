@@ -1,4 +1,6 @@
 import { imageFixtureBackend } from "./engine/images/fixture.js";
+import { codexMemoriesDir, readMemoryCitation } from "./engine/memory-citations.js";
+import { checkPatch } from "./engine/patch-state.js";
 import { Media } from "./media.js";
 import { IMAGE_SCHEME } from "../shared/images.js";
 import { appInfoLine } from "../shared/error-report.js";
@@ -154,6 +156,7 @@ let shuttingDown = false;
 let servicesTouched = false;
 let shutdownComplete = false;
 let checkingWindowClose = false;
+let installOnQuitTried = false;
 let desktopHost: DesktopHost | undefined;
 const desktopHostActivation = createDesktopHostActivation({
   available: () => !demo && !shuttingDown && !servicesTouched && !checkingWindowClose && !restartAdmission.held && !nativeDraftFailure && !nativeStartup?.recovery,
@@ -346,7 +349,7 @@ const companion = new CompanionServer(home, {
   journal: () => journal,
   routineRuns: () => routines.list().runs,
   pullRequest: (id) => retirer.pullRequest(id),
-  setApprovals: (id, approvals) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }); },
+  setApprovals: (id, approvals, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.updateThread(id, { approvals }, { by }); },
   setArchived: (id, archived) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); runner.setArchived(id, archived); },
   items: (id) => runner.items(id),
   status: (id) => runner.status(id),
@@ -461,6 +464,14 @@ handle("drafts:open", (_req, event) => {
   attachments.sweepStaging();
   return opened;
 }, { localOnly: true });
+// A Codex memory citation's lines, read inside Codex's memories folder only. Mac only: a paired
+// desktop never reads this Mac's memory files.
+handle("evidence:memory", (req) => readMemoryCitation(codexMemoriesDir(), req), { localOnly: true });
+// A turn's patch against the thread's folder now, from the thread's own record. Only per-file verdicts
+// leave main; a paired desktop learns less from it than `files:read` already gives it.
+handle("evidence:patch", ({ threadId, itemId }) => checkPatch(cwdFor(threadId), runner.items(threadId).find((item) => item.id === itemId)));
+// A long tool's kept raw output, a page at a time, for an item of that thread. Reading it runs nothing.
+handle("evidence:tool-log", ({ threadId, itemId, offset }) => runner.toolLog(threadId, itemId, offset ?? 0));
 handle("drafts:save", (req, event) => nativeFor(req, event).save(req.session, req), { localOnly: true });
 handle("drafts:stage", (req, event) => nativeFor(req, event).stage(req.session, req.owner, req.files), { localOnly: true });
 handle("drafts:pick", async (req, event) => {
@@ -543,15 +554,15 @@ function drainServices(): Promise<void> {
 const automaticUpdates = Boolean(app.isPackaged && process.platform === "darwin" && ["arm64", "x64"].includes(process.arch)
   && !demo && !process.env.MODEX_E2E && !hostPreview && nativeDrafts && !nativeDraftFailure && !nativeStartup?.recovery);
 const updateInstallation = new UpdateInstallation({
-  enabled: automaticUpdates, parent: path.join(home, "updates"),
+  enabled: automaticUpdates, autoDownload: automaticUpdates, parent: path.join(home, "updates"),
   runningApp: path.resolve(path.dirname(process.execPath), "../.."), arch: process.arch === "x64" ? "x64" : "arm64",
   checker: updates,
   changed: state => {
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("updates:state", state);
   },
-  restart: candidate => {
+  restart: (candidate, options) => {
     if (!restartCoordinator) throw new Error("Automatic installation is unavailable.");
-    return restartCoordinator.restart(candidate);
+    return restartCoordinator.restart(candidate, options);
   },
 });
 if (automaticUpdates) {
@@ -745,6 +756,7 @@ handle("notes:delete", ({ id }) => { store.space.deleteEmpty(id); return store.s
 handle("notes:workspaces", () => store.space.workspaces());
 handle("project:notes", ({ projectId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.linkProject(project); });
 handle("project:workspace", ({ projectId, workspaceId }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); store.space.moveNodes([store.space.linkProject(project).id], workspaceId); return store.space.workspaces(); });
+handle("project:new-workspace", ({ projectId, name }) => { const project = store.project(projectId); if (!project) throw new Error("This project is no longer in Modex."); return store.space.moveProjectToNewWorkspace(project, name); });
 handle("notes:reveal", ({ id }) => shell.showItemInFolder(store.space.pathOf(id)), { localOnly: true });
 handle("notes:open", async ({ id }) => { const error = await shell.openPath(store.space.pathOf(id)); if (error) throw new Error(error); }, { localOnly: true });
 handle("notes:import", async ({ targetId, paths }) => {
@@ -817,9 +829,11 @@ handle("attachments:pick", async (req) => {
 }, { localOnly: true });
 handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
-handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
-handle("thread:answer-question", ({ threadId, itemId, answers }) => runner.answerQuestion(threadId, itemId, answers));
-handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
+// Only this Mac's window calls with an IPC event; a paired desktop's command comes through the host without one.
+const answeredFrom = (event?: NativeIPCEvent) => event ? "desktop" : "paired-desktop";
+handle("thread:answer", ({ threadId, itemId, answer }, event) => runner.answer(threadId, itemId, answer, answeredFrom(event)));
+handle("thread:answer-question", ({ threadId, itemId, answers }, event) => runner.answerQuestion(threadId, itemId, answers, answeredFrom(event)));
+handle("thread:update", ({ threadId, patch }, event) => runner.updateThread(threadId, patch, { by: answeredFrom(event) }));
 handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
   await runner.deleteThread(threadId, removeWorktree);
@@ -1042,6 +1056,7 @@ function startDesktopHost(): Promise<void> {
     desktopHost = new DesktopHost(home, {
       version: app.getVersion(),
       journal: () => journal,
+      item: (threadId, itemId) => runner.items(threadId).find((item) => item.id === itemId),
       channels: () => [...desktopCommands.keys()],
       authorize: (confirmationCode, signal) => restartAdmission.run(async () => {
         check();
@@ -1158,6 +1173,16 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (restartCoordinator && ["preparing", "draining", "staging"].includes(restartCoordinator.state)) return;
   if (shuttingDown || checkingWindowClose) return;
+  // A verified update nobody restarted into installs on this quit. The same restart
+  // preflight saves drafts and drains services; Squirrel installs the staged bundle as
+  // Modex exits, without relaunching. Any refusal (a running turn, an open page) only
+  // skips the install: this quit goes ahead and the next launch downloads it again.
+  if (!installOnQuitTried && restartCoordinator?.state === "idle" && updateInstallation.state().phase === "ready"
+    && win && !win.isDestroyed() && !currentDraftRecovery()) {
+    installOnQuitTried = true;
+    void updateInstallation.install({ relaunch: false }).catch(() => {}).finally(() => app.quit());
+    return;
+  }
   // Let unsaved-page beforeunload handlers veto quitting while services and IPC
   // are still usable. Teardown starts only after the renderer accepts closing.
   if (win && !win.isDestroyed()) {
@@ -1165,6 +1190,7 @@ app.on("before-quit", (event) => {
     checkingWindowClose = true;
     const cancelled = () => {
       checkingWindowClose = false;
+      installOnQuitTried = false;
       releaseRecoveryQuit();
       window.removeListener("closed", closed);
     };

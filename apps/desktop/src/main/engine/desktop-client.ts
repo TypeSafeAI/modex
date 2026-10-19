@@ -3,7 +3,7 @@ import https from "node:https";
 import tls from "node:tls";
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
-import { DESKTOP_PROTOCOL, type DesktopConnectionStatus } from "../../shared/desktop-protocol.js";
+import { DESKTOP_ITEM_KINDS, DESKTOP_ITEM_KINDS_HEADER, DESKTOP_PROTOCOL, type DesktopConnectionStatus } from "../../shared/desktop-protocol.js";
 
 export interface DesktopCredentials { port: number; fingerprint: string; token: string; clientId: string }
 export type { DesktopConnectionStatus } from "../../shared/desktop-protocol.js";
@@ -65,7 +65,7 @@ async function request(port: number, ca: string, endpoint: string, body: unknown
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = https.request({ hostname: "127.0.0.1", port, path: endpoint, method: "POST", ca, rejectUnauthorized: true, signal,
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data), [DESKTOP_ITEM_KINDS_HEADER]: DESKTOP_ITEM_KINDS.join(","), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     }, (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
@@ -260,7 +260,7 @@ export class DesktopClient extends EventEmitter {
       if (generation !== this.generation) return;
       // Only a host that named its journal is asked to resume; older hosts accept no query.
       const path = this.journal ? `/events?${new URLSearchParams({ journal: this.journal.id, after: String(this.journal.cursor) })}` : "/events";
-      const req = https.get({ hostname: "127.0.0.1", port: credentials.port, path, ca, rejectUnauthorized: true, headers: { Authorization: `Bearer ${credentials.token}` } }, (res) => {
+      const req = https.get({ hostname: "127.0.0.1", port: credentials.port, path, ca, rejectUnauthorized: true, headers: { Authorization: `Bearer ${credentials.token}`, [DESKTOP_ITEM_KINDS_HEADER]: DESKTOP_ITEM_KINDS.join(",") } }, (res) => {
         if (generation !== this.generation) { res.destroy(); return; }
         if (res.statusCode === 401) { res.destroy(); this.revoked(); return; }
         if (res.statusCode === 409) { res.destroy(); this.recover("protocol"); return; }
@@ -273,7 +273,9 @@ export class DesktopClient extends EventEmitter {
         res.on("data", (chunk: string) => {
           if (generation !== this.generation || ended) return;
           buffer += chunk;
-          if (buffer.length > 1024 * 1024) { res.destroy(); return; }
+          // A frame this large is dropped. Resuming would replay it into the same limit forever, so
+          // forget the cursor: the reconnect reloads state, which carries the item another way.
+          if (buffer.length > 1024 * 1024) { this.journal = undefined; res.destroy(); return; }
           let end: number;
           while ((end = buffer.indexOf("\n\n")) >= 0) {
             const frame = buffer.slice(0, end);

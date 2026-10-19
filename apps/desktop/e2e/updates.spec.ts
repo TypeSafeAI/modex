@@ -30,7 +30,7 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: update banner ope
   await offer("999.0.0");
   const banner = tid(page, "update-banner");
   await expect(banner).toContainText("Modex 999.0.0 is available");
-  const download = banner.getByRole("link", { name: "View update" });
+  const download = banner.getByRole("link", { name: "What’s new" });
   await expect(download).toHaveAttribute("href", "https://github.com/TypeSafeAI/modex/releases/tag/v999.0.0");
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]!.webContents.setWindowOpenHandler(({ url }) => {
@@ -59,8 +59,8 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: update banner ope
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(restored).toContainText("Modex 999.0.2 is available");
   await resizeWindow(app, page, 900, 600);
-  await restored.getByRole("link", { name: "View update" }).focus();
-  await expect(restored.getByRole("link", { name: "View update" })).toBeFocused();
+  await restored.getByRole("link", { name: "What’s new" }).focus();
+  await expect(restored.getByRole("link", { name: "What’s new" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(restored.getByRole("button", { name: "Dismiss update notification" })).toBeFocused();
   const fits = await restored.evaluate((element) => {
@@ -73,7 +73,7 @@ for (const theme of ["jev", "coven"] as const) test(`${theme}: update banner ope
   expect(fits).toBe(true);
   await page.screenshot({ path: test.info().outputPath(`update-banner-${theme}-compact.png`) });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(restored.getByRole("link", { name: "View update" })).toHaveCSS("transition-duration", "0s");
+  await expect(restored.getByRole("link", { name: "What’s new" })).toHaveCSS("transition-duration", "0s");
   await offer(null);
   await expect(restored).toHaveCount(0);
 });

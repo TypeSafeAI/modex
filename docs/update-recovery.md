@@ -7,11 +7,22 @@ the release workflow. Builds before v0.0.12 install it manually once.
 
 ## Download and restart
 
-Supported packaged Macs offer **Download update**, progress and cancellation, then
-**Restart to update** after verification. Development, demo, automated-test, and Host Preview
-builds keep automatic installation disabled. Windows and Linux show no update banner; install
-a newer release by hand.
+Supported packaged Macs update over the air. When a check finds a newer release, Modex
+downloads and verifies it in the background. The banner shows progress and **Cancel download**,
+then offers **Restart to update**. **What’s new** opens the release notes; updating never needs
+the release page. Development, demo, automated-test, and Host Preview builds keep automatic
+installation disabled. Windows and Linux show no update banner; install a newer release by hand.
 Missing archive integrity metadata also leaves manual installation available.
+
+An update nobody restarted into installs the next time you quit. That quit runs the same
+preparation as **Restart to update** below. Squirrel installs the staged bundle as Modex exits,
+and Modex does not reopen. If preparation refuses, for example while a coding turn runs or a
+Browser page is open, the quit goes ahead without installing. Quitting with the window already
+closed also skips installation. Either way, the next launch downloads the update again.
+
+A cancelled download stays cancelled for that version until you click **Download update** or
+relaunch Modex. After an automatic download fails, checks wait an hour before trying again;
+**Download update** retries at once.
 
 The downloaded ZIP must match its size and digest. The running app and candidate must pass
 publisher, bundle identity, version, architecture, and notarization checks. A matching hash

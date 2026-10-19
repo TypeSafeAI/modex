@@ -155,7 +155,7 @@ test("ordinary Quit awaits updater cleanup after service drain", async () => {
   let callback!: (event: { preventDefault(): void }) => void, finish!: () => void;
   const pending = new Promise<void>(resolve => { finish = resolve; }), calls: string[] = [];
   const context: any = { app: { on: (_name: string, fn: typeof callback) => { callback = fn; }, quit: () => calls.push("quit") },
-    shutdownComplete: false, shuttingDown: false, checkingWindowClose: false, restartCoordinator: { state: "staged" }, win: null,
+    shutdownComplete: false, shuttingDown: false, checkingWindowClose: false, installOnQuitTried: false, restartCoordinator: { state: "staged" }, win: null,
     drainServices: async () => { calls.push("drain"); }, updateInstallation: { dispose: () => { calls.push("dispose-update"); return pending; } },
     dialog: { showErrorBox: () => assert.fail("cleanup failed") }, console };
   vm.runInNewContext(code.slice(start, end), context);
@@ -171,7 +171,7 @@ for (const synchronous of [false, true]) test(`ordinary Quit still cleans the up
   let callback!: (event: { preventDefault(): void }) => void, finish!: () => void;
   const pending = new Promise<void>(resolve => { finish = resolve; }), calls: string[] = [], failure = new Error("partial service disposal");
   const context: any = { app: { on: (_name: string, fn: typeof callback) => { callback = fn; }, quit: () => calls.push("quit") },
-    shutdownComplete: false, shuttingDown: false, checkingWindowClose: false, restartCoordinator: undefined, win: null,
+    shutdownComplete: false, shuttingDown: false, checkingWindowClose: false, installOnQuitTried: false, restartCoordinator: undefined, win: null,
     drainServices: () => { calls.push("drain"); if (synchronous) throw failure; return Promise.reject(failure); },
     updateInstallation: { dispose: () => { calls.push("dispose-update"); return pending; } },
     dialog: { showErrorBox: () => calls.push("error") }, console: { error: (_message: unknown, error: unknown) => assert.equal(error, failure) } };
@@ -182,4 +182,71 @@ for (const synchronous of [false, true]) test(`ordinary Quit still cleans the up
   } finally { finish(); await tick(); }
   assert.deepEqual(calls, ["drain", "dispose-update", "error"]);
   assert.equal(context.shuttingDown, false); assert.equal(context.shutdownComplete, false);
+});
+
+/** The real before-quit handler with a live window and a verified update waiting. */
+function quitWithUpdate(overrides: Record<string, unknown> = {}) {
+  const code = fs.readFileSync(path.resolve(import.meta.dirname, "../src/main/index.js"), "utf8");
+  const start = code.indexOf('app.on("before-quit",'), end = code.indexOf("async function capture(", start);
+  let callback!: (event: { preventDefault(): void }) => void;
+  const calls: string[] = [], listeners: Record<string, () => void> = {};
+  const window = { isDestroyed: () => false, once: (name: string, fn: () => void) => { listeners[name] = fn; }, removeListener: () => {},
+    webContents: { once: (name: string, fn: () => void) => { listeners[name] = fn; } }, close: () => { calls.push("close"); } };
+  const context: any = { app: { on: (_name: string, fn: typeof callback) => { callback = fn; }, quit: () => calls.push("quit") },
+    shutdownComplete: false, shuttingDown: false, checkingWindowClose: false, installOnQuitTried: false,
+    restartCoordinator: { state: "idle" }, win: window, currentDraftRecovery: () => null, releaseRecoveryQuit: () => {},
+    drainServices: async () => { calls.push("drain"); },
+    updateInstallation: { state: () => ({ phase: "ready" }), dispose: async () => { calls.push("dispose-update"); },
+      install: async (options: unknown) => { calls.push(`install ${JSON.stringify(options)}`); return { phase: "staged" }; } },
+    dialog: { showErrorBox: () => assert.fail("cleanup failed") }, console, ...overrides };
+  vm.runInNewContext(code.slice(start, end), context);
+  return { quit: () => callback({ preventDefault() {} }), calls, context, listeners };
+}
+
+test("Quit with a verified update installs it without relaunching, then quits", async () => {
+  const h = quitWithUpdate();
+  h.quit(); await tick();
+  assert.deepEqual(h.calls, ['install {"relaunch":false}', "quit"], "no window close until the update is staged");
+  // app.quit() re-enters the handler: the staged update now closes the window as an ordinary quit.
+  h.context.restartCoordinator.state = "staged";
+  h.quit();
+  assert.deepEqual(h.calls.slice(2), ["close"]);
+});
+
+for (const outcome of ["refused", "failed"] as const) test(`a ${outcome} install-on-quit still quits and is not retried by the same quit`, async () => {
+  const h = quitWithUpdate();
+  h.context.updateInstallation.install = async () => {
+    h.calls.push("install");
+    if (outcome === "failed") throw new Error("unknown native failure");
+    return { phase: "ready", message: "Let current turns finish before restarting." };
+  };
+  h.quit(); await tick();
+  h.quit();
+  assert.deepEqual(h.calls, ["install", "quit", "close"]);
+});
+
+test("a cancelled close lets the next quit try installing again", async () => {
+  const h = quitWithUpdate();
+  h.context.updateInstallation.install = async () => { h.calls.push("install"); return { phase: "ready" }; };
+  h.quit(); await tick(); h.quit();
+  h.listeners["will-prevent-unload"]!();
+  h.quit(); await tick();
+  assert.deepEqual(h.calls, ["install", "quit", "close", "install", "quit"]);
+});
+
+for (const [name, change] of [
+  ["no verified update", { updateInstallation: { state: () => ({ phase: "downloading" }), install: () => assert.fail("not ready") } }],
+  ["no restart coordinator", { restartCoordinator: undefined }],
+  ["draft recovery", { currentDraftRecovery: () => ({ outcome: "recovery" }) }],
+] as const) test(`Quit with ${name} closes normally without installing`, () => {
+  const h = quitWithUpdate(change);
+  h.quit();
+  assert.deepEqual(h.calls, ["close"]);
+});
+
+test("Quit after the window closed shuts down without installing", async () => {
+  const h = quitWithUpdate({ win: null });
+  h.context.updateInstallation.install = () => assert.fail("drafts cannot be saved without the window");
+  h.quit(); await tick();
+  assert.deepEqual(h.calls, ["drain", "dispose-update", "quit"]);
 });

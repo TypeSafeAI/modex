@@ -2,6 +2,7 @@ import type { PluginCommands } from "./plugins.js";
 import type { ImageCommands } from "./images.js";
 import type { RoutineCommands } from "./routines.js";
 import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
+import type { EvidenceCommands } from "./evidence.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
@@ -511,7 +512,7 @@ export interface CompanionStatus {
 
 export interface ReleaseUpdate { version: string; url: string; }
 
-export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands {
+export interface BridgeCommands extends NativeDraftCommands, ImageCommands, PluginCommands, RoutineCommands, EvidenceCommands {
   "knowledge:state": { req: undefined; res: import("./knowledge.js").KnowledgeState };
   "knowledge:open": { req: { folder: string; path: string }; res: void };
   "project:pages": { req: { projectId: string; enabled: boolean }; res: Project };
@@ -558,6 +559,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "project:notes": { req: { projectId: string }; res: import("./notes.js").NotesProject };
   /** Moves a Modex project's notes into another workspace. */
   "project:workspace": { req: { projectId: string; workspaceId: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
+  /** Makes a notes workspace and moves the project's notes into it, as one action. */
+  "project:new-workspace": { req: { projectId: string; name: string }; res: { id: string; name: string; order: number; isDefault: boolean; modexProjectIds: string[] }[] };
   "notes:open": { req: { id: string }; res: void };
   /** Copies files into a project or folder; without paths, a picker opens. */
   "notes:import": { req: { targetId: string; paths?: string[] }; res: { imported: number; errors: string[] } };

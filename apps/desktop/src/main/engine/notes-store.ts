@@ -452,6 +452,19 @@ export class NotesStore implements SpacePagesStore {
     return created;
   }
 
+  /** A new workspace with this Modex project's notes in it, in one step. If the move fails, the new, empty workspace goes again. */
+  moveProjectToNewWorkspace(project: LinkedProject, name: string): NotesWorkspaceSummary[] {
+    if (!name.trim()) throw new Error("Name the workspace.");
+    const notes = this.linkProject(project);
+    const workspace = this.createWorkspace(name);
+    try { this.moveNodes([notes.id], workspace.id); }
+    catch (err) {
+      try { this.deleteEmpty(workspace.id); } catch { /* the move's own error is the one to report */ }
+      throw err;
+    }
+    return this.workspaces();
+  }
+
   /** A removed Modex project leaves its notes where they are, ready to link again. */
   detachProject(modexProjectId: string): void {
     const node = this.projectFor(modexProjectId);

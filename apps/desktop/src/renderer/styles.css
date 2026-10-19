@@ -385,6 +385,7 @@ body[data-streamer-mode="true"] ::search-text { color: transparent; background-c
 .sidebar-search:focus-within { border-color: var(--accent); }
 .sidebar-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-1); font-size: var(--text-md); }
 .sidebar-search input::placeholder { color: var(--text-placeholder); }
+.sidebar-search.workspace-name { margin: 2px 19px 4px 24px; }
 
 .side-row { position: relative; display: flex; align-items: center; height: var(--row-h); flex: none; margin: 0 8px 1px; border-radius: var(--radius-row); color: var(--text-2); font-size: var(--text-md); }
 .side-row:hover { background: var(--bg-row-hover); }
@@ -707,11 +708,34 @@ a.thread-pr:hover { text-decoration: underline; }
 .tool-command { min-width: 0; overflow-wrap: anywhere; color: var(--text-2); font: 12px var(--font-mono); }
 .tool-cwd, .tool-exit { color: var(--text-3); }
 .tool-patch-note, .tool-truncated { margin: 2px 0 8px; color: var(--text-3); font-size: var(--text-xs); }
+.tool-log-open { margin: -4px 0 8px; font-size: var(--text-xs); }
+.tool-log { margin: 0 0 8px; font-size: var(--text-xs); }
+.tool-log-status { color: var(--text-3); margin-bottom: 4px; }
+.tool-log-text { max-height: 360px; overflow: auto; margin: 0 0 6px; }
+.tool-log-nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.tool-log-none { margin: -4px 0 8px; color: var(--text-3); font-size: var(--text-xs); }
 .evidence { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); font-size: var(--text-sm); }
 .evidence-label { color: var(--text-3); font-size: var(--text-xs); margin-bottom: 4px; }
 .evidence-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .evidence-where { overflow-wrap: anywhere; color: var(--text-2); font: 12px var(--font-mono); }
 .evidence-note { margin-left: 8px; color: var(--text-3); }
+.evidence-actions { display: inline-flex; gap: 4px; margin-left: 8px; }
+.evidence-action { padding: 1px 7px; border: 1px solid var(--border-pane); border-radius: 5px; background: none; color: var(--text-3); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.evidence-action:hover { color: var(--text-1); border-color: var(--border-strong); }
+.evidence-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.evidence-excerpt-box { margin: 6px 0 2px; }
+.evidence-range { color: var(--text-3); font-size: var(--text-xs); margin-bottom: 4px; }
+.evidence-excerpt { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sunken); font: 12px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.evidence-action:disabled { opacity: 0.6; cursor: default; }
+.patch-compare { margin: 2px 0 8px; font-size: var(--text-xs); }
+.patch-check { margin-top: 6px; }
+.patch-checked { color: var(--text-3); }
+.patch-files { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.patch-file { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.patch-file code { margin-right: 6px; }
+.patch-file.as-left .patch-file-state, .patch-file.has-edit .patch-file-state { color: var(--ok); }
+.patch-file.changed .patch-file-state, .patch-file.deleted .patch-file-state { color: var(--warn); }
+.patch-file.unknown .patch-file-state { color: var(--text-3); }
 
 /* ── Task plans and records (docs/task-context.md). ── */
 .plan-card { margin: 4px 0 14px; padding: 10px 14px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); font-size: var(--text-sm); }
