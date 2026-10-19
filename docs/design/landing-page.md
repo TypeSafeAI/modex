@@ -43,9 +43,9 @@ and download, setup and repository links do not depend on JavaScript.
 ## Delivery and evidence
 
 - Isolated `apps/site` Vite build with root-relative assets and the existing cached release API.
-- The verified static download fallback is v0.1.0; valid newer public metadata updates all
+- The verified static download fallback is v0.2.0; valid newer public metadata updates all
   download links and version labels together. Unknown counts remain hidden in the footer.
-- Apple silicon and macOS 13 requirements match the installed v0.1.0 app's Info.plist.
+- Apple silicon and macOS 13 requirements match the published v0.2.0 app's Info.plist.
   Provider access and costs are separate from the free MIT-licensed app.
 - Companion uses the approved public TestFlight invitation; tester availability is controlled
   by Apple. The nearby copy states same local network, awake Mac, and running Modex.
