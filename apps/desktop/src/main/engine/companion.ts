@@ -308,7 +308,9 @@ export class CompanionServer {
       this.reply(res, 201, { thread: mobileThread(thread, this.source.status(thread.id), this.source.pullRequest?.(thread.id)) });
       return;
     }
-    const match = /^\/v1\/threads\/([a-f0-9]{8})\/(send|answer|policy|archive)$/.exec(url.pathname);
+    // Any id the store accepts: 8 hex characters for threads made here or by older builds, the full UUID a
+    // Mac draft reserved (#181). The thread must still exist.
+    const match = /^\/v1\/threads\/([A-Za-z0-9_-]{1,128})\/(send|answer|policy|archive)$/.exec(url.pathname);
     if (req.method !== "POST" || !match) { this.reply(res, 404, { error: "Not found." }); return; }
     const threadId = match[1]!;
     const action = match[2]!;
@@ -385,7 +387,9 @@ export function mobileItem(item: ThreadItem): Record<string, unknown> {
     case "assistant": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.phase ? { phase: item.phase } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
     case "thinking": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.reasoning ? { reasoning: item.reasoning } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
     case "user": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
-    case "approval": return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, ...(item.decidedBy?.source === "policy" ? { auto: item.decidedBy.ruleId.slice("policy:".length) } : item.decidedBy && item.decidedBy.decision !== "ask" ? { auto: "rule" } : {}), at: item.at };
+    // Who answered, whether it reached the CLI and why an unanswered card closed ride along the same way.
+    case "approval": return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, ...(item.decidedBy?.source === "policy" ? { auto: item.decidedBy.ruleId.slice("policy:".length) } : item.decidedBy && item.decidedBy.decision !== "ask" ? { auto: "rule" } : {}),
+      ...(item.answeredBy ? { answeredBy: item.answeredBy } : {}), ...(item.delivery ? { delivery: item.delivery } : {}), ...(item.withdrawn ? { withdrawn: item.withdrawn } : {}), at: item.at };
     // A phone that reads only title and status shows every finished tool as done, so a finished tool
     // that did not succeed says how it ended in its title.
     case "tool": return { id: item.id, kind: item.kind, title: item.status === "done" && (item.outcome ? item.outcome !== "succeeded" : item.ok === false) ? `${item.title} · ${toolStatusLabel(item)}` : item.title,
@@ -395,7 +399,7 @@ export function mobileItem(item: ThreadItem): Record<string, unknown> {
     case "plan": return { id: item.id, kind: item.kind, text: `Plan · ${item.steps.filter((s) => s.status === "completed").length} of ${item.steps.length} reported done`, steps: item.steps, revision: item.revision, ...(item.outcome ? { outcome: item.outcome } : {}), at: item.at };
     // Phones cannot answer questions yet: a notice every client can show, with the questions and never the answers.
     case "question": return { id: item.id, kind: "notice", level: "info", at: item.at,
-      text: `The agent asked: ${item.questions.map((q) => q.text).join(" · ")}\n${item.answers ? "Answered on your Mac." : item.withdrawn ? "Not answered." : "Answer it in Modex on your Mac."}` };
+      text: `The agent asked: ${item.questions.map((q) => q.text).join(" · ")}\n${item.answers ? (item.delivery === "uncertain" ? "Answered on your Mac; Modex can't tell whether the agent received it." : "Answered on your Mac.") : item.withdrawn ? "Not answered." : "Answer it in Modex on your Mac."}` };
     // A kind this build does not know, such as one a newer Modex saved before a downgrade: an inert
     // notice, never `undefined`, which goes out as null and makes the phone reject the whole snapshot.
     // Its own fields are not forwarded, since they may hold anything.

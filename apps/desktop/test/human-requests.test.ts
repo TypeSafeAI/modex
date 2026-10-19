@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  actionDigest, codexAnswerResponse, codexQuestions, emptyRequests, publicAnswers, register, resolve, settle, validateAnswers, withdraw,
+  actionDigest, answerNote, codexAnswerResponse, codexQuestions, emptyRequests, publicAnswers, register, resolve, settle, validateAnswers, withdraw,
   type HumanRequest, type RequestBinding,
 } from "../src/shared/human-requests.js";
 
@@ -102,4 +102,12 @@ test("a secret answer never appears in what is shown, saved or exported", () => 
   const shown = publicAnswers(questions, { "q-env": ["staging"], "q-note": ["ship it"], "q-token": ["s3cr3t"] });
   assert.deepEqual(shown, { "q-env": ["staging"], "q-note": ["ship it"], "q-token": ["(hidden)"] });
   assert.ok(!JSON.stringify(shown).includes("s3cr3t"));
+});
+
+test("a closed card says when the phone answered and when nobody can tell whether the CLI got the answer", () => {
+  assert.equal(answerNote({}), null, "answered here, or before these fields existed");
+  assert.equal(answerNote({ answeredBy: "desktop", delivery: "sent" }), null);
+  assert.equal(answerNote({ answeredBy: "phone", delivery: "sent" }), "Answered on your phone.");
+  assert.equal(answerNote({ answeredBy: "desktop", delivery: "uncertain" }), "Modex stopped before it could confirm the agent received this answer.");
+  assert.equal(answerNote({ answeredBy: "phone", delivery: "uncertain" }), "Answered on your phone. Modex stopped before it could confirm the agent received this answer.");
 });
