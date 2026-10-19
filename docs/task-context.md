@@ -28,13 +28,31 @@ outcome is the turn's.
 
 ## The task record
 
-`taskRecord` (`shared/task-context.ts`) summarises one turn: the request, the latest plan, the files
-its patch tools changed, the commands it ran with outcome and exit code, the final answer, and what
-is not settled. Not settled means commands that did not succeed and plan steps not reported done.
+`taskRecord` (`shared/task-context.ts`) summarises one turn: the request, the questions the CLI asked
+and their answers, the latest plan, the files its patch tools changed, the commands it ran with
+outcome and exit code, the final answer, and what is not settled. Not settled means commands that did
+not succeed, plan steps not reported done, and clarifications nobody answered or whose answer Modex
+could not confirm the CLI received.
 `taskMarkdown` renders the record as portable Markdown that ends with a backlink to the thread.
 
 It leaves out reasoning, command output, and any path outside the project. Files inside the project
 are listed relative to the thread's working directory; files outside it are counted, not named.
+
+## Clarifications
+
+A CLI that needs to ask before it plans or acts asks through the [question card](human-requests.md):
+Codex's `item/tool/requestUserInput`, with a control for each question. The answer reaches the CLI
+once, and the plan carries on from it. Claude Code 2.1.302 sends Modex no structured questions.
+
+The record lists every question the turn asked, in order, with the answer as its card shows it:
+
+- an answered question gives its answer, and a secret one reads "(hidden)";
+- an unanswered one reads "not answered", with why it closed: the agent withdrew it, the turn was
+  stopped, or the turn ended first;
+- an answer Modex could not confirm the CLI received says so (see
+  [across replay and reconnect](human-requests.md#across-replay-and-reconnect)).
+
+Nothing is filled in that the card does not hold.
 
 ## Save to Notes
 
@@ -51,8 +69,6 @@ saves on its own, and an agent cannot use this.
 
 ## Not done yet
 
-- Clarification through question cards waits for the human-request lifecycle
-  ([#276](https://github.com/TypeSafeAI/modex/issues/276)).
 - Verified steps, and marking earlier verification stale. Verification needs a check's observed
   result tied to the code revision the step changed.
 - An on-demand context map of relevant files and tests beyond those the turn changed.
