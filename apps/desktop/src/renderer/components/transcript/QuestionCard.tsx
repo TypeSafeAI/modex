@@ -34,12 +34,12 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
   const [sending, setSending] = useState(false);
   const open = !item.answers && !item.withdrawn;
   const typed = (q: Question) => !q.options || choice[q.id] === OTHER;
-  const value = (q: Question) => (typed(q) ? text[q.id] ?? "" : choice[q.id] ?? "").trim();
+  const value = (q: Question) => (typed(q) ? text[q.id] ?? "" : choice[q.id] ?? "");
   const submit = async () => {
     setSending(true);
     setError(null);
     try {
-      const result = await onAnswer(item.id, Object.fromEntries(item.questions.map((q) => [q.id, value(q) ? [value(q)] : []])));
+      const result = await onAnswer(item.id, Object.fromEntries(item.questions.map((q) => [q.id, value(q).trim() ? [value(q)] : []])));
       if (result && !result.ok) setError(result.error ?? REFUSED[result.reason]);
     } catch (err) {
       setError((err as Error).message);
@@ -48,7 +48,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
     }
   };
   return (
-    <div className={`approval question-card ${open ? "" : "answered"}`} data-testid="item" data-item-kind="question" data-answered={item.answers ? "true" : "false"} data-withdrawn={item.withdrawn}>
+    <div className={`approval question-card ${open ? "" : "answered"}`} data-testid="item" data-item-kind="question" data-answered={item.answers && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-withdrawn={item.withdrawn}>
       <div className="approval-head">
         <span className="shield">?</span>
         <span>{item.questions.length === 1 ? "The agent has a question" : `The agent has ${item.questions.length} questions`}</span>
@@ -86,7 +86,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
         </div>
       ))}
       {item.answers && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
-      {item.withdrawn ? <div className="approval-answer" data-testid="question-closed">{CLOSED[item.withdrawn]}</div> : open && (
+      {item.delivery === "uncertain" || item.delivery === "sending" ? <div className="approval-answer" role="status" data-testid="question-delivery">{item.delivery === "uncertain" ? "Delivery uncertain — not resent. Check the agent before answering again." : "Sending answer…"}</div> : item.withdrawn ? <div className="approval-answer" data-testid="question-closed">{CLOSED[item.withdrawn]}</div> : open && (
         <div className="row">
           <button className="btn primary small" data-testid="question-submit" disabled={sending} onClick={() => void submit()}>Send answers</button>
           {error && <span className="question-error" role="alert" data-testid="question-error">{error}</span>}
