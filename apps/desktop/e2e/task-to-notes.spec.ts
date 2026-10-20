@@ -97,3 +97,33 @@ test("a turn's footer says whether a check verified its last change, and a plain
   await expect(lines.nth(1)).toHaveAttribute("data-state", "stale");
   await expect(lines.nth(1)).toHaveText("Not verified: pnpm test ran before a later change");
 });
+
+test("a turn's footer lists the files it touched, on demand, as the CLI reported them", async () => {
+  const cwd = repo;
+  const send = (events: Record<string, unknown>[]) => app.evaluate(({ BrowserWindow }, list) => {
+    for (const event of list) BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", event);
+  }, events);
+  const origin = (turn: string, item: string) => ({ thread: threadId, turn, attempt: `${turn}:A1`, backend: "codex", native: { runtime: "R", item } });
+  const tool = (turn: string, id: string, extra: Record<string, unknown>) => ({ type: "item", threadId, item: { id, kind: "tool", args: {}, status: "done", outcome: "succeeded", ok: true, origin: origin(turn, id), at: at(), ...extra } });
+  await send([
+    { type: "item", threadId, item: { id: "u-context", kind: "user", text: "Look, then fix", at: at() } },
+    tool("u-context", "r1", { name: "Read", title: "read config.ts", args: { file_path: `${cwd}/src/config.ts` } }),
+    tool("u-context", "s1", { name: "shell", title: "$ rg -n useEffect src", exec: { command: "rg -n useEffect src", actions: [{ kind: "search", path: "src", query: "useEffect" }] }, exitCode: 0 }),
+    tool("u-context", "e1", { name: "apply_patch", title: "edit src/app.ts" }),
+    tool("u-context", "o1", { name: "Read", title: "read hosts", args: { file_path: "/etc/hosts" } }),
+    { type: "item", threadId, item: { id: "a-context", kind: "assistant", text: "Fixed.", phase: "final", outcome: "succeeded", origin: origin("u-context", "a-context"), at: at() } },
+    { type: "status", threadId, status: "idle" },
+  ]);
+  // The turns that touched files have the toggle: the two verification turns above, which edited, and this one.
+  // The plain answers (the first turn, the plan turn, "Where is the config?") have none.
+  await expect(tid(page, "task-context-toggle")).toHaveCount(3);
+  const context = tid(page, "task-context").filter({ hasText: "Files touched · 3" });
+  await expect(context).toHaveCount(1);
+  const toggle = tid(context, "task-context-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(tid(context, "task-context-file")).toHaveText(["src/app.ts changed", "src/config.ts read", "src searched"]);
+  await expect(tid(context, "task-context-outside")).toHaveText("1 outside the project, not named");
+  await expect(context).toContainText("As the CLI reported them");
+});

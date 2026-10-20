@@ -951,3 +951,10 @@ button.turn-label:hover { color: var(--text-2); }
 .task-verification code { font-size: inherit; color: var(--text-2); }
 .task-verification[data-state="verified"] code { color: var(--text-1); }
 .task-verification[data-state="failed"] { color: var(--danger); }
+/* The files a finished turn touched (docs/task-context.md#context-map), above Save to Notes. */
+.task-context { margin: -4px 0 4px; font-size: var(--text-xs); color: var(--text-3); }
+.task-context-toggle { border: 0; background: transparent; padding: 2px 0; color: var(--text-3); font: inherit; cursor: pointer; }
+.task-context-toggle:hover { color: var(--text-1); }
+.task-context-note { margin: 2px 0 4px; }
+.task-context-files { margin: 0 0 6px; padding-left: 16px; }
+.task-context-files code { font-size: inherit; color: var(--text-2); }
