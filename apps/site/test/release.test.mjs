@@ -4,7 +4,7 @@ import { createReleaseFeed, publishedRelease, REFRESH_MS } from '../server/githu
 import { releaseLinks, validRelease, isVersion } from '../shared/release.mjs';
 import handler from '../../../api/release.js';
 
-function fixture(version = '0.2.0', id = 8) {
+function fixture(version = '0.3.0', id = 8) {
   const links = releaseLinks(version);
   return { id, tag_name: `v${version}`, html_url: links.url, draft: false, prerelease: false,
     published_at: '2026-10-05T20:00:00Z', assets: [
@@ -28,33 +28,33 @@ function upstream({ latest = fixture(), repo = { stargazers_count: 1234, forks_c
 }
 
 test('published installer, stars and all stable Mac installer counts form one snapshot', async () => {
-  const beta = { ...fixture('0.2.1', 9), prerelease: true };
-  const draft = { ...fixture('0.2.2', 10), draft: true };
-  const feed = await createReleaseFeed({ fetchImpl: upstream({ pages: [[fixture(), fixture('0.1.0', 7), beta, draft]] }) })();
-  assert.equal(feed.release.version, '0.2.0');
+  const beta = { ...fixture('0.3.1', 9), prerelease: true };
+  const draft = { ...fixture('0.3.2', 10), draft: true };
+  const feed = await createReleaseFeed({ fetchImpl: upstream({ pages: [[fixture(), fixture('0.2.0', 7), beta, draft]] }) })();
+  assert.equal(feed.release.version, '0.3.0');
   assert.deepEqual(feed.stats, { stars: 1234, forks: 12, downloads: 20 });
   assert.equal(feed.stale, false);
   assert.ok(feed.checkedAt);
 });
 
 test('rejects drafts, prereleases, missing or incomplete installers, foreign links and rollback', () => {
-  for (const change of [ { draft: true }, { prerelease: true }, { assets: [] }, { tag_name: 'v0.2.0-beta.1' },
+  for (const change of [ { draft: true }, { prerelease: true }, { assets: [] }, { tag_name: 'v0.3.0-beta.1' },
     { html_url: 'https://example.com' }, { published_at: null } ]) {
-    assert.equal(publishedRelease({ ...fixture(), ...change }, '0.1.0'), null);
+    assert.equal(publishedRelease({ ...fixture(), ...change }, '0.2.0'), null);
   }
   for (const change of [{ state: 'new' }, { size: 0 }, { browser_download_url: 'https://example.com/install.dmg' }]) {
     const release = fixture(); Object.assign(release.assets[0], change);
-    assert.equal(publishedRelease(release, '0.1.0'), null);
+    assert.equal(publishedRelease(release, '0.2.0'), null);
   }
-  assert.equal(publishedRelease(fixture('0.0.12'), '0.1.0'), null);
-  assert.ok(publishedRelease(fixture('0.2.0'), '0.1.0'));
+  assert.equal(publishedRelease(fixture('0.1.0'), '0.2.0'), null);
+  assert.ok(publishedRelease(fixture('0.3.0'), '0.2.0'));
 });
 
 test('client contract rejects untrusted URLs, invalid versions and partial updates', () => {
-  const links = releaseLinks('0.2.0');
-  assert.equal(validRelease(links, '0.1.0'), true);
+  const links = releaseLinks('0.3.0');
+  assert.equal(validRelease(links, '0.2.0'), true);
   for (const value of [null, {}, { ...links, url: 'javascript:alert(1)' }, { ...links, downloadUrl: links.downloadUrl + '?redirect=1' },
-    { ...links, version: '1e2.0.0' }, { ...links, version: '0.00.8' }, releaseLinks('0.0.12')]) assert.equal(validRelease(value, '0.1.0'), false);
+    { ...links, version: '1e2.0.0' }, { ...links, version: '0.00.8' }, releaseLinks('0.1.0')]) assert.equal(validRelease(value, '0.2.0'), false);
   assert.equal(isVersion('999999999999999999999999.1.0'), false);
 });
 
@@ -63,10 +63,10 @@ test('coalesces concurrent refreshes, caches, then discovers a newly published r
   const get = createReleaseFeed({ now: () => time, fetchImpl: (...args) => { calls++; return upstream({ latest })(...args); } });
   const results = await Promise.all([get(), get(), get()]);
   assert.equal(calls, 3); assert.deepEqual(results[0], results[2]);
-  latest = fixture('0.2.1'); time = REFRESH_MS - 1;
-  assert.equal((await get()).release.version, '0.2.0'); assert.equal(calls, 3);
+  latest = fixture('0.3.1'); time = REFRESH_MS - 1;
+  assert.equal((await get()).release.version, '0.3.0'); assert.equal(calls, 3);
   time++;
-  assert.equal((await get()).release.version, '0.2.1'); assert.equal(calls, 6);
+  assert.equal((await get()).release.version, '0.3.1'); assert.equal(calls, 6);
 });
 
 test('rate limits preserve last good links and counts, and cold failure has no fabricated counts', async () => {
@@ -78,19 +78,19 @@ test('rate limits preserve last good links and counts, and cold failure has no f
   assert.deepEqual(stale.release, good.release); assert.deepEqual(stale.stats, good.stats);
   assert.equal(stale.checkedAt, good.checkedAt); assert.equal(stale.stale, true);
   const cold = await createReleaseFeed({ fetchImpl })();
-  assert.equal(cold.release.version, '0.2.0'); assert.deepEqual(cold.stats, { stars: null, forks: null, downloads: null });
+  assert.equal(cold.release.version, '0.3.0'); assert.deepEqual(cold.stats, { stars: null, forks: null, downloads: null });
   assert.equal(cold.checkedAt, null);
 });
 
 test('partial API failure still discovers a release without inventing statistics', async () => {
   const get = createReleaseFeed({ fetchImpl: (url, opts) => url.endsWith('/latest') ? upstream()(url, opts) : Promise.reject(new Error('offline')) });
   const feed = await get();
-  assert.equal(feed.release.version, '0.2.0'); assert.equal(feed.stats.downloads, null); assert.equal(feed.stale, true);
+  assert.equal(feed.release.version, '0.3.0'); assert.equal(feed.stats.downloads, null); assert.equal(feed.stale, true);
 });
 
 test('paginates all releases and deduplicates assets across moving pages', async () => {
   const page = Array.from({ length: 100 }, (_, i) => fixture(`0.1.${i}`, i + 1));
-  const feed = await createReleaseFeed({ fetchImpl: upstream({ pages: [page, [page[99], fixture('0.2.0', 101)]] }) })();
+  const feed = await createReleaseFeed({ fetchImpl: upstream({ pages: [page, [page[99], fixture('0.3.0', 101)]] }) })();
   assert.equal(feed.stats.downloads, 1010);
 });
 
