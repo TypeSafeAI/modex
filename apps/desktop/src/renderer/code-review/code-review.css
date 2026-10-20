@@ -68,10 +68,12 @@
 .cr-action.primary { border-color: transparent; background: var(--text-1); color: var(--bg-main); }
 .cr-action[aria-disabled="true"] { opacity: .5; cursor: default; }
 .cr-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cr-action .cr-narrow-icon { display: none; }
 /* A narrow pane keeps every action, as icons with their names. */
 @container cr-pane (max-width: 640px) {
   .cr-action:not(.icon-only) { width: 32px; padding: 0; }
   .cr-action .cr-action-label { display: none; }
+  .cr-action .cr-narrow-icon { display: block; }
 }
 @container cr-pane (max-width: 420px) {
   .cr-pr-id { display: none; }

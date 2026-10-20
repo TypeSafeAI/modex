@@ -1,5 +1,5 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent, type Ref } from "react";
-import { inboxGroup, isEmpty, knownCount, parsePrLocator, prKeyId, type CodeReviewAccount, type CodeReviewConnection, type Inbox, type InboxGroup, type PrSummary, type ReadResult } from "../../shared/code-review.js";
+import { capabilities, inboxGroup, isEmpty, knownCount, parsePrLocator, prKeyId, type CodeReviewAccount, type CodeReviewConnection, type Inbox, type InboxGroup, type PrSummary, type ReadResult } from "../../shared/code-review.js";
 import { SecretInput } from "../streamer";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Icon } from "../components/ui/Icon";
@@ -99,7 +99,7 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
       <div className="cr-inbox-list" data-testid="code-review-inbox-list" onKeyDown={moveFocus}>
         {!connection && <p className="cr-hint" role="status">Checking GitHub CLI…</p>}
         {notConnected && <ErrorNotice className="cr-notice" testId="code-review-connection-error" where="Code Review · GitHub CLI"
-          message={connection.state === "unavailable" ? unavailableText(connection) : connection.value.state === "connected" ? "" : connection.value.detail} onRetry={onRetryConnection} />}
+          message={connection.state === "unavailable" ? unavailableText(connection) : connectionText(connection.value)} onRetry={onRetryConnection} />}
         {account && !inbox && <p className="cr-hint" role="status">Loading pull requests…</p>}
         {account && inbox?.state === "unavailable" && <ErrorNotice className="cr-notice" testId="code-review-inbox-error" where="Code Review · inbox" message={unavailableText(inbox)} onRetry={onRetryInbox} />}
         {account && inbox?.state === "stale" && <p className="cr-stale" role="status" data-testid="code-review-inbox-stale">
@@ -131,4 +131,12 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
       </div>
     </aside>
   );
+}
+
+/** What main said about gh, then what the person can do about it. */
+function connectionText(connection: CodeReviewConnection): string {
+  if (connection.state === "connected") return "";
+  const read = capabilities(connection).read;
+  const fix = read.available ? "" : read.reason;
+  return connection.detail && connection.detail !== fix ? `${connection.detail} ${fix}`.trim() : fix;
 }

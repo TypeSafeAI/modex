@@ -105,7 +105,7 @@ function PrHeader({ pr, busy, pinned, caps, onPin, filesToggle }: { pr: OpenPr; 
         <IconButton icon="link" size="md" label={copied ? "Link copied" : "Copy link"} data-testid="code-review-copy-link" disabled={!url} onClick={copy} />
         {url && <Tooltip label="Open in GitHub"><a className="icon-btn md" href={url} target="_blank" rel="noreferrer" aria-label="Open in GitHub" data-testid="code-review-open-github"><Icon name="external" size={16} /></a></Tooltip>}
       </span>
-      <Unavailable label="Review with Codex" capability={caps.review} testId="code-review-review" text />
+      <Unavailable label="Review with Codex" icon="review" iconWhenNarrow capability={caps.review} testId="code-review-review" text />
       <Unavailable label="Review instructions" icon="gear" capability={caps.instructions} testId="code-review-instructions" />
       <Unavailable label="Merge" icon="branch" capability={caps.merge} testId="code-review-merge" text primary />
     </header>
@@ -113,13 +113,13 @@ function PrHeader({ pr, busy, pinned, caps, onPin, filesToggle }: { pr: OpenPr; 
 }
 
 /** A control whose slice has not delivered it: focusable, named, and saying why it does nothing. */
-function Unavailable({ label, icon, capability, testId, text = false, primary = false }: { label: string; icon?: IconName; capability: Capability; testId: string; text?: boolean; primary?: boolean }) {
+function Unavailable({ label, icon, iconWhenNarrow = false, capability, testId, text = false, primary = false }: { label: string; icon?: IconName; iconWhenNarrow?: boolean; capability: Capability; testId: string; text?: boolean; primary?: boolean }) {
   const reason = capability.available ? label : capability.reason;
   return (
     <Tooltip label={reason}>
       <button type="button" className={`cr-action${text ? "" : " icon-only"}${primary ? " primary" : ""}`} aria-label={label} aria-disabled={capability.available ? undefined : "true"} data-testid={testId}
         onClick={(event) => { if (!capability.available) event.preventDefault(); }}>
-        {icon && <Icon name={icon} size={14} />}
+        {icon && <Icon name={icon} size={14} className={iconWhenNarrow ? "cr-narrow-icon" : undefined} />}
         {text && <span className="cr-action-label">{label}</span>}
       </button>
     </Tooltip>
