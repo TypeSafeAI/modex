@@ -82,7 +82,7 @@ test("captures every named chat state at the reference size", async () => {
   expect(await tid(page, "composer-input").evaluate((el) => getComputedStyle(el, "::placeholder").color)).toBe("rgba(0, 0, 0, 0)");
   await capture("05-turn-complete");
 
-  // This mock turn has no explicit final phase; its work already remains visible.
+  await tid(page, "turn-header").getByRole("button").click();
   await items(page, "thinking").first().locator('[data-testid="item-toggle"]').click();
   await items(page, "tool").filter({ hasText: "edit CONTRIBUTING.md" }).locator('[data-testid="item-toggle"]').click();
   await capture("06-items-expanded");
