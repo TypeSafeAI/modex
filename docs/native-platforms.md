@@ -200,8 +200,9 @@ This workflow first ran on an approved signed tag for v0.0.12 ([run 38465731604]
 whose Windows and Linux candidates passed but were not published. v0.1.0 is the first release that
 publishes them ([run 38825544975](https://github.com/TypeSafeAI/modex/actions/runs/38825544975)), by Val's
 decision on 2026-10-15. v0.2.0 published them again on 2026-10-18
-([run 39100984341](https://github.com/TypeSafeAI/modex/actions/runs/39100984341)). Neither changes the native
-evidence or outstanding gates above. Windows installers remain unsigned, updates remain
+([run 39100984341](https://github.com/TypeSafeAI/modex/actions/runs/39100984341)), and v0.3.0 on 2026-10-20
+([run 39382565427](https://github.com/TypeSafeAI/modex/actions/runs/39382565427)). None of them changes the
+native evidence or outstanding gates above. Windows installers remain unsigned, updates remain
 manual, and `installerAcceptance` stays `pending` until the remaining account/session checks
 have evidence. See [release signing](release-signing.md#candidate-attachment-checks).
 
