@@ -72,6 +72,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   ("Approved", "Denied"), then to the turn's "Worked for" toggle when that work folds. Stop and
   Jump to latest, pressed from the keyboard, hand focus to the message box once they go away.
   Focus elsewhere, such as the composer, stays where it is.
+- **Jump to latest stays at the bottom** (CF-8 #281, from #352). After a jump, the transcript used
+  to stop short of the bottom when the message box grew, as when a suggested follow-up appeared,
+  or when a Page Up was still scrolling. It now stays at the bottom until you scroll yourself.
+  [How it was found](reviews/2026-10-18-resolved-rough-edges.md#jump-to-latest-from-the-keyboard-on-ci-runners-handled-2026-10-20).
 - **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
   smoke). Codex keeps a long command running in a background terminal after its turn is
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
