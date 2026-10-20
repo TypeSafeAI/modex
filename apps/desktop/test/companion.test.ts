@@ -505,4 +505,9 @@ test("companion fallback makes uncertain and resolving deliveries explicit witho
   const approval = mobileItem({ id: "approval", kind: "approval", question: "Deploy?", answer: "yes", delivery: "uncertain", at: "now" });
   assert.equal(approval.kind, "notice");
   assert.match(String(approval.text), /Delivery uncertain/);
+  // A decision still sending stays an approval with its answer, so the phone shows it as decided.
+  const sending = mobileItem({ id: "approval", kind: "approval", question: "Deploy?", answer: "yes", answeredBy: "phone", delivery: "sending", at: "now" });
+  assert.equal(sending.kind, "approval");
+  assert.equal(sending.answer, "yes");
+  assert.equal(sending.delivery, "sending");
 });

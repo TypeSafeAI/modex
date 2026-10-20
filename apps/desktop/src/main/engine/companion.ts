@@ -387,11 +387,14 @@ export function mobileItem(item: ThreadItem): Record<string, unknown> {
     case "assistant": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.phase ? { phase: item.phase } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
     case "thinking": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.reasoning ? { reasoning: item.reasoning } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
     case "user": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
+    // A phone that reads only `answer` would show an uncertain or withdrawn card as decided, so those
+    // become notices. While a decision is sending, the card keeps its answer: the phone shows what was
+    // decided, and the answer means it offers no buttons.
     case "approval":
-      if (item.delivery === "uncertain" || item.delivery === "sending" || item.withdrawn) return {
+      if (item.delivery === "uncertain" || item.withdrawn) return {
         id: item.id, kind: "notice", level: "info", at: item.at,
         ...(item.answeredBy ? { answeredBy: item.answeredBy } : {}), ...(item.delivery ? { delivery: item.delivery } : {}), ...(item.withdrawn ? { withdrawn: item.withdrawn } : {}),
-        text: `${item.question}\n${item.delivery === "uncertain" ? "Delivery uncertain. Not resent; check the agent on your Mac." : item.delivery === "sending" ? "Sending decision on your Mac." : "Request withdrawn. Nothing more can be approved."}`,
+        text: `${item.question}\n${item.delivery === "uncertain" ? "Delivery uncertain. Not resent; check the agent on your Mac." : "Request withdrawn. Nothing more can be approved."}`,
       };
       return { id: item.id, kind: item.kind, question: item.question, detail: item.detail, answer: item.answer, ...(item.decidedBy?.source === "policy" ? { auto: item.decidedBy.ruleId.slice("policy:".length) } : item.decidedBy && item.decidedBy.decision !== "ask" ? { auto: "rule" } : {}), ...(item.answeredBy ? { answeredBy: item.answeredBy } : {}), ...(item.delivery ? { delivery: item.delivery } : {}), ...(item.withdrawn ? { withdrawn: item.withdrawn } : {}), at: item.at };
     // A phone that reads only title and status shows every finished tool as done, so a finished tool

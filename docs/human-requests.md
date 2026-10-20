@@ -208,8 +208,9 @@ paired desktops and the phone carry it with no new event type. This is the reque
 - **Two clients at once.** The desktop and the phone race through one broker: one answer is accepted,
   the card names who gave it, and the other is refused, with a 409 for the phone.
 - **The phone** gets `answeredBy`, `delivery` and `withdrawn` on approvals. Today's iPhone build reads
-  only `answer`, so a withdrawn approval still reads as declined there. A question's notice says when
-  delivery is uncertain.
+  only `answer`, so an approval whose delivery is uncertain, or that was withdrawn, reaches it as an
+  `info` notice that says so. A decision still sending keeps its answer, so the phone shows it as
+  decided. A question's notice says when its answer is sending or its delivery is uncertain.
 - **The window** adds "Answered on your phone." under a card the phone answered, and the uncertain line
   above. An answer given in the window and sent adds nothing.
 
