@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { OUTPUT_PREVIEW_BYTES, boundOutput, memoryEvidence } from "../src/shared/evidence.js";
+import { OUTPUT_PREVIEW_BYTES, boundOutput, codexWebSearch, memoryEvidence } from "../src/shared/evidence.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { Store } from "../src/main/engine/store.js";
@@ -184,3 +185,44 @@ test("the runner keeps a long tool's raw output for its item, reads it back in p
   await runner.dispose();
 });
 
+
+/** A live codex-cli 0.163.0 web search (test/fixtures/codex-websearch-0.163.0.json): the item as it started and completed. */
+const nativeSearch = JSON.parse(fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/codex-websearch-0.163.0.json", import.meta.url)), "utf8")) as { started: Record<string, unknown>; completed: Record<string, unknown> };
+
+test("a live Codex web search becomes its query, its action and the results Codex reported, as safe links", () => {
+  assert.equal(codexWebSearch(nativeSearch.started), null, "at item/started 0.163.0 sends an empty query, no action and no results");
+  const search = codexWebSearch(nativeSearch.completed)!;
+  assert.equal(search.source, "codex");
+  assert.equal(search.query, "site:github.com/openai/codex changelog codex cli");
+  assert.deepEqual(search.action, { kind: "search", queries: ["site:github.com/openai/codex changelog codex cli"] });
+  assert.equal(search.results.length, 3);
+  assert.deepEqual(search.results[0], {
+    title: "codex/CHANGELOG.md at main · openai/codex · GitHub",
+    url: "https://github.com/openai/codex/blob/main/CHANGELOG.md",
+    domain: "github.com",
+    snippet: "The changelog can be found on the releases page.",
+  });
+  assert.equal(search.dropped, undefined);
+});
+
+test("search results without a safe http(s) link are dropped and counted, and each field is bounded", () => {
+  const search = codexWebSearch({ type: "webSearch", query: "q", action: { type: "search", query: null, queries: ["a", 7, "b"] }, results: [
+    { type: "text_result", title: "Fine", url: "https://example.com/a" },
+    { type: "text_result", title: "Script", url: "javascript:alert(1)" },
+    { type: "text_result", title: "No link" },
+    "not an object",
+    { type: "image_result", url: "http://example.org/x.png", snippet: "s".repeat(5000) },
+  ] })!;
+  assert.deepEqual(search.action, { kind: "search", queries: ["a", "b"] });
+  assert.deepEqual(search.results.map((r) => [r.title, r.url, r.domain]), [["Fine", "https://example.com/a", "example.com"], ["example.org", "http://example.org/x.png", "example.org"]]);
+  assert.ok(search.results[1]!.snippet!.length <= 501, "snippets are cut to 500 characters and an ellipsis");
+  assert.equal(search.dropped, 3);
+  assert.equal(codexWebSearch({ query: "q".repeat(5000) })!.query.length <= 501, true);
+});
+
+test("open-page and find-in-page actions keep only a safe URL and the pattern", () => {
+  assert.deepEqual(codexWebSearch({ query: "", action: { type: "openPage", url: "https://example.com/p" } })!.action, { kind: "openPage", url: "https://example.com/p" });
+  assert.deepEqual(codexWebSearch({ query: "", action: { type: "findInPage", url: "https://example.com/p", pattern: "needle" } })!.action, { kind: "findInPage", url: "https://example.com/p", pattern: "needle" });
+  assert.equal(codexWebSearch({ query: "", action: { type: "openPage", url: "file:///etc/passwd" } }), null, "an unsafe page is not a link, and nothing else was reported");
+  assert.equal(codexWebSearch({ query: "", action: { type: "other" } }), null);
+});
