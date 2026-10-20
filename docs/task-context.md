@@ -38,6 +38,49 @@ could not confirm the CLI received.
 It leaves out reasoning, command output, and any path outside the project. Files inside the project
 are listed relative to the thread's working directory; files outside it are counted, not named.
 
+## Verification
+
+The turn's record says whether a check verified the turn's latest change (`verification` in
+`shared/task-context.ts`). It works in transcript order and says no more than the commands
+reported.
+
+- **A check** is a test, build, typecheck or lint command:
+  - a package script named `test`, `test:*`, `build`, `typecheck`, `lint`, `check` or `verify`, run
+    through npm, pnpm, yarn or bun (including `--filter` and `exec`);
+  - `node --test`, `python -m pytest`;
+  - `pytest`, `vitest`, `jest`, `mocha`, `tsc`, `eslint`, `mypy` and `playwright test`;
+  - `cargo test/build/check/clippy`, `go test/build/vet`, `swift test/build`, `make test/check/build`,
+    `gradle`, `mvn`, `dotnet` and `xcodebuild`.
+
+  The command is read inside `sh`/`bash`/`zsh -c '…'`, with quotes respected. Anything else is not
+  a check, so an exit-zero `echo ok` verifies nothing, and neither does the model saying "tests pass".
+- **A check passes** only with outcome `succeeded` and exit code 0. Claude Code reports no exit code,
+  and its failed commands come through as failed, so a succeeded Claude check passes. A success with
+  a nonzero code fails. A success with an explicit "no exit code" is unknown.
+- **A check goes stale** when something that may change files runs after it:
+  - a patch tool that was not denied;
+  - a command that is neither a check nor known to be read-only (`ls`, `cat`, `grep`, `git status`,
+    `git diff`, `sed -n`, …). A redirect (`>`) counts as writing. Modex cannot see what an unknown
+    command wrote, so it never claims verification across one.
+- **The turn reads:**
+  - **verified** when every check after its last change passed;
+  - **failed** when one of them failed or was denied;
+  - **not verified**, in three cases: a check after the last change did not say how it ended, every
+    check ran before a later change, or no check ran after the turn's changes.
+
+  A turn that changed nothing and ran no check has nothing to verify and shows nothing.
+
+The finished turn's footer shows this beside Save to Notes, for example "Verified: `pnpm test` passed
+after the last change", or "Not verified: `pnpm test` ran before a later change". A check shows as
+the script its shell ran, with the exact command on hover. The note gets a **Verification** section
+that lists every check, marking stale ones "ran before a later change". Anything short of verified
+also goes under **Not settled**. A failing check that a later fix and a passing check superseded is
+not listed as unsettled.
+
+**Plan steps are not marked verified.** Neither CLI links a check to a plan step, so a step keeps the
+status the CLI reported ("Reported done"), and verification belongs to the turn's latest change.
+Verification covers this turn only: a later turn's edits do not change a note already saved.
+
 ## Clarifications
 
 A CLI that needs to ask before it plans or acts asks through the [question card](human-requests.md):
@@ -69,7 +112,6 @@ saves on its own, and an agent cannot use this.
 
 ## Not done yet
 
-- Verified steps, and marking earlier verification stale. Verification needs a check's observed
-  result tied to the code revision the step changed.
+- Linking a check to the plan step it verifies. Neither CLI reports that link.
 - An on-demand context map of relevant files and tests beyond those the turn changed.
 - Reopening a saved note as a read-only task view.

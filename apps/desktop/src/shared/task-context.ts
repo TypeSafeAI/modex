@@ -10,6 +10,29 @@ import type { ThreadItem } from "./types.js";
 
 export interface TaskCommand { command: string; outcome: ExecutionOutcome; exitCode?: number | null }
 
+/** A check the turn ran: a test, build, typecheck or lint command. `stale`: something that may change files ran after it. */
+export interface TaskCheck extends TaskCommand { passed: boolean; stale: boolean }
+
+/** What the turn's checks say about its latest change (docs/task-context.md#verification). */
+export interface TaskVerification {
+  state: "verified" | "failed" | "unknown" | "stale" | "none";
+  checks: TaskCheck[];
+  /** Edits the turn made (patch tools not denied). With none and no check, there is nothing to verify. */
+  edits: number;
+}
+
+/** A command as the CLI reported it, shown as the script when the whole of it is `sh`/`bash`/`zsh -c '…'`. */
+export function displayCommand(command: string): string {
+  const wrapper = /^\s*(?:\S*\/)?(?:sh|bash|zsh|dash)\s+-[a-z]*c[a-z]*\s+(['"])([\s\S]*)\1\s*$/.exec(command);
+  if (!wrapper) return command;
+  const [, quote, script] = wrapper as unknown as [string, string, string];
+  // The script must be the one quoted word: `sh -c 'a' && sh -c 'b'` is not one wrapper.
+  if (quote === "'" ? script.includes("'") : /(^|[^\\])"/.test(script)) return command;
+  return quote === '"' ? script.replace(/\\(["\\$`])/g, "$1") : script;
+}
+
+
+
 export interface TaskRecord {
   title: string;
   threadId: string;
@@ -22,6 +45,8 @@ export interface TaskRecord {
   commands: TaskCommand[];
   /** Each question the CLI asked during the turn, one entry per question on its cards. */
   clarifications: TaskClarification[];
+  /** Whether a check that ran after the turn's last change passed. */
+  verification?: TaskVerification;
   answer?: string;
 }
 
@@ -70,7 +95,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
   return {
     title: opts.title, threadId: opts.threadId, request: user?.kind === "user" ? user.text : "",
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
-    files: [...files], outsideFiles, commands, clarifications,
+    files: [...files], outsideFiles, commands, clarifications, verification: verification(rest),
     ...(answer?.kind === "assistant" && answer.text.trim() ? { answer: answer.text.trim() } : {}),
   };
 }
@@ -100,11 +125,19 @@ export function taskMarkdown(record: TaskRecord): string {
     for (const command of record.commands) lines.push(`- ${commandLine(command)}`);
     lines.push("");
   }
+  const checked = record.verification;
+  if (checked && (checked.checks.length || record.files.length || record.outsideFiles)) {
+    lines.push("## Verification", "", VERIFICATION_WORDS[checked.state], "");
+    if (checked.checks.length) lines.push(...checked.checks.map((check) => `- ${commandLine(check)}${check.stale ? " (ran before a later change)" : ""}`), "");
+  }
   if (record.answer) lines.push("## Answer", "", record.answer, "");
+  // A check a later fix superseded is settled by what came after it; the verification line says how.
+  const superseded = new Set(checked?.checks.filter((check) => check.stale).map((check) => check.command + "\0" + check.outcome) ?? []);
   const loose = [
-    ...record.commands.filter((command) => !SETTLED_WELL.has(command.outcome)).map(commandLine),
+    ...record.commands.filter((command) => !SETTLED_WELL.has(command.outcome) && !(checked?.state === "verified" && superseded.has(command.command + "\0" + command.outcome))).map(commandLine),
     ...(record.plan?.steps.filter((step) => step.status !== "completed").map((step) => `${step.text} (${STEP_WORDS[step.status]})`) ?? []),
     ...clarifications.filter((c) => !c.answer || c.uncertain).map(clarificationLine),
+    ...(checked && checked.state !== "verified" && (checked.checks.length || record.files.length || record.outsideFiles) ? [VERIFICATION_WORDS[checked.state]] : []),
   ];
   if (loose.length) lines.push("## Not settled", "", ...loose.map((line) => `- ${line}`), "");
   lines.push("---", `From modex thread ${record.threadId}.`);
@@ -138,4 +171,157 @@ function relative(file: string, cwd: string): string | null {
   if (!isAbsolute) return file.includes("..") ? null : file.replace(/^\.\//, "");
   const root = cwd.replace(/[\\/]+$/, "");
   return file.startsWith(root + "/") || file.startsWith(root + "\\") ? file.slice(root.length + 1) : null;
+}
+
+const VERIFICATION_WORDS: Record<TaskVerification["state"], string> = {
+  verified: "Verified: every check after the turn's last change passed.",
+  failed: "Failed: a check after the turn's last change did not pass.",
+  unknown: "Not verified: a check after the turn's last change did not finish or did not say how it ended.",
+  stale: "Not verified: every check ran before a later change.",
+  none: "Not verified: no check ran after the turn's changes.",
+};
+
+/** Tools that change files. `write_file` is the offline engine's. A denied one changed nothing. */
+const EDIT_TOOLS = new Set([...PATCH_TOOLS, "write_file"]);
+
+/**
+ * What the turn's checks say about its latest change, in transcript order. A check passes only as
+ * `succeeded` with exit code 0 or none reported (Claude Code reports none, and its failed commands
+ * come through as failed). A check is stale once an edit, or a command that might write files, ran
+ * after it: Modex cannot see what an unknown command wrote. Nothing here links a check to a plan
+ * step, because neither CLI reports such a link.
+ */
+export function verification(items: readonly ThreadItem[]): TaskVerification {
+  const checks: TaskCheck[] = [];
+  let edits = 0;
+  const staleAll = () => { for (const check of checks) check.stale = true; };
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    const outcome = item.outcome ?? (item.ok === true ? "succeeded" : "unknown");
+    if (EDIT_TOOLS.has(item.name)) {
+      if (outcome !== "denied") { edits++; staleAll(); }
+      continue;
+    }
+    const command = item.exec?.command;
+    if (!command) continue;
+    if (isCheckCommand(command)) {
+      const passed = outcome === "succeeded" && (item.exitCode === 0 || item.exitCode === undefined);
+      checks.push({ command, outcome, ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}), passed, stale: false });
+    } else if (outcome !== "denied" && !isReadOnlyCommand(command)) {
+      staleAll();
+    }
+  }
+  const current = checks.filter((check) => !check.stale);
+  const failed = (check: TaskCheck) => check.outcome === "failed" || check.outcome === "denied" || (typeof check.exitCode === "number" && check.exitCode !== 0);
+  const state: TaskVerification["state"] = !checks.length ? "none" : !current.length ? "stale"
+    : current.some(failed) ? "failed" : current.every((check) => check.passed) ? "verified" : "unknown";
+  return { state, checks, edits };
+}
+
+/** Script names that check a project: `test`, `test:e2e`, `build`, `typecheck`, `lint`, `check`, `verify`. */
+const CHECK_SCRIPT = /^(test|build|typecheck|type-check|lint|check|verify)(:|$)/;
+const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+/** Package-manager flags that take a value, so the value is not read as the script. */
+const VALUE_FLAGS = new Set(["--filter", "-F", "-C", "--dir", "--prefix", "--cwd", "-w", "--workspace", "-p", "--package"]);
+const RUNNERS = new Set(["pytest", "vitest", "jest", "mocha", "tsc", "eslint", "mypy", "flake8", "rspec", "ctest", "phpunit"]);
+const SUBCOMMANDS: Record<string, Set<string>> = {
+  cargo: new Set(["test", "build", "check", "clippy", "nextest"]), go: new Set(["test", "build", "vet"]), swift: new Set(["test", "build"]),
+  make: new Set(["test", "check", "build", "lint", "typecheck"]), gmake: new Set(["test", "check", "build", "lint"]), gradle: new Set(["test", "build", "check"]),
+  gradlew: new Set(["test", "build", "check"]), mvn: new Set(["test", "verify", "package"]), dotnet: new Set(["test", "build"]), ruff: new Set(["check"]),
+};
+/** Commands that only read: running one after a check leaves the check current. */
+const READ_ONLY = new Set(["ls", "cat", "head", "tail", "wc", "pwd", "echo", "printf", "grep", "rg", "which", "type", "file", "stat", "tree", "diff", "sort", "uniq",
+  "cut", "tr", "basename", "dirname", "realpath", "env", "date", "true", "cd", "nl", "less", "more"]);
+const READ_ONLY_GIT = new Set(["status", "diff", "log", "show", "branch", "rev-parse", "blame", "ls-files", "remote"]);
+
+/** Whether a command, as the CLI reported it, runs a known test, build, typecheck or lint check. */
+export function isCheckCommand(command: string): boolean {
+  return (segments(command) ?? []).some(checkSegment);
+}
+
+function checkSegment(words: string[]): boolean {
+  const [head, ...rest] = words;
+  if (!head) return false;
+  const program = head.split("/").pop()!.replace(/^\.\//, "");
+  if (PACKAGE_MANAGERS.has(program)) {
+    const args = dropFlags(rest);
+    const [verb, ...after] = args;
+    if (verb === "run" || verb === "run-script") return CHECK_SCRIPT.test(dropFlags(after)[0] ?? "");
+    if (verb === "exec" || verb === "dlx" || verb === "x") return checkSegment(dropFlags(after));
+    return CHECK_SCRIPT.test(verb ?? "");
+  }
+  if (program === "npx" || program === "bunx") return checkSegment(dropFlags(rest));
+  if (program === "bundle" && rest[0] === "exec") return checkSegment(rest.slice(1));
+  if (program === "node") return rest.includes("--test");
+  if (/^python3?$/.test(program)) return rest[0] === "-m" && ["pytest", "unittest", "mypy"].includes(rest[1] ?? "");
+  if (RUNNERS.has(program)) return true;
+  if (program === "playwright") return rest[0] === "test";
+  if (program === "xcodebuild") return rest.some((word) => word === "test" || word === "build");
+  const verbs = SUBCOMMANDS[program];
+  return verbs ? verbs.has(dropFlags(rest)[0] ?? "") : false;
+}
+
+function dropFlags(words: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    if (word.startsWith("-")) { if (VALUE_FLAGS.has(word)) i++; continue; }
+    out.push(word);
+  }
+  return out;
+}
+
+/** Whether every part of a command only reads. A redirect writes. Anything unknown might write. */
+function isReadOnlyCommand(command: string): boolean {
+  const parts = segments(command, true);
+  return parts !== null && parts.every((words) => {
+    const program = (words[0] ?? "").split("/").pop()!;
+    if (program === "git") return READ_ONLY_GIT.has(words.find((word, i) => i > 0 && !word.startsWith("-")) ?? "");
+    if (program === "sed") return words.includes("-n") && !words.some((word) => word.startsWith("-i"));
+    if (program === "find") return !words.some((word) => word === "-delete" || word === "-exec" || word === "-execdir");
+    return READ_ONLY.has(program);
+  });
+}
+
+/**
+ * A command split into simple commands, each a list of words, after unwrapping `sh`/`bash`/`zsh -c '…'`.
+ * Quotes are respected, so `echo 'pnpm test'` is one word. Leading `NAME=value` assignments are dropped.
+ * With `strict`, a redirect (`>`, `>>`) returns null: the command writes.
+ */
+function segments(command: string, strict = false): string[][] | null {
+  const out: string[][] = [];
+  let words: string[] = [];
+  let word = "";
+  let quote: string | null = null;
+  let quoted = false;
+  const endWord = () => { if (word || quoted) words.push(word); word = ""; quoted = false; };
+  const endSegment = () => { endWord(); while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!)) words.shift(); if (words.length) out.push(words); words = []; };
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!;
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === '"' && i + 1 < command.length) word += command[++i];
+      else word += c;
+      continue;
+    }
+    if (c === "'" || c === '"') { quote = c; quoted = true; continue; }
+    if (c === "\\" && i + 1 < command.length) { word += command[++i]; continue; }
+    if (/\s/.test(c)) { endWord(); continue; }
+    if (c === ";" || c === "|" || c === "&" || c === "\n") { endSegment(); continue; }
+    if (c === ">" || c === "<") { if (strict && c === ">") return null; endWord(); continue; }
+    word += c;
+  }
+  endSegment();
+  // `/bin/zsh -lc '<script>'`: the script is the command.
+  const result: string[][] = [];
+  for (const segment of out) {
+    const program = (segment[0] ?? "").split("/").pop()!;
+    const flag = segment.findIndex((w, i) => i > 0 && /^-[a-z]*c[a-z]*$/.test(w));
+    if (/^(sh|bash|zsh|dash)$/.test(program) && flag > 0 && segment[flag + 1] !== undefined) {
+      const inner = segments(segment[flag + 1]!, strict);
+      if (inner === null) return null;
+      result.push(...inner);
+    } else result.push(segment);
+  }
+  return result;
 }

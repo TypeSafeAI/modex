@@ -61,9 +61,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
-- **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
-  and text stay in window memory and clear when their request closes or thread is removed.
-  Sensitive answers stay out of persisted recovery. [Verification and native capability limits](reviews/2026-10-20-cf3-drafts.md).
+- **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
+  finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
+  did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
+  test, build, typecheck or lint command counts, never the model's word or an unrelated command. The
+  saved note lists the checks and marks stale ones. [Verification](task-context.md#verification).
 - **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
   "search *query*" with how many results there were, instead of "search " while the query had not
   arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as
@@ -75,6 +77,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   ("Approved", "Denied"), then to the turn's "Worked for" toggle when that work folds. Stop and
   Jump to latest, pressed from the keyboard, hand focus to the message box once they go away.
   Focus elsewhere, such as the composer, stays where it is.
+- **Jump to latest stays at the bottom** (CF-8 #281, from #352). After a jump, the transcript used
+  to stop short of the bottom when the message box grew, as when a suggested follow-up appeared,
+  or when a Page Up was still scrolling. It now stays at the bottom until you scroll yourself.
+  [How it was found](reviews/2026-10-18-resolved-rough-edges.md#jump-to-latest-from-the-keyboard-on-ci-runners-handled-2026-10-20).
 - **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
   smoke). Codex keeps a long command running in a background terminal after its turn is
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
@@ -84,6 +90,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   approval or question answer, as on a full disk, the card stays open and answering again reaches the
   CLI, instead of the request reading answered while the CLI never hears it.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+
+- **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
+  and text stay in window memory and clear when their request closes or thread is removed.
+  Sensitive answers stay out of persisted recovery. [Verification and native capability limits](reviews/2026-10-20-cf3-drafts.md).
 
 ## In flight
 
