@@ -121,6 +121,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
   - **The phone acts on threads started on the Mac again.** Since v0.0.12, answering, sending, setting
     the approval policy or archiving from the phone failed on any thread created from a Mac draft.
+  - **A refused answer refreshes the phone (CF-6 #279).** When the Mac refuses an approval, most often
+    because it was settled elsewhere, the iPhone app reads the thread again at once instead of leaving
+    the card actionable until its next poll. It reaches phones in the next Companion build.
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281).** A fixture Claude CLI drives the real app through a plan, an
     approval, a real edit, a check, the answer and Save to Notes, then a restart that re-runs
