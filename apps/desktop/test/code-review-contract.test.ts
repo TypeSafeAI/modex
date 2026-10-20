@@ -139,6 +139,12 @@ test("pending, cancelled, unknown, superseded and other-head checks never read a
   const runs = fx.FAULTS.rerun.state === "ready" ? fx.FAULTS.rerun.value : [];
   const regressed = summarizeChecks(ready([{ ...runs[1]!, id: "401" }, { ...runs[0]!, id: "402" }]), revision);
   assert.equal(regressed.verdict, "failing", "a failing re-run replaces the pass it repeats");
+  const sameName = summarizeChecks(fx.FAULTS.sameName, revision);
+  assert.deepEqual([sameName.verdict, sameName.superseded], ["failing", 0], "another reporter's check of the same name is not a re-run");
+  const named = (id: string, startedAt: string | null, conclusion: PrCheck["conclusion"]): PrCheck =>
+    ({ ...runs[0]!, id, startedAt, status: startedAt ? "completed" : "queued", conclusion });
+  const queued = summarizeChecks(ready([named("run-a", "2026-10-18T20:23:00Z", "failure"), named("run-b", null, null)]), revision);
+  assert.deepEqual([queued.verdict, queued.pending, queued.superseded], ["pending", 1, 1], "without numeric ids, a queued re-run is the latest");
 });
 
 test("diff coverage says when files or patches are missing, and a binary file is not a gap", () => {
@@ -175,6 +181,8 @@ test("requests are bounded plain data, rebuilt from validated fields", () => {
     ["empty segment", { ...context, path: "docs//holds.md" }],
     ["dot segment", { ...context, path: "./docs/holds.md" }],
     ["control character", { ...context, path: "docs/a\u0000b" }],
+    ["C1 control character", { ...context, path: "docs/a\u0085b" }],
+    ["line separator", { ...context, path: "docs/a\u2028b" }],
     ["bidi override in a path", { ...context, path: "src/holds/‮move.ts" }],
     ["zero-width joiner in a path", { ...context, path: "src/ho‍lds.ts" }],
     ["lone surrogate in a path", { ...context, path: "src/\ud800.ts" }],

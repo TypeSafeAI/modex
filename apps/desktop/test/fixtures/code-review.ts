@@ -154,9 +154,9 @@ const R1_INBOX: Inbox = {
   },
 };
 
-function check(id: string, name: string, headSha: string, status: PrCheck["status"], conclusion: PrCheck["conclusion"], startedAt: string | null): PrCheck {
+function check(id: string, name: string, headSha: string, status: PrCheck["status"], conclusion: PrCheck["conclusion"], startedAt: string | null, reporter = "github-actions"): PrCheck {
   const completedAt = status === "completed" && startedAt ? NOW : null;
-  return { id, name, source: "check-run", headSha, status, conclusion, startedAt, completedAt, url: `https://github.com/example-org/fixture/actions/runs/1/job/${id}` };
+  return { id, name, source: "check-run", reporter, headSha, status, conclusion, startedAt, completedAt, url: `https://github.com/example-org/fixture/actions/runs/1/job/${id}` };
 }
 
 /** Running since 20:37:33, so the sidebar's elapsed clock reads 03:27 at the fixture clock. */
@@ -332,6 +332,11 @@ export const FAULTS = {
   rerun: ready<PrCheck[]>([
     check("401", "smoke (linux)", R4_REVISION.headSha, "completed", "failure", "2026-10-18T20:23:00Z"),
     check("402", "smoke (linux)", R4_REVISION.headSha, "completed", "success", "2026-10-18T20:31:00Z"),
+  ]),
+  /** Two reporters with a check of the same name: one is not a re-run of the other. */
+  sameName: ready<PrCheck[]>([
+    check("501", "build", R4_REVISION.headSha, "completed", "failure", "2026-10-18T20:23:00Z", "ci-runner-example"),
+    check("502", "build", R4_REVISION.headSha, "completed", "success", "2026-10-18T20:31:00Z"),
   ]),
   /** GitHub stops listing files at 3,000; this PR has 3,412. One patch is binary, one too large to send. */
   truncatedFiles: { state: "partial", value: { revision: R4_REVISION, files: truncated }, fetchedAt: NOW, reason: "capped", coverage: { loaded: 3000, total: 3412, complete: false, next: null, cap: 3000 } } as ReadResult<PrFiles>,

@@ -118,6 +118,8 @@ export interface PrCheck {
   id: string;
   name: string;
   source: "check-run" | "status";
+  /** What reported it: the app's slug for a check run, the status's creator for a commit status. Two reporters can use one name. */
+  reporter: string | null;
   headSha: string;
   status: "queued" | "running" | "completed" | "unknown";
   conclusion: "success" | "failure" | "neutral" | "cancelled" | "skipped" | "timed-out" | "action-required" | "startup-failure" | "stale" | "unknown" | null;
@@ -219,7 +221,8 @@ const REPO_ID = /^[A-Za-z0-9_=-]{1,100}$/;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const CURSOR = /^[A-Za-z0-9_=+/-]{1,512}$/;
-const CONTROL = /[\u0000-\u001f\u007f]/;
+/** C0, DEL and C1 controls, and the line and paragraph separators. */
+const CONTROL = /[\p{Cc}\u2028\u2029]/u;
 /** A lone surrogate: not text, and `encodeURIComponent` throws on it. */
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 /** Invisible format characters (bidi overrides, zero-width joiners) that make a path read as another. */
@@ -345,17 +348,24 @@ export interface ChecksSummary {
 
 const FAILED = new Set<PrCheck["conclusion"]>(["failure", "timed-out", "action-required", "startup-failure"]);
 
-/** Whether `a` is a later run than `b`. Run ids grow with creation; `startedAt` is the fallback. */
+/**
+ * Whether `a` is a later run than `b`. Run ids grow with creation. Without numeric ids, `startedAt`
+ * decides, and a run that has not started yet (a queued re-run) is the latest.
+ */
 function later(a: PrCheck, b: PrCheck): boolean {
   if (/^\d+$/.test(a.id) && /^\d+$/.test(b.id)) return BigInt(a.id) > BigInt(b.id);
-  return (a.startedAt ?? "") > (b.startedAt ?? "");
+  if (a.startedAt === null || b.startedAt === null) return a.startedAt === null && b.startedAt !== null;
+  return a.startedAt > b.startedAt;
 }
 
-/** The newest run of each check per head: a re-run replaces the run it repeats, as GitHub's own merge state does. */
+/**
+ * The newest run of each check per head and reporter: a re-run replaces the run it repeats, as
+ * GitHub's own merge state does, and a same-named check from another reporter stays separate.
+ */
 function newestRuns(checks: PrCheck[]): PrCheck[] {
   const newest = new Map<string, PrCheck>();
   for (const check of checks) {
-    const id = `${check.source}\u0000${check.headSha}\u0000${check.name}`;
+    const id = `${check.source}\u0000${check.reporter ?? ""}\u0000${check.headSha}\u0000${check.name}`;
     const seen = newest.get(id);
     if (!seen || later(check, seen)) newest.set(id, check);
   }

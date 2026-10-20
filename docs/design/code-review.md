@@ -40,8 +40,7 @@ comment is the session's record of Val's answer, not Val's own words:
 3. **GitHub reads use the user's `gh` CLI login.** This is the path
    `apps/desktop/src/main/engine/thread-context.ts` already takes for a checkout's PR status: github.com
    only, fixed endpoints, `gh api … --method GET`. There is no new sign-in, no GitHub App, and Modex
-   stores no token. Every path segment main builds into an endpoint is encoded with
-   `encodeURIComponent`, and #321 tests it. Writes are #326's and keep their own gate. The GitHub App item under
+   stores no token. Writes are #326's and keep their own gate. The GitHub App item under
    `docs/status.md`'s Next is about acting on repositories and is unchanged.
 
 The contract adds these engineering decisions:
@@ -50,7 +49,8 @@ The contract adds these engineering decisions:
    `handle(…, { localOnly: true })` in `src/main/index.ts`. Paired desktops can't reach it, and it gets
    the existing trusted-sender and document-epoch check. Main passes every payload through
    `validateRequest` before anything else. The renderer never sends a URL, an endpoint, shell text, a
-   local path or an AbortSignal; cancellation names a request id.
+   local path or an AbortSignal; cancellation names a request id. Every path segment main builds into
+   an endpoint is encoded with `encodeURIComponent`, and #321 tests it.
 5. **Replies carry their request's scope.** `scopeOf(request, account)` is the request's own key and
    revision (null where the operation takes none) and the key's account. Main stamps each reply with
    the scope of the request it answers, and the renderer keeps the scope of what it asked. It applies
@@ -129,7 +129,9 @@ The rules the tests hold:
   - Cancelled, unknown, unread, or present only on an old head is `incomplete`. Queued or running is
     `pending`. Failure, timed out, action required or startup failure is `failing`.
   - Only the newest run of a check counts: a re-run on the same head replaces the run it repeats,
-    as GitHub's own merge state does. Run ids grow with creation; `startedAt` is the fallback.
+    as GitHub's own merge state does. A run is matched by name and by its reporter (the app or the
+    status's creator), so another reporter's check of the same name is not a re-run. Run ids grow
+    with creation; without numeric ids `startedAt` decides, and a queued re-run is the latest.
   - It describes evidence. It never decides merge permission.
 - **A missing patch is not a zero-line change.**
   - `diffCoverage` counts a binary file as covered and a `too-large` or provider-omitted patch as
@@ -144,7 +146,8 @@ The rules the tests hold:
   fields:
   - a numeric account, `github.com`, a stable repository id and a positive PR number;
   - 40- or 64-hex SHAs and a git-valid base ref;
-  - a relative repository path with no empty, `.` or `..` segment, no control character and no
+  - a relative repository path with no empty, `.` or `..` segment, no control character (C0, C1,
+    line or paragraph separator) and no
     invisible format character (bidi overrides, zero-width joiners). `\`, `%`, `?` and `#` stay
     allowed, since real files have them;
   - no lone surrogate in any text, since `encodeURIComponent` throws on one;
@@ -167,7 +170,7 @@ with validated, encoded segments.
 | `resolve` | `input` (a pasted link) | `{ locator, key }` | `parsePrLocator`, then `repos/{owner}/{repo}` for the stable id |
 | `overview` | `key` | `PrOverview` with its `revision` | `repos/{owner}/{repo}/pulls/{n}` |
 | `activity` | `key`, `cursor` | `PrActivity[]` | `repos/{owner}/{repo}/issues/{n}/timeline` |
-| `checks` | `key`, `revision` | `PrCheck[]` for that head | `commits/{headSha}/check-runs` and `commits/{headSha}/status` |
+| `checks` | `key`, `revision` | `PrCheck[]` for that head | `commits/{headSha}/check-runs` and `commits/{headSha}/status`; `reporter` is a run's `app.slug` or a status's `creator.login` |
 | `stack` | `key` | `PrStack`, `explicit` or `inferred` | #323 chooses a documented relationship source; base-branch chains are `inferred` |
 | `files` | `key`, `revision`, `cursor` | `PrFiles` | `repos/{owner}/{repo}/pulls/{n}/files` (GitHub stops at 3,000 files and omits large or binary patches) |
 | `context` | `key`, `revision`, `side`, `path`, `start`, `end` | `PrContext` | file contents at the base or head SHA, sliced in main |
@@ -312,7 +315,7 @@ must prove it.
 | C56 | R3 | Popover | Review instructions: title, scope line, text field | #325 | Capability `instructions`; Escape and focus return checked in #327 |
 | C57 | R1, R2, R3, R4 | Composer | "Ask about this pull request" field and send | #325 | Capability `ask`, unavailable in Gate A |
 | C58 | R1, R2, R3, R4 | Composer | Attach (+) | #325 | Reuses the thread composer's attachments only if #325 includes them |
-| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | The thread composer's `ModelMenu` (`Composer.tsx:192`) is the equivalent |
+| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | The thread composer's `ModelMenu` (`Composer.tsx:195`) is the equivalent |
 | C60 | R1, R2, R3, R4 | Composer | Voice input | deferred | Outside #319's initial scope |
 | C61 | R1, R2, R3, R4 | Composer | Clearance: the composer never covers the last item or focus | #323 | Composer-clearance check (#323 AC5, #324 for R4) |
 | C62 | R4 | Changes header | State, number and header actions repeated in the Changes pane | #322 | Same controls as C21–C29, second pane |
@@ -329,13 +332,13 @@ must prove it.
 | C73 | R4 | File tree | Folder tree, per-file totals, selected file | #324 | Selecting a file scrolls to its section |
 | C74 | R4 | Split | Divider between overview and Changes | #322 | `PanelResizeHandle` pattern; pointer and keyboard resize |
 | C75 | R4 | Split | Divider between diff and file tree | #322 | As C74 |
+| C76 | R1, R2, R3, R4 | Whole workspace | Keyboard path through every control above at 900×600 and 1440×900 | #327 | Acceptance matrix; human VoiceOver pass recorded separately |
 | C77 | R1, R2, R4 | Overview | Independent scroll of the description and activity column | #323 | Scroll-isolation check (#322 AC3) |
 | C78 | R4 | Diff | Independent vertical scroll of the diff pane | #324 | Scroll-isolation check; file selection keeps the overall position |
 | C79 | R4 | File tree | Independent scroll of the file tree | #324 | Scroll-isolation check |
 | C80 | R4 | Tab strip | Closing the Changes tab, or leaving the split for one pane | #322 | Navigation spec: the PR tab and its scroll position survive |
 | C81 | R2, R3 | Activity | Avatars in the timeline and the comment composer (a bot's logo, a commenter) | needs decision | D1 |
-| C82 | R1, R2, R3, R4 | Composer | Access-mode indicator (the orange shield, `--accent-warn`, as "Full access" uses) | needs decision | Review runs read-only whatever it shows (#325); see open decision 7 |
-| C76 | R1, R2, R3, R4 | Whole workspace | Keyboard path through every control above at 900×600 and 1440×900 | #327 | Acceptance matrix; human VoiceOver pass recorded separately |
+| C82 | R1, R2, R3, R4 | Composer | Access-mode indicator (the orange shield, `--accent-warn`, as the thread composer's full-access pill uses, `Composer.tsx:296`) | needs decision | Review runs read-only whatever it shows (#325); see open decision 7 |
 
 ## Deviations
 
