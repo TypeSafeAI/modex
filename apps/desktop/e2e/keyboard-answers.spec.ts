@@ -84,3 +84,23 @@ test("Stop from the keyboard hands focus to the composer once the turn ends", as
   await expect(tid(page, "stop")).toHaveCount(0);
   await expect(tid(page, "composer-input")).toBeFocused();
 });
+
+test("Jump to latest from the keyboard hands focus to the message box at the bottom", async () => {
+  // Enough finished turns for the transcript to scroll.
+  for (let turn = 0; turn < 3; turn++) {
+    await tid(page, "composer-input").focus();
+    await page.keyboard.type(`Turn ${turn} for scrolling`);
+    await page.keyboard.press("Meta+Enter");
+    await items(page, "approval").last().getByRole("button", { name: "Approve", exact: true }).click();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+  }
+  await tid(page, "turn-label").last().focus();
+  await expect(async () => {
+    await page.keyboard.press("PageUp");
+    await expect(tid(page, "jump-latest")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
+  await tid(page, "jump-latest").focus();
+  await page.keyboard.press("Enter");
+  await expect(tid(page, "jump-latest")).toHaveCount(0);
+  await expect(tid(page, "composer-input")).toBeFocused();
+});

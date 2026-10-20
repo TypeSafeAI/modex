@@ -60,11 +60,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
-- **Answering an approval or stopping from the keyboard keeps your place** (CF-8 #281 keyboard walkthrough).
+- **Answering, stopping or jumping to the latest from the keyboard keeps your place** (CF-8 #281 keyboard walkthrough).
   The answer buttons go away once pressed, and a finished turn hides its folded work; either used to
   drop focus onto the page body. Focus now moves to the card's answer ("Approved", "Denied"), then to
-  the turn's "Worked for" toggle when that work folds. Stop pressed from the keyboard hands focus to
-  the message box once the turn ends. Focus elsewhere, such as the composer, stays where it is.
+  the turn's "Worked for" toggle when that work folds. Stop and Jump to latest, pressed from the keyboard,
+  hand focus to the message box once they go away. Focus elsewhere, such as the composer, stays where it is.
 - **Assistant turns keep their native identity, phase and outcome** (CF-1 #282, CF-4 #284, CF-6
   first half #285, CF-5 first part, tracker #273). Codex and Claude report every message, reasoning
   block and tool through one typed path that names the native item. The [conversation-event

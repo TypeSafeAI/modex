@@ -197,7 +197,12 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         ))}
       </div>
       </TranscriptThread.Provider>
-      {away && items.length > 0 && <button type="button" className="jump-latest" data-testid="jump-latest" onClick={jumpToLatest}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
+      {away && items.length > 0 && <button type="button" className="jump-latest" data-testid="jump-latest" onClick={(e) => {
+        // The button goes away at the bottom; focus goes to the message box there, not the page body.
+        const held = document.activeElement === e.currentTarget;
+        jumpToLatest();
+        if (held) inputRef.current?.focus({ preventScroll: true });
+      }}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
       {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
         <p>This message is saved. Start its coding turn when you are ready.</p>
         <button type="button" className="btn small" data-testid="saved-message-retry" onClick={onRetry}>Retry saved message</button>
