@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import type { AnswerResult, ThreadItem } from "../../../shared/types";
 import { answerNote, type Question } from "../../../shared/human-requests";
+
+interface QuestionDraft { choice: Record<string, string>; text: Record<string, string> }
+/** Window-owned memory only; question answers must never enter composer recovery or storage. */
+export const QuestionDraftContext = createContext<Map<string, QuestionDraft> | null>(null);
+export type QuestionDraftCache = Map<string, QuestionDraft>;
 
 type QuestionEntry = Extract<ThreadItem, { kind: "question" }>;
 
@@ -28,11 +33,23 @@ const OTHER = "\u0000other";
  * answers against the questions before anything reaches the CLI, and the card says why when it refuses.
  */
 export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer: (itemId: string, answers: Record<string, string[]>) => Promise<AnswerResult | undefined> }) {
-  const [choice, setChoice] = useState<Record<string, string>>({});
-  const [text, setText] = useState<Record<string, string>>({});
+  const drafts = useContext(QuestionDraftContext);
+  const [draft, setDraft] = useState<QuestionDraft>(() => drafts?.get(item.id) ?? { choice: {}, text: {} });
+  const { choice, text } = draft;
+  const edit = (field: "choice" | "text", id: string, value: string) => {
+    const next = { ...draft, [field]: { ...draft[field], [id]: value } };
+    drafts?.set(item.id, next);
+    setDraft(next);
+  };
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const open = !item.answers && !item.withdrawn;
+  const open = !item.answers && !item.withdrawn && !item.delivery;
+  useEffect(() => {
+    if (!open) {
+      drafts?.delete(item.id);
+      setDraft({ choice: {}, text: {} });
+    }
+  }, [open, drafts, item.id]);
   const typed = (q: Question) => !q.options || choice[q.id] === OTHER;
   const value = (q: Question) => (typed(q) ? text[q.id] ?? "" : choice[q.id] ?? "");
   const submit = async () => {
@@ -63,14 +80,14 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
                 <div className="question-options" role="radiogroup" aria-label={q.header || q.text}>
                   {q.options.map((o) => (
                     <label key={o.label} className="question-option">
-                      <input type="radio" name={`${item.id}:${q.id}`} checked={choice[q.id] === o.label} disabled={sending} onChange={() => setChoice((c) => ({ ...c, [q.id]: o.label }))} />
+                      <input type="radio" name={`${item.id}:${q.id}`} checked={choice[q.id] === o.label} disabled={sending} onChange={() => edit("choice", q.id, o.label)} />
                       <span>{o.label}</span>
                       {o.description && <span className="question-hint">{o.description}</span>}
                     </label>
                   ))}
                   {q.allowOther && (
                     <label className="question-option">
-                      <input type="radio" name={`${item.id}:${q.id}`} checked={choice[q.id] === OTHER} disabled={sending} onChange={() => setChoice((c) => ({ ...c, [q.id]: OTHER }))} />
+                      <input type="radio" name={`${item.id}:${q.id}`} checked={choice[q.id] === OTHER} disabled={sending} onChange={() => edit("choice", q.id, OTHER)} />
                       <span>Other</span>
                     </label>
                   )}
@@ -79,7 +96,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
               {typed(q) && (
                 <input className="question-input" data-testid="question-input" type={q.secret ? "password" : "text"} autoComplete="off" spellCheck={!q.secret}
                   aria-label={q.options ? `${q.header || q.text}: other` : q.header || q.text} value={text[q.id] ?? ""} disabled={sending}
-                  onChange={(e) => setText((t) => ({ ...t, [q.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") void submit(); }} />
+                  onChange={(e) => edit("text", q.id, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void submit(); }} />
               )}
             </>
           )}
