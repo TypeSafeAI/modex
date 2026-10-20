@@ -170,3 +170,81 @@ test("late native staging updates recovery without repeating installation or reg
   await assert.rejects(h.service.download(), /recovery/i);
   await h.service.dispose();
 });
+
+/** Resolves once the controller publishes `phase`, or rejects after a short wait. */
+function reached(h: ReturnType<typeof harness>, phase: string) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`never reached ${phase}: ${h.events.join(",")}`)), 1000);
+    const poll = () => { if (h.events.includes(phase)) { clearTimeout(timer); resolve(); } else setImmediate(poll); };
+    poll();
+  });
+}
+
+test("an automatic check downloads and verifies the update without a click", async () => {
+  const h = harness({ autoDownload: true });
+  await h.service.check();
+  await reached(h, "ready");
+  assert.equal(h.service.state().phase, "ready");
+  assert.equal(h.counts().downloads, 1);
+  assert.equal(h.events.includes("available"), false, "an automatic download never offers a Download button first");
+  await h.service.check();
+  assert.equal(h.counts().downloads, 1, "a later check keeps the verified update instead of downloading again");
+  assert.equal(h.counts().installs, 0, "downloading never restarts by itself");
+  await h.service.dispose();
+});
+
+test("without automatic download a check only offers the update", async () => {
+  const h = harness();
+  assert.equal((await h.service.check()).phase, "available");
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.counts().downloads, 0);
+  await h.service.dispose();
+});
+
+test("a cancelled automatic download is not restarted by later checks, but a click still downloads it", async () => {
+  let finish!: () => void;
+  let entered!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const verifying = new Promise<void>(resolve => { entered = resolve; });
+  let hold = true;
+  const h = harness({ autoDownload: true, verify: async () => { if (!hold) return; entered(); await pending; } });
+  await h.service.check();
+  await verifying;
+  h.service.cancel();
+  finish();
+  await reached(h, "cancelling");
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.service.state().phase, "available");
+  await h.service.check();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.counts().downloads, 1, "the person declined this version");
+  hold = false;
+  assert.equal((await h.service.download()).phase, "ready");
+  await h.service.dispose();
+});
+
+test("a failed automatic download retries only after the backoff", async () => {
+  let clock = 1_000_000, fail = true;
+  const h = harness({ autoDownload: true, now: () => clock, verify: async () => { if (fail) throw new Error("offline"); } });
+  await h.service.check();
+  await reached(h, "error");
+  assert.equal(h.counts().downloads, 1);
+  await h.service.check();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.counts().downloads, 1, "no retry storm on every focus");
+  fail = false;
+  clock += 60 * 60 * 1000;
+  await h.service.check();
+  await reached(h, "ready");
+  assert.equal(h.counts().downloads, 2);
+  await h.service.dispose();
+});
+
+test("install passes the relaunch choice to the restart coordinator", async () => {
+  const seen: unknown[] = [];
+  const h = harness({ restart: async (_candidate, options) => { seen.push(options); return { outcome: "staged" }; } });
+  await h.service.download();
+  assert.equal((await h.service.install({ relaunch: false })).phase, "staged");
+  assert.deepEqual(seen, [{ relaunch: false }]);
+  await h.service.dispose();
+});

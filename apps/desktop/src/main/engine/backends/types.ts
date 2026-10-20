@@ -1,7 +1,7 @@
 import type { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import type { AgentActivity, ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
-import type { Observation } from "../../../shared/conversation-events.js";
+import type { NativeRef, Observation } from "../../../shared/conversation-events.js";
 
 export type { ModelInfo };
 
@@ -76,6 +76,12 @@ export interface TurnSink {
    * with the turn and attempt and projects it into transcript items.
    */
   observe(observation: Observation): void;
+  /**
+   * A tool's raw output as it streams, before any bound. Main keeps it once it grows past the
+   * transcript's preview (main/engine/tool-logs.ts); it is never journaled or sent to the window.
+   * Backends that only ever see a bounded result (Claude Code's Bash) do not call it.
+   */
+  output?(native: NativeRef, chunk: string): void;
   /**
    * Asks for a decision. `withdrawn` aborts when the backend's CLI no longer needs the answer (Claude's
    * `control_cancel_request`): the sink then settles the request once as "no" and leaves nothing actionable.

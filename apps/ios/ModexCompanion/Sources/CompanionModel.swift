@@ -388,7 +388,7 @@ import SwiftUI
             guard connection == connectionRevision, answerOperation == operation else { return }
             await refresh()
         } catch {
-            if connection == connectionRevision, answerOperation == operation, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+            await refused(error, connection: connection, operation: operation)
         }
     }
 
@@ -435,8 +435,16 @@ import SwiftUI
             guard connection == connectionRevision, answerOperation == operation else { return }
             await refresh()
         } catch {
-            if connection == connectionRevision, answerOperation == operation, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+            await refused(error, connection: connection, operation: operation)
         }
+    }
+
+    /// An answer the Mac did not take. It most often refuses because the request was answered on the Mac,
+    /// withdrawn or stopped, so the card is read again rather than left actionable until the next poll.
+    private func refused(_ failure: Error, connection: Int, operation: UUID) async {
+        guard connection == connectionRevision, answerOperation == operation, !revokeIfNeeded(failure) else { return }
+        error = failure.localizedDescription
+        await refresh()
     }
 
     private func revokeIfNeeded(_ failure: Error) -> Bool {

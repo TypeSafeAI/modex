@@ -210,13 +210,17 @@ For Electron development, also run
 ## Release notifications
 
 Starting with v0.0.7, installed macOS builds check for a newer stable release at launch and hourly while the
-workspace is visible, with a check when you return to it. A small banner links to the
-release page; dismissing it hides that version across relaunches. A later release appears
-again. Checks use public GitHub release metadata and require an uploaded installer for
-your Mac. Offline failures stay quiet. From v0.0.12 the banner also offers **Download update**:
-Modex verifies the archive and its publisher, then offers **Restart to update** and keeps your
-drafts. Builds before v0.0.12 install it manually once. Windows and Linux show no update banner;
-install a newer release by hand. See [update preparation and draft recovery](docs/update-recovery.md).
+workspace is visible, with a check when you return to it. Checks use public GitHub release
+metadata and require an uploaded installer for your Mac. Offline failures stay quiet.
+
+After v0.2.0, updates arrive over the air. When a check finds a newer release, Modex downloads
+it and verifies the archive and its publisher in the background. The banner then offers
+**Restart to update**, which keeps your drafts. If you never click it, the update installs the
+next time you quit Modex. **What’s new** opens the release notes; you never need the release
+page to update. Dismissing the banner hides that version across relaunches, and a dismissed
+update still installs when you quit. v0.0.12 through v0.2.0 ask you to click **Download update**
+first, and builds before v0.0.12 install a newer release manually once. Windows and Linux show no
+update banner; install a newer release by hand. See [update preparation and draft recovery](docs/update-recovery.md).
 
 If you are on v0.0.6 or earlier, install v0.0.7 from the release page once to enable future
 update notifications; older builds do not contain the banner.
@@ -271,8 +275,8 @@ must be public for the rules to apply.
 
 ## Not (yet) here
 
-Codex Cloud tasks stay out of scope. Read-only [routines](docs/routines.md) are on `main`,
-unreleased; routines that change code wait on the approval gate decision. Windows and Linux
+Codex Cloud tasks stay out of scope. Read-only [routines](docs/routines.md) ship from v0.2.0;
+routines that change code wait on the approval gate decision. Windows and Linux
 installers ship from v0.1.0, and their [acceptance gaps](docs/native-platforms.md) are still
 open. Modex has no HTTP-API execution mode; if a CLI is not installed or logged in, the thread
 says so.

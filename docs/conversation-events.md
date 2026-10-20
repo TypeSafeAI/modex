@@ -174,6 +174,7 @@ change for this contract. Streaming deltas and tool updates are written to disk 
 | `item/reasoning/summaryPartAdded` | nothing: parts are keyed by index |
 | `item/completed` `reasoning` | `reasoning.done` with `summary` and `content` as snapshots |
 | `item/started` `commandExecution`, `fileChange`, `mcpToolCall`, `dynamicToolCall`, `webSearch` | `tool.start` |
+| (`fileChange`) | `apply_patch` with `args.patch` (the diffs, joined) and `args.files` (each file's `path`, `kind`, `movePath`, and `lines` of `patch`; [evidence](conversation-evidence.md)) |
 | `item/commandExecution/outputDelta` | `tool.update` |
 | `item/completed` for those tools | `tool.done` |
 | collaboration and sub-agent items | `tool.*` for `agent:<thread id>` |
@@ -198,7 +199,7 @@ id and the item id.
 | `completed`, any other tool | `succeeded` |
 | `inProgress` when the item completes | `unknown` |
 | no status, a command with an exit code | from the exit code |
-| no status (web search), no error | `unknown` |
+| no status (web search), no error | `succeeded`: codex-cli 0.163.0 gives a web search no status or error field, so its completion is its only report |
 | no status, an error | `failed` |
 
 `turn/completed` ends the turn: `completed`, `interrupted` and `failed` become the attempt's

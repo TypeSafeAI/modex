@@ -108,6 +108,7 @@ test("a closed card says when the phone answered and when nobody can tell whethe
   assert.equal(answerNote({}), null, "answered here, or before these fields existed");
   assert.equal(answerNote({ answeredBy: "desktop", delivery: "sent" }), null);
   assert.equal(answerNote({ answeredBy: "phone", delivery: "sent" }), "Answered on your phone.");
+  assert.equal(answerNote({ answeredBy: "paired-desktop", delivery: "sent" }), "Answered from a paired desktop.");
   assert.equal(answerNote({ answeredBy: "desktop", delivery: "uncertain" }), "Modex stopped before it could confirm the agent received this answer.");
   assert.equal(answerNote({ answeredBy: "phone", delivery: "uncertain" }), "Answered on your phone. Modex stopped before it could confirm the agent received this answer.");
 });

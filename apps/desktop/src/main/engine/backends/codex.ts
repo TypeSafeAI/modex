@@ -424,7 +424,7 @@ export class CodexBackend implements Backend {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
               this.changePaths.set(`${tid}:${item.id}`, files);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n") } } });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
@@ -452,6 +452,7 @@ export class CodexBackend implements Backend {
             const t = tools.get(String(p.itemId));
             if (t) {
               const delta = String(p.delta ?? "");
+              sink.output?.(native(p.itemId), delta);
               t.bytes += byteLength(delta);
               t.output = boundOutput(t.output + delta).text;
               sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output, ...(t.bytes > byteLength(t.output) ? { outputBytes: t.bytes, outputTruncated: true } : {}) } });
@@ -677,6 +678,12 @@ interface CodexModel {
   serviceTiers?: { id: string; name?: string; description?: string }[];
   defaultServiceTier?: string | null;
 }
+
+/** One file of a fileChange, beside the joined patch: `lines` is how much of it is this file's diff (shared/evidence.ts). */
+function patchFile(c: NonNullable<CodexItem["changes"]>[number]): import("../../../shared/evidence.js").CodexPatchFile {
+  return { path: c.path, kind: c.kind?.type ?? "update", ...(c.kind?.move_path ? { movePath: c.kind.move_path } : {}), lines: (c.diff ?? "").split("\n").length };
+}
+
 interface CodexItem {
   type: string;
   id: string;
@@ -688,7 +695,7 @@ interface CodexItem {
   aggregatedOutput?: string | null;
   exitCode?: number | null;
   durationMs?: number | null;
-  changes?: { path: string; kind?: { type: string }; diff: string }[];
+  changes?: { path: string; kind?: { type: string; move_path?: string | null }; diff: string }[];
   summary?: string[];
   content?: string[];
   server?: string;
@@ -756,8 +763,9 @@ export function codexPhase(phase: string | null | undefined): MessagePhase {
  * How a completed Codex tool item ended, from its own status (codex-cli 0.163.0): `declined` is a
  * denial, `failed` a failure, `completed` a success, except a command that completed with a non-zero
  * exit code (failed) or none at all (unknown). A command with no status is judged by its exit code.
- * Any other item that reports no status (web search) is unknown unless it reports an error; so is a
- * tool still `inProgress` when it completes. Exported for tests.
+ * A web search has neither a status nor an error field, so its `item/completed` is the only report it
+ * makes: it finished. Any other item without a status is unknown unless it reports an error, and so
+ * is a tool still `inProgress` when it completes. Exported for tests.
  */
 export function codexOutcome(item: { type: string; status?: string; exitCode?: number | null; error?: unknown }): SettledOutcome {
   if (item.status === "declined") return "denied";
@@ -765,7 +773,8 @@ export function codexOutcome(item: { type: string; status?: string; exitCode?: n
   const exit = item.exitCode === 0 ? "succeeded" : typeof item.exitCode === "number" ? "failed" : "unknown";
   if (item.status === "completed") return item.type === "commandExecution" ? exit : "succeeded";
   if (item.status === undefined && item.type === "commandExecution" && exit !== "unknown") return exit;
-  return item.error ? "failed" : "unknown";
+  if (item.error) return "failed";
+  return item.status === undefined && item.type === "webSearch" ? "succeeded" : "unknown";
 }
 
 function codexStepStatus(status: unknown): PlanStepStatus {

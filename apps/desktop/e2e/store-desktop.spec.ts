@@ -45,6 +45,8 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
     await items(page, "approval").getByRole("button", { name: "Approve", exact: true }).click();
     await expect.poll(() => fs.existsSync(path.join(repo, "CONTRIBUTING.md"))).toBe(true);
     await expect(items(page, "assistant").last()).toBeVisible();
+    // The host records which client answered: this one, not the Mac's own window.
+    await expect(items(page, "approval").first().getByTestId("answer-note")).toHaveText("Answered from a paired desktop.");
     const threadId = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute('data-thread-id');
     const terminal = await page.evaluate(async (threadId) => {
       const bridge = (window as any).modex;

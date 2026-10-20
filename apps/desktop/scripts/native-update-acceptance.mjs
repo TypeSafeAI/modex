@@ -181,11 +181,13 @@ export async function runNativeUpdateAcceptance({ sourceApp, candidateArchive, v
     await page.evaluate(() => window.modex.invoke("updates:check", undefined));
     const banner = page.getByTestId("update-banner");
     await page.getByTestId("composer-input").fill(draft);
-    await banner.getByRole("button", { name: "Download update", exact: true }).click();
+    // Finding the release starts the download without a click; the tampered archive is refused.
+    const transport = () => fs.existsSync(transportFile) ? fs.readFileSync(transportFile, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];
+    await expect.poll(() => transport().some(entry => entry.request === "candidate-archive" && entry.corrupt), { timeout: 180_000 }).toBe(true);
     await expect(banner).toContainText("could not be downloaded or verified", { timeout: 180_000 });
     assert.equal(JSON.parse(fs.readFileSync(receiptFile, "utf8")).attempt, null);
     assert.equal(fs.existsSync(eventsFile), false);
-    proof.checks.push("tampered download refused before native admission");
+    proof.checks.push("automatic download of a tampered archive refused before native admission");
     await app.evaluate(() => { globalThis.__nativeUpdateAcceptance.corrupt = false; });
     await banner.getByRole("button", { name: "Download update", exact: true }).click();
     await expect(banner.getByRole("button", { name: "Restart to update", exact: true })).toBeEnabled({ timeout: 180_000 });

@@ -53,6 +53,7 @@ import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 import { fileURLToPath } from "node:url";
 import { codexCall } from "../src/main/engine/backends/usage.js";
+import { OUTPUT_PREVIEW_BYTES } from "../src/shared/evidence.js";
 
 /** Minimal scripted app-server: answers initialize, thread/start|resume, turn/start, model/list. */
 function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string } = {}) {
@@ -134,6 +135,67 @@ test("model discovery racing disposal rejects instead of waiting on a disconnect
   } finally {
     await backend.dispose();
   }
+});
+
+test("a long Codex command hands every raw chunk to main, while the transcript only ever gets the preview", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const collected = collectSink();
+  const chunks: { item: string; chunk: string }[] = [];
+  const sink = { ...collected.sink, output: (native: { item: string }, chunk: string) => { chunks.push({ item: native.item, chunk }); } };
+  try {
+    const run = backend.runTurn("print a lot", { cwd: "/repo", mode: "full-access", plan: false, model: "" }, sink, new AbortController().signal);
+    await proc.waitFor((l) => l.includes('"turn/start"'));
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "commandExecution", id: "c1", command: "yes", cwd: "/repo", status: "inProgress" } } });
+    const delta = "0123456789abcdef".repeat(64 * 1024); // 1 MiB
+    for (let i = 0; i < 12; i++) proc.emitLine({ method: "item/commandExecution/outputDelta", params: { threadId, turnId, itemId: "c1", delta } });
+    proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "commandExecution", id: "c1", command: "yes", status: "completed", exitCode: 0, durationMs: 5 } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
+    await run;
+    assert.equal(chunks.length, 12);
+    assert.ok(chunks.every((c) => c.item === "c1"));
+    assert.equal(chunks.reduce((n, c) => n + c.chunk.length, 0), 12 * delta.length, "every byte reached main");
+    for (const o of collected.observations) {
+      if (o.type !== "tool.update" && o.type !== "tool.done") continue;
+      assert.ok(Buffer.byteLength(o.progress?.output ?? "") <= OUTPUT_PREVIEW_BYTES, `${o.type} carried only the preview`);
+    }
+  } finally { await backend.dispose(); }
+});
+
+test("a Codex file change keeps each file's path, kind, move target and share of the patch", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, observations } = collectSink();
+  try {
+    const run = backend.runTurn("rename and note", { cwd: "/repo", mode: "full-access", plan: false, model: "" }, sink, new AbortController().signal);
+    await proc.waitFor((l) => l.includes('"turn/start"'));
+    // As codex-cli 0.163.0 sends them: absolute paths; an update's diff is hunks only; an add carries the file.
+    const changes = [
+      { path: "/repo/src/old.ts", kind: { type: "update", move_path: "/repo/src/new.ts" }, diff: "@@ -1 +1 @@\n-a\n+b\n" },
+      { path: "/repo/NOTE.md", kind: { type: "add" }, diff: "# Note\nhi\n" },
+      { path: "/repo/gone.txt", kind: { type: "delete" }, diff: "bye" },
+    ];
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "fileChange", id: "f1", changes, status: "inProgress" } } });
+    proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "fileChange", id: "f1", changes, status: "completed" } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
+    await run;
+    const start = observations.find((o) => o.type === "tool.start");
+    assert.ok(start && start.type === "tool.start");
+    const args = start.tool.args as { patch: string; files: { path: string; kind: string; movePath?: string; lines: number }[] };
+    assert.deepEqual(args.files, [
+      { path: "/repo/src/old.ts", kind: "update", movePath: "/repo/src/new.ts", lines: 4 },
+      { path: "/repo/NOTE.md", kind: "add", lines: 3 },
+      { path: "/repo/gone.txt", kind: "delete", lines: 1 },
+    ]);
+    // The lines split `patch` back into each file's own diff, so no diff is stored twice.
+    const lines = args.patch.split("\n");
+    let at = 0;
+    const parts = args.files.map((f) => lines.slice(at, (at += f.lines)).join("\n"));
+    assert.deepEqual(parts, changes.map((c) => c.diff));
+    assert.equal(at, lines.length);
+  } finally { await backend.dispose(); }
 });
 
 test("CodexBackend: a turn streams deltas, command + file-change items, approvals, and completes", async () => {

@@ -13,7 +13,10 @@ files stay authoritative: nothing reads the journal to decide app state, so dele
 loses only journal history.
 
 If the journal can't open or a write fails, Modex logs the error and turns the journal off for
-that run. Turns and the state files are unaffected.
+that run. Turns and the state files are unaffected. This covers a write that fails while a client is
+reading, since reading flushes the pending batch. That client gets "reload state", and the journal
+records nothing more. Paired desktops then reconnect without it and reload, and the phone gets full
+transcripts.
 
 ## What it records
 
@@ -49,6 +52,13 @@ Each journal file has its own id, kept in its `meta` table. A cursor means somet
 with that id: after the file is deleted, a new file starts over with a new id, so an old cursor
 can't skip events.
 
+The id also changes when a journal may be missing rows. While open, the journal records
+`open = 1` in `meta`, and a clean close resets it. It reopens still marked open in two cases:
+the process died with a batch unwritten, which can be up to 250 ms of events the state files
+already hold, or a write failed. Either way it takes a new id, so every cursor issued before then
+reloads instead of resuming past the gap. An ordinary quit keeps the id, so a relaunch still
+resumes.
+
 ## Resuming after sleep or a reconnect
 
 `EventJournal.resume(id, cursor, { threadId })` answers a reconnecting client in one synchronous
@@ -72,7 +82,9 @@ On a resumed reconnect, the Store edition refreshes its thread list and the sele
 Changes, but keeps its loaded transcripts: the replay brings them up to date. When it can't resume,
 it reloads everything as before. It also closes the stream when the Mac goes to sleep and reopens
 it on wake, rather than waiting 45 seconds for a heartbeat timeout. A replay over 4 MB reloads
-instead. A stream that falls 8 MB behind is dropped, and its client resumes from its cursor.
+instead. A stream that falls 8 MB behind is dropped, and its client resumes from its cursor. A
+desktop drops any single frame over 1 MB, and then reloads instead of resuming, because resuming
+would replay the same frame into the same limit.
 
 Thread events reach paired desktops up to 250 ms later while the journal is on: they arrive with
 the batch that wrote them. The local window still gets each event as it happens. If the journal
@@ -84,12 +96,38 @@ thread list current. With the journal on, a snapshot for a selected thread inclu
 resume them, `items` holds only that thread's items that changed after the cursor, marked
 `delta: true`. The phone replaces each changed item by id and appends new ones. Changing threads,
 reconnecting or forgetting the Mac drops the cursor, so the next snapshot is a full transcript.
+An item of a kind this Mac doesn't know, such as one a newer Modex saved before a downgrade, goes to
+the phone as an info notice. Its own fields aren't forwarded. It is never sent as `null`, which
+would make the phone reject the whole snapshot.
 
 `test/journal-resume.test.ts` is the paired sleep test. The scripted runner and a real journal run a
 turn. A paired desktop over TLS and the phone's HTTP requests catch up. Both clients then sleep, a
 second turn runs, and both wake. The desktop must resume without reloading and receive each item
 exactly once. The phone must receive only the sleep's items, and both transcripts must match the
 Mac's. `CompanionModelTests` checks the phone's merge.
+
+The same file covers faults, through the real host, phone server and desktop client over TLS:
+- a SIGKILL right after an approval is answered;
+- a write that fails during a phone read;
+- cursors ahead of the log, pruned, and from a deleted journal;
+- the 4 MB replay limit;
+- a frame over 1 MB;
+- a batch delivered twice.
+
+`test/request-crash.test.ts` leaves an approval unanswered at a crash. The new process closes it
+only when it first reads that thread, after the phone's poll has read its cursor, so the new id is
+what makes the phone's first poll reload and show it closed. A clean quit is the control case.
+
+One mixed transcript must also look the same on every path:
+- the saved files;
+- the live projection and stream;
+- a live journal and a fully batched one, each also replayed twice;
+- the phone's snapshot plus its delta;
+- a desktop that slept;
+- a restarted runner.
+
+Along the way it takes a duplicated answer, a late tool update, an old attempt's late text and a
+withdrawn request, and it counts the CLI's runs and answers.
 
 These rules make that work:
 
@@ -128,6 +166,33 @@ replays them unchanged.
   CLI (`delivery`) and why an unanswered card closed (`withdrawn`), as whole field values like every other
   item field. Replay and resume show resolved and withdrawn cards inert and never send an answer. A secret
   answer is never written here. See [across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+
+## Compatibility and rollback
+
+The schema is additive.
+- **`events`:** unchanged since v0.1.0. Its columns are listed above.
+- **`meta`:** a key/value table that v0.1.0 doesn't have. It holds these keys:
+  - `id`: the journal's identity;
+  - `pruned_through`: the highest cursor retention deleted;
+  - `open`: `"1"` from open until a clean close.
+
+**Older journals.** A v0.1.0 file, with an `events` table and nothing else, opens with every row
+kept, gains an id, and replays unchanged. A v0.2.0 file keeps its id.
+
+**Downgrading.** An older build can still read and append to a file this build wrote. Here is
+what it doesn't do:
+- v0.2.0 ignores `open`, so a crash it has keeps the id, and its own resume rules apply.
+- v0.1.0 doesn't prune and has no cursors, so retention isn't enforced until this build opens the
+  file again.
+- v0.1.0's and v0.2.0's phone mapping has no case for kinds newer than themselves, such as `plan`
+  (#289) and `question` (#293). It sends them as `null`, and the phone then rejects the snapshot
+  until that thread's items are gone or Modex is upgraded again.
+
+The journal is never authoritative, so deleting `events.sqlite` is always a safe rollback. It
+loses only journal history, and every client reloads.
+
+`test/conversation-migration.test.ts` builds a v0.1.0 file with that release's schema. It also
+drives a file this build wrote with v0.1.0's and v0.2.0's own SQL.
 
 ## Retention
 

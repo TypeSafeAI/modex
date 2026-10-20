@@ -179,6 +179,13 @@ cannot write two answers for one native ID. This is a local guard, not an exactl
   including for approvals, so older clients cannot mistake them for successful approvals.
 - **Store demo.** `thread:answer` returns `{ ok: true }`. The demo asks no questions, so
   `thread:answer-question` refuses with `unknown`.
+- **Older paired desktops.** A paired desktop names the item kinds it draws in an
+  `x-modex-item-kinds` header on every request. Store builds cut before CF-3, such as TestFlight Store
+  0.0.8, send none and have no `question` or `plan` in their renderer, so they showed nothing for one
+  and the thread looked stuck. The host sends such a client a question, or a plan, as an `info` notice
+  with the same id, the question text and its state, never the answers: in `thread:items`, in live and
+  journaled events, and in journal replay. An update to one arrives as the whole notice again. Its
+  answer is refused, as before. `test/desktop-item-kinds.test.ts` covers each path.
 
 ## Across replay and reconnect
 
@@ -190,7 +197,7 @@ paired desktops and the phone carry it with no new event type. This is the reque
 | Broker step | On the card |
 | --- | --- |
 | `register` | The card appears, with no answer. |
-| `resolve` | `answer` or `answers`, `answeredBy` (`"desktop"` or `"phone"`) and `delivery: "sending"`, saved before the CLI hears anything. |
+| `resolve` | `answer` or `answers`, `answeredBy` (`"desktop"`, `"paired-desktop"` or `"phone"`) and `delivery: "sending"`, saved before the CLI hears anything. |
 | `settle(…, "sent")` | `delivery: "sent"` once the answer is handed to the CLI. |
 | `withdraw` | `withdrawn: "native" \| "stopped" \| "ended"`, as above. |
 | `uncertain` | `delivery: "uncertain"`. |
@@ -211,8 +218,11 @@ paired desktops and the phone carry it with no new event type. This is the reque
   only `answer`, so an approval whose delivery is uncertain, or that was withdrawn, reaches it as an
   `info` notice that says so. A decision still sending keeps its answer, so the phone shows it as
   decided. A question's notice says when its answer is sending or its delivery is uncertain.
-- **The window** adds "Answered on your phone." under a card the phone answered, and the uncertain line
-  above. An answer given in the window and sent adds nothing.
+- **Who answered** is the client that made the decision: this Mac's window (`desktop`), a desktop
+  paired through the host (`paired-desktop`), or the phone. Switching a thread to YOLO answers what is
+  waiting as whichever of them switched it.
+- **The window** adds "Answered on your phone." or "Answered from a paired desktop." under a card one
+  of them answered, and the uncertain line above. An answer given in the window and sent adds nothing.
 
 ## Secrets
 
