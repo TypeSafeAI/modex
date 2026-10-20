@@ -943,11 +943,12 @@ export class ThreadRunner {
   /** Answers an approval card. The first answer is taken; any other is refused with the reason (docs/human-requests.md). */
   answer(threadId: string, itemId: string, answer: ApprovalAnswer, by = "desktop"): AnswerResult {
     const l = this.slot(threadId);
+    const before = l.requests;
     const accepted = this.accept(l, itemId, { kind: "approval", answer }, by);
     const pending = l.pending.get(itemId);
     if (!accepted.ok || pending?.kind !== "approval") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
+    this.saveAnswer(threadId, l, itemId, before, { answer, answeredBy: by, delivery: "sending" });
     l.pending.delete(itemId);
-    this.patchItem(threadId, itemId, { answer, answeredBy: by, delivery: "sending" });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     pending.settle(answer);
     this.sent(threadId, l, itemId);
@@ -965,15 +966,31 @@ export class ThreadRunner {
       const checked = validateAnswers(pending.questions, answers);
       if (!checked.ok) return { ok: false, reason: "invalid", error: checked.error };
     }
+    const before = l.requests;
     const accepted = this.accept(l, itemId, { kind: "question", answers: answers as Record<string, string[]> }, by);
     if (!accepted.ok || pending?.kind !== "question") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
     const given = answers as Record<string, string[]>;
+    this.saveAnswer(threadId, l, itemId, before, { answers: publicAnswers(pending.questions, given), answeredBy: by, delivery: "sending" });
     l.pending.delete(itemId);
-    this.patchItem(threadId, itemId, { answers: publicAnswers(pending.questions, given), answeredBy: by, delivery: "sending" });
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     pending.settle({ answers: given });
     this.sent(threadId, l, itemId);
     return { ok: true };
+  }
+
+  /**
+   * Saves an accepted answer on its card before the CLI hears it. If the save fails (a full disk), nothing is
+   * taken: the request is open again, the card reads as before, and the caller gets the error to answer again.
+   */
+  private saveAnswer(threadId: string, l: Live, itemId: string, before: RequestsState, patch: Partial<ThreadItem>): void {
+    const card = l.items.find((i) => i.id === itemId);
+    try { this.patchItem(threadId, itemId, patch); }
+    catch (error) {
+      l.requests = before;
+      const idx = l.items.findIndex((i) => i.id === itemId);
+      if (card && idx >= 0) l.items[idx] = card;
+      throw error;
+    }
   }
 
   /** Records that an accepted answer was handed to the CLI, in the broker and on the card. */
