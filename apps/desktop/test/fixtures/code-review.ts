@@ -5,8 +5,10 @@ import type {
 
 /**
  * Synthetic Code Review data for the four reference states (docs/design/code-review.md) and the faults
- * around them. Text matches the references' density, never their content: every owner, login, title,
- * body and path here is made up. Plain data with a fixed clock: no network, model or disk.
+ * around them. It follows the references' layout and density (title lengths, a long description,
+ * a stack, a run of checks, folded diff hunks), never their content: the library-lending project,
+ * its people, numbers, check names and code are made up for these fixtures. Plain data with a fixed
+ * clock: no network, model or disk.
  */
 
 /** The fixture clock: just after the last reference capture. */
@@ -16,9 +18,9 @@ export const ACCOUNT_A: CodeReviewAccount = { host: "github.com", id: "1001", lo
 export const ACCOUNT_B: CodeReviewAccount = { host: "github.com", id: "2002", login: "kit-fixture" };
 
 export interface FixtureRepo { owner: string; repo: string; repoId: string }
-export const RESERVOIR: FixtureRepo = { owner: "example-org", repo: "reservoir", repoId: "R_fixtureReservoir01" };
-/** Has a #519 too, so two repositories share a PR number. */
-export const HARBOR: FixtureRepo = { owner: "example-org", repo: "harbor-docs", repoId: "R_fixtureHarbor02" };
+export const LENDING: FixtureRepo = { owner: "example-org", repo: "lending", repoId: "R_fixtureLending01" };
+/** Has a #73 too, so two repositories share a PR number. */
+export const FIELD_GUIDE: FixtureRepo = { owner: "example-org", repo: "field-guide", repoId: "R_fixtureFieldGuide02" };
 
 export function locator(repo: FixtureRepo, number: number): PrLocator {
   return { host: "github.com", owner: repo.owner, repo: repo.repo, number };
@@ -34,92 +36,88 @@ const kit: PrActor = { login: "kit-fixture", id: "2002", bot: false };
 const lin: PrActor = { login: "lin-fixture", id: "3003", bot: false };
 const previewBot: PrActor = { login: "preview-bot[bot]", id: "9009", bot: true };
 
-const R1_REVISION: PrRevision = { baseRef: "main", baseSha: sha("a1"), headSha: sha("b2") };
-const R4_BEFORE: PrRevision = { baseRef: "main", baseSha: sha("d4"), headSha: sha("e5") };
-const R4_REVISION: PrRevision = { baseRef: "main", baseSha: sha("d4"), headSha: sha("f6") };
+const R1_REVISION: PrRevision = { baseRef: "main", baseSha: sha("1a"), headSha: sha("2b") };
+const R4_BEFORE: PrRevision = { baseRef: "main", baseSha: sha("4d"), headSha: sha("5e") };
+const R4_REVISION: PrRevision = { baseRef: "main", baseSha: sha("4d"), headSha: sha("6f") };
 
-const R1_BODY = `For #406 (parent #405). Nothing in the running ingest changes: the legacy poller keeps writing until #407's reviewed intake revision replaces it.
+const R1_BODY = `Part of the lending rework (#61). Members see no change yet: the current rules keep deciding due dates until #74 switches the desk over.
 
-## What this adds
+## What changes
 
-\`shared/intake-contract.js\` is one pure, versioned contract for the reservoir intake, with no database, DOM or network state, so the dashboard and the ingest worker read the same rules.
+\`policy/schema.ts\` describes a loan policy as data: who may borrow what, for how long, and what happens when an item comes back late. The desk, the member app and the nightly batch all read it.
 
-- **Stations and datum:** read from the survey export \`survey-2026-09.csv\` exactly as pinned in \`stations.json\` (41 stations, 212.409 m datum, not a grid). Local offsets, gauge frames and chart transforms, one per station.
-- **Sensors:** 3/4/3 probes per tower on 15 s then 60 s cadences. Ranges 0–25/0–40/0–25 m, alarms at 22/36/22 under the 23.5/37.2/23.5 m caps. The middle tower's alarm stays 0.75 m below the spillway crest.
-- **Channels:** C12 at 18 km and C23 at 11 km, gate to gate at sluice 4 (km 13), four lanes with three open. Each crossing hands its readings to the next channel, so a series continues across the weir instead of restarting.
-- **Ground truth:** benchmarks, staff gauges, P1–P9, the pump house, the outfall screens, the stilling basin and intakes I1–I3 with explicit seams, plus the retained 1974 gauge.
-- **Calibrations (#411):** 26 probes, 21 meters, 9 loggers and 11 rain gauges as typed instruments (\`intake.instruments\`), validated so every channel and tower has a reading path to its logger.
-- **Levels:** keyed by elevation across the basin (\`intake/l0..l7\`), agreed with the #408 owner. \`readingAt(levelId, t, station)\` resolves a reading on its own level and never borrows the nearest neighbour's.
-- **Offtakes:** 43 metered offtakes (3,279.7 ML/yr) with stable ids, a valve on the main line and a logged flow anchor. Tariffs are unset (#409).
-- **Gates:** each gate and sluice record names where its reading is taken, 0.6 m upstream of the gate, so a spill record always lands outside the crest.
-- **Validator:** \`validateIntake\` and \`checkIntakeCompatibility\`. Every gate must sit on the channel it joins, and every probe must have a clear sampling window.
-- **Authority fixture:** \`server/tests/intake-support.test.js\` runs the model on the basin the server loads, under the worker's sampling rules (below).
+- **Item classes:** books, periodicals, media kits and equipment, each with its own default term (21, 7, 14 and 3 days) and a renewal cap. Reference items have no term and cannot leave the building.
+- **Member tiers:** adult, junior, staff and partner library. A tier can lengthen a term but never shorten it below the class minimum, so a policy edit cannot quietly strand someone's open loans.
+- **Holds:** a hold freezes renewals for the item it targets. When two holds land in the same minute, the earlier request wins and the later one is told its position instead of being refused.
+- **Fines:** a daily rate per class with a ceiling, waived for junior members and for any day the branch was closed. Closures come from \`calendar/closures.json\`, the file the opening-hours page already uses.
+- **Planner:** \`planMigration(oldPolicy, newPolicy, loans)\` lists every open loan whose due date would move, and by how many days, before anything is saved.
+- **Checks:** \`checkPolicy\` rejects overlapping tiers, a renewal cap of zero on a renewable class, and any term longer than the class's insurance limit.
+- **Exports:** \`policy/export.ts\` writes the active policy as a dated JSON snapshot, so a member who disputes a fine can be shown the rule that applied that day.
 
-Published from the module by \`node scripts/intake-views.mjs\` (\`--check\` gates them), in \`docs/design/intake/\`:
+## How it was checked
 
-- **Review page:** rendered headlessly with no page errors. Validator ok; per-level instrument counts 9/0/14/6/12/6/7/3 (57); C12's readings span km 0–18. Views: stations, the l3 weir and the l0 benchmarks.
+- \`pnpm test\`: the schema, planner and checks suites, 214 tests, all passing.
+- The planner ran against last month's anonymised loan export (38,410 open loans): 1,206 due dates would move, none by more than two days.
+- \`checkPolicy\` accepts the current rules once written as data, which is how this PR's default policy was made.
 
-## Limits
+## Not in this PR
 
-- No live ingest, alerting, storage cost or two-site replication. Those are #407/#408/#411/#412.
-- Tariffs and billing terms are #409.
-- No device evidence. No production change, migration, merge or activation.
-- Chart \`05-spillway-outlook\` uses an approximate crest height.
+- No desk or member-app screens. Those are #74 and #76.
+- No change to how fines are collected (#77).
+- Nothing is migrated or switched on.
 
 Provenance: synthetic fixture for the Code Review workspace.`;
 
-const R4_BODY = `Part of #177 (TT-4). Follows #182 (TT-1) and #184 (TT-4 typed steps), tracker #173.
+const R4_BODY = `Fixes #89. Found while checking #84's notice schedule against real holds.
 
-## The bug, on \`main\` (since \`8e2f534\`)
+## What went wrong
 
-#184 stopped folding steps whose outcome is \`unknown\`, so unresolved work stays in view when an import finishes. But \`tideOutcome\` (from #182) returns \`unknown\` for **every** gauge sync. tide-cli 0.41.0's \`gaugeSync\` step has neither a \`status\` nor an \`error\` field (\`tide-cli describe-steps\`: \`{ id, gauge, window, … }\`), so no finished sync could be anything else. The result: every gauge sync in every finished import stays unfolded under "Worked for …", although nothing about it is unresolved.
-
-I raised this in review on #184 before it merged ([comment](https://github.com/example-org/harbor-docs/pull/184#discussion_r1001)). It merged without the fix.
+When a member moved a hold to another branch, \`moveHold\` deleted the hold and placed a new one, so the member dropped to the back of the queue. A hold that had waited three weeks for a popular title could lose its place to someone who asked yesterday. The help page promised the opposite: "Moving a hold keeps your place."
 
 ## The fix
 
-A gauge sync's \`step/finished\` is the only report tide-cli makes about it, so a finished sync with no status reads as \`succeeded\`. Everything else keeps its current mapping. \`unknown\` keeps meaning work that never reported: a step still open when its run ended, or a status-less step of another kind. That is the case #184's folding rule is for.
+\`moveHold\` now keeps the hold's id and original request time and changes only its pickup branch. The queue is still ordered by request time, so the member keeps their position. Cancelling and placing a hold again still starts at the back, as the help page says.
 
-- \`importers/tides.ts\` \`tideOutcome\`: three lines, plus its comment.
-- \`test/tides.test.ts\`: the assertion that pinned a gauge sync as \`unknown\` now expects \`succeeded\`, with the reason.
-- \`docs/tide-tables.md\`: the outcome row says the same.
-- \`docs/status.md\`: one line under "On main, unreleased".
+- \`src/holds/move.ts\`: keep the id and \`requestedAt\`, change \`pickupBranch\`, and say so in the comment.
+- \`src/holds/move.test.ts\`: a moved hold keeps its id, its request time and its position.
+- \`docs/holds.md\`: the "Move the hold" row now matches the code.
+- \`docs/changelog.md\`: one entry under Unreleased.
 
-## Evidence
+## Checked
 
-- \`pnpm build && pnpm test\`: 1,204 passed, 9 skipped.
-- \`pnpm test:e2e\`: 14/14.`;
+- \`pnpm test\`: 96 passed.
+- On the staging desk, a hold moved between two branches kept position 4 of 9.`;
 
 const R1_OVERVIEW: PrOverview = {
-  key: key(ACCOUNT_A, RESERVOIR, 519),
-  locator: locator(RESERVOIR, 519),
+  key: key(ACCOUNT_A, LENDING, 73),
+  locator: locator(LENDING, 73),
   revision: R1_REVISION,
-  title: "#406: measured reservoir intake contract, storage model and validator",
+  title: "Add a versioned loan-policy schema, a migration planner and its checks",
   body: R1_BODY,
   state: "open",
   author: ada,
-  createdAt: "2026-10-18T15:38:00Z",
-  updatedAt: "2026-10-18T20:37:00Z",
-  headRef: "feat/reservoir-intake-contract-261018",
+  createdAt: "2026-10-18T15:44:00Z",
+  updatedAt: "2026-10-18T20:38:00Z",
+  headRef: "loan-policy-schema",
   headRepo: null,
-  totals: { files: 16, additions: 15_363, deletions: 0, commits: 13 },
+  totals: { files: 11, additions: 8_912, deletions: 47, commits: 9 },
   reviewers: [],
   comments: 0,
 };
 
 const R4_OVERVIEW: PrOverview = {
-  key: key(ACCOUNT_A, HARBOR, 288),
-  locator: locator(HARBOR, 288),
+  key: key(ACCOUNT_A, FIELD_GUIDE, 91),
+  locator: locator(FIELD_GUIDE, 91),
   revision: R4_REVISION,
-  title: "Read a finished gauge sync as succeeded, so it folds again (TT-4)",
+  title: "Keep a moved hold's place in the queue when its branch changes",
   body: R4_BODY,
   state: "open",
   author: ada,
-  createdAt: "2026-10-18T10:39:00Z",
-  updatedAt: "2026-10-18T20:27:00Z",
-  headRef: "tide-gauge-sync-done",
+  createdAt: "2026-10-18T09:12:00Z",
+  updatedAt: "2026-10-18T20:22:00Z",
+  headRef: "keep-hold-position",
   headRepo: null,
-  totals: { files: 4, additions: 13, deletions: 5, commits: 2 },
+  totals: { files: 4, additions: 11, deletions: 4, commits: 2 },
   reviewers: [],
   comments: 0,
 };
@@ -131,30 +129,28 @@ function summary(repo: FixtureRepo, number: number, title: string, author: PrAct
 }
 
 const AUTHORED: PrSummary[] = [
-  summary(RESERVOIR, 519, R1_OVERVIEW.title, ada, "2026-10-18T20:37:00Z"),
-  summary(RESERVOIR, 521, "Basin gauges #408: authoritative levels, sluices and spill records", ada, "2026-10-18T20:36:00Z", true),
-  summary(HARBOR, 291, "Answer each alarm once, and show station questions beside the chart", ada, "2026-10-18T20:36:00Z"),
-  summary(HARBOR, 290, "test(ingest): prove read-only replay of a recovered batch", ada, "2026-10-18T20:30:00Z"),
-  summary(HARBOR, 288, R4_OVERVIEW.title, ada, "2026-10-18T20:27:00Z"),
-  summary(RESERVOIR, 516, "Give offline stations a cached reading per level and a stale badge", ada, "2026-10-18T20:22:00Z", true),
-  summary(RESERVOIR, 514, "Intake screening: range checks and backfill scripts for a station", ada, "2026-10-18T20:20:00Z", true),
-  summary(HARBOR, 286, "feat(ingest): inspect bounded retention metadata per series", ada, "2026-10-18T20:20:00Z"),
-  summary(HARBOR, 285, "test: audit unit-preserving import of legacy logger files", ada, "2026-10-18T20:14:00Z"),
-  summary(HARBOR, 284, "test(ingest): add the sluice-command conformance suite", ada, "2026-10-18T20:06:00Z"),
+  summary(LENDING, 73, R1_OVERVIEW.title, ada, "2026-10-18T20:38:00Z"),
+  summary(LENDING, 74, "Switch the desk to the loan-policy schema and show the planner's report", ada, "2026-10-18T20:35:00Z", true),
+  summary(FIELD_GUIDE, 88, "Explain hold positions on the member help pages", ada, "2026-10-18T20:31:00Z"),
+  summary(LENDING, 70, "test(batch): replay a failed nightly run without charging a fine twice", ada, "2026-10-18T20:26:00Z"),
+  summary(FIELD_GUIDE, 91, R4_OVERVIEW.title, ada, "2026-10-18T20:22:00Z"),
+  summary(LENDING, 68, "Grey out closed days on the due-date picker", ada, "2026-10-18T20:09:00Z", true),
+  summary(LENDING, 66, "Import partner-library tiers from the consortium feed", ada, "2026-10-18T19:52:00Z", true),
+  summary(FIELD_GUIDE, 85, "feat(search): rank exact call numbers above title matches", ada, "2026-10-18T19:40:00Z"),
+  summary(FIELD_GUIDE, 84, "docs: describe when each overdue notice is sent", ada, "2026-10-18T19:15:00Z"),
 ];
 
 const REVIEW_REQUESTED: PrSummary[] = [
-  summary(HARBOR, 288, R4_OVERVIEW.title, ada, "2026-10-18T20:27:00Z"),
-  summary(HARBOR, 519, "Keep the harbour tide table readable at narrow widths", kit, "2026-10-18T19:58:00Z"),
-  summary(RESERVOIR, 498, "Name the logger that sent each reading in the export", lin, "2026-10-18T18:12:00Z"),
+  summary(FIELD_GUIDE, 73, "Fix the broken anchors on the opening-hours page", kit, "2026-10-18T18:47:00Z"),
+  summary(LENDING, 59, "Name the branch that issued each card in member exports", lin, "2026-10-18T16:03:00Z"),
 ];
 
 const R1_INBOX: Inbox = {
   account: ACCOUNT_A.id,
   query: "",
   groups: {
-    authored: ready(AUTHORED, { loaded: 10, total: 14, complete: false, next: "Y3Vyc29yOjEw" }),
-    "review-requested": ready(REVIEW_REQUESTED, { loaded: 3, total: 3, complete: true, next: null }),
+    authored: ready(AUTHORED, { loaded: 9, total: 12, complete: false, next: "cGFnZTI" }),
+    "review-requested": ready(REVIEW_REQUESTED, { loaded: 2, total: 2, complete: true, next: null }),
   },
 };
 
@@ -163,121 +159,111 @@ function check(id: string, name: string, headSha: string, status: PrCheck["statu
   return { id, name, source: "check-run", headSha, status, conclusion, startedAt, completedAt, url: `https://github.com/example-org/fixture/actions/runs/1/job/${id}` };
 }
 
-/** Running since 20:35:46, so the sidebar's elapsed clock reads 05:14 at the fixture clock. */
+/** Running since 20:37:33, so the sidebar's elapsed clock reads 03:27 at the fixture clock. */
 const R1_CHECKS: PrCheck[] = [
-  check("101", "preview checks", R1_REVISION.headSha, "running", null, "2026-10-18T20:35:46Z"),
-  check("102", "preview shared (required)", R1_REVISION.headSha, "running", null, "2026-10-18T20:35:46Z"),
-  check("103", "preview shared (development)", R1_REVISION.headSha, "running", null, "2026-10-18T20:35:47Z"),
-  check("104", "preview shared (creator)", R1_REVISION.headSha, "running", null, "2026-10-18T20:35:47Z"),
-  check("105", "preview experience (basin)", R1_REVISION.headSha, "running", null, "2026-10-18T20:35:48Z"),
-  check("106", "Analyze (actions)", R1_REVISION.headSha, "completed", "success", "2026-10-18T20:35:46Z"),
-  check("107", "unit (node 24)", R1_REVISION.headSha, "queued", null, null),
+  check("101", "lint", R1_REVISION.headSha, "completed", "success", "2026-10-18T20:37:33Z"),
+  check("102", "typecheck", R1_REVISION.headSha, "running", null, "2026-10-18T20:37:33Z"),
+  check("103", "unit (node 22)", R1_REVISION.headSha, "running", null, "2026-10-18T20:37:34Z"),
+  check("104", "unit (node 24)", R1_REVISION.headSha, "running", null, "2026-10-18T20:37:34Z"),
+  check("105", "integration (postgres)", R1_REVISION.headSha, "running", null, "2026-10-18T20:37:35Z"),
+  check("106", "docs build", R1_REVISION.headSha, "running", null, "2026-10-18T20:37:36Z"),
+  check("107", "CodeQL", R1_REVISION.headSha, "queued", null, null),
 ];
 
-const R4_CHECK_NAMES = ["unit (node 24)", "unit (node 22)", "e2e (macOS)", "e2e (linux)", "typecheck", "build", "lint docs", "links", "Analyze (actions)",
-  "Analyze (javascript)", "coverage", "store build", "site build"];
-const R4_CHECKS: PrCheck[] = R4_CHECK_NAMES.map((name, i) => check(String(201 + i), name, R4_REVISION.headSha, "completed", "success", "2026-10-18T20:28:00Z"));
+const R4_CHECK_NAMES = ["lint", "typecheck", "unit (node 22)", "unit (node 24)", "integration (postgres)", "smoke (linux)", "smoke (macOS)",
+  "links", "spelling", "docs build", "CodeQL"];
+const R4_CHECKS: PrCheck[] = R4_CHECK_NAMES.map((name, i) => check(String(201 + i), name, R4_REVISION.headSha, "completed", "success", "2026-10-18T20:23:00Z"));
 
 const R1_STACK: PrStack = {
   source: "inferred",
   position: 0,
   members: [
-    { locator: locator(RESERVOIR, 519), title: R1_OVERVIEW.title, state: "open" },
-    { locator: locator(RESERVOIR, 520), title: "Reservoir intake #407: replace the legacy poller with the reviewed worker", state: "open" },
-    { locator: locator(RESERVOIR, 521), title: "Basin gauges #408: authoritative levels, sluices and spill records", state: "open" },
-    { locator: locator(RESERVOIR, 522), title: "Basin gauges #411: finish calibrations for every logger", state: "open" },
-    { locator: locator(RESERVOIR, 523), title: "Reservoir intake: owner-managed offtake leases", state: "open" },
-    { locator: locator(RESERVOIR, 524), title: "Reservoir intake #410: metered offtakes on the dashboard", state: "open" },
+    { locator: locator(LENDING, 73), title: R1_OVERVIEW.title, state: "open" },
+    { locator: locator(LENDING, 74), title: "Switch the desk to the loan-policy schema and show the planner's report", state: "open" },
+    { locator: locator(LENDING, 76), title: "Show renewal limits and hold positions in the member app", state: "open" },
+    { locator: locator(LENDING, 77), title: "Collect fines at the new policy rates", state: "draft" },
   ],
 };
 
 const commit = (n: number, at: string, headline: string): PrActivity => ({ kind: "commit", id: `commit-${n}`, at, sha: sha(n.toString(16).padStart(2, "0")), headline, author: ada });
 
-const PREVIEW_COMMENT = `The latest updates on your projects. Learn more about [Preview Bot for GitHub](https://preview-bot.example/docs).
+const PREVIEW_COMMENT = `Preview builds for this branch are ready. [What is this?](https://preview-bot.example/docs)
 
-| Project | Deployment | Actions | Updated |
+| Site | Status | Link | Built |
 | :--- | :--- | :--- | :--- |
-| reservoir | Ready ([Inspect](https://preview-bot.example/inspect/1)) | [Preview](https://reservoir-git-intake.preview-bot.example) | Oct 18, 2026 3:42pm UTC |
+| lending-desk | Ready ([Logs](https://preview-bot.example/logs/1)) | [Open preview](https://lending-desk-loan-policy.preview-bot.example) | Oct 18, 2026 3:47pm UTC |
 
-<a href="https://preview-bot.example/agent?pr=519"><img src="https://preview-bot.example/button.svg" alt="Review with Preview Agent"></a>`;
+<a href="https://preview-bot.example/feedback?pr=73"><img src="https://preview-bot.example/button.svg" alt="Send feedback on this preview"></a>`;
 
-/** R2's timeline: three commits, the opening, a bot's preview comment, then ten more commits. */
+/** R2's timeline: two commits, the opening, a bot's preview comment, then seven more commits. */
 const R2_ACTIVITY: PrActivity[] = [
-  commit(1, "2026-10-18T15:31:00Z", "Pin the station survey and datum"),
-  commit(2, "2026-10-18T15:33:00Z", "Add the intake contract and its validator"),
-  commit(3, "2026-10-18T15:36:00Z", "Publish the review views from the module"),
-  { kind: "opened", id: "opened-519", at: "2026-10-18T15:38:00Z", actor: ada },
-  { kind: "comment", id: "comment-9001", at: "2026-10-18T15:42:00Z", actor: previewBot, body: PREVIEW_COMMENT },
+  commit(1, "2026-10-18T15:39:00Z", "Describe item classes and member tiers as data"),
+  commit(2, "2026-10-18T15:42:00Z", "Add the policy checks"),
+  { kind: "opened", id: "opened-73", at: "2026-10-18T15:44:00Z", actor: ada },
+  { kind: "comment", id: "comment-9001", at: "2026-10-18T15:47:00Z", actor: previewBot, body: PREVIEW_COMMENT },
   ...[
-    "Key levels by elevation", "Resolve readings per level", "Type the instruments", "Validate gates on their channels", "Clear sampling windows",
-    "Add the authority fixture", "Count instruments per level", "Gate the views with --check", "Name the spillway outlook", "List the limits",
-  ].map((headline, i) => commit(4 + i, `2026-10-18T20:3${i < 6 ? 5 : 6}:${String(10 + i * 5).padStart(2, "0")}Z`, headline)),
+    "Freeze renewals while a hold waits", "Waive fines on closed days", "Plan a policy migration before saving", "Reject terms past the insurance limit",
+    "Export the active policy as a dated snapshot", "Write the current rules as the default policy", "Run the planner over last month's export",
+  ].map((headline, i) => commit(3 + i, `2026-10-18T20:3${i}:${String(5 + i * 7).padStart(2, "0")}Z`, headline)),
 ];
 
-const tidesPatch = `@@ -694,8 +694,9 @@ export type StepOutcome = "succeeded" | "failed" | "denied" | "unknown";
-  * How a finished import step ended, from its own status field: a \`declined\`
-  * step is a refusal, \`failed\` a failure, \`completed\` a success, except a
-  * read with no row count at all (unknown).
-- * Any other step that reports no status (a gauge sync) is unknown: a
-- * step still \`running\` when it finishes. Exported for the folding rule.
-+ * A gauge sync has neither a status nor an error field, so finishing is all
-+ * it reports: it finished. Any other step without a status is a step
-+ * still \`running\` when it finishes. Exported for the folding rule.
+const movePatch = `@@ -38,5 +38,5 @@ import type { Branch, Hold } from "./types.js";
+ /**
+  * Moves a hold to another pickup branch. The queue is ordered by request
+- * time, and a move places a new hold at the back of it.
++ * time, and a move keeps the hold's request time, so it keeps its place.
   */
- export function tideOutcome(step: { kind: string; status?: string; rows?: number; error?: unknown }): StepOutcome {
-   if (step.status === "declined") return "denied";
-@@ -703,7 +704,8 @@ export function tideOutcome(step: { kind: string; status?: string; rows?: number
-   const counted = typeof step.rows === "number" ? "succeeded" : "unknown";
-   if (step.status === "completed") return step.kind === "read" ? counted : "succeeded";
-   if (step.status === undefined && step.kind === "read") return counted;
--  return step.error ? "failed" : "unknown";
-+  if (step.error) return "failed";
-+  return step.status === undefined && step.kind === "gauge-sync" ? "succeeded" : "unknown";
+ export function moveHold(hold: Hold, to: Branch, now: Date): Hold {
+@@ -47,7 +47,9 @@ export function moveHold(hold: Hold, to: Branch, now: Date): Hold {
+   if (!to.acceptsHolds) throw new HoldError("branch-closed", to.id);
+   const rule = pickupRule(to);
+   if (!rule.allows(hold.itemClass)) throw new HoldError("class-not-held", hold.itemClass);
+-  return { ...hold, id: newHoldId(), pickupBranch: to.id, requestedAt: now.toISOString() };
++  // Same id and request time: only the pickup branch changes, so the queue
++  // position stays the same (#89).
++  return { ...hold, pickupBranch: to.id, movedAt: now.toISOString() };
  }
+\u0020
+ export function cancelHold(hold: Hold, now: Date): Hold {`;
 
- function tideStepStatus(status: unknown): StepStatus {`;
+const testPatch = `@@ -22,6 +22,8 @@ test("a hold moves to a branch that accepts its class", () => {
+   const moved = moveHold(hold, eastBranch, at("2026-10-02"));
+   assert.equal(moved.pickupBranch, "east");
+-  assert.notEqual(moved.id, hold.id);
++  assert.equal(moved.id, hold.id, "a move keeps the hold");
++  assert.equal(moved.requestedAt, hold.requestedAt, "and its place in the queue");
++  assert.equal(queuePosition(moved, queue), queuePosition(hold, queue));
+ });
+\u0020
+ test("a hold cannot move to a closed branch", () => {`;
 
-const testPatch = `@@ -41,7 +41,9 @@ test("a finished step folds only when its outcome is known", () => {
-   assert.equal(tideOutcome({ kind: "read", status: "completed", rows: 12 }), "succeeded");
-   assert.equal(tideOutcome({ kind: "read", status: "declined" }), "denied");
-   assert.equal(tideOutcome({ kind: "read" }), "unknown");
--  assert.equal(tideOutcome({ kind: "gauge-sync" }), "unknown");
-+  // A gauge sync reports nothing but finishing: no status and no error means it finished.
-+  assert.equal(tideOutcome({ kind: "gauge-sync" }), "succeeded");
-+  assert.equal(tideOutcome({ kind: "gauge-sync", error: "timeout" }), "failed");
-   assert.equal(tideOutcome({ kind: "export", status: "running" }), "unknown");
-   assert.equal(tideOutcome({ kind: "export" }), "unknown");
- });`;
+const docsPatch = `@@ -54,7 +54,7 @@ What each action does to a hold:
+ | Renew the item | nothing; renewals are frozen while a hold waits |
+ | Suspend the hold | keeps its place; it is skipped until resumed |
+ | Cancel the hold | removes it; placing it again starts at the back |
+-| Move the hold | places a new hold at the back of the queue |
++| Move the hold | changes the pickup branch and keeps its place |
+ | Let it expire | removes it after the pickup window |
+\u0020
+ Holds on reference items are refused at the desk.`;
 
-const docsPatch = `@@ -198,7 +198,7 @@ How a step's outcome is read:
- | \`completed\`, any other step | \`succeeded\` |
- | \`running\` when the step finishes | \`unknown\` |
- | no status, a read with a row count | from the row count |
--| no status (gauge sync), no error | \`unknown\` |
-+| no status (gauge sync), no error | \`succeeded\`: a sync reports only that it finished |
- | no status, an error | \`failed\` |
-
- \`import/finished\` ends the run: \`completed\`, \`interrupted\` or \`failed\`.`;
-
-const statusPatch = `@@ -64,6 +64,10 @@ Landed since the last release, newest first.
- ## On main, unreleased
-
-+- **A finished gauge sync folds again.** A sync reports nothing but finishing, so a finished one
-+  now reads as \`succeeded\` instead of \`unknown\`, and only steps that never reported stay open
-+  ([tide tables](tide-tables.md#outcomes)).
+const changelogPatch = `@@ -3,5 +3,8 @@
+ ## Unreleased
+\u0020
++- **Moving a hold keeps its place.** A hold moved to another branch keeps its request time,
++  so the member stays where they were in the queue (#89).
 +
- - **Imports keep their full log.** A long import's log is kept from the first byte up to 10 MiB.
-   Show full log reads it back a page at a time.
-
- ## In flight`;
+ - **Overdue notices follow the branch calendar.** No notice goes out for a day the branch was closed.
+\u0020
+ ## 2026.10`;
 
 const R4_FILES: PrFiles = {
   revision: R4_REVISION,
   files: [
-    { path: "apps/site/src/importers/tides.ts", previousPath: null, status: "modified", additions: 5, deletions: 3, patch: { kind: "text", patch: tidesPatch } },
-    { path: "apps/site/test/tides.test.ts", previousPath: null, status: "modified", additions: 3, deletions: 1, patch: { kind: "text", patch: testPatch } },
-    { path: "docs/tide-tables.md", previousPath: null, status: "modified", additions: 1, deletions: 1, patch: { kind: "text", patch: docsPatch } },
-    { path: "docs/status.md", previousPath: null, status: "modified", additions: 4, deletions: 0, patch: { kind: "text", patch: statusPatch } },
+    { path: "src/holds/move.ts", previousPath: null, status: "modified", additions: 4, deletions: 2, patch: { kind: "text", patch: movePatch } },
+    { path: "src/holds/move.test.ts", previousPath: null, status: "modified", additions: 3, deletions: 1, patch: { kind: "text", patch: testPatch } },
+    { path: "docs/holds.md", previousPath: null, status: "modified", additions: 1, deletions: 1, patch: { kind: "text", patch: docsPatch } },
+    { path: "docs/changelog.md", previousPath: null, status: "modified", additions: 3, deletions: 0, patch: { kind: "text", patch: changelogPatch } },
   ],
 };
 
@@ -314,8 +300,8 @@ export const R4 = {
 
 const truncated: PrFile[] = [
   ...stressFiles(2998),
-  { path: "assets/basin-map.png", previousPath: null, status: "added", additions: 0, deletions: 0, patch: { kind: "omitted", reason: "binary" } },
-  { path: "data/stations-2026.csv", previousPath: null, status: "added", additions: 48_210, deletions: 0, patch: { kind: "omitted", reason: "too-large" } },
+  { path: "assets/branch-map.png", previousPath: null, status: "added", additions: 0, deletions: 0, patch: { kind: "omitted", reason: "binary" } },
+  { path: "data/loans-2026.csv", previousPath: null, status: "added", additions: 52_118, deletions: 0, patch: { kind: "omitted", reason: "too-large" } },
 ];
 
 export const FAULTS = {
@@ -325,22 +311,27 @@ export const FAULTS = {
   denied: { state: "unavailable", reason: "denied", fetchedAt: NOW, detail: "This account can't see that repository." } as ReadResult<PrOverview>,
   /** An earlier inbox, kept while offline. */
   offline: { state: "stale", value: R1_INBOX, fetchedAt: "2026-10-18T20:10:00Z", reason: "offline" } as ReadResult<Inbox>,
-  /** The first page of a 14-row group. */
-  firstPage: ready(AUTHORED, { loaded: 10, total: 14, complete: false, next: "Y3Vyc29yOjEw" }),
+  /** The first page of a 12-row group. */
+  firstPage: ready(AUTHORED, { loaded: 9, total: 12, complete: false, next: "cGFnZTI" }),
   /** The second page failed: what arrived, without a total. */
-  failedPage: { state: "partial", value: AUTHORED, fetchedAt: NOW, reason: "rate-limited", coverage: { loaded: 10, total: null, complete: false, next: "Y3Vyc29yOjEw" } } as ReadResult<PrSummary[]>,
+  failedPage: { state: "partial", value: AUTHORED, fetchedAt: NOW, reason: "rate-limited", coverage: { loaded: 9, total: null, complete: false, next: "cGFnZTI" } } as ReadResult<PrSummary[]>,
   /** One of each outcome on R4's head, plus one result from the old head. */
   checks: ready<PrCheck[]>([
-    check("301", "unit (node 24)", R4_REVISION.headSha, "completed", "success", "2026-10-18T20:28:00Z"),
-    check("302", "e2e (macOS)", R4_REVISION.headSha, "completed", "failure", "2026-10-18T20:28:00Z"),
-    check("303", "e2e (linux)", R4_REVISION.headSha, "completed", "timed-out", "2026-10-18T20:28:00Z"),
+    check("301", "unit (node 24)", R4_REVISION.headSha, "completed", "success", "2026-10-18T20:23:00Z"),
+    check("302", "integration (postgres)", R4_REVISION.headSha, "completed", "failure", "2026-10-18T20:23:00Z"),
+    check("303", "smoke (linux)", R4_REVISION.headSha, "completed", "timed-out", "2026-10-18T20:23:00Z"),
     check("304", "typecheck", R4_REVISION.headSha, "queued", null, null),
-    check("305", "build", R4_REVISION.headSha, "running", null, "2026-10-18T20:29:00Z"),
-    check("306", "links", R4_REVISION.headSha, "completed", "cancelled", "2026-10-18T20:28:00Z"),
-    check("307", "lint docs", R4_REVISION.headSha, "completed", "neutral", "2026-10-18T20:28:00Z"),
-    check("308", "store build", R4_REVISION.headSha, "completed", "skipped", "2026-10-18T20:28:00Z"),
-    check("309", "coverage", R4_REVISION.headSha, "unknown", null, null),
+    check("305", "docs build", R4_REVISION.headSha, "running", null, "2026-10-18T20:24:00Z"),
+    check("306", "links", R4_REVISION.headSha, "completed", "cancelled", "2026-10-18T20:23:00Z"),
+    check("307", "spelling", R4_REVISION.headSha, "completed", "neutral", "2026-10-18T20:23:00Z"),
+    check("308", "smoke (macOS)", R4_REVISION.headSha, "completed", "skipped", "2026-10-18T20:23:00Z"),
+    check("309", "lint", R4_REVISION.headSha, "unknown", null, null),
     check("310", "unit (node 22)", R4_BEFORE.headSha, "completed", "success", "2026-10-18T19:10:00Z"),
+  ]),
+  /** A check that failed and passed on re-run: the newer run (the higher id) is the one that counts. */
+  rerun: ready<PrCheck[]>([
+    check("401", "smoke (linux)", R4_REVISION.headSha, "completed", "failure", "2026-10-18T20:23:00Z"),
+    check("402", "smoke (linux)", R4_REVISION.headSha, "completed", "success", "2026-10-18T20:31:00Z"),
   ]),
   /** GitHub stops listing files at 3,000; this PR has 3,412. One patch is binary, one too large to send. */
   truncatedFiles: { state: "partial", value: { revision: R4_REVISION, files: truncated }, fetchedAt: NOW, reason: "capped", coverage: { loaded: 3000, total: 3412, complete: false, next: null, cap: 3000 } } as ReadResult<PrFiles>,
@@ -356,14 +347,14 @@ export const FAULTS = {
 export const REQUESTS = {
   connection: { op: "connection", requestId: "c-1" },
   inbox: { op: "inbox", requestId: "i-1", query: "" },
-  "inbox-page": { op: "inbox-page", requestId: "i-2", group: "authored", query: "", cursor: "Y3Vyc29yOjEw" },
-  resolve: { op: "resolve", requestId: "s-1", input: "https://github.com/example-org/harbor-docs/pull/288" },
+  "inbox-page": { op: "inbox-page", requestId: "i-2", group: "authored", query: "", cursor: "cGFnZTI" },
+  resolve: { op: "resolve", requestId: "s-1", input: "https://github.com/example-org/field-guide/pull/91" },
   overview: { op: "overview", requestId: "o-1", key: R1_OVERVIEW.key },
   activity: { op: "activity", requestId: "a-1", key: R1_OVERVIEW.key, cursor: null },
   checks: { op: "checks", requestId: "k-1", key: R1_OVERVIEW.key, revision: R1_REVISION },
   stack: { op: "stack", requestId: "t-1", key: R1_OVERVIEW.key },
   files: { op: "files", requestId: "f-1", key: R4_OVERVIEW.key, revision: R4_REVISION, cursor: null },
-  context: { op: "context", requestId: "x-1", key: R4_OVERVIEW.key, revision: R4_REVISION, side: "head", path: "apps/site/src/importers/tides.ts", start: 680, end: 760 },
+  context: { op: "context", requestId: "x-1", key: R4_OVERVIEW.key, revision: R4_REVISION, side: "head", path: "src/holds/move.ts", start: 1, end: 80 },
   cancel: { op: "cancel", requestId: "x-1" },
 } satisfies { [K in CodeReviewOp]: Extract<CodeReviewRequest, { op: K }> };
 

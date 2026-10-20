@@ -204,8 +204,8 @@ export interface CodeReviewReply<K extends keyof CodeReviewReads = keyof CodeRev
 export const CODE_REVIEW_FEATURES = ["read", "review", "ask", "instructions", "comment", "submit-review", "request-reviewers", "edit", "state", "merge"] as const;
 export type CodeReviewFeature = (typeof CODE_REVIEW_FEATURES)[number];
 
-/** `owner` names the issue that would make an unavailable feature work. */
-export type Capability = { available: true } | { available: false; reason: string; owner: string };
+/** `owner` names the issue that would make an unavailable feature work; null when the person can fix it (install or sign in to `gh`). */
+export type Capability = { available: true } | { available: false; reason: string; owner: string | null };
 export type Capabilities = Record<CodeReviewFeature, Capability>;
 
 export const LIMITS = { requestId: 64, query: 256, input: 2048, path: 4096, ref: 255, cursor: 512, contextLines: 500, line: 10_000_000 } as const;
@@ -220,6 +220,10 @@ const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const CURSOR = /^[A-Za-z0-9_=+/-]{1,512}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
+/** A lone surrogate: not text, and `encodeURIComponent` throws on it. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+/** Invisible format characters (bidi overrides, zero-width joiners) that make a path read as another. */
+const FORMAT = /\p{Cf}/u;
 
 function locatorFrom(owner: string, repo: string, number: string): PrLocator | null {
   if (!OWNER.test(owner) || !REPO.test(repo) || repo === "." || repo === ".." || !NUMBER.test(number)) return null;
@@ -229,7 +233,9 @@ function locatorFrom(owner: string, repo: string, number: string): PrLocator | n
 
 /**
  * A pull request link, `github.com/owner/repo/pull/N` with or without a scheme, or `owner/repo#N`.
- * Anything else, including another host, credentials, a port or a dot segment, names nothing.
+ * The link is parsed as a URL and must then name github.com with no credentials and the scheme's
+ * default port; a dot segment anywhere names nothing. Spellings the URL parser normalizes to that
+ * (`:443`, an empty `user:@`) are accepted: the link is only read for its parts, never fetched.
  */
 export function parsePrLocator(input: string): PrLocator | null {
   const text = input.trim();
@@ -267,19 +273,34 @@ export function sameRevision(a: PrRevision | null, b: PrRevision | null): boolea
 }
 
 /**
- * A reply is applied only to the request that asked for it, under the same account, PR and revision.
- * `connection` is the exception: it is what tells the renderer the account, so it matches by request id.
+ * What a request is read under: its own key and revision, null where the operation takes none, and the
+ * account (the key's when it has one). Main stamps each reply with the scope of the request it
+ * answers, and the renderer keeps the scope of what it asked, so the two agree by construction. An
+ * overview's revision is in its value, not its scope: the request named none.
  */
-export function acceptsReply(asked: { requestId: string; scope: ReplyScope }, reply: { requestId: string; scope: ReplyScope }): boolean {
-  return asked.requestId === reply.requestId && asked.scope.account !== null && asked.scope.account === reply.scope.account
+export function scopeOf(request: CodeReviewRequest, account: string | null): ReplyScope {
+  const key = "key" in request ? request.key : null;
+  const revision = "revision" in request ? request.revision : null;
+  return { account: key ? key.account : account, key, revision };
+}
+
+/**
+ * A reply is applied only to the request that asked for it: same id, same operation, and the same
+ * account, PR and revision. `connection` is the exception: it is what tells the renderer the account,
+ * so it matches by id and operation alone.
+ */
+export function acceptsReply(asked: { requestId: string; op: CodeReviewOp; scope: ReplyScope }, reply: { requestId: string; op: CodeReviewOp; scope: ReplyScope }): boolean {
+  if (asked.requestId !== reply.requestId || asked.op !== reply.op) return false;
+  if (asked.op === "connection") return true;
+  return asked.scope.account !== null && asked.scope.account === reply.scope.account
     && sameKey(asked.scope.key, reply.scope.key) && sameRevision(asked.scope.revision, reply.scope.revision);
 }
 
-/** One inbox group, carrying the inbox's own state down: an unavailable inbox has unavailable groups. */
+/** One inbox group, carrying the inbox's own state down: an unavailable inbox has unavailable groups, a stale one stale groups. */
 export function inboxGroup(result: ReadResult<Inbox>, group: InboxGroup): ReadResult<PrSummary[]> {
   if (result.state === "unavailable") return result;
   const inner = result.value.groups[group];
-  if (result.state === "stale" && inner.state === "ready") {
+  if (result.state === "stale" && (inner.state === "ready" || inner.state === "partial")) {
     return { state: "stale", value: inner.value, fetchedAt: inner.fetchedAt, reason: result.reason, ...(inner.coverage && { coverage: inner.coverage }) };
   }
   return inner;
@@ -294,11 +315,14 @@ export function isEmpty(result: ReadResult<readonly unknown[]>): boolean {
   return whole(result) && result.state === "ready" && result.value.length === 0;
 }
 
-/** The count to show: the provider's total when it gives one, else what arrived, inexact unless complete. Null when unknown. */
+/**
+ * The count to show: the provider's total when it gives one, else what arrived, inexact unless
+ * complete. A stale read's count is from then, so it is never exact. Null when unknown.
+ */
 export function knownCount(result: ReadResult<readonly unknown[]>): { count: number; exact: boolean } | null {
   if (result.state === "unavailable") return null;
   const total = result.coverage?.total;
-  if (typeof total === "number") return { count: total, exact: true };
+  if (typeof total === "number") return { count: total, exact: result.state !== "stale" };
   return { count: result.value.length, exact: whole(result) };
 }
 
@@ -315,19 +339,41 @@ export interface ChecksSummary {
   unknown: number;
   /** Results for another head: shown as old, never counted for this one. */
   stale: number;
+  /** Older runs of a check that ran again on the same head: replaced by the newest, never counted. */
+  superseded: number;
 }
 
 const FAILED = new Set<PrCheck["conclusion"]>(["failure", "timed-out", "action-required", "startup-failure"]);
 
+/** Whether `a` is a later run than `b`. Run ids grow with creation; `startedAt` is the fallback. */
+function later(a: PrCheck, b: PrCheck): boolean {
+  if (/^\d+$/.test(a.id) && /^\d+$/.test(b.id)) return BigInt(a.id) > BigInt(b.id);
+  return (a.startedAt ?? "") > (b.startedAt ?? "");
+}
+
+/** The newest run of each check per head: a re-run replaces the run it repeats, as GitHub's own merge state does. */
+function newestRuns(checks: PrCheck[]): PrCheck[] {
+  const newest = new Map<string, PrCheck>();
+  for (const check of checks) {
+    const id = `${check.source}\u0000${check.headSha}\u0000${check.name}`;
+    const seen = newest.get(id);
+    if (!seen || later(check, seen)) newest.set(id, check);
+  }
+  return [...newest.values()];
+}
+
 /**
  * Checks for one revision. `passing` needs a complete, fresh read with every current check finished as
  * success, neutral or skipped; anything cancelled, unknown, unread or only on an old head is
- * `incomplete`. Describes evidence; it is never merge permission.
+ * `incomplete`. Only the newest run of a re-run check counts. Describes evidence; it is never merge
+ * permission.
  */
 export function summarizeChecks(result: ReadResult<PrCheck[]>, revision: PrRevision): ChecksSummary {
-  const summary: ChecksSummary = { verdict: "unknown", passed: 0, failed: 0, pending: 0, cancelled: 0, neutral: 0, skipped: 0, unknown: 0, stale: 0 };
+  const summary: ChecksSummary = { verdict: "unknown", passed: 0, failed: 0, pending: 0, cancelled: 0, neutral: 0, skipped: 0, unknown: 0, stale: 0, superseded: 0 };
   if (result.state === "unavailable") return summary;
-  for (const check of result.value) {
+  const runs = newestRuns(result.value);
+  summary.superseded = result.value.length - runs.length;
+  for (const check of runs) {
     if (check.headSha !== revision.headSha) summary.stale++;
     else if (check.status === "queued" || check.status === "running") summary.pending++;
     else if (check.status !== "completed") summary.unknown++;
@@ -338,7 +384,7 @@ export function summarizeChecks(result: ReadResult<PrCheck[]>, revision: PrRevis
     else if (FAILED.has(check.conclusion)) summary.failed++;
     else summary.unknown++;
   }
-  const current = result.value.length - summary.stale;
+  const current = runs.length - summary.stale;
   summary.verdict = summary.failed ? "failing"
     : summary.pending ? "pending"
     : summary.cancelled || summary.unknown || !whole(result) ? "incomplete"
@@ -379,9 +425,9 @@ const OWNERS: Record<Exclude<CodeReviewFeature, "read">, { owner: string; reason
 /** What the workspace may offer. Reads follow the connection; review and every write stay unavailable until their issues land. */
 export function capabilities(connection: CodeReviewConnection): Capabilities {
   const read: Capability = connection.state === "connected" ? { available: true }
-    : connection.state === "no-cli" ? { available: false, reason: "Install GitHub CLI (gh) to read pull requests.", owner: "#321" }
-    : connection.state === "signed-out" ? { available: false, reason: "Sign in to GitHub CLI (gh auth login) to read pull requests.", owner: "#321" }
-    : { available: false, reason: connection.detail, owner: "#321" };
+    : connection.state === "no-cli" ? { available: false, reason: "Install GitHub CLI (gh) to read pull requests.", owner: null }
+    : connection.state === "signed-out" ? { available: false, reason: "Sign in to GitHub CLI (gh auth login) to read pull requests.", owner: null }
+    : { available: false, reason: connection.detail, owner: null };
   const rest = Object.fromEntries(Object.entries(OWNERS).map(([feature, { owner, reason }]) => [feature, { available: false, reason, owner }]));
   return { read, ...rest } as Capabilities;
 }
@@ -400,7 +446,8 @@ function exactly(value: Plain, keys: readonly string[]): boolean {
 }
 
 function text(value: unknown, max: number, allowEmpty: boolean): string | null {
-  return typeof value === "string" && value.length <= max && (allowEmpty || value.length > 0) && !CONTROL.test(value) ? value : null;
+  if (typeof value !== "string" || value.length > max || (!allowEmpty && value.length === 0)) return null;
+  return CONTROL.test(value) || LONE_SURROGATE.test(value) ? null : value;
 }
 
 function cursor(value: unknown): string | null | undefined {
@@ -420,7 +467,8 @@ function prKey(value: unknown): PrKey | null {
 /** A branch name as git allows it, minus anything that could read as a range or a path escape. */
 function refName(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > LIMITS.ref) return null;
-  if (/[\u0000- \u007f~^:?*[\\]/.test(value) || value.includes("..") || value.includes("@{") || value.includes("//")) return null;
+  if (/[\u0000-\u0020\u007f~^:?*[\\]/.test(value) || FORMAT.test(value) || LONE_SURROGATE.test(value)) return null;
+  if (value.includes("..") || value.includes("@{") || value.includes("//")) return null;
   if (value === "@" || value.startsWith("/") || value.startsWith("-") || value.endsWith("/") || value.endsWith(".") || value.endsWith(".lock")) return null;
   return value.split("/").every((segment) => !segment.startsWith(".")) ? value : null;
 }
@@ -433,10 +481,14 @@ function revision(value: unknown): PrRevision | null {
   return { baseRef, baseSha, headSha };
 }
 
-/** A repository path: relative, no empty, `.` or `..` segment, no control character. */
+/**
+ * A repository path: relative, no empty, `.` or `..` segment, no control or invisible format character.
+ * `\\`, `%`, `?` and `#` are allowed, since real files have them: main encodes every segment before it
+ * goes into an endpoint (#321).
+ */
 function remotePath(value: unknown): string | null {
   const path = text(value, LIMITS.path, false);
-  if (path === null) return null;
+  if (path === null || FORMAT.test(path)) return null;
   return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") ? path : null;
 }
 
