@@ -60,6 +60,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
+  smoke). Codex keeps a long command running in a background terminal after its turn is
+  interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
+  command interrupted only once Codex no longer lists it. Otherwise the command reads unknown, with a
+  notice. [Live smoke review](reviews/2026-10-19-live-smoke.md).
 - **Answering, stopping or jumping to the latest from the keyboard keeps your place** (CF-8 #281 keyboard walkthrough).
   The answer buttons go away once pressed, and a finished turn hides its folded work; either used to
   drop focus onto the page body. Focus now moves to the card's answer ("Approved", "Denied"), then to
