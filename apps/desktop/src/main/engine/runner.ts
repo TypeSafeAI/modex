@@ -49,9 +49,9 @@ export interface DurableSendAdmission {
 }
 interface PreparedAdmission extends DurableSendAdmission { readonly rawText: string }
 
-type PendingRequest =
+type PendingRequest = { cleanup?: () => void; policyCurrent?: () => boolean; claim?: () => { binding: RequestBinding; digest: string } } & (
   | { kind: "approval"; settle: (answer: ApprovalAnswer) => void }
-  | { kind: "question"; questions: Question[]; settle: (reply: QuestionReply) => void };
+  | { kind: "question"; questions: Question[]; settle: (reply: QuestionReply) => void });
 
 interface Live {
   abort: AbortController | null;
@@ -218,12 +218,10 @@ export class ThreadRunner {
         if ((item.kind === "tool" || item.kind === "thinking" || item.kind === "assistant") && item.origin && item.outcome === "running") {
           item = item.kind === "assistant" ? { ...item, outcome: "unknown" } : item.kind === "tool" ? { ...item, status: "done", outcome: "unknown", ok: okFor("unknown") } : { ...item, status: "done", outcome: "unknown" };
         }
+        if ((item.kind === "approval" || item.kind === "question") && item.delivery === "sending") return { ...item, delivery: "uncertain" };
         // A card nobody answered: the process that could take the answer is gone, so it closes as ended.
         if (item.kind === "approval" && !item.answer) return { ...item, answer: "no", withdrawn: "ended" };
         if (item.kind === "question" && !item.answers && !item.withdrawn) return { ...item, withdrawn: "ended" };
-        // An answer taken but not recorded as handed to the CLI: nobody can tell whether the CLI got it, and it is
-        // never sent again.
-        if ((item.kind === "approval" || item.kind === "question") && item.delivery === "sending") return { ...item, delivery: "uncertain" };
         if (item.kind !== "tool" || !item.agent || !["running", "waiting"].includes(item.agent.state)) return item;
         return { ...item, status: "done", ok: undefined, agent: { ...item.agent, state: "unknown", detail: "Modex restarted without a final agent status" } };
       });
@@ -768,7 +766,7 @@ export class ThreadRunner {
       });
       // Each run of the backend is one attempt with its own sink; ending it settles whatever it left open.
       const runOn = async (ran: Thread): Promise<TurnResult> => {
-        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: backend.id, ...(account ? { account } : {}) });
+        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...((ran.codexAccount ?? account) ? { account: ran.codexAccount ?? account } : {}) });
         try {
           const result = await backend.runTurn(
             describeAttachments(text, turnFiles),
@@ -948,10 +946,8 @@ export class ThreadRunner {
     const pending = l.pending.get(itemId);
     if (!accepted.ok || pending?.kind !== "approval") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
     this.saveAnswer(threadId, l, itemId, before, { answer, answeredBy: by, delivery: "sending" });
-    l.pending.delete(itemId);
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     pending.settle(answer);
-    this.sent(threadId, l, itemId);
     return { ok: true };
   }
 
@@ -969,12 +965,10 @@ export class ThreadRunner {
     const before = l.requests;
     const accepted = this.accept(l, itemId, { kind: "question", answers: answers as Record<string, string[]> }, by);
     if (!accepted.ok || pending?.kind !== "question") return accepted.ok ? { ok: false, reason: "invalid" } : accepted;
-    const given = answers as Record<string, string[]>;
+    const given = structuredClone(answers) as Record<string, string[]>;
     this.saveAnswer(threadId, l, itemId, before, { answers: publicAnswers(pending.questions, given), answeredBy: by, delivery: "sending" });
-    l.pending.delete(itemId);
     if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     pending.settle({ answers: given });
-    this.sent(threadId, l, itemId);
     return { ok: true };
   }
 
@@ -993,12 +987,6 @@ export class ThreadRunner {
     }
   }
 
-  /** Records that an accepted answer was handed to the CLI, in the broker and on the card. */
-  private sent(threadId: string, l: Live, itemId: string): void {
-    l.requests = settleRequest(l.requests, itemId, "sent");
-    this.patchItem(threadId, itemId, { delivery: "sent" });
-  }
-
   /** Takes one answer for a waiting request through the broker, or says why not. */
   private accept(l: Live, itemId: string, resolution: Resolution, by: string): AnswerResult {
     const record = l.requests.requests[itemId];
@@ -1010,8 +998,25 @@ export class ThreadRunner {
       const answered = item.kind === "approval" ? Boolean(item.answer) && !item.withdrawn : Boolean(item.answers);
       return { ok: false, reason: answered ? "already-resolved" : "withdrawn" };
     }
-    const result = resolveRequest(l.requests, itemId, resolution, { binding: record.request.binding, digest: record.request.digest, by });
-    if (!result.ok) return { ok: false, reason: result.reason };
+    if (record.state === "pending") {
+      const binding = record.request.binding;
+      const current = this.o.store.thread(binding.thread);
+      if (!current || current.backend !== binding.backend || (current.codexAccount ?? null) !== (binding.account ?? null) ||
+          (binding.attempt && l.attempt !== binding.attempt)) {
+        this.withdraw(binding.thread, l, itemId, "ended");
+        return { ok: false, reason: "wrong-identity" };
+      }
+    }
+    if (record.state === "pending" && l.pending.get(itemId)?.policyCurrent?.() === false) {
+      this.withdraw(record.request.binding.thread, l, itemId, "ended");
+      return { ok: false, reason: "changed-action" };
+    }
+    const claim = l.pending.get(itemId)?.claim?.() ?? { binding: record.request.binding, digest: record.request.digest };
+    const result = resolveRequest(l.requests, itemId, resolution, { ...claim, by });
+    if (!result.ok) {
+      if (result.reason === "changed-action" || result.reason === "wrong-identity") this.withdraw(record.request.binding.thread, l, itemId, "ended");
+      return { ok: false, reason: result.reason };
+    }
     l.requests = result.state;
     return { ok: true };
   }
@@ -1025,8 +1030,10 @@ export class ThreadRunner {
     const pending = l.pending.get(itemId);
     if (!pending) return;
     l.pending.delete(itemId);
+    pending.cleanup?.();
+    const resolving = l.requests.requests[itemId]?.state === "resolving";
     l.requests = withdrawRequests(l.requests, { id: itemId });
-    this.patchItem(threadId, itemId, pending.kind === "approval" ? { answer: "no", withdrawn: why } : { withdrawn: why }, { persist });
+    this.patchItem(threadId, itemId, resolving ? { delivery: "uncertain", withdrawn: why } : pending.kind === "approval" ? { answer: "no", withdrawn: why } : { withdrawn: why }, { persist });
     if (why === "native" && l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
     if (pending.kind === "approval") pending.settle("no");
     else pending.settle({ withdrawn: why });
@@ -1221,6 +1228,12 @@ export class ThreadRunner {
     const abort = l.abort;
     const attempt = turn?.attempt;
     const active = () => this.live.get(threadId) === l && l.abort === abort && abort !== null && (attempt === undefined || l.attempt === attempt);
+    const authority = () => {
+      const current = this.o.store.thread(threadId);
+      return active() && !abort?.signal.aborted && Boolean(current) && current!.backend === (turn?.backend ?? l.backend) &&
+        (current!.codexAccount ?? null) === (turn?.account ?? null);
+    };
+    const deliveries = new Set<string>();
     // Who asked: this turn and attempt, and the CLI's own request id when it gives one (else the card's id).
     const bind = (id: string, native?: NativeRequest): RequestBinding => ({
       thread: threadId, turn: turn?.turn ?? "", attempt: attempt ?? "", backend: turn?.backend ?? this.o.store.thread(threadId)?.backend ?? "mock",
@@ -1244,21 +1257,36 @@ export class ThreadRunner {
         if (id) this.toolLogs.append(threadId, id, chunk);
       },
       approval: (req, withdrawn) => {
+        const policyDigest = () => actionDigest({ rules: this.o.store.settings.approval_rules, gate: this.o.store.settings.approval_gate, mode: this.o.store.thread(threadId)?.mode });
+        const policy = policyDigest();
+        const policyCurrent = () => policyDigest() === policy;
+        const decided = (answer: "yes" | "no", decidedBy?: ApprovalReceipt): ApprovalAnswer => {
+          if (!authority() || withdrawn?.aborted || !policyCurrent()) return "no";
+          const approvalMode = this.o.store.thread(threadId)?.approvals;
+          const automaticPolicyCurrent = () => policyCurrent() && this.o.store.thread(threadId)?.approvals === approvalMode;
+          const id = newId();
+          const claim = () => ({ binding: bind(id, req.native), digest: actionDigest(req.action ?? { question: req.question, detail: req.detail ?? null }) });
+          const close = () => this.withdraw(threadId, l, id, "native");
+          l.requests = registerRequest(l.requests, { kind: "approval", id, ...claim(), action: req.action ?? null, canAlways: req.canAlways });
+          l.requests = resolveRequest(l.requests, id, { kind: "approval", answer }, { ...claim(), by: "policy" }).state;
+          l.pending.set(id, { kind: "approval", claim, policyCurrent: automaticPolicyCurrent, cleanup: () => withdrawn?.removeEventListener("abort", close), settle: () => {} });
+          withdrawn?.addEventListener("abort", close, { once: true });
+          this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer, delivery: "sending", ...(decidedBy ? { decidedBy } : {}), at: at() });
+          return answer;
+        };
         if (this.unattended.has(threadId)) {
           // A routine runs read-only with no one to ask: refuse, and say so on the card.
-          if (active()) this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, ...(req.action ? { title: req.action.title } : {}), answer: "no", decidedBy: UNATTENDED_RECEIPT, at: at() });
-          return Promise.resolve("no" as const);
+          return Promise.resolve(decided("no", UNATTENDED_RECEIPT));
         }
         // Stopped, superseded, or withdrawn by the CLI: nothing more is shown or decided for this request.
-        const gone = () => !active() || Boolean(l.abort?.signal.aborted) || Boolean(withdrawn?.aborted);
+        const gone = () => !authority() || !policyCurrent() || Boolean(l.abort?.signal.aborted) || Boolean(withdrawn?.aborted);
         // Today's flow: a card the user answers. Rules can only add a receipt to it.
         const askUser = (decidedBy?: ApprovalReceipt) =>
           new Promise<ApprovalAnswer>((resolve) => {
             if (gone()) return resolve("no");
             const id = newId();
             const close = () => this.withdraw(threadId, l, id, "native");
-            l.pending.set(id, { kind: "approval", settle: (answer) => {
-              withdrawn?.removeEventListener("abort", close);
+            l.pending.set(id, { kind: "approval", policyCurrent, claim: () => ({ binding: bind(id, req.native), digest: actionDigest(req.action ?? { question: req.question, detail: req.detail ?? null }) }), cleanup: () => withdrawn?.removeEventListener("abort", close), settle: (answer) => {
               resolve(answer);
             } });
             l.requests = registerRequest(l.requests, { kind: "approval", id, binding: bind(id, req.native), action: req.action ?? null, digest: actionDigest(req.action ?? { question: req.question, detail: req.detail ?? null }), canAlways: req.canAlways });
@@ -1274,8 +1302,7 @@ export class ThreadRunner {
           const policy = this.o.store.thread(threadId)?.approvals;
           if (policyAnswer(policy, req.action, decidedBy) !== "yes") return askUser(decidedBy);
           if (gone()) return "no" as const;
-          this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: "yes", decidedBy: policyReceipt(policy!), at: at() });
-          return "yes" as const;
+          return decided("yes", policyReceipt(policy!));
         };
         if (!thread || !project || !gateApplies(req.action, settings.approval_rules, settings.approval_gate, project.path)) return Promise.resolve(byPolicy());
         const signal = withdrawn && abort ? AbortSignal.any([abort.signal, withdrawn]) : abort?.signal ?? withdrawn;
@@ -1284,7 +1311,7 @@ export class ThreadRunner {
           if (gone()) return "no";
           // Answered by a rule: the card lands already answered, and the thread never waits on it.
           if (r.decidedBy) {
-            this.addItem(threadId, { id: newId(), kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, ...(req.action ? { title: req.action.title } : {}), answer: r.answer, decidedBy: r.decidedBy, at: at() });
+            decided(r.answer, r.decidedBy);
             if (r.answer === "no") refusals.set(req, r.decidedBy.when);
           }
           return r.answer;
@@ -1300,8 +1327,7 @@ export class ThreadRunner {
           if (!active() || l.abort?.signal.aborted) return resolve({ withdrawn: "stopped" });
           const id = newId();
           const close = () => this.withdraw(threadId, l, id, "native");
-          l.pending.set(id, { kind: "question", questions: req.questions, settle: (reply) => {
-            withdrawn?.removeEventListener("abort", close);
+          l.pending.set(id, { kind: "question", questions: req.questions, claim: () => ({ binding: bind(id, req.native), digest: actionDigest(req.questions) }), cleanup: () => withdrawn?.removeEventListener("abort", close), settle: (reply) => {
             resolve(reply);
           } });
           l.requests = registerRequest(l.requests, { kind: "question", id, binding: bind(id, req.native), questions: req.questions, blocking: req.blocking, digest: actionDigest(req.questions) });
@@ -1310,6 +1336,39 @@ export class ThreadRunner {
           if (req.blocking) this.setStatus(threadId, "waiting");
           withdrawn?.addEventListener("abort", close, { once: true });
         });
+      },
+      deliverRequest: async (native, write) => {
+        const key = JSON.stringify([native.runtime, native.request]);
+        if (deliveries.has(key)) return;
+        deliveries.add(key); // Claim before the first await, including policy decisions.
+        const record = Object.values(l.requests.requests).find(({ request }) => {
+          const b = request.binding;
+          return b.runtime === native.runtime && b.nativeRequestId === native.request && b.item === native.item;
+        });
+        // Policy answers have no waiting human card. Keep their existing decision semantics.
+        if (!record) {
+          if (authority()) {
+            try { await write(); } catch { /* no retry of policy decisions */ }
+          }
+          return;
+        }
+        if (record.state !== "resolving") return;
+        const id = record.request.id;
+        const current = this.o.store.thread(threadId);
+        const claim = l.pending.get(id)?.claim?.();
+        if (l.pending.get(id)?.policyCurrent?.() === false || (claim && (claim.digest !== record.request.digest || actionDigest(claim.binding) !== actionDigest(record.request.binding))) || !active() || abort?.signal.aborted || !current || current.backend !== record.request.binding.backend ||
+            (current.codexAccount ?? null) !== (record.request.binding.account ?? null)) {
+          this.withdraw(threadId, l, id, "ended");
+          return;
+        }
+        let outcome: "sent" | "uncertain" = "uncertain";
+        try { await write(); outcome = "sent"; } catch { /* no retry and no transport error body in receipts */ }
+        if (l.requests.requests[id]?.state !== "resolving") return;
+        l.requests = settleRequest(l.requests, id, outcome);
+        l.pending.get(id)?.cleanup?.();
+        l.pending.delete(id);
+        this.patchItem(threadId, id, { delivery: outcome });
+        if (l.pending.size === 0 && l.status === "waiting") this.setStatus(threadId, "running");
       },
       refusedByRule: (req) => refusals.get(req),
       notice: (level, text) => { if (active()) this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }); },

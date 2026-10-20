@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Agent, MockProvider, defaultConfig, systemPrompt, type ModexConfig, type UI } from "@modex/core";
 import type { ApprovalAction, Backend, ModelInfo, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { LocalItems } from "./local-items.js";
@@ -28,13 +29,20 @@ export class MockBackend implements Backend {
     const cfg: ModexConfig = { ...defaultConfig({ MODEX_HOME: this.home }), ...policy, model: "mock", home: this.home, writable_roots: opts.addDirs ?? [] };
     const handle = opts.resume ?? `mock-${Date.now().toString(36)}`;
     sink.session(handle);
+    const runtime = randomUUID();
     const ui: UI = {
       info: (m) => sink.notice("info", m),
       assistant: () => {},
       tool: () => {},
       warn: (m) => sink.notice("warn", m),
       error: (m) => sink.notice("error", m),
-      confirm: (question, detail) => sink.approval({ question, detail, canAlways: true, action: mockAction(question, opts.cwd) }),
+      confirm: async (question, detail) => {
+        const native = { runtime, request: randomUUID() };
+        const answer = await sink.approval({ question, detail, canAlways: true, action: mockAction(question, opts.cwd), native });
+        let consumed = !sink.deliverRequest;
+        await sink.deliverRequest?.(native, async () => { consumed = true; });
+        return consumed ? answer : "no";
+      },
       prompt: async () => null,
       close: () => {},
     };

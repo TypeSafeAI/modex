@@ -182,6 +182,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
   back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
   characters of a result by default, so Claude output never needs it.
+- **An answer counts as delivered only once it reaches the CLI** (CF-3 #276, from #316). An answer
+  you give on the Mac or the phone reads "Sending" until the CLI's request is written. It reads
+  "Delivery uncertain" if Stop, a crash or a closed connection came first, and it is never resent.
+  Replays of a native request are ignored, and a request id reused for a different action is
+  withdrawn. [Human requests](human-requests.md).
 
 ## In flight
 

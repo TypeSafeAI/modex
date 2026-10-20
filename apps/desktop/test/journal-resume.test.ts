@@ -264,8 +264,10 @@ test("Modex killed right after an approval is answered: pre-crash cursors reload
     const home = ${JSON.stringify(home)}, threadId = ${JSON.stringify(thread.id)};
     const journal = new EventJournal(path.join(home, "app", "events.sqlite"));
     const backend = { id: "claude", listModels: async () => [], dispose: async () => {}, async runTurn(_text, _opts, sink) {
-      const answer = await sink.approval({ question: "Allow Bash: $ deploy?", canAlways: false });
-      fs.appendFileSync(path.join(home, "decisions.log"), answer + "\\n");
+      // As a native backend does: the decision reaches the CLI through its handoff (docs/human-requests.md).
+      const native = { runtime: "journal-crash", request: "deploy-1" };
+      const answer = await sink.approval({ question: "Allow Bash: $ deploy?", canAlways: false, native });
+      await sink.deliverRequest?.(native, async () => { fs.appendFileSync(path.join(home, "decisions.log"), answer + "\\n"); });
       process.kill(process.pid, "SIGKILL");
       return { status: "completed" };
     } };
@@ -523,8 +525,10 @@ test("one mixed transcript converges on every path, survives hostile frames, and
       sink.observe({ type: "tool.start", native: at("t1"), tool: { name: "shell", title: "$ ls", args: { command: "ls" } } });
       sink.observe({ type: "tool.done", native: at("t1"), outcome: "succeeded", progress: { output: "a\nb\n" } });
       sink.observe({ type: "tool.update", native: at("t1"), progress: { output: "a late frame after the tool ended" } });
-      const answer = await sink.approval({ question: "Allow Bash: $ rm -rf build?", canAlways: false });
-      decisions.push(answer);
+      // The decision reaches the CLI through its handoff, as a native backend's does (docs/human-requests.md).
+      const native = { runtime: "fixture", request: "rm-build" };
+      const answer = await sink.approval({ question: "Allow Bash: $ rm -rf build?", canAlways: false, native });
+      await sink.deliverRequest?.(native, async () => { decisions.push(answer); });
       sink.observe({ type: "tool.start", native: at("t2"), tool: { name: "shell", title: "$ rm -rf build", args: { command: "rm -rf build" } } });
       sink.observe({ type: "tool.done", native: at("t2"), outcome: answer === "yes" ? "succeeded" : "denied" });
       sink.observe({ type: "message.start", native: at("m2"), phase: "final" });
