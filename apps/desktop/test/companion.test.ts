@@ -493,3 +493,16 @@ test("the phone acts on a thread created on the Mac, whose id is the full UUID i
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("companion fallback makes uncertain and resolving deliveries explicit without exposing answers", async () => {
+  const { mobileItem } = await import("../src/main/engine/companion.js");
+  const base = { id: "question", kind: "question" as const, questions: [{ id: "token", header: "Token", text: "Token?", options: null, allowOther: true, secret: true }], blocking: true, answers: { token: ["(hidden)"] }, at: "now" };
+  for (const delivery of ["sending", "uncertain"] as const) {
+    const mobile = mobileItem({ ...base, delivery });
+    assert.doesNotMatch(String(mobile.text), /Answered on your Mac/);
+    assert.match(String(mobile.text), delivery === "uncertain" ? /Delivery uncertain/ : /Sending answer/);
+  }
+  const approval = mobileItem({ id: "approval", kind: "approval", question: "Deploy?", answer: "yes", delivery: "uncertain", at: "now" });
+  assert.equal(approval.kind, "notice");
+  assert.match(String(approval.text), /Delivery uncertain/);
+});
