@@ -1,3 +1,4 @@
+import type { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import type { AgentActivity, ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
 import type { NativeRef, Observation } from "../../../shared/conversation-events.js";
@@ -92,6 +93,9 @@ export interface TurnSink {
    * without a person to ask leave it out, and the backend declines the request.
    */
   question?(req: QuestionRequest, withdrawn?: AbortSignal): Promise<QuestionReply>;
+  /** Revalidate a local decision immediately before writing, then record the transport receipt.
+   * A completed write is not proof of remote execution. Never retry an uncertain write. */
+  deliverRequest?(native: NativeRequest, write: () => Promise<void>): Promise<void>;
   /**
    * After `approval(req)` answered "no": the "when" text of the approval rule that refused it on the
    * user's behalf, so the backend can tell the model why. Undefined when a human answered.
@@ -231,4 +235,28 @@ export function stderrTail(stderr: string, lines = 30, max = 4000): string {
 export function shortJson(v: unknown, max = 2000): string {
   const s = typeof v === "string" ? v : JSON.stringify(v, null, 2);
   return s.length > max ? s.slice(0, max) + "\n…" : s;
+}
+
+
+/** A local write receipt only: it does not acknowledge remote execution. Never retries. */
+export function writeJsonResponse(stdin: Writable | null | undefined, payload: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!stdin?.writable || stdin.destroyed || stdin.writableEnded) return reject(new Error("request transport unavailable"));
+    let settled = false;
+    const cleanup = () => { stdin.off("error", failed); stdin.off("close", closed); };
+    const finish = (error?: Error | null) => {
+      if (settled) return;
+      settled = true;
+      if (error) {
+        // Writable invokes its callback before emitting the associated error event.
+        setImmediate(cleanup);
+        reject(new Error("request transport unavailable"));
+      } else { cleanup(); resolve(); }
+    };
+    const failed = () => finish(new Error("request transport unavailable"));
+    const closed = () => finish(new Error("request transport closed before its receipt"));
+    stdin.once("error", failed);
+    stdin.once("close", closed);
+    try { stdin.write(JSON.stringify(payload) + "\n", finish); } catch { failed(); }
+  });
 }

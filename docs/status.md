@@ -182,8 +182,14 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
   back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
   characters of a result by default, so Claude output never needs it.
-- **Typed turns keep their meaning, and the reader keeps their place** (CF-4 #277, from #295). A
-  reply becomes the final answer only from the CLI's own final phase, never by position. Failed,
+- **An answer counts as delivered only once it reaches the CLI** (CF-3 #276, from #316). An answer
+  you give on the Mac or the phone reads "Sending" until the CLI's request is written. It reads
+  "Delivery uncertain" if Stop, a crash or a closed connection came first, and it is never resent.
+  Replays of a native request are ignored, and a request id reused for a different action is
+  withdrawn. [Human requests](human-requests.md).
+- **Typed turns keep their meaning, and the reader keeps their place** (CF-4 #277, from #295). In a
+  turn whose CLI reports message phases, only its own final message is the answer, never one picked by
+  position. Claude Code reports none, so its last reply stays the answer. Failed,
   denied, stopped and unknown messages and reasoning stay visible, including after a retry, and
   reasoning summaries keep their label while streaming. A streaming reply keeps its code controls,
   focus and selection, and returning to a thread restores what was expanded and where it was

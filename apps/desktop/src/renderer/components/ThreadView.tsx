@@ -388,7 +388,7 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
   const r = item.decidedBy;
   if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
   return (
-    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer ? "true" : "false"} data-decided-by={r?.decision}>
+    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
       <div className="approval-head" data-testid="approval-question">
         <span className="shield">⚠</span>
         <span>{item.question}</span>
@@ -397,7 +397,7 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
         <>
-          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
           {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
         </>
       ) : (
@@ -420,7 +420,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
   const title = item.title ?? item.question;
   const via = `${receiptVia(r)} · ${r.ms} ms${jevNotConsulted(r) ? " · Jev not consulted" : ""}`;
   return (
-    <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered="true" data-decided-by={r.decision}>
+    <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered={!item.delivery || item.delivery === "sent" ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r.decision}>
       <button className="receipt-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="receipt-icon" aria-hidden="true">{allowed ? "✓" : "✕"}</span>
         <span className="receipt-label" data-testid="approval-receipt">
@@ -429,6 +429,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
         <span className="receipt-meta" data-testid="receipt-meta">{r.source === "policy" ? r.when : allowed ? `rule "${r.when}" · ${via}` : <><code>{title}</code> · {via}</>}</span>
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
+      {item.delivery && item.delivery !== "sent" && <div className="answer-note" role="status" data-testid="approval-delivery">{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : "Sending decision…"}</div>}
       {open && (
         <div className="receipt-body" data-testid="item-body">
           <div className="receipt-question">{item.question}</div>
