@@ -505,4 +505,8 @@ test("companion fallback makes uncertain and resolving deliveries explicit witho
   const approval = mobileItem({ id: "approval", kind: "approval", question: "Deploy?", answer: "yes", delivery: "uncertain", at: "now" });
   assert.equal(approval.kind, "notice");
   assert.match(String(approval.text), /Delivery uncertain/);
+  // A withdrawn approval closes as "no"; a phone that reads only `answer` must not show it declined (CF-6 #279, finding 7).
+  const withdrawn = mobileItem({ id: "approval", kind: "approval", question: "Deploy?", answer: "no", withdrawn: "native", at: "now" });
+  assert.equal(withdrawn.kind, "notice");
+  assert.match(String(withdrawn.text), /Request withdrawn/);
 });

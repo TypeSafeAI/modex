@@ -273,6 +273,12 @@ Every session works in its own worktree: `scripts/worktree.sh new <name>` create
 only enforces rulesets on private repositories for paid org plans; on the Free plan the repo
 must be public for the rules to apply.
 
+PRs land through a merge queue, squashed. A queued PR's change is tested on top of `main` and
+the PRs queued ahead of it, so a branch no longer has to be up to date with `main` to merge,
+and a landing no longer sends every other open PR back through CI. CI's `merge_group` run
+reports the required `unit + e2e (macOS)` check for each queued group. The repository allows
+auto-merge, because `gh pr merge` adds a PR to the queue by turning auto-merge on for it.
+
 ## Not (yet) here
 
 Codex Cloud tasks stay out of scope. Read-only [routines](docs/routines.md) ship from v0.2.0;

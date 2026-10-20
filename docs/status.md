@@ -66,6 +66,17 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
   test, build, typecheck or lint command counts, never the model's word or an unrelated command. The
   saved note lists the checks and marks stale ones. [Verification](task-context.md#verification).
+- **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
+  "search *query*" with how many results there were, instead of "search " while the query had not
+  arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as
+  unchecked. Results without an http(s) link are counted, not shown. The shape comes from a live
+  codex-cli 0.163.0 capture. [Evidence guide](conversation-evidence.md).
+- **Answering, stopping or jumping to the latest from the keyboard keeps your place** (CF-8 #281
+  keyboard walkthrough). The answer buttons go away once pressed, and a finished turn hides its
+  folded work; either used to drop focus onto the page body. Focus now moves to the card's answer
+  ("Approved", "Denied"), then to the turn's "Worked for" toggle when that work folds. Stop and
+  Jump to latest, pressed from the keyboard, hand focus to the message box once they go away.
+  Focus elsewhere, such as the composer, stays where it is.
 - **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
   smoke). Codex keeps a long command running in a background terminal after its turn is
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
@@ -212,6 +223,11 @@ that fixed each.
   requires both sizes to settle. The original 15-second budget and permanent-clamp refusal
   remain. This addresses a locally reproduced test failure from job `114782323496`; the
   underlying cause of the native/renderer divergence is unproven. App sizing is unchanged.
+- **Jump to latest from the keyboard, on CI runners.** `e2e/keyboard-answers.spec.ts:88` (#342)
+  failed in three CI runs of #345 in a row: after Enter, the Jump to latest button stayed. It passed
+  on #342, on `main` and 25/25 locally. In the failure snapshot, focus is in the message box and a
+  "Use suggested follow-up" chip sits above it. So the composer probably grew after the jump and
+  left the transcript short of the bottom. [Analysis on #342](https://github.com/TypeSafeAI/modex/pull/342#issuecomment-6291857270).
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
@@ -247,7 +263,7 @@ Roughly in the order they earn their place; none is scheduled.
 - One worktree per session (`scripts/worktree.sh new <slug>`), removed after the merge. A
   branch that is not being worked on is either extracted into a PR or deleted; nothing parks.
 - PRs merge through `~/.claude/scripts/gh-merge-when-green.sh <pr> --squash` after CI, with
-  signed commits only.
+  signed commits only. The guard adds each one to `main`'s merge queue and waits until it lands.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
 - A release's details and evidence go in its review under [`reviews/`](reviews/). This page
   keeps one Shipped row that links it, and the release leaves "In flight".

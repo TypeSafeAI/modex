@@ -607,6 +607,9 @@ a.thread-pr:hover { text-decoration: underline; }
 .search-link .source-title { flex: 0 1 auto; min-width: 0; }
 .search-link .source-domain { flex: none; max-width: 40%; margin-left: auto; }
 .search-links + .search-summary { border-top: 1px solid var(--border-pane); }
+.search-label, .search-dropped { padding: 7px 12px; color: var(--text-3); font-size: var(--text-sm); }
+.search-label { border-bottom: 1px solid var(--border-pane); }
+.search-snippet { margin: -3px 0 0; padding: 0 12px 8px; color: var(--text-2); font-size: var(--text-sm); line-height: 1.5; }
 .search-summary, .tool-prose { padding: 10px 12px; color: var(--text-2); font-size: var(--text-sm); line-height: 1.55; }
 .search-summary .md > :last-child, .tool-prose .md > :last-child { margin-bottom: 0; }
 .tool-prose { max-height: 320px; overflow: auto; }

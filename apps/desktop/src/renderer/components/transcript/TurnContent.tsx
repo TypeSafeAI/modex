@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Thread, ThreadItem } from "../../../shared/types";
 import { layoutTurn } from "../../../shared/turn-layout";
 import { useExpansionState } from "./reader-state";
@@ -52,13 +52,24 @@ export function TurnContent({ turn, status, render, footer }: { turn: Turn; stat
   const layout = layoutTurn(turn.rest, { busy: live });
   const hasWork = layout.work.some(Boolean);
   const showWork = live || expanded || !turn.user;
+  // A finished turn hides its folded work. If focus was in that work (an answered approval, a
+  // toggle), it moves to the turn's "Worked for" toggle instead of falling to the page body.
+  const content = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const wasLive = useRef(live);
+  useLayoutEffect(() => {
+    const folded = wasLive.current && !live && !showWork;
+    wasLive.current = live;
+    const active = document.activeElement;
+    if (folded && active && content.current?.contains(active) && active.closest("[hidden]")) toggle.current?.focus({ preventScroll: true });
+  }, [live, showWork]);
   return <>
     {turn.user && render(turn.user, false)}
     {turn.user && (live || turn.rest.length > 0) && <TurnHeader start={turn.user.at} end={live ? undefined : turnEnd(turn.rest)} status={status}
       asking={turn.rest.some((item) => item.kind === "question" && !item.answers && !item.withdrawn)}
-      expanded={hasWork && !live ? expanded : undefined} controls={historyId} onToggle={() => setExpanded(value => !value)} />}
+      expanded={hasWork && !live ? expanded : undefined} controls={historyId} toggleRef={toggle} onToggle={() => setExpanded(value => !value)} />}
     {/* Wrappers preserve chronological order and mounted item state while work is folded. */}
-    <div id={historyId} className="turn-content">
+    <div id={historyId} ref={content} className="turn-content">
       {turn.rest.flatMap((item, index) => [
         ...(layout.attemptStart[index] ? [<div key={`attempt:${item.id}`} className="attempt-divider" data-testid="attempt-divider">Attempt {layout.attemptStart[index]}</div>] : []),
         <div key={item.id} hidden={layout.work[index] && !showWork} data-final={index === layout.final ? "true" : undefined} data-live={layout.live[index] ? "true" : undefined}>{render(item, layout.live[index]!)}</div>,
@@ -83,7 +94,7 @@ export function formatElapsed(ms: number): string {
 }
 
 /** "Working for 7s" (live, ticking) or "Worked for 1m 36s" above a rule, between a message and the agent's work. */
-function TurnHeader({ start, end, status, asking, expanded, controls, onToggle }: { start: string; end?: number; status?: Thread["status"]; asking?: boolean; expanded?: boolean; controls?: string; onToggle?: () => void }) {
+function TurnHeader({ start, end, status, asking, expanded, controls, toggleRef, onToggle }: { start: string; end?: number; status?: Thread["status"]; asking?: boolean; expanded?: boolean; controls?: string; toggleRef?: RefObject<HTMLButtonElement | null>; onToggle?: () => void }) {
   const live = end === undefined;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -95,7 +106,7 @@ function TurnHeader({ start, end, status, asking, expanded, controls, onToggle }
   const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `${asking ? "Waiting for your answer" : "Waiting for approval"} · ${elapsed}` : `Working for ${elapsed}`;
   return (
     <div className={`turn-header${live ? " live" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
-      {expanded === undefined ? <span className="turn-label" data-testid="turn-label">{label}</span> : <button className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span>{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
+      {expanded === undefined ? <span className="turn-label" data-testid="turn-label">{label}</span> : <button ref={toggleRef} className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span>{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
     </div>
   );
 }
