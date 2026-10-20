@@ -82,7 +82,8 @@ Refusals, in the order `resolve` checks them:
 | `changed-action` | The digest differs from the request's. |
 | `invalid` | The answer is the wrong kind, or the answers fail `validateAnswers`. |
 
-`answer` and `answerQuestion` return `{ ok: true }` for local acceptance. The request stays
+`answer` and `answerQuestion` return `{ ok: true }` for local acceptance, once the card is saved. If
+that save fails, they throw and accept nothing (see "A failed save" below). The request stays
 `resolving` until the backend's stdin write callback succeeds. The card then records
 `delivery: "sent"`. This receipt proves a local transport handoff, not remote execution.
 
@@ -207,6 +208,11 @@ paired desktops and the phone carry it with no new event type. This is the reque
   and the card says so: "Modex stopped before it could confirm the agent received this answer." Cards
   nobody answered close as `ended`, as before. A card answered before these fields existed keeps no
   `delivery` and is left as it was.
+- **A failed save** takes no answer. When saving the card fails, for example on a full disk, the request
+  is open again, the card reads as it did, no client hears of the answer, and the CLI hears nothing.
+  The client that answered gets the error (the phone a 500) and can answer again. If the failed write
+  did reach the disk and Modex crashes before its next save, the restart reads the card as uncertain,
+  never as sent.
 - **Replay** applies the same whole field values, so a frame delivered twice changes nothing, and a
   client that resumes after a decision sees the card answered. A cursor the journal no longer covers
   reloads to a snapshot with the same fields.
@@ -254,6 +260,8 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
   - the Codex mapping, answer validation and secret redaction.
 - `test/human-requests-runner.test.ts` covers the runner and the Codex backend:
   - a second answer is refused as `already-resolved`, and the CLI hears one answer;
+  - an approval or question answer whose save fails is not taken, and answering again reaches the CLI;
+    one whose failed write reached the disk reads as uncertain after a crash;
   - a late answer after Stop is refused as `withdrawn`;
   - a Codex question is answered by its schema, and the secret stays out of saved items and events;
   - Stop sends an error reply;
