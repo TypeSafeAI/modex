@@ -61,7 +61,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
-Nothing yet.
+- **An answer whose save fails is not taken** (CF-6 #279, from #336). When Modex cannot save an
+  approval or question answer, as on a full disk, the card stays open and answering again reaches the
+  CLI, instead of the request reading answered while the CLI never hears it.
+  [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
 
 ## In flight
 
