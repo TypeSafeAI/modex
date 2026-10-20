@@ -148,6 +148,22 @@ cannot write two answers for one native ID. This is a local guard, not an exactl
 | Stop, or the turn ending, while a question waits | The CLI gets error `-32000` ("withdrawn by modex: …"), never an empty answer. |
 | A sink with no `question` method | Declined with `-32601`, as before. |
 
+**Live evidence, 2026-10-20.** One codex-cli 0.163.0 turn (model `gpt-6.1-sol`, read-only), with
+Val's approval, was asked to put one clarifying question through Codex's question tool. It is
+recorded in `apps/desktop/test/fixtures/codex-request-user-input-0.163.0.json`.
+- **The request.** Codex sent `item/tool/requestUserInput` with `threadId`, `turnId`, `itemId`,
+  `questions: [{ id, header, question, isOther, isSecret, options: [{ label, description }] }]`,
+  `isBlocking: true` and `autoResolutionMs: null`. The schema marks `autoResolutionMs` deprecated in
+  favour of `isBlocking`, which `codexQuestions` honours.
+- **Modex's handling.** `codexQuestions` read the live request as the fixtures predicted. Codex
+  accepted `codexAnswerResponse`'s answer and completed the turn. A unit test replays the sample.
+- **Where it was asked.** Codex sent the question only in its own **plan collaboration mode**: a
+  `turn/start` with `collaborationMode: { mode: "plan", … }`. In 0.163.0 the question tool is not
+  offered in a default turn: `default_mode_request_user_input` is under development and off.
+- **Through the app, today.** Modex's Plan mode is a prompt prefix on an ordinary turn, so a live
+  Codex turn in Modex never asks a question card. In plan collaboration mode, Codex also answers with
+  a `plan` item (`{ id, text }`), not an agent message. Modex does not read those yet.
+
 ### Claude Code (2.1.302, `claude -p` stream-json)
 
 | Native | Modex |
@@ -294,3 +310,5 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 
 - Answering questions from the phone.
 - Clarifying a task plan through a question card (the second half of CF-7).
+- Running Modex's Plan mode as Codex's plan collaboration mode. That is what lets Codex ask, but
+  Modex would also need to show Codex's `plan` items. It is a decision for Val.

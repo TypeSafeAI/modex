@@ -202,6 +202,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 Fixed ones move to [resolved rough edges](reviews/2026-10-18-resolved-rough-edges.md), with the PR
 that fixed each.
 
+- **Codex never asks a question card in a live Modex turn.** In codex-cli 0.163.0, Codex's question
+  tool exists only in its plan collaboration mode. Modex's Plan mode is a prompt prefix on an ordinary
+  turn. A live capture on 2026-10-20 showed the request parsing and the answer being accepted, outside
+  the app ([human-requests.md](human-requests.md#codex-codex-cli-01630-app-server)). Enabling it means
+  sending Codex's plan mode and showing its `plan` items.
+
 - **node-pty is a pre-release.** Modex still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
   e2e, including a test that counts the shipped app's PTY handles, with library validation
