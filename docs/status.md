@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-18._
+_Last updated 2026-10-20._
 
 ## Shipped
 
@@ -196,6 +196,19 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   scrolled, for this session. [Checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 
 ## In flight
+
+- **Desktop v0.3.0 and Companion 0.3.0 (8) preparation.** The release ships everything under "On
+  main, unreleased":
+  - native conversation fidelity (CF-1 to CF-8): typed items and outcomes, evidence, plans and task
+    records, approvals and questions answered once, and a truthful Claude Stop;
+  - macOS updates over the air (#317);
+  - full Markdown in replies, and moving a project to a new workspace from the chat sidebar.
+
+  Val asked for 0.3.0. A signed `v0.3.0-rc.1` rehearsal passed every Release job, including the
+  automatic download in the native updater scenarios; its draft and tag are deleted. Remaining:
+  the Release run on the signed tag, independent download checks, publication, the v0.2.0 → v0.3.0
+  banner upgrade on the release Mac, and the TestFlight upload of Companion build 8.
+  [Candidate review](reviews/2026-10-20-v0.3.0-release-review.md).
 
 - **v0.2.0 after publication.** v0.2.0 was published on 2026-10-18 from the signed tag on
   `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through
