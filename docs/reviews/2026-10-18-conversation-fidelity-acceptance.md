@@ -73,7 +73,7 @@ Each row below still names the build it was checked on.
 | Keyboard and reduced motion | Existing `app.spec.ts` accessibility test; the new elements add no animation | Partial; human VoiceOver open |
 | Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts` on a named Mac, before (`89c98f2`) and after; see [Measurements](#measurements-on-a-named-mac) | Verified on one machine; not a hardware-independent latency claim |
 | Live Codex and Claude acceptance | [Live smoke, 2026-10-19](2026-10-19-live-smoke.md), `e2e/live-smoke.spec.ts` through the app. **Claude Code 2.1.304 (Haiku):** a real edit and check, the final answer, and Stop mid-command (interrupted; the file was never written). **codex-cli 0.163.0:** the ChatGPT account refused the turn (`usage_limit_exceeded`, no credits until 2026-10-25 09:35). Modex showed `rate_limited` with the CLI's words and ran nothing | Claude verified live; Codex blocked by the account's usage limit, rerun after 2026-10-25 |
-| Human VoiceOver | — | Open: human |
+| Human VoiceOver | [Keyboard and VoiceOver checklist](2026-10-20-keyboard-voiceover/checklist.md), with a seeded offline scenario. Its probes found four places where keyboard focus fell onto the page body: an answered approval, a folded turn, Stop, and Jump to latest. All four are fixed in #342 | Open: human, using the checklist on a build with #342 |
 | Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [Candidate](#candidate) `37406ee` on 2026-10-20: everything passed first pass. Desktop e2e 363 passed and 6 opt-in skips; the iPhone UI classes passed 23/23 and 20/20 | Verified on `37406ee`; repin if more slices land (#336) |
 
 ## Commands and results for this preparation
