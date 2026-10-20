@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 const module = await import('../lib/worktree-maintenance.mjs').catch(() => ({}));
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -162,6 +162,68 @@ for (const kind of ['wrong-head', 'wrong-base', 'tree-mismatch']) {
     if (kind === 'wrong-head') f.pulls[0].head.sha = '1'.repeat(40);
     if (kind === 'wrong-base') f.pulls[0].base.ref = 'other';
     if (kind === 'tree-mismatch') { fs.appendFileSync(path.join(f.primary, 'code.txt'), 'only part landed\n'); git(f.primary, 'commit', '-am', 'different squash', '--amend'); git(f.primary, 'push', '--force', 'origin', 'main'); f.pulls[0].merge_commit_sha = git(f.primary, 'rev-parse', 'HEAD'); }
+    assert.deepEqual((await f.row(w.name)).reasons, ['not-proven-merged']);
+    await f.core.prune({ apply: true }); assert.equal(f.exists(w), true);
+  });
+}
+
+// A merge queue squashes a PR onto main as it stands when the PR's turn comes, so the landed tree
+// also holds whatever landed after the branch last merged main.
+function queuedBehindAnother(f) {
+  const w = mergedMainBranch(f);
+  fs.writeFileSync(path.join(f.primary, 'ahead.txt'), 'landed first\n');
+  git(f.primary, 'add', 'ahead.txt'); git(f.primary, 'commit', '-m', 'queued ahead'); git(f.primary, 'push', 'origin', 'main');
+  return w;
+}
+
+// Land a squash commit with the given tree on main and record it as the PR's merge.
+function landTree(f, w, tree) {
+  const squash = git(f.primary, 'commit-tree', tree, '-p', 'main', '-m', 'queued squash');
+  git(f.primary, 'merge', '--ff-only', squash); git(f.primary, 'push', 'origin', 'main');
+  f.pulls = [{ number: 1, state: 'closed', merged_at: '2026-10-20T00:00:00Z', head: { ref: w.name, sha: w.head, repo: { full_name: 'example/modex' } }, base: { ref: 'main', repo: { full_name: 'example/modex' } }, merge_commit_sha: squash }];
+}
+
+test('merge-tree proof accepts a branch with merge commits that a queue squashed onto a newer main', async (t) => {
+  const f = fixture(t); const w = queuedBehindAnother(f); f.merge(w, true); await f.release(w);
+  assert.notEqual(git(f.primary, 'rev-parse', `${w.head}^{tree}`), git(f.primary, 'rev-parse', 'main^{tree}'));
+  const row = await f.row(w.name);
+  assert.equal(row.eligible, true, row.reasons.join(','));
+  assert.equal(row.proof.kind, 'merge-tree');
+  const result = await f.core.prune({ apply: true });
+  assert.equal(result.results[0].status, 'removed');
+  assert.equal(fs.existsSync(w.location), false);
+  assert.equal(result.run.entries[0].proof.kind, 'merge-tree');
+  assert.equal(git(f.primary, 'rev-parse', result.run.entries[0].archiveRef), w.head);
+});
+
+for (const kind of ['wrong-head', 'wrong-base', 'tree-mismatch', 'conflict', 'merge-driver']) {
+  test(`rejects merge-tree proof for a queued branch with ${kind}`, async (t) => {
+    const f = fixture(t); const w = queuedBehindAnother(f);
+    if (kind === 'conflict' || kind === 'merge-driver') {
+      fs.writeFileSync(path.join(f.primary, 'code.txt'), 'main edit\n');
+      git(f.primary, 'commit', '-am', 'main edits the same line'); git(f.primary, 'push', 'origin', 'main');
+    }
+    if (kind === 'conflict') {
+      // Even a squash whose tree is exactly the conflicted merge, markers and all, proves nothing.
+      // Merge by SHA, as the proof does, so the conflict markers carry the same labels.
+      const conflicted = spawnSync('git', ['-C', f.primary, 'merge-tree', '--write-tree', '--no-messages', git(f.primary, 'rev-parse', 'main'), w.head], { encoding: 'utf8' });
+      assert.equal(conflicted.status, 1);
+      landTree(f, w, conflicted.stdout.split('\n')[0]);
+    } else if (kind === 'merge-driver') {
+      // A configured driver that keeps main's side merges cleanly while dropping the branch's work.
+      git(f.primary, 'config', 'merge.keepmain.driver', 'true');
+      fs.mkdirSync(path.join(f.primary, '.git', 'info'), { recursive: true });
+      fs.writeFileSync(path.join(f.primary, '.git', 'info', 'attributes'), 'code.txt merge=keepmain\n');
+      const tree = git(f.primary, 'merge-tree', '--write-tree', 'main', w.head);
+      assert.equal(git(f.primary, 'show', `${tree}:code.txt`), 'main edit');
+      landTree(f, w, tree);
+    } else {
+      f.merge(w, true);
+    }
+    if (kind === 'wrong-head') f.pulls[0].head.sha = '1'.repeat(40);
+    if (kind === 'wrong-base') f.pulls[0].base.ref = 'other';
+    if (kind === 'tree-mismatch') { fs.appendFileSync(path.join(f.primary, 'code.txt'), 'only part landed\n'); git(f.primary, 'commit', '-am', 'different squash', '--amend'); git(f.primary, 'push', '--force', 'origin', 'main'); f.pulls[0].merge_commit_sha = git(f.primary, 'rev-parse', 'HEAD'); }
+    await f.release(w);
     assert.deepEqual((await f.row(w.name)).reasons, ['not-proven-merged']);
     await f.core.prune({ apply: true }); assert.equal(f.exists(w), true);
   });

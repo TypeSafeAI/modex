@@ -107,18 +107,39 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     el.scrollTop = el.scrollHeight;
     autoTop.current = el.scrollTop;
   }).current;
+  // When the reader last scrolled by hand (wheel, keys, the scrollbar, touch), and when they jumped to
+  // the latest. A Page Up still animating keeps moving the view after a jump: the browser's keyboard
+  // scroll applies its remaining distance whatever the page sets. A scroll with no input since the
+  // jump is that leftover motion, not the reader, and the jump holds.
+  const lastInput = useRef(0);
+  const jumpedAt = useRef(-Infinity);
+  const onInput = () => { lastInput.current = performance.now(); };
+  const pin = (el: HTMLDivElement) => {
+    el.scrollTop = el.scrollHeight;
+    autoTop.current = el.scrollTop;
+  };
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
+    const leftover = lastInput.current < jumpedAt.current && performance.now() - jumpedAt.current < 1000;
+    // A scroll event is delivered before the browser reports a resize. If the view only got shorter
+    // under a reader who is following (the composer gaining a follow-up chip right after Jump to
+    // latest), it has not been scrolled up: keep following.
+    if (stick.current && (leftover || el.scrollTop >= autoTop.current - 2)) {
+      pin(el);
+      setAway(false);
+      return;
+    }
     stick.current = isNearBottom(el);
+    if (stick.current) autoTop.current = el.scrollTop;
     setAway(!stick.current);
   };
   const jumpToLatest = () => {
     const el = scroller.current;
     if (!el) return;
     stick.current = true;
-    el.scrollTop = el.scrollHeight;
-    autoTop.current = el.scrollTop;
+    jumpedAt.current = performance.now();
+    pin(el);
     setAway(false);
   };
   useLayoutEffect(() => {
@@ -184,7 +205,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     <ReaderStateContext.Provider value={reader}><section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
 
       <TranscriptThread.Provider value={thread.id}>
-      <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
+      <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll} onWheel={onInput} onKeyDown={onInput} onPointerDown={onInput} onTouchStart={onInput}>
         {items.length === 0 && (
           <div className="transcript-empty">
             <p>Describe a task. Modex will inspect <code>{thread.cwd}</code>, then read, edit, and run what it needs — asking first when the mode requires it.</p>

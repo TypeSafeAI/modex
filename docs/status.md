@@ -225,11 +225,6 @@ that fixed each.
   requires both sizes to settle. The original 15-second budget and permanent-clamp refusal
   remain. This addresses a locally reproduced test failure from job `114782323496`; the
   underlying cause of the native/renderer divergence is unproven. App sizing is unchanged.
-- **Jump to latest from the keyboard, on CI runners.** `e2e/keyboard-answers.spec.ts:88` (#342)
-  failed in three CI runs of #345 in a row: after Enter, the Jump to latest button stayed. It passed
-  on #342, on `main` and 25/25 locally. In the failure snapshot, focus is in the message box and a
-  "Use suggested follow-up" chip sits above it. So the composer probably grew after the jump and
-  left the transcript short of the bottom. [Analysis on #342](https://github.com/TypeSafeAI/modex/pull/342#issuecomment-6291857270).
 - **Auto-titles run a real CLI turn.** It is a separate, non-resumed conversation with tools
   refused, but it does consume one small model call per new thread on Claude and Codex.
 - **Title quality and Jev's follow-up picks are unproven by the suite.** The mock backend does
