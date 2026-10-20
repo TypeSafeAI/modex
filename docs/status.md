@@ -92,6 +92,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
   link their open PRs.
 
+- **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
+  inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
+  rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
+  CR-1 (#320) defines the account- and revision-scoped read contract and synthetic fixtures, and
+  its [design page](design/code-review.md) maps every reference control to an owner. Nothing is
+  visible in the app yet. AI review (#325) and GitHub writes (#326) are later gates.
+
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
   - **Development preview** (#119, approved by Val): an opt-in loopback host and a sandboxed
