@@ -385,10 +385,23 @@ const WITHDRAWN: Record<NonNullable<ApprovalEntry["withdrawn"]>, string> = {
  * anything a human answers is today's card, plus one line saying why when a rule sent it here.
  */
 function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void }) {
+  const card = useRef<HTMLDivElement>(null);
+  // The answer buttons go away once pressed. Someone answering from the keyboard or VoiceOver
+  // lands on the answer line ("Sending decision…", then "Approved") instead of the page body.
+  const refocus = useRef(false);
+  const answer = (value: "yes" | "no" | "always") => {
+    refocus.current = !!card.current?.contains(document.activeElement);
+    onAnswer(item.id, value);
+  };
+  useLayoutEffect(() => {
+    if (!item.answer || !refocus.current) return;
+    refocus.current = false;
+    card.current?.querySelector<HTMLElement>('[data-testid="approval-answer"]')?.focus({ preventScroll: true });
+  }, [item.answer]);
   const r = item.decidedBy;
   if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
   return (
-    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
+    <div ref={card} className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
       <div className="approval-head" data-testid="approval-question">
         <span className="shield">⚠</span>
         <span>{item.question}</span>
@@ -397,16 +410,16 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
         <>
-          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn} tabIndex={-1}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
           {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
         </>
       ) : (
         <div className="row">
-          <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
-          {item.canAlways !== false && <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>}
-          {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); onAnswer(item.id, "yes"); }}>Always allow in thread</button>}
+          <button className="btn primary small" onClick={() => answer("yes")}>Approve</button>
+          {item.canAlways !== false && <button className="btn small" onClick={() => answer("always")}>Always</button>}
+          {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); answer("yes"); }}>Always allow in thread</button>}
           {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => { if (window.confirm("YOLO approves every action in this thread without asking, including access outside the sandbox. Your Never rules still refuse.\n\nTurn on YOLO for this thread?")) onPolicy("yolo"); }}>YOLO</button>}
-          <button className="btn danger small" onClick={() => onAnswer(item.id, "no")}>Deny</button>
+          <button className="btn danger small" onClick={() => answer("no")}>Deny</button>
         </div>
       )}
     </div>
