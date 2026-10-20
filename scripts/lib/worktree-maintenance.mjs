@@ -252,6 +252,15 @@ export class WorktreeMaintenance {
       // that landed, so merge commits on the branch cannot hold anything the default branch lacks.
       const tree = this.text(['rev-parse', '--verify', `${row.head}^{tree}`]);
       if (fullSha(tree) && tree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'squash-tree', pull: pr.number, mergeCommit: merge, tree, defaultHead: info.defaultHead };
+      // A merge queue squashes the tip onto the default branch as it stands at the PR's turn. If the
+      // tip merges cleanly onto the squash's parent and gives exactly the landed tree, every change on
+      // the branch landed, merge commits included. A configured merge driver may resolve a path
+      // however it likes, so the proof counts only Git's own merge.
+      if (this.git(['config', '--get-regexp', '^merge\\..+\\.driver$'], this.cwd, true).status === 1) {
+        const merged = this.git(['merge-tree', '--write-tree', '--no-messages', parents[0], row.head], this.cwd, true);
+        const mergedTree = merged.status === 0 ? merged.stdout.trim() : '';
+        if (fullSha(mergedTree) && mergedTree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'merge-tree', pull: pr.number, mergeCommit: merge, base: parents[0], tree: mergedTree, defaultHead: info.defaultHead };
+      }
       const bases =this.text(['merge-base', '--all', row.head, parents[0]]).split('\n');
       if (bases.length !== 1 || !bases[0]) continue;
       if (this.text(['rev-list', '--min-parents=2', `${bases[0]}..${row.head}`])) continue;
