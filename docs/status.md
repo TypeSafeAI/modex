@@ -94,7 +94,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   adds main's read service on the `code-review:read` channel: GET-only reads through the person's
   `gh` login, keyed by account, repository id and revision. The separate `cr2-cache-denial`
   follow-up invalidates retained PR data after visibility loss, including reads already in flight;
-  it preserves unrelated repositories and ordinary offline/rate-limit fallback. Nothing is visible in the app yet. AI
+  it covers pending inbox searches, sibling file slices and denial during identity confirmation,
+  while preserving unrelated repositories and ordinary offline/rate-limit fallback. Nothing is visible in the app yet. AI
   review (#325) and GitHub writes (#326) are later gates.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed

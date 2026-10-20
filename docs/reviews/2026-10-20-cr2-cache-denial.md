@@ -18,7 +18,7 @@ from restoring data. Other repositories keep their offline fallback. Rate limits
 transient; SSO denial, 404 and 410 invalidate visibility. Missing individual endpoints
 also evict their own retained result and conditional-response cache entry.
 
-The service regression suite passes 36/36, with no skips. It includes ordinary offline
+The service regression suite passes 42/42, with no skips. It includes ordinary offline
 fallback, unrelated-repository retention, 403/404/410, SSO versus rate limits, and the
 in-flight context race. The original failing outputs are preserved externally.
 
@@ -52,3 +52,22 @@ review/write controls, merge, release or deployment is enabled here.
 `/Users/buns/Documents/Codex/artifacts/modex-cr2-cache-denial/` contains the original
 failing regressions, service suite, build/typecheck/unit logs and authenticated smoke.
 Final SHAs and complete suite outcomes are recorded in the external checkpoint.
+
+## Independent review follow-up
+
+Before merge, independent review reproduced three remaining cases: an overlapping inbox
+refresh restored a denied PR summary; denial of one file slice left other slices cached;
+and a denial during asynchronous identity confirmation could still publish content.
+Four regression cases failed before the follow-up repair (contents 403 and 404 separately).
+Retained results now record bounded provider-resource dependencies, so every slice of a
+denied resource and overlapping reads are invalidated together. A PR denial also refuses
+pending searches whose repository membership is not yet known and clears old search ETags.
+The reply boundary checks invalidation again after confirmation. Unrelated completed
+pages/files and normal offline/rate-limit fallback remain available.
+
+The follow-up also preserves partial inbox coverage: a denied repository lookup removes
+its rows from both concurrently read groups, while accessible repositories remain visible.
+Two additional failing-first tests cover ordinary denial and a same-repository 200/403
+race followed by another refresh. Denied repository metadata cannot be restored by an
+older overlapping lookup. First failing logs and the intermediate full-suite failure
+are retained; final validation is recorded separately.

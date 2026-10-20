@@ -914,3 +914,79 @@ test("rate limits preserve offline fallback while SSO denial revokes it", async 
     assert.equal((await read(request)).result.state, expected);
   }
 });
+
+test("visibility review: an overlapping inbox cannot restore a denied PR", async () => {
+  const { github, read, prime } = setup(); await prime();
+  github.calls = [];
+  const release = github.hold(/search\/issues/);
+  const pending = read({ op: "inbox", query: "" });
+  await until(() => github.calls.some(call => call.endpoint.startsWith("search/")));
+  github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "http", status: 403, headers: {}, body: Buffer.from("{}") } }];
+  assert.equal((await read({ op: "overview", key: keyOf(LENDING, 73) })).result.state, "unavailable");
+  release();
+  const reply = await pending;
+  assert.ok(!JSON.stringify(reply).includes("Lend a hold"));
+  github.cli = "offline";
+  assert.ok(!JSON.stringify(await read({ op: "inbox", query: "" })).includes("Lend a hold"));
+});
+
+for (const status of [403, 404]) test(`visibility review: contents ${status} invalidates sibling slices but preserves other files`, async () => {
+  const { github, read, prime } = setup(); await prime();
+  const key = keyOf(LENDING, 73);
+  value(await read({ op: "overview", key }));
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  github.contents.set(`7301@${revision.headSha}:a.txt`, "private one\nprivate two\n");
+  github.contents.set(`7301@${revision.headSha}:b.txt`, "other\n");
+  const first: Ask = { op: "context", key, revision, side: "head", path: "a.txt", start: 1, end: 1 };
+  const second: Ask = { ...first, start: 2, end: 2 };
+  const other: Ask = { ...first, path: "b.txt" };
+  value(await read(first)); value(await read(second)); value(await read(other));
+  github.overrides = [{ pattern: /contents\/a.txt/, answer: { kind: "http", status, headers: {}, body: Buffer.from("{}") } }];
+  assert.equal((await read(first)).result.state, "unavailable");
+  github.cli = "offline";
+  assert.equal((await read(second)).result.state, "unavailable");
+  assert.equal((await read(other)).result.state, "stale");
+});
+
+test("visibility review: denial during account confirmation prevents publication", async () => {
+  const { github, read, prime } = setup(); github.stampless = true; await prime();
+  const key = keyOf(LENDING, 73);
+  value(await read({ op: "overview", key }));
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  github.contents.set(`7301@${revision.headSha}:a.txt`, "private one\n");
+  const request: Ask = { op: "context", key, revision, side: "head", path: "a.txt", start: 1, end: 1 };
+  github.calls = [];
+  const release = github.hold(/^user$/);
+  const pending = read(request);
+  await until(() => github.calls.some(call => call.endpoint === "user"));
+  github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "http", status: 403, headers: {}, body: Buffer.from("{}") } }];
+  assert.equal((await read({ op: "overview", key })).result.state, "unavailable");
+  release();
+  assert.equal((await pending).result.state, "unavailable");
+});
+
+test("visibility review: a denied repository lookup preserves partial and independent inbox groups", async () => {
+  const { github, read } = setup();
+  github.overrides = [{ pattern: /repos\/example-org\/lending$/, answer: { kind: "http", status: 403, headers: {}, body: Buffer.from("{}") } }];
+  const inbox = value<Inbox>(await read({ op: "inbox", query: "" }));
+  assert.equal(inbox.groups.authored.state, "partial");
+  assert.equal(inbox.groups["review-requested"].state, "ready");
+  assert.ok(JSON.stringify(inbox.groups["review-requested"]).includes("Move the field notes"));
+});
+
+test("visibility review: a denied lookup in one inbox group removes the same repo from both", async () => {
+  const { github, read } = setup();
+  github.search["review-requested"].items = [{ repo: LENDING, number: 73 }, { repo: FIELD, number: 73 }];
+  let lookups = 0;
+  github.overrides = [{ pattern: /repos\/example-org\/lending$/, answer: () => ++lookups === 1
+    ? { kind: "http", status: 200, headers: {}, body: Buffer.from(JSON.stringify(LENDING)) }
+    : { kind: "http", status: 403, headers: {}, body: Buffer.from("{}") } }];
+  const inbox = value<Inbox>(await read({ op: "inbox", query: "" }));
+  assert.equal(lookups, 2, "both concurrent groups queried the uncached repository");
+  assert.equal(inbox.groups.authored.state, "partial");
+  assert.equal(inbox.groups["review-requested"].state, "partial");
+  assert.ok(!JSON.stringify(inbox).includes('"repoId":"7301"'));
+  assert.ok(JSON.stringify(inbox).includes("Move the field notes"));
+  const refreshed = value<Inbox>(await read({ op: "inbox", query: "" }));
+  assert.ok(!JSON.stringify(refreshed).includes('"repoId":"7301"'), "a fresh inbox still cannot reuse denied repository metadata");
+});
