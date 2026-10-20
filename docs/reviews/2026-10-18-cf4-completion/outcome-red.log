@@ -1,0 +1,49 @@
+
+Running 1 test using 1 worker
+
+(node:79043) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✘  1 e2e/typed-turns.spec.ts:185:1 › failed and denied assistant replies name their outcome without relying on a separate notice (15.0s)
+
+
+  1) e2e/typed-turns.spec.ts:185:1 › failed and denied assistant replies name their outcome without relying on a separate notice 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: locator('[data-testid="item"][data-item-kind="assistant"]').filter({ hasText: 'Partial reply' }).locator('[data-testid="message-status"]')
+    Expected: "Reply failed"
+    Timeout: 15000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toHaveText" locator('[data-testid="item"][data-item-kind="assistant"]').filter({ hasText: 'Partial reply' }).locator('[data-testid="message-status"]') with timeout 15000ms
+      - waiting for locator('[data-testid="item"][data-item-kind="assistant"]').filter({ hasText: 'Partial reply' }).locator('[data-testid="message-status"]')
+
+
+      190 |     ]);
+      191 |     const reply = items(page, "assistant").filter({ hasText: "Partial reply" });
+    > 192 |     await expect(tid(reply, "message-status")).toHaveText(label!);
+          |                                                ^
+      193 |   }
+      194 | });
+      195 |
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/e2e/typed-turns.spec.ts:192:48
+
+    Error Context: ../../../../../../../../../../tmp/cf4-outcome-red-results/typed-turns-failed-and-den-10992-elying-on-a-separate-notice/error-context.md
+
+    Error Context: ../../../../../../../../../../tmp/cf4-outcome-red-results/typed-turns-failed-and-den-10992-elying-on-a-separate-notice/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../../../../tmp/cf4-outcome-red-results/typed-turns-failed-and-den-10992-elying-on-a-separate-notice/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../../../../tmp/cf4-outcome-red-results/typed-turns-failed-and-den-10992-elying-on-a-separate-notice/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/typed-turns.spec.ts:185:1 › failed and denied assistant replies name their outcome without relying on a separate notice 
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test e2e/typed-turns.spec.ts --grep failed and denied assistant --output=/tmp/cf4-outcome-red-results

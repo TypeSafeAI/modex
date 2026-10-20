@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import type { Thread, ThreadItem } from "../../../shared/types";
 import { layoutTurn } from "../../../shared/turn-layout";
+import { useExpansionState } from "./reader-state";
 import { Icon } from "../ui/Icon";
 
 export interface Turn {
@@ -8,13 +9,34 @@ export interface Turn {
   rest: ThreadItem[];
 }
 
-/** Splits the transcript at each user message: one turn = a message and everything the agent did for it. */
+/** Typed records follow their authoritative turn; only legacy records follow user boundaries. */
 export function groupTurns(items: ThreadItem[]): Turn[] {
   const turns: Turn[] = [];
+  const byId = new Map<string, Turn>();
+  let legacy: Turn | undefined;
   for (const item of items) {
-    if (item.kind === "user") turns.push({ user: item, rest: [] });
-    else if (turns.length) turns.at(-1)!.rest.push(item);
-    else turns.push({ rest: [item] });
+    if (item.kind === "user") {
+      let turn = byId.get(item.id);
+      if (!turn) {
+        turn = { rest: [] };
+        byId.set(item.id, turn);
+        turns.push(turn);
+      }
+      turn.user = item;
+      legacy = turn;
+    } else if ("origin" in item && item.origin) {
+      let turn = byId.get(item.origin.turn);
+      if (!turn) {
+        turn = { rest: [] };
+        byId.set(item.origin.turn, turn);
+        turns.push(turn);
+      }
+      turn.rest.push(item);
+    } else {
+      // Explicit legacy adapter: history and unscoped notices/requests keep their existing placement.
+      if (!legacy) { legacy = { rest: [] }; turns.push(legacy); }
+      legacy.rest.push(item);
+    }
   }
   return turns;
 }
@@ -24,7 +46,7 @@ export function groupTurns(items: ThreadItem[]): Turn[] {
  * answers, which are live and which may fold comes from `layoutTurn` (shared/turn-layout.ts).
  */
 export function TurnContent({ turn, status, render, footer }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem, live: boolean) => ReactNode; footer?: (turn: Turn) => ReactNode }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useExpansionState<boolean>(`turn:${turn.user?.id ?? turn.rest[0]?.id}`, false);
   const historyId = useId();
   const live = status !== undefined;
   const layout = layoutTurn(turn.rest, { busy: live });

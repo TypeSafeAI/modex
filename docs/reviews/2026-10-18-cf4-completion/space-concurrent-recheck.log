@@ -1,0 +1,38 @@
+
+Running 12 tests using 1 worker
+
+(node:11521) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✘   1 e2e/space.spec.ts:23:1 › importing a page heading preserves indented code and lists through relaunch (1.5m)
+(node:60330) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✓   2 e2e/space.spec.ts:39:1 › adding a block to imported Markdown keeps separate blocks after relaunch (28.5s)
+
+  ✘   3 e2e/space.spec.ts:66:1 › Space formatting restores the selection before the next user edit (1.3s)
+
+
+  1) e2e/space.spec.ts:23:1 › importing a page heading preserves indented code and lists through relaunch 
+
+    Test timeout of 90000ms exceeded.
+
+    Error Context: ../../../../../../../../../../tmp/cf4-space-recheck-results/space-importing-a-page-hea-a5f25--and-lists-through-relaunch/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../../../../tmp/cf4-space-recheck-results/space-importing-a-page-hea-a5f25--and-lists-through-relaunch/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../../../../tmp/cf4-space-recheck-results/space-importing-a-page-hea-a5f25--and-lists-through-relaunch/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/space.spec.ts:23:1 › importing a page heading preserves indented code and lists through relaunch 
+  1 interrupted
+    e2e/space.spec.ts:66:1 › Space formatting restores the selection before the next user edit ─────
+  9 did not run
+  1 passed (2.2m)
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 130: playwright test e2e/space.spec.ts --output=/tmp/cf4-space-recheck-results
