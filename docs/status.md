@@ -26,6 +26,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). [Review](reviews/2026-10-13-v0.0.12-release-review.md). |
 | v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). [Review](reviews/2026-10-15-v0.1.0-release-review.md). |
 | v0.2.0 | 2026-10-18 | #253, #257, #266, #267, #269, #248, #272 | Read-only routines on a timer, on one decision service for Jev; the notes fixes from v0.1.0's review (#241); Copy details and Retry on every inline error; Analytics restyled; new image jobs no longer stuck at "queued". [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
+| v0.3.0 | 2026-10-20 | #282, #284, #286, #293, #317, #333, #335, #337 | Native conversation fidelity: typed items and honest outcomes, evidence, plans and task records, approvals and questions answered once, a truthful Claude Stop; macOS updates over the air with install on quit; full Markdown in replies. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.3.0). [Review](reviews/2026-10-20-v0.3.0-release-review.md). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -65,6 +66,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
   command interrupted only once Codex no longer lists it. Otherwise the command reads unknown, with a
   notice. [Live smoke review](reviews/2026-10-19-live-smoke.md).
+- **An answer whose save fails is not taken** (CF-6 #279, from #336). When Modex cannot save an
+  approval or question answer, as on a full disk, the card stays open and answering again reaches the
+  CLI, instead of the request reading answered while the CLI never hears it.
+  [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
 - **Answering, stopping or jumping to the latest from the keyboard keeps your place** (CF-8 #281 keyboard walkthrough).
   The answer buttons go away once pressed, and a finished turn hides its folded work; either used to
   drop focus onto the page body. Focus now moves to the card's answer ("Approved", "Denied"), then to
@@ -208,27 +213,18 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **Desktop v0.3.0 and Companion 0.3.0 (8) preparation.** The release ships everything under "On
-  main, unreleased":
-  - native conversation fidelity (CF-1 to CF-8): typed items and outcomes, evidence, plans and task
-    records, approvals and questions answered once, and a truthful Claude Stop;
-  - macOS updates over the air (#317);
-  - full Markdown in replies, and moving a project to a new workspace from the chat sidebar.
-
-  Val asked for 0.3.0. A signed `v0.3.0-rc.1` rehearsal passed every Release job, including the
-  automatic download in the native updater scenarios; its draft and tag are deleted. Remaining:
-  the Release run on the signed tag, independent download checks, publication, the v0.2.0 → v0.3.0
-  banner upgrade on the release Mac, and the TestFlight upload of Companion build 8.
-  [Candidate review](reviews/2026-10-20-v0.3.0-release-review.md).
-
-- **v0.2.0 after publication.** v0.2.0 was published on 2026-10-18 from the signed tag on
-  `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through
-  its own update banner, and uploading Companion 0.2.0 (7) to TestFlight, which carries thread
-  archiving from the phone. [Review](reviews/2026-10-18-v0.2.0-release-review.md).
+- **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
+  `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
+  its own update banner, and uploading Companion 0.3.0 (8) to TestFlight. Build 8 is cut from the
+  same tag, so it also carries thread archiving from the phone, which Companion 0.2.0 (7) was cut
+  for. v0.2.0's gates, its banner upgrade from v0.1.0 and the build 7 upload, are superseded:
+  v0.1.0 is now offered v0.3.0. [Review](reviews/2026-10-20-v0.3.0-release-review.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
-  Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
-  each slice's evidence, and its child issues link their open PRs.
+  The slices that landed through #335 and #333 shipped in v0.3.0; the
+  [v0.3.0 review](reviews/2026-10-20-v0.3.0-release-review.md#what-shipped) lists them with what is
+  still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
+  link their open PRs.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
