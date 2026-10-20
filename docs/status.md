@@ -26,6 +26,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.0.12 | 2026-10-13 | #181, #185, #193, #195, #199, #200, #201 | First self-updating macOS release: verified download and restart with draft recovery; held-model effort; Claude fast-mode receipts; Space reference layout. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.0.12). [Review](reviews/2026-10-13-v0.0.12-release-review.md). |
 | v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). [Review](reviews/2026-10-15-v0.1.0-release-review.md). |
 | v0.2.0 | 2026-10-18 | #253, #257, #266, #267, #269, #248, #272 | Read-only routines on a timer, on one decision service for Jev; the notes fixes from v0.1.0's review (#241); Copy details and Retry on every inline error; Analytics restyled; new image jobs no longer stuck at "queued". [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
+| v0.3.0 | 2026-10-20 | #282, #284, #286, #293, #317, #333, #335, #337 | Native conversation fidelity: typed items and honest outcomes, evidence, plans and task records, approvals and questions answered once, a truthful Claude Stop; macOS updates over the air with install on quit; full Markdown in replies. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.3.0). [Review](reviews/2026-10-20-v0.3.0-release-review.md). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -60,165 +61,37 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
-- **Assistant turns keep their native identity, phase and outcome** (CF-1 #282, CF-4 #284, CF-6
-  first half #285, CF-5 first part, tracker #273). Codex and Claude report every message, reasoning
-  block and tool through one typed path that names the native item. The [conversation-event
-  contract](conversation-events.md) folds them into transcript items carrying origin, phase
-  (commentary, final), reasoning (summary, provider text, not shared) and outcome (succeeded,
-  failed, denied, stopped, unknown).
-  - **Final answers.** A turn's final answer comes from its `final` message, not the last reply.
-    Every running item is live, and a retry shows as Attempt 2.
-  - **Visible work.** Only work that succeeded folds away; a dropped stream reads "Status
-    unavailable", never "Done" or "Failed". Interleaved messages no longer merge, and summaries no
-    longer absorb reasoning text. Jump to latest appears once you scroll away from new output.
-  - **Replay and clients.** Journal replay, paired desktops and the phone agree on the same items;
-    a duplicated frame no longer doubles an item. On the phone, a failed or denied tool says so in its
-    title. Work a crashed Modex left running is saved and sent as unknown instead of spinning forever.
-  - **Journal faults (CF-6 #279).** These apply with `MODEX_EVENT_JOURNAL=1`.
-    - A write that fails while a client reads turns the journal off, and clients reload. Before, that
-      batch was lost silently.
-    - A journal a crash or a failed write left open takes a new identity. Cursors from before then
-      reload instead of resuming past the gap, so an answered card no longer looks open on a paired
-      desktop after a crash, and a card nobody answered reads closed on the phone's first poll.
-    - A paired desktop reloads after a frame over 1 MB instead of reconnecting forever.
-    - The phone gets a notice for an item kind its Mac doesn't know, instead of rejecting the
-      snapshot.
-
-    [Faults and rollback](event-journal.md#compatibility-and-rollback).
-  - **Evidence (CF-5 #278, first part).** A command shows exactly what ran, where, and its exit code
-    as the CLI reported it. Tool output keeps its last 256 KB with a visible note. A patch is labelled
-    as this turn's. Codex memory citations show as citations, and a "Sources:" list the model wrote
-    is labelled as links in the reply. [Evidence](conversation-evidence.md).
-  - **Plans and task records (CF-7 #280, first part).** A plan reported by Codex or Claude's
-    TodoWrite shows each step in the CLI's own status: "Reported done", never "verified". Under
-    each finished turn, Save to Notes writes the turn's request, plan, changed files, commands and
-    loose ends into the project's notes; saving again updates the note unless you edited it.
-    [Task plans and records](task-context.md).
-  - **Truthful Claude Stop (CF-2 #275, #286).** Stop sends the CLI's native interrupt, drains
-    its final output and waits for exit, escalating through SIGTERM and SIGKILL. An unconfirmed
-    process keeps its thread and worktree; a failure just before Stop keeps its error and process
-    ownership. Withdrawn permission cards become inert. Split output and final diagnostics survive
-    draining without exposing MCP credentials. Live macOS checks cover pending approval, running
-    command, resume and mid-stream Stop; Windows/Linux escalation remains unproven.
-    [Evidence and limits](reviews/2026-10-18-claude-lifecycle.md).
-  - **Approvals and questions, answered once (CF-3 #276).** Each request is bound to its turn,
-    attempt and the CLI's own request id. The first answer is taken; any other is refused with a
-    reason, and the phone gets a 409. Codex questions (`item/tool/requestUserInput`, experimental in
-    codex-cli 0.163.0) are cards with a control for each question, and a secret answer goes to the
-    CLI only. Stop sends Codex an error, never an empty answer. A request Codex settles itself closes
-    as withdrawn, and cards a restarted Modex left open close as ended everywhere. Phones show
-    questions as text to answer on the Mac. Scripted fixtures only. [Human requests](human-requests.md).
-  - **Older paired desktops read questions (CF-6 #279).** A Store build from before CF-3, such as
-    TestFlight Store 0.0.8, showed nothing for a Codex question or a plan, so the thread looked stuck.
-    Current clients name the item kinds they draw, and the host sends a client that names none those
-    two as notices with the question text and its state. [Older paired desktops](human-requests.md).
-  - **Requests across replay and reconnect (CF-6 #279, request half).** A card records who answered
-    (this Mac's window, a paired desktop or the phone) and whether the answer reached the CLI, and the
-    journal, snapshots, paired desktops and the phone carry it. Switching a thread to YOLO answers what
-    is waiting as whoever switched it. Replay and reconnect show answered and withdrawn cards inert and
-    never send an answer again. An answer Modex took but could not confirm before a crash says so after
-    the restart. An answer whose save fails, as on a full disk, is not taken: the card stays open and
-    answering again reaches the CLI. A secret answer reaches no file, even with the journal on.
-    [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
-  - **The phone acts on threads started on the Mac again.** Since v0.0.12, answering, sending, setting
-    the approval policy or archiving from the phone failed on any thread created from a Mac draft.
-  - **A refused answer refreshes the phone (CF-6 #279).** When the Mac refuses an approval, most often
-    because it was settled elsewhere, the iPhone app reads the thread again at once instead of leaving
-    the card actionable until its next poll. It reaches phones in the next Companion build.
-  - **Old transcripts** read unchanged, with no invented provenance.
-  - **Acceptance (CF-8 #281).** A fixture Claude CLI drives the real app through a plan, an
-    approval, a real edit, a check, the answer and Save to Notes, then a restart that re-runs
-    nothing. Denial, a failing check and Stop are covered too, and so are a native withdrawal, the
-    Mac and the phone answering at once, a phone reconnecting after the decision, and a clarifying
-    question inside the path. The path's states have reference captures in every theme at 900×600
-    and 1440×900, and a long transcript and a 3 MiB log are measured on a named Mac. [Fidelity](conversation-fidelity.md),
-    [review](reviews/2026-10-18-conversation-fidelity-acceptance.md).
-  - **Fixes those checks found.** Opening a thread for the first time no longer resends and rewrites
-    every item in it, which cost a 1,400-item transcript about 55 ms. An approval card in a narrow
-    window wraps its text and buttons instead of pushing Deny out of view.
-  - **Clarifications in the task record (CF-7 #280, second part).** A question Codex asks while it
-    plans is answered on its card, and the turn's record and Save to Notes list it with its answer,
-    a secret hidden. One nobody answered reads "not answered" with why, and is never filled in.
-  - **Still open:** live Codex question capture (CF-3 #276), the remaining Markdown checks (CF-4
-    #277), structured web-search results (CF-5 #278), the remaining replay findings (CF-6 #279),
-    verified steps and the read-only task view (CF-7 #280), and live-provider acceptance with human
-    keyboard and VoiceOver checks (CF-8 #281).
-
-- **Updates install over the air on macOS** (#317). A check that finds a newer release downloads and
-  verifies it in the background; nobody has to click Download. The banner then offers Restart to
-  update, and an update nobody restarted into installs the next time you quit, without reopening
-  Modex. The release page is only a "What’s new" link. A cancelled download stays cancelled for
-  that version, and a failed one retries an hour later. Windows and Linux still install by hand.
-  The first release that has this still updates from v0.2.0 with the Download click.
-  [Download and restart](update-recovery.md#download-and-restart).
-
-- **Replies render full Markdown** (part of #277). Replies, reasoning and fetched pages in the
-  transcript render CommonMark with GitHub's extensions (micromark): tables, task lists, block
-  quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
-  language and has Copy, which only puts the code on the clipboard; it shows its code while the
-  fence is still streaming. Raw HTML stays text, only http(s) links
-  are links, and an image becomes a link to it instead of being fetched. While a plain reply streams,
-  completed blocks are reused and the changing tail is parsed again.
-  Lists, references, blockquotes and indented code retain whole-document context. Reopening a
-  thread reuses cached renders; cold-open and streaming measurements are recorded in the
-  [CF-4 checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
-- **Codex memory citations can be read in place** (part of #278). A reply's "From Codex memory"
-  citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
-  Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
-  and opens nothing. It works on the Mac only, never from a paired desktop.
-- **A turn's patch can be compared with the working tree** (part of #278). A patch the CLI
-  reported as applied has **Compare with working tree**. Each file it touched reads as left by the
-  turn, still holding its edit, changed since, deleted since, or not compared, with the reason.
-  Main reads only the named files inside the thread's folder and returns verdicts, never contents.
-  Codex file changes now keep their per-file paths beside the patch. Edits that only removed text
-  and notebook cells (replaced, inserted or deleted) are compared too.
-- **Codex web searches fold away again when a turn finishes.** Since #284, work whose result is
-  unknown stays in view, and every Codex web search read as unknown: codex-cli 0.163.0 gives a
-  search no status or error field. Its completion is its only report, so a completed search now
-  reads as done and folds like other finished work (#277).
-- **A project can move to a new workspace from the chat sidebar.** Its menu has **Move to new
-  workspace…**, which names a workspace and moves the project into it in one step, even while there
-  is only the default workspace. Before, a new workspace had to be made in Space first.
-- **A long command's full log can be read** (part of #278). A command whose output passed the 256 KB
-  preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
-  back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
-  characters of a result by default, so Claude output never needs it.
-- **An answer counts as delivered only once it reaches the CLI** (CF-3 #276, from #316). An answer
-  you give on the Mac or the phone reads "Sending" until the CLI's request is written. It reads
-  "Delivery uncertain" if Stop, a crash or a closed connection came first, and it is never resent.
-  Replays of a native request are ignored, and a request id reused for a different action is
-  withdrawn. [Human requests](human-requests.md).
-- **Typed turns keep their meaning, and the reader keeps their place** (CF-4 #277, from #295). In a
-  turn whose CLI reports message phases, only its own final message is the answer, never one picked by
-  position. Claude Code reports none, so its last reply stays the answer. Failed,
-  denied, stopped and unknown messages and reasoning stay visible, including after a retry, and
-  reasoning summaries keep their label while streaming. A streaming reply keeps its code controls,
-  focus and selection, and returning to a thread restores what was expanded and where it was
-  scrolled, for this session. [Checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
+- **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
+  smoke). Codex keeps a long command running in a background terminal after its turn is
+  interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
+  command interrupted only once Codex no longer lists it. Otherwise the command reads unknown, with a
+  notice. [Live smoke review](reviews/2026-10-19-live-smoke.md).
+- **An answer whose save fails is not taken** (CF-6 #279, from #336). When Modex cannot save an
+  approval or question answer, as on a full disk, the card stays open and answering again reaches the
+  CLI, instead of the request reading answered while the CLI never hears it.
+  [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
 
 ## In flight
 
-- **Desktop v0.3.0 and Companion 0.3.0 (8) preparation.** The release ships everything under "On
-  main, unreleased":
-  - native conversation fidelity (CF-1 to CF-8): typed items and outcomes, evidence, plans and task
-    records, approvals and questions answered once, and a truthful Claude Stop;
-  - macOS updates over the air (#317);
-  - full Markdown in replies, and moving a project to a new workspace from the chat sidebar.
-
-  Val asked for 0.3.0. A signed `v0.3.0-rc.1` rehearsal passed every Release job, including the
-  automatic download in the native updater scenarios; its draft and tag are deleted. Remaining:
-  the Release run on the signed tag, independent download checks, publication, the v0.2.0 → v0.3.0
-  banner upgrade on the release Mac, and the TestFlight upload of Companion build 8.
-  [Candidate review](reviews/2026-10-20-v0.3.0-release-review.md).
-
-- **v0.2.0 after publication.** v0.2.0 was published on 2026-10-18 from the signed tag on
-  `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through
-  its own update banner, and uploading Companion 0.2.0 (7) to TestFlight, which carries thread
-  archiving from the phone. [Review](reviews/2026-10-18-v0.2.0-release-review.md).
+- **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
+  `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
+  its own update banner, and uploading Companion 0.3.0 (8) to TestFlight. Build 8 is cut from the
+  same tag, so it also carries thread archiving from the phone, which Companion 0.2.0 (7) was cut
+  for. v0.2.0's gates, its banner upgrade from v0.1.0 and the build 7 upload, are superseded:
+  v0.1.0 is now offered v0.3.0. [Review](reviews/2026-10-20-v0.3.0-release-review.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
-  Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
-  each slice's evidence, and its child issues link their open PRs.
+  The slices that landed through #335 and #333 shipped in v0.3.0; the
+  [v0.3.0 review](reviews/2026-10-20-v0.3.0-release-review.md#what-shipped) lists them with what is
+  still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
+  link their open PRs.
+
+- **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
+  inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
+  rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
+  CR-1 (#320) defines the account- and revision-scoped read contract and synthetic fixtures, and
+  its [design page](design/code-review.md) maps every reference control to an owner. Nothing is
+  visible in the app yet. AI review (#325) and GitHub writes (#326) are later gates.
 
 - **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,

@@ -213,7 +213,7 @@ Starting with v0.0.7, installed macOS builds check for a newer stable release at
 workspace is visible, with a check when you return to it. Checks use public GitHub release
 metadata and require an uploaded installer for your Mac. Offline failures stay quiet.
 
-After v0.2.0, updates arrive over the air. When a check finds a newer release, Modex downloads
+From v0.3.0, updates arrive over the air. When a check finds a newer release, Modex downloads
 it and verifies the archive and its publisher in the background. The banner then offers
 **Restart to update**, which keeps your drafts. If you never click it, the update installs the
 next time you quit Modex. **What’s new** opens the release notes; you never need the release
