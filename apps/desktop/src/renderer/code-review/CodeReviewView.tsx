@@ -262,7 +262,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
           <Icon name="pull-request" size={20} />
           <p>{account ? "Choose a pull request from the inbox, or paste a link to one." : "Pull requests appear here once GitHub CLI is signed in."}</p>
         </div>}
-        {selected && panes.map((pane) => <PrPane key={pane} pane={pane} pr={selected} keyId={selectedId!} split={split} changesWidth={changesWidth} treeWidth={treeWidth}
+        {selected && panes.map((pane) => <PrPane key={pane} pane={pane} pr={selected} keyId={selectedId!} changesWidth={changesWidth} treeWidth={treeWidth}
           busy={busy.has(`overview:${selectedId}`)} pinned={pinned} caps={caps} onPin={pin} onRetry={() => void readOverview(selected)}
           onTreeResize={(w) => setLayout({ codeReviewTree: w })} onTreeReset={() => setLayout({ codeReviewTree: undefined })} />)}
         {split && <PanelResizeHandle side="sidebar" className="cr-split-resizer" label="Resize the pull request pane" width={splitWidth} min={SPLIT.overviewMin} max={Math.max(SPLIT.overviewMin, width - 1 - SPLIT.changesMin)}

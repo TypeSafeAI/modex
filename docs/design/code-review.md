@@ -383,3 +383,82 @@ patch's hunk headers count its lines and that the file totals add up to the over
 | `REQUESTS` | One well-formed request per operation |
 | `REFERENCES` | The manifest above |
 | `stressFiles(n)` | `n` small added files, the same every time, for #324's 1,000-file run |
+
+## Workspace (CR-3)
+
+CR-3 (#322) builds the destination, the inbox and the PR workspace host, in
+`src/renderer/code-review/`. Every read goes through `code-review:read`. A reply is applied only through
+`acceptsReply` with the scope it was asked under, one read per slot, and a newer read cancels the one it
+replaces (`reader.ts`). The overview's content (#323) and the remote diff and file tree (#324) fill
+panes the host lays out. Until then, those panes say so.
+
+**Visibility.** The Code Review rail button shows in development builds. A built app hides it
+unless `localStorage["modex.codeReview"]` is `"on"` (`feature.ts`). There is no setting and no main
+flag. Whether it shows before Gate A completes is Val's decision.
+
+**Arrangements.** A PR opens with two tabs in the title bar, PR and Changes, starting where the inbox
+ends. They show one pane (R1), or both side by side behind the right-panel button (R4). Each PR keeps
+its own arrangement and scroll positions for the session. Back and forward move between PRs without
+reading them again. One PR is open at a time; opening another replaces it, and Back returns.
+
+**Geometry, built against the references** (CSS px, the app's left edge at 0; R1–R4 are window or
+region captures, offset as the calibration table says):
+
+| Region | Built at 1766×1057 / 1764×1047 | Reference |
+| --- | --- | --- |
+| Title bar | y 0–44 | R1 y 3–46 |
+| Inbox | x 53–333 | R1 x 55–335 |
+| First inbox row | y 181–257, 76 tall | R1 about 73 tall |
+| PR tab | x 339–579 | R1 x 343–583 |
+| PR header, state pill | y 45–93, pill y 55–83 | R1 pill about y 58–86 |
+| Split: PR pane | x 333–996 (663) | R4 x 329–988 (659) |
+| Split: diff | x 997–1470 (473) | R4 x 988–1458 (470) |
+| Split: file tree | x 1470–1760 (290) | R4 x 1458–1748 (290) |
+
+**Pane minimums and folding.** The PR pane and Changes are each at least 360 wide. The diff is at
+least 300 and the tree at least 180. A split that doesn't fit shows its focused pane, with both tabs
+still in the strip. A file tree that doesn't fit moves behind a Changed files toggle in the Changes
+header. A narrow header keeps every action as an icon with its name. Saved widths are fitted to the
+window when restored and never rewritten by the fit.
+
+**Controls CR-3 delivers** (inventory owner #322), each exercised in `e2e/code-review-navigation.spec.ts`:
+
+| ID | Built as | Test |
+| --- | --- | --- |
+| C02 | Title bar Back and Forward follow PR history on this surface | back and forward return to each PR as it was left |
+| C03 | The sidebar toggle hides and restores the inbox, keeping the selection | same test |
+| C05, C80 | PR tab with title and close; closing Changes keeps the PR tab and focuses it | same test |
+| C06 | Changes tab with `overview.totals` (+ and − in their colours) | the rail opens the inbox… |
+| C08 | Rail button, `aria-current="page"` when selected | same test |
+| C11 | ⋯ menu with Refresh; Escape returns focus | keyboard alone works… |
+| C12 | Debounced search (250 ms); a pasted link, or a typed one and Return, resolves and opens | a slow search answer…; pin, copy and Open in GitHub… |
+| C13, C14 | Two groups through `inboxGroup` and `isEmpty`; unavailable and stale say so | no gh, signed out, offline… |
+| C15, C17, C18 | Two-line title, login and age; stack icon only when `stackHint` is `true`, named "inferred"; selected and hover | rail test, visual check |
+| C19 | Show more through `inbox-page`; a failed page keeps what arrived and retries | no gh, signed out, offline… |
+| C20 | The inbox list is its own scroll region (`overscroll-behavior: contain`) | keyboard alone works… |
+| C23 | Spinner in the header while the PR's overview read is in flight; it stops turning under reduced motion | identical PR numbers… |
+| C24 | Pin: local, per account, validated on load (`pins.ts`) | pin, copy and Open in GitHub… |
+| C25, C26 | Copy link and Open in GitHub from `canonicalPrUrl`, parsed back before use | same test |
+| C62 | The header over Changes repeats C21–C29 | split captures |
+| C74, C75 | Pointer and keyboard dividers, persisted as `codeReviewSplit` and `codeReviewTree` | keyboard alone works… |
+
+C27–C29 (review, instructions, merge) and C07 (new tab) are shown focusable, named and
+`aria-disabled`, with the capability's reason as their description. C21's menu, C16's avatars and
+C57–C61's composer are not built (open decisions, #325).
+
+**Deviations.**
+
+- **D6, repository in the header.** The header shows the repository name and number, as the references
+  do, with `owner/name` in its tooltip. It reads them from the inbox row or the resolved link until #323
+  binds `overview.locator` (C22).
+- **D7, state pill.** It shows the state with no menu: C21's menu is an open decision.
+- **D8, a Pinned group.** Pins appear in a Pinned group above the inbox's own, which the references
+  don't show. A pin from an earlier session resolves its link first, since main learns a repository's
+  name only from its own reads.
+- **D9, the top-right buttons (C04).** Only the right-panel button applies here, and it toggles the
+  split. There is no expand button on this surface.
+- **D10, Merge without its chevron.** The method menu is #326's, so Merge is one unavailable button.
+
+**Evidence.** Captures of the R1, R4, 900×600 and signed-out states are kept outside the repository
+with the PR's evidence. The authenticated navigation smoke test (#322 AC6) and connecting the live read
+path wait for CR-2's handler. They remain open gates.

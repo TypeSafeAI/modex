@@ -6,7 +6,7 @@ import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Icon, type IconName } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
 import { Tooltip } from "../components/ui/Tooltip";
-import { prUrl, titleOf, type OpenPr } from "./model.js";
+import { prUrl, type OpenPr } from "./model.js";
 import { SPLIT, type Pane } from "./navigation.js";
 import { STATE_LABELS, unavailableText } from "./text.js";
 
@@ -14,7 +14,6 @@ interface Props {
   pane: Pane;
   pr: OpenPr;
   keyId: string;
-  split: boolean;
   changesWidth: number;
   treeWidth: number | null;
   busy: boolean;
@@ -45,7 +44,7 @@ function useScrollMemory(ref: RefObject<HTMLElement | null>, id: string) {
  * overview's content is #323's and the remote diff and file tree are #324's; until they land, this
  * pane says what it has read and nothing more.
  */
-export function PrPane({ pane, pr, keyId, split, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onTreeResize, onTreeReset }: Props) {
+export function PrPane({ pane, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onTreeResize, onTreeReset }: Props) {
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
@@ -56,9 +55,8 @@ export function PrPane({ pane, pr, keyId, split, changesWidth, treeWidth, busy, 
     ? <ErrorNotice className="cr-notice" testId="code-review-overview-error" where="Code Review · pull request" message={unavailableText(overview)} onRetry={onRetry} />
     : null;
   const status = !overview ? <p className="cr-hint" role="status">{busy ? "Loading the pull request…" : "Not loaded yet."}</p> : notice;
-  const label = titleOf(pr);
   return (
-    <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} aria-label={split ? undefined : label} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
+    <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
       <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
         {status ?? <p className="cr-placeholder">The overview isn't shown here yet.{overview?.state === "stale" ? " What is known was read earlier." : ""}</p>}
