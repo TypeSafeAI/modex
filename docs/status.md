@@ -61,6 +61,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
+  finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
+  did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
+  test, build, typecheck or lint command counts, never the model's word or an unrelated command. The
+  saved note lists the checks and marks stale ones. [Verification](task-context.md#verification).
 - **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
   "search *query*" with how many results there were, instead of "search " while the query had not
   arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as

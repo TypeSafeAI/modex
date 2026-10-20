@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
+import { displayCommand, verification, type TaskCheck } from "../../../shared/task-context";
 
 const STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
 const FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" } as const;
@@ -52,4 +53,33 @@ export function SaveTaskNote({ threadId, turnId, saved }: { threadId: string; tu
       {state.error && <ErrorNotice testId="task-note-error" where="Notes · save task" message={state.error} onRetry={state.busy ? undefined : () => void save()} context={{ threadId, turnId }} />}
     </div>
   );
+}
+
+/** One check, as its script, with the exact command the CLI reported on hover. */
+function Check({ check }: { check: TaskCheck }) {
+  return <code title={check.command}>{displayCommand(check.command)}</code>;
+}
+
+/** The checks named in a line: the first two, then how many more. */
+function Checks({ checks }: { checks: TaskCheck[] }) {
+  const unique = checks.filter((check, i) => checks.findIndex((other) => displayCommand(other.command) === displayCommand(check.command)) === i);
+  return <>{unique.slice(0, 2).map((check, i) => <span key={check.command}>{i ? " and " : ""}<Check check={check} /></span>)}{unique.length > 2 ? ` and ${unique.length - 2} more` : ""}</>;
+}
+
+/**
+ * What a finished turn's checks say about its latest change (docs/task-context.md#verification), beside
+ * Save to Notes. Verified needs a check that ran after the last change and passed; the CLI's word, an
+ * unrelated command or an earlier check never is. A turn that changed nothing and ran no check shows nothing.
+ */
+export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }) {
+  const v = useMemo(() => verification(items), [items]);
+  if (!v.checks.length && !v.edits) return null;
+  const current = v.checks.filter((check) => !check.stale);
+  const failing = current.filter((check) => !check.passed && (check.outcome === "failed" || check.outcome === "denied" || (typeof check.exitCode === "number" && check.exitCode !== 0)));
+  const text = v.state === "verified" ? <>Verified: <Checks checks={current} /> passed after the last change</>
+    : v.state === "failed" ? <>Failed: <Checks checks={failing} /> did not pass</>
+    : v.state === "unknown" ? <>Not verified: <Checks checks={current.filter((check) => !check.passed)} /> did not say how it ended</>
+    : v.state === "stale" ? <>Not verified: <Check check={v.checks.at(-1)!} /> ran before a later change</>
+    : <>Not verified: no check ran after the changes</>;
+  return <div className="task-verification" data-testid="task-verification" data-state={v.state}>{text}</div>;
 }
