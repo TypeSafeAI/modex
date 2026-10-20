@@ -1,6 +1,6 @@
 # Human requests
 
-How a CLI's approvals and questions reach a person and how their answers go back, exactly once. This
+How a CLI's approvals and questions reach a person and how one local answer is accepted and its delivery is recorded. This
 is the contract from [#276](https://github.com/TypeSafeAI/modex/issues/276) (CF-3 of tracker
 [#273](https://github.com/TypeSafeAI/modex/issues/273)). It builds on the conversation identity in
 [conversation-events.md](conversation-events.md) and on CF-2's withdrawn cards
@@ -82,10 +82,14 @@ Refusals, in the order `resolve` checks them:
 | `changed-action` | The digest differs from the request's. |
 | `invalid` | The answer is the wrong kind, or the answers fail `validateAnswers`. |
 
-`uncertain` means an answer was accepted but the request went away before the send was recorded, so
-whether the CLI received the answer is unknown. It never reads as resolved. Today's backends hand an
-accepted answer to the CLI's stdin in the same tick, so the runner records `sent` at once. The state
-exists for transports where the hand-off can fail after acceptance.
+`answer` and `answerQuestion` return `{ ok: true }` for local acceptance. The request stays
+`resolving` until the backend's stdin write callback succeeds. The card then records
+`delivery: "sent"`. This receipt proves a local transport handoff, not remote execution.
+
+If Stop, native withdrawal, an obsolete identity, changed approval rules, a write error, or a closed
+input wins before that receipt, the card records `delivery: "uncertain"`. It stays inert and is never
+resent automatically. After restart, saved `sending` cards become `uncertain`; saved `sent` and
+`uncertain` receipts remain unchanged. Check the agent before starting a new request.
 
 ## Runner
 
@@ -104,7 +108,12 @@ type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string 
 - **Binding.** The sink builds each request's binding from the attempt's `TurnRef` and the backend's
   `NativeRequest` (`{ runtime, request, item? }`). Clients name a card by its item id. Modex mints
   that id for each request, so it stands for the binding. The runner supplies the binding and the
-  digest when it resolves.
+  digest when it resolves. Main snapshots the request and accepted answer, revalidates the current
+  backend, account, attempt, native identity, action, and approval-rule configuration at acceptance
+  and immediately before the write. A changed action, mode, or rule configuration invalidates its
+  card. Automatic decisions also revalidate the standing approval mode; changing a manual card
+  from Ask to YOLO retains its existing behavior.
+  Request IDs remain scoped to the runtime; Codex numeric and string IDs stay distinct.
 - **Questions.** `TurnSink.question(req, withdrawn?)` adds a `question` card. A blocking question
   sets the thread to `waiting`; a non-blocking one lets the turn run on. `answerQuestion` validates
   the answers and gives `error` text for an invalid one (for example "Token needs an answer.").
@@ -112,12 +121,18 @@ type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string 
 - **Withdrawal.** `withdraw(threadId, l, itemId, "native" | "stopped" | "ended")` closes a card
   once. An approval closes as `answer: "no"` plus `withdrawn`, so older clients show it closed. A
   question closes with `withdrawn` alone, and its sink settles with `{ withdrawn }`, never with empty
-  answers.
+  answers. A decision already accepted remains an inert `uncertain` receipt if withdrawal wins.
 - **Restart.** When a thread first loads in a new process, any approval without an answer and any question
   without answers or a withdrawal is closed as `withdrawn: "ended"`. The change is saved, and emitted as
-  `item_update`, so the journal and paired clients see it too.
+  `item_update`, so the journal and paired clients see it too. Interrupted `sending` receipts become
+  `uncertain` and never revive a send.
 - **Routines.** An unattended routine has nobody to ask. Approvals are refused with a receipt, as
   before. Questions are declined with a warning notice.
+
+Each native request is handled once per turn. An identical replay retains the original card and
+cancellation controller. Reusing an ID for a changed action withdraws the original request and requires
+a new ID. Delivery is claimed synchronously before awaiting its write callback, so concurrent handlers
+cannot write two answers for one native ID. This is a local guard, not an exactly-once remote guarantee.
 
 ## Native mappings
 
@@ -149,6 +164,10 @@ type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string 
   - a free-text question gets a text field;
   - a secret question gets a password field.
 
+  Sending and uncertain cards show their delivery state and have no submit control. An uncertain
+  card does not read as answered. Secret input is sent with its original whitespace; validation only
+  checks that it is not empty.
+
   A refusal is shown on the card. An answered card lists the answers, with a secret one shown as
   "(hidden)". A closed card says why, in the approval card's words. While a question waits, the turn
   header reads "Waiting for your answer" instead of "Waiting for approval". An answered or closed card
@@ -156,7 +175,8 @@ type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: string 
 - **Phone.** The companion still answers approvals only. It refuses an answer to anything that is not an
   open approval, and a runner refusal becomes a 409. A question reaches the phone as an `info` notice
   that carries the question text and its state ("Answer it in Modex on your Mac.", "Answered on your
-  Mac.", "Not answered."), never the answers.
+  Mac.", "Not answered."), never the answers. Sending and uncertain receipts are explicit notices,
+  including for approvals, so older clients cannot mistake them for successful approvals.
 - **Store demo.** `thread:answer` returns `{ ok: true }`. The demo asks no questions, so
   `thread:answer-question` refuses with `unknown`.
 - **Older paired desktops.** A paired desktop names the item kinds it draws in an
@@ -210,6 +230,20 @@ saved item, an `item`/`item_update` event, the event journal, a snapshot, the ph
 export. Tests check the saved store and the emitted events (`test/human-requests-runner.test.ts`), every
 file under `MODEX_HOME` with the journal on and the phone's snapshot (`test/request-journal.test.ts`), and
 every file under `MODEX_HOME/app` with the journal off and on (`e2e/human-requests.spec.ts`).
+
+## Repair verification
+
+The repair reproduces local acceptance followed by native withdrawal before the backend resumes.
+It also covers Stop, changed backend/account/action/rules, immutable answers, duplicate native IDs,
+failed write callbacks, real Writable errors, stdin close before a callback, policy receipts, and
+restart rendering. `sent` is always a local write receipt. The offline backend acknowledges consuming
+its scripted decision through the same callback boundary.
+
+Installed CLI versions checked on 2026-10-18: `codex-cli 0.163.0` and Claude Code `2.1.289`.
+The schemas and scripted fixtures below are source/protocol evidence. They are not a live native
+question acceptance run or human keyboard/VoiceOver acceptance. Those gates remain open in #276.
+The preview approval gate remains off by default; Never rules, escalation rules, routine refusal,
+Ask/Always/YOLO, and permission-profile validation keep their existing decisions.
 
 ## Tests
 

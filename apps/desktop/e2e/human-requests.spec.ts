@@ -111,7 +111,7 @@ test("Codex questions: the card answers by its schema, the CLI hears once, the s
     expect(replies(logs)).toEqual([]);
     const token = card.getByLabel("Token");
     await expect(token).toHaveAttribute("type", "password");
-    await token.fill("s3cr3t-token");
+    await token.fill("  s3cr3t-token  ");
     await page.screenshot({ path: test.info().outputPath("codex-question-card.png") });
     await tid(card, "question-submit").click();
 
@@ -119,7 +119,7 @@ test("Codex questions: the card answers by its schema, the CLI hears once, the s
     await expect(tid(card, "question-answer")).toHaveText(["staging", "(hidden)"]);
     await expect(items(page, "assistant").last()).toContainText("Deploying to staging.");
     await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
-    expect(replies(logs)).toEqual([{ request: 901, result: { answers: { "q-env": { answers: ["staging"] }, "q-token": { answers: ["s3cr3t-token"] } } } }]);
+    expect(replies(logs)).toEqual([{ request: 901, result: { answers: { "q-env": { answers: ["staging"] }, "q-token": { answers: ["  s3cr3t-token  "] } } } }]);
     // A second answer (an old window, or a double click) is refused and reaches nothing.
     const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
     const again = await page.evaluate(async (id) => {
@@ -216,4 +216,31 @@ test("with the journal on, a restart shows answered and stopped cards inert, say
     await app?.close();
     fs.rmSync(logs, { recursive: true, force: true });
   }
+});
+
+test("uncertain question delivery stays inert after restart and never reads as answered", async () => {
+  const { home, repo } = seedHome();
+  const statePath = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  const at = new Date().toISOString();
+  state.threads = [{ id: "uncertain", projectId: "p1", title: "Uncertain answer", createdAt: at, updatedAt: at, cwd: repo, backend: "mock", model: "mock", mode: "chat", plan: false, status: "idle" }];
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  fs.writeFileSync(path.join(home, "app/threads/uncertain.json"), JSON.stringify([
+    { id: "u", kind: "user", text: "Deploy", at },
+    { id: "a", kind: "approval", question: "Deploy?", answer: "yes", delivery: "sending", at },
+    { id: "q", kind: "question", questions: [{ id: "env", header: "Environment", text: "Which?", options: null, allowOther: true, secret: false }], blocking: true, answers: { env: ["staging"] }, delivery: "sending", at },
+  ]));
+  const { app, page } = await launch(home);
+  try {
+    await page.locator('[data-testid="thread-row"][data-thread-id="uncertain"]').click();
+    const card = items(page, "question").first();
+    await expect(card).toContainText("Delivery uncertain");
+    await expect(card).toHaveAttribute("data-answered", "false");
+    const approval = items(page, "approval").first();
+    await expect(approval).toContainText("Delivery uncertain");
+    await expect(approval).toHaveAttribute("data-answered", "false");
+    await expect(tid(card, "question-submit")).toHaveCount(0);
+    const stored = JSON.parse(fs.readFileSync(path.join(home, "app/threads/uncertain.json"), "utf8"));
+    expect(stored.find((item: { id: string }) => item.id === "q").delivery).toBe("uncertain");
+  } finally { await app.close(); }
 });

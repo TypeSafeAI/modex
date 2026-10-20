@@ -7,13 +7,13 @@ import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Backend, ModelInfo, NativeRequest, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, stderrTail } from "./types.js";
+import { LineBuffer, stderrTail, writeJsonResponse } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
 import { boundOutput, byteLength, memoryEvidence } from "../../../shared/evidence.js";
-import { codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
+import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
 /**
  * Codex's own wording when the sign-in it loaded at startup no longer matches ~/.codex/auth.json
@@ -49,7 +49,7 @@ export class CodexBackend implements Backend {
    * Server requests waiting on a person, keyed `generation:id`. Codex's `serverRequest/resolved` for one still
    * here means Codex settled it itself (codex-cli 0.163.0): the card is withdrawn and no answer is sent.
    */
-  private readonly openRequests = new Map<string, AbortController>();
+  private readonly openRequests = new Map<string, { controller: AbortController; thread: unknown }>();
 
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
@@ -98,6 +98,8 @@ export class CodexBackend implements Backend {
     this.child = null;
     this.ready = null;
     this.loaded.clear();
+    for (const request of this.openRequests.values()) request.controller.abort();
+    this.openRequests.clear();
     for (const p of this.pending.values()) p.reject(error);
     this.pending.clear();
     for (const finish of this.disconnects) finish(error);
@@ -288,6 +290,7 @@ export class CodexBackend implements Backend {
     const context = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
     const input = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
     const runtime = this.generation;
+    const seenRequests = new Map<string, string>();
     const agents = new AgentTracker(sink, runtime);
     const activities = new Set<string>();
     // Output is kept bounded as it streams (its last 256 KiB), with the total seen.
@@ -351,7 +354,8 @@ export class CodexBackend implements Backend {
           return;
         }
         if (msg.method === "serverRequest/resolved") {
-          this.openRequests.get(`${runtime}:${String(p.requestId)}`)?.abort();
+          const request = this.openRequests.get(`${runtime}:${JSON.stringify(p.requestId)}`);
+          if (request && (!p.threadId || p.threadId === request.thread)) request.controller.abort();
           return;
         }
         if (p.threadId && p.threadId !== tid) {
@@ -365,7 +369,7 @@ export class CodexBackend implements Backend {
             const state = status.type === "active" ? (status.activeFlags?.length ? "waiting" : "running") : "failed";
             agents.update(id, { state, detail: state === "waiting" ? "Waiting for approval or input" : undefined });
           } else if (msg.id !== undefined && msg.method) {
-            void this.handleServerRequest(msg, sink);
+            void this.handleServerRequest(msg, sink, seenRequests);
           } else if (msg.method === "turn/completed") {
             const turn = p.turn as { status?: string; error?: { message?: string } } | undefined;
             agents.update(id, { state: turn?.status === "completed" ? "completed" : turn?.status === "interrupted" ? "stopped" : "failed", detail: turn?.error?.message }, turn?.error?.message);
@@ -384,7 +388,7 @@ export class CodexBackend implements Backend {
         if (messageTurn && messageTurn !== turnId) return;
         // Server → client requests (approvals).
         if (msg.id !== undefined && msg.method) {
-          void this.handleServerRequest(msg, sink);
+          void this.handleServerRequest(msg, sink, seenRequests);
           return;
         }
         if (msg.method === "item/started" || msg.method === "item/completed") {
@@ -548,20 +552,38 @@ export class CodexBackend implements Backend {
     return paths;
   }
 
-  private async handleServerRequest(msg: RpcMessage, sink: TurnSink): Promise<void> {
-    const key = `${this.generation}:${String(msg.id)}`;
+  private async handleServerRequest(msg: RpcMessage, sink: TurnSink, seen: Map<string, string>): Promise<void> {
+    const key = `${this.generation}:${JSON.stringify(msg.id)}`;
+    const digest = actionDigest({ method: msg.method, params: msg.params });
+    if (seen.has(key)) {
+      if (seen.get(key) !== digest) {
+        this.openRequests.get(key)?.controller.abort();
+        sink.notice("warn", "Codex reused a request id for a changed action; the original request was withdrawn. A new request id is required.");
+      }
+      return;
+    }
+    seen.set(key, digest);
     const withdrawn = new AbortController();
-    this.openRequests.set(key, withdrawn);
+    this.openRequests.set(key, { controller: withdrawn, thread: (msg.params as Record<string, unknown> | undefined)?.threadId });
     try {
       await this.answerServerRequest(msg, sink, withdrawn.signal);
     } finally {
-      if (this.openRequests.get(key) === withdrawn) this.openRequests.delete(key);
+      if (this.openRequests.get(key)?.controller === withdrawn) this.openRequests.delete(key);
     }
   }
 
   private async answerServerRequest(msg: RpcMessage, sink: TurnSink, withdrawn: AbortSignal): Promise<void> {
     const p = (msg.params ?? {}) as Record<string, unknown>;
-    const native: NativeRequest = { runtime: this.generation, request: String(msg.id), ...(typeof p.itemId === "string" && p.itemId ? { item: p.itemId } : {}) };
+    const native: NativeRequest = { runtime: this.generation, request: JSON.stringify(msg.id), ...(typeof p.itemId === "string" && p.itemId ? { item: p.itemId } : {}) };
+    const deliver = async (result: unknown) => {
+      const child = this.child;
+      const write = () => {
+        if (withdrawn.aborted || this.generation !== native.runtime || !child || child !== this.child || child.exitCode !== null) return Promise.reject(new Error("request transport unavailable"));
+        return writeJsonResponse(child.stdin, { id: msg.id, result });
+      };
+      if (sink.deliverRequest) await sink.deliverRequest(native, write);
+      else await write();
+    };
     if (msg.method === "item/commandExecution/requestApproval") {
       const cmd = stripShell(String(p.command ?? ""));
       const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : undefined;
@@ -573,7 +595,7 @@ export class CodexBackend implements Backend {
         native,
       }, withdrawn);
       if (withdrawn.aborted) return;
-      this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
+      await deliver({ decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/fileChange/requestApproval") {
       const grantRoot = typeof p.grantRoot === "string" && p.grantRoot ? p.grantRoot : undefined;
       const paths = this.takeChangePaths(p);
@@ -586,7 +608,7 @@ export class CodexBackend implements Backend {
         native,
       }, withdrawn);
       if (withdrawn.aborted) return;
-      this.respond(msg.id, { decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
+      await deliver({ decision: answer === "yes" ? "accept" : answer === "always" ? "acceptForSession" : "decline" });
     } else if (msg.method === "item/permissions/requestApproval") {
       const permissions = requestedPermissions(p.permissions);
       if (!permissions) {
@@ -596,7 +618,7 @@ export class CodexBackend implements Backend {
       }
       const answer = await sink.approval({ question: "Allow these additional permissions for this turn?", detail: JSON.stringify({ ...p, permissions }, null, 2), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true }, native }, withdrawn);
       if (withdrawn.aborted) return;
-      this.respond(msg.id, { permissions: answer === "yes" ? permissions : {}, scope: "turn" });
+      await deliver({ permissions: answer === "yes" ? permissions : {}, scope: "turn" });
     } else if (msg.method === "item/tool/requestUserInput" && sink.question) {
       // Experimental in codex-cli 0.163.0. A request Modex cannot read is declined whole, never half-answered.
       const asked = codexQuestions(p);
@@ -608,7 +630,7 @@ export class CodexBackend implements Backend {
       const reply = await sink.question({ ...asked, native }, withdrawn);
       if (withdrawn.aborted) return;
       // A withdrawn question is an error reply, never an empty answer the model could take as the user's.
-      if ("answers" in reply) this.respond(msg.id, codexAnswerResponse(reply.answers));
+      if ("answers" in reply) await deliver(codexAnswerResponse(reply.answers));
       else this.send({ id: msg.id, error: { code: -32000, message: reply.withdrawn === "stopped" ? "withdrawn by modex: the turn was stopped" : "withdrawn by modex: the turn ended before anyone answered" } });
     } else {
       sink.notice("warn", `Codex asked for ${msg.method}, which Modex does not support yet; declined.`);
