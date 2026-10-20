@@ -92,7 +92,8 @@ test("a typed turn answers with its final message, folds only work that succeede
   // A commentary message after the answer is not the answer.
   await expect(items(page, "assistant").filter({ hasText: "One more note." })).toHaveAttribute("data-phase", "commentary");
   // Expanding the header shows the folded work, reasoning labelled by what it is.
-  await tid(page, "turn-label").last().click();
+  await tid(page, "turn-label").last().focus();
+  await page.keyboard.press("Enter");
   await expect(items(page, "tool").filter({ hasText: "$ echo one" })).toBeVisible();
   await expect(tid(page.locator('[data-reasoning="summary"]'), "reasoning-tag")).toHaveText("Summary");
   const hidden = page.locator('[data-reasoning="unavailable"]');
@@ -181,5 +182,16 @@ test("typed turns stay readable in every theme at the 900×600 minimum", async (
     await testInfo.attach(`typed-turn-${theme}-900x600`, { body: shot, contentType: "image/png" });
     // MODEX_SCREENSHOTS=<dir> keeps them for review evidence.
     if (process.env.MODEX_SCREENSHOTS) fs.writeFileSync(path.join(process.env.MODEX_SCREENSHOTS, `typed-turn-${theme}-900x600.png`), shot);
+  }
+});
+
+test("failed and denied assistant replies name their outcome without relying on a separate notice", async () => {
+  for (const [outcome, label] of [["failed", "Reply failed"], ["denied", "Reply denied"]]) {
+    await send([
+      item({ id: "u-outcome", kind: "user", text: "show the reply outcome", at: at() }),
+      item({ ...say("outcome-reply", "Partial reply", "final", outcome), origin: { ...origin("O1", "outcome-reply"), turn: "u-outcome" } }),
+    ]);
+    const reply = items(page, "assistant").filter({ hasText: "Partial reply" });
+    await expect(tid(reply, "message-status")).toHaveText(label!);
   }
 });

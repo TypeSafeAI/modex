@@ -1,0 +1,51 @@
+
+Running 36 tests using 1 worker
+
+(node:79760) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"fixture":"app","home":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-home-0JxFBu","repo":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-repo-3j6b3O","pid":80272}
+  ✓   1 e2e/app.spec.ts:31:1 › ⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI shows every step (9.1s)
+  ✓   2 e2e/app.spec.ts:182:1 › the transcript scrolls vertically inside its pane; the page itself never overflows (84ms)
+  ✓   3 e2e/app.spec.ts:203:1 › ⇧⌘N creates a worktree thread and the header shows its branch and path (5.8s)
+{"fixture":"app","home":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-home-0JxFBu","repo":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-repo-3j6b3O","pid":85296}
+  ✓   4 e2e/app.spec.ts:231:1 › state survives a relaunch: the thread and its transcript are restored (1.7s)
+  ✓   5 e2e/app.spec.ts:242:1 › ⚡ Auto: the judge picks a model before the turn and leaves an expandable receipt (4.4s)
+  ✓   6 e2e/app.spec.ts:300:1 › a key typed into Settings is kept encrypted outside state.json, reported masked, and can be cleared (288ms)
+  ✓   7 e2e/app.spec.ts:334:1 › primitives: the model Menu is keyboard-driven, and icon buttons are named, revealed on focus, and tooltipped (444ms)
+{"fixture":"app","home":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-home-0JxFBu","repo":"/var/folders/sz/mtdd9q6j3z5_8jq7xsm876600000gn/T/modex-e2e-repo-3j6b3O","pid":96369}
+  ✓   8 e2e/app.spec.ts:417:1 › shell: back/forward, rename, search, show more, row menus, and a sidebar that stays hidden across a relaunch (15.7s)
+  ✓   9 e2e/app.spec.ts:506:1 › composer: context strip, access menu, plan via + and its chip, send enabled only with text (5.7s)
+  ✓  10 e2e/app.spec.ts:563:1 › drafts: a new chat is nothing until its first send; leaving it creates no thread; ⇧⌘N drafts a worktree (10.2s)
+  ✓  11 e2e/app.spec.ts:636:1 › transcript: follows new output while the reader is at the bottom, and stays put once they scroll up (11.9s)
+  ✓  12 e2e/app.spec.ts:673:1 › title bar: ⋯ menu (rename, open, copy, archive, delete), Changes icon with a count, and no leftover header chrome (5.3s)
+  ✓  13 e2e/app.spec.ts:711:1 › a 1380×880 window with Changes open keeps the whole composer, send button included, on screen (8.9s)
+  ✓  14 e2e/app.spec.ts:726:1 › accessibility: information text meets AA contrast, keyboard focus is visible, hit areas ≥ 28 px, motion respects the OS (7.4s)
+
+  ✓  15 e2e/approvals.spec.ts:37:1 › Settings scopes new rules, previews without saving, keeps inactive rules visible, and preserves drafts on error (1.8s)
+  ✓  16 e2e/approvals.spec.ts:104:1 › automatic allow and never persist compact receipts; ask and project isolation keep human cards (11.9s)
+  ✓  17 e2e/approvals.spec.ts:155:1 › a safety-downgraded receipt explains why a human must answer (48ms)
+  ✓  18 e2e/approvals.spec.ts:172:1 › an allow rule covers one command: a chained shell command asks and says why (2.8s)
+[ui:capture] viewport 1786×1049 (reference 1786×1049)
+  ✓  19 e2e/layout.spec.ts:57:1 › captures every named chat state at the reference size (10.0s)
+  ✓  20 e2e/layout.spec.ts:115:3 › Design tokens › tokens resolve to the chosen values (4ms)
+  ✓  21 e2e/layout.spec.ts:123:3 › Design tokens › surface and text colors use the Modex palette (41ms)
+  ✓  22 e2e/layout.spec.ts:129:3 › Design tokens › shared typography keeps UI and tool summaries legible (5ms)
+  ✓  23 e2e/layout.spec.ts:158:3 › Phase 3 · shell › titlebar 42px, rail 48px, sheet with a 1px edge and 12px corners (45ms)
+  ✓  24 e2e/layout.spec.ts:170:3 › Phase 3 · shell › sidebar x 49–288, divider at 289, main from 290 (20ms)
+  ✓  25 e2e/layout.spec.ts:177:3 › Phase 3 · shell › titlebar nav buttons centred at x 99 / 133 / 167, y 20 (47ms)
+  ✓  26 e2e/layout.spec.ts:188:3 › Phase 3 · shell › sidebar header, New chat, Projects label and rows sit on the reference rhythm (155ms)
+  ✓  27 e2e/layout.spec.ts:212:3 › Phase 4 · composer › box is 960×109, centred in the main pane, 16 px off the bottom (450ms)
+  ✓  28 e2e/layout.spec.ts:224:3 › Phase 4 · composer › context strip sits on the box: 38 px, inset 13 px, 13 px text (73ms)
+  ✓  29 e2e/layout.spec.ts:232:3 › Phase 4 · composer › control row: + and access keep their insets, round send in the corner (76ms)
+  ✓  30 e2e/layout.spec.ts:251:3 › Phase 6 · transcript › column, bubble, turn header and prose match the reference (459ms)
+  ✓  31 e2e/layout.spec.ts:282:3 › Phase 7 · title bar actions › title bar actions stay at the window edge with or without the panel (814ms)
+  ✓  32 e2e/layout.spec.ts:302:3 › Terminal · title bar and panel › the terminal occupies a right workspace tab and leaves the composer usable (2.3s)
+  ✓  33 e2e/layout.spec.ts:333:3 › Phase 5 · draft › draft heading is 28 px regular text-1, centred in the main pane at the reference height (343ms)
+
+  ✓  34 e2e/routines.spec.ts:26:1 › with the window closed, a routine still runs, and reopening shows it in Activity (8.1s)
+
+  ✓  35 e2e/routines.spec.ts:56:1 › killing Modex mid-run leaves the run interrupted on restart, with no page revision (7.4s)
+
+  ✓  36 e2e/routines.spec.ts:96:1 › a routine made in the editor runs read-only: its edit is refused with a receipt and the checkout is untouched (5.0s)
+
+  36 passed (2.8m)

@@ -1,4 +1,4 @@
-import { finalAnswerIndex, type ItemOrigin } from "./conversation-events.js";
+import { finalAnswerIndex, itemFacts, type ItemOrigin } from "./conversation-events.js";
 import { toolFoldsAsWork } from "./tool-summary.js";
 import type { ThreadItem } from "./types.js";
 
@@ -18,8 +18,9 @@ export interface TurnLayout {
 
 /**
  * Lays out one turn's items. Items from the conversation-event contract decide by their own fields:
- * the final answer is the latest attempt's `final` message (or its last reply when the CLI gives no
- * phases), every item still `running` is live, and only work that succeeded folds. Items saved
+ * the final answer is the latest attempt's `final` message (or its last reply when the CLI reports no
+ * phase at all; see `finalAnswerIndex`), every item still `running` is live, and only work that
+ * succeeded folds. Items saved
  * before the contract keep the historical heuristics, isolated here: the last reply is the answer,
  * and the newest item of a running turn is the one streaming.
  */
@@ -47,6 +48,8 @@ export function layoutTurn(items: readonly ThreadItem[], opts: { busy: boolean }
 
 /** Whether a finished item may fold away: never a notice, a pending request, or work that did not succeed. */
 function settled(item: ThreadItem): boolean {
+  const facts = itemFacts(item);
+  if (facts.observed && facts.outcome !== "succeeded") return false;
   switch (item.kind) {
     case "tool": return toolFoldsAsWork(item);
     case "thinking": return item.status === "done";
