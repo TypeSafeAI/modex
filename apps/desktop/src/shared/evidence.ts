@@ -171,7 +171,12 @@ export type Evidence = MemoryEvidence;
 export interface Exec {
   command: string;
   cwd?: string;
+  /** What the CLI itself parsed the command as doing (codex-cli 0.163.0 `commandActions`), when it says. */
+  actions?: ExecAction[];
 }
+
+/** One part of a command, as the CLI parsed it: reading a file, searching, or listing files. */
+export type ExecAction = { kind: "read"; path: string } | { kind: "search"; path?: string; query?: string } | { kind: "list"; path?: string };
 
 /** Codex's `memoryCitation` as evidence; entries that are not well formed are dropped, never guessed at. */
 export function memoryEvidence(value: unknown): Evidence[] {

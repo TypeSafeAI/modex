@@ -47,6 +47,8 @@ export interface TaskRecord {
   clarifications: TaskClarification[];
   /** Whether a check that ran after the turn's last change passed. */
   verification?: TaskVerification;
+  /** The project files the turn touched, by what the CLI reported. */
+  context?: TaskContext;
   answer?: string;
 }
 
@@ -95,7 +97,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
   return {
     title: opts.title, threadId: opts.threadId, request: user?.kind === "user" ? user.text : "",
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
-    files: [...files], outsideFiles, commands, clarifications, verification: verification(rest),
+    files: [...files], outsideFiles, commands, clarifications, verification: verification(rest), context: taskContext(rest, opts.cwd),
     ...(answer?.kind === "assistant" && answer.text.trim() ? { answer: answer.text.trim() } : {}),
   };
 }
@@ -118,6 +120,14 @@ export function taskMarkdown(record: TaskRecord): string {
     lines.push("## Files changed", "");
     for (const file of record.files) lines.push(`- \`${file}\``);
     if (record.outsideFiles) lines.push(`- ${record.outsideFiles} ${record.outsideFiles === 1 ? "file" : "files"} outside the project (not named)`);
+    lines.push("");
+  }
+  const context = record.context;
+  if (context && (context.files.length || context.outside)) {
+    lines.push("## Files the turn touched", "", "As the CLI reported them. Modex did not index the project.", "");
+    for (const file of context.files.slice(0, CONTEXT_SHOWN)) lines.push(`- \`${file.path}\` — ${file.relations.join(", ")}`);
+    if (context.files.length > CONTEXT_SHOWN) lines.push(`- and ${context.files.length - CONTEXT_SHOWN} more`);
+    if (context.outside) lines.push(`- ${context.outside} outside the project (not named)`);
     lines.push("");
   }
   if (record.commands.length) {
@@ -324,4 +334,51 @@ function segments(command: string, strict = false): string[][] | null {
     } else result.push(segment);
   }
   return result;
+}
+
+/** The most files a context map shows; the rest are counted. */
+export const CONTEXT_SHOWN = 20;
+/** A project file the turn touched, and how, as the CLI reported it. */
+export interface ContextFile { path: string; relations: ("read" | "changed" | "searched")[] }
+/** The files a turn touched inside the project, and how many outside it (counted, never named). */
+export interface TaskContext { files: ContextFile[]; outside: number }
+
+/** Tools that read one file, and the argument that names it. */
+const READ_ARGS: Record<string, string> = { Read: "file_path", read_file: "path", NotebookRead: "notebook_path" };
+/** Tools that search or list under a path. */
+const SEARCH_ARGS: Record<string, string> = { Grep: "path", Glob: "path", LS: "path", list_dir: "path" };
+
+/**
+ * The project files a turn touched, by what the CLI reported (docs/task-context.md#context-map): files
+ * its patch tools changed, files it read (Claude's Read, Codex's own parse of a command), and paths it
+ * searched or listed. A denied or failed tool touched nothing. Nothing is inferred: a `cat` through a
+ * shell that the CLI did not parse is not counted, and no dependency is guessed. Changed files come
+ * first, then read, then searched, each in the order the turn first touched them.
+ */
+export function taskContext(items: readonly ThreadItem[], cwd: string): TaskContext {
+  const files = new Map<string, ContextFile>();
+  const outsidePaths = new Set<string>();
+  const add = (raw: unknown, relation: ContextFile["relations"][number]) => {
+    if (typeof raw !== "string" || !raw.trim()) return;
+    const path = relative(raw.trim(), cwd);
+    if (path === null) { outsidePaths.add(raw.trim()); return; }
+    const file = files.get(path) ?? { path, relations: [] };
+    if (!file.relations.includes(relation)) file.relations.push(relation);
+    files.set(path, file);
+  };
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    const outcome = item.outcome ?? (item.ok === true ? "succeeded" : "unknown");
+    if (outcome === "denied" || outcome === "failed") continue;
+    if (EDIT_TOOLS.has(item.name)) {
+      for (const file of patchFiles(item)) add(file, "changed");
+      if (item.name === "write_file") add(item.args.path, "changed");
+    }
+    if (READ_ARGS[item.name]) add(item.args[READ_ARGS[item.name]!], "read");
+    if (SEARCH_ARGS[item.name]) add(item.args[SEARCH_ARGS[item.name]!], "searched");
+    for (const action of item.exec?.actions ?? []) add(action.path, action.kind === "read" ? "read" : "searched");
+  }
+  const rank = (file: ContextFile) => (file.relations.includes("changed") ? 0 : file.relations.includes("read") ? 1 : 2);
+  const ordered = [...files.values()].map((file, i) => ({ file, i })).sort((a, b) => rank(a.file) - rank(b.file) || a.i - b.i).map(({ file }) => file);
+  return { files: ordered, outside: outsidePaths.size };
 }

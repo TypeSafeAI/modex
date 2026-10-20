@@ -934,3 +934,30 @@ test("a Codex web search titles itself before its query arrives, then carries th
   assert.equal(done.progress?.search?.results.length, 3);
   assert.equal(done.progress?.output, undefined, "results are structured, not a JSON string");
 });
+
+test("Codex's own parse of a command (commandActions) is kept with the command it ran", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, observations } = collectSink();
+  const run = backend.runTurn("look", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  const actions = [
+    { type: "read", command: "sed -n 1,40p src/app.ts", name: "app.ts", path: "src/app.ts" },
+    { type: "search", command: "rg -n useEffect src", query: "useEffect", path: "src" },
+    { type: "listFiles", command: "ls", path: null },
+    { type: "unknown", command: "make" },
+    { type: "read", command: "cat", name: "x" },
+  ];
+  proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "commandExecution", id: "c1", command: "/bin/zsh -lc 'sed -n 1,40p src/app.ts'", cwd: "/repo", status: "inProgress", commandActions: actions } } });
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+  await run;
+  await backend.dispose();
+  const start = observations.find((o) => o.type === "tool.start");
+  assert.ok(start && start.type === "tool.start");
+  assert.deepEqual(start.tool.exec?.actions, [
+    { kind: "read", path: "src/app.ts" },
+    { kind: "search", path: "src", query: "useEffect" },
+    { kind: "list" },
+  ], "unknown actions and a read without a path say nothing about files");
+});
