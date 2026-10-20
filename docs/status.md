@@ -122,7 +122,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     journal, snapshots, paired desktops and the phone carry it. Switching a thread to YOLO answers what
     is waiting as whoever switched it. Replay and reconnect show answered and withdrawn cards inert and
     never send an answer again. An answer Modex took but could not confirm before a crash says so after
-    the restart. A secret answer reaches no file, even with the journal on.
+    the restart. An answer whose save fails, as on a full disk, is not taken: the card stays open and
+    answering again reaches the CLI. A secret answer reaches no file, even with the journal on.
     [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
   - **The phone acts on threads started on the Mac again.** Since v0.0.12, answering, sending, setting
     the approval policy or archiving from the phone failed on any thread created from a Mac draft.
