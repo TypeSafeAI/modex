@@ -12,7 +12,7 @@
  * unspecified, unavailable or unknown, never guessed.
  */
 import type { AgentActivity, BackendId, ThreadItem } from "./types.js";
-import type { Evidence, Exec } from "./evidence.js";
+import type { Evidence, Exec, NativeWebSearch } from "./evidence.js";
 
 export const CONVERSATION_SCHEMA = 1 as const;
 
@@ -92,6 +92,8 @@ export interface ToolProgress {
   /** The exit code the CLI reported; null when it reported that there is none. Absent: not reported. */
   exitCode?: number | null;
   durationMs?: number;
+  /** A web search's query and results, as the CLI reported them. */
+  search?: NativeWebSearch;
 }
 
 /** What a backend reports. `source` is the CLI's own event id, when it gives one. */
@@ -454,5 +456,6 @@ function progress(value: unknown): boolean {
   return isRecord(value) && optional(value.args, isRecord) && optional(value.title, isString) && optional(value.agent, isRecord) && optional(value.output, isString)
     && optional(value.durationMs, (d) => typeof d === "number" && Number.isFinite(d))
     && optional(value.outputBytes, (b) => Number.isSafeInteger(b) && (b as number) >= 0) && optional(value.outputTruncated, (t) => typeof t === "boolean")
-    && optional(value.exitCode, (c) => c === null || Number.isSafeInteger(c));
+    && optional(value.exitCode, (c) => c === null || Number.isSafeInteger(c))
+    && optional(value.search, (s) => isRecord(s) && isString(s.query) && Array.isArray(s.results));
 }

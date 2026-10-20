@@ -83,8 +83,13 @@ as `interrupted` with no evidence that the process had ended.
 `exec` tool (`tools.web__run({ search_query: [{ q }] })`), so the session record has no
 `web_search_call` item and the spec's rollout shape is `null`. The app-server's `webSearch` item can
 carry `query`, an `action` (`search` with `query`/`queries`, `openPage` with `url`, `findInPage`)
-and opaque `results`. Modex reads only `query`, at `item/started`, where it was empty. A capture of
-the app-server's own `webSearch` notifications is the next step for CF-5's structured item.
+and opaque `results`. Modex read only `query`, at `item/started`, where it was empty.
+
+**Follow-up, 08:57Z.** With Val's approval, one more small live turn captured the app-server's own
+`webSearch` notifications. They are in `test/fixtures/codex-websearch-0.163.0.json` and the
+[evidence guide](../conversation-evidence.md#what-each-cli-provides). The completed item carries the
+query, the action and `text_result` entries with a title, URL, domain and snippet. Modex now shows
+those as the search's results (CF-5).
 
 ## Not covered here
 

@@ -911,3 +911,26 @@ test("Stop with no open command does not ask Codex about background terminals", 
   assert.equal(seen.some((s) => s.method.startsWith("thread/backgroundTerminals/")), false);
   await backend.dispose();
 });
+
+test("a Codex web search titles itself before its query arrives, then carries the reported query and results", async () => {
+  const native = JSON.parse(fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/codex-websearch-0.163.0.json", import.meta.url)), "utf8")) as { started: Record<string, unknown>; completed: Record<string, unknown> };
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, observations } = collectSink();
+  const run = backend.runTurn("search", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  proc.emitLine({ method: "item/started", params: { threadId, turnId, item: native.started } });
+  proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: native.completed } });
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+  assert.equal((await run).status, "completed");
+  await backend.dispose();
+  const start = observations.find((o) => o.type === "tool.start");
+  assert.equal(start?.type === "tool.start" && start.tool.title, "search the web", "0.163.0 starts the item with an empty query");
+  const done = observations.find((o) => o.type === "tool.done");
+  assert.ok(done && done.type === "tool.done");
+  assert.equal(done.outcome, "succeeded");
+  assert.equal(done.progress?.title, "search site:github.com/openai/codex changelog codex cli");
+  assert.equal(done.progress?.search?.results.length, 3);
+  assert.equal(done.progress?.output, undefined, "results are structured, not a JSON string");
+});

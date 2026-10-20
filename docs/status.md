@@ -61,6 +61,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
+  "search *query*" with how many results there were, instead of "search " while the query had not
+  arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as
+  unchecked. Results without an http(s) link are counted, not shown. The shape comes from a live
+  codex-cli 0.163.0 capture. [Evidence guide](conversation-evidence.md).
 - **Answering, stopping or jumping to the latest from the keyboard keeps your place** (CF-8 #281
   keyboard walkthrough). The answer buttons go away once pressed, and a finished turn hides its
   folded work; either used to drop focus onto the page body. Focus now moves to the card's answer
