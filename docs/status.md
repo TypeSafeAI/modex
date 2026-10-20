@@ -90,8 +90,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
   rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
   CR-1 (#320) defines the account- and revision-scoped read contract and synthetic fixtures, and
-  its [design page](design/code-review.md) maps every reference control to an owner. Nothing is
-  visible in the app yet. AI review (#325) and GitHub writes (#326) are later gates.
+  its [design page](design/code-review.md) maps every reference control to an owner. CR-2 (#321)
+  adds main's read service on the `code-review:read` channel: GET-only reads through the person's
+  `gh` login, keyed by account, repository id and revision. Nothing is visible in the app yet. AI
+  review (#325) and GitHub writes (#326) are later gates.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
