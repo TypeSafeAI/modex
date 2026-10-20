@@ -1,0 +1,4 @@
+
+> @modex/desktop@0.2.0 typecheck /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop
+> tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit
+

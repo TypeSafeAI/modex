@@ -1,0 +1,175 @@
+{
+  "sourceCommit": "c974d0f3028d269587ec7d5d047a63b5fbc5af17",
+  "deviceScaleFactor": 2,
+  "renderer": "Vite production build in apps/desktop/.probes/outcome-renderer; loaded by Electron through MODEX_DEV_URL=file:// to preserve the concurrent full-suite renderer",
+  "screenshots": [
+    {
+      "path": "screenshots/conversation-completed.png",
+      "sha256": "72eff4bc1a4ae2774ab37c4888d9188db609e65bb8b44d95556c4edc7d5e1b73",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/conversation-failed.png",
+      "sha256": "f932ccb687dac1cb770c0a7ff04ee8f2432c979ccc49b03bf3c2b8a19fa8f264",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/conversation-live.png",
+      "sha256": "d907872056d7c28698df043099e540b1deb1cee25abc20180cbf5ab06485fdb5",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/conversation-reloaded.png",
+      "sha256": "adca4fe79535e27c05f4afe58a0bdaee0dc42b32d8aadd316756101a581ea966",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/conversation-waiting.png",
+      "sha256": "351b33674407e730fd560bf1e96d701f53d7908036d476d4f0ae5b8eb2ff359d",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/markdown-coven-1280x900.png",
+      "sha256": "e54d07ff1890f843b1e3279f250ea0be9a67a2012e77fe9a1987a477b3fcfabc",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/markdown-coven-900x600.png",
+      "sha256": "7a3aaa49c2783decceb044d12b172143630d311be3bc2e077a2e1bc9507950ff",
+      "pixels": [
+        1800,
+        1200
+      ],
+      "cssViewport": [
+        900,
+        600
+      ]
+    },
+    {
+      "path": "screenshots/markdown-graphite-1280x900.png",
+      "sha256": "f5782026264a9bcf9044900bee42ff829eb386a2bcc395db5d09959f30a87670",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/markdown-graphite-900x600.png",
+      "sha256": "86d8e500cc5695c278e076ab502281f9960061aed381990c225fe0988d6aeec1",
+      "pixels": [
+        1800,
+        1200
+      ],
+      "cssViewport": [
+        900,
+        600
+      ]
+    },
+    {
+      "path": "screenshots/markdown-jev-1280x900.png",
+      "sha256": "4906bc34c89d1b582b769b6117a6441b9a8ebca6eb77f4d3438791cccfac2b17",
+      "pixels": [
+        2560,
+        1800
+      ],
+      "cssViewport": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "screenshots/markdown-jev-900x600.png",
+      "sha256": "aefb259172d724e01e051c379c5765c1078b32a36c4550ae61621134e70282f4",
+      "pixels": [
+        1800,
+        1200
+      ],
+      "cssViewport": [
+        900,
+        600
+      ]
+    },
+    {
+      "path": "screenshots/typed-turn-coven-900x600.png",
+      "sha256": "de7f7eb60ec5343fe3d3d6b3a9cb1e29b6382918d5175206580b1f248e1423a3",
+      "pixels": [
+        1800,
+        1200
+      ],
+      "cssViewport": [
+        900,
+        600
+      ]
+    },
+    {
+      "path": "screenshots/typed-turn-graphite-900x600.png",
+      "sha256": "c9318dbf0cfa0e2c5c36ba52928ddee3f396ddad5304fbbd3ad9b3e3351f651d",
+      "pixels": [
+        1800,
+        1200
+      ],
+      "cssViewport": [
+        900,
+        600
+      ]
+    },
+    {
+      "path": "screenshots/typed-turn-jev-900x600.png",
+      "sha256": "bb97f9f15f2f01da9521fe37f3cfe2ff6bc4352c0e059acead793b9dfc2ba53e",
+      "pixels": [
+        1800,
+        1200
+      ],
+      "cssViewport": [
+        900,
+        600
+      ]
+    }
+  ]
+}

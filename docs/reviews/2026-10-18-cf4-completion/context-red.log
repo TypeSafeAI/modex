@@ -1,0 +1,48 @@
+✔ tables, blockquotes, nested and task lists, emphasis and strikethrough render as their elements (5972.992625ms)
+✔ headings keep their place below the transcript's own titles, and a fence keeps its language and indentation (15.086959ms)
+✔ a fence that is still streaming shows its code so far, and the closing fence changes nothing before it (18.268625ms)
+✔ every prefix of a streamed reply renders, and no prefix loses or doubles its text (2290.897ms)
+✔ Unicode passes through untouched (1.067417ms)
+✔ raw HTML stays text: no element, attribute or handler reaches the page (2.95725ms)
+✔ only web links are links; other schemes stay as the text that was written (0.784291ms)
+✔ bare URLs link without the sentence's punctuation, and reference links resolve (2.306584ms)
+✔ images are never fetched: a web image becomes a link named by its alt text (0.72425ms)
+✔ a streaming reply splits at blank lines outside code fences, and the pieces join back to the text (3.25525ms)
+✔ rendering a reply piece by piece shows the same text as rendering it whole (19.858125ms)
+✔ the settled cache keeps recent renders, drops the oldest past its limit, and never holds very long text (6.516958ms)
+✔ a code block names its language and offers Copy (5.724292ms)
+✔ typed items stay with their explicit turn when another user message intervenes (848.173292ms)
+✖ streamed references and loose nested lists retain whole-document meaning (6.881917ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 14
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11013.084541
+
+✖ failing tests:
+
+test at apps/desktop/dist/test/markdown-render.test.js:163:1
+✖ streamed references and loose nested lists retain whole-document meaning (6.881917ms)
+  AssertionError [ERR_ASSERTION]: See [the spec][s].
+  
+  [s]: https://spec.commonmark.org/
+  
+  Tail
+  + actual - expected
+  
+  + '<p>See [the spec][s].</p><p>Tail</p>'
+  - '<p>See <a href="https://spec.commonmark.org/" target="_blank" rel="noreferrer" title="https://spec.commonmark.org/">the spec</a>.</p><p>Tail</p>'
+  
+      at TestContext.<anonymous> (file:///Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-completion/apps/desktop/dist/test/markdown-render.test.js:173:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '<p>See [the spec][s].</p><p>Tail</p>',
+    expected: '<p>See <a href="https://spec.commonmark.org/" target="_blank" rel="noreferrer" title="https://spec.commonmark.org/">the spec</a>.</p><p>Tail</p>',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

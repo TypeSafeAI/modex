@@ -1,0 +1,140 @@
+{
+  "fixture": "200 mixed Markdown messages; 24-character streaming deltas",
+  "messages": 200,
+  "transcriptBytes": 306290,
+  "streamedBytes": 7643,
+  "baseline": "74833f78b82b901208db807bdc6ade8e7a718efa",
+  "head": "cce0a4011e97bb2b1bdd9322100ce471945ee848",
+  "sourceSha256": "577f3992182f0e8936e6b063fd1f399f4a693e6b105f24afec3b985bb98c5bd5",
+  "node": "v24.18.1",
+  "platform": "darwin 25.6.0 arm64",
+  "cpu": "Apple M3 Max",
+  "load": [
+    40.20263671875,
+    50.7685546875,
+    75.091796875
+  ],
+  "scope": "Vite SSR parse/render only; excludes browser layout and IPC. Baseline contextual splitting is semantically incorrect, so that comparison records the cost of retaining document context.",
+  "samples": [
+    {
+      "trial": 0,
+      "label": "baseline",
+      "coldMs": 218.04700000000003,
+      "reopenMs": 26.673250000000053,
+      "streaming": {
+        "plain": {
+          "meanMs": 0.7735218290909031,
+          "maxMs": 3.3604159999999865,
+          "deltas": 275,
+          "bytes": 7643
+        },
+        "contextual": {
+          "meanMs": 0.42229804982205715,
+          "maxMs": 5.308499999999867,
+          "deltas": 281,
+          "bytes": 7772
+        }
+      }
+    },
+    {
+      "trial": 0,
+      "label": "current",
+      "coldMs": 250.05558300000007,
+      "reopenMs": 11.599290999999994,
+      "streaming": {
+        "plain": {
+          "meanMs": 0.564654083636356,
+          "maxMs": 4.443790999999919,
+          "deltas": 275,
+          "bytes": 7643
+        },
+        "contextual": {
+          "meanMs": 3.2757522241992887,
+          "maxMs": 83.9039580000001,
+          "deltas": 281,
+          "bytes": 7772
+        }
+      }
+    },
+    {
+      "trial": 1,
+      "label": "current",
+      "coldMs": 127.40383399999973,
+      "reopenMs": 7.72329099999979,
+      "streaming": {
+        "plain": {
+          "meanMs": 0.32886800000000055,
+          "maxMs": 1.9072909999999865,
+          "deltas": 275,
+          "bytes": 7643
+        },
+        "contextual": {
+          "meanMs": 2.3025414839857716,
+          "maxMs": 13.544415999999728,
+          "deltas": 281,
+          "bytes": 7772
+        }
+      }
+    },
+    {
+      "trial": 1,
+      "label": "baseline",
+      "coldMs": 133.78812500000004,
+      "reopenMs": 7.930417000000034,
+      "streaming": {
+        "plain": {
+          "meanMs": 0.36848198545455074,
+          "maxMs": 2.2767499999999927,
+          "deltas": 275,
+          "bytes": 7643
+        },
+        "contextual": {
+          "meanMs": 0.3068006939501776,
+          "maxMs": 2.404125000000022,
+          "deltas": 281,
+          "bytes": 7772
+        }
+      }
+    },
+    {
+      "trial": 2,
+      "label": "baseline",
+      "coldMs": 150.00512500000013,
+      "reopenMs": 22.503708000000188,
+      "streaming": {
+        "plain": {
+          "meanMs": 0.41574654545454076,
+          "maxMs": 1.8451250000007349,
+          "deltas": 275,
+          "bytes": 7643
+        },
+        "contextual": {
+          "meanMs": 0.25038180071173544,
+          "maxMs": 1.3443749999996726,
+          "deltas": 281,
+          "bytes": 7772
+        }
+      }
+    },
+    {
+      "trial": 2,
+      "label": "current",
+      "coldMs": 120.21979200000078,
+      "reopenMs": 7.342124999999214,
+      "streaming": {
+        "plain": {
+          "meanMs": 0.30281194909089126,
+          "maxMs": 2.0673329999999623,
+          "deltas": 275,
+          "bytes": 7643
+        },
+        "contextual": {
+          "meanMs": 1.623463836298939,
+          "maxMs": 5.535124999999425,
+          "deltas": 281,
+          "bytes": 7772
+        }
+      }
+    }
+  ]
+}

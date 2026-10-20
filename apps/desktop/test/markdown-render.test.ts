@@ -124,10 +124,10 @@ async function chunksOf(text: string): Promise<string[]> {
 }
 
 test("a streaming reply splits at blank lines outside code fences, and the pieces join back to the text", async () => {
-  const text = "Intro line\nstill intro\n\n```py\nfirst\n\nsecond\n```\n\n~~~\na\n\n~~~~\nclosed by a longer fence\n\n- item\n\nTail";
+  const text = "Intro line\nstill intro\n\n```py\nfirst\n\nsecond\n```\n\n~~~\na\n\n~~~~\nclosed by a longer fence\n\nItem\n\nTail";
   const chunks = await chunksOf(text);
   assert.equal(chunks.join(""), text);
-  assert.deepEqual(chunks, ["Intro line\nstill intro\n\n", "```py\nfirst\n\nsecond\n```\n\n", "~~~\na\n\n~~~~\nclosed by a longer fence\n\n", "- item\n\n", "Tail"]);
+  assert.deepEqual(chunks, ["Intro line\nstill intro\n\n", "```py\nfirst\n\nsecond\n```\n\n", "~~~\na\n\n~~~~\nclosed by a longer fence\n\n", "Item\n\n", "Tail"]);
   // An unclosed fence keeps everything after it in one piece, blank lines included.
   assert.deepEqual(await chunksOf("Before\n\n```js\nconst a = 1;\n\nconst b"), ["Before\n\n", "```js\nconst a = 1;\n\nconst b"]);
   assert.deepEqual(await chunksOf(""), []);
@@ -165,4 +165,39 @@ test("a code block names its language and offers Copy", async () => {
   const html = await render("```ts\nconst a = 1;\n```\n\n```\nplain\n```");
   assert.match(html, /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"><code>const a = 1;<\/code><\/pre>/);
   assert.match(html, /<span class="code-lang">text<\/span><button[^>]*aria-label="Copy code">Copy<\/button><\/div><pre class="code"><code>plain<\/code>/);
+});
+
+
+test("typed items stay with their explicit turn when another user message intervenes", async () => {
+  await render("");
+  const { groupTurns } = await server!.ssrLoadModule("/src/renderer/components/transcript/TurnContent.tsx");
+  const user = (id: string) => ({ id, kind: "user", text: id, at: "2026-10-18T00:00:00Z" });
+  const reply = (id: string, turn: string) => ({ id, kind: "assistant", text: id, phase: "commentary", outcome: "running", origin: { thread: "T", turn, attempt: "A", backend: "codex", native: { runtime: "R", item: id } } });
+  const turns = groupTurns([user("u1"), reply("a1", "u1"), user("u2"), reply("a2", "u2"), reply("late", "u1")]);
+  assert.deepEqual(turns.map((turn: { user?: { id: string }; rest: { id: string }[] }) => [turn.user?.id, turn.rest.map(item => item.id)]), [["u1", ["a1", "late"]], ["u2", ["a2"]]]);
+});
+
+test("streamed references and loose nested lists retain whole-document meaning", async () => {
+  for (const reply of [
+    "See [the spec][s].\n\n[s]: https://spec.commonmark.org/\n\nTail",
+    "- first paragraph\n\n  second paragraph\n\n  - nested child\n\nTail",
+    "-\n\n  continued item\n\nTail",
+    "- code example\n\n    ```ts\n    const first = 1;\n\n    const second = 2;\n    ```\n\nTail",
+  ]) {
+    const whole = await render(reply);
+    const contents = (html: string) => html.slice(16, -6);
+    const pieces = (await Promise.all((await chunksOf(reply)).map(render))).map(contents).join("");
+    // Compare visible code/text and structure, ignoring only the Markdown root wrappers.
+    assert.equal(pieces, contents(whole), reply);
+  }
+});
+
+test("reasoning rows label summaries while streaming and expose non-success outcomes", async () => {
+  await render("");
+  const { ReasoningItem } = await server!.ssrLoadModule("/src/renderer/components/transcript/ReasoningItem.tsx");
+  const item = { id: "r", kind: "thinking", text: "Public summary", reasoning: "summary", status: "running", outcome: "running", at: "2026-10-18T00:00:00Z" };
+  assert.match(renderToStaticMarkup(createElement(ReasoningItem, { item })), />Summary</);
+  for (const [outcome, label] of [["failed", "Failed"], ["denied", "Denied"], ["interrupted", "Stopped"], ["unknown", "Status unavailable"]]) {
+    assert.ok(visible(renderToStaticMarkup(createElement(ReasoningItem, { item: { ...item, outcome, status: "done" } }))).includes(label!), outcome);
+  }
 });

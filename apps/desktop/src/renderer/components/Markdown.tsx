@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, memo, useEffect, useState, type ReactNode } from "react";
 import type { Definition, ListItem, Nodes, Parents, PhrasingContent, RootContent, TableRow } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
@@ -23,15 +23,16 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
     return () => clearTimeout(timer);
   }, [text, settled]);
   if (text === settled) return <div className="md">{settledBlocks(text)}</div>;
-  return <div className="md">{streamingChunks(text).map((chunk, i) => <Blocks key={i} text={chunk} />)}</div>;
+  // Keep the same top-level React structure during streaming and settling. Wrapping chunks
+  // in component boundaries remounted every code block on the first delta and at settlement,
+  // dropping keyboard focus, selections and Copy state even when that block was unchanged.
+  const chunks = streamingChunks(text);
+  const nodes = chunks.flatMap((chunk, index) => index < chunks.length - 1 ? settledBlocks(chunk) : render(chunk));
+  return <div className="md">{nodes.map((node, key) => isValidElement(node) ? cloneElement(node, { key }) : node)}</div>;
 });
 
 /** How long text must stop changing before it is parsed whole again. */
 const STREAM_SETTLE_MS = 300;
-
-const Blocks = memo(function Blocks({ text }: { text: string }) {
-  return <>{render(text)}</>;
-});
 
 function render(text: string): ReactNode[] {
   const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
@@ -62,8 +63,8 @@ export class RenderCache {
 
 /**
  * Settled text, rendered once per app session: reopening a thread or switching back to one reuses
- * the elements instead of parsing every message again. Streaming pieces are never cached, nor is
- * very long text such as a fetched page.
+ * the elements instead of parsing every message again. Only completed streaming chunks are cached;
+ * the changing tail and very long text such as a fetched page are not kept.
  */
 const settledRenders = new RenderCache(400, 64_000);
 function settledBlocks(text: string): ReactNode[] {
@@ -72,10 +73,12 @@ function settledBlocks(text: string): ReactNode[] {
 
 /**
  * Splits text after each blank line that is outside a fenced code block, so a streaming reply
- * re-parses only its last piece. Joining the pieces gives the text back. A piece can read slightly
- * differently from the whole (a loose list shows as two lists) until the text settles.
+ * re-parses only its last piece. Joining the pieces gives the text back. Context-dependent
+ * documents stay whole so references and nested containers retain their meaning.
  */
 export function streamingChunks(text: string): string[] {
+  // These constructs reach across blank lines; retain their document context while streaming.
+  if (/^(?: {0,3}(?:>|[-+*]\s|\d+[.)]\s|\[[^\n]+\]:)| {4}|\t)/m.test(text)) return [text];
   const chunks: string[] = [];
   let start = 0;
   let fence: { char: string; length: number } | null = null;
