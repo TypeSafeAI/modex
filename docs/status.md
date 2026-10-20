@@ -181,6 +181,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
   back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
   characters of a result by default, so Claude output never needs it.
+- **An answer counts as delivered only once it reaches the CLI** (CF-3 #276, from #316). An answer
+  you give on the Mac or the phone reads "Sending" until the CLI's request is written. It reads
+  "Delivery uncertain" if Stop, a crash or a closed connection came first, and it is never resent.
+  Replays of a native request are ignored, and a request id reused for a different action is
+  withdrawn. [Human requests](human-requests.md).
 
 ## In flight
 
@@ -188,12 +193,6 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through
   its own update banner, and uploading Companion 0.2.0 (7) to TestFlight, which carries thread
   archiving from the phone. [Review](reviews/2026-10-18-v0.2.0-release-review.md).
-
-- **CF-3 human-request reconciliation (#276, #293).** Native question cards and one accepted
-  answer per request are under review. The repair separates local acceptance from the native
-  write receipt, keeps interrupted sends uncertain without retries, and preserves sensitive-answer
-  redaction. Fixture acceptance and live native acceptance remain separate gates.
-  [Human requests](human-requests.md).
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   Slices that landed are under "On main, unreleased". The tracker keeps the dependency order and
