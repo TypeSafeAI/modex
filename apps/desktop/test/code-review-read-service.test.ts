@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ghArgs, type GhAnswer, type GhCall } from "../src/main/engine/code-review/gh.js";
 import { CodeReviewService } from "../src/main/engine/code-review/read-service.js";
-import { acceptsReply, diffCoverage, scopeOf, summarizeChecks, type CodeReviewReply, type CodeReviewRequest, type PrKey, type PrRevision } from "../src/shared/code-review.js";
+import { acceptsReply, diffCoverage, mergePages, scopeOf, summarizeChecks, type CodeReviewReply, type CodeReviewRequest, type PrKey, type PrRevision, type PrSummary, type ReadResult } from "../src/shared/code-review.js";
 
 /**
  * CR-2 (#321): the main-owned read service over a synthetic GitHub. The world below is made up (two
@@ -769,4 +769,87 @@ test("AC2: a switch gh's hosts file doesn't show is caught once the identity TTL
   github.silently(KIT);
   tick(31_000);
   assert.equal(reason(await read({ op: "overview", key: keyOf(LENDING, 73) })), "signed-out");
+});
+
+test("AC2 (re-review A): a switch away and back within one read answers no data and keeps none", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  github.pulls.get("7301#74")!.title = "KIT PRIVATE: acquisition plan";
+  github.search.authored = { items: [{ repo: LENDING, number: 74 }] };
+  const release = github.hold(/^search\//);
+  const inbox = read({ op: "inbox", query: "" });
+  await until(() => github.inFlight >= 2);
+  github.user = KIT; // the search runs as Kit
+  github.user = ADA; // and gh is back on Ada before the check
+  release();
+  const reply = await inbox;
+  assert.equal(reason(reply), "failed");
+  assert.match(reply.result.state === "unavailable" ? reply.result.detail ?? "" : "", /sign-in changed/);
+  assert.ok(!JSON.stringify(reply).includes("KIT PRIVATE"));
+  github.cli = "offline";
+  tick(31_000);
+  assert.ok(!JSON.stringify(await read({ op: "inbox", query: "" })).includes("KIT PRIVATE"), "nothing from that read was kept");
+});
+
+test("AC2 (re-review B): a confirming check that fails never passes a read", async () => {
+  for (const stampless of [false, true]) {
+    const { github, read, prime } = setup();
+    github.stampless = stampless;
+    await prime();
+    github.pulls.get("7301#74")!.title = "KIT PRIVATE: acquisition plan";
+    github.search.authored = { items: [{ repo: LENDING, number: 74 }] };
+    const release = github.hold(/^search\//);
+    const inbox = read({ op: "inbox", query: "" });
+    await until(() => github.inFlight >= 2);
+    github.user = KIT;
+    github.overrides = [{ pattern: /^user$/, answer: { kind: "offline" } }];
+    release();
+    const reply = await inbox;
+    assert.ok(reply.result.state === "unavailable", `${stampless ? "no hosts file" : "hosts file"}: ${JSON.stringify(reply.result)}`);
+    assert.ok(!JSON.stringify(reply).includes("KIT PRIVATE"));
+    github.overrides = [];
+  }
+});
+
+test("AC3 (re-review C): once gh's login is seen to change, an offline read shows nothing the old account read", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  value(await read({ op: "overview", key: keyOf(LENDING, 73) }));
+  github.user = KIT;
+  github.cli = "offline";
+  tick(31_000);
+  assert.equal(reason(await read({ op: "overview", key: keyOf(LENDING, 73) })), "offline");
+  const inbox = await read({ op: "inbox", query: "" });
+  assert.equal(reason(inbox), "offline");
+});
+
+test("AC3 (re-review 5): inbox pages merge by key, and only distinct rows reaching the total make the list complete", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  // 31 PRs; one updated between the pages, so #129 repeats and #130 is never served.
+  const repo = LENDING;
+  for (let n = 100; n <= 130; n++) github.pulls.set(`7301#${n}`, pull(repo, n));
+  github.search.authored = { items: Array.from({ length: 30 }, (_, i) => ({ repo, number: 100 + i })) };
+  const first = (await read({ op: "inbox-page", group: "authored", query: "", cursor: "p1" })).result as ReadResult<PrSummary[]>;
+  github.search.authored = { total: 31, items: [...Array.from({ length: 30 }, (_, i) => ({ repo, number: 100 + i })), { repo, number: 129 }] };
+  const second = (await read({ op: "inbox-page", group: "authored", query: "", cursor: "p2" })).result as ReadResult<PrSummary[]>;
+  const merged = mergePages([first, second]);
+  assert.deepEqual([merged.rows.length, merged.total, merged.complete], [30, 31, false]);
+  assert.equal(new Set(merged.rows.map((row) => row.key.number)).size, 30);
+  github.search.authored = { items: [{ repo, number: 100 }] };
+  const single = (await read({ op: "inbox-page", group: "authored", query: "", cursor: "p1" })).result as ReadResult<PrSummary[]>;
+  assert.deepEqual([mergePages([single]).rows.length, mergePages([single]).complete], [1, true]);
+  assert.equal(mergePages([single, { state: "unavailable", reason: "offline", fetchedAt: "2026-10-20T12:00:00Z" }]).complete, false);
+});
+
+test("AC2: with no hosts file to watch, a failed read under an unnoticed switch shows none of the old account's kept answers", async () => {
+  const { github, read, prime } = setup();
+  github.stampless = true;
+  await prime();
+  value(await read({ op: "overview", key: keyOf(LENDING, 73) }));
+  github.user = KIT; // unseen: there is no hosts file to watch
+  github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "offline" } }];
+  const reply = await read({ op: "overview", key: keyOf(LENDING, 73) });
+  assert.equal(reason(reply), "signed-out", "the check before showing a kept answer finds Kit");
+  assert.ok(!JSON.stringify(reply).includes("Lend a hold"));
 });

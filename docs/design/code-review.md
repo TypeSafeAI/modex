@@ -224,16 +224,21 @@ all rewrite gh's `hosts.yml`, so main fingerprints that file (inode, size, modif
 the account again when the fingerprint changes or the last check is 30 s old, conditionally, so an
 unchanged account costs a free `304`.
 
-- **After every read, before it replies,** main confirms the account. An unchanged fingerprint confirms
-  it for free. Where the file can't be read (`GH_CONFIG_DIR`, `XDG_CONFIG_HOME` and `%AppData%` are
-  honoured), main asks `gh api user` again.
+- **After every read, before it replies or keeps anything,** main confirms the account:
+  - The fingerprint unchanged since the read began confirms it, for free.
+  - A fingerprint that changed during the read refuses the answer (`failed`, "sign-in changed"), even if
+    gh is back on the same account. Part of the read may have run as another one.
+  - Where the file can't be read (`GH_CONFIG_DIR`, `XDG_CONFIG_HOME` and `%AppData%` are honoured), main
+    asks `gh api user` again. A check that fails, fails the read. This mode can't see a switch away and
+    back within one read.
 - **A key for another account** answers `signed-out` without a request.
 - **When the account changes or goes away,** main bumps a generation, aborts every read already running,
   and drops its caches, names, kept answers and rate-limit state. A read that finishes under an older
   generation answers `signed-out`, never its data. The read that noticed the change goes on under the
   new account and is stamped with it.
 - **When gh can't say who is signed in** (offline, slow, rate-limited), main answers from the last
-  account it confirmed: kept answers come back `stale`, scoped to that account.
+  account it confirmed: kept answers come back `stale`, scoped to that account. Once the fingerprint
+  shows the login changed, it does not.
 - **A second request under an id still in flight** is rejected.
 
 A repository id is GitHub's numeric REST id. Main learns names from its own reads only: `resolve`, the
@@ -282,8 +287,9 @@ non-UTF-8 content answers `failed`.
 
 - A files page that stops short of the PR's own file count is `partial`.
 - Search pages are offsets, and a row updated between pages can shift to another, so only a single
-  page can prove the whole inbox arrived. A later page never says `complete`; the renderer dedupes by
-  key and compares the distinct rows with `total`.
+  page can prove the whole inbox arrived. A later page never says `complete`. The contract's
+  `mergePages` joins a group's pages, deduplicated by key, and calls the list complete only when every
+  page was read in full and the distinct rows reach `total`.
 - A `200` that gh could not finish reading (it printed the status, then exited non-zero) is `failed`,
   never a short file.
 

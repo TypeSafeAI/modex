@@ -58,6 +58,7 @@ const DETAIL = {
   page: "That page is past what GitHub serves.",
   unknownRevision: "That revision isn't one this pull request has had.",
   headChanged: "The pull request has a newer head. Read it again to see the current changes.",
+  signInChanged: "GitHub CLI's sign-in changed while this was read. Read it again.",
   tooLarge: "The answer is too large to show.",
   binary: "This file isn't text.",
   notFile: "That path isn't a file at this revision.",
@@ -131,7 +132,8 @@ class Slots {
   }
 }
 
-interface Context { account: string; generation: number; signal: AbortSignal }
+/** `stamp`: gh's login state the account was confirmed under when the read began. */
+interface Context { account: string; generation: number; stamp: string | null; signal: AbortSignal }
 interface Fetched { body: Buffer; headers: Record<string, string> }
 
 const enc = encodeURIComponent;
@@ -200,31 +202,49 @@ export class CodeReviewService {
       account = await this.who(false);
     } catch (error) {
       const failure = this.failure(error);
-      // Offline, slow or limited while checking the account: the last known one still names what may be shown as stale.
+      // Offline, slow or limited while checking the account: the last known one still names what may be shown
+      // as stale, unless gh's login is seen to have changed since it was confirmed.
       const known = this.identity?.account;
-      if (known && TRANSIENT.has(failure.reason) && this.enabled) {
+      if (known && TRANSIENT.has(failure.reason) && this.enabled && this.stamp() === this.identity!.stamp) {
         if ("key" in request && request.key.account !== known.id) return this.reply(request, known.id, this.unavailable(new ReadFailure("signed-out", DETAIL.otherAccount)));
         return this.reply(request, known.id, this.fallback(request, known.id, failure));
       }
       return this.reply(request, null, this.unavailable(failure));
     }
     if ("key" in request && request.key.account !== account.id) return this.reply(request, account.id, this.unavailable(new ReadFailure("signed-out", DETAIL.otherAccount)));
-    const context: Context = { account: account.id, generation: this.generation, signal: entry.controller.signal };
+    const context: Context = { account: account.id, generation: this.generation, stamp: this.identity!.stamp, signal: entry.controller.signal };
     entry.generation = context.generation;
-    const gone = () => this.reply(request, account.id, this.unavailable(new ReadFailure("signed-out", this.identity ? DETAIL.otherAccount : DETAIL.signedOut)));
     try {
       const result = await this.run(context, request);
       // Made as the account it is stamped with? gh can switch under a read that is already running.
-      if (!(await this.confirm(context))) return gone();
-      if ((result.state === "ready" || result.state === "partial") && request.op !== "inbox") {
-        this.kept.set(keptKey(request), { value: result.value, fetchedAt: result.fetchedAt, ...(result.coverage ? { coverage: result.coverage } : {}) });
-      }
+      const doubt = await this.confirm(context);
+      if (doubt) return this.reply(request, account.id, this.unavailable(doubt));
+      this.keep(request, result);
       return this.reply(request, account.id, result);
     } catch (error) {
-      if (context.generation !== this.generation) return gone();
+      if (context.generation !== this.generation) return this.reply(request, account.id, this.unavailable(this.gone()));
       const result = this.fallback(request, account.id, this.failure(error));
-      if (result.state === "stale" && !(await this.confirm(context))) return gone();
+      if (result.state === "stale") {
+        const doubt = await this.confirm(context);
+        if (doubt) return this.reply(request, account.id, this.unavailable(doubt));
+      }
       return this.reply(request, account.id, result);
+    }
+  }
+
+  private gone(): ReadFailure {
+    return new ReadFailure("signed-out", this.identity ? DETAIL.otherAccount : DETAIL.signedOut);
+  }
+
+  /** Kept only once confirmed: the last good answer of a read, and an inbox's groups, for `stale` later. */
+  private keep(request: Exclude<Read, { op: "connection" }>, result: ReadResult<unknown>): void {
+    const store = (key: string, value: ReadResult<unknown>) => {
+      if (value.state === "ready" || value.state === "partial") this.kept.set(key, { value: value.value, fetchedAt: value.fetchedAt, ...(value.coverage ? { coverage: value.coverage } : {}) });
+    };
+    if (request.op !== "inbox") return store(keptKey(request), result);
+    if (result.state !== "ready") return;
+    for (const [group, value] of Object.entries((result.value as Inbox).groups)) {
+      store(keptKey({ op: "inbox-page", requestId: "", group: group as InboxGroup, query: request.query, cursor: "p1" }), value);
     }
   }
 
@@ -245,19 +265,29 @@ export class CodeReviewService {
   }
 
   /**
-   * Whether gh is still signed in to the account a read ran under. An unchanged hosts file says so for
-   * free; without one to watch, main asks gh, which answers an unchanged account with a free 304.
+   * Null when the read was made as the account it is stamped with; otherwise why its answer can't be given.
+   *
+   * - gh's hosts file unchanged since the read began: confirmed, for free.
+   * - It changed during the read: part of the read may have run as another account, even if gh is back on
+   *   this one now. The answer is refused (and the account checked again for the next read).
+   * - No hosts file to watch: main asks gh, which answers an unchanged account with a free 304. A check
+   *   that fails proves nothing, so it fails the read. A switch away and back within one read can't be
+   *   seen this way.
    */
-  private async confirm(context: Context): Promise<boolean> {
-    if (context.generation !== this.generation) return false;
+  private async confirm(context: Context): Promise<ReadFailure | null> {
+    if (context.generation !== this.generation) return this.gone();
     const stamp = this.stamp();
-    if (stamp !== null && this.identity && stamp === this.identity.stamp) return true;
+    if (stamp !== null && stamp === context.stamp) return null;
+    if (stamp !== null && context.stamp !== null) {
+      await this.who(true).catch(() => undefined);
+      return context.generation !== this.generation ? this.gone() : new ReadFailure("failed", DETAIL.signInChanged);
+    }
     try {
       await this.who(true);
-    } catch {
-      // A failed check proves nothing; the generation still says whether the account changed.
+    } catch (error) {
+      return context.generation !== this.generation ? this.gone() : this.failure(error);
     }
-    return context.generation === this.generation && this.identity?.account.id === context.account;
+    return context.generation === this.generation && this.identity?.account.id === context.account ? null : this.gone();
   }
 
   private run(context: Context, request: Exclude<Read, { op: "connection" }>): Promise<ReadResult<unknown>> {
@@ -539,9 +569,7 @@ export class CodeReviewService {
     const groups = await Promise.all((["authored", "review-requested"] as const).map(async (group) => {
       const request = { op: "inbox-page" as const, requestId: "", group, query, cursor: "p1" };
       try {
-        const result = await this.group(context, group, query, 1);
-        if (context.generation === this.generation) this.kept.set(keptKey(request), { value: result.value, fetchedAt: result.fetchedAt, ...(result.coverage ? { coverage: result.coverage } : {}) });
-        return result;
+        return await this.group(context, group, query, 1);
       } catch (error) {
         const failure = this.failure(error);
         const kept = KEEPS.has(failure.reason) && !failure.cancelled ? this.kept.get(keptKey(request)) : undefined;

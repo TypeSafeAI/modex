@@ -114,7 +114,8 @@ export function ghHostsStamp(): string | null {
     : process.platform === "win32" && process.env.AppData ? path.join(process.env.AppData, "GitHub CLI") : path.join(os.homedir(), ".config", "gh"));
   try {
     const stat = fs.statSync(path.join(dir, "hosts.yml"));
-    return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+    // The change time too: a same-size rewrite within one modification-time tick still moves it.
+    return `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : null;
   }
