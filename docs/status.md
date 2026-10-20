@@ -61,6 +61,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
+  finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
+  did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
+  test, build, typecheck or lint command counts, never the model's word or an unrelated command. The
+  saved note lists the checks and marks stale ones. [Verification](task-context.md#verification).
 - **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
   smoke). Codex keeps a long command running in a background terminal after its turn is
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a

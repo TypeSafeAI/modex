@@ -943,3 +943,8 @@ button.turn-label:hover { color: var(--text-2); }
 .turn-content :is(.approval, .failure) { width: 100%; }
 
 .sheet:is([data-surface="images"], [data-surface="plugins"], [data-surface="routines"]) > :is(.sidebar, .main, .workspace) { display: none; }
+/* A finished turn's verification (docs/task-context.md#verification), above Save to Notes. */
+.task-verification { margin: -6px 0 4px; font-size: var(--text-xs); color: var(--text-3); }
+.task-verification code { font-size: inherit; color: var(--text-2); }
+.task-verification[data-state="verified"] code { color: var(--text-1); }
+.task-verification[data-state="failed"] { color: var(--danger); }
