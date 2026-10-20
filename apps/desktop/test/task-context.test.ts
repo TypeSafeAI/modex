@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONVERSATION_SCHEMA, projectConversation, type ConversationEvent, type Observation, type AttemptMark, type TurnRef } from "../src/shared/conversation-events.js";
-import { taskRecord, taskMarkdown } from "../src/shared/task-context.js";
+import { displayCommand, isCheckCommand, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { ThreadItem } from "../src/shared/types.js";
@@ -192,4 +192,80 @@ test("Save task to Notes writes the turn's record into its project's notes; savi
   assert.match(store.space.list().find((p) => p.id === first.pageId)!.markdown, /My own notes\./, "the edited note is untouched");
   assert.throws(() => runner.saveTaskNote(thread.id, "no-such-turn"), /no longer in this thread/);
   await runner.dispose();
+});
+
+// Verification (CF-7 #280): a check's observed result, tied to the turn's latest change.
+let seqId = 0;
+const at = (n: number) => new Date(Date.UTC(2026, 9, 20, 9, 0, n)).toISOString();
+const run = (command: string, outcome: "succeeded" | "failed" | "denied" | "interrupted" | "unknown", exitCode?: number | null): ThreadItem =>
+  ({ id: `t${++seqId}`, kind: "tool", name: "shell", title: `$ ${command}`, args: { command }, status: "done", outcome, ok: outcome === "succeeded", exec: { command }, ...(exitCode !== undefined ? { exitCode } : {}), at: at(seqId) }) as ThreadItem;
+const edit = (file: string, outcome: "succeeded" | "denied" | "failed" = "succeeded"): ThreadItem =>
+  ({ id: `t${++seqId}`, kind: "tool", name: "apply_patch", title: `edit ${file}`, args: {}, status: "done", outcome, ok: outcome === "succeeded", at: at(seqId) }) as ThreadItem;
+const user: ThreadItem = { id: "U", kind: "user", text: "Fix the import", at: at(0) } as ThreadItem;
+
+test("a check is a known test, build, typecheck or lint command, unwrapped from its shell; nothing else is", () => {
+  for (const command of ["pnpm test", "pnpm --filter @modex/desktop test", "pnpm test:e2e", "npm run build", "yarn lint", "bun run typecheck", "node --test dist/test",
+    "npx tsc --noEmit", "pnpm exec playwright test e2e/a.spec.ts", "pytest -q", "python3 -m pytest tests", "cargo test", "cargo clippy", "go test ./...", "swift test",
+    "make test", "/bin/zsh -lc 'pnpm test'", "bash -c \"cd pkg && npm test\"", "pnpm build && pnpm test"]) {
+    assert.equal(isCheckCommand(command), true, command);
+  }
+  for (const command of ["echo ok", "ls -la", "git status --short", "grep -q 'hello, live' greeting.txt", "cat package.json", "npm install", "pnpm add left-pad",
+    "node scripts/build-site.js", "pnpm dev", "make", "/bin/zsh -c \"grep -q 'x' f\"", "echo 'pnpm test'"]) {
+    assert.equal(isCheckCommand(command), false, command);
+  }
+});
+
+test("a turn is verified only when every check after its last change passed", () => {
+  assert.deepEqual(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0)]).state, "verified");
+  const v = verification([user, edit("a.ts"), run("pnpm test", "succeeded")]);
+  assert.equal(v.state, "verified", "Claude Code reports no exit code; a command that failed comes through as failed");
+  assert.deepEqual(v.checks.map((c) => [c.command, c.passed, c.stale]), [["pnpm test", true, false]]);
+});
+
+test("model prose and an unrelated exit-zero command do not verify anything", () => {
+  const items = [user, edit("a.ts"), run("echo ok", "succeeded", 0), { id: "A", kind: "assistant", text: "All tests pass.", phase: "final", outcome: "succeeded", at: at(99) } as ThreadItem];
+  assert.deepEqual(verification(items), { state: "none", checks: [], edits: 1 });
+});
+
+test("a failed, denied, stopped or unreported check does not verify; a nonzero exit is a failure", () => {
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "failed", 1)]).state, "failed");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "denied", null)]).state, "failed");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 2)]).state, "failed", "the exit code wins over a success label");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "interrupted")]).state, "unknown");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "unknown")]).state, "unknown");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", null)]).state, "unknown", "the CLI said there is no exit code");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0), run("pnpm lint", "failed", 1)]).state, "failed", "every check after the change must pass");
+});
+
+test("a later edit, or a later command that might write, makes earlier checks stale; a denied edit and read-only commands do not", () => {
+  assert.equal(verification([user, run("pnpm test", "succeeded", 0), edit("a.ts")]).state, "stale");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0), run("npm install", "succeeded", 0)]).state, "stale", "Modex cannot see what an unknown command wrote");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0), edit("b.ts", "denied")]).state, "verified");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0), run("git status --short", "succeeded", 0), run("cat a.ts", "succeeded", 0)]).state, "verified");
+  assert.equal(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0), run("echo done > log.txt", "succeeded", 0)]).state, "stale", "a redirect writes");
+  // The usual repair loop: a failing check, a fix, then a passing check. The failure is stale; the pass verifies.
+  const repaired = verification([user, edit("a.ts"), run("pnpm test", "failed", 1), edit("a.ts"), run("pnpm test", "succeeded", 0)]);
+  assert.equal(repaired.state, "verified");
+  assert.deepEqual(repaired.checks.map((c) => [c.passed, c.stale]), [[false, true], [true, false]]);
+});
+
+test("the note says what verified the turn, marks stale checks, and lists anything short of verified as not settled", () => {
+  const verified = taskMarkdown(taskRecord([user, edit("a.ts"), run("pnpm test", "failed", 1), edit("a.ts"), run("pnpm test", "succeeded", 0)], { threadId: "T", title: "Fix the import", cwd: "/repo" }));
+  assert.match(verified, /## Verification\n\nVerified: every check after the turn's last change passed\.\n\n- `pnpm test` — failed, exit code 1 \(ran before a later change\)\n- `pnpm test` — succeeded, exit code 0\n/);
+  assert.doesNotMatch(verified, /Not verified/);
+  const stale = taskMarkdown(taskRecord([user, run("pnpm test", "succeeded", 0), edit("a.ts")], { threadId: "T", title: "Fix", cwd: "/repo" }));
+  assert.match(stale, /Not verified: every check ran before a later change\./);
+  assert.match(stale, /## Not settled\n\n- Not verified: every check ran before a later change\./);
+  const none = taskMarkdown(taskRecord([user, edit("a.ts")], { threadId: "T", title: "Fix", cwd: "/repo" }));
+  assert.match(none, /## Not settled\n\n- Not verified: no check ran after the turn's changes\./);
+  const chat = taskMarkdown(taskRecord([user, { id: "A", kind: "assistant", text: "It is in config.ts.", phase: "final", outcome: "succeeded", at: at(99) } as ThreadItem], { threadId: "T", title: "Where", cwd: "/repo" }));
+  assert.doesNotMatch(chat, /Verification|Not verified/, "a turn that changed nothing and ran no check has nothing to verify");
+});
+
+test("a check is shown as the script its shell ran; the exact command stays the record", () => {
+  assert.equal(displayCommand("/bin/zsh -lc 'pnpm test'"), "pnpm test");
+  assert.equal(displayCommand("bash -c \"cd pkg && npm test\""), "cd pkg && npm test");
+  assert.equal(displayCommand("pnpm test"), "pnpm test");
+  assert.equal(displayCommand("/bin/zsh -lc 'pnpm test' && echo done"), "/bin/zsh -lc 'pnpm test' && echo done", "only a whole-command wrapper is unwrapped");
+  assert.equal(verification([user, edit("a.ts"), edit("b.ts", "denied")]).edits, 1, "a denied edit changed nothing");
 });
