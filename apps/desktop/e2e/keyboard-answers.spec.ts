@@ -72,3 +72,15 @@ test("a turn that finishes while the reader is in the composer leaves focus ther
   await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   await expect(tid(page, "composer-input")).toBeFocused();
 });
+
+test("Stop from the keyboard hands focus to the composer once the turn ends", async () => {
+  await page.keyboard.press("Meta+n");
+  await page.keyboard.type("Write keyboard.txt, then stop");
+  await page.keyboard.press("Meta+Enter");
+  await expect(currentRow(page)).toHaveAttribute("data-status", /running|waiting/);
+  await tid(page, "stop").focus();
+  await page.keyboard.press("Enter");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+  await expect(tid(page, "stop")).toHaveCount(0);
+  await expect(tid(page, "composer-input")).toBeFocused();
+});

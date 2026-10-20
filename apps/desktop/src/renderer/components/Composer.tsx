@@ -1,5 +1,5 @@
 import { SecretTextarea } from "../streamer";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ApprovalPolicy, BackendId, FollowUp, Mode, ModelInfo } from "../../shared/types";
 import { APPROVAL_POLICIES, BACKENDS, MODES } from "../../shared/types";
 import type { AttachmentActions } from "../composer-attachments";
@@ -82,6 +82,15 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
     el.style.height = "0px";
     el.style.height = `${Math.min(MAX_INPUT, Math.max(MIN_INPUT, el.scrollHeight))}px`;
   }, [text]);
+
+  // Stop goes away when the turn ends. Pressed from the keyboard, it hands focus to the message box
+  // instead of the page body.
+  const stopFocused = useRef(false);
+  useLayoutEffect(() => {
+    if (busy || !stopFocused.current) return;
+    stopFocused.current = false;
+    ta.current?.focus({ preventScroll: true });
+  }, [busy]);
 
   const canSend = Boolean(text.trim() || attachments.length);
   const submit = () => {
@@ -194,7 +203,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
             <span className="spacer" />
             <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} openRequest={openModelPickerRequest} onModel={onModel} onEffort={onEffort} />
             {busy ? (
-              <IconButton icon="stop" label="Stop" shortcut="⌘." className="send-btn stop" data-testid="stop" tooltipSide="top" onClick={onStop} />
+              <IconButton icon="stop" label="Stop" shortcut="⌘." className="send-btn stop" data-testid="stop" tooltipSide="top" onClick={(e) => { stopFocused.current = document.activeElement === e.currentTarget; onStop(); }} />
             ) : (
               <IconButton icon="arrow-up" label="Send" shortcut="⌘⏎" className="send-btn" data-testid="send" tooltipSide="top" onClick={submit} disabled={!canSend || copying || sending} />
             )}
