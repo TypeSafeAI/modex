@@ -104,3 +104,73 @@ test("Jump to latest from the keyboard hands focus to the message box at the bot
   await expect(tid(page, "jump-latest")).toHaveCount(0);
   await expect(tid(page, "composer-input")).toBeFocused();
 });
+
+/** Enough finished turns for the transcript to scroll, whatever ran before (a failed test restarts the app). */
+async function ensureScrollable() {
+  for (let turn = 0; turn < 4 && !(await tid(page, "transcript").evaluate((el) => el.scrollHeight > el.clientHeight + 300).catch(() => false)); turn++) {
+    if (!(await tid(page, "composer-input").count())) await page.keyboard.press("Meta+n");
+    await tid(page, "composer-input").focus();
+    await page.keyboard.type(`Turn ${turn} for scrolling`);
+    await page.keyboard.press("Meta+Enter");
+    await items(page, "approval").last().getByRole("button", { name: "Approve", exact: true }).click();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+  }
+}
+
+/** Page Up until Jump to latest shows, then let the keyboard scroll finish, so a test controls what happens next. */
+async function scrollUpAndSettle() {
+  await ensureScrollable();
+  await tid(page, "turn-label").last().focus();
+  await expect(async () => {
+    await page.keyboard.press("PageUp");
+    await expect(tid(page, "jump-latest")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
+  await expect.poll(async () => {
+    const a = await tid(page, "transcript").evaluate((el) => el.scrollTop);
+    await page.waitForTimeout(100);
+    return a === await tid(page, "transcript").evaluate((el) => el.scrollTop);
+  }).toBe(true);
+}
+const gap = () => tid(page, "transcript").evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+
+test("after Jump to latest, the transcript stays at the bottom when the composer grows before the scroll event", async () => {
+  // A follow-up chip can appear in the composer right after the jump (#347). The jump's scroll event then
+  // measured a shorter view and decided the reader had left the bottom, so the button stayed.
+  await scrollUpAndSettle();
+  await tid(page, "jump-latest").focus();
+  // The jump and the growth in one task, so the growth lands before the jump's scroll event is delivered.
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement).click();
+    (document.querySelector('[data-testid="composer"]') as HTMLElement).style.paddingTop = "120px";
+  });
+  await page.waitForTimeout(500);
+  await expect(tid(page, "jump-latest")).toHaveCount(0);
+  expect(await gap()).toBeLessThanOrEqual(2);
+  await expect(tid(page, "composer-input")).toBeFocused();
+  await tid(page, "composer").evaluate((el) => { (el as HTMLElement).style.paddingTop = ""; });
+});
+
+test("a Page Up still animating when Jump to latest is pressed does not carry the view back up", async () => {
+  // The keyboard scroll keeps applying its remaining distance after the page sets a new position; on a
+  // slow runner the reader's Enter on Jump to latest lands mid-animation (#347).
+  await ensureScrollable();
+  await tid(page, "transcript").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await expect(tid(page, "jump-latest")).toHaveCount(0);
+  await tid(page, "turn-label").last().focus();
+  await page.keyboard.press("PageUp");
+  await expect(tid(page, "jump-latest")).toBeVisible();
+  await page.evaluate(() => (document.querySelector('[data-testid="jump-latest"]') as HTMLElement).click());
+  await page.waitForTimeout(600);
+  expect(await gap()).toBeLessThanOrEqual(2);
+  await expect(tid(page, "jump-latest")).toHaveCount(0);
+});
+
+test("after Jump to latest, the reader scrolling up again is followed at once", async () => {
+  await scrollUpAndSettle();
+  await page.evaluate(() => (document.querySelector('[data-testid="jump-latest"]') as HTMLElement).click());
+  await expect(tid(page, "jump-latest")).toHaveCount(0);
+  await tid(page, "transcript").hover();
+  await page.mouse.wheel(0, -400);
+  await expect(tid(page, "jump-latest")).toBeVisible();
+  expect(await gap()).toBeGreaterThan(2);
+});
