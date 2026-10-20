@@ -12,7 +12,7 @@ import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
-import { boundOutput, byteLength, memoryEvidence } from "../../../shared/evidence.js";
+import { boundOutput, byteLength, codexWebSearch, memoryEvidence } from "../../../shared/evidence.js";
 import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
 /**
@@ -454,7 +454,8 @@ export class CodexBackend implements Backend {
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
-              const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
+              // 0.163.0 starts a web search with an empty query; the completed item carries it.
+              const label = item.type === "webSearch" ? (item.query ? `search ${item.query}` : "search the web") : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: item.type, title: label, args: (item.arguments as Record<string, unknown>) ?? {} } });
             }
             break;
@@ -496,10 +497,13 @@ export class CodexBackend implements Backend {
               sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}), ...(evidence.length ? { evidence } : {}) });
             } else if (tools.has(item.id)) {
               const t = tools.get(item.id)!;
-              const output = item.type === "commandExecution" ? (item.aggregatedOutput ?? t.output) : item.type === "fileChange" ? (item.changes ?? []).map((c) => `${c.kind?.type ?? "update"} ${c.path}\n${c.diff}`).join("\n") : JSON.stringify(item.result ?? item.error ?? "", null, 2);
+              // A web search's results arrive structured; they are shown as links, not as a JSON string.
+              const search = item.type === "webSearch" ? codexWebSearch(item as unknown as Record<string, unknown>) : null;
+              const output = item.type === "commandExecution" ? (item.aggregatedOutput ?? t.output) : item.type === "fileChange" ? (item.changes ?? []).map((c) => `${c.kind?.type ?? "update"} ${c.path}\n${c.diff}`).join("\n") : item.type === "webSearch" ? "" : JSON.stringify(item.result ?? item.error ?? "", null, 2);
               const total = Math.max(t.bytes, byteLength(output));
               const shown = boundOutput(output).text;
               sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: {
+                ...(search ? { search, ...(search.query ? { title: `search ${search.query}` } : {}) } : {}),
                 ...(shown ? { output: shown } : {}), ...(total > byteLength(shown) ? { outputBytes: total, outputTruncated: true } : {}),
                 ...(item.type === "commandExecution" && "exitCode" in item ? { exitCode: item.exitCode ?? null } : {}),
                 durationMs: item.durationMs ?? Date.now() - t.started,

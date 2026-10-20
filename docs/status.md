@@ -60,6 +60,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
+  "search *query*" with how many results there were, instead of "search " while the query had not
+  arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as
+  unchecked. Results without an http(s) link are counted, not shown. The shape comes from a live
+  codex-cli 0.163.0 capture. [Evidence guide](conversation-evidence.md).
 - **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
   smoke). Codex keeps a long command running in a background terminal after its turn is
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
@@ -145,9 +150,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     plans is answered on its card, and the turn's record and Save to Notes list it with its answer,
     a secret hidden. One nobody answered reads "not answered" with why, and is never filled in.
   - **Still open:** live Codex question capture (CF-3 #276), the remaining Markdown checks (CF-4
-    #277), structured web-search results (CF-5 #278), the remaining replay findings (CF-6 #279),
-    verified steps and the read-only task view (CF-7 #280), and live-provider acceptance with human
-    keyboard and VoiceOver checks (CF-8 #281).
+    #277), the remaining replay findings (CF-6 #279), verified steps and the read-only task view
+    (CF-7 #280), and live-provider acceptance with human keyboard and VoiceOver checks (CF-8 #281).
 
 - **Updates install over the air on macOS** (#317). A check that finds a newer release downloads and
   verifies it in the background; nobody has to click Download. The banner then offers Restart to

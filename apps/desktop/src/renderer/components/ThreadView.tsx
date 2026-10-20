@@ -20,7 +20,7 @@ import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
 import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
-import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes } from "../../shared/evidence";
+import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes, type NativeWebSearch } from "../../shared/evidence";
 import { ToolLog } from "./transcript/ToolLog";
 import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
 
@@ -478,11 +478,15 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   // Claude Code calls them WebSearch and WebFetch; Codex reports a `webSearch` item.
   const web = item.name === "WebSearch" || item.name === "webSearch" ? "search" : item.name === "WebFetch" ? "fetch" : null;
   const search = useMemo(() => (web === "search" && item.output && item.ok !== false ? parseWebSearch(item.output) : null), [web, item.output, item.ok]);
+  // Codex reports a search's results structured (CF-5); one stored before that kept the JSON string "" as output.
+  const native = web === "search" ? item.search : undefined;
+  const output = web === "search" && item.output === '""' ? undefined : item.output;
+  const count = native ? native.results.filter((r) => safeHref(r.url)).length : search?.links.length;
   const page = web === "fetch" && typeof item.args.url === "string" ? safeHref(item.args.url) : null;
   const icon = web === "search" ? <Icon name="search" size={13} /> : web === "fetch" ? <Icon name="globe" size={13} /> : item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
   const summary = toolSummary(item);
   const status = toolStatusLabel(item);
-  const outcome = search ? `${search.links.length} ${search.links.length === 1 ? "result" : "results"}` : status.toLowerCase();
+  const outcome = count !== undefined ? `${count} ${count === 1 ? "result" : "results"}` : status.toLowerCase();
   return (
     <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
       <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`} title={summary}>
@@ -504,8 +508,8 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
           {item.outputTruncated && item.outputBytes != null && <div className="tool-truncated" data-testid="tool-truncated">Showing the last {formatBytes(OUTPUT_PREVIEW_BYTES)} of {formatBytes(item.outputBytes)}.</div>}
           {item.outputTruncated && <ToolLog item={item} />}
           {page && <a className="tool-link" data-testid="tool-link" href={page} target="_blank" rel="noreferrer">{page}</a>}
-          {search ? <SearchResults search={search} />
-            : item.output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={item.output} /></div> : <pre className="output" data-testid="tool-output">{item.output}</pre>)
+          {native ? <NativeSearchResults search={native} /> : search ? <SearchResults search={search} />
+            : output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={output} /></div> : <pre className="output" data-testid="tool-output">{output}</pre>)
             : item.status === "running" ? <pre className="output dim">running…</pre> : null}
           {item.name !== "apply_patch" && Object.keys(item.args).length > 0 && <details className="tool-arguments">
             <summary>Arguments</summary>
@@ -534,6 +538,38 @@ function SearchResults({ search }: { search: WebSearch }) {
         </ol>
       )}
       {search.summary && <div className="search-summary" data-testid="search-summary"><Markdown text={search.summary} /></div>}
+    </div>
+  );
+}
+
+/**
+ * A web search as Codex reported it: the page it opened, if any, and its results as links with their
+ * snippets. Labelled as unchecked: a result is what the search returned, not proof of the reply.
+ * Showing it fetches nothing; a link opens in the browser only when clicked.
+ */
+function NativeSearchResults({ search }: { search: NativeWebSearch }) {
+  // Main kept only http(s) links; a stored thread is checked again before anything becomes a link.
+  const action = search.action && search.action.kind !== "search" ? search.action : undefined;
+  const page = action && safeHref(action.url) ? action : undefined;
+  const results = search.results.flatMap((r) => { const url = safeHref(r.url); return url ? [{ ...r, url }] : []; });
+  return (
+    <div className="search" data-testid="search-results" data-provenance="codex-search">
+      <div className="search-label" data-testid="search-label">{results.length ? "Results Codex reported. Modex has not checked them." : "What Codex reported. Modex has not checked it."}</div>
+      {page && <a className="tool-link" data-testid="search-page" href={page.url} target="_blank" rel="noreferrer">{page.kind === "findInPage" ? `Searched ${page.url}${page.pattern ? ` for “${page.pattern}”` : ""}` : `Opened ${page.url}`}</a>}
+      {results.length > 0 && (
+        <ol className="search-links">
+          {results.map((r, i) => (
+            <li key={`${i}:${r.url}`}>
+              <a className="search-link" data-testid="search-result" href={r.url} target="_blank" rel="noreferrer" title={r.url}>
+                <span className="source-title">{r.title}</span>
+                <span className="source-domain">{r.domain}</span>
+              </a>
+              {r.snippet && <p className="search-snippet" data-testid="search-snippet">{r.snippet}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
+      {search.dropped ? <div className="search-dropped" data-testid="search-dropped">{search.dropped} more {search.dropped === 1 ? "result had" : "results had"} no web link and {search.dropped === 1 ? "is" : "are"} not shown.</div> : null}
     </div>
   );
 }
