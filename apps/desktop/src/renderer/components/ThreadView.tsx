@@ -19,7 +19,7 @@ import { readerStateFor, ReaderStateContext, useExpansionState } from "./transcr
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
-import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
+import { SaveTaskNote, TaskPlanCard, TaskVerificationLine } from "./transcript/TaskPlanCard";
 import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes, type NativeWebSearch } from "../../shared/evidence";
 import { ToolLog } from "./transcript/ToolLog";
 import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
@@ -213,7 +213,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         )}
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
-            footer={(t) => <SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} />}
+            footer={(t) => <><TaskVerificationLine items={t.rest} /><SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} /></>}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
