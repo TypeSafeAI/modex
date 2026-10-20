@@ -220,9 +220,10 @@ paired desktops and the phone carry it with no new event type. This is the reque
   `withdrawn`). Nothing replayed, reloaded or reconnected answers a request.
 - **Two clients at once.** The desktop and the phone race through one broker: one answer is accepted,
   the card names who gave it, and the other is refused, with a 409 for the phone.
-- **The phone** gets `answeredBy`, `delivery` and `withdrawn` on approvals. Today's iPhone build reads
-  only `answer`, so a withdrawn approval still reads as declined there. A question's notice says when
-  delivery is uncertain.
+- **The phone** gets `answeredBy` and `delivery` on an open or answered approval. A withdrawn, sending
+  or uncertain approval reaches it as a notice that says so ("Request withdrawn. Nothing more can be
+  approved."), so the iPhone app no longer shows a withdrawn approval as declined. A question's notice
+  says when delivery is uncertain.
 - **Who answered** is the client that made the decision: this Mac's window (`desktop`), a desktop
   paired through the host (`paired-desktop`), or the phone. Switching a thread to YOLO answers what is
   waiting as whichever of them switched it.
