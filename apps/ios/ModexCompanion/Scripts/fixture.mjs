@@ -55,8 +55,12 @@ const backend = {
     // Replies go through the typed observation path (docs/conversation-events.md), ids assigned here.
     const reply = new LocalItems(sink);
     if (text === "Prepare the change") {
-      const answer = await sink.approval({ question: "Apply the launch change?", detail: "One file in the test project", canAlways: false, action: { backend: "mock", tool: "apply_patch", title: "Apply launch change" } });
-      reply.assistant(answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
+      // As a native backend does (docs/human-requests.md): the decision counts once it is handed to the CLI.
+      const native = { runtime: "ios-fixture", request: randomUUID() };
+      const answer = await sink.approval({ question: "Apply the launch change?", detail: "One file in the test project", canAlways: false, action: { backend: "mock", tool: "apply_patch", title: "Apply launch change" }, native });
+      let consumed = !sink.deliverRequest;
+      await sink.deliverRequest?.(native, async () => { consumed = true; });
+      reply.assistant(consumed && answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
     } else {
       reply.assistant(`Follow-up received: ${text}`);
       if (text === "Pause for recovery") {

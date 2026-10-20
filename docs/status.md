@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-19._
+_Last updated 2026-10-20._
 
 ## Shipped
 
@@ -121,6 +121,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
     [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
   - **The phone acts on threads started on the Mac again.** Since v0.0.12, answering, sending, setting
     the approval policy or archiving from the phone failed on any thread created from a Mac draft.
+  - **A refused answer refreshes the phone (CF-6 #279).** When the Mac refuses an approval, most often
+    because it was settled elsewhere, the iPhone app reads the thread again at once instead of leaving
+    the card actionable until its next poll. It reaches phones in the next Companion build.
   - **Old transcripts** read unchanged, with no invented provenance.
   - **Acceptance (CF-8 #281).** A fixture Claude CLI drives the real app through a plan, an
     approval, a real edit, a check, the answer and Save to Notes, then a restart that re-runs
@@ -153,10 +156,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   quotes, nested lists, strikethrough, footnotes and reference links. A code block names its
   language and has Copy, which only puts the code on the clipboard; it shows its code while the
   fence is still streaming. Raw HTML stays text, only http(s) links
-  are links, and an image becomes a link to it instead of being fetched. While a reply streams, only
-  its last block is parsed again, and the whole reply once it rests for 300 ms. Opening a long
-  thread for the first time parses each message once (about 160 ms for 200 messages, 239 KB, against
-  about 40 ms before); reopening it reuses the result.
+  are links, and an image becomes a link to it instead of being fetched. While a plain reply streams,
+  completed blocks are reused and the changing tail is parsed again.
+  Lists, references, blockquotes and indented code retain whole-document context. Reopening a
+  thread reuses cached renders; cold-open and streaming measurements are recorded in the
+  [CF-4 checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 - **Codex memory citations can be read in place** (part of #278). A reply's "From Codex memory"
   citation has **Show lines** and **Copy**. Main reads only the cited lines, and only inside
   Codex's memories folder: absolute paths, `..`, and symlinks that lead out are refused. It runs
@@ -178,8 +182,33 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   preview has **Show full log**: Modex keeps its output from the first line, up to 10 MB, and reads it
   back a page at a time. Codex streams every chunk; Claude Code itself keeps at most 30,000
   characters of a result by default, so Claude output never needs it.
+- **An answer counts as delivered only once it reaches the CLI** (CF-3 #276, from #316). An answer
+  you give on the Mac or the phone reads "Sending" until the CLI's request is written. It reads
+  "Delivery uncertain" if Stop, a crash or a closed connection came first, and it is never resent.
+  Replays of a native request are ignored, and a request id reused for a different action is
+  withdrawn. [Human requests](human-requests.md).
+- **Typed turns keep their meaning, and the reader keeps their place** (CF-4 #277, from #295). In a
+  turn whose CLI reports message phases, only its own final message is the answer, never one picked by
+  position. Claude Code reports none, so its last reply stays the answer. Failed,
+  denied, stopped and unknown messages and reasoning stay visible, including after a retry, and
+  reasoning summaries keep their label while streaming. A streaming reply keeps its code controls,
+  focus and selection, and returning to a thread restores what was expanded and where it was
+  scrolled, for this session. [Checkpoint](reviews/2026-10-18-cf4-completion/checkpoint.md).
 
 ## In flight
+
+- **Desktop v0.3.0 and Companion 0.3.0 (8) preparation.** The release ships everything under "On
+  main, unreleased":
+  - native conversation fidelity (CF-1 to CF-8): typed items and outcomes, evidence, plans and task
+    records, approvals and questions answered once, and a truthful Claude Stop;
+  - macOS updates over the air (#317);
+  - full Markdown in replies, and moving a project to a new workspace from the chat sidebar.
+
+  Val asked for 0.3.0. A signed `v0.3.0-rc.1` rehearsal passed every Release job, including the
+  automatic download in the native updater scenarios; its draft and tag are deleted. Remaining:
+  the Release run on the signed tag, independent download checks, publication, the v0.2.0 → v0.3.0
+  banner upgrade on the release Mac, and the TestFlight upload of Companion build 8.
+  [Candidate review](reviews/2026-10-20-v0.3.0-release-review.md).
 
 - **v0.2.0 after publication.** v0.2.0 was published on 2026-10-18 from the signed tag on
   `01b1b8a`. Two release gates need Val at the Mac: upgrading the release Mac from v0.1.0 through

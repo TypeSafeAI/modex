@@ -1,5 +1,5 @@
 import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AnswerResult, ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
 import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
@@ -15,6 +15,7 @@ import { Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
+import { readerStateFor, ReaderStateContext, useExpansionState } from "./transcript/reader-state";
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
@@ -76,6 +77,8 @@ export function tailPath(p: string, max = 40): string {
 
 export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const reader = useMemo(() => readerStateFor(thread.id), [thread.id]);
+  const restored = useRef(false);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
   const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
@@ -118,11 +121,22 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     autoTop.current = el.scrollTop;
     setAway(false);
   };
-  useEffect(() => {
-    stick.current = true;
-    autoTop.current = 0;
-    setAway(false);
-  }, [thread.id]);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || !items.length || restored.current) return;
+    restored.current = true;
+    newestUser.current = items.filter(item => item.kind === "user").at(-1)?.id;
+    if (reader.scroll) {
+      stick.current = reader.scroll.follow;
+      el.scrollTop = reader.scroll.top;
+      autoTop.current = el.scrollTop;
+      setAway(!stick.current);
+    }
+  }, [items.length, reader]);
+  useLayoutEffect(() => () => {
+    const el = scroller.current;
+    if (el) reader.scroll = { top: el.scrollTop, follow: stick.current };
+  }, [reader]);
   // Output also grows without new items (streamed text, a pane opening and re-wrapping the prose):
   // keep following those while stuck to the bottom.
   useEffect(() => {
@@ -167,7 +181,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
   }
 
   return (
-    <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
+    <ReaderStateContext.Provider value={reader}><section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
 
       <TranscriptThread.Provider value={thread.id}>
       <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
@@ -223,7 +237,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         onStop={onStop}
         inputRef={inputRef}
       />}
-    </section>
+    </section></ReaderStateContext.Provider>
   );
 }
 
@@ -287,7 +301,8 @@ function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice"
 /** A reply. Commentary reads as progress, not the answer; a reply that stopped or never completed says so. */
 function AssistantItem({ text, live, phase, outcome, evidence }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"]; evidence?: Extract<ThreadItem, { kind: "assistant" }>["evidence"] }) {
   const { body, sources } = useMemo(() => (live ? { body: text, sources: [] } : splitSources(text)), [text, live]);
-  const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete" : null;
+  const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete"
+    : outcome === "failed" ? "Reply failed" : outcome === "denied" ? "Reply denied" : null;
   return (
     <div className={`msg assistant${phase === "commentary" ? " commentary" : ""}`} data-testid="item" data-item-kind="assistant" data-phase={phase} data-outcome={outcome}>
       <Markdown text={body} />
@@ -373,7 +388,7 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
   const r = item.decidedBy;
   if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
   return (
-    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer ? "true" : "false"} data-decided-by={r?.decision}>
+    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
       <div className="approval-head" data-testid="approval-question">
         <span className="shield">⚠</span>
         <span>{item.question}</span>
@@ -382,7 +397,7 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
         <>
-          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
           {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
         </>
       ) : (
@@ -405,7 +420,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
   const title = item.title ?? item.question;
   const via = `${receiptVia(r)} · ${r.ms} ms${jevNotConsulted(r) ? " · Jev not consulted" : ""}`;
   return (
-    <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered="true" data-decided-by={r.decision}>
+    <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered={!item.delivery || item.delivery === "sent" ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r.decision}>
       <button className="receipt-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="receipt-icon" aria-hidden="true">{allowed ? "✓" : "✕"}</span>
         <span className="receipt-label" data-testid="approval-receipt">
@@ -414,6 +429,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
         <span className="receipt-meta" data-testid="receipt-meta">{r.source === "policy" ? r.when : allowed ? `rule "${r.when}" · ${via}` : <><code>{title}</code> · {via}</>}</span>
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
+      {item.delivery && item.delivery !== "sent" && <div className="answer-note" role="status" data-testid="approval-delivery">{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : "Sending decision…"}</div>}
       {open && (
         <div className="receipt-body" data-testid="item-body">
           <div className="receipt-question">{item.question}</div>
@@ -458,7 +474,7 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
 /** Collapsible reasoning: open while the model is still thinking, folded to one line once done. */
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useExpansionState<boolean>(`tool:${item.id}`, false);
   // Claude Code calls them WebSearch and WebFetch; Codex reports a `webSearch` item.
   const web = item.name === "WebSearch" || item.name === "webSearch" ? "search" : item.name === "WebFetch" ? "fetch" : null;
   const search = useMemo(() => (web === "search" && item.output && item.ok !== false ? parseWebSearch(item.output) : null), [web, item.output, item.ok]);

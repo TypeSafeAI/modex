@@ -1,0 +1,23 @@
+5:36:35 AM [vite] (client) [optimizer] scanning dependencies...
+✔ a legacy turn keeps the last-reply heuristic and folds the work before it (541.293375ms)
+✔ a typed turn's final answer is its final-phase message; commentary and successful tools fold, a denial stays (0.300417ms)
+✔ a final answer is never taken from array position: a commentary after the final stays out of the fold (0.10725ms)
+✔ a typed turn with no final answer folds nothing (0.163125ms)
+✔ every item still running is live, not only the newest (0.648917ms)
+✔ attempts stay distinct: each later attempt is marked, and only the latest attempt can supply the final answer (0.358458ms)
+✔ typed unspecified messages never invent a final answer (0.3435ms)
+✔ pending requests, notices, failures, interruptions and unknown work never fold (0.189292ms)
+✔ typed running messages and reasoning remain visible before a final answer (0.103291ms)
+✔ typed failed messages and reasoning remain visible before a final answer (0.14325ms)
+✔ typed denied messages and reasoning remain visible before a final answer (0.057333ms)
+✔ typed interrupted messages and reasoning remain visible before a final answer (0.086958ms)
+✔ typed unknown messages and reasoning remain visible before a final answer (0.051166ms)
+5:36:39 AM [vite] (client) [optimizer] bundling dependencies...
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2023.264375

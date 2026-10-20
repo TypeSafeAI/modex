@@ -252,12 +252,16 @@ Items saved before this contract have none of them. Read every item through `ite
 explicit legacy adapter: an old item keeps its text and gets no invented provenance. Its phase is
 `unspecified`, its outcome `unknown`, except a tool that recorded `ok: true`, which only a
 backend's success report ever set. `finalAnswerIndex` keeps the historical heuristic, the last
-assistant item, for turns without typed phases (old history, Claude, older Codex models). A turn
-whose messages have typed phases answers with its last `final` message, or has no final answer.
+assistant item, for turns whose CLI reports no message phase at all (old history, Claude, older
+Codex models). A turn whose messages have typed phases answers with its last `final` message, or has
+no final answer. A native phase counts as typed too: codex-cli 0.163.0's `partial_answer` is stored as
+`unspecified` beside its `nativePhase`, so a turn of partial answers never makes one final by position.
 
-The renderer change is for compatibility only. A finished tool's status reads Done, Failed,
-Denied, Stopped or Status unavailable from its outcome, never Done for an unknown. A turn folds its
-work up to its final answer, by `finalAnswerIndex`.
+The original CF-1 renderer change was for compatibility. CF-4 now uses `layoutTurn`: only an
+explicit `final` in the latest typed attempt receives final-answer treatment. Typed `unspecified`
+messages remain visible without inventing a final phase, including Claude messages. The legacy
+last-message heuristic remains only for histories without origins. Tools and reasoning retain
+failed, denied, stopped and unavailable outcomes; only successful typed work may fold.
 
 ## For the issues that build on this
 
@@ -265,7 +269,10 @@ work up to its final answer, by `finalAnswerIndex`.
   the latest attempt's `final` message answers, every `running` item is live, a later attempt opens
   with a divider, and only work that succeeded folds under the turn header. Items saved before the
   contract keep the last-reply heuristic there. A reasoning row is tagged Summary or Not shared;
-  `provider-text` shows untagged.
+  `provider-text` shows untagged. Summary labels remain present while streaming, and unresolved
+  reasoning shows its outcome. `groupTurns` uses `origin.turn` for typed items and user boundaries
+  only for legacy/unscoped records. Session-only reader state retains at most 100 threads and
+  1,000 expansion entries per thread; it holds no transcript text and performs no main actions.
 - **Interruption and requests (CF-2, CF-3).** Approvals are still separate transcript items. A Claude
   denial is attributed through the `tool_use_id` of the refused `control_request`.
 - **Replay and paired clients (CF-6).** Conversation events are not stored: the journal records the

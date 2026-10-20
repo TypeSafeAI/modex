@@ -65,13 +65,19 @@ export const imageFixtureBackend: Backend = {
     local.assistant(
       "Offline image fixture: this is a simulated generation job.",
     );
+    const native = { runtime: "offline-image", request: "create-image" };
     const answer = await sink.approval({
+      native,
       canAlways: false,
       question: "Create the offline fixture image?",
       detail:
         "Writes one synthetic PNG inside this image job's output folder. No provider or network request is made.",
     });
-    if (answer === "no" || signal.aborted) return { status: "interrupted" };
+    if (signal.aborted) return { status: "interrupted" };
+    let consumed = false;
+    if (sink.deliverRequest) await sink.deliverRequest(native, async () => { consumed = true; });
+    else consumed = true;
+    if (!consumed || answer === "no" || signal.aborted) return { status: "interrupted" };
     if (!options.images)
       return {
         status: "failed",

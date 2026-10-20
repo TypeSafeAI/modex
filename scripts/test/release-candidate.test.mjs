@@ -17,6 +17,14 @@ test("release identity requires exact stable tag/package/source/run agreement", 
   ]) assert.throws(() => release.releaseIdentity({ ...input, ...mutation }));
 });
 
+test("a rehearsal tag names the package version and an rc number", () => {
+  for (const tag of ["v0.0.11-rc.1", "v0.0.11-rc.12"]) assert.deepEqual(release.releaseIdentity({ ...input, tag }), { ...input, tag });
+  for (const tag of ["v0.0.10-rc.1", "v0.0.11-rc.0", "v0.0.11-rc.01", "v0.0.11-rc", "v0.0.11-rc.", "v0.0.11-beta.1",
+    "v0.0.11-rc.1-x", "v0.0.11-RC.1", "v0.0.11-rc.1" + String.fromCharCode(10), "refs/tags/v0.0.11-rc.1"]) {
+    assert.throws(() => release.releaseIdentity({ ...input, tag }), undefined, tag);
+  }
+});
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -141,6 +149,12 @@ test("identity CLI binds the checked-out package and commit to the tagged workfl
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.stdout.trim(), "CLI must produce a verified identity");
   assert.deepEqual(JSON.parse(result.stdout), { tag: env.GITHUB_REF_NAME, version: env.GITHUB_REF_NAME.slice(1), sourceSha: env.GITHUB_SHA, runId: "123" });
+});
+test("identity CLI accepts a rehearsal tag for the checked-out package version", () => {
+  const env = { ...cliEnvironment() }; env.GITHUB_REF_NAME += "-rc.2";
+  const result = spawnSync(process.execPath, [cli, "identity"], { cwd: project, env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { tag: env.GITHUB_REF_NAME, version: env.GITHUB_REF_NAME.slice(1, -"-rc.2".length), sourceSha: env.GITHUB_SHA, runId: "123" });
 });
 test("identity CLI refuses mismatched tags, commits, non-tag events and unsupported commands", () => {
   const env = cliEnvironment();

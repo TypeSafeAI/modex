@@ -31,7 +31,9 @@ const lifecycle = (c: Card) => ({ answer: c.answer ?? null, answeredBy: c.answer
 /** A Claude-shaped backend whose turn asks one approval and records every decision it hears. */
 function asking(heard: ApprovalAnswer[]): Backend {
   return { id: "claude", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink: TurnSink) {
-    heard.push(await sink.approval({ question: "Allow Bash: $ deploy?", canAlways: false, action: { backend: "claude", tool: "Bash", title: "$ deploy", input: { command: "deploy" } } }));
+    const native = { runtime: "journal-fixture", request: "approval" };
+    heard.push(await sink.approval({ native, question: "Allow Bash: $ deploy?", canAlways: false, action: { backend: "claude", tool: "Bash", title: "$ deploy", input: { command: "deploy" } } }));
+    await sink.deliverRequest?.(native, async () => {});
     return { status: "completed" };
   } };
 }
@@ -219,7 +221,7 @@ function codexAsking(proc: FakeProcess) {
         ] } });
       } else if (msg.id === 7 && !msg.method) {
         replies.push(msg.result ?? { error: msg.error });
-        proc.emitLine({ method: "turn/completed", params: { threadId: "thr", turn: { id: "tu", status: "completed", error: null } } });
+        setImmediate(() => proc.emitLine({ method: "turn/completed", params: { threadId: "thr", turn: { id: "tu", status: "completed", error: null } } }));
       }
     }
   });

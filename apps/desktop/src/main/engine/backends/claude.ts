@@ -1,3 +1,4 @@
+import { actionDigest } from "../../../shared/human-requests.js";
 import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
@@ -8,7 +9,7 @@ import { StringDecoder } from "node:string_decoder";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { ApprovalRequest, Backend, ModelInfo, StopReport, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, shortJson, stderrTail } from "./types.js";
+import { LineBuffer, shortJson, stderrTail, writeJsonResponse } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { ApprovalAnswer, BackendHealth } from "../../../shared/types.js";
@@ -165,6 +166,7 @@ export class ClaudeBackend implements Backend {
       const drainMs = this.timing.drainMs ?? DRAIN_MS;
       // `can_use_tool` requests waiting on an answer, by request id. The CLI's `control_cancel_request` aborts one.
       const requests = new Map<string, AbortController>();
+      const seenRequests = new Map<string, string>();
       // The process's own end: `exit` may precede `close` by however long a descendant holds its pipes.
       let exit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
       // A failed `result` ends the turn once the process has exited (or `drainMs` passed), so the stderr it
@@ -290,6 +292,8 @@ export class ClaudeBackend implements Backend {
           /* closed */
         }
       };
+      const writeResponse = (o: unknown) => finished
+        ? Promise.reject(new Error("request transport unavailable")) : writeJsonResponse(child.stdin, o);
       // Turn settlement must not cancel escalation while the child is still alive.
       const terminate = () => {
         if (exit || child.exitCode !== null || child.signalCode != null) return;
@@ -351,7 +355,7 @@ export class ClaudeBackend implements Backend {
         let part = 0;
         const observe = (o: Observation) => sink.observe({ ...o, ...(msg.uuid ? { source: `${msg.uuid}#${part++}` } : {}) });
         const native = (item: string, block?: number): NativeRef => ({ runtime, ...(session.id ? { thread: session.id } : {}), item, ...(block !== undefined ? { part: String(block) } : {}) });
-        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, requests, stopping: () => stopAt !== undefined, init, agents, tasks, background, listed, blocks, denied, observe, native });
+        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, writeResponse, requests, seenRequests, stopping: () => stopAt !== undefined, init, agents, tasks, background, listed, blocks, denied, observe, native });
         if (msg.type === "control_request") {
           approvals++;
           void handled.finally(() => {
@@ -384,7 +388,7 @@ export class ClaudeBackend implements Backend {
   }
 
   /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; requests: Map<string, AbortController>; stopping: () => boolean; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; writeResponse: (o: unknown) => Promise<void>; requests: Map<string, AbortController>; seenRequests: Map<string, string>; stopping: () => boolean; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
@@ -543,6 +547,17 @@ export class ClaudeBackend implements Backend {
           ctx.write({ type: "control_response", response: { subtype: "error", request_id: msg.request_id, error: `unsupported control request ${req?.subtype ?? "?"}` } });
           return;
         }
+        if (msg.request_id) {
+          const digest = actionDigest(req);
+          if (ctx.seenRequests.has(msg.request_id)) {
+            if (ctx.seenRequests.get(msg.request_id) !== digest) {
+              ctx.requests.get(msg.request_id)?.abort();
+              sink.notice("warn", "Claude reused a request id for a changed action; the original request was withdrawn. A new request id is required.");
+            }
+            return;
+          }
+          ctx.seenRequests.set(msg.request_id, digest);
+        }
         const tool = req.tool_name ?? "tool";
         const title = toolTitle(tool, req.input ?? {});
         const request: ApprovalRequest = {
@@ -563,22 +578,25 @@ export class ClaudeBackend implements Backend {
             sink.approval(request, withdrawn.signal),
             new Promise<undefined>((resolve) => withdrawn.signal.addEventListener("abort", () => resolve(undefined), { once: true })),
           ]);
+          if (answer === undefined || withdrawn.signal.aborted) return;
+          const allow = answer !== "no";
+          if (!allow && req.tool_use_id) ctx.denied.add(req.tool_use_id);
+          const response = {
+            type: "control_response",
+            response: {
+              subtype: "success",
+              request_id: msg.request_id,
+              response: allow
+                ? { behavior: "allow", updatedInput: req.input ?? {}, ...(answer === "always" && req.permission_suggestions?.length ? { updatedPermissions: req.permission_suggestions } : {}) }
+                : { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) },
+            },
+          };
+          const write = () => ctx.writeResponse(response);
+          if (request.native && sink.deliverRequest) await sink.deliverRequest(request.native, write);
+          else ctx.write(response);
         } finally {
           if (id && ctx.requests.get(id) === withdrawn) ctx.requests.delete(id);
         }
-        if (answer === undefined || withdrawn.signal.aborted) return;
-        const allow = answer !== "no";
-        if (!allow && req.tool_use_id) ctx.denied.add(req.tool_use_id);
-        ctx.write({
-          type: "control_response",
-          response: {
-            subtype: "success",
-            request_id: msg.request_id,
-            response: allow
-              ? { behavior: "allow", updatedInput: req.input ?? {}, ...(answer === "always" && req.permission_suggestions?.length ? { updatedPermissions: req.permission_suggestions } : {}) }
-              : { behavior: "deny", message: denyMessage(sink.refusedByRule?.(request)) },
-          },
-        });
         return;
       }
       default:

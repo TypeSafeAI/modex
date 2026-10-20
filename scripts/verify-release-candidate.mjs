@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 
-/** The signed tag, package and workflow must describe one release candidate. */
+/** The signed tag, package and workflow must describe one release candidate. A rehearsal
+ * tag `v<version>-rc.<N>` runs the same workflow for the same package version; its draft is
+ * deleted afterwards and never published. */
 export function releaseIdentity({ tag, version, sourceSha, runId }) {
   assert.match(version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
   assert.equal(version.trim(), version);
   assert.notEqual(version, "0.0.0", "Synthetic baselines cannot be released");
-  assert.equal(tag, `v${version}`, "Release tag must match desktop package version");
+  const rehearsal = `v${version}-rc.`;
+  assert.ok(tag === `v${version}` || (tag.startsWith(rehearsal) && /^[1-9]\d*$/.test(tag.slice(rehearsal.length))),
+    "Release tag must match desktop package version");
   assert.match(sourceSha, /^[0-9a-f]{40}$/);
   assert.equal(sourceSha.length, 40);
   assert.match(runId, /^[1-9]\d*$/);
