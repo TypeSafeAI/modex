@@ -118,12 +118,15 @@ test("AC6: the read path has no local write, checkout, shell, model or write-end
   for (const [name, source] of sources) {
     const imports = [...source.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
     for (const spec of imports) {
-      assert.ok(["node:child_process", "node:os", "node:path", "../../../shared/code-review.js", "./gh.js", "./github.js"].includes(spec!), `${name} imports ${spec}`);
+      assert.ok(["node:child_process", "node:fs", "node:os", "node:path", "../../../shared/code-review.js", "./gh.js", "./github.js"].includes(spec!), `${name} imports ${spec}`);
     }
     assert.doesNotMatch(source, /(?<![.\w])(spawn|exec|execSync|writeFile|appendFile|mkdir|rm|unlink|rename)\s*\(/, name);
     assert.doesNotMatch(source, /--method", "(POST|PATCH|PUT|DELETE)"|"-X"|"graphql"|changes:revert|onRevert/, name);
   }
   const gh = sources.find(([name]) => name === "gh.ts")![1];
+  // The filesystem is touched once: a stat of gh's hosts.yml, to notice a switch of account.
+  assert.deepEqual([...new Set([...gh.matchAll(/\bfs\.(\w+)/g)].map((m) => m[1]))], ["statSync"]);
+  for (const [name, source] of sources) if (name !== "gh.ts") assert.doesNotMatch(source, /node:fs/, name);
   assert.equal([...gh.matchAll(/execFile\(/g)].length, 1, "one call, to gh, with no shell");
   assert.match(gh, /"--method", "GET"/);
 });

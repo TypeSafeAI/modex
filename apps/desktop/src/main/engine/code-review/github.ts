@@ -18,7 +18,10 @@ const GHOST: PrActor = { login: "ghost", id: null, bot: false };
 const object = (value: unknown): Json | null => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Json : null;
 const count = (value: unknown): number | null => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 const id = (value: unknown): string | null => typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? String(value) : null;
-const time = (value: unknown): string | null => typeof value === "string" && !Number.isNaN(Date.parse(value)) ? value : null;
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const time = (value: unknown): string | null => typeof value === "string" && ISO.test(value) && !Number.isNaN(Date.parse(value)) ? value : null;
+/** An enum lookup that a key like `constructor` or `__proto__` can't satisfy. */
+const pick = <T>(table: Record<string, T>, key: unknown): T | undefined => typeof key === "string" && Object.hasOwn(table, key) ? table[key] : undefined;
 const text = (value: unknown, max: number): string => typeof value === "string" ? value.slice(0, max) : "";
 const sha = (value: unknown): string | null => typeof value === "string" && SHA.test(value) ? value : null;
 
@@ -121,7 +124,7 @@ export function timeline(items: unknown[]): { activity: PrActivity[]; dropped: n
       // The timeline spells states in lower case, the reviews API in upper case.
       const reviewState = typeof item.state === "string" ? item.state.toUpperCase() : "";
       if (reviewState === "PENDING") continue;
-      const verdict = Object.hasOwn(VERDICTS, reviewState) ? VERDICTS[reviewState] : undefined;
+      const verdict = pick(VERDICTS, reviewState);
       const reviewId = id(item.id), at = time(item.submitted_at), who = actor(item.user);
       if (!verdict || !reviewId || !at || !who) { dropped++; continue; }
       activity.push({ kind: "review", id: reviewId, at, actor: who, verdict, body: text(item.body, 262_144), commit: sha(item.commit_id) });
@@ -153,9 +156,9 @@ export function checkRun(value: unknown): PrCheck | null {
   const run = object(value);
   const runId = id(run?.id), head = sha(run?.head_sha);
   if (!run || !runId || !head || typeof run.name !== "string") return null;
-  const conclusion = run.conclusion === null || run.conclusion === undefined ? null : typeof run.conclusion === "string" ? CONCLUSIONS[run.conclusion] ?? "unknown" : "unknown";
+  const conclusion = run.conclusion === null || run.conclusion === undefined ? null : pick(CONCLUSIONS, run.conclusion) ?? "unknown";
   return { id: runId, name: text(run.name, 512), source: "check-run", reporter: typeof object(run.app)?.slug === "string" ? text(object(run.app)!.slug, 128) : null,
-    headSha: head, status: typeof run.status === "string" ? RUN_STATUS[run.status] ?? "unknown" : "unknown", conclusion,
+    headSha: head, status: pick(RUN_STATUS, run.status) ?? "unknown", conclusion,
     startedAt: time(run.started_at), completedAt: time(run.completed_at), url: link(run.html_url) ?? link(run.details_url) };
 }
 

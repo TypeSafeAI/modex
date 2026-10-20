@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -93,10 +94,28 @@ export function ghTransport(bin = "gh"): GhTransport {
           if (failure?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return resolve({ kind: "too-large" });
           if (failure?.killed) return resolve({ kind: "timeout" });
           const answer = parseIncluded(stdout);
+          // gh exits 1 for a 304 or a 4xx it printed in full; after a 2xx it means the body was cut short.
+          if (answer && failure && answer.status >= 200 && answer.status < 300) return resolve({ kind: "failed" });
           if (answer) return resolve({ kind: "http", ...answer });
           if (failure?.code === 4) return resolve({ kind: "signed-out" });
           resolve({ kind: failure && NETWORK.test(stderr.toString("utf8")) ? "offline" : "failed" });
         });
     });
   };
+}
+
+/**
+ * A fingerprint of gh's hosts.yml, which `gh auth switch`, `login` and `logout` rewrite: a change means
+ * the account may have changed under main. "absent" when there is none; null where it can't be read,
+ * and main then confirms the account after every read instead.
+ */
+export function ghHostsStamp(): string | null {
+  const dir = process.env.GH_CONFIG_DIR || (process.env.XDG_CONFIG_HOME ? path.join(process.env.XDG_CONFIG_HOME, "gh")
+    : process.platform === "win32" && process.env.AppData ? path.join(process.env.AppData, "GitHub CLI") : path.join(os.homedir(), ".config", "gh"));
+  try {
+    const stat = fs.statSync(path.join(dir, "hosts.yml"));
+    return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : null;
+  }
 }

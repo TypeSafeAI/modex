@@ -26,7 +26,25 @@ function pull(repo: Repo, number: number, patch: { title?: string; base?: string
 }
 
 class FakeGitHub {
-  user: typeof ADA | null = ADA;
+  private signedIn: typeof ADA | null = ADA;
+  private writes = 1;
+  /** gh's hosts.yml as main sees it: rewritten whenever the signed-in user changes. Null: a layout main cannot watch. */
+  stampless = false;
+  get stamp(): string | null {
+    return this.stampless ? null : `hosts-${this.writes}`;
+  }
+  get user(): typeof ADA | null {
+    return this.signedIn;
+  }
+  /** `gh auth switch`, `login` or `logout`, outside Modex. */
+  set user(value: typeof ADA | null) {
+    this.signedIn = value;
+    this.writes++;
+  }
+  /** A token that changes without gh's hosts file changing, e.g. `GH_TOKEN` set for gh alone. */
+  silently(value: typeof ADA | null): void {
+    this.signedIn = value;
+  }
   cli: "ok" | "missing" | "signed-out" | "offline" = "ok";
   repos = new Map<string, Repo>([[LENDING.full_name, LENDING], [FIELD.full_name, FIELD]]);
   pulls = new Map<string, ReturnType<typeof pull>>([
@@ -163,7 +181,7 @@ function setup(options: { ttl?: number; concurrency?: number; enabled?: boolean 
   const github = new FakeGitHub();
   let clock = Date.parse("2026-10-20T12:00:00Z");
   const service = new CodeReviewService({ transport: github.transport, now: () => clock, identityTtlMs: options.ttl ?? 30_000,
-    concurrency: options.concurrency ?? 4, enabled: options.enabled ?? true });
+    concurrency: options.concurrency ?? 4, enabled: options.enabled ?? true, identityStamp: () => github.stamp });
   const read = async (request: Ask) =>
     (await service.read({ requestId: rid(), ...request })) as CodeReviewReply;
   /** Learn the repositories the way the renderer does: through the inbox and links. */
@@ -378,11 +396,15 @@ test("AC3: revoked, inaccessible, rate-limited, timed-out and partial reads say 
   assert.deepEqual(Object.values(inbox.groups).map((g) => [g.state, g.reason]), [["unavailable", "rate-limited"], ["unavailable", "rate-limited"]]);
   github.overrides = [];
 
-  // Revoked mid-session: a 401 drops the identity, so the next read asks gh who is signed in.
+  // Revoked mid-session: a 401 drops the identity and what it could see, so the next read asks gh who is
+  // signed in even though the hosts file and the TTL say nothing changed.
   github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "http", status: 401, headers: {}, body: Buffer.from('{"message":"Bad credentials"}') } }];
   tick(11 * 60_000);
   assert.equal(reason(await read({ op: "overview", key })), "signed-out");
   github.overrides = [];
+  const afterRevoke = github.calls.length;
+  assert.equal(reason(await read({ op: "overview", key })), "not-found");
+  assert.deepEqual(github.calls.slice(afterRevoke).map((c) => c.endpoint), ["user"]);
   github.user = null;
   assert.equal(reason(await read({ op: "overview", key })), "signed-out");
   assert.equal(github.calls.at(-1)!.endpoint, "user");
@@ -547,8 +569,7 @@ test("requests are checked before anything runs; cancel stops a read and answers
   value(await read({ op: "overview", key: keyOf(LENDING, 73) })); // a last good answer exists, and a cancel still never shows it
   const release = github.hold(/pulls\/73$/);
   const slow = read({ requestId: "slow-1", op: "overview", key: keyOf(LENDING, 73) });
-  const duplicate = await read({ requestId: "slow-1", op: "overview", key: keyOf(LENDING, 73) });
-  assert.equal(reason(duplicate), "invalid");
+  await assert.rejects(service.read({ requestId: "slow-1", op: "overview", key: keyOf(LENDING, 73) }), /already in flight/, "a second request with that id has no reply of its own");
   assert.equal(await service.read({ op: "cancel", requestId: "slow-1" }), null);
   release();
   assert.equal(reason(await slow), "failed");
@@ -583,4 +604,169 @@ test("a name that now belongs to another repository never answers for the key's 
   const reply = await read({ op: "overview", key: keyOf(LENDING, 73) });
   assert.equal(reason(reply), "not-found");
   assert.ok(!JSON.stringify(reply).includes("different repository"));
+});
+
+test("AC2 (review finding 1): a gh switch inside the identity window, with no connection read, never answers as the old account", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  const release = github.hold(/^repos\/example-org\/lending\/pulls\/73$/);
+  const slow = read({ op: "overview", key: keyOf(LENDING, 73) });
+  await until(() => github.calls.some((c) => c.endpoint === "repos/example-org/lending/pulls/73"));
+  github.ignoreAbort = true; // gh finishes the read as the new account
+  github.user = KIT;
+  release();
+  const late = await slow;
+  github.ignoreAbort = false;
+  assert.equal(reason(late), "signed-out");
+  assert.ok(!JSON.stringify(late).includes("Lend a hold"));
+
+  // Five seconds later, still inside the window: the inbox is read and stamped as the account gh now uses.
+  tick(5_000);
+  const askedAsAda = { requestId: rid(), op: "inbox" as const, query: "" };
+  const inbox = (await read(askedAsAda)) as CodeReviewReply;
+  assert.equal(inbox.scope.account, "2002");
+  assert.equal(acceptsReply({ requestId: askedAsAda.requestId, op: "inbox", scope: scopeOf(askedAsAda, "1001") }, inbox), false);
+  assert.ok(value<{ groups: Record<string, { state: string }> }>(inbox).groups.authored!.state !== "unavailable", "the read that noticed the switch still answers");
+  const before = github.calls.length;
+  assert.equal(reason(await read({ op: "overview", key: keyOf(LENDING, 73) })), "signed-out");
+  assert.equal(github.calls.length, before);
+});
+
+test("AC2: where gh's hosts file can't be watched, each answer is confirmed against the signed-in account", async () => {
+  const { github, read, prime } = setup();
+  github.stampless = true;
+  await prime();
+  const userCalls = () => github.calls.filter((c) => c.endpoint === "user").length;
+  const before = userCalls();
+  value(await read({ op: "overview", key: keyOf(LENDING, 73) }));
+  assert.equal(userCalls(), before + 1, "one conditional check, which GitHub answers with a free 304");
+  const release = github.hold(/^repos\/example-org\/lending\/pulls\/73$/);
+  const slow = read({ op: "overview", key: keyOf(LENDING, 73) });
+  await until(() => github.inFlight > 0);
+  github.ignoreAbort = true;
+  github.user = KIT;
+  release();
+  assert.equal(reason(await slow), "signed-out");
+});
+
+test("AC3 (review finding 2): a refresh that can't check the account still shows the last good answer as stale", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  value(await read({ op: "overview", key }));
+  github.cli = "offline";
+  tick(31_000);
+  const overview = await read({ op: "overview", key });
+  assert.equal(overview.result.state === "stale" && overview.result.reason, "offline");
+  const asked = { requestId: rid(), op: "inbox" as const, query: "" };
+  const inbox = (await read(asked)) as CodeReviewReply;
+  assert.equal(inbox.scope.account, "1001");
+  assert.equal(acceptsReply({ requestId: asked.requestId, op: "inbox", scope: scopeOf(asked, "1001") }, inbox), true);
+  const groups = value<{ groups: Record<string, { state: string; reason?: string }> }>(inbox).groups;
+  assert.deepEqual(Object.values(groups).map((g) => [g.state, g.reason]), [["stale", "offline"], ["stale", "offline"]]);
+});
+
+test("AC3 (review finding 3): repository lookups that fail together leave no unhandled rejection", async () => {
+  const { github, read } = setup();
+  github.search.authored = { items: [{ repo: LENDING, number: 73 }, { repo: FIELD, number: 73 }] };
+  await read({ op: "connection" });
+  github.overrides = [{ pattern: /^repos\/example-org\/(lending|field-guide)$/, answer: { kind: "timeout" } }];
+  const unhandled: unknown[] = [];
+  const listen = (reason: unknown) => unhandled.push(reason);
+  process.on("unhandledRejection", listen);
+  try {
+    const inbox = value<{ groups: Record<string, { state: string; reason?: string }> }>(await read({ op: "inbox", query: "" }));
+    assert.deepEqual([inbox.groups.authored!.state, inbox.groups.authored!.reason], ["unavailable", "timeout"]);
+    for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", listen);
+  }
+});
+
+test("AC3 (review finding 5): coverage is complete only when every row arrived", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const p = github.pulls.get("7301#73")!;
+  p.changed_files = 150;
+  github.files.set("7301#73", Array.from({ length: 140 }, (_, i) => ({ filename: `src/f${i}.ts`, status: "added", additions: 1, deletions: 0, changes: 1, patch: "@@ -0,0 +1 @@\n+x" })));
+  const second = await read({ op: "files", key: keyOf(LENDING, 73), revision: revisionOf(p), cursor: "p2" });
+  assert.equal(second.result.state, "partial");
+  assert.deepEqual(second.result.state === "partial" && second.result.coverage, { loaded: 140, total: 150, complete: false, next: null });
+  // Search pages are offsets: a row updated between pages can shift. A later page never claims the whole list.
+  github.search.authored = { items: Array.from({ length: 31 }, () => ({ repo: LENDING, number: 73 })) };
+  const page2 = await read({ op: "inbox-page", group: "authored", query: "", cursor: "p2" });
+  assert.equal(page2.result.state === "ready" && page2.result.coverage?.complete, false);
+});
+
+test("AC4 (review finding 6): a head that moves while checks are read labels them stale", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  const p = github.pulls.get("7301#73")!;
+  const asked = revisionOf(p);
+  github.checkRuns.set(asked.headSha, [{ id: 9, name: "unit", status: "completed", conclusion: "success", head_sha: asked.headSha, started_at: null, completed_at: null, html_url: null, app: { slug: "ci" } }]);
+  const release = github.hold(/check-runs/);
+  const during = read({ op: "checks", key, revision: asked });
+  await until(() => github.calls.some((c) => c.endpoint.includes("check-runs")));
+  p.head = { ...p.head, sha: sha("6") };
+  release();
+  const checks = await during;
+  assert.equal(checks.result.state === "stale" && checks.result.reason, "head-changed");
+  assert.notEqual(summarizeChecks(checks.result as never, asked).verdict, "passing");
+});
+
+test("review nits: hostile enum values, loose timestamps, a 429 without Retry-After, limits across accounts, a recreated repository", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  const p = github.pulls.get("7301#73")!;
+  github.checkRuns.set(p.head.sha, [{ id: 9, name: "unit", status: "constructor", conclusion: "__proto__", head_sha: p.head.sha, started_at: "1", completed_at: null, html_url: null, app: { slug: "ci" } }]);
+  const checks = await read({ op: "checks", key, revision: revisionOf(p) });
+  structuredClone(checks); // it must be able to cross IPC
+  assert.deepEqual(value<{ status: string; conclusion: string; startedAt: string | null }[]>(checks).map((c) => [c.status, c.conclusion, c.startedAt]), [["unknown", "unknown", null]]);
+
+  github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "http", status: 429, headers: {}, body: Buffer.from("{}") } }];
+  assert.equal(reason(await read({ op: "overview", key: keyOf(FIELD, 73) })), "rate-limited");
+  github.overrides = [];
+  const before = github.calls.length;
+  assert.equal(reason(await read({ op: "overview", key: keyOf(FIELD, 73) })), "rate-limited");
+  assert.equal(github.calls.length, before, "a 429 holds requests for a minute even without Retry-After");
+  // Limits belong to an account: a switch starts clean.
+  github.user = KIT;
+  assert.equal(value<{ state: string }>(await read({ op: "connection" })).state, "connected");
+  github.user = ADA;
+  tick(61_000);
+  await read({ op: "connection" });
+
+  // A repository deleted and recreated under its name: a link to it resolves to the new one.
+  await read({ op: "resolve", input: "example-org/lending#73" });
+  const reborn = { ...LENDING, id: 9999 };
+  github.repos.set(LENDING.full_name, reborn);
+  github.pulls.set("9999#73", pull(reborn, 73));
+  github.pulls.delete("7301#73");
+  github.pulls.set("7301#73", pull(reborn, 73));
+  const resolved = value<{ key: PrKey }>(await read({ op: "resolve", input: "example-org/lending#73" }));
+  assert.equal(resolved.key.repoId, "9999");
+});
+
+test("AC2: a switch is noticed before a read starts, and the read that noticed it still answers", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  github.user = KIT;
+  const before = github.calls.length;
+  assert.equal(reason(await read({ op: "overview", key: keyOf(LENDING, 73) })), "signed-out");
+  assert.deepEqual(github.calls.slice(before).map((c) => c.endpoint), ["user"], "nothing read as the new account under the old one's key");
+  github.user = ADA;
+  const inbox = await read({ op: "inbox", query: "" });
+  assert.equal(inbox.scope.account, "1001");
+  assert.deepEqual(Object.values(value<{ groups: Record<string, { state: string }> }>(inbox).groups).map((g) => g.state), ["ready", "ready"]);
+});
+
+test("AC2: a switch gh's hosts file doesn't show is caught once the identity TTL runs out", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  github.silently(KIT);
+  tick(31_000);
+  assert.equal(reason(await read({ op: "overview", key: keyOf(LENDING, 73) })), "signed-out");
 });

@@ -32,6 +32,7 @@ switch (endpoint.split("/")[2]) {
   case "broken": process.stderr.write("unknown flag: --frobnicate ghp_fakeSecretThatMustNotEscape\n"); process.exitCode = 1; break;
   case "slow": setTimeout(() => answer(200, "OK", [], "{}", 0), 5000); break;
   case "huge": process.stdout.write("HTTP/2.0 200 OK\n\r\n" + "x".repeat(300000)); break;
+  case "cut": process.stdout.write("HTTP/2.0 200 OK\nContent-Length: 3492\r\n\r\none\ntwo\n"); process.stderr.write("stream error: stream ID 3; INTERNAL_ERROR\n"); process.exitCode = 1; break;
   case "binary": process.stdout.write(Buffer.concat([Buffer.from("HTTP/2.0 200 OK\nContent-Type: application/octet-stream\r\n\r\n"), Buffer.from([0, 255, 10, 13, 10])])); break;
   default: answer(500, "Internal Server Error", [], "{}", 1);
 }
@@ -99,6 +100,8 @@ test("maps each way gh can end to a result that holds no stderr text", async () 
     setTimeout(() => stop.abort(), 100);
     assert.equal((await cancelled).kind, "cancelled");
     assert.equal((await gh(call("repos/example-org/huge/pulls/73", { maxBytes: 1024 }))).kind, "too-large");
+    // A success that gh could not finish reading is not a success: the body may be cut short.
+    assert.equal((await gh(call("repos/example-org/cut/contents/a.md?ref=" + "a".repeat(40), { accept: "application/vnd.github.raw" }))).kind, "failed");
     const binary = await gh(call("repos/example-org/binary/contents/x?ref=" + "a".repeat(40), { accept: "application/vnd.github.raw" }));
     assert.deepEqual(binary.kind === "http" && [...binary.body], [0, 255, 10, 13, 10]);
     assert.equal((await ghTransport(path.join(path.dirname(bin), "no-such-gh"))(call("user"))).kind, "no-cli");

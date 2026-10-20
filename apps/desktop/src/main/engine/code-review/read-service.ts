@@ -3,7 +3,7 @@ import {
   type CodeReviewAccount, type CodeReviewConnection, type CodeReviewReply, type CodeReviewRequest, type Coverage, type Inbox, type InboxGroup,
   type PrActivity, type PrCheck, type PrContext, type PrFiles, type PrKey, type PrOverview, type PrRevision, type PrSummary, type ReadResult, type ResolvedPr, type Unavailable,
 } from "../../../shared/code-review.js";
-import { ghTransport, type GhAnswer, type GhCall, type GhTransport } from "./gh.js";
+import { ghHostsStamp, ghTransport, type GhAnswer, type GhCall, type GhTransport } from "./gh.js";
 import { changedFile, checkRun, commitStatus, hasNext, json, pull, repository, searchRow, timeline, type Pull, type Repository } from "./github.js";
 
 /**
@@ -21,6 +21,8 @@ export interface CodeReviewOptions {
   identityTtlMs?: number;
   /** gh processes at once. */
   concurrency?: number;
+  /** A fingerprint of gh's login state that changes when the account may have; null where none can be read. */
+  identityStamp?: () => string | null;
 }
 
 type Read = Exclude<CodeReviewRequest, { op: "cancel" }>;
@@ -70,8 +72,13 @@ class ReadFailure extends Error {
   }
 }
 
+/** The PR's base repository id is not the key's: the name now belongs to another repository. */
+class Moved extends ReadFailure {}
+
 /** Reads that may fall back to their last good answer, labelled stale. Visibility changes never do. */
 const KEEPS = new Set<Unavailable>(["offline", "timeout", "rate-limited", "head-changed", "failed"]);
+/** Failures to check the account that say nothing about who is signed in. */
+const TRANSIENT = new Set<Unavailable>(["offline", "timeout", "rate-limited", "failed"]);
 
 class Lru<K, V> {
   private readonly map = new Map<K, V>();
@@ -93,6 +100,12 @@ class Lru<K, V> {
       this.map.delete(oldest);
       this.used -= this.size(evicted);
     }
+  }
+  delete(key: K): void {
+    const old = this.map.get(key);
+    if (old === undefined) return;
+    this.map.delete(key);
+    this.used -= this.size(old);
   }
   clear(): void {
     this.map.clear();
@@ -131,11 +144,15 @@ export class CodeReviewService {
   private readonly now: () => number;
   private readonly ttl: number;
   private readonly slots: Slots;
-  private identity: { account: CodeReviewAccount; checkedAt: number; etag: string | null } | null = null;
+  private readonly stamp: () => string | null;
+  /** `stamp` is gh's login state when the account was read: a different one means it may have changed since. */
+  private identity: { account: CodeReviewAccount; checkedAt: number; etag: string | null; stamp: string | null } | null = null;
   private identityRead: Promise<void> | null = null;
+  private lastStamp: string | null = null;
   /** Bumped whenever the account changes or goes away; everything read under an older one is dropped. */
   private generation = 0;
-  private readonly inflight = new Map<string, AbortController>();
+  /** Each read in flight, with the generation it reads under once it has one. */
+  private readonly inflight = new Map<string, { controller: AbortController; generation: number | null }>();
   private readonly blocked = new Map<"core" | "search", number>();
   private searches: number[] = [];
   private readonly cache = new Lru<string, Fetched & { etag: string }>(512, 32 * MB, (entry) => entry.body.length + 256);
@@ -151,6 +168,7 @@ export class CodeReviewService {
     this.now = options.now ?? Date.now;
     this.ttl = options.identityTtlMs ?? 30_000;
     this.slots = new Slots(options.concurrency ?? 4);
+    this.stamp = options.identityStamp ?? ghHostsStamp;
   }
 
   /** The `code-review:read` handler. A payload that fails `validateRequest` rejects before anything runs. */
@@ -158,20 +176,21 @@ export class CodeReviewService {
     const request = validateRequest(input);
     if (!request) throw new Error("Invalid Code Review request.");
     if (request.op === "cancel") {
-      this.inflight.get(request.requestId)?.abort();
+      this.inflight.get(request.requestId)?.controller.abort();
       return null;
     }
-    if (this.inflight.has(request.requestId)) return this.reply(request, null, this.unavailable(new ReadFailure("invalid", DETAIL.invalid)));
-    const controller = new AbortController();
-    this.inflight.set(request.requestId, controller);
+    // A second request under a live id has no reply of its own to give: the renderer reuses no id.
+    if (this.inflight.has(request.requestId)) throw new Error("A Code Review request with that id is already in flight.");
+    const entry = { controller: new AbortController(), generation: null as number | null };
+    this.inflight.set(request.requestId, entry);
     try {
-      return await this.answer(request, controller.signal);
+      return await this.answer(request, entry);
     } finally {
-      if (this.inflight.get(request.requestId) === controller) this.inflight.delete(request.requestId);
+      if (this.inflight.get(request.requestId) === entry) this.inflight.delete(request.requestId);
     }
   }
 
-  private async answer(request: Read, signal: AbortSignal): Promise<CodeReviewReply> {
+  private async answer(request: Read, entry: { controller: AbortController; generation: number | null }): Promise<CodeReviewReply> {
     if (request.op === "connection") {
       const connection = await this.connection();
       return this.reply(request, connection.state === "connected" ? connection.account.id : null, { state: "ready", value: connection, fetchedAt: this.at() });
@@ -180,25 +199,65 @@ export class CodeReviewService {
     try {
       account = await this.who(false);
     } catch (error) {
-      return this.reply(request, null, this.unavailable(this.failure(error)));
+      const failure = this.failure(error);
+      // Offline, slow or limited while checking the account: the last known one still names what may be shown as stale.
+      const known = this.identity?.account;
+      if (known && TRANSIENT.has(failure.reason) && this.enabled) {
+        if ("key" in request && request.key.account !== known.id) return this.reply(request, known.id, this.unavailable(new ReadFailure("signed-out", DETAIL.otherAccount)));
+        return this.reply(request, known.id, this.fallback(request, known.id, failure));
+      }
+      return this.reply(request, null, this.unavailable(failure));
     }
     if ("key" in request && request.key.account !== account.id) return this.reply(request, account.id, this.unavailable(new ReadFailure("signed-out", DETAIL.otherAccount)));
-    const context: Context = { account: account.id, generation: this.generation, signal };
+    const context: Context = { account: account.id, generation: this.generation, signal: entry.controller.signal };
+    entry.generation = context.generation;
     const gone = () => this.reply(request, account.id, this.unavailable(new ReadFailure("signed-out", this.identity ? DETAIL.otherAccount : DETAIL.signedOut)));
     try {
       const result = await this.run(context, request);
-      if (context.generation !== this.generation) return gone();
+      // Made as the account it is stamped with? gh can switch under a read that is already running.
+      if (!(await this.confirm(context))) return gone();
       if ((result.state === "ready" || result.state === "partial") && request.op !== "inbox") {
         this.kept.set(keptKey(request), { value: result.value, fetchedAt: result.fetchedAt, ...(result.coverage ? { coverage: result.coverage } : {}) });
       }
       return this.reply(request, account.id, result);
     } catch (error) {
       if (context.generation !== this.generation) return gone();
-      const failure = this.failure(error);
-      const kept = KEEPS.has(failure.reason) && !failure.cancelled ? this.kept.get(keptKey(request)) : undefined;
-      return this.reply(request, account.id, kept ? { state: "stale", value: kept.value, fetchedAt: kept.fetchedAt, reason: failure.reason, ...(kept.coverage ? { coverage: kept.coverage } : {}) }
-        : this.unavailable(failure));
+      const result = this.fallback(request, account.id, this.failure(error));
+      if (result.state === "stale" && !(await this.confirm(context))) return gone();
+      return this.reply(request, account.id, result);
     }
+  }
+
+  /** The last good answer for this read, labelled stale, when the failure allows one; otherwise unavailable. */
+  private fallback(request: Exclude<Read, { op: "connection" }>, account: string, failure: ReadFailure): ReadResult<unknown> {
+    if (request.op === "inbox") {
+      const groups = Object.fromEntries((["authored", "review-requested"] as const).map((group) =>
+        [group, this.keptResult(keptKey({ op: "inbox-page", requestId: "", group, query: request.query, cursor: "p1" }), failure)]));
+      return { state: "ready", fetchedAt: this.at(), value: { account, query: request.query, groups } };
+    }
+    return this.keptResult(keptKey(request), failure);
+  }
+
+  private keptResult(key: string, failure: ReadFailure): ReadResult<unknown> {
+    const kept = KEEPS.has(failure.reason) && !failure.cancelled ? this.kept.get(key) : undefined;
+    return kept ? { state: "stale", value: kept.value, fetchedAt: kept.fetchedAt, reason: failure.reason, ...(kept.coverage ? { coverage: kept.coverage } : {}) }
+      : this.unavailable(failure);
+  }
+
+  /**
+   * Whether gh is still signed in to the account a read ran under. An unchanged hosts file says so for
+   * free; without one to watch, main asks gh, which answers an unchanged account with a free 304.
+   */
+  private async confirm(context: Context): Promise<boolean> {
+    if (context.generation !== this.generation) return false;
+    const stamp = this.stamp();
+    if (stamp !== null && this.identity && stamp === this.identity.stamp) return true;
+    try {
+      await this.who(true);
+    } catch {
+      // A failed check proves nothing; the generation still says whether the account changed.
+    }
+    return context.generation === this.generation && this.identity?.account.id === context.account;
   }
 
   private run(context: Context, request: Exclude<Read, { op: "connection" }>): Promise<ReadResult<unknown>> {
@@ -245,18 +304,29 @@ export class CodeReviewService {
     }
   }
 
-  /** The account gh is signed in to, asked again once the last check is older than the TTL (or always, when forced). */
+  /**
+   * The account gh is signed in to. A checked one is trusted until the TTL runs out or gh's login state
+   * changes; a forced check never joins one that started before it.
+   */
   private async who(force: boolean): Promise<CodeReviewAccount> {
     if (!this.enabled) throw new ReadFailure("failed", DETAIL.disabled);
-    if (!force && this.identity && this.now() - this.identity.checkedAt < this.ttl) return this.identity.account;
-    this.identityRead ??= this.readIdentity().finally(() => { this.identityRead = null; });
+    const stamp = this.stamp();
+    if (!force && this.identity && this.now() - this.identity.checkedAt < this.ttl && (stamp === null || stamp === this.identity.stamp)) return this.identity.account;
+    if (force && this.identityRead) await this.identityRead.catch(() => undefined);
+    this.identityRead ??= this.readIdentity(stamp).finally(() => { this.identityRead = null; });
     await this.identityRead;
     if (!this.identity) throw new ReadFailure("signed-out", DETAIL.signedOut);
     return this.identity.account;
   }
 
   /** Shared by every read waiting on it, so one person's cancel never aborts another's check. */
-  private async readIdentity(): Promise<void> {
+  private async readIdentity(stamp: string | null): Promise<void> {
+    // A changed login may be another account: limits GitHub set for the last one are not this one's.
+    if (stamp !== this.lastStamp) {
+      this.blocked.clear();
+      this.searches = [];
+      this.lastStamp = stamp;
+    }
     this.admit("core");
     const known = this.identity;
     const answer = await this.slots.run(() => this.transport({ endpoint: "user", accept: JSON_TYPE, etag: known?.etag ?? null, maxBytes: 256 * KB,
@@ -268,6 +338,7 @@ export class CodeReviewService {
     this.observe("core", answer);
     if (answer.status === 304 && known && this.identity === known) {
       known.checkedAt = this.now();
+      known.stamp = stamp;
       return;
     }
     if (answer.status === 200) {
@@ -277,7 +348,7 @@ export class CodeReviewService {
       if (!id || !login) throw new ReadFailure("failed", DETAIL.failed);
       if (this.identity?.account.id !== id) this.switchAccount();
       const etag = answer.headers.etag;
-      this.identity = { account: { host: "github.com", id, login }, checkedAt: this.now(), etag: etag && ETAG.test(etag) ? etag : null };
+      this.identity = { account: { host: "github.com", id, login }, checkedAt: this.now(), etag: etag && ETAG.test(etag) ? etag : null, stamp };
       return;
     }
     if (answer.status === 401) this.forget();
@@ -290,11 +361,16 @@ export class CodeReviewService {
     this.switchAccount();
   }
 
-  /** A different account, or none: what the old one could see is no longer anyone's to show. */
+  /**
+   * A different account, or none: what the old one could see is no longer anyone's to show. Reads
+   * already running under it stop; one still waiting to learn the account goes on under the new one.
+   */
   private switchAccount(): void {
     this.generation++;
-    for (const controller of this.inflight.values()) controller.abort();
+    for (const entry of this.inflight.values()) if (entry.generation !== null) entry.controller.abort();
     for (const store of [this.cache, this.repos, this.names, this.hints, this.revisions, this.kept]) store.clear();
+    this.blocked.clear();
+    this.searches = [];
   }
 
   // --- Transport ------------------------------------------------------------------------------
@@ -318,6 +394,9 @@ export class CodeReviewService {
     } else if (answer.headers["x-ratelimit-remaining"] === "0") {
       const reset = Number(answer.headers["x-ratelimit-reset"]) * 1000;
       if (Number.isFinite(reset) && reset > this.now()) this.blocked.set(resource, Math.min(reset, this.now() + 3600_000));
+    } else if (answer.status === 429) {
+      // Too many requests, with no word on how long to wait: GitHub's guidance is at least a minute.
+      this.blocked.set(resource, this.now() + 60_000);
     }
   }
 
@@ -327,8 +406,9 @@ export class CodeReviewService {
     this.admit(resource);
     const key = `${accept}\u0000${endpoint}`;
     const cached = this.cache.get(key);
-    const answer = await this.slots.run(() => this.transport({ endpoint, accept, etag: cached?.etag ?? null, maxBytes: options.maxBytes ?? MB,
-      timeoutMs: options.timeoutMs ?? TIMEOUT_MS, signal: context.signal }));
+    // A read cancelled while it waited for a slot never starts gh.
+    const answer = await this.slots.run(() => context.signal.aborted ? Promise.resolve<GhAnswer>({ kind: "cancelled" })
+      : this.transport({ endpoint, accept, etag: cached?.etag ?? null, maxBytes: options.maxBytes ?? MB, timeoutMs: options.timeoutMs ?? TIMEOUT_MS, signal: context.signal }));
     if (answer.kind !== "http") {
       if ((answer.kind === "no-cli" || answer.kind === "signed-out") && context.generation === this.generation) this.forget();
       throw this.transportFailure(answer.kind);
@@ -405,8 +485,15 @@ export class CodeReviewService {
     const repo = this.repoFor({ account: context.account, host: "github.com", repoId, number });
     const found = pull(json((await this.get(context, `${repoPath(repo)}/pulls/${number}`, { maxBytes: 4 * MB })).body));
     if (!found) throw new ReadFailure("failed", DETAIL.failed);
-    // The name may now belong to another repository (deleted and recreated, or transferred): not this key.
-    if (found.base.id !== repoId || found.number !== number) throw new ReadFailure("not-found", DETAIL.notFound);
+    // The name may now belong to another repository (deleted and recreated, or transferred): not this key,
+    // and the name no longer leads to the id main had for it.
+    if (found.base.id !== repoId || found.number !== number) {
+      if (context.generation === this.generation) {
+        this.names.delete(`${repo.owner}/${repo.name}`.toLowerCase());
+        this.repos.delete(repoId);
+      }
+      throw new Moved("not-found", DETAIL.notFound);
+    }
     if (context.generation === this.generation) {
       this.remember(context, found.base);
       if (found.base.defaultBranch !== null) this.hints.set(prId(repoId, number), found.revision.baseRef !== found.base.defaultBranch);
@@ -419,8 +506,15 @@ export class CodeReviewService {
   private async resolve(context: Context, input: string): Promise<ReadResult<ResolvedPr>> {
     const locator = parsePrLocator(input);
     if (!locator) throw new ReadFailure("invalid", DETAIL.badLink);
-    const repo = await this.repoByName(context, locator.owner, locator.repo);
-    await this.pull(context, repo.id, locator.number);
+    let repo = await this.repoByName(context, locator.owner, locator.repo);
+    try {
+      await this.pull(context, repo.id, locator.number);
+    } catch (error) {
+      if (!(error instanceof Moved)) throw error;
+      // The name main knew now leads elsewhere: read it again for the repository it names today.
+      repo = await this.repoByName(context, locator.owner, locator.repo);
+      await this.pull(context, repo.id, locator.number);
+    }
     const current = this.repos.get(repo.id) ?? repo;
     return { state: "ready", fetchedAt: this.at(), value: {
       locator: { host: "github.com", owner: current.owner, repo: current.name, number: locator.number },
@@ -465,21 +559,23 @@ export class CodeReviewService {
     const total = typeof answer?.total_count === "number" && Number.isSafeInteger(answer.total_count) && answer.total_count >= 0 ? answer.total_count : null;
     if (total === null || !Array.isArray(answer!.items)) throw new ReadFailure("failed", DETAIL.failed);
     const rows = answer!.items.map(searchRow);
-    // Search names a repository only by URL; its stable id comes from main's own read of it.
-    const repos = new Map<string, Promise<Repository | null>>();
-    for (const row of rows) {
-      if (!row) continue;
-      const name = `${row.repository.owner}/${row.repository.name}`.toLowerCase();
-      if (!repos.has(name)) repos.set(name, this.repoByName(context, row.repository.owner, row.repository.name).catch((error) => {
-        if (this.failure(error).reason === "not-found" || this.failure(error).reason === "denied") return null;
-        throw error;
-      }));
-    }
+    // Search names a repository only by URL; its stable id comes from main's own read of it. Every lookup
+    // settles before any failure is raised, so none is left rejecting with no one listening.
+    const names = [...new Set(rows.flatMap((row) => row ? [`${row.repository.owner}/${row.repository.name}`] : []))];
+    const settled = await Promise.allSettled(names.map((name) => this.repoByName(context, name.split("/")[0]!, name.split("/")[1]!)));
+    const repos = new Map<string, Repository | null>();
+    settled.forEach((result, i) => {
+      if (result.status === "fulfilled") repos.set(names[i]!.toLowerCase(), result.value);
+      else if (["not-found", "denied"].includes(this.failure(result.reason).reason)) repos.set(names[i]!.toLowerCase(), null);
+    });
+    const failed = settled.find((result, i) => result.status === "rejected" && !repos.has(names[i]!.toLowerCase()));
+    if (failed) throw (failed as PromiseRejectedResult).reason;
     const summaries: PrSummary[] = [];
-    let dropped = 0;
+    let malformed = 0, hidden = 0;
     for (const row of rows) {
-      const repo = row ? await repos.get(`${row.repository.owner}/${row.repository.name}`.toLowerCase())! : null;
-      if (!row || !repo) { dropped++; continue; }
+      if (!row) { malformed++; continue; }
+      const repo = repos.get(`${row.repository.owner}/${row.repository.name}`.toLowerCase());
+      if (!repo) { hidden++; continue; }
       const key: PrKey = { account: context.account, host: "github.com", repoId: repo.id, number: row.number };
       summaries.push({ key, locator: { host: "github.com", owner: repo.owner, repo: repo.name, number: row.number }, title: row.title, state: row.state,
         author: row.author, updatedAt: row.updatedAt, stackHint: this.hints.get(prId(repo.id, row.number)) ?? null });
@@ -489,11 +585,15 @@ export class CodeReviewService {
     const next = loaded < reachable && answer!.items.length === INBOX_PAGE && number < Math.ceil(SEARCH_CAP / INBOX_PAGE) ? `p${number + 1}` : null;
     const capped = total > SEARCH_CAP;
     const incomplete = answer!.incomplete_results === true;
-    const coverage: Coverage = { loaded, total, complete: next === null && !capped && !incomplete && dropped === 0, next, ...(capped ? { cap: SEARCH_CAP } : {}) };
+    // Search pages are offsets: a row updated between pages can shift to another, so only a single page
+    // can prove the whole list arrived. The renderer dedupes later pages by key and compares with `total`.
+    const coverage: Coverage = { loaded, total, complete: number === 1 && next === null && !capped && !incomplete && malformed + hidden === 0, next,
+      ...(capped ? { cap: SEARCH_CAP } : {}) };
     const fetchedAt = this.at();
     // `incomplete_results` means GitHub's search timed out on its side and served what it had.
     if (incomplete) return { state: "partial", value: summaries, fetchedAt, reason: "timeout", coverage };
-    if (dropped) return { state: "partial", value: summaries, fetchedAt, reason: "denied", coverage };
+    if (malformed) return { state: "partial", value: summaries, fetchedAt, reason: "failed", coverage };
+    if (hidden) return { state: "partial", value: summaries, fetchedAt, reason: "denied", coverage };
     if (capped && next === null) return { state: "partial", value: summaries, fetchedAt, reason: "capped", coverage };
     return { state: "ready", value: summaries, fetchedAt, coverage };
   }
@@ -510,14 +610,16 @@ export class CodeReviewService {
     if (pr) activity.unshift({ kind: "opened", id: `pr-${pr.id}`, at: pr.createdAt, actor: pr.author });
     const more = hasNext(fetched.headers.link);
     const next = more && number < TIMELINE_PAGES ? `p${number + 1}` : null;
-    const coverage: Coverage = { loaded: (number - 1) * PAGE + activity.length, total: null, complete: !more && dropped === 0, next, ...(more && !next ? { cap: TIMELINE_PAGES * PAGE } : {}) };
+    // `loaded` counts the provider's items, so pages line up: the opening is main's, a pending review is skipped.
+    const coverage: Coverage = { loaded: (number - 1) * PAGE + items.length, total: null, complete: !more && dropped === 0, next, ...(more && !next ? { cap: TIMELINE_PAGES * PAGE } : {}) };
     const fetchedAt = this.at();
     if (dropped) return { state: "partial", value: activity, fetchedAt, reason: "failed", coverage };
     if (more && !next) return { state: "partial", value: activity, fetchedAt, reason: "capped", coverage };
     return { state: "ready", value: activity, fetchedAt, coverage };
   }
 
-  private async pages<T>(context: Context, endpoint: string, list: string, map: (item: unknown) => T | null): Promise<{ items: T[]; total: number; complete: boolean }> {
+  /** Every page of a check list, up to CHECK_PAGES. `limited`: main stopped at its own page limit, not at GitHub's last page. */
+  private async pages<T>(context: Context, endpoint: string, list: string, map: (item: unknown) => T | null): Promise<{ items: T[]; total: number; complete: boolean; limited: boolean }> {
     const items: T[] = [];
     let total = 0;
     for (let number = 1; number <= CHECK_PAGES; number++) {
@@ -531,22 +633,24 @@ export class CodeReviewService {
         if (item === null) throw new ReadFailure("failed", DETAIL.failed);
         items.push(item);
       }
-      if (!hasNext(fetched.headers.link)) return { items, total, complete: items.length >= total };
+      if (!hasNext(fetched.headers.link)) return { items, total, complete: items.length >= total, limited: false };
     }
-    return { items, total, complete: false };
+    return { items, total, complete: false, limited: true };
   }
 
-  /** Checks for the asked head. A head the PR has moved past is stale evidence, never current success. */
+  /** Checks for the asked head, bracketed by reads of the PR. A head it has moved past is stale evidence, never current success. */
   private async checks(context: Context, key: PrKey, revision: PrRevision): Promise<ReadResult<PrCheck[]>> {
-    const pr = await this.pull(context, key.repoId, key.number);
+    const before = await this.pull(context, key.repoId, key.number);
     const base = `${repoPath(this.repoFor(key))}/commits/${revision.headSha}`;
     const runs = await this.pages(context, `${base}/check-runs`, "check_runs", checkRun);
     const statuses = await this.pages(context, `${base}/status`, "statuses", (value) => commitStatus(value, revision.headSha));
     const value = [...runs.items.filter((run) => run.headSha === revision.headSha), ...statuses.items];
+    const after = await this.pull(context, key.repoId, key.number);
     const coverage: Coverage = { loaded: value.length, total: runs.total + statuses.total, complete: runs.complete && statuses.complete, next: null };
     const fetchedAt = this.at();
-    if (pr.revision.headSha !== revision.headSha) return { state: "stale", value, fetchedAt, reason: "head-changed", coverage };
-    if (!coverage.complete) return { state: "partial", value, fetchedAt, reason: "capped", coverage: { ...coverage, cap: CHECK_PAGES * PAGE } };
+    if (before.revision.headSha !== revision.headSha || after.revision.headSha !== revision.headSha) return { state: "stale", value, fetchedAt, reason: "head-changed", coverage };
+    if (runs.limited || statuses.limited) return { state: "partial", value, fetchedAt, reason: "capped", coverage: { ...coverage, cap: CHECK_PAGES * PAGE } };
+    if (!coverage.complete) return { state: "partial", value, fetchedAt, reason: "failed", coverage };
     return { state: "ready", value, fetchedAt, coverage };
   }
 
@@ -563,12 +667,16 @@ export class CodeReviewService {
     const after = await this.pull(context, key.repoId, key.number);
     const total = before.totals.files;
     const loaded = (number - 1) * PAGE + files.length;
-    const next = loaded < Math.min(total, FILES_CAP) && files.length === PAGE ? `p${number + 1}` : null;
+    const reachable = Math.min(total, FILES_CAP);
+    const next = loaded < reachable && files.length === PAGE ? `p${number + 1}` : null;
+    // A short page before the PR's own count: GitHub served fewer files than it says there are.
+    const short = next === null && loaded < reachable;
     const capped = total > FILES_CAP;
-    const coverage: Coverage = { loaded, total, complete: next === null && !capped, next, ...(capped ? { cap: FILES_CAP } : {}) };
+    const coverage: Coverage = { loaded, total, complete: next === null && !capped && !short, next, ...(capped ? { cap: FILES_CAP } : {}) };
     const value: PrFiles = { revision, files: files as PrFiles["files"] };
     const fetchedAt = this.at();
     if (!sameRevision(after.revision, revision)) return { state: "stale", value, fetchedAt, reason: "head-changed", coverage };
+    if (short) return { state: "partial", value, fetchedAt, reason: "failed", coverage };
     if (capped && next === null) return { state: "partial", value, fetchedAt, reason: "capped", coverage };
     return { state: "ready", value, fetchedAt, coverage };
   }
