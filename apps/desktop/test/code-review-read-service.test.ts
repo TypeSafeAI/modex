@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ghArgs, type GhAnswer, type GhCall } from "../src/main/engine/code-review/gh.js";
 import { CodeReviewService } from "../src/main/engine/code-review/read-service.js";
-import { acceptsReply, diffCoverage, mergePages, scopeOf, summarizeChecks, type CodeReviewReply, type CodeReviewRequest, type PrKey, type PrRevision, type PrSummary, type ReadResult } from "../src/shared/code-review.js";
+import { acceptsReply, diffCoverage, mergePages, scopeOf, summarizeChecks, type Inbox, type CodeReviewReply, type CodeReviewRequest, type PrKey, type PrRevision, type PrSummary, type ReadResult } from "../src/shared/code-review.js";
 
 /**
  * CR-2 (#321): the main-owned read service over a synthetic GitHub. The world below is made up (two
@@ -852,4 +852,65 @@ test("AC2: with no hosts file to watch, a failed read under an unnoticed switch 
   const reply = await read({ op: "overview", key: keyOf(LENDING, 73) });
   assert.equal(reason(reply), "signed-out", "the check before showing a kept answer finds Kit");
   assert.ok(!JSON.stringify(reply).includes("Lend a hold"));
+});
+
+for (const status of [403, 404, 410]) {
+  test(`visibility loss ${status} invalidates related PR reads before later offline fallback`, async () => {
+    const { github, read, prime } = setup();
+    await prime();
+    const key = keyOf(LENDING, 73);
+    const revision = revisionOf(github.pulls.get("7301#73")!);
+    github.contents.set(`7301@${revision.headSha}:a.txt`, "private content\n");
+    const reads: Ask[] = [
+      { op: "overview", key },
+      { op: "resolve", input: `https://github.com/${LENDING.full_name}/pull/73` },
+      { op: "context", key, revision, side: "head", path: "a.txt", start: 1, end: 1 },
+      { op: "activity", key, cursor: null },
+      { op: "checks", key, revision },
+      { op: "files", key, revision, cursor: null },
+    ];
+    for (const request of reads) value(await read(request));
+    value(await read({ op: "overview", key: keyOf(FIELD, 73) }));
+    github.overrides = [{ pattern: new RegExp(`repos/${LENDING.full_name}/pulls/73$`), answer: { kind: "http", status, headers: {}, body: Buffer.from("{}") } }];
+    assert.equal((await read({ op: "overview", key })).result.state, "unavailable");
+    github.cli = "offline";
+    for (const request of reads) assert.equal((await read(request)).result.state, "unavailable", request.op);
+    assert.equal((await read({ op: "overview", key: keyOf(FIELD, 73) })).result.state, "stale", "unrelated repository retains its offline fallback");
+    const inbox = value<Inbox>(await read({ op: "inbox", query: "" }));
+    assert.equal(inbox.groups.authored.state, "unavailable");
+    assert.equal(inbox.groups["review-requested"].state, "stale");
+  });
+}
+
+test("an in-flight context read cannot restore content after the PR becomes inaccessible", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  value(await read({ op: "overview", key }));
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  github.contents.set(`7301@${revision.headSha}:a.txt`, "private content\n");
+  const request: Ask = { op: "context", key, revision, side: "head", path: "a.txt", start: 1, end: 1 };
+  const release = github.hold(/contents/);
+  const pending = read(request);
+  await until(() => github.calls.some((call) => call.endpoint.includes("contents/")));
+  github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "http", status: 403, headers: {}, body: Buffer.from("{}") } }];
+  assert.equal((await read({ op: "overview", key })).result.state, "unavailable");
+  release();
+  assert.equal((await pending).result.state, "unavailable");
+  github.cli = "offline";
+  assert.equal((await read(request)).result.state, "unavailable");
+});
+
+test("rate limits preserve offline fallback while SSO denial revokes it", async () => {
+  for (const headers of [{ "retry-after": "60" }, { "x-github-sso": "required" }] as Record<string, string>[]) {
+    const { github, read, prime } = setup();
+    await prime();
+    const request: Ask = { op: "overview", key: keyOf(LENDING, 73) };
+    value(await read(request));
+    github.overrides = [{ pattern: /pulls\/73$/, answer: { kind: "http", status: 403, headers, body: Buffer.from("{}") } }];
+    const expected = "retry-after" in headers ? "stale" : "unavailable";
+    assert.equal((await read(request)).result.state, expected);
+    github.cli = "offline";
+    assert.equal((await read(request)).result.state, expected);
+  }
 });
