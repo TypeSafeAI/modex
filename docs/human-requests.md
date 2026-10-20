@@ -165,6 +165,11 @@ cannot write two answers for one native ID. This is a local guard, not an exactl
   - a free-text question gets a text field;
   - a secret question gets a password field.
 
+  Unsent question choices and text survive switching threads or opening a new chat. They live
+  only in window memory, keyed by thread and request item, and are discarded when the request
+  closes (including a background answer or withdrawal), the thread is removed/retired, or the
+  window closes. Secret drafts never enter composer recovery or persistent storage.
+
   Sending and uncertain cards show their delivery state and have no submit control. An uncertain
   card does not read as answered. Secret input is sent with its original whitespace; validation only
   checks that it is not empty.
@@ -247,8 +252,13 @@ restart rendering. `sent` is always a local write receipt. The offline backend a
 its scripted decision through the same callback boundary.
 
 Installed CLI versions checked on 2026-10-18: `codex-cli 0.163.0` and Claude Code `2.1.289`.
-The schemas and scripted fixtures below are source/protocol evidence. They are not a live native
-question acceptance run or human keyboard/VoiceOver acceptance. Those gates remain open in #276.
+The schemas and scripted fixtures below are source/protocol evidence. A subsequent
+[2026-10-20 live check](reviews/2026-10-20-cf3-drafts.md#native-evidence-and-remaining-gates)
+passed through the real app with codex-cli 0.163.0 and the opt-in
+`default_mode_request_user_input` flag: the card sent Blue and the model replied Blue.
+Without that flag, a separate run used `request_user_input_async`, emitted as an async
+agent message with questions; that distinct form is not answered by this broker.
+Human keyboard/VoiceOver acceptance remains open in #276.
 The preview approval gate remains off by default; Never rules, escalation rules, routine refusal,
 Ask/Always/YOLO, and permission-profile validation keep their existing decisions.
 
@@ -282,7 +292,7 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 - `e2e/human-requests.spec.ts` runs a fixture Codex app-server through the real UI:
   - the turn header while a question waits;
   - an incomplete answer is refused in place;
-  - the password field;
+  - the password field and unsent choices/text retained across thread navigation;
   - one reply carrying the answers;
   - a refused second answer;
   - Stop gives an error reply;

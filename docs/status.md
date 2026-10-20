@@ -84,6 +84,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
+- **CF-3 question drafts** (#276, tracker #273). A follow-up preserves unsent question choices
+  and text across thread navigation in window memory, clearing them when a request closes.
+  The navigation regression failed before the fix and passes after it. Rebased build, typecheck,
+  1,894 unit tests, 369 desktop E2E tests and 7 site tests passed. The signed follow-up is
+  prepared for review. Results and
+  native capability limits are in [the checkpoint](reviews/2026-10-20-cf3-drafts.md).
+
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
   its own update banner, and uploading Companion 0.3.0 (8) to TestFlight. Build 8 is cut from the
