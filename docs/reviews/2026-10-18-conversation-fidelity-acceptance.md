@@ -7,9 +7,35 @@ recorded as live-provider or human acceptance.
 
 ## Candidate
 
-Every child's slice for this gate has landed, so the fixture rows below run on `main`. No candidate
-is pinned yet, because the live-provider and human gates are still open. Each row names the build it
-was checked on.
+**Pinned on 2026-10-20: `main` at `37406ee`** (#333). It includes every slice that has landed,
+including #332, #335 (superseding #316) and #333 (superseding #295). It does not include #336
+(CF-6 finding 10), still in flight. The live Codex and human gates remain open, so pinning the
+candidate does not pass the gate.
+
+Run first pass, with no reruns, in a fresh worktree on an Apple M3 Max (48 GiB), macOS 26.7.1,
+Node 24.18.1 and pnpm 10.34.5, from 06:04Z to 06:25Z. Load averages ran from about 4 to 34.
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | passed |
+| `pnpm build` | passed |
+| `pnpm typecheck` | passed |
+| `pnpm run test:worktrees` | 109/109 |
+| `pnpm --filter @modex/core test` | 16/16 |
+| `pnpm --filter @modex/desktop test` | 1,697 passed, 16 skipped of 1,713; second stage 21/21 |
+| `pnpm --filter @modex/site test` | 10/10 |
+| `pnpm --filter @modex/store-desktop test` | 16/16 |
+| `pnpm --filter @modex/desktop test:e2e` | **363 passed, 6 skipped, 0 failed** (14.0 min) |
+| `pnpm --filter @modex/site test:e2e` | 7/7 |
+| iPhone UI, as `Scripts/test-e2e.sh` (iPhone 16 Pro, iOS 26.5, Xcode 26.6): `CompanionFlowTests` | 23/23 |
+| iPhone UI, as `Scripts/test-e2e.sh`: `DemoWorkspaceTests` | 20/20 |
+
+All six skipped e2e tests are opt-in, and none is a platform skip on macOS:
+- `claude-live-stop`, 1 test (`MODEX_CLAUDE_LIVE=1`);
+- `live-smoke`, 2 tests (`MODEX_LIVE_SMOKE=1`, recorded in [the live smoke review](2026-10-19-live-smoke.md));
+- `knowledge`, 3 tests (`MODEX_TEST_OPEN_KNOWLEDGE=1`).
+
+Each row below still names the build it was checked on.
 
 ## Children
 
@@ -48,7 +74,7 @@ was checked on.
 | Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts` on a named Mac, before (`89c98f2`) and after; see [Measurements](#measurements-on-a-named-mac) | Verified on one machine; not a hardware-independent latency claim |
 | Live Codex and Claude acceptance | [Live smoke, 2026-10-19](2026-10-19-live-smoke.md), `e2e/live-smoke.spec.ts` through the app. **Claude Code 2.1.304 (Haiku):** a real edit and check, the final answer, and Stop mid-command (interrupted; the file was never written). **codex-cli 0.163.0:** the ChatGPT account refused the turn (`usage_limit_exceeded`, no credits until 2026-10-25 09:35). Modex showed `rate_limited` with the CLI's words and ran nothing | Claude verified live; Codex blocked by the account's usage limit, rerun after 2026-10-25 |
 | Human VoiceOver | — | Open: human |
-| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | Per-PR results in #282, #284, #285, #287, #289 | Open until a candidate is pinned |
+| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [Candidate](#candidate) `37406ee` on 2026-10-20: everything passed first pass. Desktop e2e 363 passed and 6 opt-in skips; the iPhone UI classes passed 23/23 and 20/20 | Verified on `37406ee`; repin if more slices land (#336) |
 
 ## Commands and results for this preparation
 
