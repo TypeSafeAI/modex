@@ -83,7 +83,7 @@ export class CodexBackend implements Backend {
         const output = this.configuration?.redact(stderr) ?? stderr;
         if (this.child === child) this.disconnect(new CodexError(`codex app-server exited (${code}) ${output.trim().split("\n").slice(-2).join(" ")}`, { exitCode: code, signal, stderr: stderrTail(output), pid: child.pid, userAgent: this.userAgent }));
       });
-      this.request<{ userAgent?: string }>("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} }, 5000)
+      this.request<{ userAgent?: string }>("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: { experimentalApi: true } }, 5000)
         .then((r) => {
           this.userAgent = typeof r?.userAgent === "string" ? r.userAgent : null;
           this.notify("initialized", {});
@@ -196,6 +196,28 @@ export class CodexBackend implements Backend {
     this.restart("Codex was force-stopped from another thread. Send again to continue.");
   }
 
+  /**
+   * Interrupting a turn does not end a command Codex moved to a background terminal (codex-cli
+   * 0.163.0, `unified_exec`): on 2026-10-20 a stopped `sleep 30` wrote its file half a minute later.
+   * Ends this turn's own terminals, never an earlier turn's, and calls a command interrupted only
+   * once Codex no longer lists it. Anything Codex cannot confirm stays unknown, with a notice.
+   */
+  private async endTerminals(threadId: string, commands: ReadonlySet<string>, settle: (item: string, outcome: "interrupted" | "unknown") => void, sink: TurnSink): Promise<void> {
+    type Terminal = { itemId?: string; processId?: string };
+    const list = async () => (await this.request<{ data?: Terminal[] }>("thread/backgroundTerminals/list", { threadId }, 3000))?.data ?? [];
+    let running: Set<string>;
+    try {
+      for (const terminal of (await list()).filter((t) => t.itemId && commands.has(t.itemId) && t.processId)) {
+        await this.request("thread/backgroundTerminals/terminate", { threadId, processId: terminal.processId }, 3000).catch(() => undefined);
+      }
+      running = new Set((await list()).map((t) => t.itemId ?? "").filter((id) => commands.has(id)));
+    } catch {
+      running = new Set(commands);
+    }
+    for (const id of commands) settle(id, running.has(id) ? "unknown" : "interrupted");
+    if (running.size) sink.notice("warn", `Codex stopped the turn but did not confirm that ${running.size === 1 ? "its command" : `${running.size} commands`} ended. ${running.size === 1 ? "It" : "They"} may still be running in a Codex background terminal.`);
+  }
+
   /** Ends the current server (and its commands); the next request starts a fresh one. */
   private restart(reason: string): void {
     const child = this.child;
@@ -295,6 +317,8 @@ export class CodexBackend implements Backend {
     const activities = new Set<string>();
     // Output is kept bounded as it streams (its last 256 KiB), with the total seen.
     const tools = new Map<string, { started: number; output: string; bytes: number }>();
+    // Commands Codex started and has not completed. With `unified_exec` one can outlive its turn.
+    const commands = new Set<string>();
     let turnId: string | null = null;
     // Codex announces a fatal error as an `error` notification before `turn/completed` reports the
     // failure. The notification carries the better message and an error code; it is held here and
@@ -312,6 +336,8 @@ export class CodexBackend implements Backend {
       const queued: RpcMessage[] = [];
       let abortTimer: ReturnType<typeof setTimeout> | undefined;
       let interrupted = false;
+      // Set once Codex reports the turn interrupted while ending its background terminals.
+      let stopping = false;
       const child = this.child;
       const detail = (extra: Record<string, unknown>): Record<string, unknown> => ({
         codexThreadId: tid, turnId, userAgent: this.userAgent, pid: child?.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
@@ -342,7 +368,7 @@ export class CodexBackend implements Backend {
         interrupt();
       };
       const onMsg = (msg: RpcMessage) => {
-        if (done) return;
+        if (done || stopping) return;
         const p = (msg.params ?? {}) as Record<string, unknown>;
         const native = (item: unknown): NativeRef => ({ runtime, thread: tid, ...(p.turnId || turnId ? { turn: String(p.turnId ?? turnId) } : {}), item: String(item) });
         if (msg.method === "thread/started") {
@@ -418,6 +444,7 @@ export class CodexBackend implements Backend {
               sink.observe({ type: "reasoning.start", native: native(item.id) });
             } else if (item.type === "commandExecution") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
+              commands.add(item.id);
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd },
                 ...(item.command ? { exec: { command: item.command, ...(item.cwd ? { cwd: item.cwd } : {}) } } : {}) } });
             } else if (item.type === "fileChange") {
@@ -461,6 +488,7 @@ export class CodexBackend implements Backend {
           }
           case "item/completed": {
             const item = p.item as CodexItem;
+            commands.delete(item.id);
             if (item.type === "fileChange") this.changePaths.delete(`${tid}:${item.id}`);
             if (item.type === "agentMessage") {
               // A message that completes without streaming is kept, commentary included: its phase says what it is.
@@ -510,7 +538,15 @@ export class CodexBackend implements Backend {
             else {
               // An error the server reported but did not fail the turn on still deserves a line.
               if (lastError) sink.notice("error", String(lastError.message));
-              finish(turn.status === "interrupted" ? { status: "interrupted" } : { status: "completed" });
+              if (turn.status === "interrupted" && commands.size) {
+                stopping = true;
+                clearTimeout(abortTimer);
+                const settle = (id: string, outcome: "interrupted" | "unknown") => {
+                  const t = tools.get(id);
+                  sink.observe({ type: "tool.done", native: native(id), outcome, progress: { ...(t?.output ? { output: t.output } : {}), ...(t ? { durationMs: Date.now() - t.started } : {}) } });
+                };
+                void this.endTerminals(tid, commands, settle, sink).then(() => finish({ status: "interrupted" }));
+              } else finish(turn.status === "interrupted" ? { status: "interrupted" } : { status: "completed" });
             }
             break;
           }
