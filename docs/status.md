@@ -242,7 +242,7 @@ Roughly in the order they earn their place; none is scheduled.
 - One worktree per session (`scripts/worktree.sh new <slug>`), removed after the merge. A
   branch that is not being worked on is either extracted into a PR or deleted; nothing parks.
 - PRs merge through `~/.claude/scripts/gh-merge-when-green.sh <pr> --squash` after CI, with
-  signed commits only.
+  signed commits only. The guard adds each one to `main`'s merge queue and waits until it lands.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
 - A release's details and evidence go in its review under [`reviews/`](reviews/). This page
   keeps one Shipped row that links it, and the release leaves "In flight".
