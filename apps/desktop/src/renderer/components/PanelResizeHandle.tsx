@@ -7,10 +7,14 @@ interface Props {
   max: number;
   onResize: (width: number) => void;
   onReset: () => void;
+  /** Accessible name, when the divider is not the sidebar's or the workspace's ("Resize the file tree"). */
+  label?: string;
+  /** Positions a divider inside another surface (Code Review's panes). */
+  className?: string;
 }
 
 /** A quiet divider with a larger hit target; arrows follow the divider's screen direction. */
-export function PanelResizeHandle({ side, width, min, max, onResize, onReset }: Props) {
+export function PanelResizeHandle({ side, width, min, max, onResize, onReset, label, className }: Props) {
   const drag = useRef<{ x: number; width: number; pointer: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const direction = side === "sidebar" ? 1 : -1;
@@ -32,8 +36,8 @@ export function PanelResizeHandle({ side, width, min, max, onResize, onReset }: 
     document.body.dataset.panelResizing = "true";
     setDragging(true);
   };
-  return <div className={`panel-resizer panel-resizer-${side}`} role="separator" tabIndex={0}
-    aria-label={`Resize ${side}`} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max}
+  return <div className={`panel-resizer panel-resizer-${side}${className ? ` ${className}` : ""}`} role="separator" tabIndex={0}
+    aria-label={label ?? `Resize ${side}`} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max}
     aria-valuenow={width} aria-valuetext={`${width} pixels`} data-dragging={dragging || undefined}
     title="Drag to resize · Double-click to reset · Arrow keys to adjust"
     onPointerDown={start}
