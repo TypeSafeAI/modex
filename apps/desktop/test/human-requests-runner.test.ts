@@ -44,6 +44,83 @@ test("two answers to one approval: the first is accepted, the second is refused 
   await h.runner.dispose();
 });
 
+/** The next transcript save fails the way a full disk does, once, after or before its write reaches the disk. */
+function failNextSave(store: Store, written = false) {
+  const save = store.saveItems;
+  store.saveItems = (threadId, items) => {
+    store.saveItems = save;
+    if (written) save.call(store, threadId, items);
+    throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+  };
+}
+
+test("an answer whose save fails is not taken: the approval stays open, and answering again reaches the CLI (CF-6 #279, finding 10)", async () => {
+  const native = { runtime: "runtime", request: "request" };
+  const heard: string[] = [];
+  const backend: Backend = { id: "claude", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink: TurnSink) {
+    const answer = await sink.approval({ question: "Allow Bash: $ npm test?", canAlways: true, native, action: { backend: "claude", tool: "Bash", title: "$ npm test", input: { command: "npm test" } } });
+    await sink.deliverRequest!(native, async () => { heard.push(answer); });
+    return { status: "completed" };
+  } };
+  const h = await harness(backend);
+  const sent = h.runner.send(h.thread.id, "go");
+  await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "approval"));
+  const card = h.runner.items(h.thread.id).find((i) => i.kind === "approval")!;
+  failNextSave(h.store);
+  assert.throws(() => h.runner.answer(h.thread.id, card.id, "yes"), /ENOSPC/);
+  assert.deepEqual(h.runner.items(h.thread.id).find((i) => i.id === card.id), card, "the card reads as it did before the answer");
+  assert.equal(h.events.some((e) => e.type === "item_update" && e.id === card.id), false, "no client was told it was answered");
+  assert.equal(h.store.thread(h.thread.id)?.status, "waiting");
+  assert.deepEqual(heard, []);
+  assert.deepEqual(h.runner.answer(h.thread.id, card.id, "no"), { ok: true }, "answering again is accepted");
+  await sent;
+  assert.deepEqual(heard, ["no"]);
+  const answered = h.runner.items(h.thread.id).find((i) => i.id === card.id) as Extract<ThreadItem, { kind: "approval" }>;
+  assert.deepEqual([answered.answer, answered.delivery], ["no", "sent"]);
+  await h.runner.dispose();
+});
+
+test("a failed save whose write reached the disk reads as uncertain after a crash, never as sent", async () => {
+  const backend: Backend = { id: "claude", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink: TurnSink) {
+    await sink.approval({ question: "Allow Bash: $ deploy?", canAlways: false, action: { backend: "claude", tool: "Bash", title: "$ deploy" } });
+    return { status: "completed" };
+  } };
+  const h = await harness(backend);
+  const sent = h.runner.send(h.thread.id, "go");
+  await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "approval"));
+  const card = h.runner.items(h.thread.id).find((i) => i.kind === "approval")!;
+  failNextSave(h.store, true);
+  assert.throws(() => h.runner.answer(h.thread.id, card.id, "yes"), /ENOSPC/);
+  // Modex crashes here: a new process reads what reached the disk.
+  const restarted = new ThreadRunner({ home: h.home, store: new Store(h.home), emit: () => {}, backends: { claude: backend } });
+  const read = restarted.items(h.thread.id).find((i) => i.id === card.id) as Extract<ThreadItem, { kind: "approval" }>;
+  assert.deepEqual([read.answer, read.delivery], ["yes", "uncertain"]);
+  await restarted.dispose();
+  h.runner.stop(h.thread.id);
+  await sent;
+  await h.runner.dispose();
+});
+
+test("a question answer whose save fails is not taken either, and answering again reaches the CLI", async () => {
+  const heard: unknown[] = [];
+  const backend: Backend = { id: "codex", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink: TurnSink) {
+    heard.push(await sink.question!({ blocking: true, questions: [{ id: "env", header: "Env", text: "Which environment?", options: null, allowOther: true, secret: false }] }));
+    return { status: "completed" };
+  } };
+  const h = await harness(backend);
+  const sent = h.runner.send(h.thread.id, "go");
+  await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "question"));
+  const card = h.runner.items(h.thread.id).find((i) => i.kind === "question")!;
+  failNextSave(h.store);
+  assert.throws(() => h.runner.answerQuestion(h.thread.id, card.id, { env: ["staging"] }), /ENOSPC/);
+  assert.deepEqual(h.runner.items(h.thread.id).find((i) => i.id === card.id), card);
+  assert.deepEqual(heard, []);
+  assert.deepEqual(h.runner.answerQuestion(h.thread.id, card.id, { env: ["production"] }), { ok: true });
+  await sent;
+  assert.deepEqual(heard, [{ answers: { env: ["production"] } }]);
+  await h.runner.dispose();
+});
+
 test("an approval withdrawn by Stop refuses a late answer as withdrawn", async () => {
   let release!: () => void;
   const held = new Promise<void>((r) => { release = r; });
