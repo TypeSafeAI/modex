@@ -10,6 +10,7 @@ import type { UsageEvent } from "./usage.js";
 import type { ExecutionOutcome, ItemOrigin, MessagePhase, PlanSource, PlanStep, ReasoningRepresentation } from "./conversation-events.js";
 import type { Evidence, Exec } from "./evidence.js";
 import type { Question, Refusal } from "./human-requests.js";
+import type { CodeReviewReply, CodeReviewRequest } from "./code-review.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
@@ -631,6 +632,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** A project checkout's current branch, for a draft's context strip; null outside a git repository. */
   "project:branch": { req: { projectId: string }; res: string | null };
   "thread:context": { req: { threadId: string }; res: ThreadContext };
+  /** A Code Review read (#321). Main validates the payload first; `cancel` answers null. */
+  "code-review:read": { req: CodeReviewRequest; res: CodeReviewReply | null };
   /** Opens (or reattaches to) the thread's shell; cols/rows are the panel's current size. */
   "terminal:open": { req: { threadId: string; cols: number; rows: number }; res: TerminalSnapshot };
   "terminal:write": { req: { threadId: string; sessionId: string; data: string }; res: void };
