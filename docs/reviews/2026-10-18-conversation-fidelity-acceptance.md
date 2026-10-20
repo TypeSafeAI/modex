@@ -46,7 +46,7 @@ was checked on.
 | Themes and viewports | `e2e/conversation-fidelity.spec.ts` captures waiting, live, failed, completed and restored in Graphite, Jev and OpenCoven, at 900×600 and 1440×900, with no sideways scroll; `e2e/typed-turns.spec.ts` covers a typed turn in each theme at 900×600. 33 references are committed in [`screenshots/conversation-fidelity/`](../screenshots/conversation-fidelity/manifest.json) | Verified (fixture captures); human visual review open |
 | Keyboard and reduced motion | Existing `app.spec.ts` accessibility test; the new elements add no animation | Partial; human VoiceOver open |
 | Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts` on a named Mac, before (`89c98f2`) and after; see [Measurements](#measurements-on-a-named-mac) | Verified on one machine; not a hardware-independent latency claim |
-| Live Codex and Claude acceptance | Captures only (2026-10-18, Haiku 5.5 and gpt-6-astra, benign tasks) | Open: needs authorized live runs through the app |
+| Live Codex and Claude acceptance | [Live smoke, 2026-10-19](2026-10-19-live-smoke.md), `e2e/live-smoke.spec.ts` through the app. **Claude Code 2.1.304 (Haiku):** a real edit and check, the final answer, and Stop mid-command (interrupted; the file was never written). **codex-cli 0.163.0:** the ChatGPT account refused the turn (`usage_limit_exceeded`, no credits until 2026-10-25 09:35). Modex showed `rate_limited` with the CLI's words and ran nothing | Claude verified live; Codex blocked by the account's usage limit, rerun after 2026-10-25 |
 | Human VoiceOver | — | Open: human |
 | Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | Per-PR results in #282, #284, #285, #287, #289 | Open until a candidate is pinned |
 
