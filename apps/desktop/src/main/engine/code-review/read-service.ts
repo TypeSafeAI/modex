@@ -108,6 +108,9 @@ class Lru<K, V> {
     this.map.delete(key);
     this.used -= this.size(old);
   }
+  deleteWhere(matches: (key: K, value: V) => boolean): void {
+    for (const [key, value] of this.map) if (matches(key, value)) this.delete(key);
+  }
   clear(): void {
     this.map.clear();
     this.used = 0;
@@ -133,7 +136,7 @@ class Slots {
 }
 
 /** `stamp`: gh's login state the account was confirmed under when the read began. */
-interface Context { account: string; generation: number; stamp: string | null; signal: AbortSignal }
+interface Context { account: string; generation: number; stamp: string | null; signal: AbortSignal; repositories: Set<string>; resources: Set<string>; deniedResources: Set<string>; invalidated: boolean }
 interface Fetched { body: Buffer; headers: Record<string, string> }
 
 const enc = encodeURIComponent;
@@ -155,6 +158,7 @@ export class CodeReviewService {
   private generation = 0;
   /** Each read in flight, with the generation it reads under once it has one. */
   private readonly inflight = new Map<string, { controller: AbortController; generation: number | null }>();
+  private readonly contexts = new Set<Context>();
   private readonly blocked = new Map<"core" | "search", number>();
   private searches: number[] = [];
   private readonly cache = new Lru<string, Fetched & { etag: string }>(512, 32 * MB, (entry) => entry.body.length + 256);
@@ -162,7 +166,7 @@ export class CodeReviewService {
   private readonly names = new Lru<string, string>(2048);
   private readonly hints = new Lru<string, boolean>(4096);
   private readonly revisions = new Lru<string, PrRevision[]>(1024);
-  private readonly kept = new Lru<string, { value: unknown; fetchedAt: string; coverage?: Coverage }>(256, 32 * MB, (entry) => size(entry.value));
+  private readonly kept = new Lru<string, { value: unknown; fetchedAt: string; coverage?: Coverage; resources: Set<string> }>(256, 32 * MB, (entry) => size(entry.value) + [...entry.resources].reduce((bytes, key) => bytes + key.length * 2 + 32, 0));
 
   constructor(options: CodeReviewOptions = {}) {
     this.enabled = options.enabled ?? true;
@@ -212,23 +216,28 @@ export class CodeReviewService {
       return this.reply(request, null, this.unavailable(failure));
     }
     if ("key" in request && request.key.account !== account.id) return this.reply(request, account.id, this.unavailable(new ReadFailure("signed-out", DETAIL.otherAccount)));
-    const context: Context = { account: account.id, generation: this.generation, stamp: this.identity!.stamp, signal: entry.controller.signal };
+    const context: Context = { account: account.id, generation: this.generation, stamp: this.identity!.stamp, signal: entry.controller.signal, repositories: new Set(), resources: new Set(), deniedResources: new Set(), invalidated: false };
     entry.generation = context.generation;
+    this.contexts.add(context);
     try {
       const result = await this.run(context, request);
       // Made as the account it is stamped with? gh can switch under a read that is already running.
       const doubt = await this.confirm(context);
-      if (doubt) return this.reply(request, account.id, this.unavailable(doubt));
-      this.keep(request, result);
+      if (doubt || context.invalidated) return this.reply(request, account.id, this.unavailable(doubt ?? new ReadFailure("denied", DETAIL.denied)));
+      this.keep(request, result, context);
       return this.reply(request, account.id, result);
     } catch (error) {
       if (context.generation !== this.generation) return this.reply(request, account.id, this.unavailable(this.gone()));
-      const result = this.fallback(request, account.id, this.failure(error));
+      const failure = this.failure(error);
+      if (failure.reason === "denied" || failure.reason === "not-found") this.kept.delete(keptKey(request));
+      const result = this.fallback(request, account.id, failure);
       if (result.state === "stale") {
         const doubt = await this.confirm(context);
-        if (doubt) return this.reply(request, account.id, this.unavailable(doubt));
+        if (doubt || context.invalidated) return this.reply(request, account.id, this.unavailable(doubt ?? new ReadFailure("denied", DETAIL.denied)));
       }
       return this.reply(request, account.id, result);
+    } finally {
+      this.contexts.delete(context);
     }
   }
 
@@ -237,9 +246,9 @@ export class CodeReviewService {
   }
 
   /** Kept only once confirmed: the last good answer of a read, and an inbox's groups, for `stale` later. */
-  private keep(request: Exclude<Read, { op: "connection" }>, result: ReadResult<unknown>): void {
+  private keep(request: Exclude<Read, { op: "connection" }>, result: ReadResult<unknown>, context: Context): void {
     const store = (key: string, value: ReadResult<unknown>) => {
-      if (value.state === "ready" || value.state === "partial") this.kept.set(key, { value: value.value, fetchedAt: value.fetchedAt, ...(value.coverage ? { coverage: value.coverage } : {}) });
+      if (value.state === "ready" || value.state === "partial") this.kept.set(key, { value: value.value, fetchedAt: value.fetchedAt, resources: new Set(context.resources), ...(value.coverage ? { coverage: value.coverage } : {}) });
     };
     if (request.op !== "inbox") return store(keptKey(request), result);
     if (result.state !== "ready") return;
@@ -276,6 +285,7 @@ export class CodeReviewService {
    */
   private async confirm(context: Context): Promise<ReadFailure | null> {
     if (context.generation !== this.generation) return this.gone();
+    if (context.invalidated) return new ReadFailure("denied", DETAIL.denied);
     const stamp = this.stamp();
     if (stamp !== null && stamp === context.stamp) return null;
     if (stamp !== null && context.stamp !== null) {
@@ -431,10 +441,14 @@ export class CodeReviewService {
   }
 
   private async get(context: Context, endpoint: string, options: { accept?: Accept; maxBytes?: number; timeoutMs?: number } = {}): Promise<Fetched> {
+    const repositoryPath = /^(repos\/[^/]+\/[^/?]+)(?:[/?]|$)/.exec(endpoint)?.[1];
+    if (repositoryPath) context.repositories.add(repositoryPath.toLowerCase());
+    if (context.invalidated) throw new ReadFailure("denied", DETAIL.denied);
     const accept = options.accept ?? JSON_TYPE;
     const resource = endpoint.startsWith("search/") ? "search" : "core";
     this.admit(resource);
     const key = `${accept}\u0000${endpoint}`;
+    context.resources.add(key);
     const cached = this.cache.get(key);
     // A read cancelled while it waited for a slot never starts gh.
     const answer = await this.slots.run(() => context.signal.aborted ? Promise.resolve<GhAnswer>({ kind: "cancelled" })
@@ -443,6 +457,7 @@ export class CodeReviewService {
       if ((answer.kind === "no-cli" || answer.kind === "signed-out") && context.generation === this.generation) this.forget();
       throw this.transportFailure(answer.kind);
     }
+    if (context.invalidated || context.deniedResources.has(key)) throw new ReadFailure("denied", DETAIL.denied);
     this.observe(resource, answer);
     if (answer.status === 304 && cached) return cached;
     if (answer.status >= 200 && answer.status < 300) {
@@ -451,7 +466,9 @@ export class CodeReviewService {
       return { body: answer.body, headers: answer.headers };
     }
     if (answer.status === 401 && context.generation === this.generation) this.forget();
-    throw this.httpFailure(answer, resource);
+    const failure = this.httpFailure(answer, resource);
+    if ((failure.reason === "denied" || failure.reason === "not-found") && context.generation === this.generation) this.invalidateResource(key, context);
+    throw failure;
   }
 
   private transportFailure(kind: Exclude<GhAnswer["kind"], "http">): ReadFailure {
@@ -489,7 +506,7 @@ export class CodeReviewService {
   // --- Repositories and PRs --------------------------------------------------------------------
 
   private remember(context: Context, repo: Repository): void {
-    if (context.generation !== this.generation) return;
+    if (context.generation !== this.generation || [...context.deniedResources].some((key) => key.toLowerCase() === `${JSON_TYPE}\u0000${repoPath(repo)}`.toLowerCase())) return;
     this.repos.set(repo.id, repo);
     this.names.set(`${repo.owner}/${repo.name}`.toLowerCase(), repo.id);
   }
@@ -511,9 +528,55 @@ export class CodeReviewService {
     return repo;
   }
 
+  /** One provider resource may back multiple line slices or revision-bound views. */
+  private invalidateResource(key: string, origin: Context): void {
+    origin.deniedResources.add(key);
+    const name = /^repos\/([^/]+\/[^/?]+)$/.exec(key.slice(key.indexOf("\u0000") + 1))?.[1]?.toLowerCase();
+    if (name) {
+      const id = this.names.get(name);
+      if (id) this.repos.delete(id);
+      this.names.delete(name);
+    }
+    this.cache.delete(key);
+    this.kept.deleteWhere((_request, entry) => entry.resources.has(key));
+    for (const context of this.contexts) if (context !== origin && context.resources.has(key)) context.invalidated = true;
+  }
+
+  private invalidatePr(repo: Repository, number: number): void {
+    // A search may learn its repositories only after its answer arrives. Refuse overlapping
+    // searches too, and force a fresh search body instead of reusing a pre-denial ETag.
+    // Completed unrelated pages remain available for offline fallback.
+    for (const context of this.contexts) {
+      if (context.repositories.has(repoPath(repo).toLowerCase()) || [...context.resources].some((key) => key.startsWith(`${JSON_TYPE}\u0000search/`))) context.invalidated = true;
+    }
+    const matches = (key: PrKey | undefined) => key?.repoId === repo.id && key.number === number;
+    this.kept.deleteWhere((serialized, entry) => {
+      const request = JSON.parse(serialized) as Exclude<Read, { op: "connection" }>;
+      if ("key" in request && matches(request.key)) return true;
+      if (request.op === "resolve") return matches((entry.value as ResolvedPr).key);
+      // Drop the whole affected page: filtering rows would misrepresent its coverage.
+      return request.op === "inbox-page" && (entry.value as PrSummary[]).some((row) => matches(row.key));
+    });
+    this.revisions.delete(prId(repo.id, number));
+    this.hints.delete(prId(repo.id, number));
+    // Commit and contents URLs are shared by PRs. Revalidate the repository's transport
+    // representations next time, while preserving unrelated repositories' caches.
+    this.cache.deleteWhere((key) => key.includes(`\u0000${repoPath(repo)}/`) || key.startsWith(`${JSON_TYPE}\u0000search/`));
+  }
+
   private async pull(context: Context, repoId: string, number: number): Promise<Pull> {
     const repo = this.repoFor({ account: context.account, host: "github.com", repoId, number });
-    const found = pull(json((await this.get(context, `${repoPath(repo)}/pulls/${number}`, { maxBytes: 4 * MB })).body));
+    let fetched: Fetched;
+    try {
+      fetched = await this.get(context, `${repoPath(repo)}/pulls/${number}`, { maxBytes: 4 * MB });
+    } catch (error) {
+      const failure = this.failure(error);
+      if (context.generation === this.generation && (failure.reason === "denied" || failure.reason === "not-found")) {
+        this.invalidatePr(repo, number);
+      }
+      throw error;
+    }
+    const found = pull(json(fetched.body));
     if (!found) throw new ReadFailure("failed", DETAIL.failed);
     // The name may now belong to another repository (deleted and recreated, or transferred): not this key,
     // and the name no longer leads to the id main had for it.
@@ -577,7 +640,17 @@ export class CodeReviewService {
           : this.unavailable(failure);
       }
     }));
-    return { state: "ready", fetchedAt: this.at(), value: { account: context.account, query, groups: { authored: groups[0]!, "review-requested": groups[1]! } } };
+    // Groups can look up the same uncached repository concurrently. A denial in one
+    // takes precedence over rows the other already built, without hiding other repos.
+    const visible = groups.map((result): ReadResult<PrSummary[]> => {
+      if (result.state === "unavailable") return result;
+      const rows = result.value.filter((row) => ![...context.deniedResources].some((resource) =>
+        resource.toLowerCase() === `${JSON_TYPE}\u0000${repoPath({ owner: row.locator.owner, name: row.locator.repo })}`.toLowerCase()));
+      if (rows.length === result.value.length) return result;
+      return { state: "partial", value: rows, fetchedAt: result.fetchedAt, reason: "denied",
+        coverage: { ...(result.coverage ?? { loaded: result.value.length, total: null, next: null }), complete: false } };
+    });
+    return { state: "ready", fetchedAt: this.at(), value: { account: context.account, query, groups: { authored: visible[0]!, "review-requested": visible[1]! } } };
   }
 
   private async group(context: Context, group: InboxGroup, query: string, number: number): Promise<Exclude<ReadResult<PrSummary[]>, { state: "unavailable" | "stale" }>> {

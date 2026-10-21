@@ -92,7 +92,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   CR-1 (#320) defines the account- and revision-scoped read contract and synthetic fixtures, and
   its [design page](design/code-review.md) maps every reference control to an owner. CR-2 (#321)
   adds main's read service on the `code-review:read` channel: GET-only reads through the person's
-  `gh` login, keyed by account, repository id and revision. Nothing is visible in the app yet. AI
+  `gh` login, keyed by account, repository id and revision. The separate `cr2-cache-denial`
+  follow-up invalidates retained PR data after visibility loss, including reads already in flight;
+  it covers pending inbox searches, sibling file slices and denial during identity confirmation,
+  while preserving unrelated repositories and ordinary offline/rate-limit fallback. Nothing is visible in the app yet. AI
   review (#325) and GitHub writes (#326) are later gates.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
