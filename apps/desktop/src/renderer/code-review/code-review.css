@@ -1,0 +1,91 @@
+/* Code Review (#322). Geometry follows docs/design/code-review.md's R1 and R4 measurements, in CSS px. */
+.sheet > .code-review { grid-area: 1 / 1 / 2 / -1; }
+.sheet[data-surface="code-review"] > :is(.sidebar, .main, .workspace, .toast, .panel-resizer-workspace) { display: none; }
+.code-review { display: flex; min-width: 0; min-height: 0; height: 100%; background: var(--bg-main); }
+.code-review[hidden] { display: none; }
+
+/* The tab strip lives in the title bar, starting where the inbox ends (R1 x 343). */
+#code-review-titlebar { display: none; }
+#code-review-titlebar:has(.cr-tabbar) { display: flex; flex: 1; min-width: 0; align-self: stretch; }
+.cr-tabbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding-right: 10px; }
+.cr-tabgroup { display: flex; flex: none; align-items: center; gap: 4px; min-width: 0; padding-left: 6px; box-sizing: border-box; }
+.cr-tabgroup:not([style]) { flex: 0 1 auto; }
+.cr-tab { flex: 0 1 240px; min-width: 120px; }
+.cr-tab[data-pane="changes"] { flex: none; min-width: 0; }
+.cr-tabgroup[style] .cr-tab[data-pane="overview"] { flex: 1 1 auto; }
+.cr-tab .cr-tab-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cr-totals { flex: none; font-variant-numeric: tabular-nums; }
+.cr-add { color: var(--add); }
+.cr-del { color: var(--del); }
+.cr-new-tab[aria-disabled="true"] { opacity: .5; cursor: default; }
+
+/* Inbox: R1 x 55–335, an 8 px scrollbar gutter included; search y 100–136; rows about 73 tall. */
+.cr-inbox { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-sidebar); border-right: 1px solid var(--border-pane); }
+.cr-inbox-head { height: 52px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; }
+.cr-inbox-title { flex: 1; min-width: 0; margin: 0; color: var(--text-1); font: var(--weight-semibold) var(--text-lg)/1 var(--font-sans); letter-spacing: -.02em; }
+.cr-menu { position: relative; }
+.cr-search { height: 36px; margin: 0 10px 8px 8px; border-radius: 10px; }
+.cr-search input::-webkit-search-cancel-button { display: none; }
+.cr-inbox-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-bottom: 16px; }
+.cr-group { margin-top: 8px; }
+.cr-group ul { margin: 0; padding: 0; list-style: none; }
+.cr-group-label { margin: 0; padding: 6px 16px; color: var(--text-3); font: var(--weight-regular) var(--text-md)/20px var(--font-sans); }
+.cr-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; width: calc(100% - 16px); margin: 0 8px 1px; padding: 7px 8px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--text-1); font: inherit; text-align: left; cursor: pointer; }
+.cr-row:hover { background: var(--bg-row-hover); }
+.cr-row.selected { background: var(--bg-row-selected); }
+.cr-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cr-row-title { grid-column: 1; display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--text-1); font-size: var(--text-md); line-height: 20px; overflow-wrap: anywhere; }
+.cr-row-stack { grid-column: 2; grid-row: 1; padding-top: 3px; color: var(--text-3); }
+.cr-row-meta { grid-column: 1 / -1; margin-top: 3px; overflow: hidden; color: var(--text-3); font-size: var(--text-sm); line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.cr-show-more { margin: 2px 8px 0; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); font: inherit; font-size: var(--text-md); cursor: pointer; }
+.cr-show-more:hover:not(:disabled) { background: var(--bg-row-hover); color: var(--text-2); }
+.cr-hint, .cr-stale { margin: 6px 16px; color: var(--text-info); font-size: var(--text-sm); line-height: 1.45; }
+.cr-stale .btn { margin-left: 6px; }
+.cr-notice { margin: 6px 8px; }
+
+/* Workspace: one pane, or the PR pane and Changes side by side (R4: 659 | 470 + 290). */
+.cr-workspace { position: relative; flex: 1; display: flex; min-width: 0; min-height: 0; }
+.cr-empty { display: grid; justify-items: center; gap: 10px; max-width: 340px; margin: auto; padding: 24px; color: var(--text-3); text-align: center; }
+.cr-empty p { margin: 0; font-size: var(--text-md); line-height: 1.5; }
+.cr-pane { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; container: cr-pane / inline-size; }
+.cr-workspace[data-panes="overview changes"] > .cr-pane-overview { flex: none; width: var(--cr-split-w); }
+.cr-workspace[data-panes="overview changes"] > .cr-pane-changes { border-left: 1px solid var(--border-pane); }
+.cr-workspace > .cr-split-resizer { left: var(--cr-split-w); }
+
+/* PR header: R1 y 55–90, state pill then repository and number; actions at the right. */
+.cr-pr-header { flex: none; display: flex; align-items: center; gap: 8px; height: 48px; min-width: 0; padding: 0 10px 0 12px; }
+.cr-pr-header > .spacer { flex: 1; min-width: 0; }
+.cr-state { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: var(--radius-pill); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.cr-state-open { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+.cr-state-draft { color: var(--text-2); background: var(--bg-row-hover); }
+.cr-state-closed { color: var(--danger-text); background: var(--danger-bg); }
+.cr-state-merged { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.cr-pr-id { min-width: 0; overflow: hidden; color: var(--text-3); font-size: var(--text-md); white-space: nowrap; text-overflow: ellipsis; }
+.cr-link-group { flex: none; display: inline-flex; align-items: center; gap: 2px; padding: 1px; border: 1px solid var(--border-strong); border-radius: 10px; }
+.cr-link-group a.icon-btn { display: inline-grid; place-items: center; color: inherit; }
+.cr-action { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: transparent; color: var(--text-2); font: inherit; font-size: var(--text-md); white-space: nowrap; }
+.cr-action.icon-only { width: 32px; padding: 0; border-color: transparent; }
+.cr-action.primary { border-color: transparent; background: var(--text-1); color: var(--bg-main); }
+.cr-action[aria-disabled="true"] { opacity: .5; cursor: default; }
+.cr-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cr-action .cr-narrow-icon { display: none; }
+/* A narrow pane keeps every action, as icons with their names. */
+@container cr-pane (max-width: 640px) {
+  .cr-action:not(.icon-only) { width: 32px; padding: 0; }
+  .cr-action .cr-action-label { display: none; }
+  .cr-action .cr-narrow-icon { display: block; }
+}
+@container cr-pane (max-width: 420px) {
+  .cr-pr-id { display: none; }
+}
+
+.cr-pane-body, .cr-diff, .cr-tree { min-height: 0; overflow: auto; overscroll-behavior: contain; outline: none; }
+.cr-pane-body { flex: 1; padding: 20px clamp(16px, 9%, 136px) 32px; }
+.cr-changes-body { position: relative; flex: 1; display: flex; min-height: 0; border-top: 1px solid var(--border-pane); }
+.cr-diff { flex: 1; min-width: 0; padding: 16px; }
+.cr-tree { flex: none; width: var(--cr-tree-w); padding: 12px; border-left: 1px solid var(--border-pane); }
+.cr-changes-body[data-tree="folded"] > .cr-tree { display: none; }
+.cr-changes-body[data-tree="only"] > .cr-diff { display: none; }
+.cr-changes-body[data-tree="only"] > .cr-tree { flex: 1; width: auto; border-left: 0; }
+.cr-changes-body > .cr-tree-resizer { right: var(--cr-tree-w); }
+.cr-placeholder { margin: 0; color: var(--text-3); font-size: var(--text-md); line-height: 1.5; }

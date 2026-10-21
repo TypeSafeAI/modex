@@ -44,6 +44,7 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
         <IconButton icon="sidebar" label={sidebarOpen ? "Hide sidebar" : "Show sidebar"} size="md" data-testid="sidebar-toggle" aria-pressed={sidebarOpen} onClick={onToggleSidebar} />
       </div>
       <div id="knowledge-titlebar" />
+      <div id="code-review-titlebar" />
       {thread && (
         <div className="titlebar-main">
           <Icon name="folder" size={16} className="titlebar-folder" />
