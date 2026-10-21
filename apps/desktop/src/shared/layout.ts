@@ -7,6 +7,9 @@ export type Layout = {
   sidebar: boolean;
   sidebarWidth?: number;
   workspaceWidth?: number;
+  /** Code Review: the PR pane's width beside Changes, and the file tree's width inside Changes. */
+  codeReviewSplit?: number;
+  codeReviewTree?: number;
   /** Tabbed workspace on the right of a thread (the key is kept for existing preferences). */
   changes: boolean;
   /** Opaque, fail-closed cover for screen sharing and livestreams. */
@@ -36,7 +39,7 @@ export function loadLayout(storage: Storage): Layout {
       const v = (saved as Record<string, unknown>)[key];
       if (typeof v === "boolean") layout[key] = v;
     }
-    for (const key of ["sidebarWidth", "workspaceWidth"] as const) {
+    for (const key of ["sidebarWidth", "workspaceWidth", "codeReviewSplit", "codeReviewTree"] as const) {
       const value = (saved as Record<string, unknown>)[key];
       if (typeof value === "number" && Number.isFinite(value) && value > 0) layout[key] = Math.round(value);
     }

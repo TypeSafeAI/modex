@@ -37,6 +37,8 @@ import { PANEL_WIDTHS, usePanelSizing } from "./panel-sizing";
 import { useLayout } from "./layout";
 import { applyTheme, restoreTheme } from "./theme";
 import { applyItemEvent, type ItemEvent } from "./transcript";
+import { codeReviewEnabled } from "./code-review/feature.js";
+import type { ReviewNavigation } from "./code-review/CodeReviewView";
 
 /** ⌃` shows or hides the thread's terminal. xterm maps no byte to it, so it reaches this handler even from inside the shell. */
 const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Backquote";
@@ -47,6 +49,7 @@ const ImagesView = lazy(() => import("./images/ImagesView").then(m => ({ default
 const RoutinesView = lazy(() => import("./routines/RoutinesView").then(m => ({ default: m.RoutinesView })));
 const PluginSurface = lazy(() => import("./plugins/PluginSurface").then(m => ({ default: m.PluginSurface })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
+const CodeReviewView = lazy(() => import("./code-review/CodeReviewView"));
 
 export function App({ persistPreferences = true, spaceEnabled = true, analyticsEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; analyticsEnabled?: boolean; suspended?: boolean } = {}) {
   const updater = useUpdateState();
@@ -84,7 +87,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     window.addEventListener("modex:open-page", open);
     return () => window.removeEventListener("modex:open-page", open);
   }, []);
-  const [surface, setSurface] = useState<"chat" | "space" | "analytics" | "images" | "plugins" | "routines">("chat");
+  const [surface, setSurface] = useState<"chat" | "space" | "analytics" | "images" | "plugins" | "routines" | "code-review">("chat");
+  // Code Review (#319) stays hidden in built apps until Gate A is done; see code-review/feature.ts.
+  const [reviewEnabled] = useState(() => codeReviewEnabled(localStorage, import.meta.env.DEV));
+  const [reviewOpened, setReviewOpened] = useState(false);
+  const [reviewNav, setReviewNav] = useState<ReviewNavigation | null>(null);
   const [mediaFeatures, setMediaFeatures] = useState({ images: false, plugins: false });
   const [imagesOpened, setImagesOpened] = useState(false);
   useEffect(() => { let live = true; void bridge.invoke("features:media", undefined).then(features => { if (live) setMediaFeatures(features); }).catch(() => {}); return () => { live = false; }; }, []);
@@ -896,10 +903,10 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
       <TitleBar
         thread={surface === "chat" ? thread : null}
         onRename={(title) => void updateThread({ title })}
-        canBack={surface === "chat" && history.canBack}
-        canForward={surface === "chat" && history.canForward}
-        onBack={history.back}
-        onForward={history.forward}
+        canBack={surface === "chat" ? history.canBack : surface === "code-review" && Boolean(reviewNav?.canBack)}
+        canForward={surface === "chat" ? history.canForward : surface === "code-review" && Boolean(reviewNav?.canForward)}
+        onBack={surface === "code-review" ? () => reviewNav?.back() : history.back}
+        onForward={surface === "code-review" ? () => reviewNav?.forward() : history.forward}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         showChanges={showChanges}
@@ -913,13 +920,14 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         onArchive={archiveThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenRoutines={() => setSurface("routines")} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins ? () => setSurface("plugins") : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
+      <Rail surface={surface} onOpenRoutines={() => setSurface("routines")} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins ? () => setSurface("plugins") : undefined} onOpenCodeReview={reviewEnabled ? () => { setReviewOpened(true); setSurface("code-review"); } : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
       <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
-        {(surface === "chat" || surface === "space") && sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
+        {(surface === "chat" || surface === "space" || surface === "code-review") && sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
           onResize={workspaceWidth => setLayout({ workspaceWidth })} onReset={() => setLayout({ workspaceWidth: PANEL_WIDTHS.workspace.default })} />}
         {surface === "analytics" && <AnalyticsView active={!showSettings && !showCompanion} />}
+        {reviewOpened && <Suspense fallback={surface === "code-review" ? <div role="status">Opening Code Review…</div> : null}><CodeReviewView active={surface === "code-review"} inboxOpen={sidebarOpen} layout={layout} setLayout={setLayout} onNavigation={setReviewNav} /></Suspense>}
         {imagesOpened && <Suspense fallback={<div role="status">Opening Images…</div>}><ImagesView active={surface === "images"} projects={state.projects} onPlugins={() => setSurface("plugins")} onOpenPage={id => { setOpenPage({ id }); setSpaceOpened(true); setSurface("space"); }} onUseInChat={async id => {
           const key = thread?.id ?? draftKey;
           if (!thread && !draft) throw new Error("Choose a project and open a chat before attaching an image.");

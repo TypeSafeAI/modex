@@ -129,6 +129,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
   link their open PRs.
 
+- **Code Review inbox integration repair.** The renderer labels independently stale groups and
+  pages, retains per-page failure/retry notices, and deduplicates first and later pages using the
+  producer contract helper. The [authenticated integration check](reviews/2026-10-21-cr3-read-integration.md)
+  passed with CR-2 through the real Electron IPC/service path. Overview and diff content, original
+  reference comparison and human accessibility remain separate acceptance gates.
+
 - **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
   rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
@@ -141,7 +147,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   while preserving unrelated repositories and ordinary offline/rate-limit fallback.
   [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
   coverage through the production preload/IPC/service with a synthetic GitHub executable.
-  Nothing is visible in the app yet. AI
+  The CR-3 development flag exposes the integrated inbox and workspace host; overview/diff content, AI
   review (#325) and GitHub writes (#326) are later gates.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
