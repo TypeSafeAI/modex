@@ -27,6 +27,7 @@ import { ANALYTICS_SCHEME, WorkspaceAnalytics } from "./workspace-analytics.js";
 import { WorkspaceBrowser } from "./workspace-browser.js";
 import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
+import { CodeReviewService } from "./engine/code-review/read-service.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
@@ -141,6 +142,8 @@ function projectNotes(projectId: string, create: boolean) {
   return create ? store.space.linkProject(project) : store.space.projectFor(projectId);
 }
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
+// Code Review reads (#321) use the same gh login and stay off in demos and E2E, which feeds fixtures through this channel.
+const codeReview = new CodeReviewService({ enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
   enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
@@ -845,6 +848,8 @@ handle("project:branch", async ({ projectId }) => {
 });
 handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
 handle("thread:context", async ({ threadId }) => { await pathReady; return threadContexts.read(cwdFor(threadId)); });
+// Paired desktops cannot reach it; the payload is untrusted until the service's validateRequest has rebuilt it.
+handle("code-review:read", async (request) => { await pathReady; return codeReview.read(request); }, { localOnly: true });
 handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
 handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));

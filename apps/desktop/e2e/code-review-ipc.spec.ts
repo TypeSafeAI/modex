@@ -1,0 +1,63 @@
+import { test, expect, _electron as electron } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { appDir, seedHome } from "./support.js";
+import { FAKE_GH } from "../test/fixtures/code-review-gh.js";
+import type { CodeReviewRequest, Inbox, PrOverview } from "../src/shared/code-review.js";
+
+// #321 AC1: keep production preload, IPC registration, service and subprocess transport.
+// Only the gh executable is synthetic; no ipcMain handler replacement or direct service calls.
+test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound files without changing the checkout", async () => {
+  const { home, repo } = seedHome();
+  const bin = path.join(home, "bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "gh"), FAKE_GH, { mode: 0o755 });
+  const calls = path.join(home, "gh-calls.log");
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+  const before = { head: git("rev-parse", "HEAD"), branch: git("symbolic-ref", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") };
+  const env = { ...process.env, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
+    FAKE_GH_LOG: calls, GH_CONFIG_DIR: path.join(home, "gh-config"), JEV_API_KEY: "", TYPESAFE_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") };
+  delete env.MODEX_E2E;
+  delete env.MODEX_DEMO;
+  delete env.GH_TOKEN;
+  delete env.GITHUB_TOKEN;
+  const app = await electron.launch({ args: [appDir], cwd: appDir, env });
+  try {
+    const page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    const invoke = (request: CodeReviewRequest) => page.evaluate(request => window.modex!.invoke("code-review:read", request), request);
+    const connection = await invoke({ op: "connection", requestId: "connection" });
+    expect(connection?.result.state).toBe("ready");
+    expect(connection?.scope.account).toBe("1001");
+    const inbox = await invoke({ op: "inbox", requestId: "inbox", query: "" });
+    expect(inbox?.result.state).toBe("ready");
+    if (inbox?.result.state !== "ready") throw new Error("Expected ready inbox");
+    const groups = (inbox.result.value as Inbox).groups;
+    const authored = groups.authored, requested = groups["review-requested"];
+    if (authored.state !== "ready" || requested.state !== "ready") throw new Error("Expected ready groups");
+    const lending = authored.value[0]!, field = requested.value[0]!;
+    expect([lending.key.repoId, lending.key.number, field.key.repoId, field.key.number]).toEqual(["7301", 73, "7302", 73]);
+    const overview = await invoke({ op: "overview", requestId: "lending", key: lending.key });
+    expect(overview?.result.state).toBe("ready");
+    if (overview?.result.state !== "ready") throw new Error("Expected ready overview");
+    const revision = (overview.result.value as PrOverview).revision;
+    expect(revision).toEqual({ baseRef: "main", baseSha: "b".repeat(40), headSha: "c".repeat(40) });
+    const other = await invoke({ op: "overview", requestId: "field", key: field.key });
+    expect(other?.result.state === "ready" && (other.result.value as PrOverview).title).toBe("Move the field notes index");
+    const files = await invoke({ op: "files", requestId: "files", key: lending.key, revision, cursor: null });
+    expect(files?.scope).toEqual({ account: "1001", key: lending.key, revision });
+    expect(files?.result).toMatchObject({ state: "ready", value: { files: [
+      { path: "src/holds/move.ts", patch: { kind: "text" } }, { path: "assets/shelf.png", patch: { kind: "omitted" } },
+    ] } });
+    const foreign = await invoke({ op: "overview", requestId: "foreign", key: { ...lending.key, account: "2002" } });
+    expect(foreign?.result).toMatchObject({ state: "unavailable", reason: "signed-out" });
+    await expect(invoke({ op: "overview", requestId: "invalid", key: { ...lending.key, number: 0 } })).rejects.toThrow(/Invalid Code Review request/);
+    const endpoints = fs.readFileSync(calls, "utf8").trim().split("\n");
+    expect(endpoints).toContain("repos/example-org/lending/pulls/73/files?per_page=100&page=1");
+    expect(endpoints.every(endpoint => /^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?)?)$/.test(endpoint))).toBe(true);
+    expect({ head: git("rev-parse", "HEAD"), branch: git("symbolic-ref", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") }).toEqual(before);
+  } finally {
+    await app.close();
+  }
+});

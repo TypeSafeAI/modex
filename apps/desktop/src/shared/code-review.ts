@@ -40,8 +40,8 @@ export type CodeReviewConnection =
  */
 export interface Coverage { loaded: number; total: number | null; complete: boolean; next: string | null; cap?: number }
 
-/** Why nothing could be read. */
-export type Unavailable = "signed-out" | "no-cli" | "denied" | "not-found" | "offline" | "rate-limited" | "timeout" | "invalid" | "failed";
+/** Why nothing could be read. `head-changed`: the PR moved past the revision asked about, and no earlier read of it is kept. */
+export type Unavailable = "signed-out" | "no-cli" | "denied" | "not-found" | "offline" | "rate-limited" | "timeout" | "invalid" | "head-changed" | "failed";
 
 /**
  * `ready`: the read succeeded; `coverage`, when present, says how much it holds (a first page is ready
@@ -60,7 +60,10 @@ export type PrState = "open" | "draft" | "closed" | "merged";
 /** Avatars are not fetched: a person is shown by login. */
 export interface PrActor { login: string; id: string | null; bot: boolean }
 
-/** One inbox row. `stackHint` is inferred (the base is not the repository's default branch), not a stack. */
+/**
+ * One inbox row. `stackHint` is inferred (the base is not the repository's default branch), not a stack.
+ * A search result names no base, so it is null until main has read the PR itself.
+ */
 export interface PrSummary {
   key: PrKey;
   locator: PrLocator;
@@ -68,7 +71,7 @@ export interface PrSummary {
   state: PrState;
   author: PrActor;
   updatedAt: string;
-  stackHint: boolean;
+  stackHint: boolean | null;
 }
 
 export type InboxGroup = "authored" | "review-requested";
@@ -329,6 +332,28 @@ export function knownCount(result: ReadResult<readonly unknown[]>): { count: num
   return { count: result.value.length, exact: whole(result) };
 }
 
+/**
+ * An inbox group's pages as one list, deduplicated by key in arrival order. Search pages are offsets, so
+ * a row updated between pages can repeat or be skipped: the list is complete only when every page was
+ * read in full, the last has no next page, and the distinct rows reach the provider's total.
+ */
+export function mergePages(pages: readonly ReadResult<PrSummary[]>[]): { rows: PrSummary[]; total: number | null; complete: boolean } {
+  const seen = new Set<string>();
+  const rows: PrSummary[] = [];
+  for (const page of pages) {
+    if (page.state === "unavailable") continue;
+    for (const row of page.value) {
+      const id = prKeyId(row.key);
+      if (!seen.has(id)) { seen.add(id); rows.push(row); }
+    }
+  }
+  const last = pages.at(-1);
+  const total = last && last.state !== "unavailable" && typeof last.coverage?.total === "number" ? last.coverage.total : null;
+  const read = pages.length > 0 && pages.every((page) => page.state === "ready");
+  const ended = last?.state === "ready" && (last.coverage?.next ?? null) === null && last.coverage?.cap === undefined;
+  return { rows, total, complete: read && ended && total !== null && rows.length >= total };
+}
+
 export type CheckVerdict = "passing" | "failing" | "pending" | "incomplete" | "none" | "unknown";
 
 export interface ChecksSummary {
@@ -481,6 +506,11 @@ function refName(value: unknown): string | null {
   if (value.includes("..") || value.includes("@{") || value.includes("//")) return null;
   if (value === "@" || value.startsWith("/") || value.startsWith("-") || value.endsWith("/") || value.endsWith(".") || value.endsWith(".lock")) return null;
   return value.split("/").every((segment) => !segment.startsWith(".")) ? value : null;
+}
+
+/** A revision rebuilt from its validated fields, or null: main checks GitHub's answers with the rule requests go through. */
+export function parseRevision(value: unknown): PrRevision | null {
+  return revision(value);
 }
 
 function revision(value: unknown): PrRevision | null {
