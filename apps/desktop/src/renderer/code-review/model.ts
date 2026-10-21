@@ -1,10 +1,10 @@
-import { canonicalPrUrl, inboxGroup, parsePrLocator, type Inbox, type InboxGroup, type PrKey, type PrLocator, type PrOverview, type PrState, type PrSummary, type ReadResult } from "../../shared/code-review.js";
+import { canonicalPrUrl, inboxGroup, mergePages, parsePrLocator, type Inbox, type InboxGroup, type PrKey, type PrLocator, type PrOverview, type PrState, type PrSummary, type ReadResult } from "../../shared/code-review.js";
 
 /** An open PR: how it was named, and its overview read (which carries the totals and state). */
 export interface OpenPr { key: PrKey; locator: PrLocator; title: string | null; state: PrState | null; overview: ReadResult<PrOverview> | null }
 
-/** Rows loaded with Show more, per group, with the read that brought the last page and its cursor. */
-export type GroupPages = Partial<Record<InboxGroup, { rows: PrSummary[]; result: ReadResult<PrSummary[]>; cursor: string }>>;
+/** Page reads keyed by cursor. Retain earlier stale/partial evidence until that page is retried. */
+export type GroupPages = Partial<Record<InboxGroup, { reads: Record<string, ReadResult<PrSummary[]>> }>>;
 
 export function titleOf(pr: OpenPr): string {
   if (pr.title) return pr.title;
@@ -17,7 +17,7 @@ export function rowsOf(inbox: ReadResult<Inbox> | null, pages: GroupPages): PrSu
   if (!inbox) return [];
   return (["authored", "review-requested"] as const).flatMap((group) => {
     const result = inboxGroup(inbox, group);
-    return [...(result.state === "unavailable" ? [] : result.value), ...(pages[group]?.rows ?? [])];
+    return mergePages([result, ...Object.values(pages[group]?.reads ?? {})]).rows;
   });
 }
 

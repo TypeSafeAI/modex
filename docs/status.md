@@ -86,6 +86,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
   link their open PRs.
 
+- **Code Review inbox integration repair.** The renderer labels independently stale groups and
+  pages, retains per-page failure/retry notices, and deduplicates first and later pages using the
+  producer contract helper. Authenticated navigation acceptance remains pending integration with
+  CR-2; overview and diff content remain separate slices.
+
 - **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
   rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.

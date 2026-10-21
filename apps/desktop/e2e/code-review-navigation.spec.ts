@@ -459,3 +459,71 @@ test("keyboard alone works at 1440×900 and 900×600; the split folds and resize
   expect(await tid(page, "sheet").evaluate((el) => el.scrollTop)).toBe(0);
   expect(await page.evaluate(() => document.scrollingElement!.scrollTop)).toBe(0);
 });
+
+test("independently stale inbox groups show their read time and retry", async () => {
+  const data = served();
+  if (R1.inbox.state === "unavailable") throw new Error("fixture missing");
+  const first = R1.inbox.value.groups.authored;
+  if (first.state === "unavailable") throw new Error("fixture missing");
+  data.inbox[""] = ready({ ...R1.inbox.value, groups: {
+    ...R1.inbox.value.groups,
+    authored: { ...first, state: "stale", reason: "offline" },
+  } });
+  await open(data);
+  await tid(page, "rail-code-review").click();
+  const group = tid(page, "code-review-group-authored");
+  await expect(group).toContainText("Showing pull requests read at");
+  await expect(group).toContainText("GitHub couldn't be reached.");
+  await expect(group.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+  await expect(tid(page, "code-review-group-review-requested")).not.toContainText("GitHub couldn't be reached.");
+  await change(app, { inbox: { "": R1.inbox } });
+  await group.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(group).not.toContainText("Showing pull requests read at");
+});
+
+test("pagination deduplicates the first-page boundary and retains earlier stale page evidence", async () => {
+  const data = served();
+  if (R1.inbox.state === "unavailable") throw new Error("fixture missing");
+  const first = R1.inbox.value.groups.authored;
+  if (first.state === "unavailable") throw new Error("fixture missing");
+  data.pages = {
+    "authored:cGFnZTI": { state: "stale", reason: "offline", fetchedAt: NOW,
+      value: [first.value[0]!, SECOND_PAGE[0]!], coverage: { loaded: 2, total: 12, complete: false, next: "page3" } },
+    "authored:page3": { state: "ready", fetchedAt: NOW, value: SECOND_PAGE.slice(1),
+      coverage: { loaded: 2, total: 12, complete: true, next: null } },
+  };
+  await open(data);
+  await tid(page, "rail-code-review").click();
+  await row(page, "example-org", "lending", 73).click();
+  await tid(page, "code-review-show-more-authored").click();
+  const group = tid(page, "code-review-group-authored");
+  await expect(group.getByTestId("code-review-row")).toHaveCount(first.value.length + 1);
+  await expect(row(page, "example-org", "lending", 73)).toHaveAttribute("aria-current", "true");
+  await expect(group).toContainText("GitHub couldn't be reached.");
+  await tid(page, "code-review-show-more-authored").click();
+  await expect(group.getByTestId("code-review-row")).toHaveCount(first.value.length + SECOND_PAGE.length);
+  await expect(group).toContainText("GitHub couldn't be reached.");
+  await expect(group.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+});
+
+test("an earlier failed page retry stays visible after a later page succeeds", async () => {
+  const data = served();
+  data.pages = {
+    "authored:cGFnZTI": { state: "stale", reason: "offline", fetchedAt: NOW, value: [SECOND_PAGE[0]!], coverage: { loaded: 1, total: 12, complete: false, next: "page3" } },
+    "authored:page3": { state: "stale", reason: "offline", fetchedAt: NOW, value: [SECOND_PAGE[1]!], coverage: { loaded: 1, total: 12, complete: false, next: "page4" } },
+    "authored:page4": { state: "ready", fetchedAt: NOW, value: [SECOND_PAGE[2]!], coverage: { loaded: 1, total: 12, complete: true, next: null } },
+  };
+  await open(data);
+  await tid(page, "rail-code-review").click();
+  await tid(page, "code-review-show-more-authored").click();
+  await expect(row(page, "example-org", "lending", 63)).toBeVisible();
+  await tid(page, "code-review-show-more-authored").click();
+  await expect(row(page, "example-org", "field-guide", 80)).toBeVisible();
+  await change(app, { pages: { ...data.pages, "authored:cGFnZTI": { state: "unavailable", reason: "rate-limited", fetchedAt: NOW } } });
+  await tid(page, "code-review-group-authored").getByRole("button", { name: "Retry", exact: true }).first().click();
+  await expect(tid(page, "code-review-page-error")).toContainText("GitHub's rate limit was reached.");
+  await tid(page, "code-review-show-more-authored").click();
+  await expect(row(page, "example-org", "lending", 61)).toBeVisible();
+  await expect(tid(page, "code-review-page-error")).toContainText("GitHub's rate limit was reached.");
+  await expect(tid(page, "code-review-page-error").getByTestId("error-retry")).toBeVisible();
+});
