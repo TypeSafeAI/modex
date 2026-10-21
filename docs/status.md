@@ -66,6 +66,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
   an offline seed scenario. Human acceptance and a final integrated candidate remain open.
 
+- **A turn lists the files it touched** (CF-7 #280). A finished turn's footer has **Files touched**,
+  which lists what its tools changed, read and searched, as the CLI reported them. For Codex, that
+  includes its own parse of each command, resolved from the command working directory. Dot
+  segments are normalized before checking the project boundary. At most 20 are shown, and paths outside the project are
+  only counted. The saved note gets the same list. Nothing is indexed or inferred.
+  [Context map](task-context.md#context-map).
 - **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
   finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
   did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
@@ -95,6 +101,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   approval or question answer, as on a full disk, the card stays open and answering again reaches the
   CLI, instead of the request reading answered while the CLI never hears it.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+
+- **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
+  and text stay in window memory and clear when their request closes or thread is removed.
+  Sensitive answers stay out of persisted recovery. [Verification and native capability limits](reviews/2026-10-20-cf3-drafts.md).
 
 ## In flight
 
@@ -206,6 +216,14 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 Fixed ones move to [resolved rough edges](reviews/2026-10-18-resolved-rough-edges.md), with the PR
 that fixed each.
+
+- **Codex question availability depends on CLI configuration.** With default codex-cli 0.163.0
+  settings, the question tool is offered in native plan collaboration mode. Modex's Plan mode uses
+  a prompt prefix on an ordinary turn. A separate through-app capture in #348 enabled the opt-in
+  `default_mode_request_user_input` flag successfully. The direct plan-mode probe in #357 verifies
+  parser/answer compatibility; it does not close app or human acceptance. Native Plan integration
+  also requires displaying Codex's `plan` items. See
+  [human-requests.md](human-requests.md#codex-codex-cli-01630-app-server).
 
 - **node-pty is a pre-release.** Modex still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged

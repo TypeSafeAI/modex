@@ -112,6 +112,14 @@ test("Codex questions: the card answers by its schema, the CLI hears once, the s
     const token = card.getByLabel("Token");
     await expect(token).toHaveAttribute("type", "password");
     await token.fill("  s3cr3t-token  ");
+    // A pending answer belongs to the request, even while its thread view is unmounted.
+    const waitingThread = (await currentRow(page).getAttribute("data-thread-id"))!;
+    await page.keyboard.press("Meta+n");
+    await expect(tid(page, "draft-view")).toBeVisible();
+    await page.locator(`[data-testid="thread-row"][data-thread-id="${waitingThread}"]`).click();
+    await expect(card.getByRole("radio", { name: "staging" })).toBeChecked();
+    await expect(token).toHaveValue("  s3cr3t-token  ");
+    expect(replies(logs)).toEqual([]);
     await page.screenshot({ path: test.info().outputPath("codex-question-card.png") });
     await tid(card, "question-submit").click();
 

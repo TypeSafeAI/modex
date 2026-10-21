@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   actionDigest, answerNote, codexAnswerResponse, codexQuestions, emptyRequests, publicAnswers, register, resolve, settle, validateAnswers, withdraw,
   type HumanRequest, type RequestBinding,
@@ -137,4 +139,19 @@ test("Codex questions reject ambiguous ids and malformed sensitivity flags", () 
   for (const questions of [[q, q], [{ ...q, isSecret: "true" }], [{ ...q, isOther: "false" }], [{ ...q, header: 7 }], [{ ...q, options: [{ label: "same" }, { label: "same" }] }]]) {
     assert.equal(codexQuestions({ questions }), null);
   }
+});
+
+test("a live Codex question (codex-cli 0.163.0, plan collaboration mode) maps as the fixtures do, and the answer has the shape Codex accepted", () => {
+  // test/fixtures/codex-request-user-input-0.163.0.json: captured 2026-10-20. Codex took this answer and completed the turn with a plan item.
+  const live = JSON.parse(fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/codex-request-user-input-0.163.0.json", import.meta.url)), "utf8")) as
+    { request: { method: string; params: unknown }; acceptedAnswer: unknown; then: { turnStatus: string } };
+  assert.equal(live.request.method, "item/tool/requestUserInput");
+  const mapped = codexQuestions(live.request.params);
+  assert.ok(mapped, "Modex reads the live request");
+  assert.equal(mapped.blocking, true);
+  assert.deepEqual(mapped.questions.map((q) => [q.id, q.header, q.text, q.options?.map((o) => o.label) ?? null, q.allowOther, q.secret]), [
+    ["greeting_language", "Language", "Should the new greeting be in English or Spanish?", ["English", "Spanish"], true, false],
+  ]);
+  assert.deepEqual(codexAnswerResponse({ greeting_language: ["English"] }), live.acceptedAnswer);
+  assert.equal(live.then.turnStatus, "completed");
 });

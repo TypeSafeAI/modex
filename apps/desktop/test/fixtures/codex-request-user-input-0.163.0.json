@@ -1,0 +1,54 @@
+{
+  "_about": "Captured live from codex-cli 0.163.0's app-server on 2026-10-20: one turn in Codex's plan collaboration mode (model gpt-6.1-sol, read-only, no commands), asked to put one clarifying question through its question tool. Verbatim except the plan text, which is the completed plan item's.",
+  "request": {
+    "method": "item/tool/requestUserInput",
+    "params": {
+      "threadId": "01a15bb6-bbb9-7ef2-a8a7-68c491314496",
+      "turnId": "01a15bb6-bc7c-7621-8007-7d647fb70089",
+      "itemId": "call_c22a046b06c64af59273061ca1cc15e0",
+      "questions": [
+        {
+          "id": "greeting_language",
+          "header": "Language",
+          "question": "Should the new greeting be in English or Spanish?",
+          "isOther": true,
+          "isSecret": false,
+          "options": [
+            {
+              "label": "English",
+              "description": "Write the new greeting in English."
+            },
+            {
+              "label": "Spanish",
+              "description": "Write the new greeting in Spanish."
+            }
+          ]
+        }
+      ],
+      "isBlocking": true,
+      "autoResolutionMs": null
+    }
+  },
+  "acceptedAnswer": {
+    "answers": {
+      "greeting_language": {
+        "answers": [
+          "English"
+        ]
+      }
+    }
+  },
+  "then": {
+    "turnStatus": "completed",
+    "itemTypes": [
+      "item/started userMessage",
+      "item/completed userMessage",
+      "item/started plan",
+      "item/completed plan"
+    ],
+    "planItem": {
+      "type": "plan",
+      "text": "1. Update `greeting.txt` with the English greeting “Hello!”\n2. Verify the file contains the intended greeting.\n"
+    }
+  }
+}

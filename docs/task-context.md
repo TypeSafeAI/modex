@@ -81,10 +81,36 @@ not listed as unsettled.
 status the CLI reported ("Reported done"), and verification belongs to the turn's latest change.
 Verification covers this turn only: a later turn's edits do not change a note already saved.
 
+## Context map
+
+The record also lists the project files the turn touched (`taskContext` in `shared/task-context.ts`),
+as the CLI reported them. Nothing is indexed, searched for or inferred: no dependency is guessed.
+
+| Relation | Claude Code | codex-cli 0.163.0 | Offline engine |
+| --- | --- | --- | --- |
+| changed | `Edit`, `MultiEdit`, `Write`, `NotebookEdit` (`file_path`) | `fileChange` items (`apply_patch`) | `write_file`, `apply_patch` |
+| read | `Read` (`file_path`) | Codex's own parse of a command: `commandActions` `read` (`path`) | `read_file` (`path`) |
+| searched | `Grep`, `Glob`, `LS` (`path`) | `commandActions` `search` and `listFiles` (`path`) | `list_dir` (`path`) |
+
+- **What counts.** A denied or failed tool touched nothing. A command the CLI did not parse (a `cat`
+  through Claude's Bash, an `unknown` Codex action) is not counted as a read.
+- **Paths.** They are relative to the thread's working directory. Paths outside it are counted,
+  never named.
+- **Order.** Changed files come first, then read, then searched, each in the order the turn first
+  touched them. A file lists each relation once.
+
+A finished turn's footer has **Files touched · N** when there is anything to show. Opening it lists at
+most 20, then "and N more", then how many were outside the project. The note gets a **Files the turn
+touched** section with the same limit. The record keeps every file.
+
 ## Clarifications
 
 A CLI that needs to ask before it plans or acts asks through the [question card](human-requests.md):
-Codex's `item/tool/requestUserInput`, with a control for each question. The answer reaches the CLI
+Codex's `item/tool/requestUserInput`, with a control for each question. In codex-cli 0.163.0, Codex
+offers the tool in native plan collaboration mode with default settings. A separate through-app
+capture enabled the opt-in `default_mode_request_user_input` flag successfully. Modex's Plan mode
+still uses an ordinary turn (evidence and limits in
+[human-requests.md](human-requests.md#codex-codex-cli-01630-app-server)). The answer reaches the CLI
 once, and the plan carries on from it. Claude Code 2.1.302 sends Modex no structured questions.
 
 The record lists every question the turn asked, in order, with the answer as its card shows it:
@@ -113,5 +139,6 @@ saves on its own, and an agent cannot use this.
 ## Not done yet
 
 - Linking a check to the plan step it verifies. Neither CLI reports that link.
-- An on-demand context map of relevant files and tests beyond those the turn changed.
+- Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
+  reported; none is suggested.
 - Reopening a saved note as a read-only task view.

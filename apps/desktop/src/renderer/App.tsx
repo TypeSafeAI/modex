@@ -1,3 +1,4 @@
+import { QuestionDraftContext, type QuestionDraftCache } from "./components/transcript/QuestionCard";
 import type { NativeDraftBridge, NativeDraftReadOnlyOpen, PendingSendView } from "../shared/native-drafts";
 import type { ComposerRecovery } from "../shared/update-recovery";
 import type { Attachment, AttachmentDraftOwner } from "../shared/attachments";
@@ -100,6 +101,24 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const [selected, setSelected] = useState<string | null>(null);
   const [draftRevision, setDraftRevision] = useState(0);
   const [items, setItems] = useState<Record<string, ThreadItem[]>>({});
+  const questionDrafts = useRef(new Map<string, QuestionDraftCache>());
+  useEffect(() => {
+    for (const [threadId, drafts] of questionDrafts.current) {
+      if (state && !state.threads.some(t => t.id === threadId && !t.retired)) {
+        questionDrafts.current.delete(threadId);
+        continue;
+      }
+      const snapshot = items[threadId];
+      if (!snapshot) continue;
+      const open = new Set(snapshot.filter(item => item.kind === "question" && !item.answers && !item.withdrawn && !item.delivery).map(item => item.id));
+      for (const id of drafts.keys()) if (!open.has(id)) drafts.delete(id);
+    }
+  }, [items, state]);
+  const draftsForQuestions = (threadId: string) => {
+    let drafts = questionDrafts.current.get(threadId);
+    if (!drafts) { drafts = new Map(); questionDrafts.current.set(threadId, drafts); }
+    return drafts;
+  };
   // Unsent text by thread id (or `draft:<revision>:<projectId>` for a new chat). Switching threads keeps it;
   // Native recovery saves the exact raw values; remote clients keep their existing local drafts.
   const [unsent, setUnsent] = useState<Record<string, string>>({});
@@ -943,6 +962,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           </section>)}
           {surface === "chat" && thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
           {thread && project ? (
+            <QuestionDraftContext.Provider value={draftsForQuestions(thread.id)}>
             <ThreadView
               key={thread.id}
               thread={thread}
@@ -967,6 +987,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               inputRef={inputRef}
               branch={changes?.branch ?? undefined}
             />
+            </QuestionDraftContext.Provider>
           ) : draft ? (
             <DraftView
               key={`${draft.projectId}:${draftRevision}`}

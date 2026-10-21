@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONVERSATION_SCHEMA, projectConversation, type ConversationEvent, type Observation, type AttemptMark, type TurnRef } from "../src/shared/conversation-events.js";
-import { displayCommand, isCheckCommand, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
+import { CONTEXT_SHOWN, displayCommand, isCheckCommand, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { ThreadItem } from "../src/shared/types.js";
@@ -268,4 +268,152 @@ test("a check is shown as the script its shell ran; the exact command stays the 
   assert.equal(displayCommand("pnpm test"), "pnpm test");
   assert.equal(displayCommand("/bin/zsh -lc 'pnpm test' && echo done"), "/bin/zsh -lc 'pnpm test' && echo done", "only a whole-command wrapper is unwrapped");
   assert.equal(verification([user, edit("a.ts"), edit("b.ts", "denied")]).edits, 1, "a denied edit changed nothing");
+});
+
+// The context map (CF-7 #280): the project files a turn touched, by what the CLI reported.
+const tool = (name: string, args: Record<string, unknown>, extra: Record<string, unknown> = {}): ThreadItem =>
+  ({ id: `t${++seqId}`, kind: "tool", name, title: name, args, status: "done", outcome: "succeeded", ok: true, at: at(seqId), ...extra }) as ThreadItem;
+const codexRun = (command: string, actions: unknown[]): ThreadItem =>
+  ({ id: `t${++seqId}`, kind: "tool", name: "shell", title: `$ ${command}`, args: { command }, status: "done", outcome: "succeeded", ok: true, exec: { command, actions }, exitCode: 0, at: at(seqId) }) as ThreadItem;
+
+test("the context map lists the files a turn changed, read and searched, as each CLI reported them", () => {
+  const context = taskContext([
+    user,
+    tool("Read", { file_path: "/repo/src/config.ts" }),
+    tool("Grep", { pattern: "import", path: "/repo/src" }),
+    tool("Glob", { pattern: "**/*.test.ts", path: "/repo/test" }),
+    tool("Edit", { file_path: "/repo/src/config.ts", old_string: "a", new_string: "b" }),
+    // Stored as main keeps Codex's commandActions (codexActions): an unknown action is not kept.
+    codexRun("sed -n 1,40p src/app.ts", [{ kind: "read", path: "src/app.ts" }]),
+    codexRun("rg -n useEffect src", [{ kind: "search", path: "src", query: "useEffect" }]),
+    codexRun("ls docs", [{ kind: "list", path: "docs" }]),
+    codexRun("make", []),
+    { id: `t${++seqId}`, kind: "tool", name: "apply_patch", title: "edit src/app.ts, README.md", args: {}, status: "done", outcome: "succeeded", ok: true, at: at(seqId) } as ThreadItem,
+    tool("read_file", { path: "package.json" }),
+    tool("list_dir", { path: "." }),
+    tool("write_file", { path: "NOTES.md", content: "x" }),
+  ], "/repo");
+  assert.deepEqual(context.files, [
+    { path: "src/config.ts", relations: ["read", "changed"] },
+    { path: "src/app.ts", relations: ["read", "changed"] },
+    { path: "README.md", relations: ["changed"] },
+    { path: "NOTES.md", relations: ["changed"] },
+    { path: "package.json", relations: ["read"] },
+    { path: "src", relations: ["searched"] },
+    { path: "test", relations: ["searched"] },
+    { path: "docs", relations: ["searched"] },
+    { path: ".", relations: ["searched"] },
+  ]);
+  assert.equal(context.outside, 0);
+});
+
+test("denied and failed tools touched nothing; paths outside the project are counted, never named", () => {
+  const context = taskContext([
+    user,
+    tool("Read", { file_path: "/repo/secret.ts" }, { outcome: "denied", ok: false }),
+    tool("Read", { file_path: "/repo/missing.ts" }, { outcome: "failed", ok: false }),
+    tool("Edit", { file_path: "/repo/a.ts" }, { outcome: "denied", ok: false }),
+    tool("Read", { file_path: "/Users/someone/.ssh/config" }),
+    tool("read_file", { path: "../other-project/x.ts" }),
+    codexRun("cat /etc/hosts", [{ kind: "read", path: "/etc/hosts" }]),
+    tool("Read", { file_path: "/repo/kept.ts" }),
+  ], "/repo");
+  assert.deepEqual(context.files, [{ path: "kept.ts", relations: ["read"] }]);
+  assert.equal(context.outside, 3);
+});
+
+test("the note lists at most the first files the turn touched, says how many more, and nothing for a turn that touched none", () => {
+  const many = [user, ...Array.from({ length: CONTEXT_SHOWN + 5 }, (_, i) => tool("Read", { file_path: `/repo/src/f${i}.ts` }))];
+  const note = taskMarkdown(taskRecord(many, { threadId: "T", title: "Read a lot", cwd: "/repo" }));
+  assert.match(note, /## Files the turn touched\n\nAs the CLI reported them\. Modex did not index the project\.\n\n- `src\/f0\.ts` — read\n/);
+  assert.equal((note.match(/^- `src\/f\d+\.ts` — read$/gm) ?? []).length, CONTEXT_SHOWN);
+  assert.match(note, /- and 5 more\n/);
+  const none = taskMarkdown(taskRecord([user, { id: "A", kind: "assistant", text: "Hi.", phase: "final", outcome: "succeeded", at: at(99) } as ThreadItem], { threadId: "T", title: "Hi", cwd: "/repo" }));
+  assert.doesNotMatch(none, /Files the turn touched/);
+});
+
+
+test("Codex context actions resolve from the command cwd before project containment", () => {
+  const run = (cwd: string, path: string): ThreadItem => {
+    const item = codexRun("cat file", [{ kind: "read", path }]);
+    if (item.kind === "tool" && item.exec) item.exec.cwd = cwd;
+    return item;
+  };
+  const context = taskContext([
+    run("/repo/src", "app.ts"),
+    run("/private", "private.txt"),
+    run("/repo/src", "../README.md"),
+  ], "/repo");
+  assert.deepEqual(context.files, [
+    { path: "src/app.ts", relations: ["read"] },
+    { path: "README.md", relations: ["read"] },
+  ]);
+  assert.equal(context.outside, 1);
+});
+
+test("context paths normalize dot segments before checking project boundaries", () => {
+  const context = taskContext([
+    tool("Read", { file_path: "/repo/../private/key" }),
+    tool("Read", { file_path: "/repo/src/../kept.ts" }),
+    tool("Read", { file_path: "./kept.ts" }),
+    tool("Read", { file_path: "/repo-other/key" }),
+    tool("Read", { file_path: "file..txt" }),
+  ], "/repo");
+  assert.deepEqual(context.files, [
+    { path: "kept.ts", relations: ["read"] },
+    { path: "file..txt", relations: ["read"] },
+  ]);
+  assert.equal(context.outside, 2);
+});
+
+
+test("Windows context paths normalize separators, command cwd and traversal", () => {
+  const item = codexRun("type app.ts", [{ kind: "read", path: "app.ts" }]);
+  if (item.kind === "tool" && item.exec) item.exec.cwd = "C:\\repo\\src";
+  const context = taskContext([
+    item,
+    tool("Read", { file_path: "C:\\repo\\..\\private\\key" }),
+    tool("Read", { file_path: "C:\\repo\\src\\..\\README.md" }),
+    tool("Read", { file_path: "D:\\repo\\other.ts" }),
+  ], "C:\\repo");
+  assert.deepEqual(context.files, [
+    { path: "src/app.ts", relations: ["read"] },
+    { path: "README.md", relations: ["read"] },
+  ]);
+  assert.equal(context.outside, 2);
+});
+
+test("absolute project root and normalized cwd retain project listing", () => {
+  assert.deepEqual(taskContext([tool("LS", { path: "/repo" })], "/repo/src/..").files,
+    [{ path: ".", relations: ["searched"] }]);
+});
+
+
+test("Windows drive-relative paths stay unnamed and rooted paths inherit the drive", () => {
+  const context = taskContext([
+    tool("Read", { file_path: "C:..\\private\\key" }),
+    tool("Read", { file_path: "\\repo\\app.ts" }),
+  ], "C:\\repo");
+  assert.deepEqual(context.files, [{ path: "app.ts", relations: ["read"] }]);
+  assert.equal(context.outside, 1);
+});
+
+test("UNC share roots retain files with or without a trailing separator", () => {
+  for (const cwd of ["\\\\server\\share", "\\\\server\\share\\"]) {
+    assert.deepEqual(taskContext([tool("Read", { file_path: "file.ts" })], cwd), {
+      files: [{ path: "file.ts", relations: ["read"] }], outside: 0,
+    });
+  }
+});
+
+test("external file counts use resolved identities without exposing paths", () => {
+  const run = (cwd: string, path: string): ThreadItem => {
+    const item = codexRun("cat file", [{ kind: "read", path }]);
+    if (item.kind === "tool" && item.exec) item.exec.cwd = cwd;
+    return item;
+  };
+  assert.deepEqual(taskContext([run("/private-a", "secret.txt"), run("/private-b", "secret.txt")], "/repo"), { files: [], outside: 2 });
+  const aliases = [run("/private", "secret.txt"), run("/private", "/private/secret.txt"), run("/private", "/private/sub/../secret.txt")];
+  assert.deepEqual(taskContext(aliases, "/repo"), { files: [], outside: 1 });
+  assert.doesNotMatch(taskMarkdown(taskRecord([user, ...aliases], { threadId: "T", title: "Read", cwd: "/repo" })), /private|secret/);
 });
