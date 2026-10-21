@@ -21,7 +21,7 @@ replays or re-sends anything by being shown, reloaded or reconnected.
 | Exit code | Reported | Not reported |
 | Citations | Memory citations | None; links in the reply are labelled as the model's |
 | Plan | `turn/plan/updated` | `TodoWrite` |
-| Questions | A card for each `item/tool/requestUserInput` (experimental); its answers in the task record | None: the CLI sends Modex no structured questions |
+| Questions | A card for each `item/tool/requestUserInput` (experimental); unsent answers survive thread navigation in window memory; non-secret answers in the task record | None: the CLI sends Modex no structured questions |
 | Approvals | Answered once, from the Mac or the phone; the card says who answered and whether the CLI received it | The same |
 | Save to Notes | Yes | Yes |
 | Stop | Native interrupt | Process stop (CF-2, [#275](https://github.com/TypeSafeAI/modex/issues/275), refines this) |

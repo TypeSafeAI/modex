@@ -91,6 +91,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   CLI, instead of the request reading answered while the CLI never hears it.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
 
+- **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
+  and text stay in window memory and clear when their request closes or thread is removed.
+  Sensitive answers stay out of persisted recovery. [Verification and native capability limits](reviews/2026-10-20-cf3-drafts.md).
+
 ## In flight
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
