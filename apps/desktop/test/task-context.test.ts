@@ -194,6 +194,65 @@ test("Save task to Notes writes the turn's record into its project's notes; savi
   await runner.dispose();
 });
 
+for (const move of ["Finder across projects", "watched Finder across projects", "folder across projects", "folder within project"] as const) {
+  test(`Save task Note preserves project ownership after ${move}`, async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { Store } = await import("../src/main/engine/store.js");
+    const { ThreadRunner } = await import("../src/main/engine/runner.js");
+    const { gitRepo, tmpdir } = await import("./helpers.js");
+    const { local } = await import("./fakeproc.js");
+    const home = tmpdir("modex-task-note-scope-");
+    const store = new Store(home);
+    const backend = { id: "claude" as const, listModels: async () => [], dispose: async () => {}, async runTurn(_t: string, _o: unknown, sink: import("../src/main/engine/backends/types.js").TurnSink) {
+      local(sink).assistant("Task finished.");
+      return { status: "completed" as const };
+    } };
+    const runner = new ThreadRunner({ home, store, emit: () => {}, backends: { claude: backend } });
+    try {
+      const project = store.addProject(gitRepo());
+      const other = store.addProject(gitRepo());
+      const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+      await runner.send(thread.id, "Summarize this task");
+      const turnId = runner.items(thread.id).find(item => item.kind === "user")!.id;
+      const notes = store.space;
+      const own = notes.tree().nodes.find(node => node.kind === "project" && node.modexProjectId === project.id)!;
+      const foreign = notes.tree().nodes.find(node => node.kind === "project" && node.modexProjectId === other.id)!;
+      const saved = runner.saveTaskNote(thread.id, turnId);
+      if (move === "watched Finder across projects") notes.watch();
+      if (move === "Finder across projects" || move === "watched Finder across projects") {
+        const rel = notes.pageRels().get(saved.pageId)!;
+        fs.renameSync(path.join(home, "notes", rel), path.join(home, "notes", foreign.rel, path.basename(rel)));
+      } else {
+        const folder = notes.createFolder(own.id, "Task folder");
+        // Finder can put the note into a plain folder without changing content or revision.
+        const rel = notes.pageRels().get(saved.pageId)!;
+        fs.renameSync(path.join(home, "notes", rel), path.join(home, "notes", folder.rel, path.basename(rel)));
+        notes.list();
+        const destination = move === "folder across projects" ? foreign.id : notes.createFolder(own.id, "Archive").id;
+        notes.moveNodes([folder.id], destination);
+      }
+      const moved = notes.list().find(page => page.id === saved.pageId)!;
+      assert.equal(moved.revision, saved.revision, "moving ownership can preserve a note revision");
+      const cachedRel = notes.pageRels().get(saved.pageId)!;
+      if (move === "watched Finder across projects") assert.ok(cachedRel.startsWith(`${own.rel}/`), "watcher has not delivered the synchronous move yet");
+      const movedRel = move === "watched Finder across projects" ? `${foreign.rel}/${path.basename(cachedRel)}` : cachedRel;
+      const bytes = fs.readFileSync(path.join(home, "notes", movedRel), "utf8");
+      const result = runner.saveTaskNote(thread.id, turnId);
+      if (move === "folder within project") {
+        assert.equal(result.pageId, saved.pageId, "same-project moves still update the associated note");
+        assert.equal(result.created, false);
+      } else {
+        assert.notEqual(result.pageId, saved.pageId, "a note moved to another project must not be overwritten");
+        assert.equal(result.preserved, true);
+        assert.equal(fs.readFileSync(path.join(home, "notes", movedRel), "utf8"), bytes);
+        assert.ok(notes.pageRels().get(result.pageId)!.startsWith(`${own.rel}/`), "replacement belongs to the original project");
+        assert.equal(store.thread(thread.id)!.taskNotes?.[turnId]?.pageId, result.pageId);
+      }
+    } finally { store.space.unwatch(); await runner.dispose(); }
+  });
+}
+
 // Verification (CF-7 #280): a check's observed result, tied to the turn's latest change.
 let seqId = 0;
 const at = (n: number) => new Date(Date.UTC(2026, 9, 20, 9, 0, n)).toISOString();
