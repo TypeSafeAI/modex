@@ -177,8 +177,25 @@ export class NotesStore implements SpacePagesStore {
   }
 
   save(input: SpacePage, change?: SpaceChangeContext): SpacePage {
-    validate(input);
+    return this.saveLoaded(this.load(), input, change);
+  }
+
+  /** Update an associated note only while its revision and current project still match.
+   * Uses the mutation's fresh filesystem state, never the watcher's cached read snapshot.
+   * A missing, edited or moved note is left untouched so the caller can save a replacement.
+   */
+  updateInProject(id: string, revision: number, projectId: string, update: Pick<SpacePage, "title" | "markdown">, change?: SpaceChangeContext): SpacePage | null {
     const state = this.load();
+    const project = this.layout(state).nodes.find(node => node.kind === "project" && node.modexProjectId === projectId);
+    if (!project) throw new Error("This project's notes are no longer available.");
+    const current = state.pages.get(id);
+    const rel = state.live.get(id)?.rel;
+    if (!current || current.trashedAt || current.revision !== revision || rel === undefined || !rel.startsWith(`${project.rel}/`)) return null;
+    return this.saveLoaded(state, { ...current, title: update.title, markdown: update.markdown }, change);
+  }
+
+  private saveLoaded(state: State, input: SpacePage, change?: SpaceChangeContext): SpacePage {
+    validate(input);
     const current = this.find(state, input.id);
     this.checkRevision(current, input.revision);
     if (current.trashedAt) throw new Error("Restore this page before editing it.");

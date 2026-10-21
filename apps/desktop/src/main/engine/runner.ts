@@ -345,18 +345,18 @@ export class ThreadRunner {
     const record = taskRecord(turn, { threadId, title: `Task: ${thread.title}`, cwd: thread.cwd });
     const markdown = taskMarkdown(record);
     const notes = this.o.store.space;
-    const project = notes.tree().nodes.find((node) => node.kind === "project" && node.modexProjectId === thread.projectId);
-    if (!project) throw new Error("This project has no notes yet. Open Notes for it, then save again.");
     const saved = thread.taskNotes?.[turnId];
-    const existing = saved ? notes.list().find((page) => page.id === saved.pageId && !page.trashedAt) : undefined;
     const change = { actor: "human", summary: "Saved a task record" };
-    const untouched = existing && existing.revision === saved!.revision;
-    const page = untouched
-      ? notes.save({ ...existing, title: record.title, markdown }, change)
-      : notes.create({ title: existing ? `${record.title} (saved again)` : record.title, markdown, containerId: project.id }, change);
+    // The scoped mutation rechecks both revision and ownership against freshly loaded state.
+    // A watcher's cached read can still show the old project immediately after a Finder move.
+    const reused = saved ? notes.updateInProject(saved.pageId, saved.revision, thread.projectId, { title: record.title, markdown }, change) : null;
+    const project = notes.tree().nodes.find(node => node.kind === "project" && node.modexProjectId === thread.projectId);
+    if (!project) throw new Error("This project has no notes yet. Open Notes for it, then save again.");
+    const existing = saved ? notes.list().find(page => page.id === saved.pageId && !page.trashedAt) : undefined;
+    const page = reused ?? notes.create({ title: existing ? `${record.title} (saved again)` : record.title, markdown, containerId: project.id }, change);
     const updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
     this.o.emit({ threadId, type: "thread", thread: updated });
-    return { pageId: page.id, title: page.title, revision: page.revision, created: !untouched, preserved: Boolean(existing && !untouched) };
+    return { pageId: page.id, title: page.title, revision: page.revision, created: !reused, preserved: Boolean(existing && !reused) };
   }
 
   /** A tool's kept raw output from `offset`, a page at a time; null when its output fit in the preview. */
