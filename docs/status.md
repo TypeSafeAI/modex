@@ -202,11 +202,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 Fixed ones move to [resolved rough edges](reviews/2026-10-18-resolved-rough-edges.md), with the PR
 that fixed each.
 
-- **Codex never asks a question card in a live Modex turn.** In codex-cli 0.163.0, Codex's question
-  tool exists only in its plan collaboration mode. Modex's Plan mode is a prompt prefix on an ordinary
-  turn. A live capture on 2026-10-20 showed the request parsing and the answer being accepted, outside
-  the app ([human-requests.md](human-requests.md#codex-codex-cli-01630-app-server)). Enabling it means
-  sending Codex's plan mode and showing its `plan` items.
+- **Codex question availability depends on CLI configuration.** With default codex-cli 0.163.0
+  settings, the question tool is offered in native plan collaboration mode. Modex's Plan mode uses
+  a prompt prefix on an ordinary turn. A separate through-app capture in #348 enabled the opt-in
+  `default_mode_request_user_input` flag successfully. The direct plan-mode probe in #357 verifies
+  parser/answer compatibility; it does not close app or human acceptance. Native Plan integration
+  also requires displaying Codex's `plan` items. See
+  [human-requests.md](human-requests.md#codex-codex-cli-01630-app-server).
 
 - **node-pty is a pre-release.** Modex still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged

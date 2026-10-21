@@ -157,12 +157,18 @@ recorded in `apps/desktop/test/fixtures/codex-request-user-input-0.163.0.json`.
   favour of `isBlocking`, which `codexQuestions` honours.
 - **Modex's handling.** `codexQuestions` read the live request as the fixtures predicted. Codex
   accepted `codexAnswerResponse`'s answer and completed the turn. A unit test replays the sample.
-- **Where it was asked.** Codex sent the question only in its own **plan collaboration mode**: a
-  `turn/start` with `collaborationMode: { mode: "plan", … }`. In 0.163.0 the question tool is not
-  offered in a default turn: `default_mode_request_user_input` is under development and off.
-- **Through the app, today.** Modex's Plan mode is a prompt prefix on an ordinary turn, so a live
-  Codex turn in Modex never asks a question card. In plan collaboration mode, Codex also answers with
-  a `plan` item (`{ id, text }`), not an agent message. Modex does not read those yet.
+- **Where it was asked.** This direct app-server probe used Codex's **plan collaboration mode**:
+  `turn/start` with `collaborationMode: { mode: "plan", … }`. With default 0.163.0 settings,
+  `default_mode_request_user_input` is off. The probe verifies the parser/answer protocol, not
+  the app's broker, card, transport, or human acceptance.
+- **Through the app.** Modex's Plan mode is a prompt prefix on an ordinary turn. A separate
+  [through-app capture in #348](https://github.com/TypeSafeAI/modex/blob/1847e0c8808b96b636693b786e152a9f76471be3/docs/reviews/2026-10-20-cf3-drafts.md#native-evidence-and-remaining-gates) enabled the opt-in
+  `default_mode_request_user_input` flag: the card sent Blue and the model replied Blue.
+  Without that flag, another run used the distinct `request_user_input_async` form, which this
+  broker does not answer. Human keyboard/VoiceOver acceptance remains open.
+- **Native Plan integration.** In this plan-mode capture, Codex completed with a `plan` item
+  (`{ id, text }`). Modex does not read those items yet. Selecting Codex's native collaboration
+  mode and displaying its plan output remain a separate implementation decision.
 
 ### Claude Code (2.1.302, `claude -p` stream-json)
 
