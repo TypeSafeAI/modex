@@ -61,6 +61,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
+  preserves the October 20 early candidate results separately from later live-provider evidence.
+  The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
+  an offline seed scenario. Human acceptance and a final integrated candidate remain open.
+
 - **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
   finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
   did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
