@@ -226,7 +226,7 @@ const VERIFICATION_WORDS: Record<TaskVerification["state"], string> = {
   failed: "Failed: a check after the turn's last change did not pass.",
   unknown: "Not verified: a check after the turn's last change did not finish or did not say how it ended.",
   stale: "Not verified: every check ran before a later change.",
-  none: "Not verified: no check ran after the turn's changes.",
+  none: "Not verified: no check result confirms the latest changes.",
 };
 
 /** Tools that change files. `write_file` is the offline engine's. A denied one changed nothing. */
@@ -278,13 +278,23 @@ const SUBCOMMANDS: Record<string, Set<string>> = {
   gradlew: new Set(["test", "build", "check"]), mvn: new Set(["test", "verify", "package"]), dotnet: new Set(["test", "build"]), ruff: new Set(["check"]),
 };
 /** Commands that only read: running one after a check leaves the check current. */
-const READ_ONLY = new Set(["ls", "cat", "head", "tail", "wc", "pwd", "echo", "printf", "grep", "rg", "which", "type", "file", "stat", "tree", "diff", "sort", "uniq",
-  "cut", "tr", "basename", "dirname", "realpath", "env", "date", "true", "cd", "nl", "less", "more"]);
-const READ_ONLY_GIT = new Set(["status", "diff", "log", "show", "branch", "rev-parse", "blame", "ls-files", "remote"]);
+const READ_ONLY = new Set(["ls", "cat", "head", "tail", "wc", "pwd", "echo", "printf", "grep", "rg", "which", "type", "file", "stat",
+  "cut", "tr", "basename", "dirname", "realpath", "true", "cd", "nl"]);
+
 
 /** Whether a command, as the CLI reported it, runs a known test, build, typecheck or lint check. */
 export function isCheckCommand(command: string): boolean {
-  return (segments(command) ?? []).some(checkSegment);
+  const parts = segments(command, { checks: true, noWrites: true });
+  if (!parts?.length) return false;
+  let sawCheck = false;
+  for (const words of parts) {
+    if (checkSegment(words)) { sawCheck = true; continue; }
+    // A leading directory change joined with && must succeed before the check runs.
+    // Other mixed commands have no individual exit/write evidence in the tool receipt.
+    if (!sawCheck && words[0] === "cd" && (words.length === 2 || (words.length === 3 && words[1] === "--"))) continue;
+    return false;
+  }
+  return sawCheck;
 }
 
 function checkSegment(words: string[]): boolean {
@@ -321,12 +331,13 @@ function dropFlags(words: string[]): string[] {
 
 /** Whether every part of a command only reads. A redirect writes. Anything unknown might write. */
 function isReadOnlyCommand(command: string): boolean {
-  const parts = segments(command, true);
+  const parts = segments(command, { noWrites: true });
   return parts !== null && parts.every((words) => {
     const program = (words[0] ?? "").split("/").pop()!;
-    if (program === "git") return READ_ONLY_GIT.has(words.find((word, i) => i > 0 && !word.startsWith("-")) ?? "");
-    if (program === "sed") return words.includes("-n") && !words.some((word) => word.startsWith("-i"));
-    if (program === "find") return !words.some((word) => word === "-delete" || word === "-exec" || word === "-execdir");
+    // Only known status forms: git config/options and other verbs can invoke helpers or write.
+    if (program === "git") return words[1] === "status" && words.slice(2).every((word) => ["--short", "-s", "--branch", "-b", "--porcelain", "--porcelain=v1", "--porcelain=v2"].includes(word));
+    if (program === "sed") return words.length >= 3 && words[1] === "-n" && /^\d+(?:,\d+)?p$/.test(words[2]!) && words.slice(3).every((word) => !word.startsWith("-"));
+    if (program === "rg" && words.some((word) => word === "--pre" || word.startsWith("--pre="))) return false;
     return READ_ONLY.has(program);
   });
 }
@@ -334,9 +345,11 @@ function isReadOnlyCommand(command: string): boolean {
 /**
  * A command split into simple commands, each a list of words, after unwrapping `sh`/`bash`/`zsh -c '…'`.
  * Quotes are respected, so `echo 'pnpm test'` is one word. Leading `NAME=value` assignments are dropped.
- * With `strict`, a redirect (`>`, `>>`) returns null: the command writes.
+ * Dynamic expansion and unsupported shell syntax fail closed. `checks` permits only && chains:
+ * the tool's final exit status cannot prove earlier checks passed across ;, ||, pipes or backgrounding.
+ * `noWrites` rejects output redirection; its destination could be a file the check was meant to verify.
  */
-function segments(command: string, strict = false): string[][] | null {
+function segments(command: string, options: { noWrites?: boolean; checks?: boolean } = {}): string[][] | null {
   const out: string[][] = [];
   let words: string[] = [];
   let word = "";
@@ -347,6 +360,7 @@ function segments(command: string, strict = false): string[][] | null {
   for (let i = 0; i < command.length; i++) {
     const c = command[i]!;
     if (quote) {
+      if (quote === '"' && (c === "$" || c === "`")) return null;
       if (c === quote) quote = null;
       else if (c === "\\" && quote === '"' && i + 1 < command.length) word += command[++i];
       else word += c;
@@ -354,19 +368,31 @@ function segments(command: string, strict = false): string[][] | null {
     }
     if (c === "'" || c === '"') { quote = c; quoted = true; continue; }
     if (c === "\\" && i + 1 < command.length) { word += command[++i]; continue; }
+    if (c === "$" || c === "`" || c === "(" || c === ")" || c === "#") return null;
+    if (c === ";" || c === "|" || c === "&" || c === "\n") {
+      if (options.checks) {
+        if (c !== "&" || command[i + 1] !== "&") return null;
+        endWord();
+        if (!words.length) return null;
+        i++;
+      }
+      endSegment(); continue;
+    }
     if (/\s/.test(c)) { endWord(); continue; }
-    if (c === ";" || c === "|" || c === "&" || c === "\n") { endSegment(); continue; }
-    if (c === ">" || c === "<") { if (strict && c === ">") return null; endWord(); continue; }
+    if (c === ">" || c === "<") { if (options.checks || (options.noWrites && c === ">")) return null; endWord(); continue; }
     word += c;
   }
+  if (quote || (options.checks && !word && !quoted && !words.length)) return null;
   endSegment();
   // `/bin/zsh -lc '<script>'`: the script is the command.
   const result: string[][] = [];
   for (const segment of out) {
     const program = (segment[0] ?? "").split("/").pop()!;
-    const flag = segment.findIndex((w, i) => i > 0 && /^-[a-z]*c[a-z]*$/.test(w));
-    if (/^(sh|bash|zsh|dash)$/.test(program) && flag > 0 && segment[flag + 1] !== undefined) {
-      const inner = segments(segment[flag + 1]!, strict);
+    // Restrict wrappers to common execution forms. In particular, -n/-o noexec only
+    // parse the script; their successful receipt says nothing about its checks.
+    if (/^(sh|bash|zsh|dash)$/.test(program)) {
+      if (segment.length !== 3 || !/^-l?c$/.test(segment[1] ?? "")) return null;
+      const inner = segments(segment[2]!, options);
       if (inner === null) return null;
       result.push(...inner);
     } else result.push(segment);

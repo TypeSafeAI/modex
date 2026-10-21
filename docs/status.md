@@ -79,7 +79,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
   did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
   test, build, typecheck or lint command counts, never the model's word or an unrelated command. The
-  saved note lists the checks and marks stale ones. [Verification](task-context.md#verification).
+  saved note lists the checks and marks stale ones. Shell receipts that mask failures, mix checks
+  with writes, or only parse a script cannot mark changes verified. Dynamic expansion and
+  write-capable commands also invalidate earlier checks. [Verification](task-context.md#verification),
+  [shell-receipt repair evidence](reviews/2026-10-20-cf7-shell-receipts.md).
   Task Note updates also recheck current project ownership: notes moved across projects are
   preserved, with a replacement saved under the originating project, even when a folder move
   or Finder move retained the old revision.

@@ -274,6 +274,36 @@ test("a check is a known test, build, typecheck or lint command, unwrapped from 
   }
 });
 
+test("shell control flow cannot hide a failed check or a write after a check", () => {
+  for (const command of [
+    "pnpm test || true", "pnpm test; true", "pnpm test\ntrue", "pnpm test | cat", "pnpm test &",
+    "pnpm test && printf broken > app.ts", "pnpm test; printf broken > app.ts",
+    "pnpm test && node rewrite.js", "pnpm test > app.ts", "pnpm test $(touch app.ts)",
+    'pnpm test "$(touch app.ts)"', "pnpm test `touch app.ts`", "pnpm test # && false",
+    "bash -c 'pnpm test || true'", "bash -c 'pnpm test && printf broken > app.ts'",
+    "pnpm test &&", "&& pnpm test", "pnpm test 'unterminated",
+    "bash -n -c 'pnpm test'", "bash -nc 'pnpm test'", "bash -o noexec -c 'pnpm test'",
+  ]) {
+    assert.equal(isCheckCommand(command), false, command);
+    assert.notEqual(verification([user, edit("app.ts"), run(command, "succeeded", 0)]).state, "verified", command);
+    assert.notEqual(verification([user, edit("app.ts"), run("pnpm test", "succeeded", 0), run(command, "succeeded", 0)]).state, "verified", command);
+  }
+  for (const command of ["pnpm build && pnpm test", "cd pkg && npm test", "pnpm test --filter 'name;with|operators'", "bash -c 'pnpm build && pnpm test'"]) {
+    assert.equal(isCheckCommand(command), true, command);
+    assert.equal(verification([user, edit("app.ts"), run(command, "succeeded", 0)]).state, "verified", command);
+  }
+});
+
+test("dynamic shell expansion and write-capable read commands invalidate earlier verification", () => {
+  for (const command of ['echo "$(touch app.ts)"', "echo `touch app.ts`", "cat <(node rewrite.js)",
+    "env node rewrite.js", "sort -o app.ts input.txt", "uniq input.txt app.ts", "sed -n 'w app.ts' input.txt",
+    "git diff --output=app.ts", "git branch new", "git remote add upstream https://example.com/repo",
+    "find . -fprint app.ts", "rg --pre ./rewrite.js pattern .", "tree -o app.ts",
+  ]) {
+    assert.equal(verification([user, edit("app.ts"), run("pnpm test", "succeeded", 0), run(command, "succeeded", 0)]).state, "stale", command);
+  }
+});
+
 test("a turn is verified only when every check after its last change passed", () => {
   assert.deepEqual(verification([user, edit("a.ts"), run("pnpm test", "succeeded", 0)]).state, "verified");
   const v = verification([user, edit("a.ts"), run("pnpm test", "succeeded")]);
@@ -316,7 +346,7 @@ test("the note says what verified the turn, marks stale checks, and lists anythi
   assert.match(stale, /Not verified: every check ran before a later change\./);
   assert.match(stale, /## Not settled\n\n- Not verified: every check ran before a later change\./);
   const none = taskMarkdown(taskRecord([user, edit("a.ts")], { threadId: "T", title: "Fix", cwd: "/repo" }));
-  assert.match(none, /## Not settled\n\n- Not verified: no check ran after the turn's changes\./);
+  assert.match(none, /## Not settled\n\n- Not verified: no check result confirms the latest changes\./);
   const chat = taskMarkdown(taskRecord([user, { id: "A", kind: "assistant", text: "It is in config.ts.", phase: "final", outcome: "succeeded", at: at(99) } as ThreadItem], { threadId: "T", title: "Where", cwd: "/repo" }));
   assert.doesNotMatch(chat, /Verification|Not verified/, "a turn that changed nothing and ran no check has nothing to verify");
 });
