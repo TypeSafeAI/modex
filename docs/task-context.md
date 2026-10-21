@@ -52,21 +52,26 @@ reported.
   - `cargo test/build/check/clippy`, `go test/build/vet`, `swift test/build`, `make test/check/build`,
     `gradle`, `mvn`, `dotnet` and `xcodebuild`.
 
-  The command is read inside `sh`/`bash`/`zsh -c '…'`, with quotes respected. Anything else is not
-  a check, so an exit-zero `echo ok` verifies nothing, and neither does the model saying "tests pass".
+  The command is read inside `sh`/`bash`/`zsh`/`dash` with exactly `-c` or `-lc` and one script,
+  with quotes respected. Only check commands joined by `&&`, optionally preceded by directory
+  changes, count as a check. Mixed commands, redirects, dynamic shell expansion, masked failures
+  (`||`), pipelines, backgrounding, syntax-only shell modes and unsupported syntax do not provide
+  an unambiguous check result. Anything else is not a check, so an exit-zero `echo ok` verifies nothing, and neither does the model saying "tests pass".
 - **A check passes** only with outcome `succeeded` and exit code 0. Claude Code reports no exit code,
   and its failed commands come through as failed, so a succeeded Claude check passes. A success with
   a nonzero code fails. A success with an explicit "no exit code" is unknown.
 - **A check goes stale** when something that may change files runs after it:
   - a patch tool that was not denied;
   - a command that is neither a check nor known to be read-only (`ls`, `cat`, `grep`, `git status`,
-    `git diff`, `sed -n`, …). A redirect (`>`) counts as writing. Modex cannot see what an unknown
+    numeric-print `sed -n`, …). Git status accepts only known display flags; general Git commands,
+    `find`, `env`, sorting/output tools and `rg --pre` are conservatively treated as possible writes.
+    A redirect (`>`) counts as writing. Modex cannot see what an unknown
     command wrote, so it never claims verification across one.
 - **The turn reads:**
   - **verified** when every check after its last change passed;
   - **failed** when one of them failed or was denied;
   - **not verified**, in three cases: a check after the last change did not say how it ended, every
-    check ran before a later change, or no check ran after the turn's changes.
+    check ran before a later change, or no check result confirms the latest changes.
 
   A turn that changed nothing and ran no check has nothing to verify and shows nothing.
 

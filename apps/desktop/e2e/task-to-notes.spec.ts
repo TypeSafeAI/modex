@@ -127,3 +127,28 @@ test("a turn's footer lists the files it touched, on demand, as the CLI reported
   await expect(tid(context, "task-context-outside")).toHaveText("1 outside the project, not named");
   await expect(context).toContainText("As the CLI reported them");
 });
+
+test("a successful shell receipt cannot verify masked failures or writes after a check", async () => {
+  const commands = ["pnpm test || true", "pnpm test && printf broken > app.ts", "pnpm test | cat", "pnpm build && pnpm test"];
+  const before = await tid(page, "task-verification").count();
+  const events = commands.flatMap((command, i) => {
+    const turn = `u-shell-proof-${i}`;
+    const origin = { thread: threadId, turn, attempt: `${turn}:A1`, backend: "codex", native: { runtime: "R" } };
+    return [
+      { type: "item", threadId, item: { id: turn, kind: "user", text: command, at: at() } },
+      { type: "item", threadId, item: { id: `${turn}:edit`, kind: "tool", name: "apply_patch", title: "edit app.ts", args: {}, status: "done", outcome: "succeeded", ok: true, origin, at: at() } },
+      { type: "item", threadId, item: { id: `${turn}:check`, kind: "tool", name: "shell", title: command, args: {}, status: "done", outcome: "succeeded", ok: true, exitCode: 0, exec: { command }, origin, at: at() } },
+      { type: "item", threadId, item: { id: `${turn}:answer`, kind: "assistant", text: "Done.", phase: "final", outcome: "succeeded", origin, at: at() } },
+    ];
+  });
+  await app.evaluate(({ BrowserWindow }, list) => {
+    for (const event of list) BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", event);
+  }, [...events, { type: "status", threadId, status: "idle" }]);
+  const lines = tid(page, "task-verification");
+  await expect(lines).toHaveCount(before + commands.length);
+  for (let i = 0; i < 3; i++) {
+    await expect(lines.nth(before + i)).toHaveAttribute("data-state", "none");
+    await expect(lines.nth(before + i)).toHaveText("Not verified: no check result confirms the latest changes");
+  }
+  await expect(lines.last()).toHaveAttribute("data-state", "verified");
+});

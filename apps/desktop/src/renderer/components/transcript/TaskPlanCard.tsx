@@ -80,7 +80,7 @@ export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }
     : v.state === "failed" ? <>Failed: <Checks checks={failing} /> did not pass</>
     : v.state === "unknown" ? <>Not verified: <Checks checks={current.filter((check) => !check.passed)} /> did not say how it ended</>
     : v.state === "stale" ? <>Not verified: <Check check={v.checks.at(-1)!} /> ran before a later change</>
-    : <>Not verified: no check ran after the changes</>;
+    : <>Not verified: no check result confirms the latest changes</>;
   return <div className="task-verification" data-testid="task-verification" data-state={v.state}>{text}</div>;
 }
 
