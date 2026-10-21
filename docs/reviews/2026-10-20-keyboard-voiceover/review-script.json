@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "thinking": "Look at the project layout and the git state before adding the note.", "content": "I'll take a look at the project first.", "tool_calls": [{ "name": "list_dir", "arguments": { "path": ".", "depth": 1 } }, { "name": "read_file", "arguments": { "path": "package.json", "limit": 12 } }] },
+    { "tool_calls": [{ "name": "shell", "arguments": { "command": "git status --short | head -5" } }] },
+    { "content": "The repo is clean. I'll add a short contributor note.", "tool_calls": [{ "name": "apply_patch", "arguments": { "patch": "*** Begin Patch\n*** Add File: CONTRIBUTING.md\n+# Contributing\n+\n+1. Install with pnpm.\n+2. Run the tests.\n+3. Open a focused PR.\n*** End Patch" } }] },
+    { "content": "Checking the note is in place.", "tool_calls": [{ "name": "shell", "arguments": { "command": "sleep 8; cat CONTRIBUTING.md" } }] },
+    { "content": "Done. I added `CONTRIBUTING.md` with three steps. To read it yourself:\n\n```sh\ncat CONTRIBUTING.md\n```\n\nNothing else in the tree changed." }
+  ]
+}

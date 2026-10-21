@@ -7,11 +7,42 @@ recorded as live-provider or human acceptance.
 
 ## Candidate
 
-Every child's slice for this gate has landed, so the fixture rows below run on `main`. No candidate
-is pinned yet, because the live-provider and human gates are still open. Each row names the build it
-was checked on.
+**Historical candidate, 2026-10-20 06:04–06:25 UTC: `37406ee`** (#333). It included the slices
+landed at that time, including #332, #335 (superseding #316) and #333 (superseding #295).
+#336 had not landed yet. Later fixes and live checks are not covered by this candidate run;
+use [status](../status.md) for current delivery state and repin before claiming a final gate.
+The live Codex and human gates were open at this timestamp. Later Codex evidence is recorded
+in the integration matrix below; human VoiceOver acceptance remains open.
 
-## Children
+Run first pass, with no reruns, in a fresh worktree on an Apple M3 Max (48 GiB), macOS 26.7.1,
+Node 24.18.1 and pnpm 10.34.5, from 06:04Z to 06:25Z. Load averages ran from about 4 to 34.
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | passed |
+| `pnpm build` | passed |
+| `pnpm typecheck` | passed |
+| `pnpm run test:worktrees` | 109/109 |
+| `pnpm --filter @modex/core test` | 16/16 |
+| `pnpm --filter @modex/desktop test` | 1,697 passed, 16 skipped of 1,713; second stage 21/21 |
+| `pnpm --filter @modex/site test` | 10/10 |
+| `pnpm --filter @modex/store-desktop test` | 16/16 |
+| `pnpm --filter @modex/desktop test:e2e` | **363 passed, 6 skipped, 0 failed** (14.0 min) |
+| `pnpm --filter @modex/site test:e2e` | 7/7 |
+| iPhone UI, as `Scripts/test-e2e.sh` (iPhone 16 Pro, iOS 26.5, Xcode 26.6): `CompanionFlowTests` | 23/23 |
+| iPhone UI, as `Scripts/test-e2e.sh`: `DemoWorkspaceTests` | 20/20 |
+
+All six skipped e2e tests are opt-in, and none is a platform skip on macOS:
+- `claude-live-stop`, 1 test (`MODEX_CLAUDE_LIVE=1`);
+- `live-smoke`, 2 tests (`MODEX_LIVE_SMOKE=1`, recorded in [the live smoke review](2026-10-19-live-smoke.md));
+- `knowledge`, 3 tests (`MODEX_TEST_OPEN_KNOWLEDGE=1`).
+
+Each row below still names the build it was checked on.
+
+## Children at the original integration snapshot
+
+This table records the original slice receipts, not current issue closure. See [status](../status.md)
+and the linked issues for later delivery.
 
 | Child | Landed | State |
 | --- | --- | --- |
@@ -47,8 +78,8 @@ was checked on.
 | Keyboard and reduced motion | Existing `app.spec.ts` accessibility test; the new elements add no animation | Partial; human VoiceOver open |
 | Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts` on a named Mac, before (`89c98f2`) and after; see [Measurements](#measurements-on-a-named-mac) | Verified on one machine; not a hardware-independent latency claim |
 | Live Codex and Claude acceptance | [Live smoke, 2026-10-19](2026-10-19-live-smoke.md), `e2e/live-smoke.spec.ts` through the app. **Claude Code 2.1.304 (Haiku):** a real edit and check, the final answer, and Stop mid-command (interrupted; the file was never written). **codex-cli 0.163.0:** on 2026-10-19 the account refused the turn (`usage_limit_exceeded`); Modex showed `rate_limited` with the CLI's words and ran nothing. On 2026-10-20, with credits, the edit and check passed with a `final` answer, but **Stop left the command running** in a Codex background terminal (the file was written 30 s later). With the background-terminal fix, all three steps passed: Stop ended the command, and the file was never written. The web search ran but is not structured yet (CF-5) | Claude and Codex verified live, Codex with the Stop fix; CF-5's structured web search is still open |
-| Human VoiceOver | — | Open: human |
-| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | Per-PR results in #282, #284, #285, #287, #289 | Open until a candidate is pinned |
+| Human VoiceOver | [Keyboard and VoiceOver checklist](2026-10-20-keyboard-voiceover/checklist.md), with a seeded offline scenario. Its probes found four places where keyboard focus fell onto the page body: an answered approval, a folded turn, Stop, and Jump to latest. All four are fixed in #342 | Open: human, using the checklist on a build with #342 and #352 |
+| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [Candidate](#candidate) `37406ee` on 2026-10-20: everything passed first pass. Desktop e2e 363 passed and 6 opt-in skips; the iPhone UI classes passed 23/23 and 20/20 | Historical result on `37406ee`; later slices require a new pinned run |
 
 ## Commands and results for this preparation
 
@@ -61,9 +92,9 @@ These are acceptance tests of behaviour CF-1 through CF-7 already built, so they
 
 ## Next
 
-1. Pin a candidate SHA and run fresh full checks on it.
-2. Run authorized live Codex and Claude smoke tasks through the app, and record versions, models and
-   limits.
+1. Repin the final integrated candidate after the remaining slices land and run fresh full checks.
+2. Retain the recorded live-provider receipts; repeat authorized smoke tasks on the final candidate
+   where later changes affect those paths, recording versions, models and limits.
 3. Get human keyboard and VoiceOver acceptance.
 
 ## Measurements on a named Mac
