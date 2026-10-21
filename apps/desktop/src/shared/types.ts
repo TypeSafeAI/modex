@@ -2,7 +2,7 @@ import type { PluginCommands } from "./plugins.js";
 import type { ImageCommands } from "./images.js";
 import type { RoutineCommands } from "./routines.js";
 import type { NativeDraftBridge, NativeDraftCommands } from "./native-drafts.js";
-import type { EvidenceCommands } from "./evidence.js";
+import type { EvidenceCommands, NativeWebSearch } from "./evidence.js";
 import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
@@ -115,7 +115,7 @@ export type ThreadItem =
   | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin; evidence?: Evidence[] }
   /** `ok` is kept for older readers: true only for `succeeded`, false only for `failed` or `denied`. */
   /** `exec`, `exitCode`, `outputBytes` and `outputTruncated` (shared/evidence.ts): the command that ran and its output, bounded. */
-  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean }
+  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean; search?: NativeWebSearch }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   /**
    * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn

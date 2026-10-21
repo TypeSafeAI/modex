@@ -69,3 +69,31 @@ test("Save to Notes writes the turn's record into the project's notes, and savin
   await expect(tid(page, "task-note-saved").first()).toContainText("Updated in Notes · Task:");
   expect((await pages()).filter((p) => p.title.startsWith("Task:"))).toHaveLength(1);
 });
+
+test("a turn's footer says whether a check verified its last change, and a plain answer says nothing", async () => {
+  const send = (events: Record<string, unknown>[]) => app.evaluate(({ BrowserWindow }, list) => {
+    for (const event of list) BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", event);
+  }, events);
+  const origin = (turn: string, item: string) => ({ thread: threadId, turn, attempt: `${turn}:A1`, backend: "codex", native: { runtime: "R", item } });
+  const tool = (turn: string, id: string, extra: Record<string, unknown>) => ({ type: "item", threadId, item: { id, kind: "tool", args: {}, status: "done", origin: origin(turn, id), at: at(), ...extra } });
+  const shell = (turn: string, id: string, command: string, outcome: string, exitCode: number) => tool(turn, id, { name: "shell", title: `$ ${command}`, exec: { command: `/bin/zsh -lc '${command}'` }, outcome, ok: outcome === "succeeded", exitCode });
+  const patch = (turn: string, id: string) => tool(turn, id, { name: "apply_patch", title: "edit src/app.ts", outcome: "succeeded", ok: true });
+  const answer = (turn: string, id: string, text: string) => ({ type: "item", threadId, item: { id, kind: "assistant", text, phase: "final", outcome: "succeeded", origin: origin(turn, id), at: at() } });
+  await send([
+    { type: "item", threadId, item: { id: "u-fixed", kind: "user", text: "Fix and test", at: at() } },
+    patch("u-fixed", "e1"), shell("u-fixed", "c1", "pnpm test", "failed", 1), patch("u-fixed", "e2"), shell("u-fixed", "c2", "pnpm test", "succeeded", 0),
+    answer("u-fixed", "a1", "All tests pass now."),
+    { type: "item", threadId, item: { id: "u-stale", kind: "user", text: "Test, then tweak", at: at() } },
+    shell("u-stale", "c3", "pnpm test", "succeeded", 0), patch("u-stale", "e3"), answer("u-stale", "a2", "Tweaked after the tests."),
+    { type: "item", threadId, item: { id: "u-chat", kind: "user", text: "Where is the config?", at: at() } },
+    answer("u-chat", "a3", "In config.ts."),
+    { type: "status", threadId, status: "idle" },
+  ]);
+  const lines = tid(page, "task-verification");
+  await expect(lines).toHaveCount(2);
+  await expect(lines.nth(0)).toHaveAttribute("data-state", "verified");
+  await expect(lines.nth(0)).toHaveText("Verified: pnpm test passed after the last change");
+  await expect(lines.nth(0).locator("code")).toHaveAttribute("title", "/bin/zsh -lc 'pnpm test'");
+  await expect(lines.nth(1)).toHaveAttribute("data-state", "stale");
+  await expect(lines.nth(1)).toHaveText("Not verified: pnpm test ran before a later change");
+});

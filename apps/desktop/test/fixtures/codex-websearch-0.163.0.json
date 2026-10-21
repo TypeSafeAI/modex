@@ -1,0 +1,46 @@
+{
+  "_about": "Captured live from codex-cli 0.163.0's app-server on 2026-10-20 (one web-search turn, read-only, no commands). Results trimmed to the first three; otherwise verbatim.",
+  "started": {
+    "type": "webSearch",
+    "id": "call_f50cd6d89d5841209158452d2850b761",
+    "query": "",
+    "action": null,
+    "results": null
+  },
+  "completed": {
+    "type": "webSearch",
+    "id": "call_f50cd6d89d5841209158452d2850b761",
+    "query": "site:github.com/openai/codex changelog codex cli",
+    "action": {
+      "type": "search",
+      "query": "site:github.com/openai/codex changelog codex cli",
+      "queries": null
+    },
+    "results": [
+      {
+        "type": "text_result",
+        "domain": "github.com",
+        "ref_id": "turn0search0",
+        "snippet": "The changelog can be found on the releases page.",
+        "title": "codex/CHANGELOG.md at main · openai/codex · GitHub",
+        "url": "https://github.com/openai/codex/blob/main/CHANGELOG.md"
+      },
+      {
+        "type": "text_result",
+        "domain": "github.com",
+        "ref_id": "turn0search1",
+        "snippet": "CLIIssues related to the Codex CLI Issues related to the Codex CLI appIssues related to the Codex desktop app Issues related to the Codex desktop",
+        "title": "Changelog Website does not display up-to-date versions and changes · Issue #30099 · openai/codex · GitHub",
+        "url": "https://github.com/openai/codex/issues/30099"
+      },
+      {
+        "type": "text_result",
+        "domain": "github.com",
+        "ref_id": "turn0search2",
+        "snippet": "\"description\": \"Codex CLI is a coding agent from OpenAI that runs locally on your computer.\", ... \"url\": \"git+https://github.com/openai/codex.git\",",
+        "title": "codex/codex-cli/package.json at main · openai/codex · GitHub",
+        "url": "https://github.com/openai/codex/blob/main/codex-cli/package.json"
+      }
+    ]
+  }
+}

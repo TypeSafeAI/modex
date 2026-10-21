@@ -822,3 +822,115 @@ test("CodexBackend reports the turn's usage from captured notifications and igno
     });
   } finally { await backend.dispose(); }
 });
+
+/**
+ * codex-cli 0.163.0 with `unified_exec` keeps a long command running in a background terminal
+ * after the tool call yields, and interrupting the turn does not end it (2026-10-20 live smoke:
+ * `live-stop.txt` was written 30 s after Stop). Scripts a server whose command item stays open
+ * and whose background terminals answer list/terminate as `respond` says.
+ */
+function terminalServer(proc: FakeProcess, respond: { list?: "unsupported"; terminate?: boolean; survives?: boolean } = {}) {
+  const seen: { method: string; params: Record<string, unknown> }[] = [];
+  const terminals = new Map([["proc-old", "item-earlier-turn"], ["proc-63519", "cmd-1"]]);
+  proc.stdin.on("data", (chunk: Buffer) => {
+    for (const line of chunk.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line) as { id?: number; method?: string; params?: Record<string, unknown> };
+      if (msg.method) seen.push({ method: msg.method, params: msg.params ?? {} });
+      if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: {} });
+      else if (msg.method === "thread/start") proc.emitLine({ id: msg.id, result: { thread: { id: "thr" } } });
+      else if (msg.method === "turn/start") {
+        proc.emitLine({ id: msg.id, result: { turn: { id: "turn" } } });
+        proc.emitLine({ method: "turn/started", params: { threadId: "thr", turn: { id: "turn" } } });
+        proc.emitLine({ method: "item/started", params: { threadId: "thr", turnId: "turn", item: { type: "commandExecution", id: "cmd-1", command: "python3 -c \"import time; time.sleep(30)\"", cwd: "/repo", processId: "63519", status: "inProgress" } } });
+      } else if (msg.method === "turn/interrupt") {
+        proc.emitLine({ id: msg.id, result: {} });
+        proc.emitLine({ method: "turn/completed", params: { threadId: "thr", turn: { id: "turn", status: "interrupted", error: null } } });
+      } else if (msg.method === "thread/backgroundTerminals/list") {
+        if (respond.list === "unsupported") proc.emitLine({ id: msg.id, error: { code: -32601, message: "method not found" } });
+        else proc.emitLine({ id: msg.id, result: { data: [...terminals].map(([processId, itemId]) => ({ processId, itemId, command: "…", cwd: "/repo", osPid: 4242 })), nextCursor: null } });
+      } else if (msg.method === "thread/backgroundTerminals/terminate") {
+        if (!respond.survives) terminals.delete(String(msg.params?.processId));
+        proc.emitLine({ id: msg.id, result: { terminated: respond.terminate ?? true } });
+      }
+    }
+  });
+  return seen;
+}
+
+async function stopMidCommand(respond: Parameters<typeof terminalServer>[1]) {
+  const proc = new FakeProcess();
+  const seen = terminalServer(proc, respond);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, events, observations } = collectSink();
+  const abort = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, sink, abort.signal);
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  abort.abort();
+  const result = await run;
+  await backend.dispose();
+  const done = observations.filter((o) => o.type === "tool.done" && o.native.item === "cmd-1");
+  return { seen, events, result, done };
+}
+
+test("Stop ends the turn's own background terminal and calls the command interrupted only once Codex no longer lists it", async () => {
+  const { seen, result, done } = await stopMidCommand({});
+  assert.equal((seen.find((s) => s.method === "initialize")?.params.capabilities as Record<string, unknown>)?.experimentalApi, true, "background terminals are experimental in codex-cli 0.163.0");
+  const ended = seen.filter((s) => s.method === "thread/backgroundTerminals/terminate");
+  assert.deepEqual(ended.map((s) => s.params), [{ threadId: "thr", processId: "proc-63519" }], "only this turn's terminal; an earlier turn's server keeps running");
+  assert.equal(seen.some((s) => s.method === "thread/backgroundTerminals/clean"), false);
+  assert.equal(result.status, "interrupted");
+  assert.equal(done.length, 1);
+  assert.equal(done[0]!.type === "tool.done" && done[0]!.outcome, "interrupted");
+});
+
+for (const [name, respond] of [
+  ["cannot list background terminals (an older CLI)", { list: "unsupported" as const }],
+  ["reports the terminal was not terminated", { terminate: false, survives: true }],
+  ["still lists the terminal after terminating it", { survives: true }],
+] as const) {
+  test(`Stop leaves the command unknown, with a notice, when Codex ${name}`, async () => {
+    const { events, result, done } = await stopMidCommand(respond);
+    assert.equal(result.status, "interrupted");
+    assert.equal(done.length, 1);
+    assert.equal(done[0]!.type === "tool.done" && done[0]!.outcome, "unknown", "Stop must not claim a command ended that Codex did not confirm");
+    assert.ok(events.some((e) => /^notice:warn:.*may still be running/.test(e)), events.join("\n"));
+  });
+}
+
+test("Stop with no open command does not ask Codex about background terminals", async () => {
+  const proc = new FakeProcess();
+  const { seen } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const abort = new AbortController();
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collectSink().sink, abort.signal);
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  abort.abort();
+  assert.equal((await run).status, "interrupted");
+  assert.equal(seen.some((s) => s.method.startsWith("thread/backgroundTerminals/")), false);
+  await backend.dispose();
+});
+
+test("a Codex web search titles itself before its query arrives, then carries the reported query and results", async () => {
+  const native = JSON.parse(fs.readFileSync(fileURLToPath(new URL("../../test/fixtures/codex-websearch-0.163.0.json", import.meta.url)), "utf8")) as { started: Record<string, unknown>; completed: Record<string, unknown> };
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const { sink, observations } = collectSink();
+  const run = backend.runTurn("search", { cwd: "/repo", mode: "chat", plan: false, model: "" }, sink, new AbortController().signal);
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  proc.emitLine({ method: "item/started", params: { threadId, turnId, item: native.started } });
+  proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: native.completed } });
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+  assert.equal((await run).status, "completed");
+  await backend.dispose();
+  const start = observations.find((o) => o.type === "tool.start");
+  assert.equal(start?.type === "tool.start" && start.tool.title, "search the web", "0.163.0 starts the item with an empty query");
+  const done = observations.find((o) => o.type === "tool.done");
+  assert.ok(done && done.type === "tool.done");
+  assert.equal(done.outcome, "succeeded");
+  assert.equal(done.progress?.title, "search site:github.com/openai/codex changelog codex cli");
+  assert.equal(done.progress?.search?.results.length, 3);
+  assert.equal(done.progress?.output, undefined, "results are structured, not a JSON string");
+});

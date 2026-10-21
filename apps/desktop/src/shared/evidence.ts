@@ -5,6 +5,8 @@
  * prove the claim. Pure and shared by main and the renderer.
  */
 
+import { domainOf, safeHref } from "./inline.js";
+
 /** The most tool output a transcript item keeps: its last 256 KiB. */
 export const OUTPUT_PREVIEW_BYTES = 256 * 1024;
 
@@ -30,6 +32,58 @@ export interface ToolLogPage {
 /** A byte count as the transcript writes it: "256 KB", "3.1 MB". */
 export function formatBytes(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * A web search as Codex reported it (a `webSearch` item, codex-cli 0.163.0): the query, what the search
+ * did, and the results it returned. The results are what Codex's search found; Modex has not checked
+ * them, and a result is not proof that it supports anything the reply says.
+ */
+export interface NativeWebSearch {
+  source: "codex";
+  query: string;
+  action?: { kind: "search"; queries: string[] } | { kind: "openPage"; url: string } | { kind: "findInPage"; url: string; pattern?: string };
+  results: { title: string; url: string; domain: string; snippet?: string }[];
+  /** Results Codex sent that Modex cannot show: not an object, or no http(s) link. */
+  dropped?: number;
+}
+
+/** The longest query, title or snippet a search keeps, in characters. */
+const SEARCH_TEXT = 500;
+/** The most results one search keeps. */
+const SEARCH_RESULTS = 50;
+
+const bounded = (text: string): string => (text.length > SEARCH_TEXT ? `${text.slice(0, SEARCH_TEXT)}…` : text);
+const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() ? bounded(value.trim()) : undefined);
+
+/**
+ * A Codex `webSearch` item's search, or null when it reports none yet (0.163.0 starts the item with
+ * an empty query and no action or results). Codex documents `results` as opaque JSON: an entry is
+ * kept only as an object with an http(s) `url`, its title falling back to the domain. Anything else
+ * is counted in `dropped`, never shown.
+ */
+export function codexWebSearch(item: Record<string, unknown>): NativeWebSearch | null {
+  const query = text(item.query) ?? "";
+  const a = item.action && typeof item.action === "object" ? item.action as Record<string, unknown> : undefined;
+  const page = typeof a?.url === "string" ? safeHref(a.url) : null;
+  const action: NativeWebSearch["action"] =
+    a?.type === "search" ? { kind: "search", queries: (Array.isArray(a.queries) ? a.queries : [a.query]).flatMap((q) => text(q) ?? []) }
+    : a?.type === "openPage" && page ? { kind: "openPage", url: page }
+    : a?.type === "findInPage" && page ? { kind: "findInPage", url: page, ...(text(a.pattern) ? { pattern: text(a.pattern)! } : {}) }
+    : undefined;
+  const raw = Array.isArray(item.results) ? item.results : [];
+  const results: NativeWebSearch["results"] = [];
+  for (const entry of raw.slice(0, SEARCH_RESULTS)) {
+    const e = entry && typeof entry === "object" ? entry as Record<string, unknown> : undefined;
+    const url = typeof e?.url === "string" ? safeHref(e.url) : null;
+    if (!e || !url) continue;
+    const domain = text(e.domain) ?? domainOf(url);
+    const snippet = text(e.snippet);
+    results.push({ title: text(e.title) ?? domain, url, domain, ...(snippet ? { snippet } : {}) });
+  }
+  const dropped = Math.min(raw.length, SEARCH_RESULTS) - results.length;
+  if (!query && !action && !results.length) return null;
+  return { source: "codex", query, ...(action ? { action } : {}), results, ...(dropped ? { dropped } : {}) };
 }
 
 /** A Codex memory citation (`agentMessage.memoryCitation`, codex-cli 0.163.0): a line range in a memory file. */

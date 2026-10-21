@@ -19,8 +19,8 @@ import { readerStateFor, ReaderStateContext, useExpansionState } from "./transcr
 import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
-import { SaveTaskNote, TaskPlanCard } from "./transcript/TaskPlanCard";
-import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes } from "../../shared/evidence";
+import { SaveTaskNote, TaskPlanCard, TaskVerificationLine } from "./transcript/TaskPlanCard";
+import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes, type NativeWebSearch } from "../../shared/evidence";
 import { ToolLog } from "./transcript/ToolLog";
 import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
 
@@ -107,18 +107,39 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     el.scrollTop = el.scrollHeight;
     autoTop.current = el.scrollTop;
   }).current;
+  // When the reader last scrolled by hand (wheel, keys, the scrollbar, touch), and when they jumped to
+  // the latest. A Page Up still animating keeps moving the view after a jump: the browser's keyboard
+  // scroll applies its remaining distance whatever the page sets. A scroll with no input since the
+  // jump is that leftover motion, not the reader, and the jump holds.
+  const lastInput = useRef(0);
+  const jumpedAt = useRef(-Infinity);
+  const onInput = () => { lastInput.current = performance.now(); };
+  const pin = (el: HTMLDivElement) => {
+    el.scrollTop = el.scrollHeight;
+    autoTop.current = el.scrollTop;
+  };
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
+    const leftover = lastInput.current < jumpedAt.current && performance.now() - jumpedAt.current < 1000;
+    // A scroll event is delivered before the browser reports a resize. If the view only got shorter
+    // under a reader who is following (the composer gaining a follow-up chip right after Jump to
+    // latest), it has not been scrolled up: keep following.
+    if (stick.current && (leftover || el.scrollTop >= autoTop.current - 2)) {
+      pin(el);
+      setAway(false);
+      return;
+    }
     stick.current = isNearBottom(el);
+    if (stick.current) autoTop.current = el.scrollTop;
     setAway(!stick.current);
   };
   const jumpToLatest = () => {
     const el = scroller.current;
     if (!el) return;
     stick.current = true;
-    el.scrollTop = el.scrollHeight;
-    autoTop.current = el.scrollTop;
+    jumpedAt.current = performance.now();
+    pin(el);
     setAway(false);
   };
   useLayoutEffect(() => {
@@ -184,7 +205,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
     <ReaderStateContext.Provider value={reader}><section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
 
       <TranscriptThread.Provider value={thread.id}>
-      <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
+      <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll} onWheel={onInput} onKeyDown={onInput} onPointerDown={onInput} onTouchStart={onInput}>
         {items.length === 0 && (
           <div className="transcript-empty">
             <p>Describe a task. Modex will inspect <code>{thread.cwd}</code>, then read, edit, and run what it needs — asking first when the mode requires it.</p>
@@ -192,12 +213,17 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         )}
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
-            footer={(t) => <SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} />}
+            footer={(t) => <><TaskVerificationLine items={t.rest} /><SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} /></>}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
         ))}
       </div>
       </TranscriptThread.Provider>
-      {away && items.length > 0 && <button type="button" className="jump-latest" data-testid="jump-latest" onClick={jumpToLatest}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
+      {away && items.length > 0 && <button type="button" className="jump-latest" data-testid="jump-latest" onClick={(e) => {
+        // The button goes away at the bottom; focus goes to the message box there, not the page body.
+        const held = document.activeElement === e.currentTarget;
+        jumpToLatest();
+        if (held) inputRef.current?.focus({ preventScroll: true });
+      }}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
       {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
         <p>This message is saved. Start its coding turn when you are ready.</p>
         <button type="button" className="btn small" data-testid="saved-message-retry" onClick={onRetry}>Retry saved message</button>
@@ -385,10 +411,23 @@ const WITHDRAWN: Record<NonNullable<ApprovalEntry["withdrawn"]>, string> = {
  * anything a human answers is today's card, plus one line saying why when a rule sent it here.
  */
 function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void }) {
+  const card = useRef<HTMLDivElement>(null);
+  // The answer buttons go away once pressed. Someone answering from the keyboard or VoiceOver
+  // lands on the answer line ("Sending decision…", then "Approved") instead of the page body.
+  const refocus = useRef(false);
+  const answer = (value: "yes" | "no" | "always") => {
+    refocus.current = !!card.current?.contains(document.activeElement);
+    onAnswer(item.id, value);
+  };
+  useLayoutEffect(() => {
+    if (!item.answer || !refocus.current) return;
+    refocus.current = false;
+    card.current?.querySelector<HTMLElement>('[data-testid="approval-answer"]')?.focus({ preventScroll: true });
+  }, [item.answer]);
   const r = item.decidedBy;
   if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
   return (
-    <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
+    <div ref={card} className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
       <div className="approval-head" data-testid="approval-question">
         <span className="shield">⚠</span>
         <span>{item.question}</span>
@@ -397,16 +436,16 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
       {item.detail && <pre className="detail">{item.detail}</pre>}
       {item.answer ? (
         <>
-          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn} tabIndex={-1}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
           {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
         </>
       ) : (
         <div className="row">
-          <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
-          {item.canAlways !== false && <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>}
-          {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); onAnswer(item.id, "yes"); }}>Always allow in thread</button>}
+          <button className="btn primary small" onClick={() => answer("yes")}>Approve</button>
+          {item.canAlways !== false && <button className="btn small" onClick={() => answer("always")}>Always</button>}
+          {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); answer("yes"); }}>Always allow in thread</button>}
           {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => { if (window.confirm("YOLO approves every action in this thread without asking, including access outside the sandbox. Your Never rules still refuse.\n\nTurn on YOLO for this thread?")) onPolicy("yolo"); }}>YOLO</button>}
-          <button className="btn danger small" onClick={() => onAnswer(item.id, "no")}>Deny</button>
+          <button className="btn danger small" onClick={() => answer("no")}>Deny</button>
         </div>
       )}
     </div>
@@ -478,11 +517,15 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   // Claude Code calls them WebSearch and WebFetch; Codex reports a `webSearch` item.
   const web = item.name === "WebSearch" || item.name === "webSearch" ? "search" : item.name === "WebFetch" ? "fetch" : null;
   const search = useMemo(() => (web === "search" && item.output && item.ok !== false ? parseWebSearch(item.output) : null), [web, item.output, item.ok]);
+  // Codex reports a search's results structured (CF-5); one stored before that kept the JSON string "" as output.
+  const native = web === "search" ? item.search : undefined;
+  const output = web === "search" && item.output === '""' ? undefined : item.output;
+  const count = native ? native.results.filter((r) => safeHref(r.url)).length : search?.links.length;
   const page = web === "fetch" && typeof item.args.url === "string" ? safeHref(item.args.url) : null;
   const icon = web === "search" ? <Icon name="search" size={13} /> : web === "fetch" ? <Icon name="globe" size={13} /> : item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
   const summary = toolSummary(item);
   const status = toolStatusLabel(item);
-  const outcome = search ? `${search.links.length} ${search.links.length === 1 ? "result" : "results"}` : status.toLowerCase();
+  const outcome = count !== undefined ? `${count} ${count === 1 ? "result" : "results"}` : status.toLowerCase();
   return (
     <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
       <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`} title={summary}>
@@ -504,8 +547,8 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
           {item.outputTruncated && item.outputBytes != null && <div className="tool-truncated" data-testid="tool-truncated">Showing the last {formatBytes(OUTPUT_PREVIEW_BYTES)} of {formatBytes(item.outputBytes)}.</div>}
           {item.outputTruncated && <ToolLog item={item} />}
           {page && <a className="tool-link" data-testid="tool-link" href={page} target="_blank" rel="noreferrer">{page}</a>}
-          {search ? <SearchResults search={search} />
-            : item.output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={item.output} /></div> : <pre className="output" data-testid="tool-output">{item.output}</pre>)
+          {native ? <NativeSearchResults search={native} /> : search ? <SearchResults search={search} />
+            : output ? (web === "fetch" && item.ok !== false ? <div className="tool-prose" data-testid="tool-output"><Markdown text={output} /></div> : <pre className="output" data-testid="tool-output">{output}</pre>)
             : item.status === "running" ? <pre className="output dim">running…</pre> : null}
           {item.name !== "apply_patch" && Object.keys(item.args).length > 0 && <details className="tool-arguments">
             <summary>Arguments</summary>
@@ -534,6 +577,38 @@ function SearchResults({ search }: { search: WebSearch }) {
         </ol>
       )}
       {search.summary && <div className="search-summary" data-testid="search-summary"><Markdown text={search.summary} /></div>}
+    </div>
+  );
+}
+
+/**
+ * A web search as Codex reported it: the page it opened, if any, and its results as links with their
+ * snippets. Labelled as unchecked: a result is what the search returned, not proof of the reply.
+ * Showing it fetches nothing; a link opens in the browser only when clicked.
+ */
+function NativeSearchResults({ search }: { search: NativeWebSearch }) {
+  // Main kept only http(s) links; a stored thread is checked again before anything becomes a link.
+  const action = search.action && search.action.kind !== "search" ? search.action : undefined;
+  const page = action && safeHref(action.url) ? action : undefined;
+  const results = search.results.flatMap((r) => { const url = safeHref(r.url); return url ? [{ ...r, url }] : []; });
+  return (
+    <div className="search" data-testid="search-results" data-provenance="codex-search">
+      <div className="search-label" data-testid="search-label">{results.length ? "Results Codex reported. Modex has not checked them." : "What Codex reported. Modex has not checked it."}</div>
+      {page && <a className="tool-link" data-testid="search-page" href={page.url} target="_blank" rel="noreferrer">{page.kind === "findInPage" ? `Searched ${page.url}${page.pattern ? ` for “${page.pattern}”` : ""}` : `Opened ${page.url}`}</a>}
+      {results.length > 0 && (
+        <ol className="search-links">
+          {results.map((r, i) => (
+            <li key={`${i}:${r.url}`}>
+              <a className="search-link" data-testid="search-result" href={r.url} target="_blank" rel="noreferrer" title={r.url}>
+                <span className="source-title">{r.title}</span>
+                <span className="source-domain">{r.domain}</span>
+              </a>
+              {r.snippet && <p className="search-snippet" data-testid="search-snippet">{r.snippet}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
+      {search.dropped ? <div className="search-dropped" data-testid="search-dropped">{search.dropped} more {search.dropped === 1 ? "result had" : "results had"} no web link and {search.dropped === 1 ? "is" : "are"} not shown.</div> : null}
     </div>
   );
 }

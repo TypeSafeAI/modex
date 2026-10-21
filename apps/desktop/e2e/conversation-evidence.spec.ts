@@ -54,6 +54,16 @@ test.beforeEach(async () => {
     tool("t-denied", "$ rm -rf build", { exec: { command: "/bin/zsh -lc 'rm -rf build'", cwd: "/repo" }, exitCode: null, outcome: "denied", ok: false }),
     tool("t-claude", "$ ls", { exec: { command: "ls" }, outcome: "succeeded", ok: true, output: "src\n" }),
     item({ id: "t-patch", kind: "tool", name: "apply_patch", title: "edit NOTE.md", args: { patch: "*** Begin Patch\n*** Add File: NOTE.md\n+hi\n*** End Patch" }, status: "done", outcome: "succeeded", ok: true, origin: origin("t-patch"), at: at() }),
+    // A Codex web search as main sends it once completed (shape from test/fixtures/codex-websearch-0.163.0.json),
+    // and one stored before structured results, whose output was the JSON string "".
+    item({ id: "t-search", kind: "tool", name: "webSearch", title: "search site:github.com/openai/codex changelog codex cli", args: {}, status: "done", outcome: "succeeded", ok: true, origin: origin("t-search"), at: at(),
+      search: { source: "codex", query: "site:github.com/openai/codex changelog codex cli", action: { kind: "search", queries: ["site:github.com/openai/codex changelog codex cli"] }, dropped: 1, results: [
+        { title: "codex/CHANGELOG.md at main · openai/codex · GitHub", url: "https://github.com/openai/codex/blob/main/CHANGELOG.md", domain: "github.com", snippet: "The changelog can be found on the releases page." },
+        { title: "Releases · openai/codex · GitHub", url: "https://github.com/openai/codex/releases", domain: "github.com" },
+        // Not something main would keep: a stored thread is checked again before a result becomes a link.
+        { title: "Tampered", url: "javascript:alert(1)", domain: "example.com" },
+      ] } }),
+    item({ id: "t-search-old", kind: "tool", name: "webSearch", title: "search ", args: {}, output: '""', status: "done", outcome: "succeeded", ok: true, origin: origin("t-search-old"), at: at() }),
     item({ id: "a-escape", kind: "assistant", text: "A citation that points outside memory.", phase: "commentary", outcome: "succeeded", origin: origin("a-escape"), at: at(),
       evidence: [{ kind: "memory", source: "codex", path: "../secret.txt", lineStart: 1, lineEnd: 1, note: "escape" }] }),
     item({ id: "a-final", kind: "assistant", text: "Use the build flags from memory.\n\nSources:\n- [Node.js](https://nodejs.org/)\n- [npm docs](https://docs.npmjs.com/)", phase: "final", outcome: "succeeded", origin: origin("a-final"), at: at(),
@@ -139,4 +149,25 @@ test("a citation that points outside Codex's memories folder is refused and show
   await expect(tid(memory, "evidence-error")).toContainText("does not point inside Codex's memory folder");
   await expect(tid(memory, "evidence-excerpt")).toHaveCount(0);
   await expect(answer).not.toContainText("outside the memories folder");
+});
+
+test("a Codex web search shows its query and the results Codex reported, labelled as unchecked; an older one shows no empty output", async () => {
+  const search = items(page, "tool").filter({ hasText: "search site:github.com/openai/codex changelog codex cli" });
+  await expect(tid(search, "tool-meta")).toContainText("2 results");
+  await tid(search, "item-toggle").click();
+  const results = tid(search, "search-results");
+  await expect(results).toHaveAttribute("data-provenance", "codex-search");
+  await expect(tid(results, "search-label")).toHaveText("Results Codex reported. Modex has not checked them.");
+  await expect(tid(results, "search-result")).toHaveCount(2);
+  await expect(results.locator('a[href^="javascript:"]')).toHaveCount(0);
+  await expect(results).not.toContainText("Tampered");
+  await expect(tid(results, "search-result").first()).toHaveAttribute("href", "https://github.com/openai/codex/blob/main/CHANGELOG.md");
+  await expect(tid(results, "search-snippet")).toHaveCount(1);
+  await expect(tid(results, "search-snippet")).toHaveText("The changelog can be found on the releases page.");
+  await expect(tid(results, "search-dropped")).toHaveText("1 more result had no web link and is not shown.");
+  await expect(tid(search, "tool-output")).toHaveCount(0);
+  const old = items(page, "tool").filter({ has: page.locator('[data-testid="tool-summary"]', { hasText: /^search$/ }) });
+  await tid(old, "item-toggle").click();
+  await expect(tid(old, "item-body")).toBeVisible();
+  await expect(tid(old, "tool-output")).toHaveCount(0);
 });

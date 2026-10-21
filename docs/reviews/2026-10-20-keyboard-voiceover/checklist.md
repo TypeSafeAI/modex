@@ -10,7 +10,8 @@ recorded the focused element and the accessibility tree at each step. VoiceOver'
 slightly from those names ("button", "collapsed", and so on), which is fine. The review checks what
 a person actually hears and whether the order makes sense.
 
-**Build:** use a build that includes #342 (keyboard focus after answering, folding, Stop and Jump to latest). On an
+**Build:** use a build that includes #342 (keyboard focus after answering, folding, Stop and Jump to latest)
+and #352 (the later Jump to latest race fix). On an
 older build, steps A2, A3, A6 and A7 drop focus onto the page body. That is the defect #342 fixes.
 
 ## Setup (about 2 minutes)
@@ -19,7 +20,7 @@ The scenario uses the offline scripted engine and a disposable home and reposito
 is spent and `~/.modex` is never touched:
 
 ```sh
-# from apps/desktop, in a worktree with #342 built (pnpm build)
+# from apps/desktop, in a worktree with #342 and #352 built (pnpm build)
 node ../../docs/reviews/2026-10-20-keyboard-voiceover/seed.mjs /tmp/modex-voiceover   # prints the home
 MODEX_HOME=/tmp/modex-voiceover/home npx electron .
 ```
