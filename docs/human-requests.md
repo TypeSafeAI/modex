@@ -148,6 +148,28 @@ cannot write two answers for one native ID. This is a local guard, not an exactl
 | Stop, or the turn ending, while a question waits | The CLI gets error `-32000` ("withdrawn by modex: …"), never an empty answer. |
 | A sink with no `question` method | Declined with `-32601`, as before. |
 
+**Live evidence, 2026-10-20.** One codex-cli 0.163.0 turn (model `gpt-6.1-sol`, read-only), with
+Val's approval, was asked to put one clarifying question through Codex's question tool. It is
+recorded in `apps/desktop/test/fixtures/codex-request-user-input-0.163.0.json`.
+- **The request.** Codex sent `item/tool/requestUserInput` with `threadId`, `turnId`, `itemId`,
+  `questions: [{ id, header, question, isOther, isSecret, options: [{ label, description }] }]`,
+  `isBlocking: true` and `autoResolutionMs: null`. The schema marks `autoResolutionMs` deprecated in
+  favour of `isBlocking`, which `codexQuestions` honours.
+- **Modex's handling.** `codexQuestions` read the live request as the fixtures predicted. Codex
+  accepted `codexAnswerResponse`'s answer and completed the turn. A unit test replays the sample.
+- **Where it was asked.** This direct app-server probe used Codex's **plan collaboration mode**:
+  `turn/start` with `collaborationMode: { mode: "plan", … }`. With default 0.163.0 settings,
+  `default_mode_request_user_input` is off. The probe verifies the parser/answer protocol, not
+  the app's broker, card, transport, or human acceptance.
+- **Through the app.** Modex's Plan mode is a prompt prefix on an ordinary turn. A separate
+  [through-app capture in #348](https://github.com/TypeSafeAI/modex/blob/1847e0c8808b96b636693b786e152a9f76471be3/docs/reviews/2026-10-20-cf3-drafts.md#native-evidence-and-remaining-gates) enabled the opt-in
+  `default_mode_request_user_input` flag: the card sent Blue and the model replied Blue.
+  Without that flag, another run used the distinct `request_user_input_async` form, which this
+  broker does not answer. Human keyboard/VoiceOver acceptance remains open.
+- **Native Plan integration.** In this plan-mode capture, Codex completed with a `plan` item
+  (`{ id, text }`). Modex does not read those items yet. Selecting Codex's native collaboration
+  mode and displaying its plan output remain a separate implementation decision.
+
 ### Claude Code (2.1.302, `claude -p` stream-json)
 
 | Native | Modex |
@@ -304,3 +326,5 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 
 - Answering questions from the phone.
 - Clarifying a task plan through a question card (the second half of CF-7).
+- Running Modex's Plan mode as Codex's plan collaboration mode. That is what lets Codex ask, but
+  Modex would also need to show Codex's `plan` items. It is a decision for Val.

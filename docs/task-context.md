@@ -84,7 +84,11 @@ Verification covers this turn only: a later turn's edits do not change a note al
 ## Clarifications
 
 A CLI that needs to ask before it plans or acts asks through the [question card](human-requests.md):
-Codex's `item/tool/requestUserInput`, with a control for each question. The answer reaches the CLI
+Codex's `item/tool/requestUserInput`, with a control for each question. In codex-cli 0.163.0, Codex
+offers the tool in native plan collaboration mode with default settings. A separate through-app
+capture enabled the opt-in `default_mode_request_user_input` flag successfully. Modex's Plan mode
+still uses an ordinary turn (evidence and limits in
+[human-requests.md](human-requests.md#codex-codex-cli-01630-app-server)). The answer reaches the CLI
 once, and the plan carries on from it. Claude Code 2.1.302 sends Modex no structured questions.
 
 The record lists every question the turn asked, in order, with the answer as its card shows it:
