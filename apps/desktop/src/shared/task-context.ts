@@ -175,12 +175,50 @@ function patchFiles(item: Extract<ThreadItem, { kind: "tool" }>): string[] {
   return [];
 }
 
-/** `file` relative to `cwd`, or null when it lies outside it. Relative paths are already the project's. */
-function relative(file: string, cwd: string): string | null {
-  const isAbsolute = file.startsWith("/") || /^[A-Za-z]:[\\/]/.test(file);
-  if (!isAbsolute) return file.includes("..") ? null : file.replace(/^\.\//, "");
-  const root = cwd.replace(/[\\/]+$/, "");
-  return file.startsWith(root + "/") || file.startsWith(root + "\\") ? file.slice(root.length + 1) : null;
+/** Lexical paths only: shared with the renderer, so no filesystem or Node path dependency. */
+function normalizedPath(path: string, windows: boolean): string {
+  if (windows) path = path.replace(/\\/g, "/");
+  const prefix = (windows ? path.match(/^(?:[A-Za-z]:\/|\/\/[^/]+\/[^/]+(?:\/|$)|\/)/) : path.match(/^\//))?.[0] ?? "";
+  const parts: string[] = [];
+  for (const part of path.slice(prefix.length).split("/")) {
+    if (!part || part === ".") continue;
+    if (part === ".." && parts.length && parts.at(-1) !== "..") parts.pop();
+    else if (part !== ".." || !prefix) parts.push(part);
+  }
+  return prefix.replace(/\/?$/, prefix ? "/" : "") + parts.join("/");
+}
+
+/** Resolve from the reporting command's cwd, then check the normalized project boundary. */
+function resolvedPath(file: string, cwd: string, commandCwd = cwd): string | null {
+  const windows = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith("\\\\");
+  const resolve = (path: string, base: string): string | null => {
+    if (windows) {
+      path = path.replace(/\\/g, "/");
+      base = base.replace(/\\/g, "/");
+      // Drive-relative paths depend on process state that the transcript does not contain.
+      if (/^[A-Za-z]:(?!\/)/.test(path)) return null;
+      if (path.startsWith("/") && !path.startsWith("//")) {
+        const device = base.match(/^(?:[A-Za-z]:|\/\/[^/]+\/[^/]+)/)?.[0];
+        if (!device) return null;
+        path = device + path;
+      }
+    }
+    const absolute = path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+    return normalizedPath(absolute ? path : `${base}/${path}`, windows);
+  };
+  const base = resolve(commandCwd, cwd);
+  if (base === null) return null;
+  return resolve(file, base)?.replace(/\/$/, "") ?? null;
+}
+
+function relative(file: string, cwd: string, commandCwd = cwd): string | null {
+  const windows = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith("\\\\");
+  const root = normalizedPath(cwd, windows).replace(/\/$/, "");
+  const resolved = resolvedPath(file, cwd, commandCwd);
+  if (resolved === null) return null;
+  const compare = (path: string) => windows ? path.toLowerCase() : path;
+  if (compare(resolved) === compare(root)) return ".";
+  return compare(resolved).startsWith(compare(root) + "/") ? resolved.slice(root.length + 1) : null;
 }
 
 const VERIFICATION_WORDS: Record<TaskVerification["state"], string> = {
@@ -358,10 +396,15 @@ const SEARCH_ARGS: Record<string, string> = { Grep: "path", Glob: "path", LS: "p
 export function taskContext(items: readonly ThreadItem[], cwd: string): TaskContext {
   const files = new Map<string, ContextFile>();
   const outsidePaths = new Set<string>();
-  const add = (raw: unknown, relation: ContextFile["relations"][number]) => {
+  const add = (raw: unknown, relation: ContextFile["relations"][number], commandCwd = cwd) => {
     if (typeof raw !== "string" || !raw.trim()) return;
-    const path = relative(raw.trim(), cwd);
-    if (path === null) { outsidePaths.add(raw.trim()); return; }
+    const path = relative(raw.trim(), cwd, commandCwd);
+    if (path === null) {
+      const resolved = resolvedPath(raw.trim(), cwd, commandCwd);
+      const windows = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith("\\\\");
+      outsidePaths.add(resolved === null ? `unresolved:${commandCwd}\0${raw.trim()}` : windows ? resolved.toLowerCase() : resolved);
+      return;
+    }
     const file = files.get(path) ?? { path, relations: [] };
     if (!file.relations.includes(relation)) file.relations.push(relation);
     files.set(path, file);
@@ -376,7 +419,7 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
     }
     if (READ_ARGS[item.name]) add(item.args[READ_ARGS[item.name]!], "read");
     if (SEARCH_ARGS[item.name]) add(item.args[SEARCH_ARGS[item.name]!], "searched");
-    for (const action of item.exec?.actions ?? []) add(action.path, action.kind === "read" ? "read" : "searched");
+    for (const action of item.exec?.actions ?? []) add(action.path, action.kind === "read" ? "read" : "searched", item.exec?.cwd ?? cwd);
   }
   const rank = (file: ContextFile) => (file.relations.includes("changed") ? 0 : file.relations.includes("read") ? 1 : 2);
   const ordered = [...files.values()].map((file, i) => ({ file, i })).sort((a, b) => rank(a.file) - rank(b.file) || a.i - b.i).map(({ file }) => file);
