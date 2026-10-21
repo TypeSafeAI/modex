@@ -65,6 +65,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
   an offline seed scenario. Human acceptance and a final integrated candidate remain open.
+  The full-log and patch-state E2E fixtures wait for the completed turn before inspecting its
+  work, avoiding the initial idle state racing the fixture startup; their content and execution
+  count assertions remain unchanged.
 
 - **A turn lists the files it touched** (CF-7 #280). A finished turn's footer has **Files touched**,
   which lists what its tools changed, read and searched, as the CLI reported them. For Codex, that
