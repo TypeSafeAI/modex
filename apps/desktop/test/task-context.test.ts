@@ -331,3 +331,77 @@ test("the note lists at most the first files the turn touched, says how many mor
   const none = taskMarkdown(taskRecord([user, { id: "A", kind: "assistant", text: "Hi.", phase: "final", outcome: "succeeded", at: at(99) } as ThreadItem], { threadId: "T", title: "Hi", cwd: "/repo" }));
   assert.doesNotMatch(none, /Files the turn touched/);
 });
+
+
+test("Codex context actions resolve from the command cwd before project containment", () => {
+  const run = (cwd: string, path: string): ThreadItem => {
+    const item = codexRun("cat file", [{ kind: "read", path }]);
+    if (item.kind === "tool" && item.exec) item.exec.cwd = cwd;
+    return item;
+  };
+  const context = taskContext([
+    run("/repo/src", "app.ts"),
+    run("/private", "private.txt"),
+    run("/repo/src", "../README.md"),
+  ], "/repo");
+  assert.deepEqual(context.files, [
+    { path: "src/app.ts", relations: ["read"] },
+    { path: "README.md", relations: ["read"] },
+  ]);
+  assert.equal(context.outside, 1);
+});
+
+test("context paths normalize dot segments before checking project boundaries", () => {
+  const context = taskContext([
+    tool("Read", { file_path: "/repo/../private/key" }),
+    tool("Read", { file_path: "/repo/src/../kept.ts" }),
+    tool("Read", { file_path: "./kept.ts" }),
+    tool("Read", { file_path: "/repo-other/key" }),
+    tool("Read", { file_path: "file..txt" }),
+  ], "/repo");
+  assert.deepEqual(context.files, [
+    { path: "kept.ts", relations: ["read"] },
+    { path: "file..txt", relations: ["read"] },
+  ]);
+  assert.equal(context.outside, 2);
+});
+
+
+test("Windows context paths normalize separators, command cwd and traversal", () => {
+  const item = codexRun("type app.ts", [{ kind: "read", path: "app.ts" }]);
+  if (item.kind === "tool" && item.exec) item.exec.cwd = "C:\\repo\\src";
+  const context = taskContext([
+    item,
+    tool("Read", { file_path: "C:\\repo\\..\\private\\key" }),
+    tool("Read", { file_path: "C:\\repo\\src\\..\\README.md" }),
+    tool("Read", { file_path: "D:\\repo\\other.ts" }),
+  ], "C:\\repo");
+  assert.deepEqual(context.files, [
+    { path: "src/app.ts", relations: ["read"] },
+    { path: "README.md", relations: ["read"] },
+  ]);
+  assert.equal(context.outside, 2);
+});
+
+test("absolute project root and normalized cwd retain project listing", () => {
+  assert.deepEqual(taskContext([tool("LS", { path: "/repo" })], "/repo/src/..").files,
+    [{ path: ".", relations: ["searched"] }]);
+});
+
+
+test("Windows drive-relative paths stay unnamed and rooted paths inherit the drive", () => {
+  const context = taskContext([
+    tool("Read", { file_path: "C:..\\private\\key" }),
+    tool("Read", { file_path: "\\repo\\app.ts" }),
+  ], "C:\\repo");
+  assert.deepEqual(context.files, [{ path: "app.ts", relations: ["read"] }]);
+  assert.equal(context.outside, 1);
+});
+
+test("UNC share roots retain files with or without a trailing separator", () => {
+  for (const cwd of ["\\\\server\\share", "\\\\server\\share\\"]) {
+    assert.deepEqual(taskContext([tool("Read", { file_path: "file.ts" })], cwd), {
+      files: [{ path: "file.ts", relations: ["read"] }], outside: 0,
+    });
+  }
+});
