@@ -82,7 +82,8 @@ Refusals, in the order `resolve` checks them:
 | `changed-action` | The digest differs from the request's. |
 | `invalid` | The answer is the wrong kind, or the answers fail `validateAnswers`. |
 
-`answer` and `answerQuestion` return `{ ok: true }` for local acceptance. The request stays
+`answer` and `answerQuestion` return `{ ok: true }` for local acceptance, once the card is saved. If
+that save fails, they throw and accept nothing (see "A failed save" below). The request stays
 `resolving` until the backend's stdin write callback succeeds. The card then records
 `delivery: "sent"`. This receipt proves a local transport handoff, not remote execution.
 
@@ -207,6 +208,11 @@ paired desktops and the phone carry it with no new event type. This is the reque
   and the card says so: "Modex stopped before it could confirm the agent received this answer." Cards
   nobody answered close as `ended`, as before. A card answered before these fields existed keeps no
   `delivery` and is left as it was.
+- **A failed save** takes no answer. When saving the card fails, for example on a full disk, the request
+  is open again, the card reads as it did, no client hears of the answer, and the CLI hears nothing.
+  The client that answered gets the error (the phone a 500) and can answer again. If the failed write
+  did reach the disk and Modex crashes before its next save, the restart reads the card as uncertain,
+  never as sent.
 - **Replay** applies the same whole field values, so a frame delivered twice changes nothing, and a
   client that resumes after a decision sees the card answered. A cursor the journal no longer covers
   reloads to a snapshot with the same fields.
@@ -214,9 +220,10 @@ paired desktops and the phone carry it with no new event type. This is the reque
   `withdrawn`). Nothing replayed, reloaded or reconnected answers a request.
 - **Two clients at once.** The desktop and the phone race through one broker: one answer is accepted,
   the card names who gave it, and the other is refused, with a 409 for the phone.
-- **The phone** gets `answeredBy`, `delivery` and `withdrawn` on approvals. Today's iPhone build reads
-  only `answer`, so a withdrawn approval still reads as declined there. A question's notice says when
-  delivery is uncertain.
+- **The phone** gets `answeredBy` and `delivery` on an open or answered approval. A withdrawn, sending
+  or uncertain approval reaches it as a notice that says so ("Request withdrawn. Nothing more can be
+  approved."), so the iPhone app no longer shows a withdrawn approval as declined. A question's notice
+  says when delivery is uncertain.
 - **Who answered** is the client that made the decision: this Mac's window (`desktop`), a desktop
   paired through the host (`paired-desktop`), or the phone. Switching a thread to YOLO answers what is
   waiting as whichever of them switched it.
@@ -254,6 +261,8 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
   - the Codex mapping, answer validation and secret redaction.
 - `test/human-requests-runner.test.ts` covers the runner and the Codex backend:
   - a second answer is refused as `already-resolved`, and the CLI hears one answer;
+  - an approval or question answer whose save fails is not taken, and answering again reaches the CLI;
+    one whose failed write reached the disk reads as uncertain after a crash;
   - a late answer after Stop is refused as `withdrawn`;
   - a Codex question is answered by its schema, and the secret stays out of saved items and events;
   - Stop sends an error reply;

@@ -21,12 +21,35 @@ Observed on 2026-10-18:
   `agentMessage.memoryCitation`: entries with a `path`, `lineStart`, `lineEnd` and `note`, plus the
   `threadIds` they came from. Web-search items carry opaque `results` and an `action`. Messages carry
   no offset-based URL annotations.
+- **codex-cli 0.163.0, a live web search** (2026-10-20, captured from the app-server,
+  `test/fixtures/codex-websearch-0.163.0.json`):
+  - At `item/started`, the `webSearch` item has an empty `query`, with `action` and `results` null.
+  - At `item/completed`, it has the `query` and `action: {type: "search", query, queries}`, plus
+    `results` entries of `{type: "text_result", domain, ref_id, snippet, title, url}`.
+  - Codex ran the search inside its code-mode `exec` tool, so its session record has no
+    `web_search_call` item. The app-server's item is the only structured copy.
 
 ## In the transcript
 
 - **Links in the reply.** A trailing "Sources:" list the model wrote becomes cards labelled "Links in
   the reply", marked `data-provenance="reply-text"`, with a note that Modex has not checked them. They
   are not called citations or sources.
+- **Codex web searches.** `codexWebSearch` (in `shared/evidence.ts`) turns a completed `webSearch`
+  item into `search` on the tool item: the query, the action (a search's queries, or the page it
+  opened or searched in), and the results as title, link, domain and snippet.
+  - **What is kept.** Only entries that are objects with an http(s) `url`. Anything else is counted
+    and shown as "1 more result had no web link and is not shown." Each text is cut to 500
+    characters, and at most 50 results are kept.
+  - **How it looks.** The row reads "search *query*" with "*n* results". Expanded, the results are
+    marked `data-provenance="codex-search"` and labelled "Results Codex reported. Modex has not
+    checked them."
+  - **Safety.** A result is what the search returned, not proof of anything the reply says. The
+    renderer checks each link again before showing it, and nothing is fetched until a link is
+    clicked.
+  - **Older searches.** One stored before this kept the JSON string `""` as its output, which is no
+    longer shown.
+- **Claude Code web searches.** They stay as Claude reports them: tool text whose `Links: [...]`
+  line becomes result links (`parseWebSearch` in `shared/sources.ts`).
 - **Codex memory citations.** These are native evidence: `memoryEvidence` (in `shared/evidence.ts`)
   turns them into `evidence` on the assistant item, shown as "From Codex memory" with the file, line
   range and note. Entries that are not well formed are dropped: a missing path, a negative or
@@ -136,5 +159,5 @@ disk") and nothing is revealed (`test/attachment-commands.test.ts`). Existing te
 
 ## Not done yet
 
-- Native web-search results as structured evidence. Codex's `results` are opaque JSON, and Claude's
-  arrive as tool text.
+- Claude Code's web-search results as structured evidence: through `claude -p` they arrive only as
+  tool text.

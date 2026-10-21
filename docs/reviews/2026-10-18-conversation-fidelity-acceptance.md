@@ -7,10 +7,12 @@ recorded as live-provider or human acceptance.
 
 ## Candidate
 
-**Pinned on 2026-10-20: `main` at `37406ee`** (#333). It includes every slice that has landed,
-including #332, #335 (superseding #316) and #333 (superseding #295). It does not include #336
-(CF-6 finding 10), still in flight. The live Codex and human gates remain open, so pinning the
-candidate does not pass the gate.
+**Historical candidate, 2026-10-20 06:04–06:25 UTC: `37406ee`** (#333). It included the slices
+landed at that time, including #332, #335 (superseding #316) and #333 (superseding #295).
+#336 had not landed yet. Later fixes and live checks are not covered by this candidate run;
+use [status](../status.md) for current delivery state and repin before claiming a final gate.
+The live Codex and human gates were open at this timestamp. Later Codex evidence is recorded
+in the integration matrix below; human VoiceOver acceptance remains open.
 
 Run first pass, with no reruns, in a fresh worktree on an Apple M3 Max (48 GiB), macOS 26.7.1,
 Node 24.18.1 and pnpm 10.34.5, from 06:04Z to 06:25Z. Load averages ran from about 4 to 34.
@@ -37,7 +39,10 @@ All six skipped e2e tests are opt-in, and none is a platform skip on macOS:
 
 Each row below still names the build it was checked on.
 
-## Children
+## Children at the original integration snapshot
+
+This table records the original slice receipts, not current issue closure. See [status](../status.md)
+and the linked issues for later delivery.
 
 | Child | Landed | State |
 | --- | --- | --- |
@@ -72,9 +77,9 @@ Each row below still names the build it was checked on.
 | Themes and viewports | `e2e/conversation-fidelity.spec.ts` captures waiting, live, failed, completed and restored in Graphite, Jev and OpenCoven, at 900×600 and 1440×900, with no sideways scroll; `e2e/typed-turns.spec.ts` covers a typed turn in each theme at 900×600. 33 references are committed in [`screenshots/conversation-fidelity/`](../screenshots/conversation-fidelity/manifest.json) | Verified (fixture captures); human visual review open |
 | Keyboard and reduced motion | Existing `app.spec.ts` accessibility test; the new elements add no animation | Partial; human VoiceOver open |
 | Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts` on a named Mac, before (`89c98f2`) and after; see [Measurements](#measurements-on-a-named-mac) | Verified on one machine; not a hardware-independent latency claim |
-| Live Codex and Claude acceptance | [Live smoke, 2026-10-19](2026-10-19-live-smoke.md), `e2e/live-smoke.spec.ts` through the app. **Claude Code 2.1.304 (Haiku):** a real edit and check, the final answer, and Stop mid-command (interrupted; the file was never written). **codex-cli 0.163.0:** the ChatGPT account refused the turn (`usage_limit_exceeded`, no credits until 2026-10-25 09:35). Modex showed `rate_limited` with the CLI's words and ran nothing | Claude verified live; Codex blocked by the account's usage limit, rerun after 2026-10-25 |
-| Human VoiceOver | [Keyboard and VoiceOver checklist](2026-10-20-keyboard-voiceover/checklist.md), with a seeded offline scenario. Its probes found four places where keyboard focus fell onto the page body: an answered approval, a folded turn, Stop, and Jump to latest. All four are fixed in #342 | Open: human, using the checklist on a build with #342 |
-| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [Candidate](#candidate) `37406ee` on 2026-10-20: everything passed first pass. Desktop e2e 363 passed and 6 opt-in skips; the iPhone UI classes passed 23/23 and 20/20 | Verified on `37406ee`; repin if more slices land (#336) |
+| Live Codex and Claude acceptance | [Live smoke, 2026-10-19](2026-10-19-live-smoke.md), `e2e/live-smoke.spec.ts` through the app. **Claude Code 2.1.304 (Haiku):** a real edit and check, the final answer, and Stop mid-command (interrupted; the file was never written). **codex-cli 0.163.0:** on 2026-10-19 the account refused the turn (`usage_limit_exceeded`); Modex showed `rate_limited` with the CLI's words and ran nothing. On 2026-10-20, with credits, the edit and check passed with a `final` answer, but **Stop left the command running** in a Codex background terminal (the file was written 30 s later). With the background-terminal fix, all three steps passed: Stop ended the command, and the file was never written. The web search ran but is not structured yet (CF-5) | Claude and Codex verified live, Codex with the Stop fix; CF-5's structured web search is still open |
+| Human VoiceOver | [Keyboard and VoiceOver checklist](2026-10-20-keyboard-voiceover/checklist.md), with a seeded offline scenario. Its probes found four places where keyboard focus fell onto the page body: an answered approval, a folded turn, Stop, and Jump to latest. All four are fixed in #342 | Open: human, using the checklist on a build with #342 and #352 |
+| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [Candidate](#candidate) `37406ee` on 2026-10-20: everything passed first pass. Desktop e2e 363 passed and 6 opt-in skips; the iPhone UI classes passed 23/23 and 20/20 | Historical result on `37406ee`; later slices require a new pinned run |
 
 ## Commands and results for this preparation
 
@@ -87,9 +92,9 @@ These are acceptance tests of behaviour CF-1 through CF-7 already built, so they
 
 ## Next
 
-1. Pin a candidate SHA and run fresh full checks on it.
-2. Run authorized live Codex and Claude smoke tasks through the app, and record versions, models and
-   limits.
+1. Repin the final integrated candidate after the remaining slices land and run fresh full checks.
+2. Retain the recorded live-provider receipts; repeat authorized smoke tasks on the final candidate
+   where later changes affect those paths, recording versions, models and limits.
 3. Get human keyboard and VoiceOver acceptance.
 
 ## Measurements on a named Mac
