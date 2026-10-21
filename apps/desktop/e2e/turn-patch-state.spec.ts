@@ -77,10 +77,14 @@ test.beforeAll(async () => {
   await tid(page, "composer-input").fill("Edit the greeting and write notes");
   await page.keyboard.press("Meta+Enter");
   await expect(tid(page, "thread-view")).toBeVisible({ timeout: 15_000 });
+  // Initial idle does not prove the submitted turn has started or finished.
+  const completedTurn = page.locator('button[data-testid="turn-label"]').last();
+  await expect(completedTurn).toBeVisible({ timeout: 20_000 });
   await expect(currentRow(page)).toHaveAttribute("data-status", "idle", { timeout: 20_000 });
   expect(fs.readFileSync(greeting(), "utf8")).toBe("hello, patch 👋\n");
   // Work that succeeded folds into its turn; unfold it.
-  await tid(page, "turn-label").last().click();
+  await completedTurn.click();
+  await expect(completedTurn).toHaveAttribute("aria-expanded", "true");
   for (const name of ["greeting.txt", "notes.txt", "outside.txt"]) await tid(row(name), "item-toggle").click();
 });
 
