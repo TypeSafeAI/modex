@@ -107,6 +107,10 @@ saves on its own, and an agent cannot use this.
   saved, in the main-owned `taskNotes` field.
 - **An edited note is kept.** If the note was edited since, the edit stays and this version becomes a
   new note marked "saved again".
+- **A note moved to another project is kept.** Save checks its current Notes project as well as its
+  revision. A Finder move or containing-folder move may preserve the revision; in that case Save
+  creates a replacement in the original project and associates the task with that replacement.
+  Moving within the same project does not by itself break the association.
 - **A missing note is replaced.** If the note was deleted or trashed, a new one is written.
 - **Saving never reruns** anything, and never reads beyond the transcript.
 
