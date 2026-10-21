@@ -158,22 +158,22 @@ The rules the tests hold:
 
 ## Read operations
 
-What each operation returns. The source column is a proposal; #321 confirms each against GitHub's
-current REST documentation before binding to it. Every call is `gh api <fixed path> --method GET`
-with validated, encoded segments.
+What each operation returns. CR-2 (#321) checked each source against GitHub's REST documentation
+(API version 2022-11-28) and against live answers on 2026-10-20; see [Read service](#read-service-cr-2).
+Every call is `gh api <fixed path> --method GET` with validated, encoded segments.
 
-| `op` | Request fields | Returns | Proposed source |
+| `op` | Request fields | Returns | Source |
 | --- | --- | --- | --- |
 | `connection` | none | `CodeReviewConnection` | `gh api user` (id, login); a missing binary is `no-cli`, an auth failure is `signed-out` |
-| `inbox` | `query` | `Inbox`: `authored` and `review-requested` groups, each its own `ReadResult` | `search/issues` with `is:pr is:open author:@me` / `review-requested:@me` (`total_count` gives the total) |
-| `inbox-page` | `group`, `query`, `cursor` | `PrSummary[]` | the same search, next page |
-| `resolve` | `input` (a pasted link) | `{ locator, key }` | `parsePrLocator`, then `repos/{owner}/{repo}` for the stable id |
+| `inbox` | `query` | `Inbox`: `authored` and `review-requested` groups, each its own `ReadResult` | `search/issues` with `is:pr is:open archived:false author:@me` / `review-requested:@me` plus the person's text, 30 a page (`total_count` gives the total) |
+| `inbox-page` | `group`, `query`, `cursor` | `PrSummary[]` | the same search, next page; GitHub serves 1,000 results, so `p34` is the last |
+| `resolve` | `input` (a pasted link) | `{ locator, key }` | `parsePrLocator`, then `repos/{owner}/{repo}` for the stable id and `pulls/{n}` to check the PR exists |
 | `overview` | `key` | `PrOverview` with its `revision` | `repos/{owner}/{repo}/pulls/{n}` |
-| `activity` | `key`, `cursor` | `PrActivity[]` | `repos/{owner}/{repo}/issues/{n}/timeline` |
-| `checks` | `key`, `revision` | `PrCheck[]` for that head | `commits/{headSha}/check-runs` and `commits/{headSha}/status`; `reporter` is a run's `app.slug` or a status's `creator.login` |
-| `stack` | `key` | `PrStack`, `explicit` or `inferred` | #323 chooses a documented relationship source; base-branch chains are `inferred` |
-| `files` | `key`, `revision`, `cursor` | `PrFiles` | `repos/{owner}/{repo}/pulls/{n}/files` (GitHub stops at 3,000 files and omits large or binary patches) |
-| `context` | `key`, `revision`, `side`, `path`, `start`, `end` | `PrContext` | file contents at the base or head SHA, sliced in main |
+| `activity` | `key`, `cursor` | `PrActivity[]` | `repos/{owner}/{repo}/issues/{n}/timeline`, 100 a page; the first page starts with the opening, from `pulls/{n}` |
+| `checks` | `key`, `revision` | `PrCheck[]` for that head | `commits/{headSha}/check-runs` and `commits/{headSha}/status`, 100 a page, up to 10 pages each; `reporter` is a run's `app.slug` or a status's `creator.login` |
+| `stack` | `key` | `PrStack`, `explicit` or `inferred` | #323 chooses a documented relationship source; until then main answers `unavailable` and says so |
+| `files` | `key`, `revision`, `cursor` | `PrFiles` | `repos/{owner}/{repo}/pulls/{n}/files`, 100 a page (GitHub stops at 3,000 files, so `p30` is the last) |
+| `context` | `key`, `revision`, `side`, `path`, `start`, `end` | `PrContext` | `repos/{owner}/{repo}/contents/{path}?ref={sha}` as `application/vnd.github.raw`, sliced in main |
 | `cancel` | none | nothing | main aborts the named request |
 
 For #321, three constraints:
@@ -184,6 +184,121 @@ For #321, three constraints:
   requests where GitHub supports them, and no background polling of hidden views.
 - **Why REST:** REST has an endpoint for every read here, paginates predictably, and answers
   conditional requests with a `304` that GitHub does not charge against the primary rate limit.
+
+## Read service (CR-2)
+
+`src/main/engine/code-review/` holds main's half of the channel: `gh.ts` runs `gh`, `github.ts` maps
+GitHub's JSON to the contract, and `read-service.ts` owns identity, keys, caching, limits and
+cancellation. Main registers it as `handle("code-review:read", …, { localOnly: true })`.
+
+**Who reads.** The person's own `gh` login, the path `thread-context.ts` already takes. Modex never
+sees, stores or asks for a token and adds no sign-in. It reads with whatever the login was granted:
+`gh auth login`'s default scopes (`repo`, `read:org`, `gist`) let it read the person's private
+repositories. A repository the login can't see answers `404` (`not-found`) or `403` (`denied`); an
+organization that enforces SSO answers `403` with `X-GitHub-SSO`, and the reply says to authorize gh
+for it. The Modex/WorkOS account and model-provider sign-ins play no part.
+
+**The transport.** One `execFile("gh", …)`, no shell:
+`gh api <path> --hostname github.com --method GET --include -H Accept: … -H X-GitHub-Api-Version: 2022-11-28`,
+plus `If-None-Match` when main holds a copy. `gh.ts` refuses any path that is not `user`, the issue
+search or under `repos/`, and any flag, host, space, `{owner}`-style placeholder or dot segment. The
+child gets no prompt, pager, colour, update check or `GH_DEBUG`. Nothing gh prints to stderr is kept.
+
+What gh 2.98.0 did on 2026-10-20, and how main reads it:
+
+| gh's answer | Main's reason |
+| --- | --- |
+| `ENOENT` (no binary) | `no-cli` |
+| exit 4 (not signed in) | `signed-out` |
+| HTTP 401 (bad or revoked token) | `signed-out`; main forgets the account |
+| no status line, a network error on stderr | `offline` |
+| HTTP 304, exit 1 | the copy main holds (GitHub does not charge it) |
+| HTTP 403 with `x-ratelimit-remaining: 0`, or 429, or a `Retry-After` | `rate-limited`, with `retryAfter` |
+| HTTP 403 with `X-GitHub-SSO` / otherwise | `denied` |
+| HTTP 404, 410 | `not-found` |
+| killed at the timeout | `timeout` |
+| output past the byte cap | `failed`, "too large" |
+
+**Keys.** A key's account is the numeric id `gh api user` returns. `gh auth switch`, `login` and `logout`
+all rewrite gh's `hosts.yml`, so main fingerprints that file (inode, size, modification time). It checks
+the account again when the fingerprint changes or the last check is 30 s old, conditionally, so an
+unchanged account costs a free `304`.
+
+- **After every read, before it replies or keeps anything,** main confirms the account:
+  - The fingerprint unchanged since the read began confirms it, for free.
+  - A fingerprint that changed during the read refuses the answer (`failed`, "sign-in changed"), even if
+    gh is back on the same account. Part of the read may have run as another one.
+  - Where the file can't be read (`GH_CONFIG_DIR`, `XDG_CONFIG_HOME` and `%AppData%` are honoured), main
+    asks `gh api user` again. A check that fails, fails the read. This mode can't see a switch away and
+    back within one read.
+- **A key for another account** answers `signed-out` without a request.
+- **When the account changes or goes away,** main bumps a generation, aborts every read already running,
+  and drops its caches, names, kept answers and rate-limit state. A read that finishes under an older
+  generation answers `signed-out`, never its data. The read that noticed the change goes on under the
+  new account and is stamped with it.
+- **When gh can't say who is signed in** (offline, slow, rate-limited), main answers from the last
+  account it confirmed: kept answers come back `stale`, scoped to that account. Once the fingerprint
+  shows the login changed, it does not.
+- **A second request under an id still in flight** is rejected.
+
+A repository id is GitHub's numeric REST id. Main learns names from its own reads only: `resolve`, the
+inbox, and each PR's base repository, which also follows renames. A key main has not seen this session
+answers `not-found` with "Open this pull request from the inbox or its link again." After a restart the
+renderer resolves the PR's `canonicalPrUrl` first. A PR whose base repository id is not the key's (the
+name now belongs to another repository) answers `not-found`, and main forgets that name. A `resolve`
+that meets this reads the name again and answers with the repository it names today.
+
+**Revisions.** `files` reads the PR before and after each page. If the head or base moved before the
+page, the reply is `stale` with the last good copy of that page, or `unavailable` `head-changed`. If
+it moved during the page, the page is `stale` `head-changed`. `checks` are bracketed the same way: checks
+for a head the PR has moved past, before or while they are read, are `stale` `head-changed`, so
+`summarizeChecks` calls them `incomplete`. `context` serves only a
+revision main has seen the PR have, and only a file: a directory answers `not-found`, binary or
+non-UTF-8 content answers `failed`.
+
+**What GitHub said that the docs did not.** Checked live on TypeSafeAI/modex:
+
+- Search results carry `repository_url` but no `repository` object, though the schema lists one. Main
+  reads each repository once for its id (cached, conditional). A search result names no base branch,
+  so `PrSummary.stackHint` is `null` until main has read that PR.
+- The raw media type answers a file as `application/vnd.github.raw` and a directory as an
+  `application/json` listing.
+- In the timeline, a `cross-referenced` event has no `id` or `node_id`. Main names it
+  `xref-<source issue id>-<seconds>` from the issue or PR that mentions this one.
+- The timeline spells review states in lower case (`commented`), where the reviews API uses upper
+  case. Main reads both.
+- The files list does not say why a patch is missing. With no changed lines, the change is binary or
+  empty: there is no text to show, so it counts as covered (`binary`). With changed lines, the patch was
+  too large (`too-large`, missing coverage). #324 should label the first "No text diff", not "Binary".
+
+**Limits and memory.**
+
+| What | Bound |
+| --- | --- |
+| gh processes at once | 4; a released slot passes straight to the next waiter |
+| Timeout | 15 s; 30 s for a files page or file contents |
+| Bytes | 256 KiB identity, 1 MiB repository, 4 MiB PR or search page, 8 MiB timeline page, 24 MiB files page, 10 MiB file |
+| Conditional cache | 512 answers or 32 MiB, least recently used first |
+| Kept answers, for `stale` | 256 or about 32 MiB; used only for `offline`, `timeout`, `rate-limited`, `failed` or `head-changed` |
+| Search | under GitHub's 30 a minute, counted in main |
+| Rate limits | a spent budget blocks that resource until its reset or `Retry-After`; a secondary limit or a 429 without one waits 60 s; a change of login starts clean |
+
+**Coverage.** `complete` means every row arrived:
+
+- A files page that stops short of the PR's own file count is `partial`.
+- Search pages are offsets, and a row updated between pages can shift to another, so only a single
+  page can prove the whole inbox arrived. A later page never says `complete`. The contract's
+  `mergePages` joins a group's pages, deduplicated by key, and calls the list complete only when every
+  page was read in full and the distinct rows reach `total`.
+- A `200` that gh could not finish reading (it printed the status, then exited non-zero) is `failed`,
+  never a short file.
+
+**Refresh.** Main never polls. Every read is one the renderer asked for: opening a view, a page, or
+Refresh. A repeated read is conditional, so an unchanged PR costs a `304`. Demos, E2E and browser
+development construct the service disabled; E2E replaces the handler with fixtures.
+
+**Not yet.** `stack` waits for #323. Commit authors in `activity` are git identities, so
+`author` is null. Requested teams are not listed as reviewers.
 
 ## References and calibration
 
@@ -460,5 +575,6 @@ C57–C61's composer are not built (open decisions, #325).
 - **D10, Merge without its chevron.** The method menu is #326's, so Merge is one unavailable button.
 
 **Evidence.** Captures of the R1, R4, 900×600 and signed-out states are kept outside the repository
-with the PR's evidence. The authenticated navigation smoke test (#322 AC6) and connecting the live read
-path wait for CR-2's handler. They remain open gates.
+with the PR's evidence. The authenticated navigation smoke test (#322 AC6) passed through CR-2's
+live read handler; see [the integration evidence](../reviews/2026-10-21-cr3-read-integration.md).
+Original R1–R4 reference comparison and human keyboard/VoiceOver acceptance remain open gates.

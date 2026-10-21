@@ -332,6 +332,28 @@ export function knownCount(result: ReadResult<readonly unknown[]>): { count: num
   return { count: result.value.length, exact: whole(result) };
 }
 
+/**
+ * An inbox group's pages as one list, deduplicated by key in arrival order. Search pages are offsets, so
+ * a row updated between pages can repeat or be skipped: the list is complete only when every page was
+ * read in full, the last has no next page, and the distinct rows reach the provider's total.
+ */
+export function mergePages(pages: readonly ReadResult<PrSummary[]>[]): { rows: PrSummary[]; total: number | null; complete: boolean } {
+  const seen = new Set<string>();
+  const rows: PrSummary[] = [];
+  for (const page of pages) {
+    if (page.state === "unavailable") continue;
+    for (const row of page.value) {
+      const id = prKeyId(row.key);
+      if (!seen.has(id)) { seen.add(id); rows.push(row); }
+    }
+  }
+  const last = pages.at(-1);
+  const total = last && last.state !== "unavailable" && typeof last.coverage?.total === "number" ? last.coverage.total : null;
+  const read = pages.length > 0 && pages.every((page) => page.state === "ready");
+  const ended = last?.state === "ready" && (last.coverage?.next ?? null) === null && last.coverage?.cap === undefined;
+  return { rows, total, complete: read && ended && total !== null && rows.length >= total };
+}
+
 export type CheckVerdict = "passing" | "failing" | "pending" | "incomplete" | "none" | "unknown";
 
 export interface ChecksSummary {

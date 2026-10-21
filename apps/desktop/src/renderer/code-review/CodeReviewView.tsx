@@ -280,9 +280,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
     if (outcome.status === "mismatch") return void readConnectionRef.current();
     const result = outcome.result;
     setPages((p) => {
-      const rows = [...(p[group]?.rows ?? []), ...(result.state === "unavailable" ? [] : result.value)];
-      const seen = new Set<string>();
-      return { ...p, [group]: { rows: rows.filter((row) => { const id = prKeyId(row.key); return !seen.has(id) && Boolean(seen.add(id)); }), result, cursor } };
+      return { ...p, [group]: { reads: { ...p[group]?.reads, [cursor]: result } } };
     });
   }
 }

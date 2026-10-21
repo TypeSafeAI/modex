@@ -1,5 +1,5 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent, type Ref } from "react";
-import { capabilities, inboxGroup, isEmpty, knownCount, parsePrLocator, prKeyId, type CodeReviewAccount, type CodeReviewConnection, type Inbox, type InboxGroup, type PrSummary, type ReadResult } from "../../shared/code-review.js";
+import { capabilities, inboxGroup, isEmpty, mergePages, parsePrLocator, prKeyId, type CodeReviewAccount, type CodeReviewConnection, type Inbox, type InboxGroup, type PrSummary, type ReadResult } from "../../shared/code-review.js";
 import { SecretInput } from "../streamer";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Icon } from "../components/ui/Icon";
@@ -112,19 +112,26 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
         {account && inbox && inbox.state !== "unavailable" && GROUPS.map(({ id, label }) => {
           const base = inboxGroup(inbox, id);
           const page = pages[id];
-          const rows = [...(base.state === "unavailable" ? [] : base.value), ...(page?.rows ?? [])];
-          const latest = page && page.result.state !== "unavailable" ? page.result : base;
+          const reads = [base, ...Object.values(page?.reads ?? {})];
+          const merged = mergePages(reads);
+          const rows = merged.rows;
+          const latest = [...reads].reverse().find((read) => read.state !== "unavailable") ?? base;
           const next = latest.state === "unavailable" ? null : latest.coverage?.next ?? null;
-          const count = knownCount(latest.state === "unavailable" ? latest : { ...latest, value: rows });
+          const count = reads.every((read) => read.state === "ready") ? merged.total : null;
+          const notices = [{ cursor: null, read: base }, ...Object.entries(page?.reads ?? {}).map(([cursor, read]) => ({ cursor, read }))];
           return <section key={id} className="cr-group" role="group" aria-label={label} data-testid={`code-review-group-${id}`}>
             <h2 className="cr-group-label">{label}</h2>
             {base.state === "unavailable" && <ErrorNotice className="cr-notice" where={`Code Review · ${label}`} message={unavailableText(base)} onRetry={onRetryInbox} />}
             {isEmpty(base) && !page && <p className="cr-hint" data-testid="code-review-group-empty">No pull requests.</p>}
             {rows.length > 0 && <ul>{rows.map((row) => rowFor({ key: row.key, locator: row.locator, title: row.title, meta: `${row.author.login} · ${age(row.updatedAt, now)}`, stack: row.stackHint === true, open: () => onOpen(row) }))}</ul>}
-            {latest.state === "partial" && <p className="cr-stale" role="status">{`Some pull requests are missing. ${shortfallText(latest.reason)}`}</p>}
-            {page?.result.state === "unavailable" && <ErrorNotice className="cr-notice" testId="code-review-page-error" where={`Code Review · ${label}`} message={unavailableText(page.result)} onRetry={() => onShowMore(id, page.cursor)} />}
+            {notices.map(({ cursor, read }) => (read.state === "stale" || read.state === "partial") && <p key={cursor ?? "first"} className="cr-stale" role="status">
+              {read.state === "stale"
+                ? `Showing pull requests read at ${new Date(read.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. ${shortfallText(read.reason)}`
+                : `Some pull requests are missing. ${shortfallText(read.reason)}`} <button type="button" className="btn small" onClick={() => cursor === null ? onRetryInbox() : onShowMore(id, cursor)}>Retry</button>
+            </p>)}
+            {Object.entries(page?.reads ?? {}).map(([cursor, read]) => read.state === "unavailable" && <ErrorNotice key={cursor} className="cr-notice" testId="code-review-page-error" where={`Code Review · ${label}`} message={unavailableText(read)} onRetry={() => onShowMore(id, cursor)} />)}
             {next && <button type="button" className="cr-show-more" data-testid={`code-review-show-more-${id}`} disabled={busy.has(`page:${id}`)} onClick={() => onShowMore(id, next)}>
-              {busy.has(`page:${id}`) ? "Loading…" : "Show more"}{count && count.exact ? <span className="sr-only">{` (${rows.length} of ${count.count})`}</span> : null}
+              {busy.has(`page:${id}`) ? "Loading…" : "Show more"}{count !== null ? <span className="sr-only">{` (${rows.length} of ${count})`}</span> : null}
             </button>}
           </section>;
         })}
