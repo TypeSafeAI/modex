@@ -5,6 +5,26 @@ These entries left [Known rough edges](../status.md#known-rough-edges) in `docs/
 PR that fixed it, as the record of how the problem was found. Run ids, job ids and paths are as
 recorded at the time.
 
+## Jump to latest from the keyboard, on CI runners, handled 2026-10-20
+
+Fixed in #352 (2026-10-20).
+
+`e2e/keyboard-answers.spec.ts:88` (#342)
+failed in three CI runs of #345 in a row: after Enter, the Jump to latest button stayed. It passed
+on #342, on `main` and 25/25 locally. In the failure snapshot, focus is in the message box and a
+"Use suggested follow-up" chip sits above it. So the composer probably grew after the jump and
+left the transcript short of the bottom. [Analysis on #342](https://github.com/TypeSafeAI/modex/pull/342#issuecomment-6291857270).
+
+**Found when fixing it.** A frame-by-frame trace in the app showed two causes.
+- **The composer grew before the scroll event.** Scroll events arrive before resize observations,
+  so after the chip appeared, `onScroll` measured the shorter view and stopped following.
+- **A Page Up still animating.** It keeps applying its remaining distance after the page sets a
+  position. Assigning `scrollTop`, `scrollTo({behavior: "instant"})` and toggling `overflow` all
+  lost to it, sliding the view 141 px back up.
+
+`onScroll` now keeps following until the view moves above where auto-scroll put it. A scroll with no
+input from the reader in the second after a jump pins back to the bottom.
+
 ## `iPhone companion` CI flakes, handled 2026-10-09
 
 Fixed in #153 (2026-10-09).

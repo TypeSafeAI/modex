@@ -58,10 +58,12 @@ The contract adds these engineering decisions:
    the same PR number, or an old head is dropped. An overview names no revision; its value carries
    the one it was read at. `connection` matches by request id alone, since it is what names the
    account.
-6. **E2E feeds fixtures through main's handler.** Playwright replaces the `code-review:read` handler
+6. **Renderer E2E feeds fixtures through main's handler.** Playwright replaces the `code-review:read` handler
    with `app.evaluate(({ ipcMain }) => …)`, the pattern `e2e/sidebar-details.spec.ts` uses for
    `thread:context`, and serves these fixtures. No fixture code ships in the app (`dist/test` is
-   outside electron-builder's `files`).
+   outside electron-builder's `files`). The separate `e2e/code-review-ipc.spec.ts` acceptance test
+   retains production preload, IPC registration and service, substituting only a synthetic `gh`
+   executable. See [AC1 evidence](../reviews/2026-10-21-cr2-electron-ipc.md).
 7. **Remote content never becomes local authority.** PR paths, patches and names are display data.
    The remote diff reuses only `Diff` and `FileIcon` from `ChangesPanel.tsx`. It never reaches
    `onRevert`, `changes:revert` or any `git.ts` function.
@@ -295,7 +297,10 @@ non-UTF-8 content answers `failed`.
 
 **Refresh.** Main never polls. Every read is one the renderer asked for: opening a view, a page, or
 Refresh. A repeated read is conditional, so an unchanged PR costs a `304`. Demos, E2E and browser
-development construct the service disabled; E2E replaces the handler with fixtures.
+development construct the service disabled; renderer E2E replaces the handler with fixtures.
+The isolated AC1 test deliberately omits `MODEX_E2E` and uses a synthetic `gh` executable on PATH,
+with a disposable app home and GitHub configuration, so the production read boundary runs without
+accessing the user's GitHub login.
 
 **Not yet.** `stack` waits for #323. Commit authors in `activity` are git identities, so
 `author` is null. Requested teams are not listed as reviewers.

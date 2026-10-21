@@ -62,9 +62,17 @@ Each run fetches the GitHub default branch without pruning refs and reads PRs th
   malformed GitHub responses preserve work. Any open PR for the branch blocks pruning.
 - The exact tip is an ancestor of the freshly fetched default branch, or a merged PR has
   that exact repository, branch, and tip, and its reachable single-parent squash commit
-  either has the identical tree (every path, mode, blob, and gitlink) or the identical
-  complete binary diff. The tree match also covers branches that merged the default branch
-  in before landing. Without either match, ambiguous merge histories stay preserved.
+  matches in one of three ways:
+  - **Identical tree** (every path, mode, blob, and gitlink). This also covers branches that
+    merged the default branch in before landing.
+  - **Clean merge onto the squash's parent.** Git's own merge of the tip onto the squash's
+    parent finishes without conflicts and gives the identical tree. This covers a merge queue
+    squashing the branch onto a newer default branch than the one it last merged. A
+    configured `merge.<name>.driver` turns this check off, because a driver can drop either
+    side's changes and still report a clean merge.
+  - **Identical complete binary diff.**
+
+  Without a match, ambiguous merge histories stay preserved.
 - Archive refs and a self-contained bundle have been created, restored into an empty
   bare repository, checked for exact tip equality, and passed `git fsck --full`.
 

@@ -40,8 +40,9 @@ itself driving one of them.
 
 - `main` is protected by a ruleset (`.github/rulesets/main.json`): **signed commits** and
   the **`unit + e2e (macOS)`** check are required; direct pushes are rejected.
-- Flow: worktree → signed commits (`git commit -S`) → push the branch → PR → CI green → merge
-  (squash). Then `scripts/worktree.sh remove <name>`.
+- Flow: worktree → signed commits (`git commit -S`) → push the branch → PR → CI green → add it
+  to the merge queue (squash). The queue tests it on top of `main`, so the branch needn't be up
+  to date first. Then `scripts/worktree.sh remove <name>`.
 - Install with pnpm (`pnpm install`); `packageManager` in `package.json` pins the version.
   npm and Yarn refuse to run here; any other installer fails at the root `preinstall` guard.
 - Before pushing, run what CI runs: `pnpm build && pnpm test` and, for UI changes,

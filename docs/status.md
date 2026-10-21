@@ -61,6 +61,26 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
+  finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
+  did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known
+  test, build, typecheck or lint command counts, never the model's word or an unrelated command. The
+  saved note lists the checks and marks stale ones. [Verification](task-context.md#verification).
+- **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
+  "search *query*" with how many results there were, instead of "search " while the query had not
+  arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as
+  unchecked. Results without an http(s) link are counted, not shown. The shape comes from a live
+  codex-cli 0.163.0 capture. [Evidence guide](conversation-evidence.md).
+- **Answering, stopping or jumping to the latest from the keyboard keeps your place** (CF-8 #281
+  keyboard walkthrough). The answer buttons go away once pressed, and a finished turn hides its
+  folded work; either used to drop focus onto the page body. Focus now moves to the card's answer
+  ("Approved", "Denied"), then to the turn's "Worked for" toggle when that work folds. Stop and
+  Jump to latest, pressed from the keyboard, hand focus to the message box once they go away.
+  Focus elsewhere, such as the composer, stays where it is.
+- **Jump to latest stays at the bottom** (CF-8 #281, from #352). After a jump, the transcript used
+  to stop short of the bottom when the message box grew, as when a suggested follow-up appeared,
+  or when a Page Up was still scrolling. It now stays at the bottom until you scroll yourself.
+  [How it was found](reviews/2026-10-18-resolved-rough-edges.md#jump-to-latest-from-the-keyboard-on-ci-runners-handled-2026-10-20).
 - **Stopping a Codex turn ends its background commands, or says it could not** (CF-8 #281 live
   smoke). Codex keeps a long command running in a background terminal after its turn is
   interrupted. Stop now ends the stopped turn's own terminals through the app-server and calls a
@@ -95,7 +115,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   `gh` login, keyed by account, repository id and revision. The separate `cr2-cache-denial`
   follow-up invalidates retained PR data after visibility loss, including reads already in flight;
   it covers pending inbox searches, sibling file slices and denial during identity confirmation,
-  while preserving unrelated repositories and ordinary offline/rate-limit fallback. Nothing is visible in the app yet. AI
+  while preserving unrelated repositories and ordinary offline/rate-limit fallback.
+  [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
+  coverage through the production preload/IPC/service with a synthetic GitHub executable.
+  Nothing is visible in the app yet. AI
   review (#325) and GitHub writes (#326) are later gates.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
@@ -247,7 +270,7 @@ Roughly in the order they earn their place; none is scheduled.
 - One worktree per session (`scripts/worktree.sh new <slug>`), removed after the merge. A
   branch that is not being worked on is either extracted into a PR or deleted; nothing parks.
 - PRs merge through `~/.claude/scripts/gh-merge-when-green.sh <pr> --squash` after CI, with
-  signed commits only.
+  signed commits only. The guard adds each one to `main`'s merge queue and waits until it lands.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
 - A release's details and evidence go in its review under [`reviews/`](reviews/). This page
   keeps one Shipped row that links it, and the release leaves "In flight".
