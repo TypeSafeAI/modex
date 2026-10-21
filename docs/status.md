@@ -61,6 +61,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **A turn lists the files it touched** (CF-7 #280). A finished turn's footer has **Files touched**,
+  which lists what its tools changed, read and searched, as the CLI reported them. For Codex, that
+  includes its own parse of each command, resolved from the command working directory. Dot
+  segments are normalized before checking the project boundary. At most 20 are shown, and paths outside the project are
+  only counted. The saved note gets the same list. Nothing is indexed or inferred.
+  [Context map](task-context.md#context-map).
 - **A turn says whether a check verified its last change** (CF-7 #280). Beside Save to Notes, a
   finished turn reads "Verified: `pnpm test` passed after the last change". If the check failed,
   did not say how it ended, ran before a later edit, or never ran, it says that instead. Only a known

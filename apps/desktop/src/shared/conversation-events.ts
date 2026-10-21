@@ -346,7 +346,7 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
       case "reasoning.delta": return (value.representation === "summary" || value.representation === "provider-text") && Number.isSafeInteger(value.index) && (value.index as number) >= 0 && isString(value.text);
       case "reasoning.done": return optional(value.summary, strings) && optional(value.text, strings);
       case "tool.start": return isRecord(value.tool) && isString(value.tool.name) && isString(value.tool.title) && isRecord(value.tool.args) && optional(value.tool.agent, isRecord)
-        && optional(value.tool.exec, (x) => isRecord(x) && isString(x.command) && optional(x.cwd, isString));
+        && optional(value.tool.exec, (x) => isRecord(x) && isString(x.command) && optional(x.cwd, isString) && optional(x.actions, Array.isArray));
       case "tool.update": return progress(value.progress);
       case "tool.done": return SETTLED.includes(value.outcome as string) && optional(value.progress, progress);
       case "plan.update": return (value.from === "codex-plan" || value.from === "claude-todo") && optional(value.explanation, isString)

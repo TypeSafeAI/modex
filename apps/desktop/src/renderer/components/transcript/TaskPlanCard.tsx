@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
-import { displayCommand, verification, type TaskCheck } from "../../../shared/task-context";
+import { CONTEXT_SHOWN, displayCommand, taskContext, verification, type TaskCheck } from "../../../shared/task-context";
 
 const STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
 const FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" } as const;
@@ -82,4 +82,33 @@ export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }
     : v.state === "stale" ? <>Not verified: <Check check={v.checks.at(-1)!} /> ran before a later change</>
     : <>Not verified: no check ran after the changes</>;
   return <div className="task-verification" data-testid="task-verification" data-state={v.state}>{text}</div>;
+}
+
+/**
+ * The project files a finished turn touched (docs/task-context.md#context-map), shown when asked: what
+ * its tools changed, read and searched, as the CLI reported them. Nothing is indexed or inferred.
+ * At most 20 are listed, then how many more; paths outside the project are only counted.
+ */
+export function TaskContextLine({ items, cwd }: { items: readonly ThreadItem[]; cwd: string }) {
+  const context = useMemo(() => taskContext(items, cwd), [items, cwd]);
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  if (!context.files.length && !context.outside) return null;
+  return (
+    <div className="task-context" data-testid="task-context">
+      <button type="button" className="task-context-toggle" data-testid="task-context-toggle" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((v) => !v)}>
+        Files touched · {context.files.length}
+      </button>
+      {open && <div id={listId}>
+        <p className="task-context-note">As the CLI reported them. Modex did not index the project.</p>
+        <ul className="task-context-files">
+          {context.files.slice(0, CONTEXT_SHOWN).map((file) => (
+            <li key={file.path} data-testid="task-context-file"><code>{file.path}</code> {file.relations.join(", ")}</li>
+          ))}
+          {context.files.length > CONTEXT_SHOWN && <li data-testid="task-context-more">and {context.files.length - CONTEXT_SHOWN} more</li>}
+          {context.outside > 0 && <li data-testid="task-context-outside">{context.outside} outside the project, not named</li>}
+        </ul>
+      </div>}
+    </div>
+  );
 }

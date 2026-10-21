@@ -71,6 +71,11 @@ Observed on 2026-10-18:
   - **Evidence.** Local codex-cli 0.163.0 sessions cite paths relative to the memories folder
     (such as `MEMORY.md`). A one-line citation's note matched its line counted from 1 and not
     from 0, so lines are 1-based.
+- **What Codex parsed the command as.** codex-cli 0.163.0 sends `commandActions` with each command:
+  its own reading of what the command does, as `read` (with a path), `search` and `listFiles` (with
+  a path or query), or `unknown`. Modex keeps the first three on `exec.actions` (`codexActions` in
+  `backends/codex.ts`). It drops `unknown`, and a read without a path. The context map
+  ([task-context.md](task-context.md#context-map)) uses them. Claude Code sends no such parse.
 - **The command that ran.** A tool item's `exec` holds the command exactly as the CLI reported it,
   apart from the shortened title, with its `cwd` when the CLI reported one. Codex reports both. Claude
   Code's Bash keeps its own working directory between calls, so a Claude command shows no directory.

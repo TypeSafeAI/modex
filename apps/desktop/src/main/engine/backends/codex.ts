@@ -12,7 +12,7 @@ import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
 import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
-import { boundOutput, byteLength, codexWebSearch, memoryEvidence } from "../../../shared/evidence.js";
+import { boundOutput, byteLength, codexWebSearch, memoryEvidence, type ExecAction } from "../../../shared/evidence.js";
 import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
 /**
@@ -446,7 +446,7 @@ export class CodexBackend implements Backend {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               commands.add(item.id);
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd },
-                ...(item.command ? { exec: { command: item.command, ...(item.cwd ? { cwd: item.cwd } : {}) } } : {}) } });
+                ...(item.command ? { exec: { command: item.command, ...(item.cwd ? { cwd: item.cwd } : {}), ...(codexActions(item.commandActions) ? { actions: codexActions(item.commandActions)! } : {}) } } : {}) } });
             } else if (item.type === "fileChange") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
@@ -727,6 +727,8 @@ function patchFile(c: NonNullable<CodexItem["changes"]>[number]): import("../../
 interface CodexItem {
   type: string;
   id: string;
+  /** Codex's own parse of a command (0.163.0): `read`, `search`, `listFiles` or `unknown`. */
+  commandActions?: unknown;
   text?: string;
   phase?: string | null;
   command?: string;
@@ -824,4 +826,23 @@ function codexStepStatus(status: unknown): PlanStepStatus {
 function partIndex(value: unknown): number {
   const n = Number(value);
   return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Codex's parse of a command as `ExecAction`s: what it read, searched or listed. An `unknown` action,
+ * or a read without a path, says nothing about files and is left out.
+ */
+export function codexActions(value: unknown): ExecAction[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const actions = value.flatMap((entry): ExecAction[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const { type, path, query } = entry as Record<string, unknown>;
+    const at = typeof path === "string" && path ? path : undefined;
+    const q = typeof query === "string" && query ? query : undefined;
+    if (type === "read") return at ? [{ kind: "read", path: at }] : [];
+    if (type === "search") return [{ kind: "search", ...(at ? { path: at } : {}), ...(q ? { query: q } : {}) }];
+    if (type === "listFiles") return [{ kind: "list", ...(at ? { path: at } : {}) }];
+    return [];
+  });
+  return actions.length ? actions : undefined;
 }
