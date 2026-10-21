@@ -405,3 +405,15 @@ test("UNC share roots retain files with or without a trailing separator", () => 
     });
   }
 });
+
+test("external file counts use resolved identities without exposing paths", () => {
+  const run = (cwd: string, path: string): ThreadItem => {
+    const item = codexRun("cat file", [{ kind: "read", path }]);
+    if (item.kind === "tool" && item.exec) item.exec.cwd = cwd;
+    return item;
+  };
+  assert.deepEqual(taskContext([run("/private-a", "secret.txt"), run("/private-b", "secret.txt")], "/repo"), { files: [], outside: 2 });
+  const aliases = [run("/private", "secret.txt"), run("/private", "/private/secret.txt"), run("/private", "/private/sub/../secret.txt")];
+  assert.deepEqual(taskContext(aliases, "/repo"), { files: [], outside: 1 });
+  assert.doesNotMatch(taskMarkdown(taskRecord([user, ...aliases], { threadId: "T", title: "Read", cwd: "/repo" })), /private|secret/);
+});

@@ -189,7 +189,7 @@ function normalizedPath(path: string, windows: boolean): string {
 }
 
 /** Resolve from the reporting command's cwd, then check the normalized project boundary. */
-function relative(file: string, cwd: string, commandCwd = cwd): string | null {
+function resolvedPath(file: string, cwd: string, commandCwd = cwd): string | null {
   const windows = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith("\\\\");
   const resolve = (path: string, base: string): string | null => {
     if (windows) {
@@ -206,11 +206,16 @@ function relative(file: string, cwd: string, commandCwd = cwd): string | null {
     const absolute = path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
     return normalizedPath(absolute ? path : `${base}/${path}`, windows);
   };
-  const root = normalizedPath(cwd, windows).replace(/\/$/, "");
   const base = resolve(commandCwd, cwd);
   if (base === null) return null;
-  const resolved = resolve(file, base)?.replace(/\/$/, "");
-  if (resolved === undefined || resolved === null) return null;
+  return resolve(file, base)?.replace(/\/$/, "") ?? null;
+}
+
+function relative(file: string, cwd: string, commandCwd = cwd): string | null {
+  const windows = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith("\\\\");
+  const root = normalizedPath(cwd, windows).replace(/\/$/, "");
+  const resolved = resolvedPath(file, cwd, commandCwd);
+  if (resolved === null) return null;
   const compare = (path: string) => windows ? path.toLowerCase() : path;
   if (compare(resolved) === compare(root)) return ".";
   return compare(resolved).startsWith(compare(root) + "/") ? resolved.slice(root.length + 1) : null;
@@ -394,7 +399,12 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
   const add = (raw: unknown, relation: ContextFile["relations"][number], commandCwd = cwd) => {
     if (typeof raw !== "string" || !raw.trim()) return;
     const path = relative(raw.trim(), cwd, commandCwd);
-    if (path === null) { outsidePaths.add(raw.trim()); return; }
+    if (path === null) {
+      const resolved = resolvedPath(raw.trim(), cwd, commandCwd);
+      const windows = /^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith("\\\\");
+      outsidePaths.add(resolved === null ? `unresolved:${commandCwd}\0${raw.trim()}` : windows ? resolved.toLowerCase() : resolved);
+      return;
+    }
     const file = files.get(path) ?? { path, relations: [] };
     if (!file.relations.includes(relation)) file.relations.push(relation);
     files.set(path, file);
