@@ -69,6 +69,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   Task Note updates also recheck current project ownership: notes moved across projects are
   preserved, with a replacement saved under the originating project, even when a folder move
   or Finder move retained the old revision.
+  The full-log regression now waits for the completed turn’s disclosure button before opening
+  its history, avoiding a race with the live label and automatic folding at completion.
 - **A Codex web search shows what it searched for and what it found** (CF-5 #278). The row reads
   "search *query*" with how many results there were, instead of "search " while the query had not
   arrived yet. Expanded, the results Codex reported are links with their snippets, labelled as

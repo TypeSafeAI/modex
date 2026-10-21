@@ -82,7 +82,11 @@ const commands = () => (JSON.parse(fs.readFileSync(counts, "utf8")) as { command
 const row = () => items(page, "tool").filter({ hasText: "cat build.log" });
 
 async function openRow(): Promise<void> {
-  await tid(page, "turn-label").last().click();
+  // The sidebar can still report its initial idle state while the turn starts. A live
+  // turn label is a span: clicking it does not expand the history after completion.
+  const completedTurn = page.locator('button[data-testid="turn-label"]').last();
+  await completedTurn.click();
+  await expect(completedTurn).toHaveAttribute("aria-expanded", "true");
   await tid(row(), "item-toggle").click();
   await expect(tid(row(), "tool-truncated")).toContainText(`Showing the last 256 KB of ${SIZE}.`);
 }
