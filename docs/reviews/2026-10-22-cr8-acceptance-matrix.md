@@ -34,13 +34,14 @@ Cells hold the environment IDs below. **pending (#n)** means the owning slice ha
 | `F-ipc` | `e2e/code-review-ipc.spec.ts` (CR-2 AC1): production IPC with `FAKE_GH` | `0e674e7` | E1 | 1 of 1 passed |
 | `F-prod` | This page's new specs: `code-review-journey`, `-regressions`, `-a11y` and `-measure` `.spec.ts`. Production preload, IPC, service and transport, with only `gh` synthetic (`WORLD_GH`) | product `0e674e7`; specs on branch `cr8-acceptance` | E1 | 16 of 16 passed (journey 1, regressions 7, a11y 5, measure 2), alone and inside the full `pnpm test:e2e` run |
 | `CI` | Required check `unit + e2e (macOS)` on PR #372 (GitHub macOS runner, about 677 px of display height) | branch head `17f53a5` (product `0e674e7`) | GitHub Actions job 120081297678 | unit: 0 failed, 0 cancelled; e2e: 406 passed, 3 skipped, 0 failed, including all 29 Code Review specs. The first head, `ac5fc58`, failed 3 of the new specs because the window couldn't grow past that display; `fitWindow` fixed it |
+| `A-main` | Authenticated read-only re-run on main, authorized by Val on 2026-10-22. (1) The CR-2 service smoke (`2026-10-20-cr2-read-smoke.mjs 367`): account BunsDev (id 68980965) on github.com; TypeSafeAI/modex (id 1386876170); PR #367 at head `0866265`, base `eb93287`; gh 2.102.0. (2) CR-3's navigation probe through the real renderer, IPC and service. | product `0e674e7` | E1 | (1) connection, inbox, resolve, overview (then a `304`), activity 36 complete, checks 13/13, files 21/21 and context ready; `stack` unavailable as designed; a foreign account's key answers `signed-out` and an unknown repository id `not-found`, with no request. 17 GET requests, 7 of them `304`s. (2) All six checks passed: inbox and repository search; #349 and #348 resolved with their totals; back/forward, Changes and split; a pin surviving reload; an explicit error for a missing PR; signed-out with an empty gh configuration. |
 | `A-321` | CR-2's authenticated read smoke ([record](2026-10-20-cr2-read-smoke.md)): account BunsDev (id 68980965), TypeSafeAI/modex (id 1386876170), PRs #334 and #330, gh 2.98.0 | branch `cr2-read-service`, before it merged | Val's Mac | 17 requests per run, all GET; reads ready except `stack` |
 | `A-349` | The authenticated smoke for CR-2's cache-denial repair ([record](2026-10-20-cr2-cache-denial.md)): PR #349 head `d31f661` | `d31f661` (PR #349) | Val's Mac | connection, resolve, overview, files and context ready |
 | `A-322` | CR-3's authenticated navigation smoke through the real renderer and service ([record](2026-10-21-cr3-read-integration.md)) | candidate `65e86dd` + #354 `4dd5bb5` | Val's Mac | probe exited 0 |
 
-Authenticated runs `A-*` happened on candidate SHAs before squash-merge (#366 and #367). They have **not been
-re-run on `main`**. A re-run on `0e674e7` or later needs Val's go-ahead for the repository it reads, so it is
-listed below as an open gate. It is not counted as stale-but-passing.
+`A-321`, `A-349` and `A-322` ran on candidate SHAs before squash-merge (#366 and #367). `A-main` re-ran both
+authenticated checks on `main` at `0e674e7`, read-only, with Val's go-ahead. Neither run switched to a second
+real GitHub account, so account-switch races remain fixture evidence (`U`, `F-nav`, `F-prod`).
 
 **E1:** Mac17,6 (Apple M5 Max, 18 cores, 128 GiB), macOS 26.7.1 (Darwin 25.6.0), Electron 44.4.5,
 Playwright 1.63.0, Node 24.22.0. The display was 2× (DPR 2), with the Graphite theme (dark) and locale en-US.
@@ -59,18 +60,18 @@ shown unavailable or left out until Val decides). Rows whose owner is #323 or la
 | ID | Control | Owner | Status | Fixture | Authenticated | Live provider / write | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | C01 | Traffic lights, window drag | native chrome | deviation D5 | — (macOS) | — | — | — |
-| C02 | Back / forward | #322 | built | `F-nav` "back and forward…"; `F-prod` journey (no re-read on back/forward) | `A-322` step 3 | — | open (VoiceOver) |
+| C02 | Back / forward | #322 | built | `F-nav` "back and forward…"; `F-prod` journey (no re-read on back/forward) | `A-322`, `A-main` (navigation) | — | open (VoiceOver) |
 | C03 | Inbox pane toggle | #322 | built | `F-nav` back/forward test | — | — | open |
-| C04 | Top-right buttons | shell | deviation D9 (only the split toggle applies) | `F-nav`, `F-prod` journey (split toggle) | `A-322` step 3 | — | open |
+| C04 | Top-right buttons | shell | deviation D9 (only the split toggle applies) | `F-nav`, `F-prod` journey (split toggle) | `A-322`, `A-main` (navigation) | — | open |
 | C05 | PR tab: icon, title, close | #322 | built | `F-nav`; `F-prod` journey, a11y (Tab reaches tab and close) | — | — | open |
-| C06 | Changes tab with +/− | #322 | built | `F-nav`; `F-prod` journey (totals from the production overview) | `A-322` step 2 | — | open |
+| C06 | Changes tab with +/− | #322 | built | `F-nav`; `F-prod` journey (totals from the production overview) | `A-322`, `A-main` (overview totals) | — | open |
 | C07 | New tab (+) | needs decision 6 | unavailable | `F-nav` (aria-disabled); `F-prod` regressions "dispatch" | — | — | open |
 | C08 | Code Review rail button | #322 | built | `F-nav`; `F-prod` journey (`aria-current`) | `A-322` | — | open |
 | C09 | Other rail icons | shell | unchanged | full `pnpm test:e2e` (see Repository suites) | — | — | — |
 | C10 | Account monogram | shell | unchanged | full `pnpm test:e2e` | — | — | — |
 | C11 | Inbox title and ⋯ menu (Refresh) | #322 | built | `F-nav` (Escape returns focus); `F-prod` a11y (Tab order) | — | — | open |
-| C12 | Search or paste a PR link | #322 | built | `U` (`parsePrLocator`); `F-nav`; `F-prod` regressions "hostile content" (six unsafe or look-alike links never resolve, open or navigate) | `A-322` steps 1, 2, 5 | — | open |
-| C13 | "Authored by me" group | #322 | built | `U`; `F-nav`; `F-prod` regressions "incomplete data" (a timed-out search is labelled, never whole) | `A-322` step 1 | — | open |
+| C12 | Search or paste a PR link | #322 | built | `U` (`parsePrLocator`); `F-nav`; `F-prod` regressions "hostile content" (six unsafe or look-alike links never resolve, open or navigate) | `A-322`, `A-main` (search, links, missing PR) | — | open |
+| C13 | "Authored by me" group | #322 | built | `U`; `F-nav`; `F-prod` regressions "incomplete data" (a timed-out search is labelled, never whole) | `A-322`, `A-main` | — | open |
 | C14 | "Needs my review" group | #322 | built | As C13 (a hidden repository is labelled, and never shown as "No pull requests") | `A-322` | — | open |
 | C15 | PR row: title, author, age | #322 | built | `F-nav`; `F-prod` journey | `A-322` | — | open |
 | C16 | Row avatar and badge | needs decision 1 | not built (D1) | — | — | — | — |
@@ -81,7 +82,7 @@ shown unavailable or left out until Val decides). Rows whose owner is #323 or la
 | C21 | State pill "Open ▾" | needs decision 2 | state shown, no menu (D7) | `F-nav`, `F-prod` (state pill contrast ≥ 7.77) | — | — | — |
 | C22 | Repository and number | #323 | interim D6 (from the row or the link) | `F-nav` (`title` gives `owner/repo`) | — | — | pending #323 binds `overview.locator` |
 | C23 | Loading spinner | #322 | built | `F-nav` (stops under reduced motion); `F-prod` regressions "identity" | — | — | — |
-| C24 | Pin | #322 | built | `F-nav` (local, per account, survives reload) | `A-322` step 4 | — | open |
+| C24 | Pin | #322 | built | `F-nav` (local, per account, survives reload) | `A-322`, `A-main` (pin after reload) | — | open |
 | C25 | Copy link | #322 | built | `U` (`canonicalPrUrl`); `F-nav` (clipboard) | — | — | open |
 | C26 | Open in GitHub | #322 | built | `F-nav` (`shell.openExternal` gets the canonical link only) | — | — | open |
 | C27 | Review with Codex | #325 | unavailable in Gate A | `U` (capability); `F-nav`; `F-prod` regressions "dispatch" (double-click, Enter and Space start no provider and no gh call) | — | pending #325 | open |
@@ -98,15 +99,15 @@ shown unavailable or left out until Val decides). Rows whose owner is #323 or la
 | C38 | Summary card: Request review | needs decision 4 | not built | — | — | — | — |
 | C39 | Summary card: passing checks | #323 | pending (`U` covers `summarizeChecks`) | `U`; pending #323 | pending | — | pending |
 | C40 | Sidebar: Changes | #323 | pending | pending #323 | pending | — | pending |
-| C41 | Sidebar: Stack | #323 | pending (main answers `stack` unavailable until #323) | `U`; pending #323 | `A-321` (`stack` unavailable, as designed) | — | pending |
+| C41 | Sidebar: Stack | #323 | pending (main answers `stack` unavailable until #323) | `U`; pending #323 | `A-321`, `A-main` (`stack` unavailable, as designed) | — | pending |
 | C42 | Sidebar: comment count | #323 | pending | pending #323 | pending | — | pending |
 | C43 | Sidebar: reviewers and + | #323 list; + needs decision 4 | pending | pending #323 | pending | — | pending |
-| C44 | Checks with elapsed clock | #323 | pending (`U` covers `summarizeChecks`) | `U`; pending #323 | `A-321` (checks 13 of 13, read only) | — | pending |
+| C44 | Checks with elapsed clock | #323 | pending (`U` covers `summarizeChecks`) | `U`; pending #323 | `A-321`, `A-main` (checks 13 of 13, read only) | — | pending |
 | C45 | Check row states | #323 | pending | `U`; pending #323 | pending | — | pending |
 | C46 | Show more checks | #323 | pending | pending #323 | pending | — | pending |
 | C47 | Independent sidebar scroll | #323 | pending | pending #323 | — | — | — |
 | C48 | Activity heading and filter | #323 | pending | pending #323 | pending | — | pending |
-| C49 | Commit groups | #323 | pending | pending #323 | `A-321` (activity complete, read only) | — | pending |
+| C49 | Commit groups | #323 | pending | pending #323 | `A-321`, `A-main` (activity 36, complete, read only) | — | pending |
 | C50 | "opened this pull request" | #323 | pending | pending #323 | pending | — | pending |
 | C51 | Bot comment card | #323 | pending | pending #323 | pending | — | pending |
 | C52 | Deployment table and preview links | #323 | pending | pending #323 | pending | — | pending |
@@ -124,7 +125,7 @@ shown unavailable or left out until Val decides). Rows whose owner is #323 or la
 | C64 | File header | #324 | pending | pending #324 | pending | — | pending |
 | C65 | Viewed toggle | needs decision 5 | not built | — | — | — | — |
 | C66 | File ⋯ menu (never Discard) | #324 | pending; the Discard separation already holds at the host | `F-nav`; `F-prod` regressions "local Changes stay local" | — | — | pending |
-| C67 | Folded lines, expand | #324 | pending (`U` bounds `context`) | `U`; pending #324 | `A-321` (`context` lines 1–3) | — | pending |
+| C67 | Folded lines, expand | #324 | pending (`U` bounds `context`) | `U`; pending #324 | `A-321`, `A-main` (`context` lines 1–3) | — | pending |
 | C68 | Line numbers, add/remove rows | #324 | pending | pending #324 | pending | — | pending |
 | C69 | "More unchanged context…" | #324 | pending | pending #324 | — | — | pending |
 | C70 | Collapsed file sections | #324 | pending | pending #324 | — | — | pending |
@@ -149,14 +150,14 @@ shown unavailable or left out until Val decides). Rows whose owner is #323 or la
 | #321 AC2 | Same PR number across repositories and accounts; account switch drops a delayed result | `U`; `F-prod` regressions "identity" ×2 | — (no second real account) | — | met at fixture level. A real `gh auth switch` mid-read was never run live |
 | #321 AC3 | Revoked, denied, malformed, timeout, rate limit, partial, omitted patch, no secret leakage | `U`; `F-prod` "incomplete data" (gh stderr sentinel never reaches the renderer or a reply) | `A-349` | — | met |
 | #321 AC4 | Head changes invalidate or label old diff/check data | `U`; `F-prod` "revision" (before the page: `head-changed`, files list never requested; during the page: `stale head-changed`) | — | — | met at service and IPC level. The UI labelling is #324's |
-| #321 AC5 | Authenticated read-only smoke, kept separate | — | `A-321`, `A-349` | — | met on pre-merge SHAs; **a re-run on main is open** |
+| #321 AC5 | Authenticated read-only smoke, kept separate | — | `A-321`, `A-349`, `A-main` | — | met, and re-run on main |
 | #321 AC6 | Existing Changes, connection and login tests green; no new permissions or writes | full suites (see Repository suites) | — | — | met at merge. Re-checked in this branch's full run |
-| #322 AC1 | R1 and R4 through real controls; PR and tab identity correct | `F-nav`; `F-prod` journey (rail → row → split, with captures at the references' CSS sizes and geometry within 2 px of CR-3's table) | `A-322` | — | met for the host. **Original-reference comparison is open** (see Visual comparison) |
+| #322 AC1 | R1 and R4 through real controls; PR and tab identity correct | `F-nav`; `F-prod` journey (rail → row → split, with captures at the references' CSS sizes and geometry within 2 px of CR-3's table) | `A-322`, `A-main` | — | met for the host. **Original-reference comparison is open** (see Visual comparison) |
 | #322 AC2 | Rapid switching shows no stale reply; back/forward don't replay | `F-nav` ×3; `F-prod` "identity" ×2, journey (no re-read) | `A-322` (back/forward) | — | met |
 | #322 AC3 | Scroll regions independent; resize and reopen keep controls in the window | `F-nav` keyboard test | — | — | met for the inbox and pane dividers. The overview, diff and tree regions hold placeholders until #323 and #324 |
 | #322 AC4 | Keyboard-only at 900×600 and 1440×900; focus returns; reference DPR | `F-nav`; `F-prod` a11y | — | — | automated checks met; **human VoiceOver open** |
 | #322 AC5 | Local Changes, threads and tabs pass; no remote PR reaches Discard | `F-nav`; `F-prod` "local Changes stay local" (a dirty file at the PR's own path is untouched; `changes:revert` never called) | — | — | met at fixture level; the full-suite result is under Repository suites |
-| #322 AC6 | Fixture and authenticated smoke reported separately | this table | `A-322` | — | met on a pre-merge candidate; **a re-run on main is open** |
+| #322 AC6 | Fixture and authenticated smoke reported separately | this table | `A-322`, `A-main` | — | met, and re-run on main |
 | #323 AC1–AC6 | Overview, activity, checks, stack, hostile Markdown, clearance, no writes | pending #323 | pending #323 | — | pending (#323 not started). CR-8 adds R2 to the journey and extends "hostile content" to the rendered body |
 | #324 AC1–AC6 | Grouped diff, anchors, delayed-patch isolation, no Discard, coverage, stress | pending #324. `F-prod` measure already records a 1,000-file and a 3 MiB-patch IPC baseline | pending #324 | — | pending (#324 not started) |
 | #325 AC1–AC6 | Instructions popover, context isolation, injection boundary, lifecycle, no promotion, live smoke | pending #325 | — | pending #325 (authorized live native smoke) | pending (#325 not started). CR-8 adds R3 to the journey |
@@ -261,8 +262,8 @@ and e2e 406 passed, 3 skipped, 0 failed.
 
 ## Open gates and owners
 
-1. **Authenticated re-run on `main`** (#321 AC5, #322 AC6). Val authorizes a read-only run against a named
-   repository. Then run `docs/reviews/2026-10-20-cr2-read-smoke.mjs`, and CR-3's probe if it is to be re-run.
+1. **Authenticated re-run on `main`: done** (`A-main`, 2026-10-22). Re-run when a slice changes the read path.
+   A second real account has never been used.
 2. **Original-reference comparison.** Val gives the references' new location. Then run the `ui:compare` command
    above against R1 and R4.
 3. **Human VoiceOver and keyboard pass:** Val, with the [checklist](2026-10-22-cr8-voiceover/checklist.md).
