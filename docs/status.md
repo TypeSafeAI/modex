@@ -247,7 +247,9 @@ that fixed each.
   a prompt prefix on an ordinary turn. A separate through-app capture in #348 enabled the opt-in
   `default_mode_request_user_input` flag successfully. The direct plan-mode probe in #357 verifies
   parser/answer compatibility; it does not close app or human acceptance. Native Plan integration
-  also requires displaying Codex's `plan` items. See
+  also requires displaying Codex's `plan` items. Whether Plan mode should switch is a decision for
+  Val, with a live capture: [Plan mode decision](reviews/2026-10-22-cf3-plan-mode-decision.md).
+  Human acceptance steps: [question acceptance](reviews/2026-10-22-cf3-question-acceptance.md). See
   [human-requests.md](human-requests.md#codex-codex-cli-01630-app-server).
 
 - **node-pty is a pre-release.** Modex still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
