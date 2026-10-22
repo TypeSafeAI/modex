@@ -159,7 +159,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   dispatch, and local Discard. It also adds keyboard/contrast checks and stress measurements, and a
   [VoiceOver checklist](reviews/2026-10-22-cr8-voiceover/checklist.md) for Val. The read-only authenticated service smoke
   and the navigation probe were re-run on `main` at `0e674e7`, and both passed. Open: R2 and R3 (#323,
-  #325), the original-reference comparison (the references are no longer at their recorded path), and the
+  #325), the original-reference comparison (blocked: Val confirmed the original R1–R4 files are gone), and the
   human VoiceOver pass.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed

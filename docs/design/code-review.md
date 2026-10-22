@@ -307,8 +307,11 @@ accessing the user's GitHub login.
 
 ## References and calibration
 
-The four references stay on Val's Mac, at `~/Desktop`. The Desktop is not a permanent home, so if they
-move, update this table and #320. Each was checked by SHA-256 on 2026-10-19. Times are the file names'
+The four references were kept on Val's Mac, at `~/Desktop`. **On 2026-10-22 Val confirmed the originals are
+gone.** They are not at that path, and Spotlight finds no file by these names. The table below remains the
+record of what they were: size, scale, checksums and measured geometry. No capture can now be compared with
+an original. Fidelity work measures against this page's numbers until Val re-captures references. Any new
+capture needs its own row and checksums, and must not be read as one of these. Each was checked by SHA-256 on 2026-10-19. Times are the file names'
 local times (UTC−5), converted.
 
 | ID | File | Pixels | SHA-256 | Device px per CSS px | CSS size | Offset from R2 | Captured | State |

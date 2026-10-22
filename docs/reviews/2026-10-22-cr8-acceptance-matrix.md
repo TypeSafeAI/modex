@@ -239,10 +239,16 @@ CI's captures are shorter. Compare them with:
 pnpm run ui:compare --captures test-results/ui-code-review <folder holding R1.png and R4.png>
 ```
 
-**Open.** The references are not on the Mac at the location the [manifest](../design/code-review.md#references-and-calibration)
-records (`~/Desktop`), and Spotlight finds no file with those names. Val needs to say where they are now, then
-update the manifest and #320. Until then no capture has been compared with an original, and nothing here claims
-fidelity. The captures are kept outside the repository; they show only synthetic data.
+**Blocked: the originals are gone.** Val confirmed on 2026-10-22 that R1–R4 no longer exist. They are not
+at the [manifest](../design/code-review.md#references-and-calibration)'s `~/Desktop` path, and Spotlight
+finds no file with those names. No capture has been or can be compared with an original, and nothing here
+claims pixel fidelity. What remains:
+
+- The journey checks pane geometry against the manifest's measured numbers, through CR-3's built-geometry table.
+- `ui:compare` stays ready for new references, if Val re-captures them. Each needs its own manifest row and
+  checksums.
+
+The captures are kept outside the repository; they show only synthetic data.
 
 ## Repository suites
 
@@ -264,8 +270,8 @@ and e2e 406 passed, 3 skipped, 0 failed.
 
 1. **Authenticated re-run on `main`: done** (`A-main`, 2026-10-22). Re-run when a slice changes the read path.
    A second real account has never been used.
-2. **Original-reference comparison.** Val gives the references' new location. Then run the `ui:compare` command
-   above against R1 and R4.
+2. **Original-reference comparison: blocked.** The originals are gone (Val, 2026-10-22). It can resume only
+   if Val re-captures references, which would be new references with their own checksums.
 3. **Human VoiceOver and keyboard pass:** Val, with the [checklist](2026-10-22-cr8-voiceover/checklist.md).
 4. **#323 overview and activity:** add R2 (scroll to activity) to the journey; extend "hostile content" to the
    rendered description and comments; check the composer clearance.
