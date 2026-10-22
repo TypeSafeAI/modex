@@ -2,13 +2,16 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, resizeWindow, tid } from "./support.js";
-import { baseWorld, launchWithGh, prRow, READ_ENDPOINT, type Harness } from "./code-review-support.js";
+import { appDir, tid } from "./support.js";
+import { baseWorld, fitWindow, launchWithGh, prRow, READ_ENDPOINT, type Harness } from "./code-review-support.js";
 
 /**
  * CR-8 (#327): the integrated Code Review journey in real Electron, through main's production read service
  * with a synthetic gh (e2e/code-review-support.ts). Inbox → R1 → R4 today; R2 waits for #323's activity and R3
  * for #325's instructions popover, and are added here when those land.
+ *
+ * The window is fitted to the display (fitWindow): a CI display shorter than a reference gives a shorter capture,
+ * and the manifest records the viewport actually used. Pane geometry is checked on the x axis only.
  *
  * Captures go to test-results/ui-code-review/<state>.png with a manifest.json, so
  * `pnpm run ui:compare -- --captures test-results/ui-code-review <dir of R1.png, R4.png>` lays them beside
@@ -38,13 +41,13 @@ test("inbox → R1 → R4 through the production read service, with captures for
   fs.mkdirSync(outDir, { recursive: true });
   const manifest: object[] = [];
   h = await launchWithGh(baseWorld());
-  const { page, app, repo } = h;
+  const { page, repo } = h;
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
   const before = { head: git("rev-parse", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") };
   const starts = h.providerStarts().length;
 
   // Inbox: the rail opens it, and both groups arrive through main's service.
-  await resizeWindow(app, page, R1.width, R1.height);
+  await fitWindow(h, R1.width, R1.height);
   await tid(page, "rail-code-review").click();
   await expect(tid(page, "rail-code-review")).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("group", { name: "Authored by me" })).toContainText("Move holds between branches");
@@ -62,7 +65,7 @@ test("inbox → R1 → R4 through the production read service, with captures for
   test.info().annotations.push({ type: "pending", description: "R2: activity scroll waits for #323; R3: instructions popover waits for #325" });
 
   // R4: another PR, split beside its Changes through the right-panel button.
-  await resizeWindow(app, page, R4.width, R4.height);
+  await fitWindow(h, R4.width, R4.height);
   await prRow(page, "example-org/field-guide#91").click();
   await expect(tid(page, "code-review-tab-changes")).toContainText("+11");
   await tid(page, "code-review-split-toggle").click();
@@ -86,11 +89,11 @@ test("inbox → R1 → R4 through the production read service, with captures for
   expect(h.calls().filter((c) => /pulls\/(73|91)$/.test(c)).length).toBe(reads);
 
   // The two other sizes #327 names.
-  await resizeWindow(app, page, 1440, 900);
-  await capture(page, manifest, "split-1440x900");
-  await resizeWindow(app, page, 900, 600);
+  await fitWindow(h, 1440, 900);
+  await capture(page, manifest, "split-1440");
+  await fitWindow(h, 900, 600);
   await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", /^(overview|changes)$/);
-  await capture(page, manifest, "narrow-900x600");
+  await capture(page, manifest, "narrow-900");
   fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify({ reference: { R1, R4 }, states: manifest }, null, 2) + "\n");
 
   // Read-only end to end: only read endpoints, no provider started, the local checkout untouched.

@@ -1,7 +1,7 @@
-import { _electron as electron, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, seedHome, tid } from "./support.js";
+import { appDir, resizeWindow, seedHome, tid } from "./support.js";
 import { WORLD_GH, type GhWorld } from "../test/fixtures/code-review-gh-world.js";
 
 export { baseWorld, FIELD_GUIDE, FIELD_GUIDE_73, FIELD_GUIDE_91, LENDING, LENDING_73 } from "../test/fixtures/code-review-gh-world.js";
@@ -89,3 +89,22 @@ export const settle = (p: Page) => p.evaluate(() => window.modex!.invoke("code-r
 
 /** Every endpoint the read service may ask for (docs/design/code-review.md, Read operations). */
 export const READ_ENDPOINT = /^(user|search\/issues\?[^/]+|repos\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+(\/(pulls\/\d+(\/files)?|issues\/\d+\/timeline|commits\/[0-9a-f]{40}\/(check-runs|status)|contents\/[^?]+))?(\?[^/]*)?)$/;
+
+/**
+ * resizeWindow, but within the display. These launches can't set MODEX_E2E (it disables the read service), so
+ * the window can't grow past the screen as e2e/support.ts's launches do. A CI display can be shorter than the
+ * references (677 px of content on GitHub's macOS runner), so the height is capped at what the display can take.
+ * Returns the size used; callers record it rather than claim the requested one.
+ */
+export async function fitWindow(h: Pick<Harness, "app" | "page">, width: number, height: number): Promise<{ width: number; height: number }> {
+  // macOS keeps a window's frame within the screen vertically only: cap the height at the display's work area,
+  // less the window's own frame, and keep the width asked for.
+  const most = await h.app.evaluate(({ BrowserWindow, screen }) => {
+    const win = BrowserWindow.getAllWindows()[0]!;
+    return screen.getDisplayMatching(win.getBounds()).workArea.height - (win.getSize()[1]! - win.getContentSize()[1]!);
+  });
+  const fitted = { width, height: Math.min(height, most) };
+  await resizeWindow(h.app, h.page, fitted.width, fitted.height);
+  if (fitted.width !== width || fitted.height !== height) test.info().annotations.push({ type: "display-limited", description: `asked ${width}×${height}, used ${fitted.width}×${fitted.height}` });
+  return fitted;
+}

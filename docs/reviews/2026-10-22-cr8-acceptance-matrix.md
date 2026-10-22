@@ -224,9 +224,14 @@ Two observations for #322 and for Val's VoiceOver pass, not failures:
 
 ## Visual comparison
 
-`e2e/code-review-journey.spec.ts` writes `test-results/ui-code-review/{R1,R4,split-1440x900,narrow-900x600}.png`
-with a `manifest.json`. The manifest records viewport, DPR, locale, theme, font and pane geometry. Compare them
-with:
+`e2e/code-review-journey.spec.ts` writes `test-results/ui-code-review/{R1,R4,split-1440,narrow-900}.png` with a
+`manifest.json`. The manifest records viewport, DPR, locale, theme, font and pane geometry.
+
+These launches must leave `MODEX_E2E` unset, because it disables the read service. Without it the window can't
+grow taller than the display. `fitWindow` therefore keeps the requested width and caps the height. A capped run
+is annotated `display-limited`, and the manifest records the size actually used. On E1 every capture was at its
+full size: 1766×1057, 1764×1047, 1440×900 and 900×600. GitHub's macOS runner gives about 677 px of height, so
+CI's captures are shorter. Compare them with:
 
 ```sh
 pnpm run ui:compare --captures test-results/ui-code-review <folder holding R1.png and R4.png>

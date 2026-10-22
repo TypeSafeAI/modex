@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
-import { resizeWindow, setTheme, tid } from "./support.js";
-import { baseWorld, launchWithGh, prRow, type Harness } from "./code-review-support.js";
+import { setTheme, tid } from "./support.js";
+import { baseWorld, fitWindow, launchWithGh, prRow, type Harness } from "./code-review-support.js";
 import { THEMES, type Theme } from "../src/shared/theme.js";
 
 /**
@@ -58,8 +58,8 @@ for (const theme of Object.keys(THEMES) as Theme[]) {
 for (const size of [{ width: 1440, height: 900 }, { width: 900, height: 600 }]) {
   test(`Tab reaches every Code Review control with a visible focus ring at ${size.width}×${size.height}`, async () => {
     h = await launchWithGh(baseWorld());
-    const { page, app } = h;
-    await resizeWindow(app, page, size.width, size.height);
+    const { page } = h;
+    const used = await fitWindow(h, size.width, size.height);
     await tid(page, "rail-code-review").click();
     await prRow(page, "example-org/field-guide#91").click();
     await tid(page, "code-review-split-toggle").click();
@@ -87,7 +87,7 @@ for (const size of [{ width: 1440, height: 900 }, { width: 900, height: 600 }]) 
       });
       if (stop) order.push(stop);
     }
-    record(`tab:${size.width}x${size.height}`, order);
+    record(`tab:${used.width}x${used.height}`, order);
     const reached = new Set(order.map((s) => s.id));
     for (const id of ["code-review-inbox-menu", "code-review-search", "code-review-row", "code-review-tab-overview", "code-review-close-overview",
       "code-review-split-toggle", "code-review-pin", "code-review-copy-link", "code-review-open-github", "code-review-review", "code-review-instructions", "code-review-merge"]) {

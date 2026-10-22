@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { tid } from "./support.js";
-import { baseWorld, FIELD_GUIDE, launchWithGh, LENDING, prRow, READ_ENDPOINT, settle, type Harness } from "./code-review-support.js";
+import { baseWorld, FIELD_GUIDE, fitWindow, launchWithGh, LENDING, prRow, READ_ENDPOINT, settle, type Harness } from "./code-review-support.js";
 import { ghFile, ghPull, ghRepo, ghRow, sha } from "../test/fixtures/code-review-gh-world.js";
 import type { CodeReviewReply, CodeReviewRequest, Inbox, PrKey, PrOverview } from "../src/shared/code-review.js";
 
@@ -207,6 +207,8 @@ test("local Changes stay local: a remote PR touching the same path never reaches
     ipcMain.removeHandler("changes:revert");
     ipcMain.handle("changes:revert", () => { g.__reverts += 1; });
   });
+  // Wide enough for the split (the default window may fold it to one pane).
+  await fitWindow(h, 1440, 900);
   await tid(page, "rail-code-review").click();
   await prRow(page, "example-org/lending#73").click();
   await tid(page, "code-review-split-toggle").click();
