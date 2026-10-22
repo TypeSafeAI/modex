@@ -122,7 +122,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 - **CF-4 Markdown closeout (#277).** `cf4-closeout` adds named keyboard stops for table/code overflow,
   reference-viewport captures, and Markdown rows in the shared #281 human checklist.
   [New evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) separates local measurements
-  from the pending performance-budget decision and Val's VoiceOver result. Not closed or merged.
+  from the approved 500 ms median cold-open gate, pending CI stability evidence, and Val's VoiceOver result. Not closed or merged.
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through

@@ -5,6 +5,7 @@ Issue: #277. Shared human gate: #281. This is a new receipt; historical results 
 ## Candidate and scope
 
 - Base: current `origin/main`, `0e674e75237f393b8a1ba712061f5b303a61d5b4`, fetched and confirmed through GitHub on October 22.
+- Source candidate: signed commit `93cfde3850ffd23acf7adacefb3a016ea174120e`.
 - Owned worktree/branch: `cf4-closeout`; `scripts/worktree.sh check` passed.
 - Machine: Mac17,6, Apple M5 Max (18 cores), 128 GiB, macOS 26.7.1 (25G241), Darwin 25.6.0, Node 24.22.0, pnpm 10.34.5.
 - Already landed: typed turns, safe CommonMark/GFM, full replies, continuity, minimum-size fixes, and keyboard answer/Stop/Jump fixes. These are not reimplemented.
@@ -16,7 +17,7 @@ Issue: #277. Shared human gate: #281. This is a new receipt; historical results 
 
 Two failures were reproduced before repair: a table with a link is skipped by Tab, and Chromium's implicit code-scroll focus has no visible ring. The fixes use `tabIndex=0`, `role=region`, and accessible names. Disabled task checkboxes remain noninteractive.
 
-An intermediate test run was 9 passed / 2 failed: the new test started traversal before the scripted reply finished streaming. Its initially-idle assertion was too early. It now waits for the final link and idle before testing the settled order. The runtime fixes are independently reverted and rebuilt to confirm each red regression with this corrected fixture readiness.
+An intermediate test run was 9 passed / 2 failed: the new test started traversal before the scripted reply finished streaming. Its initially-idle assertion was too early. It now waits for the final link and idle before testing the settled order. With corrected readiness, `table-traversal-red.log` confirms Tab focuses Evidence link instead of the table when the table fix is removed; `code-focus-red.log` confirms the missing code focus ring when only the code fix is removed. The fixes were restored and rebuilt. `focused-green.log`: all 9 cases pass (the six existing conversation-rendering cases and three theme traversal cases). Earlier accessible-name red runs are separately retained.
 
 The historical `e2e/transcript-continuity.spec.ts` path is absent on this main. Current coverage is the streaming Copy-focus and code-selection case in `e2e/conversation-rendering.spec.ts`; do not count a nonexistent path as executed coverage.
 
@@ -36,7 +37,7 @@ Fixture: 200 turns, 1,400 items, 3,001,221 saved bytes. Each measurement launche
 
 Median first open: 129 ms. The 3 MiB / 48-delta log fixture sent 663,894 bytes to the window, with a largest output of 262,144 bytes; main CPU was 219 ms. These are local fixture observations, not provider evidence or universal timing guarantees.
 
-**Proposal to Val (pending):** median first open ≤500 ms across five fresh Electron launches of this fixture. Validate on the actual macOS CI runner before claiming CI stability. No timing gate is enforced until Val agrees. Approval was requested in the session; absence of a reply is not approval.
+**Approved by Val on 2026-10-22:** “Approve 500 ms median.” The test now enforces median first open ≤500 ms across five fresh Electron launches of this fixture. Each launch uses a fresh home/process and verifies that the long thread was not selected at launch and all 1,400 items rendered. Warm opens are recorded separately and never counted in the gate. There are no retry-to-pass budget samples. Every sample, the median, environment and viewport are retained; CI stability still needs the actual macOS runner result.
 
 The historical parser-only cost is a different metric. `scripts/benchmark-transcript.mjs` was also rerun with main as its comparison reference, recorded in `parser-measure.json`: main Markdown cold SSR samples 266.8/268.0/172.8 ms; candidate 268.6/195.2/186.1 ms for 200 mixed Markdown messages (306,290 bytes). This script warms module code before cold text-cache measurements, excludes browser layout/IPC, and shares candidate CodeBlock between both variants. Its `head` field is the base SHA; the candidate Markdown source hash identifies the uncommitted variant. Do not present these results as the original 239 KB parser fixture or as an app-open improvement.
 
@@ -46,4 +47,4 @@ Markdown rows C1–C5 extend the existing `../2026-10-20-keyboard-voiceover/chec
 
 ## Remaining verification
 
-Reference captures, final full commands and delivery receipts are pending at this checkpoint. The performance-budget decision, CI stability evidence and human VoiceOver result remain open.
+Reference captures, final full commands and delivery receipts are pending at this checkpoint. The approved budget is implemented; CI stability evidence and human VoiceOver acceptance remain open.

@@ -200,6 +200,7 @@ async function measureTranscript(testInfo: TestInfo, launchNumber: number): Prom
   for (let run = 0; run < 3; run++) loads.push(await page.evaluate(async (id) => { const start = performance.now(); await window.modex!.invoke("thread:items", { threadId: id }); return performance.now() - start; }, threadId));
   const measurement = {
     turns: TURNS, items: saved.length, savedBytes: Buffer.byteLength(JSON.stringify(saved)),
+    viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight, scale: devicePixelRatio })),
     firstOpenMs: Math.round(opens[0]!), repeatOpenMs: opens.slice(1).map(Math.round), repeatMedianMs: Math.round(median(opens.slice(1))),
     rendererLongTasks: { first: tasks[0], repeats: tasks.slice(1) },
     threadItemsIpcMs: loads.map(Math.round), selectedAtLaunch, renderedItems: await items(page).count(),
@@ -232,6 +233,7 @@ test("a 200-turn transcript opens within the agreed median budget across five fr
   }
   const medianMs = median(firstOpens);
   results.firstOpenBudget = { approvedBy: "Val", approvedOn: "2026-10-22", limitMs: 500, samplesMs: firstOpens, medianMs };
+  console.log(`[transcript-budget] ${JSON.stringify({ ...results.firstOpenBudget as object, cpu: os.cpus()[0]?.model, cores: os.cpus().length, platform: process.platform, arch: process.arch, node: process.version })}`);
   await testInfo.attach("first-open-budget.json", { body: JSON.stringify(results.firstOpenBudget, null, 2), contentType: "application/json" });
   expect(medianMs, `cold first-open samples (ms): ${firstOpens.join(", ")}`).toBeLessThanOrEqual(500);
 });
