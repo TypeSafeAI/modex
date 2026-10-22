@@ -158,6 +158,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   for. v0.2.0's gates, its banner upgrade from v0.1.0 and the build 7 upload, are superseded:
   v0.1.0 is now offered v0.3.0. [Review](reviews/2026-10-20-v0.3.0-release-review.md).
 
+- **CF-7 step linking: decision pending** ([#280](https://github.com/TypeSafeAI/modex/issues/280)).
+  Neither CLI ties a check to a plan step, so a link would have to be inferred. The
+  [decision note](reviews/2026-10-22-cf7-step-linking-decision.md) recommends retiring it and names
+  the native signal that would reopen it. Nothing is built until Val answers.
+
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   The slices that landed through #335 and #333 shipped in v0.3.0; the
   [v0.3.0 review](reviews/2026-10-20-v0.3.0-release-review.md#what-shipped) lists them with what is

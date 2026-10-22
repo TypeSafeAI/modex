@@ -176,7 +176,8 @@ the turn touched and its verification, as the save recorded them. It is read-onl
 
 ## Not done yet
 
-- Linking a check to the plan step it verifies. Neither CLI reports that link.
+- Linking a check to the plan step it verifies. Neither CLI reports that link, and inferring it would
+  break "nothing is inferred". Waiting on [a decision](reviews/2026-10-22-cf7-step-linking-decision.md).
 - A plan for Claude Code 2.1.308 and later, which no longer offers `TodoWrite`
   ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
