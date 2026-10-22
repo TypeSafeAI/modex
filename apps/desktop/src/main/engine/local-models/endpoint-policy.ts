@@ -11,7 +11,7 @@ import net from "node:net";
  * paths are fixed by the metadata adapter, never by the renderer.
  *
  * Loopback is a destination, not a privacy claim: a server on 127.0.0.1 may still forward to the
- * cloud. That locality stays unverified here (see docs/local-models.md).
+ * cloud. That locality stays unverified here (#376 privacy invariants).
  */
 
 export interface LocalEndpoint {

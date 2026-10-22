@@ -178,6 +178,14 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
   link their open PRs.
 
+- **Local models v1** ([tracker #376](https://github.com/TypeSafeAI/modex/issues/376)). LM-2
+  (#378) has a branch with main-owned, loopback-only connection profiles, tokens in the existing
+  encrypted secret store, and bounded metadata discovery for Ollama, LM Studio and
+  Responses-compatible servers. Discovery uses one local-only IPC channel; there is no UI and no
+  execution binding yet. Evidence comes from fixtures only. Completion stays blocked on LM-1
+  (#377), whose contract and native app-server probe are not yet accepted.
+  [Review](reviews/2026-10-22-lm2-connections-discovery.md).
+
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and
   pages, retains per-page failure/retry notices, and deduplicates first and later pages using the
   producer contract helper. The [authenticated integration check](reviews/2026-10-21-cr3-read-integration.md)
