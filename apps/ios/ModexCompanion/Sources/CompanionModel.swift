@@ -34,6 +34,11 @@ import SwiftUI
     /// items are replaced, so a delta only ever merges into the transcript it was computed against.
     private var journal: (cursor: JournalCursor, threadId: String)?
     private var drafts: [String: String] = [:]
+    /// Unsent answers to question cards, by thread and card, then question. Held only in memory: a secret typed
+    /// here is never saved, logged or shown again, and is gone when its card closes or the Mac is forgotten.
+    @Published private var questionDrafts: [QuestionKey: [String: QuestionDraft]] = [:]
+    /// Why the card the person just tried to send was not sent, shown on that card: a question still needs an answer.
+    @Published private(set) var questionNotice: QuestionNotice?
     private var connectionRevision = 0
     private var refreshRevision = 0
     private var pairingRevision = 0
@@ -131,6 +136,8 @@ import SwiftUI
                 draft = ""
                 newThreadDraft = ""
                 drafts = [:]
+                questionDrafts = [:]
+                questionNotice = nil
                 showArchived = false
             } else if let selectedThreadId, !first.threads.contains(where: { $0.id == selectedThreadId }) {
                 // A rescan of the same pinned Mac keeps unsent work, except for a deleted thread.
@@ -168,6 +175,8 @@ import SwiftUI
         draft = ""
         newThreadDraft = ""
         drafts = [:]
+        questionDrafts = [:]
+        questionNotice = nil
         showArchived = false
         connected = true
         connectionError = nil
@@ -191,6 +200,8 @@ import SwiftUI
         draft = ""
         newThreadDraft = ""
         drafts = [:]
+        questionDrafts = [:]
+        questionNotice = nil
         showArchived = false
         snapshot = CompanionSnapshot(projects: [], threads: [], items: [])
         error = nil
@@ -266,6 +277,7 @@ import SwiftUI
             }
             // Rebuilding an unchanged workspace replaces open menu actions during polling.
             if snapshot != result { snapshot = result }
+            pruneQuestionDrafts()
             if !connected { connected = true }
             noticeRoutineRuns(response.routineRuns)
             retrySavedEndpoint = false
@@ -392,6 +404,57 @@ import SwiftUI
         }
     }
 
+    func questionDraft(itemId: String, questionId: String) -> QuestionDraft {
+        guard let selectedThreadId else { return QuestionDraft() }
+        return questionDrafts[QuestionKey(threadId: selectedThreadId, itemId: itemId)]?[questionId] ?? QuestionDraft()
+    }
+
+    func setQuestionDraft(itemId: String, questionId: String, _ draft: QuestionDraft) {
+        guard let selectedThreadId else { return }
+        questionDrafts[QuestionKey(threadId: selectedThreadId, itemId: itemId), default: [:]][questionId] = draft
+        if questionNotice?.itemId == itemId { questionNotice = nil }
+    }
+
+    /// Sends the draft for an open question card in the selected thread. Every question needs an answer before
+    /// anything is sent; the Mac checks again and takes only the first answer from any client.
+    func answerQuestion(itemId: String) async {
+        guard let api, let selectedThreadId, answeringId == nil,
+              let item = snapshot.items.first(where: { $0.id == itemId }), item.isOpenQuestion, let questions = item.questions else { return }
+        let key = QuestionKey(threadId: selectedThreadId, itemId: itemId)
+        let answers: [String: [String]]
+        switch QuestionDraft.answers(for: questions, drafts: questionDrafts[key] ?? [:]) {
+        case .failure(let failure):
+            questionNotice = QuestionNotice(itemId: itemId, text: failure.localizedDescription)
+            return
+        case .success(let built): answers = built
+        }
+        questionNotice = nil
+        let connection = connectionRevision
+        let operation = UUID()
+        answerOperation = operation
+        answeringId = itemId
+        defer { if answerOperation == operation { answeringId = nil; answerOperation = nil } }
+        do {
+            try await api.answerQuestion(threadId: selectedThreadId, itemId: itemId, answers: answers)
+            guard connection == connectionRevision, answerOperation == operation else { return }
+            questionDrafts.removeValue(forKey: key)
+            await refresh()
+        } catch {
+            await refused(error, connection: connection, operation: operation)
+        }
+    }
+
+    /// Drops drafts whose card closed, wherever it was answered, and drafts for threads the Mac no longer has.
+    private func pruneQuestionDrafts() {
+        guard !questionDrafts.isEmpty else { return }
+        let threads = Set(snapshot.threads.map(\.id))
+        let open = Set(snapshot.items.filter(\.isOpenQuestion).map(\.id))
+        let stale = questionDrafts.keys.filter { key in
+            !threads.contains(key.threadId) || (key.threadId == selectedThreadId && !open.contains(key.itemId))
+        }
+        for key in stale { questionDrafts.removeValue(forKey: key) }
+    }
+
     /// "ask", "always" or "yolo" for the selected thread. The Mac applies it to what is already waiting for "yolo" only.
     func setApprovals(_ policy: String) async {
         guard let api, let selectedThreadId else { return }
@@ -479,5 +542,41 @@ struct RoutineNotice: Equatable {
                 ? "\(runs.count) routine runs finished: \(names)."
                 : "\(runs.count) routine runs ended, \(unsuccessful.count) without finishing: \(names)."
         }
+    }
+}
+
+/// A card's local refusal, shown on the card rather than as a connection problem.
+struct QuestionNotice: Equatable {
+    let itemId: String
+    let text: String
+}
+
+/// A question card in one thread.
+struct QuestionKey: Hashable {
+    let threadId: String
+    let itemId: String
+}
+
+/// One question's unsent answer: a chosen option (or `CompanionQuestion.otherChoice`) and typed text.
+struct QuestionDraft: Equatable {
+    var choice: String? = nil
+    var text = ""
+
+    /// Each question's answer list, or the first question still missing one, in the Mac's words.
+    /// A secret is sent exactly as typed; other text is trimmed.
+    static func answers(for questions: [CompanionQuestion], drafts: [String: QuestionDraft]) -> Result<[String: [String]], CompanionError> {
+        var answers: [String: [String]] = [:]
+        for question in questions {
+            let draft = drafts[question.id] ?? QuestionDraft()
+            if question.options != nil, let choice = draft.choice, choice != CompanionQuestion.otherChoice {
+                answers[question.id] = [choice]
+                continue
+            }
+            let typesText = question.options == nil || (question.allowOther && draft.choice == CompanionQuestion.otherChoice)
+            let trimmed = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard typesText, !trimmed.isEmpty else { return .failure(.message("\(question.name) needs an answer.")) }
+            answers[question.id] = [question.secret ? draft.text : trimmed]
+        }
+        return .success(answers)
     }
 }

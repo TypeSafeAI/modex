@@ -12,6 +12,8 @@ import type { EventJournal } from "./event-journal.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
 import type { RoutineRun } from "../../shared/routines.js";
 import { toolStatusLabel } from "../../shared/tool-summary.js";
+import { DESKTOP_ITEM_KINDS_HEADER } from "../../shared/desktop-protocol.js";
+import { publicAnswers, type Refusal } from "../../shared/human-requests.js";
 
 interface CompanionSource {
   state(): AppState;
@@ -21,6 +23,8 @@ interface CompanionSource {
   send(threadId: string, text: string): Promise<{ ok: boolean; error?: string }>;
   /** `by` names the client for the request broker (docs/human-requests.md). A refusal is a 409 for the phone. */
   answer(threadId: string, itemId: string, answer: ApprovalAnswer, by?: string): AnswerResult | void;
+  /** Answers a question card through the same broker, one answer list per question. Answers may hold a secret: never log or keep them. */
+  answerQuestion?(threadId: string, itemId: string, answers: Record<string, string[]>, by?: string): AnswerResult;
   /** Sets the thread's standing answer to approvals (Always allow / YOLO). `by` answers what YOLO clears. */
   setApprovals?(threadId: string, approvals: ApprovalPolicy, by?: string): void;
   /** Puts a thread away or brings it back. The Mac refuses while the thread is working. */
@@ -264,12 +268,13 @@ export class CompanionServer {
       const resume = thread ? this.source.journal?.()?.resume(url.searchParams.get("journal") ?? undefined, after !== null && /^\d{1,15}$/.test(after) ? Number(after) : undefined, { threadId: thread.id }) : undefined;
       const changed = resume?.entries && new Set(resume.entries.map(({ event }) => event.type === "item" ? event.item.id : event.type === "item_update" ? event.id : undefined));
       const items = thread ? this.source.items(thread.id).filter((item) => !changed || changed.has(item.id)) : [];
+      const kinds = phoneKinds(req.headers[DESKTOP_ITEM_KINDS_HEADER]);
       // Return the current list even if the selected thread was deleted on the Mac.
       // The phone can then leave that transcript without treating this as a lost connection.
       this.reply(res, 200, {
         projects: state.projects.map((p) => ({ id: p.id, name: p.name })),
         threads: state.threads.map((t) => mobileThread(t, this.source.status(t.id), this.source.pullRequest?.(t.id))),
-        items: items.map(mobileItem),
+        items: items.map((item) => phoneItem(item, kinds)),
         defaultBackend: state.settings.default_backend ?? "codex",
         autoByDefault: state.settings.routing?.auto_by_default ?? false,
         ...(resume ? { journal: { id: resume.id, cursor: resume.latest }, ...(changed ? { delta: true } : {}) } : {}),
@@ -310,7 +315,7 @@ export class CompanionServer {
     }
     // Any id the store accepts: 8 hex characters for threads made here or by older builds, the full UUID a
     // Mac draft reserved (#181). The thread must still exist.
-    const match = /^\/v1\/threads\/([A-Za-z0-9_-]{1,128})\/(send|answer|policy|archive)$/.exec(url.pathname);
+    const match = /^\/v1\/threads\/([A-Za-z0-9_-]{1,128})\/(send|answer|answer-question|policy|archive)$/.exec(url.pathname);
     if (req.method !== "POST" || !match) { this.reply(res, 404, { error: "Not found." }); return; }
     const threadId = match[1]!;
     const action = match[2]!;
@@ -347,6 +352,21 @@ export class CompanionServer {
       this.reply(res, result.ok ? 202 : 409, result.ok ? { ok: true } : { ok: false, error: "The follow-up could not start on your Mac." });
       return;
     }
+    if (action === "answer-question") {
+      // The answers may hold a secret: they go to the runner and nowhere else, never into a reply or a log.
+      const itemId = input.itemId;
+      const answers = input.answers;
+      if (typeof itemId !== "string" || !answerLists(answers)) { this.reply(res, 400, { error: "Answer every question." }); return; }
+      if (!this.source.answerQuestion) { this.reply(res, 501, { error: "Answering questions is unavailable. Update Modex on your Mac." }); return; }
+      const result = this.source.answerQuestion(threadId, itemId, answers, "phone");
+      if (!result.ok) {
+        if (result.reason === "invalid") this.reply(res, 400, { ok: false, reason: result.reason, error: result.error ?? "Check your answers." });
+        else this.reply(res, 409, { ok: false, reason: result.reason, error: QUESTION_REFUSALS[result.reason] });
+        return;
+      }
+      this.reply(res, 200, { ok: true });
+      return;
+    }
     const itemId = input.itemId;
     const answer = input.answer;
     if (typeof itemId !== "string" || (answer !== "yes" && answer !== "no")) { this.reply(res, 400, { error: "Choose Approve or Deny." }); return; }
@@ -380,8 +400,37 @@ function mobileRoutineRun(run: RoutineRun): Record<string, unknown> {
   return { id: run.id, routine: run.routineName, status: run.status, endedAt: run.endedAt ?? run.startedAt, ...(run.threadId ? { threadId: run.threadId } : {}) };
 }
 
-/** A transcript item as the phone receives it. Exported for tests. */
+/** What the phone hears when the runner refuses its answer to a question: the desktop card's words (docs/human-requests.md). */
+const QUESTION_REFUSALS: Record<Exclude<Refusal, "invalid">, string> = {
+  "already-resolved": "This question was already answered.",
+  withdrawn: "This question no longer needs an answer.",
+  unknown: "This question is no longer available.",
+  "wrong-identity": "This question changed. Nothing was sent.",
+  "changed-action": "This question changed. Nothing was sent.",
+};
+
+/** A question's answers as the phone sends them: one list of strings per question id. The runner checks them against the questions. */
+function answerLists(value: unknown): value is Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length > 0 && entries.length <= 64 && entries.every(([, list]) => Array.isArray(list) && list.length <= 64 && list.every((a) => typeof a === "string"));
+}
+
+/** The item kinds a phone draws, from the header it names them in. Phones that predate it name none. */
+function phoneKinds(header: string | string[] | undefined): ReadonlySet<string> {
+  const value = Array.isArray(header) ? header.join(",") : header ?? "";
+  return new Set(value.split(",").map((kind) => kind.trim()).filter(Boolean));
+}
+
+/** A transcript item as a phone that names no item kinds receives it. Exported for tests. */
 export function mobileItem(item: ThreadItem): Record<string, unknown> {
+  return phoneItem(item, NO_KINDS);
+}
+
+const NO_KINDS: ReadonlySet<string> = new Set();
+
+/** A transcript item as the phone receives it; `kinds` are those the phone draws itself. Exported for tests. */
+export function phoneItem(item: ThreadItem, kinds: ReadonlySet<string>): Record<string, unknown> {
   switch (item.kind) {
     // Typed fields (docs/conversation-events.md) ride along for clients that read them; older phones ignore them.
     case "assistant": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.phase ? { phase: item.phase } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
@@ -401,8 +450,16 @@ export function mobileItem(item: ThreadItem): Record<string, unknown> {
     case "route": return { id: item.id, kind: item.kind, text: `${item.backend} · ${item.model || "default"}`, at: item.at };
     // A phone that predates plans shows a kind it does not know as its text.
     case "plan": return { id: item.id, kind: item.kind, text: `Plan · ${item.steps.filter((s) => s.status === "completed").length} of ${item.steps.length} reported done`, steps: item.steps, revision: item.revision, ...(item.outcome ? { outcome: item.outcome } : {}), at: item.at };
-    // Phones cannot answer questions yet: a notice every client can show, with the questions and never the answers.
-    case "question": return { id: item.id, kind: "notice", level: "info", at: item.at,
+    // A phone that draws questions gets the card: its questions, how it closed and its public answers, a secret
+    // always "(hidden)". Other phones get a notice they can show, with the questions and never the answers.
+    case "question":
+      if (kinds.has("question")) return {
+        id: item.id, kind: item.kind, at: item.at, blocking: item.blocking,
+        questions: item.questions.map((q) => ({ id: q.id, header: q.header, text: q.text, options: q.options, allowOther: q.allowOther, secret: q.secret })),
+        ...(item.answers ? { answers: publicAnswers(item.questions, item.answers) } : {}),
+        ...(item.answeredBy ? { answeredBy: item.answeredBy } : {}), ...(item.delivery ? { delivery: item.delivery } : {}), ...(item.withdrawn ? { withdrawn: item.withdrawn } : {}),
+      };
+      return { id: item.id, kind: "notice", level: "info", at: item.at,
       text: `The agent asked: ${item.questions.map((q) => q.text).join(" · ")}\n${item.delivery === "uncertain" ? "Delivery uncertain. Not resent; check the agent on your Mac." : item.delivery === "sending" ? "Sending answer on your Mac." : item.answers ? "Answered on your Mac." : item.withdrawn ? "Not answered." : "Answer it in Modex on your Mac."}` };
     // A kind this build does not know, such as one a newer Modex saved before a downgrade: an inert
     // notice, never `undefined`, which goes out as null and makes the phone reject the whole snapshot.

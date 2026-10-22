@@ -51,11 +51,11 @@ async function harness(backend: Backend) {
 }
 
 /** Pairs a phone with the Mac's companion and returns its HTTPS requests, made as the iPhone app makes them. */
-async function phone(companion: CompanionServer, home: string) {
+async function phone(companion: CompanionServer, home: string, kinds?: string) {
   const pairing = JSON.parse(Buffer.from(new URL((await companion.start()).pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
   return (route: string, method = "GET", body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
     const req = https.request(new URL(route, pairing.url), {
-      method, headers: { authorization: `Bearer ${pairing.token}`, ...(body ? { "content-type": "application/json" } : {}) },
+      method, headers: { authorization: `Bearer ${pairing.token}`, ...(kinds ? { "x-modex-item-kinds": kinds } : {}), ...(body ? { "content-type": "application/json" } : {}) },
       ca: fs.readFileSync(path.join(home, "companion", "cert.pem")),
       checkServerIdentity: (_host, cert) => crypto.createHash("sha256").update(cert.raw).digest("hex") === pairing.fingerprint ? undefined : new Error("unpinned"),
     }, (res) => {
@@ -254,5 +254,136 @@ test("with the journal on, a secret answer reaches the CLI and no file, snapshot
     for (const [where, text] of [["a file under MODEX_HOME", everything(h.home)], ["an emitted event", JSON.stringify(h.events)], ["the phone", onPhone]] as const) {
       assert.ok(!text.includes(secret), `the secret is not in ${where}`);
     }
+  } finally { await companion.dispose(); await h.runner.dispose(); await codex.dispose(); h.journal.close(); }
+});
+
+/** The phone's item kinds, as the iPhone app that draws question cards names them. */
+const PHONE_KINDS = "user,assistant,approval,tool,notice,question";
+
+/** A companion wired to the runner the way the Mac wires it: approvals and questions through one broker. */
+function companionFor(h: Awaited<ReturnType<typeof harness>>) {
+  return new CompanionServer(h.home, { state: () => h.store.snapshot(), items: (id) => h.runner.items(id), status: (id) => h.runner.status(id),
+    send: async () => ({ ok: true }), answer: (id, item, value, by) => h.runner.answer(id, item, value, by),
+    answerQuestion: (id, item, answers, by) => h.runner.answerQuestion(id, item, answers, by), journal: () => h.journal }, () => ["127.0.0.1"], () => () => {});
+}
+
+for (const first of ["desktop", "phone"] as const) {
+  test(`a question answered on the ${first} first: the other client is refused (409 for the phone) and Codex hears one answer`, async () => {
+    const proc = new FakeProcess();
+    const replies = codexAsking(proc);
+    const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+    const h = await harness(codex);
+    const companion = companionFor(h);
+    try {
+      const request = await phone(companion, h.home, PHONE_KINDS);
+      const sent = h.runner.send(h.thread.id, "deploy it");
+      await waitFor(() => Boolean(card(h.runner.items(h.thread.id), "question")) && h.runner.status(h.thread.id) === "waiting");
+      const open = card(h.runner.items(h.thread.id), "question");
+      const onPhone = (await request(`/v1/snapshot?threadId=${h.thread.id}`)).body.items.find((i: { id: string }) => i.id === open.id);
+      assert.equal(onPhone.kind, "question", "the phone draws the card itself");
+      assert.deepEqual(onPhone.questions.map((q: { id: string; secret: boolean }) => [q.id, q.secret]), [["q-env", false], ["q-token", true]]);
+
+      const fromDesktop = { "q-env": ["staging"], "q-token": ["desk-token"] };
+      const fromPhone = { "q-env": ["production"], "q-token": ["phone-token"] };
+      let desktop: ReturnType<typeof h.runner.answerQuestion>;
+      let phoneResult: { status: number; body: any };
+      if (first === "desktop") {
+        // The phone's request is in flight while the desktop answers.
+        const inFlight = request(`/v1/threads/${h.thread.id}/answer-question`, "POST", { itemId: open.id, answers: fromPhone });
+        desktop = h.runner.answerQuestion(h.thread.id, open.id, fromDesktop);
+        phoneResult = await inFlight;
+      } else {
+        phoneResult = await request(`/v1/threads/${h.thread.id}/answer-question`, "POST", { itemId: open.id, answers: fromPhone });
+        desktop = h.runner.answerQuestion(h.thread.id, open.id, fromDesktop);
+      }
+      await sent;
+      const winner = first;
+      if (winner === "desktop") {
+        assert.deepEqual(desktop, { ok: true });
+        assert.deepEqual([phoneResult.status, phoneResult.body.reason], [409, "already-resolved"], "the phone lost: a 409 that says why");
+      } else {
+        assert.deepEqual([phoneResult.status, phoneResult.body], [200, { ok: true }]);
+        assert.deepEqual(desktop, { ok: false, reason: "already-resolved" }, "the desktop lost with the same refusal");
+      }
+      const answers = winner === "desktop" ? fromDesktop : fromPhone;
+      assert.deepEqual(replies, [{ answers: { "q-env": { answers: answers["q-env"] }, "q-token": { answers: answers["q-token"] } } }], "Codex hears exactly one answer, the winner's");
+      const closed = card(h.runner.items(h.thread.id), "question");
+      assert.deepEqual([closed.answers, closed.answeredBy, closed.delivery], [{ "q-env": answers["q-env"], "q-token": ["(hidden)"] }, winner, "sent"]);
+      h.journal.flush();
+      assert.equal(card(replayItems(h.journal.since(0, { threadId: h.thread.id }), h.thread.id), "question").answeredBy, winner, "the journal names the winner");
+      const after = (await request(`/v1/snapshot?threadId=${h.thread.id}`)).body.items.find((i: { id: string }) => i.id === open.id);
+      assert.deepEqual([after.kind, after.answeredBy, after.delivery, after.answers["q-token"]], ["question", winner, "sent", ["(hidden)"]]);
+      const late = await request(`/v1/threads/${h.thread.id}/answer-question`, "POST", { itemId: open.id, answers: fromPhone });
+      assert.deepEqual([late.status, late.body.reason], [409, "already-resolved"], "a late phone answer is refused");
+      assert.equal(replies.length, 1);
+    } finally { await companion.dispose(); await h.runner.dispose(); await codex.dispose(); h.journal.close(); }
+  });
+}
+
+test("a secret answered from the phone reaches Codex and no file, event, journal, phone view or log", async () => {
+  const proc = new FakeProcess();
+  const replies = codexAsking(proc);
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const h = await harness(codex);
+  const companion = companionFor(h);
+  const secret = "phone-tok-91c2-SECRET";
+  const logged: string[] = [];
+  const originals = { log: console.log, info: console.info, warn: console.warn, error: console.error, debug: console.debug, stdout: process.stdout.write, stderr: process.stderr.write };
+  const capture = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
+  try {
+    const request = await phone(companion, h.home, PHONE_KINDS);
+    const sent = h.runner.send(h.thread.id, "deploy it");
+    await waitFor(() => Boolean(card(h.runner.items(h.thread.id), "question")) && h.runner.status(h.thread.id) === "waiting");
+    const open = card(h.runner.items(h.thread.id), "question");
+    Object.assign(console, { log: capture, info: capture, warn: capture, error: capture, debug: capture });
+    // Recorded and passed through: the test runner reports on these streams.
+    process.stdout.write = ((chunk: unknown, ...rest: unknown[]) => { logged.push(String(chunk)); return (originals.stdout as (...a: unknown[]) => boolean).call(process.stdout, chunk, ...rest); }) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => { logged.push(String(chunk)); return (originals.stderr as (...a: unknown[]) => boolean).call(process.stderr, chunk, ...rest); }) as typeof process.stderr.write;
+    // An incomplete answer is refused with the runner's text and reaches nothing.
+    const incomplete = await request(`/v1/threads/${h.thread.id}/answer-question`, "POST", { itemId: open.id, answers: { "q-env": ["staging"] } });
+    assert.deepEqual([incomplete.status, incomplete.body.error], [400, "Token needs an answer."]);
+    assert.deepEqual(replies, []);
+    const answered = await request(`/v1/threads/${h.thread.id}/answer-question`, "POST", { itemId: open.id, answers: { "q-env": ["staging"], "q-token": [secret] } });
+    assert.equal(answered.status, 200);
+    await sent;
+    const onPhone = JSON.stringify((await request(`/v1/snapshot?threadId=${h.thread.id}`)).body);
+    Object.assign(console, { log: originals.log, info: originals.info, warn: originals.warn, error: originals.error, debug: originals.debug });
+    process.stdout.write = originals.stdout;
+    process.stderr.write = originals.stderr;
+    assert.deepEqual(replies, [{ answers: { "q-env": { answers: ["staging"] }, "q-token": { answers: [secret] } } }], "the CLI got it");
+    assert.equal(card(h.runner.items(h.thread.id), "question").answeredBy, "phone");
+    h.journal.flush();
+    for (const [where, text] of [["a file under MODEX_HOME", everything(h.home)], ["an emitted event", JSON.stringify(h.events)], ["the journal", JSON.stringify(h.journal.since(0, { threadId: h.thread.id }))], ["the phone", onPhone], ["a log line", logged.join("\n")]] as const) {
+      assert.ok(!text.includes(secret), `the secret is not in ${where}`);
+    }
+  } finally {
+    Object.assign(console, { log: originals.log, info: originals.info, warn: originals.warn, error: originals.error, debug: originals.debug });
+    process.stdout.write = originals.stdout;
+    process.stderr.write = originals.stderr;
+    await companion.dispose(); await h.runner.dispose(); await codex.dispose(); h.journal.close();
+  }
+});
+
+test("after Stop, a phone answer to the question is refused as withdrawn and Codex hears only the error reply", async () => {
+  const proc = new FakeProcess();
+  const replies = codexAsking(proc);
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const h = await harness(codex);
+  const companion = companionFor(h);
+  try {
+    const request = await phone(companion, h.home, PHONE_KINDS);
+    const sent = h.runner.send(h.thread.id, "deploy it");
+    await waitFor(() => Boolean(card(h.runner.items(h.thread.id), "question")) && h.runner.status(h.thread.id) === "waiting");
+    const open = card(h.runner.items(h.thread.id), "question");
+    h.runner.stop(h.thread.id);
+    await waitFor(() => replies.length === 1);
+    const late = await request(`/v1/threads/${h.thread.id}/answer-question`, "POST", { itemId: open.id, answers: { "q-env": ["staging"], "q-token": ["t"] } });
+    assert.deepEqual([late.status, late.body.reason], [409, "withdrawn"]);
+    const onPhone = (await request(`/v1/snapshot?threadId=${h.thread.id}`)).body.items.find((i: { id: string }) => i.id === open.id);
+    assert.deepEqual([onPhone.kind, onPhone.withdrawn, onPhone.answers], ["question", "stopped", undefined], "the phone shows it closed, not answerable");
+    assert.equal(replies.length, 1);
+    assert.ok("error" in (replies[0] as object), "Codex got the withdrawal error, never an answer");
+    proc.emitLine({ method: "turn/completed", params: { threadId: "thr", turn: { id: "tu", status: "interrupted", error: null } } });
+    await sent;
   } finally { await companion.dispose(); await h.runner.dispose(); await codex.dispose(); h.journal.close(); }
 });

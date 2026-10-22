@@ -1150,3 +1150,179 @@ private struct UnreachableClient: CompanionClient {
     func send(threadId: String, text: String) async throws { throw CompanionError.message("unreachable") }
     func answer(threadId: String, itemId: String, approve: Bool) async throws { throw CompanionError.message("unreachable") }
 }
+
+/// Native question cards (docs/human-requests.md, CF-3 #276): the phone draws the Mac's questions, answers them
+/// through the Mac's broker and keeps unsent answers, secrets included, only in memory.
+@MainActor final class QuestionCardTests: XCTestCase {
+    /// The Mac's `phoneItem` for an open Codex question, as the snapshot carries it.
+    private static let openQuestionJSON = """
+    {"id":"q1","kind":"question","at":"2026-10-22T00:00:00Z","blocking":true,"questions":[
+      {"id":"q-env","header":"Environment","text":"Which environment?","options":[{"label":"staging","description":"Safe"},{"label":"production","description":""}],"allowOther":true,"secret":false},
+      {"id":"q-token","header":"Token","text":"Paste the deploy token","options":null,"allowOther":true,"secret":true}]}
+    """
+
+    func testAQuestionCardDecodesItsQuestionsAndHowItClosed() throws {
+        let open = try JSONDecoder().decode(CompanionItem.self, from: Data(Self.openQuestionJSON.utf8))
+        XCTAssertEqual(open.kind, "question")
+        XCTAssertEqual(open.questions?.map(\.id), ["q-env", "q-token"])
+        XCTAssertEqual(open.questions?.first?.options?.map(\.label), ["staging", "production"])
+        XCTAssertEqual(open.questions?.last?.options, nil)
+        XCTAssertEqual(open.questions?.last?.secret, true)
+        XCTAssertTrue(open.isOpenQuestion)
+
+        let answered = try JSONDecoder().decode(CompanionItem.self, from: Data("""
+        {"id":"q2","kind":"question","at":"now","blocking":true,"questions":[],"answers":{"q-token":["(hidden)"]},"answeredBy":"phone","delivery":"sent"}
+        """.utf8))
+        XCTAssertEqual(answered.answers, ["q-token": ["(hidden)"]])
+        XCTAssertEqual(answered.answeredBy, "phone")
+        XCTAssertEqual(answered.delivery, "sent")
+        XCTAssertFalse(answered.isOpenQuestion)
+        let withdrawn = try JSONDecoder().decode(CompanionItem.self, from: Data(#"{"id":"q3","kind":"question","at":"now","questions":[],"withdrawn":"stopped"}"#.utf8))
+        XCTAssertFalse(withdrawn.isOpenQuestion)
+        let sending = try JSONDecoder().decode(CompanionItem.self, from: Data(#"{"id":"q4","kind":"question","at":"now","questions":[],"delivery":"sending"}"#.utf8))
+        XCTAssertFalse(sending.isOpenQuestion, "an answer the Mac took is never answerable again here")
+    }
+
+    func testAnsweringSendsEachQuestionsAnswerAndKeepsSecretWhitespace() async throws {
+        let (model, client) = try questionFixture()
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-env", QuestionDraft(choice: "production"))
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "  tok 1  "))
+        await model.answerQuestion(itemId: "q1")
+        let sent = await client.sent
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?.threadId, "a")
+        XCTAssertEqual(sent.first?.answers, ["q-env": ["production"], "q-token": ["  tok 1  "]], "a secret is sent exactly as typed")
+        XCTAssertNil(model.error)
+        XCTAssertNil(model.answeringId)
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft(), "a sent answer leaves no draft")
+    }
+
+    func testOtherTextAnswersAChoiceQuestion() async throws {
+        let (model, client) = try questionFixture()
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-env", QuestionDraft(choice: CompanionQuestion.otherChoice, text: " canary "))
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "t"))
+        await model.answerQuestion(itemId: "q1")
+        let sent = await client.sent
+        XCTAssertEqual(sent.first?.answers["q-env"], ["canary"])
+    }
+
+    func testAnIncompleteAnswerIsRefusedHereAndNothingIsSent() async throws {
+        let (model, client) = try questionFixture()
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-env", QuestionDraft(choice: "staging"))
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "   "))
+        await model.answerQuestion(itemId: "q1")
+        let sent = await client.sent
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertEqual(model.questionNotice, QuestionNotice(itemId: "q1", text: "Token needs an answer."), "said on the card, not as a connection problem")
+        XCTAssertNil(model.error)
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "t"))
+        XCTAssertNil(model.questionNotice, "editing the card clears its notice")
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-env"), QuestionDraft(choice: "staging"), "the rest of the draft stays")
+    }
+
+    func testARefusalShowsTheMacsReasonRereadsTheCardAndDropsTheClosedDraft() async throws {
+        let (model, client) = try questionFixture()
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-env", QuestionDraft(choice: "staging"))
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "secret-xyz"))
+        // Another client won: the Mac answers 409 and the card now reads as answered on the Mac.
+        await client.refuse(with: "This question was already answered.", closing: true)
+        let before = await client.snapshotRequests
+        await model.answerQuestion(itemId: "q1")
+        let after = await client.snapshotRequests
+        XCTAssertEqual(model.error, "This question was already answered.")
+        XCTAssertEqual(after, before + 1, "the phone reads the card again after a refusal")
+        XCTAssertEqual(model.snapshot.items.first?.answeredBy, "desktop")
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft(), "a closed card's draft, and its secret, are gone")
+    }
+
+    func testDraftsSurviveSwitchingThreadsButNotDisconnecting() async throws {
+        let (model, _) = try questionFixture()
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "secret-xyz"))
+        await model.select("b")
+        await model.select("a")
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft(text: "secret-xyz"))
+        model.disconnect()
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft(), "forgetting the Mac forgets unsent answers")
+    }
+
+    func testDraftsAreScopedToTheirThread() async throws {
+        let (model, _) = try questionFixture()
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "for a"))
+        await model.select("b")
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft(), "another thread's card with the same id starts empty")
+    }
+
+    func testUnsentAnswersNeverReachUserDefaults() async throws {
+        let suite = "modex-question-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let client = QuestionClient(item: try JSONDecoder().decode(CompanionItem.self, from: Data(Self.openQuestionJSON.utf8)))
+        let model = CompanionModel(store: QuestionPairingStore(), discovery: QuestionDiscovery(), defaults: defaults, makeClient: { _ in client })
+        await model.select("a")
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "secret-xyz"))
+        await model.select("b")
+        let stored = defaults.dictionaryRepresentation().map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
+        XCTAssertFalse(stored.contains("secret-xyz"))
+        XCTAssertFalse(UserDefaults.standard.dictionaryRepresentation().description.contains("secret-xyz"))
+    }
+
+    func testTheNetworkClientNamesTheQuestionKindSoTheMacSendsCards() {
+        XCTAssertTrue(CompanionAPI.itemKinds.split(separator: ",").contains("question"))
+        XCTAssertTrue(CompanionAPI.itemKinds.split(separator: ",").contains("approval"))
+    }
+
+    private func questionFixture() throws -> (CompanionModel, QuestionClient) {
+        let client = QuestionClient(item: try JSONDecoder().decode(CompanionItem.self, from: Data(Self.openQuestionJSON.utf8)))
+        return (CompanionModel(store: QuestionPairingStore(), discovery: QuestionDiscovery(), makeClient: { _ in client }), client)
+    }
+}
+
+@MainActor private final class QuestionDiscovery: CompanionDiscovery {
+    func start(fingerprint: String, found: @escaping (URL) -> Void) {}
+    func stop() {}
+}
+
+private final class QuestionPairingStore: PairingStorage {
+    var pairing: Pairing? = Pairing(url: URL(string: "https://127.0.0.1:43120")!, token: String(repeating: "a", count: 64), fingerprint: String(repeating: "b", count: 64))
+    func load() -> Pairing? { pairing }
+    func save(_ pairing: Pairing) throws { self.pairing = pairing }
+    func clear() { pairing = nil }
+}
+
+/// Two threads, each with one open question card "q1". Records every answer sent.
+private actor QuestionClient: CompanionClient {
+    private var item: CompanionItem
+    private var refusal: (message: String, closing: Bool)?
+    private(set) var sent: [(threadId: String, itemId: String, answers: [String: [String]])] = []
+    private(set) var snapshotRequests = 0
+    init(item: CompanionItem) { self.item = item }
+    func refuse(with message: String, closing: Bool) { refusal = (message, closing) }
+    func snapshot(threadId: String?) async throws -> CompanionSnapshot {
+        snapshotRequests += 1
+        let threads = ["a", "b"].map { CompanionThread(id: $0, projectId: "p", title: "Thread \($0)", backend: "codex", status: "waiting", updatedAt: "now") }
+        return CompanionSnapshot(projects: [CompanionProject(id: "p", name: "Project")], threads: threads, items: threadId == nil ? [] : [item])
+    }
+    func answerQuestion(threadId: String, itemId: String, answers: [String: [String]]) async throws {
+        if let refusal {
+            if refusal.closing {
+                var closed = item
+                closed.answers = ["q-env": ["staging"], "q-token": ["(hidden)"]]
+                closed.answeredBy = "desktop"
+                closed.delivery = "sent"
+                item = closed
+            }
+            throw CompanionError.message(refusal.message)
+        }
+        sent.append((threadId, itemId, answers))
+    }
+    func createThread(projectId: String, text: String, worktree: Bool, provider: String) async throws -> CompanionThread { throw CompanionError.message("unused") }
+    func commands(projectId: String, backend: String) async throws -> [CompanionCommand] { [] }
+    func send(threadId: String, text: String) async throws {}
+    func answer(threadId: String, itemId: String, approve: Bool) async throws {}
+}

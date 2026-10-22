@@ -765,6 +765,8 @@ private struct ItemView: View {
             .padding(17).frame(maxWidth: .infinity, alignment: .leading)
             .background(Palette.surface, in: RoundedRectangle(cornerRadius: 17))
             .overlay(RoundedRectangle(cornerRadius: 17).stroke(Palette.accent.opacity(0.26), lineWidth: 1))
+        case "question":
+            QuestionCard(item: item, busy: busy)
         case "tool":
             Label(item.title ?? "Tool", systemImage: item.status == "running" ? "gearshape.2" : "checkmark.circle")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).padding(.horizontal, 13).padding(.vertical, 10)
@@ -791,6 +793,139 @@ private struct ItemView: View {
 
     private func label(_ text: String, symbol: String) -> some View {
         Label(text, systemImage: symbol).font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(Palette.accent)
+    }
+}
+
+/// A question the agent asked on the Mac. An open card has a control for each question: options as a single
+/// choice (with Other when free text is allowed), a text field, or a secure field for a secret. The answer goes
+/// to the Mac, which takes the first answer from any client; a closed card says how it closed.
+private struct QuestionCard: View {
+    @EnvironmentObject private var model: CompanionModel
+    let item: CompanionItem
+    let busy: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Label("QUESTION", systemImage: "questionmark.bubble").font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(Palette.accent)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(item.questions ?? []) { question in
+                VStack(alignment: .leading, spacing: 9) {
+                    if !question.header.isEmpty {
+                        Text(question.header).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.muted)
+                    }
+                    Text(question.text).font(.system(size: 15, weight: .semibold)).textSelection(.enabled)
+                    if item.isOpenQuestion { controls(for: question) } else { answer(to: question) }
+                }
+                .accessibilityElement(children: .contain)
+            }
+            if item.isOpenQuestion, let notice = model.questionNotice, notice.itemId == item.id {
+                Label(notice.text, systemImage: "exclamationmark.circle").font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(red: 1, green: 0.6, blue: 0.6))
+                    .accessibilityIdentifier("question-notice-\(item.id)")
+            }
+            if item.isOpenQuestion {
+                Button("Send answer") { Task { await model.answerQuestion(itemId: item.id) } }
+                    .buttonStyle(ActionButtonStyle(prominent: true)).disabled(busy)
+                    .accessibilityIdentifier("send-answer-\(item.id)")
+            } else {
+                Label(closedText, systemImage: closedSymbol).font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.muted)
+                    .accessibilityIdentifier("question-state-\(item.id)")
+            }
+        }
+        .padding(17).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 17))
+        .overlay(RoundedRectangle(cornerRadius: 17).stroke(Palette.accent.opacity(item.isOpenQuestion ? 0.26 : 0.12), lineWidth: 1))
+    }
+
+    @ViewBuilder private func controls(for question: CompanionQuestion) -> some View {
+        let draft = model.questionDraft(itemId: item.id, questionId: question.id)
+        if let options = question.options {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(options, id: \.self) { option in
+                    choice(option.label, detail: option.description, value: option.label, in: question, selected: draft.choice == option.label)
+                }
+                if question.allowOther {
+                    choice("Other", detail: "", value: CompanionQuestion.otherChoice, in: question, selected: draft.choice == CompanionQuestion.otherChoice)
+                    if draft.choice == CompanionQuestion.otherChoice { field(for: question, prompt: "Your answer") }
+                }
+            }
+        } else {
+            field(for: question, prompt: question.secret ? "Secret answer" : "Your answer")
+        }
+    }
+
+    private func choice(_ label: String, detail: String, value: String, in question: CompanionQuestion, selected: Bool) -> some View {
+        Button {
+            var draft = model.questionDraft(itemId: item.id, questionId: question.id)
+            draft.choice = value
+            model.setQuestionDraft(itemId: item.id, questionId: question.id, draft)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle").foregroundStyle(selected ? Palette.accent : Palette.muted)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label).font(.system(size: 14)).foregroundStyle(.white)
+                    if !detail.isEmpty { Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).frame(minHeight: 44)
+            .background(selected ? Palette.accent.opacity(0.14) : Palette.raised, in: RoundedRectangle(cornerRadius: 9))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(busy)
+        .accessibilityLabel(detail.isEmpty ? label : "\(label), \(detail)")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .accessibilityIdentifier("option-\(item.id)-\(question.id)-\(value == CompanionQuestion.otherChoice ? "other" : label)")
+    }
+
+    @ViewBuilder private func field(for question: CompanionQuestion, prompt: String) -> some View {
+        let text = Binding(
+            get: { model.questionDraft(itemId: item.id, questionId: question.id).text },
+            set: { value in
+                var draft = model.questionDraft(itemId: item.id, questionId: question.id)
+                draft.text = value
+                model.setQuestionDraft(itemId: item.id, questionId: question.id, draft)
+            })
+        Group {
+            if question.secret {
+                SecureField(prompt, text: text).textContentType(.password)
+            } else {
+                TextField(prompt, text: text, axis: .vertical).lineLimit(1...4)
+            }
+        }
+        .font(.system(size: 14)).textInputAutocapitalization(.never).autocorrectionDisabled()
+        .padding(.horizontal, 12).frame(minHeight: 44)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: 9))
+        .disabled(busy)
+        .accessibilityLabel(question.secret ? "\(question.text), secret" : question.text)
+        .accessibilityIdentifier("answer-\(item.id)-\(question.id)")
+    }
+
+    /// The accepted answer as the Mac shows it. A secret is always hidden, whatever arrives.
+    @ViewBuilder private func answer(to question: CompanionQuestion) -> some View {
+        if let values = item.answers?[question.id] {
+            Text(question.secret ? "(hidden)" : values.joined(separator: ", ")).font(.system(size: 13)).foregroundStyle(Palette.muted)
+        }
+    }
+
+    private var closedText: String {
+        switch (item.delivery, item.withdrawn) {
+        case ("sending", _): return "Sending your answer on your Mac"
+        case ("uncertain", _): return "Delivery uncertain. Not resent; check the agent on your Mac."
+        case (_, "stopped"): return "Not answered — the turn was stopped"
+        case (_, "native"): return "Withdrawn — the agent no longer needs an answer"
+        case (_, "ended"): return "Not answered — the turn ended first"
+        default:
+            switch item.answeredBy {
+            case "phone": return "Answered on your phone"
+            case "paired-desktop": return "Answered from a paired desktop"
+            default: return "Answered on your Mac"
+            }
+        }
+    }
+
+    private var closedSymbol: String {
+        item.delivery == "uncertain" ? "exclamationmark.triangle" : item.withdrawn != nil ? "xmark.circle" : item.delivery == "sending" ? "arrow.up.circle" : "checkmark.circle"
     }
 }
 
