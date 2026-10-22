@@ -41,9 +41,24 @@ Median first open: 129 ms. The 3 MiB / 48-delta log fixture sent 663,894 bytes t
 
 The historical parser-only cost is a different metric. `scripts/benchmark-transcript.mjs` was also rerun with main as its comparison reference, recorded in `parser-measure.json`: main Markdown cold SSR samples 266.8/268.0/172.8 ms; candidate 268.6/195.2/186.1 ms for 200 mixed Markdown messages (306,290 bytes). This script warms module code before cold text-cache measurements, excludes browser layout/IPC, and shares candidate CodeBlock between both variants. Its `head` field is the base SHA; the candidate Markdown source hash identifies the uncommitted variant. Do not present these results as the original 239 KB parser fixture or as an app-open improvement.
 
+## Candidate performance
+
+On `3f0f2bc789c1e1c6fb9658a2f2dda23c8515e455`, the enforced five-launch test passed with samples 195.8, 180.3, 193.5, 198.2 and 194.5 ms; median **194.5 ms ≤500 ms**. See `candidate-measure.json` and `candidate-measure.log`. This run overlapped the root worktree-maintenance unit tests on a shared developer machine. It establishes the local gate result, not a controlled speedup or CI stability claim.
+
+## Reference captures and differences
+
+`pnpm --filter @modex/desktop ui:capture` passed all 16 cases, including the new Markdown capture in Graphite, Jev and OpenCoven at the existing **1786×1049 CSS-pixel** reference viewport. The actual PNG pixel dimensions and SHA-256s are recorded in `screenshots/manifest.json`. The fixture includes a heading, formatted text, links, a six-column table, quote, nested/task lists, and overflowing language-labelled code with Copy.
+
+Visual inspection of the initial captures found:
+
+- Jev has navy surfaces and pink links; OpenCoven has charcoal surfaces and purple links. Their Markdown geometry is the same.
+- Graphite has its existing wider, denser sidebar and a shifted transcript column; links remain purple. All Markdown content and controls are readable. The long code line clips inside its horizontally scrollable box as intended; it does not widen the transcript.
+- At this width, Graphite displays its existing repository overview above the upper-right user bubble, partly covering that bubble. This is `RepositoryOverview` / the `thread-main` container rule, not a popover. It does not cover the Markdown fixture. This pre-existing shell difference is retained and explicitly reported; no universal visual-parity claim is made.
+- The table fits at reference width; the new keyboard test separately verifies table/code overflow at 900×600. Captures do not replace keyboard or human VoiceOver evidence.
+
 ## Human gate
 
-Markdown rows C1–C5 extend the existing `../2026-10-20-keyboard-voiceover/checklist.md`; no second checklist exists. The seed adds a saved **Markdown review** thread using `markdown-fixture.json`. Human result cells remain empty. Val must record the VoiceOver result or explicitly defer it before #277 can close.
+Markdown rows C1–C5 extend the existing `../2026-10-20-keyboard-voiceover/checklist.md`; no second checklist exists. The seed adds a saved **Markdown review** thread using `markdown-fixture.json`. Human result cells remain empty. On 2026-10-22 Val answered **“Leave open for my review”**. This is not a deferral or a pass. #277 remains open until Val records a result or explicitly defers it. The seed was executed successfully into the worktree-local `apps/desktop/.probes/cf4-voiceover/`; no human review was performed by this session.
 
 ## Remaining verification
 

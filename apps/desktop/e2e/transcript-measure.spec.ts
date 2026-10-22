@@ -219,6 +219,8 @@ async function measureTranscript(testInfo: TestInfo, launchNumber: number): Prom
 }
 
 test("a 200-turn transcript opens within the agreed median budget across five fresh launches", async ({}, testInfo) => {
+  // Allow five app startups on shared runners; this does not change the timed 500 ms gate.
+  test.slow();
   // Val approved 500 ms on 2026-10-22. A new Electron process per sample prevents
   // RenderCache reuse; use the median to resist isolated CI scheduling stalls.
   // Do not retry a failed budget or substitute the much faster warm reopens.
