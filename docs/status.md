@@ -69,6 +69,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   work, avoiding the initial idle state racing the fixture startup; their content and execution
   count assertions remain unchanged.
 
+- **A saved task note reopens as the task it saved** (CF-7 #280). A task note in Notes has a
+  **Task view** button that shows the request, clarifications, plan, files touched and verification
+  as Save to Notes recorded them, read-only. It says when the note was edited after the save, moved
+  to another project's notes (#363), trashed or saved again elsewhere. Opening it runs nothing, asks
+  no CLI and writes nothing; continuing is a new message in the thread. Notes saved before this
+  change have no task view. [Reopening a saved note](task-context.md#reopening-a-saved-note).
 - **A turn lists the files it touched** (CF-7 #280). A finished turn's footer has **Files touched**,
   which lists what its tools changed, read and searched, as the CLI reported them. For Codex, that
   includes its own parse of each command, resolved from the command working directory. Dot

@@ -10,6 +10,7 @@ import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "../components/ui/Menu";
 import { PagesMaintenance } from "./PagesMaintenance";
 import { PageHistory } from "./PageHistory";
+import { TaskNoteView, useTaskNote } from "./TaskNoteView";
 import { KnowledgeView } from "./KnowledgeView";
 import { BlockEditor } from "./BlockEditor";
 import { PageComments, type CommentDraft } from "./PageComments";
@@ -33,7 +34,7 @@ const TEMPLATES = [
   { title: "Blank page", description: "Make room for an idea", icon: "file" as const, markdown: "" },
 ];
 
-export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openProject, onOpenChat, chatOpen = false, onKnowledgeReadyChange }: { onOpenImages?: () => void; onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; openProject?: { projectId: string; nonce: number }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
+export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openProject, onOpenChat, onOpenThread, chatOpen = false, onKnowledgeReadyChange }: { onOpenImages?: () => void; onOpenThread?: (threadId: string) => void; onKnowledgeReadyChange?: (ready: boolean) => void; sidebarOpen: boolean; active: boolean; openPage?: { id: string }; openProject?: { projectId: string; nonce: number }; onOpenChat?: (prompt?: string) => void; chatOpen?: boolean }) {
   const space = useSpace(active);
   const notes = useNotesTree(active);
   /** Space options asked for the tree's "New workspace name" field; cleared once the tree opens it. */
@@ -50,6 +51,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
   // When the knowledge base is the notes folder, a page is already in it: offer Open, not Copy.
   const [knowledgeNotes, setKnowledgeNotes] = useState<string | null>(null);
   const [history, setHistory] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("pages");
   const [query, setQuery] = useState("");
@@ -106,6 +108,8 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
   }, [selected]);
   const importInput = useRef<HTMLInputElement>(null);
   const page = space.pages.find(p => p.id === selected && !p.trashedAt);
+  // A saved task note can reopen as the task it saved: read-only, never run again.
+  const task = useTaskNote(page, taskOpen && active);
   useEffect(() => {
     if (selected && space.pages.some(p => p.id === selected && p.trashedAt)) {
       setSelected(null); setView("trash"); setQuery(""); setNotice("This note is in Trash. Restore it to open it.");
@@ -125,7 +129,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
   const run = async (operation: () => Promise<unknown>) => {
     try { restartDrafts.assertOpen(); setActionError(null); await operation(); } catch (err) { setActionError((err as Error).message); }
   };
-  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setFocusNode(undefined); setMenu(false); setNotice(null); setQuote(""); setHistory(false); };
+  const open = (id: string) => { if (selected && selected !== id) void space.settle(selected); if (view === "knowledge") setView("pages"); setSelected(id); setFocusNode(undefined); setMenu(false); setNotice(null); setQuote(""); setHistory(false); setTaskOpen(false); };
   useEffect(() => { if (openPage) { setView("pages"); setQuery(""); open(openPage.id); void space.refresh(); } }, [openPage]);
   // "Open notes" from the chat sidebar: show that project in the tree, made the first time.
   useEffect(() => {
@@ -274,6 +278,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
           </div>
           <span className="spacer" />
           <span role="status" aria-label="Save status" className={`space-save${space.error ? " failed" : ""}`}>{space.error ? "Not saved" : space.saving ? "Saving…" : "Saved locally"}</span>
+          {task && <button className="btn small" data-testid="task-view-open" aria-pressed={taskOpen} onClick={() => setTaskOpen(value => !value)}>Task view</button>}
           <IconButton icon="history" label="Version history" size="lg" className="space-round-action" aria-pressed={history} onClick={() => setHistory(value => !value)} />
           <IconButton ref={commentsTrigger} icon="comment" label="Comments" size="lg" className="space-round-action" aria-pressed={commentsOpen} onClick={() => setCommentsOpen(value => !value)} />
           <span className="space-share-anchor"><button ref={shareTrigger} className="space-share" aria-haspopup="menu" aria-expanded={shareOpen} onClick={() => setShareOpen(value => !value)}><span className="space-avatar"><Icon name="laptop" size={13} /></span>Share</button>
@@ -301,6 +306,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
             if (title) document.execCommand("insertText", false, title);
             if (body) space.edit(page.id, { markdown: page.markdown.trim() ? `${body}\n\n${page.markdown}` : body });
           }} />
+          {task && taskOpen && <TaskNoteView key={`task:${page.id}`} view={task} onOpenThread={onOpenThread} onClose={() => setTaskOpen(false)} />}
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} pageId={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
             <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />

@@ -253,6 +253,141 @@ for (const move of ["Finder across projects", "watched Finder across projects", 
   });
 }
 
+// Reopen (CF-7 #280): a saved task note opens as the record it saved, read-only.
+
+/** A runner whose scripted Claude reports a plan, an edit and a passing check, counting every call into the backend. */
+async function reopenFixture() {
+  const { Store } = await import("../src/main/engine/store.js");
+  const { ThreadRunner } = await import("../src/main/engine/runner.js");
+  const { gitRepo, tmpdir } = await import("./helpers.js");
+  const { local } = await import("./fakeproc.js");
+  const home = tmpdir("modex-task-reopen-");
+  const store = new Store(home);
+  const repo = gitRepo();
+  const calls = { turns: 0, other: 0 };
+  const backend = { id: "claude" as const, listModels: async () => { calls.other++; return []; }, dispose: async () => {}, async runTurn(_t: string, _o: unknown, sink: import("../src/main/engine/backends/types.js").TurnSink) {
+    calls.turns++;
+    sink.observe({ type: "plan.update", native: { runtime: "R", item: "todos" }, from: "claude-todo", steps: [{ text: "Fix the import", status: "completed" }, { text: "Run the tests", status: "completed" }] });
+    local(sink).toolStart({ id: `e${calls.turns}`, name: "Edit", title: "edit src/a.ts", args: { file_path: `${repo}/src/a.ts` } });
+    local(sink).toolUpdate(`e${calls.turns}`, { status: "done", ok: true });
+    sink.observe({ type: "tool.start", native: { runtime: "R", item: `c${calls.turns}` }, tool: { name: "Bash", title: "$ pnpm test", args: { command: "pnpm test" }, exec: { command: "pnpm test" } } });
+    sink.observe({ type: "tool.done", native: { runtime: "R", item: `c${calls.turns}` }, outcome: "succeeded" });
+    local(sink).assistant(`Fixed the import (turn ${calls.turns}).`);
+    return { status: "completed" as const };
+  } };
+  const runner = new ThreadRunner({ home, store, emit: () => {}, backends: { claude: backend } });
+  const project = store.addProject(repo);
+  const thread = await runner.createThread(project.id, { backend: "claude", auto: false });
+  store.updateThread(thread.id, { title: "Fix import", titleSource: "manual" });
+  await runner.send(thread.id, "Fix the failing import");
+  const turnId = runner.items(thread.id).find((item) => item.kind === "user")!.id;
+  return { home, repo, store, runner, project, thread, turnId, calls };
+}
+
+/** Every file under `dir`, with its bytes and modification time, to prove nothing was written. */
+async function filesUnder(dir: string): Promise<string> {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  return fs.readdirSync(dir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
+    .map((entry) => { const file = path.join(entry.parentPath, entry.name); return `${file}\0${fs.statSync(file).mtimeMs}\0${fs.readFileSync(file, "base64")}`; }).sort().join("\n");
+}
+
+test("a saved task note reopens as the record it saved: plan, files, verification, with no turn, no CLI call and no write", async () => {
+  const path = await import("node:path");
+  const { home, store, runner, thread, turnId, calls } = await reopenFixture();
+  try {
+    const turn = runner.items(thread.id);
+    const saved = runner.saveTaskNote(thread.id, turnId);
+    const expected = taskRecord(turn, { threadId: thread.id, title: saved.title, cwd: thread.cwd });
+    // A later turn changes the thread; the note's record stays what was saved.
+    await runner.send(thread.id, "Now do it again");
+    const before = { calls: { ...calls }, items: JSON.stringify(runner.items(thread.id)), thread: JSON.stringify(store.thread(thread.id)), notes: await filesUnder(path.join(home, "notes")) };
+
+    const view = runner.taskNote(saved.pageId)!;
+    assert.ok(view, "a saved task note has a task view");
+    assert.deepEqual(view.record, expected, "the record as saved, not rebuilt from today's transcript");
+    assert.deepEqual(view.record.plan?.steps.map((step) => step.status), ["completed", "completed"]);
+    assert.deepEqual(view.record.context?.files.map((file) => file.path), ["src/a.ts"]);
+    assert.equal(view.record.verification?.state, "verified");
+    assert.match(view.record.answer ?? "", /turn 1/);
+    assert.deepEqual([view.threadId, view.turnId, view.savedRevision, view.note.revision], [thread.id, turnId, saved.revision, saved.revision]);
+    assert.equal(view.edited, undefined);
+    assert.equal(view.moved, undefined);
+    assert.equal(view.superseded, undefined);
+    assert.equal(view.thread, true);
+
+    // Opening it again, many times, still runs nothing and writes nothing.
+    for (let i = 0; i < 3; i++) runner.taskNote(saved.pageId);
+    assert.deepEqual(calls, before.calls, "no turn and no CLI call");
+    assert.equal(JSON.stringify(runner.items(thread.id)), before.items, "the transcript is untouched");
+    assert.equal(JSON.stringify(store.thread(thread.id)), before.thread, "the thread is untouched");
+    assert.equal(await filesUnder(path.join(home, "notes")), before.notes, "no note or record file was written");
+
+    // A page that is not a saved task, or no page at all, has no task view.
+    const plain = store.space.create({ title: "Just a page", markdown: "Hello" });
+    assert.equal(runner.taskNote(plain.id), null);
+    assert.equal(runner.taskNote("no-such-page"), null);
+  } finally { await runner.dispose(); }
+});
+
+test("a reopened task note says when it was edited after it was saved, and which note a later save went to", async () => {
+  const { store, runner, thread, turnId } = await reopenFixture();
+  try {
+    const saved = runner.saveTaskNote(thread.id, turnId);
+    const page = () => store.space.list().find((p) => p.id === saved.pageId)!;
+    store.space.save({ ...page(), markdown: page().markdown + "\nMy own notes.\n" });
+    const edited = runner.taskNote(saved.pageId)!;
+    assert.deepEqual({ ...edited.edited, at: undefined }, { revision: saved.revision + 1, by: "you", at: undefined });
+    assert.ok(Date.parse(edited.edited!.at));
+    assert.equal(edited.note.revision, saved.revision + 1);
+    assert.equal(edited.savedRevision, saved.revision);
+    assert.equal(edited.record.request, "Fix the failing import", "the record is the one saved, whatever the note says now");
+
+    // Saving again keeps the edit and writes a new note; the old note's view points to it.
+    const again = runner.saveTaskNote(thread.id, turnId);
+    assert.equal(again.preserved, true);
+    assert.deepEqual(runner.taskNote(saved.pageId)!.superseded, { pageId: again.pageId, title: again.title });
+    const fresh = runner.taskNote(again.pageId)!;
+    assert.equal(fresh.edited, undefined);
+    assert.equal(fresh.superseded, undefined);
+
+    // Trashing the note is said too.
+    store.space.trash(again.pageId, true);
+    assert.equal(runner.taskNote(again.pageId)!.note.trashed, true);
+  } finally { await runner.dispose(); }
+});
+
+test("a reopened task note says when it was moved to another project's notes, and not for a move within its project", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { gitRepo } = await import("./helpers.js");
+  const { home, store, runner, thread, turnId, project } = await reopenFixture();
+  try {
+    const other = store.addProject(gitRepo());
+    const notes = store.space;
+    const own = notes.tree().nodes.find((node) => node.kind === "project" && node.modexProjectId === project.id)!;
+    const foreign = notes.tree().nodes.find((node) => node.kind === "project" && node.modexProjectId === other.id)!;
+    const saved = runner.saveTaskNote(thread.id, turnId);
+
+    // Within the project: a folder move is no move across projects.
+    const folder = notes.createFolder(own.id, "Archive");
+    notes.moveNodes([saved.pageId], folder.id);
+    const within = runner.taskNote(saved.pageId)!;
+    assert.equal(within.moved, undefined);
+
+    // Finder moves it to another project's notes: the revision can stay the same (#363).
+    const rel = notes.pageRels().get(saved.pageId)!;
+    fs.renameSync(path.join(home, "notes", rel), path.join(home, "notes", foreign.rel, path.basename(rel)));
+    // The notes store records where it found the file on its next look, as Space's own reads do.
+    notes.list();
+    const before = await filesUnder(path.join(home, "notes"));
+    const moved = runner.taskNote(saved.pageId)!;
+    assert.deepEqual(moved.moved, { from: own.name, to: foreign.name });
+    assert.equal(moved.record.request, "Fix the failing import");
+    assert.equal(await filesUnder(path.join(home, "notes")), before, "noticing the move writes nothing");
+  } finally { await runner.dispose(); }
+});
+
 // Verification (CF-7 #280): a check's observed result, tied to the turn's latest change.
 let seqId = 0;
 const at = (n: number) => new Date(Date.UTC(2026, 9, 20, 9, 0, n)).toISOString();

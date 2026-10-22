@@ -499,6 +499,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     setDraft(null);
     setSelected(id);
   }, []);
+  /** Shows a thread in chat, refreshing first when this window has not heard of it yet. */
+  const openThread = (id: string) => { void (state?.threads.some(t => t.id === id) ? Promise.resolve() : refresh()).then(() => { selectThread(id); setSurface("chat"); }).catch((err: Error) => setError({ message: err.message })); };
   const history = useSelectionHistory(selected, selectThread, (id) => Boolean(state?.threads.some((t) => t.id === id)));
   const draftDefaults = (s: AppState): Draft["settings"] => ({
     backend: s.settings.default_backend,
@@ -939,9 +941,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         }} /></Suspense>}
         {surface === "plugins" && <Suspense fallback={<div role="status">Opening Plugins…</div>}><PluginSurface projects={state.projects} onImages={openImages} /></Suspense>}
         {surface === "routines" && <Suspense fallback={<div role="status">Opening Routines…</div>}><RoutinesView active={!showSettings && !showCompanion} projects={state.projects}
-          onOpenThread={id => { void (state.threads.some(t => t.id === id) ? Promise.resolve() : refresh()).then(() => { selectThread(id); setSurface("chat"); }).catch((err: Error) => setError({ message: err.message })); }}
+          onOpenThread={openThread}
           onOpenPage={spaceEnabled ? id => { setOpenPage({ id }); setSpaceOpened(true); setSurface("space"); } : undefined} /></Suspense>}
-        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onOpenImages={mediaFeatures.images ? openImages : undefined} onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
+        {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onOpenThread={openThread} onOpenImages={mediaFeatures.images ? openImages : undefined} onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
         {sidebarOpen && (
           <Sidebar
             state={state}

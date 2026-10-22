@@ -3,10 +3,10 @@ import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
-import { CONTEXT_SHOWN, displayCommand, taskContext, verification, type TaskCheck } from "../../../shared/task-context";
+import { CONTEXT_SHOWN, displayCommand, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
 
-const STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
-const FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" } as const;
+export const PLAN_STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
+export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" } as const;
 
 /**
  * The plan a CLI reported for a turn (docs/task-context.md), in its own statuses. A step the CLI
@@ -17,13 +17,13 @@ export function TaskPlanCard({ item }: { item: Extract<ThreadItem, { kind: "plan
     <div className="plan-card" data-testid="item" data-item-kind="plan">
       <div className="plan-head">
         <span className="plan-title">Plan</span>
-        <span className="plan-meta" data-testid="plan-meta">From {FROM[item.from]} · revision {item.revision}</span>
+        <span className="plan-meta" data-testid="plan-meta">From {PLAN_FROM[item.from]} · revision {item.revision}</span>
       </div>
       {item.explanation && <p className="plan-explanation">{item.explanation}</p>}
       <ol className="plan-steps">
         {item.steps.map((step, i) => (
           <li key={i} className={`plan-step ${step.status}`} data-testid="plan-step" data-status={step.status}>
-            <span className="plan-status">{STATUS[step.status]}</span> {step.text}
+            <span className="plan-status">{PLAN_STATUS[step.status]}</span> {step.text}
           </li>
         ))}
       </ol>
@@ -74,6 +74,11 @@ function Checks({ checks }: { checks: TaskCheck[] }) {
 export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }) {
   const v = useMemo(() => verification(items), [items]);
   if (!v.checks.length && !v.edits) return null;
+  return <div className="task-verification" data-testid="task-verification" data-state={v.state}><VerificationText v={v} /></div>;
+}
+
+/** What a turn's checks say, in words: the footer's line, and a reopened task note's (docs/task-context.md#reopening-a-saved-note). */
+export function VerificationText({ v }: { v: TaskVerification }) {
   const current = v.checks.filter((check) => !check.stale);
   const failing = current.filter((check) => !check.passed && (check.outcome === "failed" || check.outcome === "denied" || (typeof check.exitCode === "number" && check.exitCode !== 0)));
   const text = v.state === "verified" ? <>Verified: <Checks checks={current} /> passed after the last change</>
@@ -81,7 +86,7 @@ export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }
     : v.state === "unknown" ? <>Not verified: <Checks checks={current.filter((check) => !check.passed)} /> did not say how it ended</>
     : v.state === "stale" ? <>Not verified: <Check check={v.checks.at(-1)!} /> ran before a later change</>
     : <>Not verified: no check result confirms the latest changes</>;
-  return <div className="task-verification" data-testid="task-verification" data-state={v.state}>{text}</div>;
+  return text;
 }
 
 /**
