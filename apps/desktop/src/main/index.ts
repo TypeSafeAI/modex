@@ -28,6 +28,7 @@ import { WorkspaceBrowser } from "./workspace-browser.js";
 import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { CodeReviewService } from "./engine/code-review/read-service.js";
+import { LocalModelsService } from "./engine/local-models/service.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
 import { knowledgeAppearance } from "./knowledge-theme.js";
@@ -212,6 +213,7 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
+const localModels = new LocalModelsService(home, secrets);
 // Settings reads ChatGPT status in packaged e2e too; keep its test home off the OS keychain.
 const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
@@ -851,6 +853,7 @@ handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
 handle("thread:context", async ({ threadId }) => { await pathReady; return threadContexts.read(cwdFor(threadId)); });
 // Paired desktops cannot reach it; the payload is untrusted until the service's validateRequest has rebuilt it.
 handle("code-review:read", async (request) => { await pathReady; return codeReview.read(request); }, { localOnly: true });
+handle("local-models:command", (request) => localModels.handle(request), { localOnly: true });
 handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
 handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));
