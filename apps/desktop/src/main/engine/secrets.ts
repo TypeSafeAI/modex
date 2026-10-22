@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Secrets the user types into Modex (today: the TypeSafe API key for the Auto judge).
+ * Secrets the user types into Modex: the TypeSafe API key for the Auto judge and optional
+ * tokens for local-model servers.
  *
  * Never in state.json, never in a build: values are encrypted with the OS keychain via
  * Electron's `safeStorage` (injected as a `Cipher` so tests and the e2e harness can
@@ -17,7 +18,8 @@ export interface Cipher {
   decrypt(blob: Buffer): string;
 }
 
-export type SecretName = "typesafe_api_key";
+/** `local_connection:<id>` holds an optional token for one local-model server profile (#378). */
+export type SecretName = "typesafe_api_key" | `local_connection:${string}`;
 
 interface SecretsFile {
   version: 1;
