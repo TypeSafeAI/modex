@@ -15,12 +15,15 @@ screenshot. Leave a step unticked, with the reason, if it cannot be run.
 1. Install the candidate Modex build. For step D4, start it with the event journal on
    (`MODEX_EVENT_JOURNAL=1 open -a Modex`, as in [event-journal.md](../event-journal.md)), and note
    whether it was on.
-2. Make Codex offer its question tool on an ordinary turn:
-   `codex features enable default_mode_request_user_input`. It is under development and off by
-   default, so turn it off again after the run (`codex features disable default_mode_request_user_input`).
-   Use a thread on the Codex CLI account. An app-owned ChatGPT account runs Codex with its own
-   `CODEX_HOME`, which this setting does not reach. If Plan mode later switches to Codex's native plan
-   mode ([decision](2026-10-22-cf3-plan-mode-decision.md)), a Plan turn needs no flag.
+2. Make Codex offer its question tool. Either of these works:
+   - **Plan mode (no setup).** Turn Plan on (⇧⌘P) for the thread. Plan turns on Codex run in Codex's
+     native plan mode, which offers the tool ([decision](2026-10-22-cf3-plan-mode-decision.md)).
+     Plan turns are read-only, which suits every step below.
+   - **An ordinary turn.** Run `codex features enable default_mode_request_user_input`. The flag is
+     under development and off by default, so turn it off again after the run
+     (`codex features disable default_mode_request_user_input`). Use a thread on the Codex CLI
+     account. An app-owned ChatGPT account runs Codex with its own `CODEX_HOME`, which this setting
+     does not reach.
 3. Open a disposable project (an empty git repository is enough), on the Read only sandbox.
 4. For the phone steps: a Companion build containing the native question card (built from the PR
    that adds it, and uploaded to TestFlight by Val), paired with this Mac.
