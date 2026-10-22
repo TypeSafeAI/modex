@@ -78,6 +78,7 @@ export class StoreDemo {
       "knowledge:external": unavailable,
       "knowledge:copy": unavailable,
       "knowledge:useNotes": unavailable,
+      "task:read-note": () => null,
       "task:save-note": unavailable,
       "evidence:memory": unavailable,
       "evidence:patch": unavailable,

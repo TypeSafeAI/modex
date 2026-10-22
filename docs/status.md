@@ -61,6 +61,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## On main, unreleased
 
+- **Reopen a saved task without running it** (CF-7 #280). A task note's **View saved task** shows the exact saved plan, clarifications, files and verification in a read-only view. It reports later edits and moves outside the original project, and keeps the old view when Save to Notes creates a replacement. Older saves with no remaining project provenance say so. [Task records](task-context.md#reopen-a-saved-task).
+
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes

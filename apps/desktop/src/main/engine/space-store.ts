@@ -223,6 +223,7 @@ export function validate(page: SpacePage): void {
 }
 
 export function validateChange(change: SpaceChangeContext): void {
+  if (change && change.taskProjectId !== undefined && (typeof change.taskProjectId !== "string" || !/^[a-z0-9-]{1,64}$/i.test(change.taskProjectId))) throw new Error("Invalid task project.");
   if (!change || typeof change.actor !== "string" || !change.actor.trim() || change.actor.length > 200) throw new Error("Invalid Space change actor.");
   if (typeof change.summary !== "string" || !change.summary.trim() || change.summary.length > 2_000) throw new Error("Invalid Space change summary.");
 }

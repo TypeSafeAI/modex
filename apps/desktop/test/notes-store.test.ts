@@ -410,3 +410,38 @@ for (const basename of ["A.MD", "a.md"]) test(`folder settlement preserves the e
   try { fresh.settle(parent.id); } finally { Object.defineProperty(fs, "lstatSync", { value: lstat }); }
   assert.equal(reopen(root).list().find(p => p.id === child.id)?.parentId, parent.id);
 }));
+
+test("saved task view keeps the saved revision after edits, replacement and a watched cross-project move", () => withStore((store, root) => {
+  const own = store.linkProject({ id: "task-project", name: "Task project", path: "/repo" });
+  const other = store.linkProject({ id: "other-project", name: "Other project", path: "/other" });
+  const saved = store.create({ title: "Task: fix", markdown: "## Plan\n- [x] Fix (reported done)\n\n## Clarifications\n(hidden)\n\n## Files the turn touched\nsrc/a.ts\n\n## Verification\nNot verified", containerId: own.id }, { actor: "human", summary: "Saved a task record", taskProjectId: "task-project" });
+  const view = (notes: NotesStore = store) => notes.taskView(saved.id)!;
+  const before = snapshot(root);
+  assert.equal(view().markdown, saved.markdown);
+  assert.equal(view().edited, false);
+  assert.deepEqual(snapshot(root), before, "opening does not write notes or history");
+  store.save({ ...saved, markdown: "My edited note" });
+  assert.equal(view().markdown, saved.markdown);
+  assert.equal(view().edited, true);
+  store.create({ title: "Task: fix (saved again)", containerId: own.id }, { actor: "human", summary: "Saved a task record", taskProjectId: "task-project" });
+  assert.equal(view(reopen(root)).markdown, saved.markdown, "old note remains readable after replacement and restart");
+  store.watch();
+  try {
+    const rel = store.pageRels().get(saved.id)!;
+    fs.renameSync(path.join(root, rel), path.join(root, other.rel, path.basename(rel)));
+    assert.equal(view().moved, true, "fresh ownership even before the watcher delivers the move");
+    assert.equal(view().markdown, saved.markdown);
+  } finally { store.unwatch(); }
+}));
+
+test("older task saves use history and state placement uncertainty explicitly", () => withStore((store) => {
+  const plain = store.create({ title: "Task: not a saved task", markdown: "From modex thread fake." });
+  assert.equal(store.taskView(plain.id), null, "title and text do not establish a task save");
+  const saved = store.create({ title: "Old task", markdown: "Saved plan" }, { actor: "human", summary: "Saved a task record" });
+  store.save({ ...saved, markdown: "Edited plan" });
+  assert.equal(store.taskView(saved.id)!.markdown, "Saved plan");
+  assert.equal(store.taskView(saved.id)!.moved, null);
+  store.trash(saved.id, true);
+  assert.equal(store.taskView(saved.id), null);
+  assert.equal(store.taskView("missing"), null);
+}));

@@ -407,3 +407,6 @@
 .notes-file-body img { max-width: 100%; max-height: 70vh; object-fit: contain; }
 .notes-file-body pre { place-self: stretch; margin: 0; padding: 12px; white-space: pre-wrap; font-size: 12.5px; background: var(--bg-main); border-radius: 8px; }
 .notes-file-none { color: var(--text-3); }
+
+.saved-task { margin: 16px 0; }
+.saved-task section { margin-top: 12px; padding: 16px; border: 1px solid var(--border-pane); border-radius: 8px; overflow-wrap: anywhere; }

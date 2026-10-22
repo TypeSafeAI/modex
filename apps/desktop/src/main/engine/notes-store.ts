@@ -153,6 +153,27 @@ export class NotesStore implements SpacePagesStore {
     return [...(this.readHistory(id) ?? [])];
   }
 
+  /** Reconcile current placement, then read only the task's saved history version. */
+  taskView(id: string, legacy?: { projectId: string; revision: number }): import("../../shared/space.js").SavedTaskView | null {
+    const state = this.load();
+    const current = state.pages.get(id);
+    if (!current || current.trashedAt || !state.live.has(id)) return null;
+    const versions = this.readHistory(id) ?? [];
+    const saved = [...versions].reverse().find(version => version.taskProjectId !== undefined) ??
+      (legacy ? versions.find(version => version.page.revision === legacy.revision && version.summary === "Saved a task record") :
+        [...versions].reverse().find(version => version.actor === "human" && version.summary === "Saved a task record"));
+    if (!saved) return null;
+    const projectId = saved.taskProjectId ?? legacy?.projectId;
+    const project = this.layout(state).nodes.find(node => node.kind === "project" && node.modexProjectId === projectId);
+    const rel = state.live.get(id)!.rel;
+    return {
+      title: saved.page.title, markdown: saved.page.markdown, revision: saved.page.revision,
+      savedAt: saved.page.updatedAt,
+      edited: current.title !== saved.page.title || current.markdown !== saved.page.markdown,
+      moved: projectId === undefined ? null : !project || !rel.startsWith(`${project.rel}/`),
+    };
+  }
+
   create(input: CreateSpacePage, change?: SpaceChangeContext): SpacePage {
     const state = this.load();
     const now = this.iso();
@@ -1572,7 +1593,7 @@ export class NotesStore implements SpacePagesStore {
   private attribution(change: SpaceChangeContext | undefined, summary: string): SpaceChangeContext {
     const attribution = change ?? { actor: "human", summary };
     validateChange(attribution);
-    return { actor: attribution.actor, summary: attribution.summary };
+    return { actor: attribution.actor, summary: attribution.summary, ...(attribution.taskProjectId ? { taskProjectId: attribution.taskProjectId } : {}) };
   }
 
   private version(page: SpacePage, change: SpaceChangeContext | undefined, summary: string): SpacePageVersion {

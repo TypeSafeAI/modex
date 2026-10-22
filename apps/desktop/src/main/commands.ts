@@ -93,6 +93,7 @@ export function registerCommands(handle: RegisterCommand, {
   });
   handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
   handle("thread:items", ({ threadId }) => runner.items(threadId));
+  handle("task:read-note", ({ pageId }) => runner.savedTaskView(pageId));
   handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
   handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
   handle("thread:send", ({ threadId, text, attachments }) => startTurn(threadId, runner.send(threadId, text, attachments)));

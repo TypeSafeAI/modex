@@ -9,6 +9,7 @@ import { IconButton } from "../components/ui/IconButton";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "../components/ui/Menu";
 import { PagesMaintenance } from "./PagesMaintenance";
+import { SavedTask } from "./SavedTask";
 import { PageHistory } from "./PageHistory";
 import { KnowledgeView } from "./KnowledgeView";
 import { BlockEditor } from "./BlockEditor";
@@ -301,6 +302,7 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
             if (title) document.execCommand("insertText", false, title);
             if (body) space.edit(page.id, { markdown: page.markdown.trim() ? `${body}\n\n${page.markdown}` : body });
           }} />
+          <SavedTask key={page.id} page={page} />
           {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
           <BlockEditor key={page.id} pageId={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
             <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />

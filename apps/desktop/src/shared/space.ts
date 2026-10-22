@@ -10,7 +10,7 @@ export interface SpacePage {
   trashedAt: string | null;
   revision: number;
 }
-export interface SpaceChangeContext { actor: string; summary: string; }
+export interface SpaceChangeContext { actor: string; summary: string; /** Main-owned provenance on an explicit task save. */ taskProjectId?: string; }
 /** Personal comments, stored with the local Space; no remote sharing is implied. */
 export interface SpaceComment { id: string; pageId: string; text: string; quote: string; createdAt: string; }
 export interface SpacePageVersion extends SpaceChangeContext { page: SpacePage; /** Start of a coalesced human typing checkpoint. */ checkpointAt?: string; }
@@ -22,3 +22,13 @@ export type CreateSpacePage = {
 };
 
 export function pageTitle(page: Pick<SpacePage, "title">): string { return page.title.trim() || "Untitled page"; }
+
+/** The exact saved Markdown, never rebuilt from a live thread. */
+export interface SavedTaskView {
+  title: string;
+  markdown: string;
+  revision: number;
+  savedAt: string;
+  edited: boolean;
+  moved: boolean | null;
+}

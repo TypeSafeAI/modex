@@ -157,7 +157,9 @@ test("Save task to Notes writes the turn's record into its project's notes; savi
   const home = tmpdir("modex-task-note-");
   const store = new Store(home);
   const repo = gitRepo();
+  let codingTurns = 0;
   const backend = { id: "claude" as const, listModels: async () => [], dispose: async () => {}, async runTurn(_t: string, _o: unknown, sink: import("../src/main/engine/backends/types.js").TurnSink) {
+    codingTurns++;
     sink.observe({ type: "plan.update", native: { runtime: "R", item: "todos" }, from: "claude-todo", steps: [{ text: "Fix the import", status: "completed" }] });
     local(sink).toolStart({ id: "e1", name: "Edit", title: "edit src/a.ts", args: { file_path: `${repo}/src/a.ts` } });
     local(sink).toolUpdate("e1", { status: "done", ok: true });
@@ -179,6 +181,16 @@ test("Save task to Notes writes the turn's record into its project's notes; savi
   assert.match(page().markdown, /`src\/a\.ts`/);
   assert.ok(!page().markdown.includes(repo), "no absolute path from this machine");
   assert.equal(store.space.tree().nodes.find((node) => node.kind === "note" && node.id === first.pageId)?.parentId, notesProject.id, "it lands in the project's notes");
+
+  const savedView = runner.savedTaskView(first.pageId)!;
+  assert.equal(savedView.markdown, page().markdown);
+  assert.equal(savedView.moved, false);
+  const threadBefore = store.thread(thread.id);
+  const itemsBefore = runner.items(thread.id);
+  assert.deepEqual(runner.savedTaskView(first.pageId), savedView);
+  assert.deepEqual(store.thread(thread.id), threadBefore);
+  assert.deepEqual(runner.items(thread.id), itemsBefore);
+  assert.equal(codingTurns, 1, "reopening starts no coding turn");
 
   const again = runner.saveTaskNote(thread.id, turnId);
   assert.deepEqual([again.pageId, again.created], [first.pageId, false], "saving again updates the same note");

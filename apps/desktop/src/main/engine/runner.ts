@@ -346,7 +346,7 @@ export class ThreadRunner {
     const markdown = taskMarkdown(record);
     const notes = this.o.store.space;
     const saved = thread.taskNotes?.[turnId];
-    const change = { actor: "human", summary: "Saved a task record" };
+    const change = { actor: "human", summary: "Saved a task record", taskProjectId: thread.projectId };
     // The scoped mutation rechecks both revision and ownership against freshly loaded state.
     // A watcher's cached read can still show the old project immediately after a Finder move.
     const reused = saved ? notes.updateInProject(saved.pageId, saved.revision, thread.projectId, { title: record.title, markdown }, change) : null;
@@ -357,6 +357,15 @@ export class ThreadRunner {
     const updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
     this.o.emit({ threadId, type: "thread", thread: updated });
     return { pageId: page.id, title: page.title, revision: page.revision, created: !reused, preserved: Boolean(existing && !reused) };
+  }
+
+  savedTaskView(pageId: string): import("../../shared/space.js").SavedTaskView | null {
+    // Older saves already have an exact revision association. Never infer provenance from note text.
+    for (const thread of this.o.store.snapshot().threads) {
+      const saved = Object.values(thread.taskNotes ?? {}).find(note => note.pageId === pageId);
+      if (saved) return this.o.store.space.taskView(pageId, { projectId: thread.projectId, revision: saved.revision });
+    }
+    return this.o.store.space.taskView(pageId);
   }
 
   /** A tool's kept raw output from `offset`, a page at a time; null when its output fit in the preview. */

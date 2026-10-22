@@ -152,3 +152,34 @@ test("a successful shell receipt cannot verify masked failures or writes after a
   }
   await expect(lines.last()).toHaveAttribute("data-state", "verified");
 });
+
+test("a saved note reopens its saved task read-only without changing the note or transcript", async () => {
+  const before = await page.evaluate(async (threadId) => ({
+    notes: await window.modex!.invoke("space:list", undefined),
+    items: await window.modex!.invoke("thread:items", { threadId }),
+  }), threadId);
+  const saved = before.notes.find(p => p.title.startsWith("Task:"))!;
+  await page.evaluate(id => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: id })), saved.id);
+  await page.getByRole("button", { name: "View saved task", exact: true }).click();
+  const view = page.getByRole("region", { name: "Saved task" });
+  await expect(view).toContainText("Read-only");
+  await expect(view).toContainText("Fix the failing import");
+  await expect(view).toContainText("Fixed the import.");
+  await expect(view.locator('[contenteditable="true"], textarea, input')).toHaveCount(0);
+  expect(await page.evaluate(() => window.modex!.invoke("space:list", undefined))).toEqual(before.notes);
+  expect(await page.evaluate(threadId => window.modex!.invoke("thread:items", { threadId }), threadId)).toEqual(before.items);
+  await page.getByRole("button", { name: "Close saved task", exact: true }).click();
+  await expect(page.getByRole("button", { name: "View saved task", exact: true })).toBeFocused();
+  await page.evaluate(async saved => {
+    await window.modex!.invoke("space:save", { ...saved, markdown: "My later edits." });
+    window.dispatchEvent(new CustomEvent("modex:open-page", { detail: saved.id }));
+  }, saved);
+  await page.getByRole("button", { name: "View saved task", exact: true }).click();
+  await expect(view).toContainText("The note was edited after this task was saved");
+  await expect(view).toContainText("Fixed the import.");
+  await expect(view).not.toContainText("My later edits.");
+  const edited = (await page.evaluate(() => window.modex!.invoke("space:list", undefined))).find(p => p.id === saved.id)!;
+  expect(edited.markdown).toBe("My later edits.");
+  fs.mkdirSync(path.resolve(".probes"), { recursive: true });
+  await page.screenshot({ path: path.resolve(".probes/cf7-note-reopen.png") });
+});

@@ -145,9 +145,14 @@ saves on its own, and an agent cannot use this.
 - **A missing note is replaced.** If the note was deleted or trashed, a new one is written.
 - **Saving never reruns** anything, and never reads beyond the transcript.
 
+## Reopen a saved task
+
+In the saved note, **View saved task** opens a read-only view of the exact Markdown revision written by Save to Notes. It includes the plan, clarifications, files and verification as saved. It never rebuilds the record from the current transcript, calls a CLI, or saves the note. **Close saved task** returns keyboard focus to its opening button.
+
+The view reports when the current note differs from the saved version or has moved outside its original project, including a Finder or containing-folder move that kept the revision. Saving a replacement does not remove the old note's saved view. New saves record their project in local note history; older saves use their thread's saved revision association when available. Older orphaned saves still show their historical record, with an explicit notice when the original project was not recorded. Ordinary notes and trashed notes have no saved task view.
+
 ## Not done yet
 
 - Linking a check to the plan step it verifies. Neither CLI reports that link.
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
   reported; none is suggested.
-- Reopening a saved note as a read-only task view.
