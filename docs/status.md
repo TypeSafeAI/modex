@@ -152,6 +152,14 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   coverage through the production preload/IPC/service with a synthetic GitHub executable.
   The CR-3 development flag exposes the integrated inbox and workspace host; overview/diff content, AI
   review (#325) and GitHub writes (#326) are later gates.
+  CR-8 (#327) keeps the [acceptance matrix](reviews/2026-10-22-cr8-acceptance-matrix.md). It has one row per
+  control C01–C82 and per AC of #321–#326, with fixture, authenticated, live-provider, live-write and human
+  evidence kept apart. It adds Electron journeys and cross-slice regressions through the production read
+  path with a synthetic `gh`: inbox → R1 → R4, identity, head moves, incomplete data, hostile links, no
+  dispatch, and local Discard. It also adds keyboard/contrast checks and stress measurements, and a
+  [VoiceOver checklist](reviews/2026-10-22-cr8-voiceover/checklist.md) for Val. Open: R2 and R3 (#323,
+  #325), an authenticated re-run on `main`, the original-reference comparison (the references are no
+  longer at their recorded path), and the human VoiceOver pass.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).

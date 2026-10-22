@@ -1,0 +1,100 @@
+import { test, expect, type Locator, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { appDir, resizeWindow, tid } from "./support.js";
+import { baseWorld, launchWithGh, prRow, READ_ENDPOINT, type Harness } from "./code-review-support.js";
+
+/**
+ * CR-8 (#327): the integrated Code Review journey in real Electron, through main's production read service
+ * with a synthetic gh (e2e/code-review-support.ts). Inbox → R1 → R4 today; R2 waits for #323's activity and R3
+ * for #325's instructions popover, and are added here when those land.
+ *
+ * Captures go to test-results/ui-code-review/<state>.png with a manifest.json, so
+ * `pnpm run ui:compare -- --captures test-results/ui-code-review <dir of R1.png, R4.png>` lays them beside
+ * Val's references. The references stay off the repository (docs/design/code-review.md); so do these
+ * captures, which Playwright wipes on its next run.
+ */
+const outDir = path.join(appDir, "test-results", "ui-code-review");
+/** The references' CSS sizes (docs/design/code-review.md, References and calibration). */
+const R1 = { width: 1766, height: 1057 }, R4 = { width: 1764, height: 1047 };
+
+let h: Harness;
+test.afterEach(async () => { await h?.close(); });
+
+const box = async (l: Locator) => { const b = (await l.boundingBox())!; return { x: Math.round(b.x), y: Math.round(b.y), right: Math.round(b.x + b.width), bottom: Math.round(b.y + b.height) }; };
+
+async function capture(page: Page, manifest: object[], state: string, geometry: Record<string, unknown> = {}): Promise<void> {
+  await page.waitForTimeout(250);
+  const file = `${state}.png`;
+  await page.screenshot({ path: path.join(outDir, file), animations: "disabled", caret: "hide" });
+  const env = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio, locale: navigator.language,
+    theme: document.documentElement.dataset.theme ?? null, dark: matchMedia("(prefers-color-scheme: dark)").matches, font: getComputedStyle(document.body).fontFamily }));
+  manifest.push({ state, file, viewport: { width: env.width, height: env.height }, dpr: env.dpr, locale: env.locale, theme: env.theme, dark: env.dark, font: env.font, geometry });
+}
+
+test("inbox → R1 → R4 through the production read service, with captures for ui:compare and nothing written", async () => {
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
+  const manifest: object[] = [];
+  h = await launchWithGh(baseWorld());
+  const { page, app, repo } = h;
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+  const before = { head: git("rev-parse", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") };
+  const starts = h.providerStarts().length;
+
+  // Inbox: the rail opens it, and both groups arrive through main's service.
+  await resizeWindow(app, page, R1.width, R1.height);
+  await tid(page, "rail-code-review").click();
+  await expect(tid(page, "rail-code-review")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("group", { name: "Authored by me" })).toContainText("Move holds between branches");
+  await expect(page.getByRole("group", { name: "Needs my review" })).toContainText("Fix the broken anchors");
+
+  // R1: a row opens its PR with the PR and Changes tabs; the totals come from main's overview read.
+  await prRow(page, "example-org/lending#73").click();
+  await expect(tid(page, "code-review-tab-overview")).toHaveAttribute("aria-selected", "true");
+  await expect(tid(page, "code-review-tab-changes")).toContainText("+8,912");
+  await expect(tid(page, "code-review-tab-changes")).toContainText("−47");
+  await expect(tid(page, "code-review-pr-id").first()).toHaveText("lending #73");
+  await expect(tid(page, "code-review-loading")).toHaveCount(0);
+  await capture(page, manifest, "R1", { inbox: await box(tid(page, "code-review-inbox")), prTab: await box(tid(page, "code-review-tab-overview")), header: await box(tid(page, "code-review-pr-header").first()) });
+  // R2 (scrolled activity) waits for #323; the overview pane says so rather than faking it.
+  test.info().annotations.push({ type: "pending", description: "R2: activity scroll waits for #323; R3: instructions popover waits for #325" });
+
+  // R4: another PR, split beside its Changes through the right-panel button.
+  await resizeWindow(app, page, R4.width, R4.height);
+  await prRow(page, "example-org/field-guide#91").click();
+  await expect(tid(page, "code-review-tab-changes")).toContainText("+11");
+  await tid(page, "code-review-split-toggle").click();
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", "overview changes");
+  const split = { inbox: await box(tid(page, "code-review-inbox")), pr: await box(tid(page, "code-review-pane-overview")), diff: await box(tid(page, "code-review-diff")), tree: await box(tid(page, "code-review-tree")) };
+  await capture(page, manifest, "R4", split);
+  // CR-3's built geometry (docs/design/code-review.md, Workspace), within 2 px.
+  for (const [name, got, want] of [["inbox", split.inbox, [53, 333]], ["pr pane", split.pr, [333, 996]], ["tree", split.tree, [1470, 1760]]] as const) {
+    expect(Math.abs(got.x - want[0]), `${name} left`).toBeLessThanOrEqual(2);
+    expect(Math.abs(got.right - want[1]), `${name} right`).toBeLessThanOrEqual(2);
+  }
+
+  // Back and forward return to each PR as it was left, without reading it again.
+  const reads = h.calls().filter((c) => /pulls\/(73|91)$/.test(c)).length;
+  await tid(page, "nav-back").click();
+  await expect(tid(page, "code-review-pr-id").first()).toHaveText("lending #73");
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", "overview");
+  await tid(page, "nav-forward").click();
+  await expect(tid(page, "code-review-pr-id").first()).toHaveText("field-guide #91");
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", "overview changes");
+  expect(h.calls().filter((c) => /pulls\/(73|91)$/.test(c)).length).toBe(reads);
+
+  // The two other sizes #327 names.
+  await resizeWindow(app, page, 1440, 900);
+  await capture(page, manifest, "split-1440x900");
+  await resizeWindow(app, page, 900, 600);
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", /^(overview|changes)$/);
+  await capture(page, manifest, "narrow-900x600");
+  fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify({ reference: { R1, R4 }, states: manifest }, null, 2) + "\n");
+
+  // Read-only end to end: only read endpoints, no provider started, the local checkout untouched.
+  expect(h.calls().filter((c) => !READ_ENDPOINT.test(c))).toEqual([]);
+  expect(h.providerStarts().length).toBe(starts);
+  expect({ head: git("rev-parse", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") }).toEqual(before);
+});

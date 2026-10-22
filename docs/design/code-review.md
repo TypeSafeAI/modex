@@ -583,3 +583,5 @@ C57–C61's composer are not built (open decisions, #325).
 with the PR's evidence. The authenticated navigation smoke test (#322 AC6) passed through CR-2's
 live read handler; see [the integration evidence](../reviews/2026-10-21-cr3-read-integration.md).
 Original R1–R4 reference comparison and human keyboard/VoiceOver acceptance remain open gates.
+CR-8's [acceptance matrix](../reviews/2026-10-22-cr8-acceptance-matrix.md) maps every control and slice
+criterion to its evidence and says which gates are still open.
