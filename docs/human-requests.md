@@ -327,4 +327,7 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 - Answering questions from the phone.
 - Clarifying a task plan through a question card (the second half of CF-7).
 - Running Modex's Plan mode as Codex's plan collaboration mode. That is what lets Codex ask, but
-  Modex would also need to show Codex's `plan` items. It is a decision for Val.
+  Modex would also need to show Codex's `plan` items. It is a decision for Val:
+  [trade-offs with a live capture](reviews/2026-10-22-cf3-plan-mode-decision.md).
+- Human acceptance of a native question (keyboard, VoiceOver, iPhone): [steps](reviews/2026-10-22-cf3-question-acceptance.md),
+  tracked in #281.
