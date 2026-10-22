@@ -66,7 +66,7 @@ export function isLoopbackAddress(address: string): boolean {
 }
 
 type LookupAddress = { address: string; family: number };
-type BaseLookup = (host: string, options: dns.LookupAllOptions, done: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void) => void;
+export type BaseLookup = (host: string, options: dns.LookupAllOptions, done: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void) => void;
 type Lookup = (host: string, options: { all?: boolean; family?: number | string }, done: (err: NodeJS.ErrnoException | null, address?: string | LookupAddress[], family?: number) => void) => void;
 
 /** A socket `lookup` that answers only when every resolved address is loopback. */
@@ -113,8 +113,8 @@ export interface LocalGetOptions {
   signal?: AbortSignal;
   /** Sent as a bearer token to this endpoint only. */
   token?: string;
-  /** Test seam for `localhost` resolution. */
-  lookup?: Lookup;
+  /** Test seam for the resolver behind `localhost`. Always wrapped by `loopbackLookup`, never instead of it. */
+  lookup?: BaseLookup;
 }
 
 const PATH = /^(?:\/[A-Za-z0-9._~-]+)+\/?$/;
@@ -146,7 +146,7 @@ function request(endpoint: LocalEndpoint, method: "GET" | "POST", path: string, 
     const transport = endpoint.protocol === "https:" ? https : http;
     const req = transport.request({
       host: endpoint.host, port: endpoint.port, path: endpoint.basePath + path, method, headers,
-      agent: false, lookup: (options.lookup ?? loopbackLookup()) as never,
+      agent: false, lookup: loopbackLookup(options.lookup) as never,
     }, (res) => {
       const remote = res.socket?.remoteAddress;
       if (!remote || !isLoopbackAddress(remote)) return finish(new LocalGetFailure("not-loopback"));
