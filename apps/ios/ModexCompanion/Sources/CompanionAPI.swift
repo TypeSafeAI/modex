@@ -97,6 +97,44 @@ struct CompanionItem: Decodable, Identifiable, Equatable {
     let at: String
     /// For an approval the Mac answered itself: "rule", "always" or "yolo".
     var auto: String? = nil
+    /// A question card's questions. Only a Mac that knows this phone draws questions sends them.
+    var questions: [CompanionQuestion]? = nil
+    /// Whether the agent waits for the answer.
+    var blocking: Bool? = nil
+    /// The accepted answers by question id, as the Mac shows them: a secret is always "(hidden)".
+    var answers: [String: [String]]? = nil
+    /// Who gave the accepted answer or decision: "desktop", "paired-desktop" or "phone".
+    var answeredBy: String? = nil
+    /// "sending" until the Mac handed the answer to the agent, then "sent"; "uncertain" when nobody can tell.
+    var delivery: String? = nil
+    /// Why the request closed unanswered: "native", "stopped" or "ended".
+    var withdrawn: String? = nil
+
+    /// A question nobody has answered and that is still waiting: the only state with controls.
+    var isOpenQuestion: Bool { kind == "question" && answers == nil && withdrawn == nil && delivery == nil }
+}
+
+/// One question on a question card. `options` is nil for a free-text question.
+struct CompanionQuestion: Decodable, Identifiable, Equatable {
+    let id: String
+    let header: String
+    let text: String
+    let options: [Option]?
+    /// Free text besides the options.
+    let allowOther: Bool
+    /// Typed into a secure field, sent to the Mac once, and never shown, saved or logged.
+    let secret: Bool
+
+    struct Option: Decodable, Equatable, Hashable {
+        let label: String
+        let description: String
+    }
+
+    /// The choice that stands for "Other" in a draft; never an option label the Mac sends.
+    static let otherChoice = "\u{0}other"
+
+    /// What the card calls this question in a message.
+    var name: String { header.isEmpty ? text : header }
 }
 
 /// The Mac's event journal and the cursor a snapshot's transcript was read at.
@@ -181,6 +219,8 @@ protocol CompanionClient {
     func commands(projectId: String, backend: String) async throws -> [CompanionCommand]
     func send(threadId: String, text: String) async throws
     func answer(threadId: String, itemId: String, approve: Bool) async throws
+    /// Answers a question card, one answer list per question id. The Mac checks the answers and refuses a late one.
+    func answerQuestion(threadId: String, itemId: String, answers: [String: [String]]) async throws
     /// Sets the thread's standing answer to approvals: "ask", "always" or "yolo".
     func setApprovals(threadId: String, policy: String) async throws
     /// Puts a thread away or brings it back. The Mac refuses while the thread is working.
@@ -198,9 +238,15 @@ extension CompanionClient {
     func setArchived(threadId: String, archived: Bool) async throws {
         throw CompanionError.message("This Mac does not support archiving threads. Update Modex on your Mac.")
     }
+    func answerQuestion(threadId: String, itemId: String, answers: [String: [String]]) async throws {
+        throw CompanionError.message("Answer this question in Modex on your Mac.")
+    }
 }
 
 final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, CompanionClient {
+    /// The item kinds this app draws, sent on every request. A Mac sends a kind not named here as a notice.
+    static let itemKinds = "user,assistant,approval,tool,notice,question"
+
     let pairing: Pairing
     private var session: URLSession!
 
@@ -288,6 +334,11 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
         let _: OK = try await request(url, method: "POST", body: ["itemId": itemId, "answer": approve ? "yes" : "no"])
     }
 
+    func answerQuestion(threadId: String, itemId: String, answers: [String: [String]]) async throws {
+        let url = pairing.url.appending(path: "v1/threads/\(threadId)/answer-question")
+        let _: OK = try await request(url, method: "POST", body: ["itemId": itemId, "answers": answers])
+    }
+
     func setApprovals(threadId: String, policy: String) async throws {
         let url = pairing.url.appending(path: "v1/threads/\(threadId)/policy")
         let _: OK = try await request(url, method: "POST", body: ["policy": policy])
@@ -309,6 +360,7 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
         request.httpMethod = method
         request.setValue("Bearer \(pairing.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Self.itemKinds, forHTTPHeaderField: "X-Modex-Item-Kinds")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)

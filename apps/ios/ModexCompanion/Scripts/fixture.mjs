@@ -47,6 +47,9 @@ fs.mkdirSync(path.join(repo, ".codex", "skills", "mobile-check"), { recursive: t
 fs.writeFileSync(path.join(repo, ".codex", "skills", "mobile-check", "SKILL.md"), "---\nname: mobile-check\ndescription: Verify the mobile companion flow.\n---\n");
 const threadId = "abcdef12";
 store.addThread({ id: threadId, projectId: project.id, title: "Review launch changes", cwd: repo, backend: "mock", mode: "chat", model: "mock", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+// A thread whose turn asks a native question card, answered on the phone (docs/human-requests.md).
+const questionThreadId = "abcdef13";
+store.addThread({ id: questionThreadId, projectId: project.id, title: "Choose a deploy target", cwd: repo, backend: "mock", mode: "chat", model: "mock", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
 const backend = {
   id: "mock",
   async listModels() { return []; },
@@ -61,6 +64,20 @@ const backend = {
       let consumed = !sink.deliverRequest;
       await sink.deliverRequest?.(native, async () => { consumed = true; });
       reply.assistant(consumed && answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
+    } else if (text === "Ask before deploying") {
+      // A Codex-shaped question with a choice and a secret. The secret is checked here and never echoed or logged.
+      const native = { runtime: "ios-fixture", request: randomUUID() };
+      const answered = await sink.question({ native, blocking: true, questions: [
+        { id: "target", header: "Target", text: "Where should this deploy?", options: [{ label: "staging", description: "The preview environment" }, { label: "production", description: "" }], allowOther: true, secret: false },
+        { id: "token", header: "Token", text: "Paste the deploy token", options: null, allowOther: true, secret: true },
+      ] });
+      if ("withdrawn" in answered) {
+        reply.assistant("The question was closed before it was answered.");
+      } else {
+        await sink.deliverRequest?.(native, async () => {});
+        const token = answered.answers.token?.[0] ?? "";
+        reply.assistant(`Deploying to ${answered.answers.target?.[0]}; the token ${token === "  phone-secret-42 " ? "matched exactly" : "did not match"}.`);
+      }
     } else {
       reply.assistant(`Follow-up received: ${text}`);
       if (text === "Pause for recovery") {
@@ -82,11 +99,15 @@ const server = new CompanionServer(home, {
   create: (projectId, options) => { log(`phone creates a thread in ${projectId}`); return runner.createThread(projectId, { ...options, backend: "mock", auto: false }); },
   send: async (id, text) => { log(`phone sends "${text}" to ${id}`); void runner.send(id, text); return { ok: true }; },
   answer: (id, itemId, answer) => { log(`phone answers ${itemId} with ${answer}`); runner.answer(id, itemId, answer); },
+  // The answers may hold a secret: log which card was answered, never what was typed.
+  answerQuestion: (id, itemId, answers, by) => { log(`phone answers question ${itemId}`); return runner.answerQuestion(id, itemId, answers, by); },
   setArchived: (id, archived) => runner.setArchived(id, archived),
 }, process.env.MODEX_IOS_LAN === "1" ? undefined : () => ["127.0.0.1"]);
 await server.start();
 void runner.send(threadId, "Prepare the change");
 while (runner.status(threadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
+void runner.send(questionThreadId, "Ask before deploying");
+while (runner.status(questionThreadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
 // The test owns the outage duration: a loaded simulator may still be in the rescan
 // sheet after 25 seconds. Keep the Mac paused until cancellation has been verified.
 const resumePath = `/resume/${randomUUID()}`;

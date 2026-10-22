@@ -354,6 +354,7 @@ final class CompanionFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Please summarize the result")).firstMatch.appears(within: UITestBudget.seconds(20)))
         attachScreenshot(of: app, named: "Completed follow-up")
         app.buttons["Back to threads"].tapWhenReady()
+        try answerQuestionThroughTheMac(app)
         if fixture.reconnect == true {
             XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].appears(within: UITestBudget.seconds(60)), "Bonjour must recover the saved pairing when the Mac restarts on a different port.")
             XCTAssertFalse(pair.exists)
@@ -412,6 +413,51 @@ final class CompanionFlowTests: XCTestCase {
             forgetMac(app)
             XCTAssertTrue(pair.waitForExistence(timeout: UITestBudget.seconds(10)), "Forgetting the Mac returns to pairing.")
         }
+    }
+
+    /// The fixture's second thread waits on a native question with a choice and a secret (docs/human-requests.md).
+    private func answerQuestionThroughTheMac(_ app: XCUIApplication) throws {
+        let thread = app.buttons["thread-abcdef13"]
+        if !thread.isReadyToTap { app.swipeUp() }
+        XCTAssertTrue(thread.appears(within: UITestBudget.seconds(20)), "The thread waiting on a question should appear.")
+        thread.tapWhenReady()
+        let send = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "send-answer-")).firstMatch
+        XCTAssertTrue(send.appears(within: UITestBudget.seconds(20)), "The Mac's question should appear as a native card, not a notice.")
+        let card = String(send.identifier.dropFirst("send-answer-".count))
+        attachScreenshot(of: app, named: "Question on iPhone")
+
+        // Nothing chosen yet: the card says what is missing and nothing reaches the Mac.
+        send.tapWhenReady()
+        let notice = app.staticTexts["question-notice-\(card)"]
+        XCTAssertTrue(notice.appears(within: UITestBudget.seconds(10)))
+        XCTAssertEqual(notice.label, "Target needs an answer.")
+
+        let staging = app.buttons["option-\(card)-target-staging"]
+        staging.tapWhenReady()
+        XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(10)) { staging.isSelected }, "The chosen option reads as selected.")
+        XCTAssertTrue(notice.waitForNonExistence(timeout: UITestBudget.seconds(5)), "Changing the answer clears the notice.")
+
+        let secret = "  phone-secret-42 "
+        let token = app.secureTextFields.matching(NSPredicate(format: "identifier == %@", "answer-\(card)-token")).firstMatch
+        XCTAssertTrue(token.waitForExistence(timeout: UITestBudget.seconds(10)), "A secret question takes a secure field.")
+        token.tapWhenReady()
+        XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(8)) { app.keyboards.firstMatch.exists })
+        token.typeText(secret)
+        // A secure field reads back as one bullet per character; wait for the last keystroke.
+        XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(10)) { (token.value as? String)?.count == secret.count }, "The secure field received every character.")
+        attachScreenshot(of: app, named: "Question answered on iPhone")
+        send.tapWhenReady()
+
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Deploying to staging; the token matched exactly.")).firstMatch.appears(within: UITestBudget.seconds(20)),
+                      "The agent got the choice and the secret exactly as typed.")
+        let state = app.staticTexts["question-state-\(card)"]
+        XCTAssertTrue(state.appears(within: UITestBudget.seconds(10)))
+        XCTAssertEqual(state.label, "Answered on your phone")
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "phone-secret-42")).firstMatch.exists, "The secret is never shown.")
+        XCTAssertTrue(app.staticTexts["(hidden)"].exists)
+        XCTAssertFalse(send.exists, "An answered card has no controls.")
+        attachScreenshot(of: app, named: "Answered question on iPhone")
+        app.buttons["Back to threads"].tapWhenReady()
     }
 
     private func openForgetMenu(_ app: XCUIApplication) -> Bool {

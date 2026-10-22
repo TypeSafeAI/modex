@@ -116,6 +116,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 - **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
   and text stay in window memory and clear when their request closes or thread is removed.
   Sensitive answers stay out of persisted recovery. [Verification and native capability limits](reviews/2026-10-20-cf3-drafts.md).
+- **Answer an agent's questions from the iPhone** (CF-3 #276, coordinated with CF-6 #279). The Mac
+  sends a native question card to a Companion build that names the `question` kind. The phone
+  answers through the same broker as the desktop, with the same refusals and a 409 when another
+  client answered first. A secret is typed into a secure field, held only in the phone's memory, and
+  never logged or saved on either side. Older Companion builds keep the text notice. The phone half
+  reaches people with the next Companion build, which Val uploads to TestFlight.
+  [Phone](human-requests.md#clients).
 
 ## In flight
 

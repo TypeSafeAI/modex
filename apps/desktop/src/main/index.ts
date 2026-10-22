@@ -369,6 +369,7 @@ const companion = new CompanionServer(home, {
     return startTurn(id, runner.send(id, text));
   }),
   answer: (id, itemId, answer, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answer(id, itemId, answer, by); },
+  answerQuestion: (id, itemId, answers, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answerQuestion(id, itemId, answers, by); },
 });
 const companionView = async (status: CompanionStatus): Promise<CompanionStatus> => {
   const endpoints = await Promise.all((status.endpoints ?? []).map(async (endpoint) => ({

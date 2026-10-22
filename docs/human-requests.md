@@ -26,6 +26,7 @@ Now:
   before anything reaches the CLI.
 - A secret answer reaches the CLI and nowhere else.
 - Cards nobody can answer any more are closed everywhere, including after a restart.
+- The iPhone app answers questions on a native card, through the same broker as the desktop.
 
 ## Contract
 
@@ -200,11 +201,35 @@ recorded in `apps/desktop/test/fixtures/codex-request-user-input-0.163.0.json`.
   "(hidden)". A closed card says why, in the approval card's words. While a question waits, the turn
   header reads "Waiting for your answer" instead of "Waiting for approval". An answered or closed card
   folds into the turn's work like an answered approval; an open one never does.
-- **Phone.** The companion still answers approvals only. It refuses an answer to anything that is not an
-  open approval, and a runner refusal becomes a 409. A question reaches the phone as an `info` notice
-  that carries the question text and its state ("Answer it in Modex on your Mac.", "Answered on your
-  Mac.", "Not answered."), never the answers. Sending and uncertain receipts are explicit notices,
-  including for approvals, so older clients cannot mistake them for successful approvals.
+- **Phone.** The phone answers approvals and, from this change, questions. Both go through the runner's
+  broker with `by: "phone"`, so the phone gets the same refusals as the desktop.
+  - **Which phones get a card.** The iPhone app names the item kinds it draws in the
+    `x-modex-item-kinds` header that paired desktops already send (`user,assistant,approval,tool,notice,question`).
+    A phone that names `question` gets the card from `phoneItem`: its questions (id, header, text,
+    options, allowOther, secret), `blocking`, and once it closes, `answers`, `answeredBy`, `delivery`
+    or `withdrawn`. Answers are passed through `publicAnswers` again, so a secret is `"(hidden)"`
+    whatever the card holds. A phone that names nothing, such as Companion 0.3.0 (8) and earlier, keeps
+    the `info` notice with the question text and its state ("Answer it in Modex on your Mac.",
+    "Answered on your Mac.", "Not answered."), never the answers. It cannot answer a question it
+    cannot draw.
+  - **Answering.** `POST /v1/threads/:id/answer-question { itemId, answers: { [questionId]: string[] } }`
+    calls the runner's `answerQuestion`. A malformed body is a 400 that reaches nothing. `invalid` is a
+    400 carrying the runner's text ("Token needs an answer."). Every other refusal is a 409 carrying
+    `reason` (`already-resolved`, `withdrawn`, `unknown`, `wrong-identity`, `changed-action`) and a
+    sentence for the person. A failed save is a 500, as for approvals. A Mac without a question
+    broker answers 501. `/answer` still never answers a question.
+  - **The card** (`QuestionCard` in `CompanionViews.swift`) has a control for each question: options
+    as single-choice rows (with Other when free text is allowed), a text field, or a secure field for
+    a secret. Nothing is sent until every question has an answer, and what is missing is said on the
+    card. A secret is sent exactly as typed; other text is trimmed. A closed card says how it closed
+    in the desktop card's words ("Answered on your phone", "Answered on your Mac", "Not answered — the
+    turn was stopped", "Delivery uncertain…") and shows a secret as "(hidden)".
+  - **Unsent answers** live only in the app's memory, by thread and card. They survive switching
+    threads. They are dropped when the card closes (wherever it was answered), when its thread goes
+    away, or when the Mac is forgotten, re-paired to another Mac, or swapped for the demo. They are
+    never written to the Keychain, `UserDefaults` or a log.
+  - Sending and uncertain receipts are explicit for approvals too, so older clients cannot mistake
+    them for successful approvals.
 - **Store demo.** `thread:answer` returns `{ ok: true }`. The demo asks no questions, so
   `thread:answer-question` refuses with `unknown`.
 - **Older paired desktops.** A paired desktop names the item kinds it draws in an
@@ -245,8 +270,9 @@ paired desktops and the phone carry it with no new event type. This is the reque
   reloads to a snapshot with the same fields.
 - **Late answers** to an answered, uncertain or withdrawn card are refused (`already-resolved` or
   `withdrawn`). Nothing replayed, reloaded or reconnected answers a request.
-- **Two clients at once.** The desktop and the phone race through one broker: one answer is accepted,
-  the card names who gave it, and the other is refused, with a 409 for the phone.
+- **Two clients at once.** The desktop and the phone race through one broker, for approvals and for
+  questions: one answer is accepted, the card names who gave it, and the other is refused
+  (`already-resolved`), with a 409 for the phone. The CLI hears one answer.
 - **The phone** gets `answeredBy` and `delivery` on an open or answered approval. A withdrawn, sending
   or uncertain approval reaches it as a notice that says so ("Request withdrawn. Nothing more can be
   approved."), so the iPhone app no longer shows a withdrawn approval as declined. A question's notice
@@ -261,7 +287,9 @@ paired desktops and the phone carry it with no new event type. This is the reque
 
 A secret answer is held only in the turn's memory and written only to the CLI's stdin. It is never in a
 saved item, an `item`/`item_update` event, the event journal, a snapshot, the phone's view or an
-export. Tests check the saved store and the emitted events (`test/human-requests-runner.test.ts`), every
+export. One answered from the phone crosses the paired TLS connection once, in the request body. The
+companion hands it to the runner and never logs it or puts it in a reply. The iPhone app keeps it only
+in memory until it is sent. Tests check the saved store and the emitted events (`test/human-requests-runner.test.ts`), every
 file under `MODEX_HOME` with the journal on and the phone's snapshot (`test/request-journal.test.ts`), and
 every file under `MODEX_HOME/app` with the journal off and on (`e2e/human-requests.spec.ts`).
 
@@ -309,7 +337,26 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
   - an expired cursor;
   - a crash between taking an answer and recording its hand-off;
   - a secret answer kept out of every file, event and the phone's view, with the journal on.
-- `test/companion.test.ts` covers the phone: the question fallback text, and refusals as 409.
+- `test/companion.test.ts` covers the phone:
+  - the question fallback text for a phone that names no kinds;
+  - the card for one that names `question`, with a secret hidden even if the card held it;
+  - answers passed to the runner as typed, with `by: "phone"`;
+  - `invalid` as a 400 with the runner's text, every other refusal as a 409 with its reason;
+  - malformed bodies that reach nothing, and 501 without a broker.
+- `test/request-journal.test.ts` also races the desktop and the phone on a real Codex question, each
+  answering first. One wins, the loser is refused (a 409 for the phone), Codex hears one answer, and
+  the journal and the phone name the winner. A secret answered from the phone reaches Codex and no
+  file, event, journal row, phone view or log line. After Stop, a phone answer is refused as
+  `withdrawn` and Codex hears only the error reply.
+- `apps/ios/ModexCompanion/Tests/CompanionModelTests.swift` (`QuestionCardTests`) covers the iPhone
+  model: decoding a card and its closed states, the answers sent (secret whitespace kept, Other text),
+  a refusal on the card, a 409 that rereads and drops the closed draft, drafts across threads and
+  after forgetting the Mac, nothing in `UserDefaults`, and the item-kinds header.
+- `apps/ios/ModexCompanion/UITests/CompanionFlowTests.swift` answers a question in the simulator
+  against the real companion and runner (`Scripts/fixture.mjs`). It sends an incomplete answer and
+  sees it refused on the card, chooses an option, and types a secret into the secure field. The agent
+  then reports the secret matched exactly, and the card reads "Answered on your phone" and shows
+  "(hidden)".
 - `test/turn-layout.test.ts` checks that an open question never folds away.
 - `e2e/human-requests.spec.ts` runs a fixture Codex app-server through the real UI:
   - the turn header while a question waits;
@@ -324,7 +371,6 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 
 ## Not done here
 
-- Answering questions from the phone.
 - Clarifying a task plan through a question card (the second half of CF-7).
 - Running Modex's Plan mode as Codex's plan collaboration mode. That is what lets Codex ask, but
   Modex would also need to show Codex's `plan` items. It is a decision for Val:

@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { CompanionServer } from "../src/main/engine/companion.js";
 import { DEFAULT_SETTINGS } from "../src/main/engine/store.js";
 import type { CompanionAdvertisement } from "../src/main/engine/companion-discovery.js";
-import type { AppState, ApprovalAnswer, ThreadItem } from "../src/shared/types.js";
+import type { AnswerResult, AppState, ApprovalAnswer, ThreadItem } from "../src/shared/types.js";
 
 function pinnedCompanionOptions(home: string, fingerprint: string) {
   return {
@@ -461,6 +461,92 @@ test("a phone sees a question card as text it cannot answer, never a secret, and
     const refused = await request("/v1/threads/abcdef12/answer", "POST", { itemId: "approval-1", answer: "yes" });
     assert.equal(refused.status, 409, "the runner's refusal reaches the phone");
     assert.deepEqual(calls, ["answer:approval-1:yes"]);
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a phone that draws questions gets the card without its answers and answers through the runner's broker", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-question-card-"));
+  const calls: unknown[] = [];
+  let refusal: AnswerResult = { ok: true };
+  const questions = [
+    { id: "q-env", header: "Environment", text: "Which environment?", options: [{ label: "staging", description: "Safe" }], allowOther: false, secret: false },
+    { id: "q-token", header: "Token", text: "Paste the deploy token", options: null, allowOther: true, secret: true },
+  ];
+  // The saved card already holds "(hidden)"; the phone view hides a secret again whatever the card says.
+  const items: ThreadItem[] = [
+    { id: "question-1", kind: "question", blocking: true, at: "now", questions },
+    { id: "question-2", kind: "question", blocking: true, at: "now", questions, answers: { "q-env": ["staging"], "q-token": ["tok-LEAK"] }, answeredBy: "desktop", delivery: "sent" },
+    { id: "question-3", kind: "question", blocking: true, at: "now", questions, withdrawn: "stopped" },
+  ];
+  const state = { projects: [{ id: "p1", name: "example", path: "/private/source", addedAt: "now" }], threads: [{ id: "abcdef12", projectId: "p1", title: "Deploy", backend: "codex", status: "waiting", cwd: "/private/source", mode: "chat", model: "gpt", plan: false, createdAt: "now", updatedAt: "now" }], version: 1, settings: {} } as AppState;
+  const server = new CompanionServer(home, {
+    state: () => state, items: () => items, status: () => "waiting", send: async () => ({ ok: true }), answer: () => ({ ok: true }),
+    answerQuestion: (threadId, itemId, answers, by) => { calls.push([threadId, itemId, answers, by]); return refusal; },
+  }, () => ["127.0.0.1"]);
+  try {
+    const pairing = await server.start();
+    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
+    const request = (route: string, method = "GET", body?: unknown, kinds?: string) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req = https.request(`${credentials.url}${route}`, { method, ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, ...(kinds ? { "x-modex-item-kinds": kinds } : {}), ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
+        let text = "";
+        res.on("data", (chunk) => { text += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
+      });
+      req.on("error", reject);
+      req.end(body ? JSON.stringify(body) : undefined);
+    });
+    const legacy = await request("/v1/snapshot?threadId=abcdef12");
+    assert.deepEqual(legacy.body.items.map((i: { kind: string }) => i.kind), ["notice", "notice", "notice"], "a phone that names no kinds keeps the text fallback");
+
+    const snapshot = await request("/v1/snapshot?threadId=abcdef12", "GET", undefined, "user,assistant,approval,tool,notice,question");
+    const [open, answered, closed] = snapshot.body.items;
+    assert.deepEqual(open, { id: "question-1", kind: "question", blocking: true, at: "now", questions });
+    assert.deepEqual([answered.answers, answered.answeredBy, answered.delivery], [{ "q-env": ["staging"], "q-token": ["(hidden)"] }, "desktop", "sent"]);
+    assert.equal(closed.withdrawn, "stopped");
+    assert.ok(!JSON.stringify(snapshot.body).includes("tok-LEAK"), "a secret never reaches the phone");
+
+    const answers = { "q-env": ["staging"], "q-token": ["  tok 1  "] };
+    assert.deepEqual(await request("/v1/threads/abcdef12/answer-question", "POST", { itemId: "question-1", answers }), { status: 200, body: { ok: true } });
+    assert.deepEqual(calls, [["abcdef12", "question-1", answers, "phone"]], "the runner gets the answers as typed, from the phone");
+
+    refusal = { ok: false, reason: "invalid", error: "Token needs an answer." };
+    assert.deepEqual(await request("/v1/threads/abcdef12/answer-question", "POST", { itemId: "question-1", answers: { "q-env": ["staging"] } }),
+      { status: 400, body: { ok: false, reason: "invalid", error: "Token needs an answer." } }, "the runner's validation text reaches the phone");
+    for (const reason of ["already-resolved", "withdrawn", "unknown", "wrong-identity", "changed-action"] as const) {
+      refusal = { ok: false, reason };
+      const refused = await request("/v1/threads/abcdef12/answer-question", "POST", { itemId: "question-1", answers });
+      assert.equal(refused.status, 409, `${reason} is a conflict`);
+      assert.equal(refused.body.reason, reason);
+      assert.match(refused.body.error, /question/i);
+    }
+    calls.length = 0;
+    for (const body of [{ itemId: "question-1" }, { itemId: "question-1", answers: [] }, { itemId: "question-1", answers: { "q-env": "staging" } }, { itemId: 7, answers }]) {
+      assert.equal((await request("/v1/threads/abcdef12/answer-question", "POST", body)).status, 400);
+    }
+    assert.deepEqual(calls, [], "a malformed body never reaches the broker");
+    assert.equal((await request("/v1/threads/abcdef12/answer", "POST", { itemId: "question-1", answer: "yes" })).status, 409, "an approval answer still never answers a question");
+  } finally {
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a Mac without a question broker refuses a phone's answer instead of dropping it", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-companion-no-broker-"));
+  const state = { projects: [], threads: [{ id: "abcdef12", projectId: "p1", title: "Deploy", backend: "codex", status: "waiting", cwd: "/private/source", mode: "chat", model: "gpt", plan: false, createdAt: "now", updatedAt: "now" }], version: 1, settings: {} } as unknown as AppState;
+  const server = new CompanionServer(home, { state: () => state, items: () => [], status: () => "waiting", send: async () => ({ ok: true }), answer: () => {} }, () => ["127.0.0.1"]);
+  try {
+    const pairing = await server.start();
+    const credentials = JSON.parse(Buffer.from(new URL(pairing.pairingUri!).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = https.request(`${credentials.url}/v1/threads/abcdef12/answer-question`, { method: "POST", ...pinnedCompanionOptions(home, credentials.fingerprint), headers: { authorization: `Bearer ${credentials.token}`, "content-type": "application/json" } }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode!)); });
+      req.on("error", reject);
+      req.end(JSON.stringify({ itemId: "q", answers: { a: ["b"] } }));
+    });
+    assert.equal(status, 501);
   } finally {
     await server.stop();
     fs.rmSync(home, { recursive: true, force: true });
