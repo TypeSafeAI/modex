@@ -33,6 +33,7 @@ Cells hold the environment IDs below. **pending (#n)** means the owning slice ha
 | `F-nav` | `e2e/code-review-navigation.spec.ts` (CR-3): renderer over a replaced handler that serves `test/fixtures/code-review.ts` | `0e674e7` | E1 | 12 of 12 passed (with `F-ipc`, 13 of 13 in 1.0 min) |
 | `F-ipc` | `e2e/code-review-ipc.spec.ts` (CR-2 AC1): production IPC with `FAKE_GH` | `0e674e7` | E1 | 1 of 1 passed |
 | `F-prod` | This page's new specs: `code-review-journey`, `-regressions`, `-a11y` and `-measure` `.spec.ts`. Production preload, IPC, service and transport, with only `gh` synthetic (`WORLD_GH`) | product `0e674e7`; specs on branch `cr8-acceptance` | E1 | 16 of 16 passed (journey 1, regressions 7, a11y 5, measure 2), alone and inside the full `pnpm test:e2e` run |
+| `CI` | Required check `unit + e2e (macOS)` on PR #372 (GitHub macOS runner, about 677 px of display height) | branch head `17f53a5` (product `0e674e7`) | GitHub Actions job 120081297678 | unit: 0 failed, 0 cancelled; e2e: 406 passed, 3 skipped, 0 failed, including all 29 Code Review specs. The first head, `ac5fc58`, failed 3 of the new specs because the window couldn't grow past that display; `fitWindow` fixed it |
 | `A-321` | CR-2's authenticated read smoke ([record](2026-10-20-cr2-read-smoke.md)): account BunsDev (id 68980965), TypeSafeAI/modex (id 1386876170), PRs #334 and #330, gh 2.98.0 | branch `cr2-read-service`, before it merged | Val's Mac | 17 requests per run, all GET; reads ready except `stack` |
 | `A-349` | The authenticated smoke for CR-2's cache-denial repair ([record](2026-10-20-cr2-cache-denial.md)): PR #349 head `d31f661` | `d31f661` (PR #349) | Val's Mac | connection, resolve, overview, files and context ready |
 | `A-322` | CR-3's authenticated navigation smoke through the real renderer and service ([record](2026-10-21-cr3-read-integration.md)) | candidate `65e86dd` + #354 `4dd5bb5` | Val's Mac | probe exited 0 |
@@ -255,7 +256,8 @@ the machine's load average was 30–77 from other sessions.
 | `pnpm test:e2e` | **exit 1:** 402 passed, 6 skipped (opt-in), 1 **failed**. `conversation-rendering` "Markdown stays usable … keyboard Copy" read "Copy" where it expected "Copied". It passed 1/1 on its own. It asserts the system clipboard, which other sessions on this Mac share. All 29 Code Review specs passed inside the run. |
 
 Neither failure touches Code Review, and this branch changes no product code. Neither counts as passing
-here. CI on the PR is the clean-machine run of record.
+here. The clean-machine run of record is `CI` above: the required macOS check on `17f53a5`, with unit 0 failed
+and e2e 406 passed, 3 skipped, 0 failed.
 
 ## Open gates and owners
 
