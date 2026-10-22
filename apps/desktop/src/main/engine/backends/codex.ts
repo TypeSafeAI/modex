@@ -39,6 +39,8 @@ export class CodexBackend implements Backend {
   private readonly subscribers = new Set<(msg: RpcMessage) => void>();
   private readonly disconnects = new Set<(error: Error) => void>();
   private readonly loaded = new Set<string>();
+  /** The model Codex chose for each loaded thread, from thread/start or thread/resume: a Plan turn's collaboration mode needs one. */
+  private readonly threadModels = new Map<string, string>();
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
   private readonly changePaths = new Map<string, string[]>();
   /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
@@ -70,6 +72,7 @@ export class CodexBackend implements Backend {
       this.child = child;
       this.generation = randomUUID();
       this.loaded.clear();
+      this.threadModels.clear();
       const lines = new LineBuffer();
       let stderr = "";
       child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
@@ -98,6 +101,7 @@ export class CodexBackend implements Backend {
     this.child = null;
     this.ready = null;
     this.loaded.clear();
+    this.threadModels.clear();
     for (const request of this.openRequests.values()) request.controller.abort();
     this.openRequests.clear();
     for (const p of this.pending.values()) p.reject(error);
@@ -295,11 +299,13 @@ export class CodexBackend implements Backend {
     let threadId = opts.resume;
     try {
       if (threadId && !this.loaded.has(threadId)) {
-        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
         threadId = r.thread.id;
+        if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       } else if (!threadId) {
-        const r = await duringSetup(this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
         threadId = r.thread.id;
+        if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       }
     } catch (err) {
       return failed(err, { stage: "open thread", codexThreadId: opts.resume });
@@ -310,7 +316,14 @@ export class CodexBackend implements Backend {
 
     const tid = threadId;
     const context = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
-    const input = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
+    // Plan mode runs in Codex's native plan collaboration mode (codex-cli 0.163.0, experimental): Codex's own plan
+    // instructions, its question tool offered by default, and the plan as a `plan` item. The mode overrides the
+    // turn's model and effort, so it carries Modex's. Without a model to name, or when Codex refuses the mode,
+    // the turn falls back to the prompt prefix (docs/reviews/2026-10-22-cf3-plan-mode-decision.md).
+    const planModel = opts.plan ? opts.model || this.threadModels.get(threadId) : undefined;
+    const collaborationMode = planModel ? { mode: "plan", settings: { model: planModel, reasoning_effort: opts.effort ?? null, developer_instructions: null } } : undefined;
+    const prefixed = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
+    const input = collaborationMode ? context : prefixed;
     const runtime = this.generation;
     const seenRequests = new Map<string, string>();
     const agents = new AgentTracker(sink, runtime);
@@ -440,6 +453,9 @@ export class CodexBackend implements Backend {
             const item = p.item as CodexItem;
             if (item.type === "agentMessage") {
               sink.observe({ type: "message.start", native: native(item.id), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}) });
+            } else if (item.type === "plan") {
+              // Codex's proposed plan in plan collaboration mode: the turn's answer; no agent message follows it.
+              sink.observe({ type: "message.start", native: native(item.id), phase: "final", nativePhase: "plan" });
             } else if (item.type === "reasoning") {
               sink.observe({ type: "reasoning.start", native: native(item.id) });
             } else if (item.type === "commandExecution") {
@@ -474,6 +490,7 @@ export class CodexBackend implements Backend {
             break;
           }
           case "item/agentMessage/delta":
+          case "item/plan/delta":
             sink.observe({ type: "message.delta", native: native(p.itemId), text: String(p.delta ?? "") });
             break;
           case "item/commandExecution/outputDelta": {
@@ -495,6 +512,9 @@ export class CodexBackend implements Backend {
               // A message that completes without streaming is kept, commentary included: its phase says what it is.
               const evidence = memoryEvidence(item.memoryCitation);
               sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}), ...(evidence.length ? { evidence } : {}) });
+            } else if (item.type === "plan") {
+              // The completed plan item is authoritative; its deltas joined may differ.
+              sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: "final", nativePhase: "plan" });
             } else if (tools.has(item.id)) {
               const t = tools.get(item.id)!;
               // A web search's results arrive structured; they are shown as links, not as a JSON string.
@@ -561,10 +581,10 @@ export class CodexBackend implements Backend {
       this.subscribers.add(onMsg);
       this.disconnects.add(onDisconnect);
       signal.addEventListener("abort", onAbort, { once: true });
-      this.request<{ turn: { id: string } }>("turn/start", {
+      const turnStart = (text: string, mode: typeof collaborationMode) => this.request<{ turn: { id: string } }>("turn/start", {
         threadId: tid,
         // Images go by path (the app-server reads them); other attached files are named in the text.
-        input: [{ type: "text", text: input, text_elements: [] }, ...(opts.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ type: "localImage", path: a.path }))],
+        input: [{ type: "text", text, text_elements: [] }, ...(opts.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ type: "localImage", path: a.path }))],
         cwd: opts.cwd,
         approvalPolicy: pol.approvalPolicy,
         sandboxPolicy: pol.sandboxPolicy,
@@ -572,7 +592,15 @@ export class CodexBackend implements Backend {
         effort: opts.effort ?? null,
         // "fast" is the Codex fast-mode service tier; only this turn, the thread's tier is untouched.
         serviceTierForTurn: opts.fast ? "fast" : null,
-      })
+        ...(mode ? { collaborationMode: mode } : {}),
+      });
+      turnStart(input, collaborationMode)
+        .catch((err: unknown) => {
+          // A Codex that does not take the collaboration mode refuses the request before starting a turn.
+          if (!collaborationMode || signal.aborted || !refusedCollaborationMode(err)) throw err;
+          sink.notice("info", "This Codex does not offer its plan mode, so this Plan turn runs with Modex's plan instructions.");
+          return turnStart(prefixed, undefined);
+        })
         .then((r) => {
           turnId = r.turn.id;
           starting = false;
@@ -680,6 +708,13 @@ export class CodexBackend implements Backend {
 }
 
 /** An error with the facts behind it (RPC method and code, exit code, stderr) for the failure report. */
+/** Whether a turn/start error is Codex refusing the experimental `collaborationMode` field, not the turn itself. */
+function refusedCollaborationMode(err: unknown): boolean {
+  if (!(err instanceof CodexError)) return false;
+  const code = err.detail.rpcCode;
+  return (code === -32602 || code === -32600 || code === -32601) && /collaboration/i.test(err.message);
+}
+
 class CodexError extends Error {
   constructor(message: string, readonly detail: Record<string, unknown>) {
     super(message);

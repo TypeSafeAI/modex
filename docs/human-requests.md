@@ -167,9 +167,42 @@ recorded in `apps/desktop/test/fixtures/codex-request-user-input-0.163.0.json`.
   `default_mode_request_user_input` flag: the card sent Blue and the model replied Blue.
   Without that flag, another run used the distinct `request_user_input_async` form, which this
   broker does not answer. Human keyboard/VoiceOver acceptance remains open.
-- **Native Plan integration.** In this plan-mode capture, Codex completed with a `plan` item
-  (`{ id, text }`). Modex does not read those items yet. Selecting Codex's native collaboration
-  mode and displaying its plan output remain a separate implementation decision.
+- **Native Plan integration.** In plan collaboration mode, Codex completes with a `plan` item
+  (`{ id, text }`, streamed by `item/plan/delta`) and no final agent message. Val chose native plan
+  mode for Plan turns on 2026-10-22 ([decision](reviews/2026-10-22-cf3-plan-mode-decision.md)); see
+  "Plan mode on Codex" below.
+
+### Plan mode on Codex
+
+A Plan turn on Codex starts in Codex's plan collaboration mode:
+`turn/start` with `collaborationMode: { mode: "plan", settings: { model, reasoning_effort, developer_instructions: null } }`.
+
+- **Model and effort.** The mode overrides the turn's model and effort, so `settings` carries the
+  model picked in Modex. When Modex picked none, it carries the model Codex reported for the thread
+  in its `thread/start` or `thread/resume` reply. `settings` also carries the picked effort, or null
+  for Codex's own plan default.
+- **Instructions.** `developer_instructions: null` selects Codex's own plan instructions, so the
+  `PLAN MODE:` prompt prefix is not sent.
+- **Unchanged.** The sandbox stays read-only with `untrusted` approvals. Questions arrive as
+  `item/tool/requestUserInput` and use the question card, with no feature flag.
+- **The plan.** Codex's `plan` item becomes an assistant item with `phase: "final"` and
+  `nativePhase: "plan"`: the turn's answer, streamed from `item/plan/delta`. The text comes from
+  `item/completed`, which the schema calls authoritative. Every client already shows assistant
+  items, so older desktops, Store builds and phones see the plan as Markdown text.
+- **Fallback.** If Codex refuses the field (an RPC error naming the collaboration mode), or no model
+  is known, the turn runs with the prompt prefix as before, and an info notice says so.
+- **Routines.** A Plan routine also runs in native plan mode. It declines any question with a
+  warning, as routines always have.
+
+Both `collaborationMode` and the `plan` item are experimental in codex-cli 0.163.0.
+`test/codex-native-plan.test.ts` replays the live capture's shapes, and
+`e2e/codex-native-plan.spec.ts` runs a Plan turn through the real UI.
+
+**Live check, 2026-10-22, codex-cli 0.163.0.** One Plan turn ran through Modex's own `CodexBackend`,
+`ThreadRunner` and broker, read-only, with every command declined.
+- Codex asked one question (Language, three options).
+- `answerQuestion` took the first option and recorded `delivery: "sent"`.
+- The turn ended with the plan as the final assistant item (`nativePhase: "plan"`), in 13 s.
 
 ### Claude Code (2.1.302, `claude -p` stream-json)
 
@@ -372,8 +405,5 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 ## Not done here
 
 - Clarifying a task plan through a question card (the second half of CF-7).
-- Running Modex's Plan mode as Codex's plan collaboration mode. That is what lets Codex ask, but
-  Modex would also need to show Codex's `plan` items. It is a decision for Val:
-  [trade-offs with a live capture](reviews/2026-10-22-cf3-plan-mode-decision.md).
 - Human acceptance of a native question (keyboard, VoiceOver, iPhone): [steps](reviews/2026-10-22-cf3-question-acceptance.md),
   tracked in #281.

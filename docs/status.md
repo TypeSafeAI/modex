@@ -124,6 +124,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   reaches people with the next Companion build, which Val uploads to TestFlight.
   [Phone](human-requests.md#clients).
 
+- **Plan mode on Codex runs in Codex's own plan mode** (CF-3 #276). A Plan turn on Codex can ask
+  its clarifying questions on the question card with no feature flag. Codex's proposed plan is the
+  turn's answer, in Markdown. The picked model and effort still apply, and the turn is still
+  read-only. A Codex that refuses the mode falls back to the old prompt, with a notice.
+  [Decision and live capture](reviews/2026-10-22-cf3-plan-mode-decision.md).
+
 ## In flight
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
@@ -249,15 +255,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 Fixed ones move to [resolved rough edges](reviews/2026-10-18-resolved-rough-edges.md), with the PR
 that fixed each.
 
-- **Codex question availability depends on CLI configuration.** With default codex-cli 0.163.0
-  settings, the question tool is offered in native plan collaboration mode. Modex's Plan mode uses
-  a prompt prefix on an ordinary turn. A separate through-app capture in #348 enabled the opt-in
-  `default_mode_request_user_input` flag successfully. The direct plan-mode probe in #357 verifies
-  parser/answer compatibility; it does not close app or human acceptance. Native Plan integration
-  also requires displaying Codex's `plan` items. Whether Plan mode should switch is a decision for
-  Val, with a live capture: [Plan mode decision](reviews/2026-10-22-cf3-plan-mode-decision.md).
-  Human acceptance steps: [question acceptance](reviews/2026-10-22-cf3-question-acceptance.md). See
-  [human-requests.md](human-requests.md#codex-codex-cli-01630-app-server).
+- **Codex asks questions on an ordinary turn only with a flag.** Plan turns on Codex now run in its
+  native plan mode, where it offers its question tool. On an ordinary turn, codex-cli 0.163.0 offers
+  the tool only with the opt-in `default_mode_request_user_input` flag; without it, a run has used the
+  `request_user_input_async` form, which Modex does not answer. Plan mode's collaboration mode and
+  Codex's `plan` item are experimental in the CLI. Human acceptance steps:
+  [question acceptance](reviews/2026-10-22-cf3-question-acceptance.md). See
+  [human-requests.md](human-requests.md#plan-mode-on-codex).
 
 - **node-pty is a pre-release.** Modex still ships `node-pty@1.2.0-beta.15` (#65), because 1.1.0
   leaks one `/dev/ptmx` per terminal on macOS. The beta passed the unit suite and the packaged
