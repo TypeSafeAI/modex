@@ -62,4 +62,6 @@ Markdown rows C1–C5 extend the existing `../2026-10-20-keyboard-voiceover/chec
 
 ## Remaining verification
 
-Reference captures, final full commands and delivery receipts are pending at this checkpoint. The approved budget is implemented; CI stability evidence and human VoiceOver acceptance remain open.
+Final reference captures passed 16/16 and were visually inspected in all three themes. `pnpm build` and `pnpm typecheck` passed. The targeted parser unit run initially failed three exact-markup expectations because the new attributes were not allowed; those expectations now preserve their code-content checks while permitting accessibility attributes, and all 16 parser tests pass. Full workspace unit/E2E and delivery receipts are pending at this checkpoint. The approved budget is implemented; CI stability evidence and human VoiceOver acceptance remain open.
+
+Committed logs preserve command output with trailing spaces removed for patch hygiene; raw copies remain in `apps/desktop/.probes/cf4-raw-logs/`.
