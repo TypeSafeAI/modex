@@ -159,9 +159,10 @@ export class NotesStore implements SpacePagesStore {
     const current = state.pages.get(id);
     if (!current || current.trashedAt || !state.live.has(id)) return null;
     const versions = this.readHistory(id) ?? [];
-    const saved = [...versions].reverse().find(version => version.taskProjectId !== undefined) ??
-      (legacy ? versions.find(version => version.page.revision === legacy.revision && version.summary === "Saved a task record") :
-        [...versions].reverse().find(version => version.actor === "human" && version.summary === "Saved a task record"));
+    // Select by save order, not metadata format: an older build can save this note again.
+    const saved = [...versions].reverse().find(version => version.taskProjectId !== undefined ||
+      (version.actor === "human" && version.summary === "Saved a task record" &&
+        (!legacy || version.page.revision === legacy.revision)));
     if (!saved) return null;
     const projectId = saved.taskProjectId ?? legacy?.projectId;
     const project = this.layout(state).nodes.find(node => node.kind === "project" && node.modexProjectId === projectId);

@@ -445,3 +445,17 @@ test("older task saves use history and state placement uncertainty explicitly", 
   assert.equal(store.taskView(saved.id), null);
   assert.equal(store.taskView("missing"), null);
 }));
+
+test("a later legacy task save takes precedence over an earlier save with project metadata", () => withStore((store) => {
+  const project = store.linkProject({ id: "task-project", name: "Task project", path: "/repo" });
+  const first = store.create({ title: "Task: first", markdown: "First task save", containerId: project.id }, { actor: "human", summary: "Saved a task record", taskProjectId: "task-project" });
+  const later = store.save({ ...first, markdown: "Later legacy task save" }, { actor: "human", summary: "Saved a task record" });
+  const associated = store.taskView(first.id, { projectId: "task-project", revision: later.revision })!;
+  assert.equal(associated.markdown, later.markdown);
+  assert.equal(associated.revision, later.revision);
+  assert.equal(associated.moved, false);
+  const orphaned = store.taskView(first.id)!;
+  assert.equal(orphaned.markdown, later.markdown);
+  assert.equal(orphaned.revision, later.revision);
+  assert.equal(orphaned.moved, null, "an older version's project is not inferred for a newer legacy save");
+}));
