@@ -363,6 +363,7 @@ test("captures Markdown elements in every theme at the reference size", async ()
   if (await tid(page, "workspace").isVisible()) await page.keyboard.press("Meta+j");
   for (const theme of ["graphite", "jev", "coven"] as const) {
     await setTheme(page, theme);
+    await page.keyboard.press("Escape");
     expect(await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(REFERENCE);
     await expect(items(page, "assistant").getByRole("link", { name: "End link", exact: true })).toBeInViewport();
     expect(await tid(page, "transcript").evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);

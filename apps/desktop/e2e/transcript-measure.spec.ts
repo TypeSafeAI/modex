@@ -15,7 +15,8 @@ import { items, launch, seedHome, tid } from "./support";
  *    IPC. Counted: the bytes main sends the window, main's CPU time from the first item to idle, the renderer's
  *    long tasks, and the time from send to the answer.
  *
- * The assertions are bounds that hold on any machine. The times are this machine's; MODEX_MEASURE=<file>
+ * The cold-open median has Val's approved 500 ms CI budget; log bounds are size-based.
+ * The times are this machine's; MODEX_MEASURE=<file>
  * writes them as JSON with the machine's description, and the numbers are written before anything is asserted.
  * The fixture is not a provider.
  */
@@ -138,7 +139,7 @@ test.afterEach(async () => {
   for (const dir of [home, repo]) if (dir) fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("a 200-turn transcript opens to its last answer", async ({}, testInfo: TestInfo) => {
+async function measureTranscript(testInfo: TestInfo, launchNumber: number): Promise<number> {
   ({ home, repo } = seedHome());
   const threadId = "long-transcript";
   const saved = longTranscript(threadId);
@@ -197,18 +198,42 @@ test("a 200-turn transcript opens to its last answer", async ({}, testInfo: Test
   // The share of an open that is main reading the file and IPC: thread:items, called from the renderer.
   const loads: number[] = [];
   for (let run = 0; run < 3; run++) loads.push(await page.evaluate(async (id) => { const start = performance.now(); await window.modex!.invoke("thread:items", { threadId: id }); return performance.now() - start; }, threadId));
-  results.longTranscript = {
+  const measurement = {
     turns: TURNS, items: saved.length, savedBytes: Buffer.byteLength(JSON.stringify(saved)),
     firstOpenMs: Math.round(opens[0]!), repeatOpenMs: opens.slice(1).map(Math.round), repeatMedianMs: Math.round(median(opens.slice(1))),
     rendererLongTasks: { first: tasks[0], repeats: tasks.slice(1) },
     threadItemsIpcMs: loads.map(Math.round), selectedAtLaunch, renderedItems: await items(page).count(),
     threadEventsOnOpen: Object.fromEntries(Object.entries(Object.groupBy(await app.evaluate(() => (globalThis as unknown as { __openEvents: string[] }).__openEvents), (type) => type)).map(([type, list]) => [type, list!.length])),
   };
-  await testInfo.attach("long-transcript.json", { body: JSON.stringify(results.longTranscript, null, 2), contentType: "application/json" });
+  if (launchNumber === 0) results.longTranscript = measurement;
+  (results.coldLaunches as unknown[]).push(measurement);
+  await testInfo.attach(`long-transcript-${launchNumber + 1}.json`, { body: JSON.stringify(measurement, null, 2), contentType: "application/json" });
+  expect(selectedAtLaunch, "each first open must use a cold renderer cache").toBe(false);
+  expect(measurement.renderedItems).toBe(TURNS * 7);
   await expect(items(page, "assistant").last()).toContainText(`Answer ${TURNS - 1}.`);
   // Opening a saved thread is a read: main resends none of its items.
-  const opened = (results.longTranscript as { threadEventsOnOpen: Record<string, number> }).threadEventsOnOpen;
+  const opened = measurement.threadEventsOnOpen;
   expect([opened.item ?? 0, opened.item_update ?? 0]).toEqual([0, 0]);
+  return opens[0]!;
+}
+
+test("a 200-turn transcript opens within the agreed median budget across five fresh launches", async ({}, testInfo) => {
+  // Val approved 500 ms on 2026-10-22. A new Electron process per sample prevents
+  // RenderCache reuse; use the median to resist isolated CI scheduling stalls.
+  // Do not retry a failed budget or substitute the much faster warm reopens.
+  results.coldLaunches = [];
+  const firstOpens: number[] = [];
+  for (let launchNumber = 0; launchNumber < 5; launchNumber++) {
+    firstOpens.push(await measureTranscript(testInfo, launchNumber));
+    await app!.close();
+    app = undefined;
+    for (const dir of [home, repo]) fs.rmSync(dir, { recursive: true, force: true });
+    home = repo = "";
+  }
+  const medianMs = median(firstOpens);
+  results.firstOpenBudget = { approvedBy: "Val", approvedOn: "2026-10-22", limitMs: 500, samplesMs: firstOpens, medianMs };
+  await testInfo.attach("first-open-budget.json", { body: JSON.stringify(results.firstOpenBudget, null, 2), contentType: "application/json" });
+  expect(medianMs, `cold first-open samples (ms): ${firstOpens.join(", ")}`).toBeLessThanOrEqual(500);
 });
 
 test("a 3 MiB command log streams to the window bounded, and the turn settles", async ({}, testInfo: TestInfo) => {
