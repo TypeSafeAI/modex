@@ -280,7 +280,9 @@ test("Modex killed right after an approval is answered: pre-crash cursors reload
     runner.answer(threadId, card.id, "yes");
     await new Promise(() => {});`;
   const child = spawnSync(process.execPath, ["--input-type=module", "-e", script], { timeout: 30_000, encoding: "utf8" });
-  assert.equal(child.signal, "SIGKILL", child.stderr);
+  // Windows has no signals: a SIGKILL there terminates the process with an exit code instead.
+  if (process.platform === "win32") assert.ok(child.signal === null && child.status !== null && child.status !== 0, `killed, not exited: ${child.status} ${child.stderr}`);
+  else assert.equal(child.signal, "SIGKILL", child.stderr);
   const before = JSON.parse(fs.readFileSync(path.join(home, "pre-crash.json"), "utf8")) as { id: string; cursor: number; card: string };
   assert.equal(fs.readFileSync(path.join(home, "decisions.log"), "utf8"), "yes\n", "the CLI heard one decision");
   assert.equal((new Store(home).items(thread.id).find((item) => item.id === before.card) as { answer?: string }).answer, "yes", "the answer was saved");
