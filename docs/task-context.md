@@ -13,13 +13,18 @@ marked completed is "reported done": what the CLI said, not a check Modex ran.
 | CLI | Native plan | Step statuses |
 | --- | --- | --- |
 | codex-cli 0.163.0 | `turn/plan/updated`: `plan: [{ step, status }]` and an optional `explanation` | `pending`, `inProgress`, `completed` |
-| Claude Code 2.1.302 | the `TodoWrite` tool: `todos: [{ content, status, activeForm }]` | `pending`, `in_progress`, `completed` |
+| Claude Code 2.1.302 and earlier | the `TodoWrite` tool: `todos: [{ content, status, activeForm }]` | `pending`, `in_progress`, `completed` |
 
 Both become a `plan.update` observation with `from` set to `codex-plan` or `claude-todo`. The
 statuses map to `pending`, `in-progress` and `completed`; a status Modex does not know becomes
 `unknown`. Each update replaces the whole plan, and the transcript keeps one `plan` item per turn,
 counting its revisions. Codex gives steps no ids, so a step is its position in the latest revision.
 Codex's experimental plan-mode `plan` items and `item/plan/delta` are not read.
+
+Claude Code 2.1.308 and 2.1.309, launched with Modex's arguments, offer no `TodoWrite`, so their
+turns show no plan. An undocumented variable makes 2.1.309 offer `TaskCreate`/`TaskUpdate`
+instead; Modex neither sets it nor reads those tools. What to do is
+[Val's decision](reviews/2026-10-22-cf7-claude-plans-decision.md).
 
 The plan card lists each step with its status: Not started, In progress, Reported done or Status
 unknown. It also shows where the plan came from and its revision. A plan never folds away under the
@@ -148,6 +153,8 @@ saves on its own, and an agent cannot use this.
 ## Not done yet
 
 - Linking a check to the plan step it verifies. Neither CLI reports that link.
+- A plan for Claude Code 2.1.308 and later, which no longer offers `TodoWrite`
+  ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
   reported; none is suggested.
 - Reopening a saved note as a read-only task view.
