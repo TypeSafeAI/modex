@@ -20,7 +20,7 @@
 - [x] Add an actual-control Electron regression requiring populated overview and remote diffs together; observe failure against the standalone CR-5 renderer. Resolve PrPane/CSS integration, then run renderer typecheck, focused patch/page/overview tests and Electron remote/local/navigation/overview/IPC journeys.
 - [x] Inspect the R4-size and narrow captures, measure 1,000-file/3 MiB fixtures, and record request/DOM/heap/latency evidence plus criterion-level limits. Compare the original R4 if available; otherwise disclose the missing source.
 - [x] Run full `pnpm build`, `pnpm test`, and `pnpm test:e2e`, preserve first failures and artifacts, and repair concrete failures without weakening assertions.
-- [ ] Obtain a fresh whole-branch review, address important findings in one regression-tested pass, update evidence/status, sign all new commits and create a review-ready PR. Verify remote signatures, checks and scope before claiming delivery. No merge or release.
+- [x] Obtain a fresh whole-branch review, address important findings in one regression-tested pass, update evidence/status, sign all new commits and create a review-ready PR. Verify remote signatures, checks and scope before claiming delivery. No merge or release.
 
 ## Review focus
 
@@ -46,3 +46,5 @@
 
 - Final chain 40784 exited 0 on tree `48a611df21e1df34e7c9e6cfead45892739b72b7`: build passed; 2,039 tests passed / 16 skipped; desktop E2E 428 passed / seven skipped; site E2E 7/7. All product/test inputs still match the tested tree. Final observations: 1,000-file selection 69 ms, 13,224 nodes, ten reads/four bodies; 3 MiB no code mounted; dense patches 113 nodes. Full artifacts and logs are preserved externally.
 - Final delivery gate: default SSH agent still reports no identities; the matching public key is registered with GitHub, but direct signing requires a local unlock. No unsigned commit, PR, merge or release was created. Keep this goal active; the owned dirty worktree and recovery patches are preserved. Original R4 source remains unverified after nine indexed dimension candidates produced no approved checksum match.
+
+- Signing unblocked: signed CR-4 integration `f8cb70529c5ed10694d4881bf1ec6c30051bc8cc` and CR-5 implementation `6ef23770f63c6bc2b04edea129ffb208f4e2400c` preserve the input ancestry and exact candidate tree. GitHub verifies the implementation signature. Published non-draft PR #395, stacked on #393, with the full evidence and remaining acceptance boundaries disclosed. This final receipt is documentation-only; verify the published receipt head and PR state after push. No merge/release or issue closure.

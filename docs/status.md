@@ -161,7 +161,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324)). The owned `cr5-integration` candidate combines #393's overview with grouped remote patches, exact-revision context, a filterable tree, line anchors and explicit incomplete-data states. Full build/tests passed (2,039 passed, 16 skipped); E2E passed 428 desktop cases (seven skipped) and seven site cases. A reviewed resource-bound defect is repaired. Signed PR delivery awaits the existing key's local unlock; original R4 comparison and human acceptance remain open. [Evidence, candidate identity and limits](reviews/2026-10-23-cr5-remote-diffs.md).
+- **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324), [PR #395](https://github.com/TypeSafeAI/modex/pull/395)). The signed review candidate combines #393's overview with grouped remote patches, exact-revision context, a filterable tree, line anchors and explicit incomplete-data states. Full build/tests passed (2,039 passed, 16 skipped); E2E passed 428 desktop cases (seven skipped) and seven site cases. The reviewed resource-bound repair is included. #395 is stacked on #393; original R4 comparison, human acceptance and the Viewed decision remain open. [Evidence, candidate identity and limits](reviews/2026-10-23-cr5-remote-diffs.md).
 
 - **Reading Claude's task tools** (CF-7 #280). Once a live Claude turn using `TaskCreate`/`TaskUpdate`
   has been captured, Modex reads them as the turn's plan
