@@ -76,8 +76,8 @@ async function serve(app: ElectronApplication, data: Served): Promise<void> {
       }
       if (req.op === "overview" && req.key) {
         if (state.account && req.key.account !== state.account.id) return { state: "unavailable", reason: "signed-out", fetchedAt: at };
-        const known = state.overview[keyId(req.key)];
-        if (known) return known;
+        const existing = state.overview[keyId(req.key)];
+        if (existing) return existing;
         const row = known().find((r) => r.key && keyId(r.key) === keyId(req.key!));
         if (!row) return { state: "unavailable", reason: "not-found", fetchedAt: at };
         return { state: "ready", fetchedAt: at, value: { key: row.key, locator: { host: "github.com", ...row.locator }, revision: { baseRef: "main", baseSha: "a".repeat(40), headSha: "b".repeat(40) }, title: row.title, body: "", state: row.state, author: row.author, createdAt: row.updatedAt, updatedAt: row.updatedAt, headRef: "fixture-branch", headRepo: null, totals: { files: 2, additions: 5, deletions: 1, commits: 1 }, reviewers: [], comments: 0 } };
@@ -433,6 +433,7 @@ test("keyboard alone works at 1440×900 and 900×600; the split folds and resize
   await expect(row(page, "example-org", "lending", 70)).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(tid(page, "code-review-pr-id").first()).toHaveText("lending #70");
+  await expect(tid(page, "code-review-tab-changes")).toContainText("+5");
   // Tabs: arrows switch between the PR and Changes.
   await tid(page, "code-review-tab-overview").focus();
   await page.keyboard.press("ArrowRight");

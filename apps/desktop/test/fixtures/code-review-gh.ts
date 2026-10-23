@@ -23,6 +23,10 @@ const routes = {
     { filename: "assets/shelf.png", status: "added", additions: 0, deletions: 0, changes: 0 },
   ],
 };
+if (endpoint === "repos/example-org/lending/contents/src/holds/move.ts?ref=" + sha("c")) {
+  process.stdout.write("HTTP/2.0 200 OK\nContent-Type: application/vnd.github.raw\r\n\r\nb\nc\nd\nremote unchanged four\nremote unchanged five\n");
+  process.exit(0);
+}
 let body;
 if (endpoint.startsWith("search/issues?")) {
   const q = new URLSearchParams(endpoint.split("?")[1]).get("q");
