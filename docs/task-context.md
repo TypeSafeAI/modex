@@ -27,6 +27,10 @@ instead; Modex neither sets it nor reads those tools. Val decided that Modex
 says so first, then reads the task tools once a live turn has been captured
 ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
+The codex-cli row is the generated schema's shape. In two live default-mode turns on 2026-10-23,
+neither model sent `turn/plan/updated`: each said its plan tool was not available, so those turns
+show no plan ([live captures](#live-codex-captures)).
+
 The plan card lists each step with its status: Not started, In progress, Reported done or Status
 unknown. It also shows where the plan came from and its revision. A plan never folds away under the
 turn header. When the turn ends, the card keeps the last statuses the CLI reported, and the plan's
@@ -135,6 +139,36 @@ The record lists every question the turn asked, in order, with the answer as its
 
 Nothing is filled in that the card does not hold.
 
+## Live Codex captures
+
+Two codex-cli 0.163.0 app-server turns, captured on 2026-10-23 with Val's authorization. Both ran in a
+disposable repo, in default collaboration mode, with `--enable default_mode_request_user_input`. Each
+was asked to record a plan with its plan tool, ask one clarifying question, then edit and check. Both
+captures are redacted and replayed through the Codex backend and the runner in
+`test/codex-live-capture.test.ts`.
+
+- **`gpt-6.1-sol`** (`test/fixtures/codex-plan-question-0.163.0.jsonl`). Codex said its plan tool
+  was not available and sent no `turn/plan/updated`. It asked through `item/tool/requestUserInput`
+  in the same shape as the 2026-10-20 capture, took the answer, edited `greeting.txt` and ran
+  `node check.js` (exit 0). Replayed, the record has the clarification and its answer, the file and
+  the command, and no plan. `node check.js` is not a known check, so the turn is not verified. Codex
+  parsed every command as an `unknown` action, so none counts as a read. After its final message,
+  Codex sent no `turn/completed` in the 600 s the probe waited, and the thread stayed `active`. The
+  test ends that turn itself and says so.
+- **`gpt-6-astra`**, the model from the user's Codex config (`test/fixtures/codex-async-question-0.163.0.jsonl`).
+  No plan tool and no `requestUserInput`. The question came as an `agentMessage` with
+  `delivery: "async"` and `questions: [{ title, options }]`, a shape the 0.163.0 schema calls
+  `AsyncUserInputQuestion`. Codex then slept twice (`sleep` items, 60 000 ms) and completed the
+  turn still waiting. Modex shows the question as Codex's message, with no card, since there is no
+  request to answer, and shows no sleep as a tool.
+
+The parser needed no change for either shape. What these turns show, and what remains open:
+
+- A Codex plan in a real turn has not been observed. The `turn/plan/updated` path is tested only
+  with schema-shaped fixtures.
+- Async questions in agent messages are shown as text, not as a question card.
+- A Codex turn whose `turn/completed` never arrives leaves the thread running.
+
 ## Save to Notes
 
 Under each finished turn, **Save to Notes** (`task:save-note`, `ThreadRunner.saveTaskNote`) writes the
@@ -178,6 +212,8 @@ the turn touched and its verification, as the save recorded them. It is read-onl
 
 - A plan for Claude Code 2.1.308 and later, which no longer offers `TodoWrite`
   ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
+- A Codex plan from a real turn: in the [live captures](#live-codex-captures), neither model
+  offered its plan tool.
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
   reported; none is suggested.
 

@@ -156,6 +156,12 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   Modex `TodoWrite`, so Claude turns show no plan. Val chose to say "Claude reported no plan"
   now and read `TaskCreate`/`TaskUpdate` after a live capture ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
+- **Live Codex captures for CF-7** (#280). Two real codex-cli 0.163.0 turns, captured with a
+  clarification, are now fixtures replayed into the task record. Neither sent a plan: both models
+  said their plan tool was not available. One asked through an async agent message instead of
+  `requestUserInput`. The other sent no `turn/completed`. No parser change was needed.
+  [Live captures](task-context.md#live-codex-captures).
+
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
   its own update banner, and uploading Companion 0.3.0 (8) to TestFlight. Build 8 is cut from the
