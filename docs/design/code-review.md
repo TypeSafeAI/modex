@@ -171,9 +171,9 @@ Every call is `gh api <fixed path> --method GET` with validated, encoded segment
 | `inbox-page` | `group`, `query`, `cursor` | `PrSummary[]` | the same search, next page; GitHub serves 1,000 results, so `p34` is the last |
 | `resolve` | `input` (a pasted link) | `{ locator, key }` | `parsePrLocator`, then `repos/{owner}/{repo}` for the stable id and `pulls/{n}` to check the PR exists |
 | `overview` | `key` | `PrOverview` with its `revision` | `repos/{owner}/{repo}/pulls/{n}` |
-| `activity` | `key`, `cursor` | `PrActivity[]` | `repos/{owner}/{repo}/issues/{n}/timeline`, 100 a page; the first page starts with the opening, from `pulls/{n}` |
+| `activity` | `key`, `cursor` | `PrActivity[]` | `repos/{owner}/{repo}/issues/{n}/timeline`, 100 a page; the first page adds the opening from `pulls/{n}` and up to 20 current-head provider deployments from `deployments?sha={headSha}`, each with its latest status |
 | `checks` | `key`, `revision` | `PrCheck[]` for that head | `commits/{headSha}/check-runs` and `commits/{headSha}/status`, 100 a page, up to 10 pages each; `reporter` is a run's `app.slug` or a status's `creator.login` |
-| `stack` | `key` | `PrStack`, `explicit` or `inferred` | #323 chooses a documented relationship source; until then main answers `unavailable` and says so |
+| `stack` | `key` | `PrStack`, labelled `inferred` | CR-4 reads up to 1,000 open PRs with `repos/{owner}/{repo}/pulls?state=open`; equal base/head branch refs within the same stable repository form the inferred relationship. Branching, cycles, a capped read, forks or an unresolved root yield unavailable ordering. |
 | `files` | `key`, `revision`, `cursor` | `PrFiles` | `repos/{owner}/{repo}/pulls/{n}/files`, 100 a page (GitHub stops at 3,000 files, so `p30` is the last) |
 | `context` | `key`, `revision`, `side`, `path`, `start`, `end` | `PrContext` | `repos/{owner}/{repo}/contents/{path}?ref={sha}` as `application/vnd.github.raw`, sliced in main |
 | `cancel` | none | nothing | main aborts the named request |
@@ -302,8 +302,7 @@ The isolated AC1 test deliberately omits `MODEX_E2E` and uses a synthetic `gh` e
 with a disposable app home and GitHub configuration, so the production read boundary runs without
 accessing the user's GitHub login.
 
-**Not yet.** `stack` waits for #323. Commit authors in `activity` are git identities, so
-`author` is null. Requested teams are not listed as reviewers.
+**Read limitations.** Commit authors in `activity` are git identities, so `author` is null. Requested teams are not listed as reviewers. Stack inference is limited to complete, linear same-repository open-PR relationships rooted at the default branch; it is never explicit dependency metadata. Deployment enrichment reads only the current PR head and at most 20 records; denied, failed or capped enrichment marks activity partial. Historical deployment enumeration and cross-fork stacks are unavailable.
 
 ## References and calibration
 
@@ -583,3 +582,14 @@ C57–C61's composer are not built (open decisions, #325).
 with the PR's evidence. The authenticated navigation smoke test (#322 AC6) passed through CR-2's
 live read handler; see [the integration evidence](../reviews/2026-10-21-cr3-read-integration.md).
 Original R1–R4 reference comparison and human keyboard/VoiceOver acceptance remain open gates.
+
+
+## Overview implementation (CR-4)
+
+`renderer/code-review/PrOverview.tsx` consumes the existing host's `OpenPr` reads. The host uses account/PR Reader slots, revision-bound checks and activity refresh generations. Refresh follows new cursors through the number of pages the reader had opened, retaining earlier pages as provisional until replaced. Transient read failures retain safe previous evidence as stale; visibility/account failures discard it. Timeline IDs deduplicate provider objects and timestamps plus identity determine ordering. Consecutive commits collapse into keyboard-operable groups. Activity filters cover all, commits, comments, reviews, deployments and events.
+
+Descriptions and comment bodies use the existing inert Markdown renderer. No avatar or remote image is loaded. Provider deployment cards come from GitHub's [deployment list](https://docs.github.com/en/rest/deployments/deployments#list-deployments) filtered by head SHA, with the latest [deployment status](https://docs.github.com/en/rest/deployments/statuses#list-deployment-statuses); only `environment_url` becomes the preview destination. Main constructs fixed GET endpoints from its repository and validated numeric deployment IDs. Comment tables and their URLs retain an explicit commenter-provenance label. Preview links show the actual host, reject credentials/control characters/unsafe schemes, and use the existing external-navigation path on user action.
+
+The title uses 22px/29px and prose uses the existing 14px token with a 24px pitch. At reference width the main column has a 156px left inset and 40px gap to the 305px sidebar, with a 166px trailing margin. The sidebar scrolls independently. At narrow widths, details follow activity in one readable scroll region. The Changes summary opens the existing Changes tab. Check rows expand natively, show elapsed time at the read timestamp and expose all checks on request. Comment menus offer Copy link only. Edit, reviewer and comment callbacks are explicit `OverviewActions` slots and remain unavailable through `capabilities()` until CR-7 connects them. The PR-question composer remains CR-6's; content reserves bottom clearance for that later host.
+
+These are implementation decisions within the accepted contract, not original-reference or human accessibility acceptance. The original R1/R2 images were absent from the manifest paths on 2026-10-23; synthetic normal, narrow, stale and error captures are separate evidence.
