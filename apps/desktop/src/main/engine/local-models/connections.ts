@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { SecretStore } from "../secrets.js";
+import type { SecretName, SecretStore } from "../secrets.js";
 import { LOCAL_RUNTIMES, type ConnectionRef, type LocalConnectionInput, type LocalConnectionView, type LocalRuntime } from "../../../shared/local-connections.js";
 import { parseLocalEndpoint, type LocalEndpoint } from "./endpoint-policy.js";
 
@@ -13,6 +13,10 @@ import { parseLocalEndpoint, type LocalEndpoint } from "./endpoint-policy.js";
  * discovery answer, qualification or run bound to an older revision can be told apart from the
  * current one. A token belongs to the address it was saved for: changing the address drops it.
  * Deleting a profile keeps a tombstone so history still reads, but nothing resolves through it.
+ *
+ * Each saved token gets its own secret entry and the profile names the entry it uses. A change
+ * writes any new token first, then the profile, and only then removes the superseded entry, so a
+ * failed write leaves the old revision resolving exactly the token it was saved with.
  */
 
 interface StoredConnection {
@@ -23,6 +27,8 @@ interface StoredConnection {
   basePath: "" | "/v1";
   revision: number;
   manualModels: string[];
+  /** The secret entry holding this revision's token, or null when it has none. */
+  credential: SecretName | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -50,7 +56,13 @@ const ID = /^lc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CONTROL = /[\x00-\x1f\x7f]/;
 const INPUT_KEYS = new Set(["label", "runtime", "url", "token", "manualModels"]);
 
-const secretName = (id: string) => `local_connection:${id}` as const;
+/** A fresh entry per saved token: `local_connection:<id>:<uuid>`. */
+const newCredential = (id: string): SecretName => `local_connection:${id}:${crypto.randomUUID()}`;
+const CREDENTIAL = /^local_connection:(lc_[0-9a-f-]{36}):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A stored reference counts only when it names an entry of the same connection. */
+function credentialRef(id: string, value: unknown): SecretName | null {
+  return typeof value === "string" && CREDENTIAL.exec(value)?.[1] === id ? value as SecretName : null;
+}
 
 function label(value: unknown): string {
   if (typeof value !== "string") throw new Error("Name the connection.");
@@ -100,7 +112,7 @@ function validStored(raw: unknown): StoredConnection | null {
     if (endpoint.origin !== c.origin) return null;
     return {
       id: c.id, label: label(c.label), runtime: rt, origin: endpoint.origin, basePath: endpoint.basePath, revision: c.revision as number,
-      manualModels: modelIds(c.manualModels ?? []), createdAt: String(c.createdAt ?? ""), updatedAt: String(c.updatedAt ?? ""),
+      manualModels: modelIds(c.manualModels ?? []), credential: credentialRef(c.id, c.credential), createdAt: String(c.createdAt ?? ""), updatedAt: String(c.updatedAt ?? ""),
       ...(typeof c.deletedAt === "string" ? { deletedAt: c.deletedAt } : {}),
     };
   } catch {
@@ -140,14 +152,36 @@ export class LocalConnectionStore {
   private view(c: StoredConnection): LocalConnectionView {
     return {
       id: c.id, revision: c.revision, label: c.label, runtime: c.runtime, origin: c.origin, basePath: c.basePath,
-      manualModels: [...c.manualModels], credential: { present: this.secrets.has(secretName(c.id)), storage: this.secrets.backend },
+      manualModels: [...c.manualModels], credential: { present: Boolean(c.credential && this.secrets.has(c.credential)), storage: this.secrets.backend },
       createdAt: c.createdAt, updatedAt: c.updatedAt,
     };
   }
 
-  private saveToken(id: string, value: string): void {
+  /** Saves a token under a new entry and returns its name; nothing refers to it yet. */
+  private saveToken(id: string, value: string): SecretName {
     if (!this.secrets.available()) throw new Error(`Can't save the token: ${this.secrets.backend} encryption is unavailable on this machine.`);
-    this.secrets.set(secretName(id), value);
+    const name = newCredential(id);
+    this.secrets.set(name, value);
+    return name;
+  }
+
+  /**
+   * Makes `data` durable, then drops the entry it no longer uses. If the write fails, the new entry
+   * is dropped instead and the stored profile, still naming its old entry, is left as it was.
+   */
+  private commit(data: ConnectionsFile, added: SecretName | null, superseded: SecretName | null): void {
+    try {
+      this.write(data);
+    } catch (err) {
+      if (added) this.forget(added);
+      throw err;
+    }
+    if (superseded && superseded !== added) this.forget(superseded);
+  }
+
+  /** Best effort: a leftover entry is unreachable because no profile names it. */
+  private forget(name: SecretName): void {
+    try { this.secrets.clear(name); } catch { /* unreferenced either way */ }
   }
 
   list(): LocalConnectionView[] {
@@ -164,10 +198,11 @@ export class LocalConnectionStore {
     const data = this.read();
     if (data.connections.filter(c => !c.deletedAt).length >= MAX_CONNECTIONS) throw new Error(`Modex keeps at most ${MAX_CONNECTIONS} local connections.`);
     const at = this.now().toISOString();
-    const stored: StoredConnection = { id: `lc_${crypto.randomUUID()}`, label: name, runtime: rt, origin: endpoint.origin, basePath: endpoint.basePath, revision: 1, manualModels, createdAt: at, updatedAt: at };
-    if (secret) this.saveToken(stored.id, secret);
+    const id = `lc_${crypto.randomUUID()}`;
+    const credential = secret ? this.saveToken(id, secret) : null;
+    const stored: StoredConnection = { id, label: name, runtime: rt, origin: endpoint.origin, basePath: endpoint.basePath, revision: 1, manualModels, credential, createdAt: at, updatedAt: at };
     data.connections.push(stored);
-    this.write(data);
+    this.commit(data, credential, null);
     return this.view(stored);
   }
 
@@ -184,18 +219,18 @@ export class LocalConnectionStore {
     const manualModels = patch.manualModels === undefined ? current.manualModels : modelIds(patch.manualModels);
     const secret = patch.token === undefined || patch.token === null ? patch.token : token(patch.token);
     const moved = endpoint.origin !== current.origin || endpoint.basePath !== current.basePath;
-    const hadToken = this.secrets.has(secretName(id));
+    const hadToken = current.credential !== null;
     // A token stays with the address it was saved for unless the person enters it again.
     const clearsToken = secret === null || (moved && secret === undefined && hadToken);
     const targetChanged = rt !== current.runtime || moved || typeof secret === "string" || (clearsToken && hadToken);
-    if (typeof secret === "string") this.saveToken(id, secret);
-    else if (clearsToken) this.secrets.clear(secretName(id));
+    const added = typeof secret === "string" ? this.saveToken(id, secret) : null;
+    const credential = added ?? (clearsToken ? null : current.credential);
     const next: StoredConnection = {
-      ...current, label: name, runtime: rt, origin: endpoint.origin, basePath: endpoint.basePath, manualModels,
+      ...current, label: name, runtime: rt, origin: endpoint.origin, basePath: endpoint.basePath, manualModels, credential,
       revision: targetChanged ? current.revision + 1 : current.revision, updatedAt: this.now().toISOString(),
     };
     data.connections = data.connections.map(c => (c.id === id ? next : c));
-    this.write(data);
+    this.commit(data, added, credential === current.credential ? null : current.credential);
     return this.view(next);
   }
 
@@ -204,9 +239,8 @@ export class LocalConnectionStore {
     const current = data.connections.find(c => c.id === id);
     if (!current || current.deletedAt) throw new Error("That connection no longer exists.");
     if (current.revision !== expected) throw new Error("That connection changed. Review it and try again.");
-    this.secrets.clear(secretName(id));
-    data.connections = data.connections.map(c => (c.id === id ? { ...c, manualModels: [], deletedAt: this.now().toISOString() } : c));
-    this.write(data);
+    data.connections = data.connections.map(c => (c.id === id ? { ...c, manualModels: [], credential: null, deletedAt: this.now().toISOString() } : c));
+    this.commit(data, null, current.credential);
   }
 
   /** Exactly this revision of a live profile, or null: never a newer revision, never a replacement. */
@@ -214,7 +248,7 @@ export class LocalConnectionStore {
     const c = this.read().connections.find(x => x.id === ref.id);
     if (!c || c.deletedAt || c.revision !== ref.revision) return null;
     const endpoint = endpointFor(c.runtime, `${c.origin}${c.basePath}`);
-    return { ref: { id: c.id, revision: c.revision }, runtime: c.runtime, endpoint, token: this.secrets.get(secretName(c.id)), manualModels: [...c.manualModels] };
+    return { ref: { id: c.id, revision: c.revision }, runtime: c.runtime, endpoint, token: c.credential ? this.secrets.get(c.credential) : null, manualModels: [...c.manualModels] };
   }
 
   /** What history may show about a connection, deleted or not. */

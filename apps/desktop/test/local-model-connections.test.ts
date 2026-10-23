@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -95,7 +95,7 @@ test("deletion clears the token, keeps readable provenance and never resolves or
   assert.throws(() => store.delete(c.id, 2), /changed/);
   store.delete(c.id, 1);
   assert.deepEqual(store.list(), []);
-  assert.equal(secrets.has(`local_connection:${c.id}`), false);
+  assert.deepEqual(credentialKeys(secrets, c.id), [], "no token entry for the deleted connection remains");
   assert.equal(store.resolve({ id: c.id, revision: 1 }), null);
   assert.deepEqual(store.provenance(c.id), { label: "LM", runtime: "lmstudio", origin: "http://127.0.0.1:1234", deleted: true });
   const replacement = store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234" });
@@ -118,4 +118,55 @@ test("a corrupt or foreign profiles file is ignored entry by entry, not trusted"
   assert.deepEqual(store.list().map(c => [c.label, c.revision]), [["ok", 3]]);
   fs.writeFileSync(file, "{not json");
   assert.deepEqual(new LocalConnectionStore(home, secrets).list(), []);
+});
+
+/** Every secret entry belonging to one connection, whatever its credential version. */
+function credentialKeys(secrets: SecretStore, id: string): string[] {
+  const entries = (JSON.parse(fs.readFileSync(secrets.file, "utf8")) as { entries: Record<string, unknown> }).entries;
+  return Object.keys(entries).filter(k => k.startsWith(`local_connection:${id}`));
+}
+
+/** Fails only the profiles-file rename, the moment a new revision would become durable. */
+function failProfileWrite(store: LocalConnectionStore): () => void {
+  const original = fs.renameSync;
+  const m = mock.method(fs, "renameSync", (from: fs.PathLike, to: fs.PathLike) => {
+    if (String(to) === store.file) throw Object.assign(new Error("EIO: i/o error, rename"), { code: "EIO" });
+    return original(from, to);
+  });
+  return () => m.mock.restore();
+}
+
+test("a failed profile write never changes what an existing revision resolves", () => {
+  const { secrets, store } = setup();
+  const c = store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN });
+  const ref = { id: c.id, revision: 1 };
+  const attempts: [string, () => unknown][] = [
+    ["rotation", () => store.update(c.id, 1, { token: "replacement-token" })],
+    ["clear", () => store.update(c.id, 1, { token: null })],
+    ["endpoint move", () => store.update(c.id, 1, { url: "http://127.0.0.1:4321" })],
+    ["endpoint move with token", () => store.update(c.id, 1, { url: "http://localhost:4321", token: "moved-token" })],
+    ["delete", () => store.delete(c.id, 1)],
+  ];
+  for (const [name, attempt] of attempts) {
+    const restore = failProfileWrite(store);
+    try { assert.throws(attempt, /EIO/, name); } finally { restore(); }
+    const resolved = store.resolve(ref);
+    assert.equal(resolved?.token, TOKEN, `${name}: revision 1 still resolves its own token`);
+    assert.equal(resolved?.endpoint.origin, "http://127.0.0.1:1234", `${name}: and its own address`);
+    assert.deepEqual(store.list().map(v => [v.revision, v.credential.present]), [[1, true]], `${name}: the view is unchanged`);
+    assert.equal(credentialKeys(secrets, c.id).length, 1, `${name}: no orphaned token entry is left behind`);
+  }
+  // The same edits succeed once the disk recovers, and the old revision then stops resolving.
+  const rotated = store.update(c.id, 1, { token: "replacement-token" });
+  assert.equal(store.resolve(ref), null);
+  assert.equal(store.resolve({ id: c.id, revision: rotated.revision })?.token, "replacement-token");
+  assert.equal(credentialKeys(secrets, c.id).length, 1, "the superseded token entry is removed");
+});
+
+test("a failed create leaves neither a profile nor its token behind", () => {
+  const { secrets, store } = setup();
+  const restore = failProfileWrite(store);
+  try { assert.throws(() => store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN }), /EIO/); } finally { restore(); }
+  assert.deepEqual(store.list(), []);
+  assert.equal(fs.existsSync(secrets.file) ? credentialKeys(secrets, "").length : 0, 0);
 });
