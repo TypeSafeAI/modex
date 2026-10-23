@@ -182,8 +182,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   (#378) has a branch with main-owned, loopback-only connection profiles, tokens in the existing
   encrypted secret store, and bounded metadata discovery for Ollama, LM Studio and
   Responses-compatible servers. Discovery uses one local-only IPC channel; there is no UI and no
-  execution binding yet. Evidence comes from fixtures only. Completion stays blocked on LM-1
-  (#377), whose contract and native app-server probe are not yet accepted.
+  execution binding yet. Evidence comes from fixtures only. The PR is a draft. Completion stays
+  blocked on LM-1 (#377), whose contract and native app-server probe are not yet accepted, and on
+  metadata evidence from a real Ollama and LM Studio.
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and
