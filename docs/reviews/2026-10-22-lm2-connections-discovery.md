@@ -92,6 +92,16 @@ wrapper instead of feeding it; the fix always wraps it. An earlier full run fail
 Store desktop offline demo lacked the new channel; that demo now refuses it like other system tools.
 The full `pnpm test:e2e` suite was not run, because this branch has no renderer change.
 
+PR CI on `ef6863e` passed `unit + e2e (macOS)`. CodeQL raised one high `js/reflected-xss` alert
+(#27) in the test file `test/local-model-endpoint.test.ts`, where a fixture server echoed
+`req.url`. The fixture now answers `/ok` with a fixed body and 404s everything else. No product
+code changed. After the fix, the focused tests passed 21/21 and typecheck exited 0. The first
+`pnpm build && pnpm test` exited 1. In `scripts/test/worktree-entry.test.mjs:93`, `remove completes
+the real CLI archive flow but reports a failed final observation` failed (116/117 passed), which
+stopped the run before the desktop suite. This branch does not touch `scripts/`, and the test
+passed twice when rerun alone. Rerunning `pnpm test` exited 0: 117, 16, 1848 (1832 passed, 16
+skipped), 21, 10 and 16 tests, 0 failed.
+
 `git merge-tree` against the heads of open PRs #370–#372, #374, #375 and #385 reported no
 conflicts. #374 and #375 add lines to the same channel registries (`types.ts`, `index.ts`, Store
 demo), so whichever lands second may need a trivial rebase.
