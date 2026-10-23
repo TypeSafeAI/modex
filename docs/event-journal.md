@@ -54,8 +54,10 @@ can't skip events.
 
 The id also changes when a journal may be missing rows. While open, the journal records
 `open = 1` in `meta`, and a clean close resets it. It reopens still marked open in two cases:
-the process died with a batch unwritten, which can be up to 250 ms of events the state files
-already hold, or a write failed. Either way it takes a new id, so every cursor issued before then
+the process died with a batch unwritten, or a write failed. The thread files save streamed text on
+their own 250 ms timer, so at a crash either side can hold up to one batch more of a streaming reply
+than the other. The state files win: a client that saw the longer text live sees it shrink back to the
+saved text when it reloads, as `e2e/event-journal.spec.ts` shows by killing the app mid-reply. Either way it takes a new id, so every cursor issued before then
 reloads instead of resuming past the gap. An ordinary quit keeps the id, so a relaunch still
 resumes.
 
@@ -82,7 +84,10 @@ On a resumed reconnect, the Store edition refreshes its thread list and the sele
 Changes, but keeps its loaded transcripts: the replay brings them up to date. When it can't resume,
 it reloads everything as before. It also closes the stream when the Mac goes to sleep and reopens
 it on wake, rather than waiting 45 seconds for a heartbeat timeout. A replay over 4 MB reloads
-instead. A stream that falls 8 MB behind is dropped, and its client resumes from its cursor. A
+instead. A stream that falls 8 MB behind is dropped. Its client reconnects from its cursor, but what
+it missed is then past the 4 MB replay limit, so in practice it reloads. The 15-second heartbeat also
+ends a stream that can't take its write, so a stalled stream is dropped within 15 seconds even below
+8 MB. A
 desktop drops any single frame over 1 MB, and then reloads instead of resuming, because resuming
 would replay the same frame into the same limit.
 

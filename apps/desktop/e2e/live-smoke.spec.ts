@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { EventJournal, replayItems } from "../src/main/engine/event-journal";
 import { launch, seedHome, tid, items } from "./support";
 
 // Live smoke acceptance for #281 (CF-8): the real `claude -p` and `codex app-server`, driven through the app on the
@@ -10,7 +11,8 @@ import { launch, seedHome, tid, items } from "./support";
 // the CLIs (default "claude,codex"); MODEX_CLAUDE_BIN / MODEX_CODEX_BIN the executables (default ~/.local/bin/…);
 // MODEX_CLAUDE_MODEL (default haiku) and MODEX_CODEX_MODEL (default: the CLI's own) the models. Start it from a shell
 // without CLAUDE*/ANTHROPIC* variables, so Claude does not run as a nested session. MODEX_LIVE_REPORT names a file
-// for what it observed. The tasks are benign and stay inside a disposable repository.
+// for what it observed. The tasks are benign and stay inside a disposable repository. With MODEX_EVENT_JOURNAL=1 it
+// also replays each thread's journal against its saved transcript after a clean quit (CF-6 #279 gate G1).
 test.skip(process.env.MODEX_LIVE_SMOKE !== "1", "live smoke acceptance is opt-in (MODEX_LIVE_SMOKE=1)");
 
 type Backend = "claude" | "codex";
@@ -142,6 +144,19 @@ for (const backend of backends) {
       }
       await page.screenshot({ path: test.info().outputPath(`live-${backend}.png`) });
     } finally {
+      if (app && process.env.MODEX_EVENT_JOURNAL === "1") {
+        await app.close();
+        app = undefined;
+        const journal = new EventJournal(path.join(home, "app", "events.sqlite"));
+        try {
+          const threads = (JSON.parse(fs.readFileSync(statePath, "utf8")) as { threads: { id: string }[] }).threads;
+          report.journal = threads.map(({ id }) => {
+            const rows = journal.since(0, { threadId: id });
+            const saved = JSON.parse(fs.readFileSync(path.join(home, "app", "threads", `${id}.json`), "utf8"));
+            return { rows: rows.length, items: saved.length, converged: JSON.stringify(replayItems(rows, id)) === JSON.stringify(saved), twice: JSON.stringify(replayItems([...rows, ...rows], id)) === JSON.stringify(saved) };
+          });
+        } finally { journal.close(); }
+      }
       const out = JSON.stringify(report, null, 2);
       fs.writeFileSync(test.info().outputPath(`live-${backend}.json`), out);
       if (process.env.MODEX_LIVE_REPORT) fs.writeFileSync(`${process.env.MODEX_LIVE_REPORT}.${backend}.json`, out);
@@ -149,5 +164,51 @@ for (const backend of backends) {
       fs.rmSync(home, { recursive: true, force: true });
       fs.rmSync(repo, { recursive: true, force: true });
     }
+    for (const thread of (report.journal as { converged: boolean; twice: boolean }[] | undefined) ?? []) expect([thread.converged, thread.twice], "the journal replays to the saved transcript, even twice").toEqual([true, true]);
   });
 }
+
+// CF-6 (#279) gate G1, the approval half: with the journal on, a live Chat-mode Claude turn asks to run a command,
+// it is approved in the window, and after a clean quit the journal replays the answered card exactly as saved.
+test("live claude, journal on: an approved command's card replays from the journal as saved, and the CLI ran it once", async () => {
+  test.skip(process.env.MODEX_EVENT_JOURNAL !== "1" || !backends.includes("claude"), "needs MODEX_EVENT_JOURNAL=1 and the claude backend");
+  test.setTimeout(300_000);
+  const bin = process.env.MODEX_CLAUDE_BIN ?? path.join(os.homedir(), ".local/bin/claude");
+  const model = process.env.MODEX_CLAUDE_MODEL ?? "haiku";
+  const { home, repo } = seedHome({ default_backend: "claude", default_mode: "chat", default_model: { codex: "", claude: model, mock: "mock" } });
+  const statePath = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  state.settings.claude_bin = bin;
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  const report: Record<string, unknown> = { backend: "claude", version: execFileSync(bin, ["--version"]).toString().trim(), model, at: new Date().toISOString() };
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await launch(home); app = opened.app;
+    const page = opened.page;
+    await newChat(page, "Run exactly this shell command and nothing else, then tell me its output: echo cf6-live > cf6-live.txt && cat cf6-live.txt");
+    report.approvals = await approveUntilIdle(page, 240_000);
+    const list = await threadItems(page);
+    refused(list, report);
+    const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
+    await app.close(); app = undefined;
+    const saved = JSON.parse(fs.readFileSync(path.join(home, "app", "threads", `${threadId}.json`), "utf8")) as { kind: string; answer?: string; answeredBy?: string; delivery?: string }[];
+    const journal = new EventJournal(path.join(home, "app", "events.sqlite"));
+    let replayed: unknown[];
+    try { const rows = journal.since(0, { threadId }); replayed = replayItems(rows, threadId); report.rows = rows.length; } finally { journal.close(); }
+    const cards = saved.filter((i) => i.kind === "approval");
+    report.cards = cards.map((c) => ({ answer: c.answer, answeredBy: c.answeredBy, delivery: c.delivery }));
+    report.converged = JSON.stringify(replayed) === JSON.stringify(saved);
+    report.fileRuns = fs.existsSync(path.join(repo, "cf6-live.txt")) ? fs.readFileSync(path.join(repo, "cf6-live.txt"), "utf8") : null;
+    expect(cards.length, "Claude asked to run the command").toBeGreaterThan(0);
+    expect(cards.every((c) => c.answer === "yes" && c.answeredBy === "desktop" && c.delivery === "sent")).toBe(true);
+    expect(report.converged, "the journal replays to the saved transcript").toBe(true);
+    expect(report.fileRuns, "the command ran once").toBe("cf6-live\n");
+  } finally {
+    const out = JSON.stringify(report, null, 2);
+    fs.writeFileSync(test.info().outputPath("live-claude-journal-approval.json"), out);
+    if (process.env.MODEX_LIVE_REPORT) fs.writeFileSync(`${process.env.MODEX_LIVE_REPORT}.claude-approval.json`, out);
+    if (app) await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});

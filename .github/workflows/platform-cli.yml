@@ -67,6 +67,17 @@ jobs:
           path: native-cli.tap
           if-no-files-found: warn
           retention-days: 7
+      - name: Exercise the event journal, replay and human requests (CF-6 gate G4)
+        timeout-minutes: 10
+        run: node --test --test-reporter=tap apps/desktop/dist/test/event-journal.test.js apps/desktop/dist/test/journal-resume.test.js apps/desktop/dist/test/request-journal.test.js apps/desktop/dist/test/request-crash.test.js apps/desktop/dist/test/conversation-migration.test.js apps/desktop/dist/test/question-replay.test.js apps/desktop/dist/test/desktop-item-kinds.test.js > native-journal.tap
+      - name: Preserve journal evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-journal-${{ matrix.platform }}
+          path: native-journal.tap
+          if-no-files-found: warn
+          retention-days: 7
       - name: Exercise Linux terminal cleanup and job control
         if: runner.os == 'Linux'
         timeout-minutes: 5
