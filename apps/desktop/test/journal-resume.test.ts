@@ -9,7 +9,7 @@ import { once } from "node:events";
 import { EventJournal } from "../src/main/engine/event-journal.js";
 import { DesktopHost } from "../src/main/engine/desktop-host.js";
 import { DesktopClient } from "../src/main/engine/desktop-client.js";
-import { CompanionServer, mobileItem } from "../src/main/engine/companion.js";
+import { CompanionServer, mobileItem, phoneItem } from "../src/main/engine/companion.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
@@ -34,14 +34,14 @@ function apply(items: ThreadItem[], event: ThreadEvent): ThreadItem[] {
 }
 
 /** Fetches a snapshot exactly as the iPhone app does: pinned certificate, bearer token, cursor query. */
-async function phoneSnapshot(pairingUri: string, home: string, threadId: string, after?: { id: string; cursor: number }): Promise<PhoneSnapshot> {
+async function phoneSnapshot(pairingUri: string, home: string, threadId: string, after?: { id: string; cursor: number }, kinds?: string): Promise<PhoneSnapshot> {
   const pairing = JSON.parse(Buffer.from(new URL(pairingUri).searchParams.get("data")!, "base64url").toString()) as { url: string; token: string; fingerprint: string };
   const url = new URL("/v1/snapshot", pairing.url);
   url.searchParams.set("threadId", threadId);
   if (after) { url.searchParams.set("journal", after.id); url.searchParams.set("after", String(after.cursor)); }
   return new Promise((resolve, reject) => {
     https.get(url, {
-      headers: { authorization: `Bearer ${pairing.token}` },
+      headers: { authorization: `Bearer ${pairing.token}`, ...(kinds ? { "x-modex-item-kinds": kinds } : {}) },
       ca: fs.readFileSync(path.join(home, "companion", "cert.pem")),
       checkServerIdentity: (_host, cert) => crypto.createHash("sha256").update(cert.raw).digest("hex") === pairing.fingerprint ? undefined : new Error("unpinned"),
     }, (res) => {
@@ -612,6 +612,137 @@ test("one mixed transcript converges on every path, survives hostile frames, and
     assert.deepEqual(wire(restarted.items(thread.id)), saved, "a restarted Modex loads the same transcript");
     assert.equal(runs, 2, "two attempts ran: the turn and its retry");
     assert.deepEqual(decisions, ["yes", "withdrawn:no"], "the CLI heard one answer, and the withdrawn request settled no");
+  } finally {
+    client.dispose();
+    await companion.dispose();
+    await host.dispose();
+    await restarted?.dispose();
+    await runner.dispose();
+    live.close();
+    coalesced.close();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a typed question and Codex's plan converge on every path, through a phone answer, a desktop's sleep and a retry", async () => {
+  const home = tmpdir("modex-journal-typed-");
+  const store = new Store(home);
+  const project = store.addProject(gitRepo());
+  const live = new EventJournal(path.join(home, "app", "events.sqlite"), { flushMs: 5 });
+  const coalesced = new EventJournal(path.join(home, "batched.sqlite"), { flushMs: 60_000 });
+  const emitted: ThreadEvent[] = [];
+  const emit = (event: ThreadEvent) => { emitted.push(event); live.record(event); coalesced.record(event); };
+  const secret = "typed-tok-2b7c-SECRET";
+  const plan = "### Add a new-user greeting\n\n- Create `greeting.txt`.\n- Verify the exact content.\n";
+  let runs = 0;
+  const heard: Record<string, string[]>[] = [];
+  const sinks: TurnSink[] = [];
+  const at = (item: string) => ({ runtime: "fixture", item });
+  const backend = { id: "codex" as const, listModels: async () => [], dispose: async () => {}, async runTurn(_text: string, _opts: unknown, sink: TurnSink) {
+    const n = ++runs;
+    sinks.push(sink);
+    if (n === 1) {
+      sink.observe({ type: "message.start", native: at("m1"), phase: "commentary", nativePhase: "commentary" });
+      sink.observe({ type: "message.delta", native: at("m1"), text: "I will settle the target first." });
+      sink.observe({ type: "message.done", native: at("m1"), phase: "commentary", nativePhase: "commentary" });
+      const native = { runtime: "fixture", request: "ask-1" };
+      const reply = await sink.question!({ native, blocking: true, questions: [
+        { id: "q-env", header: "Environment", text: "Which environment?", options: [{ label: "staging", description: "" }], allowOther: true, secret: false },
+        { id: "q-token", header: "Token", text: "Paste the deploy token", options: null, allowOther: true, secret: true },
+      ] });
+      if ("answers" in reply) await sink.deliverRequest?.(native, async () => { heard.push(reply.answers); });
+      // Codex's plan item starts streaming, then the attempt fails before it completes.
+      sink.observe({ type: "message.start", native: at("plan-1"), phase: "final", nativePhase: "plan" });
+      sink.observe({ type: "message.delta", native: at("plan-1"), text: "### Draft" });
+      return { status: "failed" as const, error: "try again" };
+    }
+    // The retry's plan reuses the native id, and the first attempt's sink speaks late.
+    sinks[0]!.observe({ type: "message.delta", native: at("plan-1"), text: " (late, from attempt 1)" });
+    sink.observe({ type: "message.start", native: at("plan-1"), phase: "final", nativePhase: "plan" });
+    sink.observe({ type: "message.delta", native: at("plan-1"), text: "### Add a new-user " });
+    sink.observe({ type: "message.delta", native: at("plan-1"), text: "greeting" });
+    // The completed item is authoritative, as Codex's item/completed is for a plan.
+    sink.observe({ type: "message.done", native: at("plan-1"), text: plan, phase: "final", nativePhase: "plan" });
+    return { status: "completed" as const };
+  } };
+  const runner = new ThreadRunner({ home, store, backends: { codex: backend }, emit });
+  const host = new DesktopHost(home, { version: "test", channels: () => [], async invoke() { return null; }, journal: () => live });
+  live.subscribe((entries) => host.broadcastJournal(entries));
+  const companion = new CompanionServer(home, { state: () => store.snapshot(), items: (id) => runner.items(id), status: (id) => runner.status(id),
+    send: async () => ({ ok: true }), answer: () => {}, journal: () => live }, () => ["127.0.0.1"], () => () => {});
+  const client = new DesktopClient(() => {});
+  const connections: boolean[] = [];
+  client.on("connected", ({ resumed }: { resumed: boolean }) => connections.push(resumed));
+  let desktop: ThreadItem[] = [];
+  let restarted: ThreadRunner | undefined;
+  const KINDS = "user,assistant,approval,tool,notice,question";
+  try {
+    const thread = await runner.createThread(project.id, { backend: "codex", auto: false });
+    store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+    client.on("thread", (event: ThreadEvent) => { if (event.threadId === thread.id) desktop = apply(desktop, event); });
+    await host.start();
+    const pairingUri = (await companion.start()).pairingUri!;
+    await client.pair(host.invite(), "a".repeat(64));
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    desktop = structuredClone(runner.items(thread.id));
+
+    // The question waits: both phones load, the desktop sleeps, and the phone answers.
+    const turn = runner.send(thread.id, "add a greeting");
+    await until(() => runner.status(thread.id) === "waiting");
+    const mid = await phoneSnapshot(pairingUri, home, thread.id, undefined, KINDS);
+    const midLegacy = await phoneSnapshot(pairingUri, home, thread.id);
+    client.suspend();
+    const card = runner.items(thread.id).find((item) => item.kind === "question")!;
+    assert.deepEqual(runner.answerQuestion(thread.id, card.id, { "q-env": ["staging"], "q-token": [secret] }, "phone"), { ok: true });
+    assert.deepEqual(runner.answerQuestion(thread.id, card.id, { "q-env": ["production"], "q-token": ["late"] }), { ok: false, reason: "already-resolved" }, "the desktop's answer, arriving late");
+    await turn;
+    await runner.retry(thread.id);
+    client.resume();
+    await once(client, "connected", { signal: AbortSignal.timeout(5000) });
+    live.flush();
+    coalesced.flush();
+
+    const saved = new Store(home).items(thread.id);
+    const fromLive = live.since(0, { threadId: thread.id });
+    const fromBatched = coalesced.since(0, { threadId: thread.id });
+    const wire = (items: ThreadItem[]) => JSON.parse(JSON.stringify(items)) as ThreadItem[];
+    assert.deepEqual(wire(runner.items(thread.id)), saved, "the live projection is what a journal-off reload loads");
+    assert.deepEqual(wire(replayItems(emitted, thread.id)), saved, "the live event stream folds to it");
+    assert.deepEqual(replayItems(fromLive, thread.id), saved, "the journal replays to it");
+    assert.deepEqual(replayItems([...fromLive, ...fromLive], thread.id), saved, "and replaying it twice changes nothing");
+    assert.ok(fromBatched.length < fromLive.length, "the batched journal really coalesced");
+    assert.deepEqual(replayItems(fromBatched, thread.id), saved, "the batched journal replays to it too");
+    assert.deepEqual(connections, [false, true], "the desktop resumed after its sleep");
+    await until(() => JSON.stringify(desktop) === JSON.stringify(saved));
+    const delta = await phoneSnapshot(pairingUri, home, thread.id, mid.journal, KINDS);
+    assert.equal(delta.delta, true);
+    const drawn = new Set(KINDS.split(","));
+    assert.deepEqual(merge(mid.items, delta.items), JSON.parse(JSON.stringify(saved.map((item) => phoneItem(item, drawn)))), "a phone that draws questions: its mid-run snapshot plus its delta matches a full one");
+    const legacyDelta = await phoneSnapshot(pairingUri, home, thread.id, midLegacy.journal);
+    assert.deepEqual(merge(midLegacy.items, legacyDelta.items), JSON.parse(JSON.stringify(saved.map(mobileItem))), "and so does an older phone's");
+
+    // What the transcript says, on every path above.
+    const answers = saved.filter((item) => item.kind === "assistant") as (ThreadItem & { text: string; phase?: string; nativePhase?: string; outcome?: string })[];
+    assert.deepEqual(answers.map((item) => [item.text, item.phase, item.nativePhase, item.outcome]), [
+      ["I will settle the target first.", "commentary", "commentary", "succeeded"],
+      ["### Draft", "final", "plan", "unknown"],
+      [plan, "final", "plan", "succeeded"],
+    ], "the plan is the final answer; the failed attempt's draft stays its own, untouched by its late text");
+    const asked = saved.find((item) => item.kind === "question") as ThreadItem & { answers?: Record<string, string[]>; answeredBy?: string; delivery?: string };
+    assert.deepEqual([asked.answers, asked.answeredBy, asked.delivery], [{ "q-env": ["staging"], "q-token": ["(hidden)"] }, "phone", "sent"]);
+    const onPhone = merge(mid.items, delta.items) as (Phone & { phase?: string; nativePhase?: string })[];
+    assert.deepEqual(onPhone.filter((item) => item.kind === "assistant").map((item) => [item.phase, item.nativePhase]),
+      [["commentary", "commentary"], ["final", "plan"], ["final", "plan"]], "the phone can tell Codex's plan from an ordinary answer");
+
+    for (const [where, text] of [["the saved files", JSON.stringify(saved)], ["the journal", JSON.stringify(fromLive)], ["the batched journal", JSON.stringify(fromBatched)],
+      ["the paired desktop", JSON.stringify(desktop)], ["the phone", JSON.stringify([mid, delta, midLegacy, legacyDelta])]] as const) {
+      assert.ok(!text.includes(secret), `the secret is not in ${where}`);
+    }
+
+    restarted = new ThreadRunner({ home, store: new Store(home), backends: { codex: backend }, emit: () => {} });
+    assert.deepEqual(wire(restarted.items(thread.id)), saved, "a restarted Modex loads the same transcript");
+    assert.equal(runs, 2, "two attempts ran: the turn and its retry");
+    assert.deepEqual(heard, [{ "q-env": ["staging"], "q-token": [secret] }], "the CLI heard the phone's answer once");
   } finally {
     client.dispose();
     await companion.dispose();
