@@ -1277,6 +1277,91 @@ private struct UnreachableClient: CompanionClient {
         XCTAssertTrue(CompanionAPI.itemKinds.split(separator: ",").contains("approval"))
     }
 
+    // Replay and reconnect (CF-6 #279): the Mac's journal sends only what changed while the phone was away.
+
+    private static func question(_ id: String, closing: String = "") throws -> CompanionItem {
+        try JSONDecoder().decode(CompanionItem.self, from: Data("""
+        {"id":"\(id)","kind":"question","at":"2026-10-22T00:00:00Z","blocking":true,"questions":[
+          {"id":"q-env","header":"Environment","text":"Which environment?","options":[{"label":"staging","description":""}],"allowOther":false,"secret":false},
+          {"id":"q-token","header":"Token","text":"Paste the deploy token","options":null,"allowOther":true,"secret":true}]\(closing)}
+        """.utf8))
+    }
+
+    private func journalFixture(_ items: [CompanionItem]) async -> (CompanionModel, JournalClient) {
+        let client = JournalClient()
+        let model = CompanionModel(store: QuestionPairingStore(), discovery: QuestionDiscovery(), makeClient: { _ in client })
+        await client.reply(items, journal: JournalCursor(id: "j1", cursor: 4))
+        await model.select("a")
+        return (model, client)
+    }
+
+    func testADeltaThatAnswersOneQuestionOnTheMacClosesItsCardAndKeepsTheOtherCardsDraft() async throws {
+        let user = CompanionItem(id: "u1", kind: "user", text: "deploy it", title: nil, question: nil, detail: nil, answer: nil, status: nil, level: nil, at: "2026-10-22T00:00:00Z")
+        let (model, client) = await journalFixture([user, try Self.question("q1"), try Self.question("q2")])
+        XCTAssertEqual(model.snapshot.items.filter(\.isOpenQuestion).map(\.id), ["q1", "q2"])
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "secret-one"))
+        model.setQuestionDraft(itemId: "q2", questionId: "q-token", QuestionDraft(text: "secret-two"))
+
+        // The phone slept; q1 was answered on the Mac. Its delta carries only q1.
+        await client.reply([try Self.question("q1", closing: #","answers":{"q-env":["staging"],"q-token":["(hidden)"]},"answeredBy":"desktop","delivery":"sent""#)],
+                           journal: JournalCursor(id: "j1", cursor: 9), delta: true)
+        await model.refresh()
+        let after = await client.afters.last
+        XCTAssertEqual(after ?? nil, JournalCursor(id: "j1", cursor: 4), "the phone resumed from its cursor")
+        XCTAssertEqual(model.snapshot.items.map(\.id), ["u1", "q1", "q2"], "the closed card stays in place; nothing is duplicated or lost")
+        XCTAssertEqual(model.snapshot.items.filter(\.isOpenQuestion).map(\.id), ["q2"])
+        XCTAssertEqual(model.snapshot.items[1].answeredBy, "desktop")
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft(), "the closed card's draft, and its secret, are gone")
+        XCTAssertEqual(model.questionDraft(itemId: "q2", questionId: "q-token"), QuestionDraft(text: "secret-two"), "a card the delta did not mention keeps its draft")
+    }
+
+    func testAQuestionWithdrawnWhileThePhoneWasAwayCannotBeAnsweredFromHere() async throws {
+        let (model, client) = await journalFixture([try Self.question("q1")])
+        model.setQuestionDraft(itemId: "q1", questionId: "q-env", QuestionDraft(choice: "staging"))
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "t"))
+        await client.reply([try Self.question("q1", closing: #","withdrawn":"stopped""#)], journal: JournalCursor(id: "j1", cursor: 6), delta: true)
+        await model.refresh()
+        XCTAssertFalse(model.snapshot.items[0].isOpenQuestion)
+        XCTAssertEqual(model.snapshot.items[0].withdrawn, "stopped")
+        let requests = await client.afters.count
+        await model.answerQuestion(itemId: "q1")
+        XCTAssertNil(model.answeringId)
+        XCTAssertNil(model.error, "a closed card sends nothing, so there is nothing to refuse")
+        let after = await client.afters.count
+        XCTAssertEqual(after, requests, "and nothing is asked of the Mac")
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-env"), QuestionDraft())
+    }
+
+    func testAReloadAfterAnUntrustedCursorReplacesTheTranscriptAndClosesTheCard() async throws {
+        let (model, client) = await journalFixture([try Self.question("q1")])
+        model.setQuestionDraft(itemId: "q1", questionId: "q-token", QuestionDraft(text: "secret-xyz"))
+        // A pruned, foreign or ahead cursor, or a Mac that restarted uncleanly: the Mac sends the whole transcript, not a delta.
+        let answered = try Self.question("q1", closing: #","answers":{"q-env":["staging"],"q-token":["(hidden)"]},"answeredBy":"phone","delivery":"sent""#)
+        let notice = CompanionItem(id: "n1", kind: "notice", text: "Turn finished.", title: nil, question: nil, detail: nil, answer: nil, status: nil, level: "info", at: "2026-10-22T00:01:00Z")
+        await client.reply([answered, notice], journal: JournalCursor(id: "j2", cursor: 2))
+        await model.refresh()
+        XCTAssertEqual(model.snapshot.items.map(\.id), ["q1", "n1"], "replaced, not merged: one card, once")
+        XCTAssertEqual(model.snapshot.items[0].answeredBy, "phone")
+        XCTAssertFalse(model.snapshot.items[0].isOpenQuestion)
+        XCTAssertEqual(model.questionDraft(itemId: "q1", questionId: "q-token"), QuestionDraft())
+
+        // The next poll resumes from the new journal's cursor.
+        await client.reply([], journal: JournalCursor(id: "j2", cursor: 2), delta: true)
+        await model.refresh()
+        let last = await client.afters.last
+        XCTAssertEqual(last ?? nil, JournalCursor(id: "j2", cursor: 2))
+        XCTAssertEqual(model.snapshot.items.map(\.id), ["q1", "n1"])
+    }
+
+    func testAnAnswerWhoseDeliveryIsUncertainAfterARestartStaysClosed() async throws {
+        let (model, client) = await journalFixture([try Self.question("q1", closing: #","answers":{"q-env":["staging"]},"answeredBy":"phone","delivery":"sending""#)])
+        XCTAssertFalse(model.snapshot.items[0].isOpenQuestion, "an answer the Mac took is never answerable again")
+        await client.reply([try Self.question("q1", closing: #","answers":{"q-env":["staging"]},"answeredBy":"phone","delivery":"uncertain""#)], journal: JournalCursor(id: "j3", cursor: 1))
+        await model.refresh()
+        XCTAssertEqual(model.snapshot.items[0].delivery, "uncertain")
+        XCTAssertFalse(model.snapshot.items[0].isOpenQuestion)
+    }
+
     private func questionFixture() throws -> (CompanionModel, QuestionClient) {
         let client = QuestionClient(item: try JSONDecoder().decode(CompanionItem.self, from: Data(Self.openQuestionJSON.utf8)))
         return (CompanionModel(store: QuestionPairingStore(), discovery: QuestionDiscovery(), makeClient: { _ in client }), client)

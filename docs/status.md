@@ -112,6 +112,15 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   approval or question answer, as on a full disk, the card stays open and answering again reaches the
   CLI, instead of the request reading answered while the CLI never hears it.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+- **Questions across replay and reconnect** (CF-6 #279). A phone or paired desktop that was away
+  while a question was answered, withdrawn or stopped finds the card closed on its next delta or
+  reload. Taps it queued are refused, and Codex hears one reply. An older phone is now told when a
+  question was answered on the phone, and phones get an answer's native phase, so Codex's plan is
+  marked. New tests cover cursors, a crash inside the journal's batch window, the 8 MB slow-stream
+  drop, v0.3.0 history, older paired desktops, and the iPhone app closing cards closed on the Mac.
+  Live Codex and Claude turns with the journal on agreed on every path. A physical iPhone, Windows and
+  Linux, and real power loss wait for Val or hardware.
+  [Across replay and reconnect](human-requests.md#across-replay-and-reconnect), [gates](reviews/2026-10-22-cf6-gates.md).
 
 - **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
   and text stay in window memory and clear when their request closes or thread is removed.

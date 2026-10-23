@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { EventJournal, replayItems } from "../src/main/engine/event-journal.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
-import { mobileItem } from "../src/main/engine/companion.js";
+import { mobileItem, phoneItem } from "../src/main/engine/companion.js";
 import type { Backend } from "../src/main/engine/backends/types.js";
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { itemFacts } from "../src/shared/conversation-events.js";
@@ -242,4 +242,50 @@ test("a journal this build wrote stays usable after a downgrade: v0.1.0's and v0
   assert.equal(back.id, id, "an older build's clean use does not look like a crash");
   assert.equal(back.since(0).length, 2);
   back.close();
+});
+
+test("questions and a plan v0.3.0 saved load closed and readable on every client, nothing is sent, and the draft is untouched", async () => {
+  const old = await legacyThread();
+  try {
+    const store = new Store(old.home);
+    const env = { id: "q-env", header: "Environment", text: "Which environment?", options: [{ label: "staging", description: "" }], allowOther: true, secret: false };
+    const token = { id: "q-token", header: "Token", text: "Paste the deploy token", options: null, allowOther: true, secret: true };
+    // As v0.3.0 saved them: one open when that process died, one answered before answers recorded who and how
+    // far they got, one answered on the phone; and Codex's plan as an assistant message.
+    const v030: ThreadItem[] = [
+      ...LEGACY,
+      { id: "q-open", kind: "question", questions: [env, token], blocking: true, at },
+      { id: "q-old", kind: "question", questions: [env], blocking: true, answers: { "q-env": ["staging"] }, at },
+      { id: "q-phone", kind: "question", questions: [env, token], blocking: true, answers: { "q-env": ["staging"], "q-token": ["(hidden)"] }, answeredBy: "phone", delivery: "sent", at },
+      { id: "plan", kind: "assistant", text: "### Plan\n\n- one step\n", phase: "final", nativePhase: "plan", outcome: "succeeded", at },
+    ];
+    store.saveItems(old.threadId, v030);
+    for (const item of v030.slice(LEGACY.length)) old.journal.record({ threadId: old.threadId, type: "item", item });
+    old.journal.flush();
+    fs.writeFileSync(path.join(store.dir, "update-recovery.json"), JSON.stringify({ drafts: [{ threadId: old.threadId, text: "half a reply" }] }));
+    const draft = fs.readFileSync(path.join(store.dir, "update-recovery.json"));
+    let ran = 0;
+    const backend: Backend = { id: "claude", listModels: async () => [], dispose: async () => {}, runTurn: async () => { ran++; return { status: "completed" }; } };
+    const { runner } = runnerOn(old.home, old.journal, backend);
+    const items = runner.items(old.threadId);
+    const card = (id: string) => items.find((item) => item.id === id) as ThreadItem & { answers?: unknown; answeredBy?: string; delivery?: string; withdrawn?: string };
+    assert.equal(card("q-open").withdrawn, "ended", "a question a dead process left open is closed, not answerable");
+    assert.deepEqual(card("q-old"), v030.find((item) => item.id === "q-old"), "an old answer gains no invented sender or delivery");
+    assert.deepEqual(card("q-phone"), v030.find((item) => item.id === "q-phone"));
+    assert.deepEqual(card("plan"), v030.at(-1), "the plan keeps its text and phases");
+    assert.deepEqual(items.slice(0, LEGACY.length), LEGACY, "every older word as saved");
+    old.journal.flush();
+    assert.deepEqual(replayItems(old.journal.since(0, { threadId: old.threadId }), old.threadId), items, "paired clients replay to the same");
+    assert.deepEqual(runner.answerQuestion(old.threadId, "q-open", { "q-env": ["staging"], "q-token": ["t"] }, "phone"), { ok: false, reason: "withdrawn" });
+
+    const drawn = new Set(["user", "assistant", "approval", "tool", "notice", "question"]);
+    assert.deepEqual(["q-open", "q-old", "q-phone"].map((id) => { const p = phoneItem(card(id), drawn); return [p.kind, p.withdrawn ?? null, p.answeredBy ?? null]; }),
+      [["question", "ended", null], ["question", null, null], ["question", null, "phone"]], "a phone that draws questions sees each closed card");
+    assert.deepEqual(["q-open", "q-old", "q-phone"].map((id) => String(mobileItem(card(id)).text).split("\n").at(-1)),
+      ["Not answered.", "Answered on your Mac.", "Answered on your phone."], "an older phone reads each as a notice");
+    assert.deepEqual(phoneItem(card("plan"), drawn), { id: "plan", kind: "assistant", text: "### Plan\n\n- one step\n", at, phase: "final", nativePhase: "plan", outcome: "succeeded" });
+    assert.ok(fs.readFileSync(path.join(store.dir, "update-recovery.json")).equals(draft), "the draft is byte-identical");
+    assert.equal(ran, 0, "nothing runs or is sent");
+    await runner.dispose();
+  } finally { old.journal.close(); }
 });

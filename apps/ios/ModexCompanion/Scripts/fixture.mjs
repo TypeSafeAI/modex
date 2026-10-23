@@ -8,6 +8,7 @@ import { Store } from "../../../desktop/dist/src/main/engine/store.js";
 import { ThreadRunner } from "../../../desktop/dist/src/main/engine/runner.js";
 import { CompanionServer } from "../../../desktop/dist/src/main/engine/companion.js";
 import { LocalItems } from "../../../desktop/dist/src/main/engine/backends/local-items.js";
+import { EventJournal } from "../../../desktop/dist/src/main/engine/event-journal.js";
 
 // The job log is the only record of this process. In CI runs 38707861067, 38832248437 and 38848571338
 // it left a delivered /resume, a snapshot request and a TLS ClientHello unanswered for 5–10 s or more
@@ -50,6 +51,12 @@ store.addThread({ id: threadId, projectId: project.id, title: "Review launch cha
 // A thread whose turn asks a native question card, answered on the phone (docs/human-requests.md).
 const questionThreadId = "abcdef13";
 store.addThread({ id: questionThreadId, projectId: project.id, title: "Choose a deploy target", cwd: repo, backend: "mock", mode: "chat", model: "mock", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+// Two more threads waiting on a question, closed on the Mac while the phone looks on: one answered, one stopped.
+// The phone catches up through the event journal (docs/event-journal.md, CF-6 #279).
+const macThreads = { answer: "abcdef14", stop: "abcdef15" };
+for (const [how, id] of Object.entries(macThreads)) {
+  store.addThread({ id, projectId: project.id, title: how === "answer" ? "Answered on the Mac" : "Stopped on the Mac", cwd: repo, backend: "mock", mode: "chat", model: "mock", plan: false, status: "idle", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+}
 const backend = {
   id: "mock",
   async listModels() { return []; },
@@ -64,6 +71,13 @@ const backend = {
       let consumed = !sink.deliverRequest;
       await sink.deliverRequest?.(native, async () => { consumed = true; });
       reply.assistant(consumed && answer === "yes" ? "The launch change was approved." : "The launch change was denied.");
+    } else if (text === "Ask which channel") {
+      const native = { runtime: "ios-fixture", request: randomUUID() };
+      const answered = await sink.question({ native, blocking: true, questions: [
+        { id: "channel", header: "Channel", text: "Which release channel?", options: [{ label: "beta", description: "" }, { label: "stable", description: "" }], allowOther: false, secret: false },
+      ] });
+      if (!("withdrawn" in answered)) await sink.deliverRequest?.(native, async () => {});
+      reply.assistant("withdrawn" in answered ? "The channel question was closed before it was answered." : `Releasing to ${answered.answers.channel?.[0]}.`);
     } else if (text === "Ask before deploying") {
       // A Codex-shaped question with a choice and a secret. The secret is checked here and never echoed or logged.
       const native = { runtime: "ios-fixture", request: randomUUID() };
@@ -91,7 +105,8 @@ const backend = {
     return { status: "completed" };
   },
 };
-const runner = new ThreadRunner({ home, store, emit: () => {}, backends: { mock: backend } });
+const journal = new EventJournal(path.join(home, "app", "events.sqlite"));
+const runner = new ThreadRunner({ home, store, emit: (event) => journal.record(event), backends: { mock: backend } });
 const server = new CompanionServer(home, {
   state: () => store.snapshot(),
   items: (id) => runner.items(id),
@@ -102,16 +117,39 @@ const server = new CompanionServer(home, {
   // The answers may hold a secret: log which card was answered, never what was typed.
   answerQuestion: (id, itemId, answers, by) => { log(`phone answers question ${itemId}`); return runner.answerQuestion(id, itemId, answers, by); },
   setArchived: (id, archived) => runner.setArchived(id, archived),
+  journal: () => journal,
 }, process.env.MODEX_IOS_LAN === "1" ? undefined : () => ["127.0.0.1"]);
 await server.start();
 void runner.send(threadId, "Prepare the change");
 while (runner.status(threadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
 void runner.send(questionThreadId, "Ask before deploying");
 while (runner.status(questionThreadId) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
+for (const id of Object.values(macThreads)) {
+  void runner.send(id, "Ask which channel");
+  while (runner.status(id) !== "waiting") await new Promise((resolve) => setTimeout(resolve, 20));
+}
 // The test owns the outage duration: a loaded simulator may still be in the rescan
 // sheet after 25 seconds. Keep the Mac paused until cancellation has been verified.
 const resumePath = `/resume/${randomUUID()}`;
+// The test closes a question on the Mac: POST <macPath>/answer or <macPath>/stop.
+const macPath = `/mac/${randomUUID()}`;
 const control = http.createServer(async (request, response) => {
+  if (request.method === "POST" && (request.url === `${macPath}/answer` || request.url === `${macPath}/stop`)) {
+    const how = request.url.endsWith("/answer") ? "answer" : "stop";
+    const id = macThreads[how];
+    const card = runner.items(id).find((item) => item.kind === "question" && !item.answers && !item.withdrawn);
+    if (!card) { log(`no open question to ${how} on ${id}`); response.writeHead(409).end(); return; }
+    if (how === "answer") {
+      const result = runner.answerQuestion(id, card.id, { channel: ["beta"] });
+      log(`the Mac answers question ${card.id}: ${result.ok ? "accepted" : result.reason}`);
+      response.writeHead(result.ok ? 204 : 409).end();
+    } else {
+      runner.stop(id);
+      log(`the Mac stops ${id}`);
+      response.writeHead(204).end();
+    }
+    return;
+  }
   if (request.method !== "POST" || request.url !== resumePath) {
     response.writeHead(404).end();
     return;
@@ -135,7 +173,8 @@ const control = http.createServer(async (request, response) => {
 });
 await new Promise((resolve) => control.listen(0, "127.0.0.1", resolve));
 const resumeURL = `http://127.0.0.1:${control.address().port}${resumePath}`;
-fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect, resumeURL }));
+const macURL = `http://127.0.0.1:${control.address().port}${macPath}`;
+fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect, resumeURL, macURL }));
 
 async function pauseMac() {
   const resumed = new Promise((resolve) => { resumePausedMac = resolve; });
@@ -172,6 +211,7 @@ async function close() {
   await server.stop();
   if (blocker?.listening) await new Promise((resolve) => blocker.close(resolve));
   await runner.dispose();
+  journal.close();
   fs.rmSync(home, { recursive: true, force: true });
   fs.rmSync(repo, { recursive: true, force: true });
   process.exit(0);

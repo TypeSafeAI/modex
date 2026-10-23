@@ -355,6 +355,7 @@ final class CompanionFlowTests: XCTestCase {
         attachScreenshot(of: app, named: "Completed follow-up")
         app.buttons["Back to threads"].tapWhenReady()
         try answerQuestionThroughTheMac(app)
+        try questionsClosedOnTheMac(app, fixture)
         if fixture.reconnect == true {
             XCTAssertTrue(app.staticTexts["Reconnected to your Mac"].appears(within: UITestBudget.seconds(60)), "Bonjour must recover the saved pairing when the Mac restarts on a different port.")
             XCTAssertFalse(pair.exists)
@@ -460,6 +461,38 @@ final class CompanionFlowTests: XCTestCase {
         app.buttons["Back to threads"].tapWhenReady()
     }
 
+    /// Two more fixture threads wait on a question. Each is closed on the Mac while its card is open here: the
+    /// phone learns of it by polling the Mac's event journal (CF-6 #279), closes the card and drops the draft.
+    private func questionsClosedOnTheMac(_ app: XCUIApplication, _ fixture: Fixture) throws {
+        let mac = try XCTUnwrap(fixture.macURL.flatMap(URL.init(string:)), "Run the current test-e2e.sh fixture with Mac question control.")
+        for (thread, how, closed, reply) in [("abcdef14", "answer", "Answered on your Mac", "Releasing to beta."),
+                                              ("abcdef15", "stop", "Not answered — the turn was stopped", nil)] {
+            let row = app.buttons["thread-\(thread)"]
+            if !row.isReadyToTap { app.swipeUp() }
+            XCTAssertTrue(row.appears(within: UITestBudget.seconds(20)), "The thread waiting on a question should appear.")
+            row.tapWhenReady()
+            let send = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "send-answer-")).firstMatch
+            XCTAssertTrue(send.appears(within: UITestBudget.seconds(20)), "The question opens as a card here.")
+            let card = String(send.identifier.dropFirst("send-answer-".count))
+            // A draft started here, then overtaken on the Mac.
+            let stable = app.buttons["option-\(card)-channel-stable"]
+            stable.tapWhenReady()
+            XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(10)) { stable.isSelected })
+            let status = try postToLoopback(mac.appendingPathComponent(how), timeout: UITestBudget.seconds(10))
+            XCTAssertEqual(status, 204, "The Mac must \(how) the question.")
+            let state = app.staticTexts["question-state-\(card)"]
+            XCTAssertTrue(state.appears(within: UITestBudget.seconds(20)), "The next poll closes the card without a tap.")
+            XCTAssertEqual(state.label, closed)
+            XCTAssertTrue(send.waitForNonExistence(timeout: UITestBudget.seconds(5)), "A card closed on the Mac has no controls here.")
+            XCTAssertFalse(stable.exists, "and the draft's choice is gone with them")
+            if let reply {
+                XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", reply)).firstMatch.appears(within: UITestBudget.seconds(20)), "The Mac's answer reached the agent, not the phone's draft.")
+            }
+            attachScreenshot(of: app, named: "Question closed on the Mac (\(how))")
+            app.buttons["Back to threads"].tapWhenReady()
+        }
+    }
+
     private func openForgetMenu(_ app: XCUIApplication) -> Bool {
         let options = app.buttons["workspace-options"]
         let item = app.buttons["Forget paired Mac…"]
@@ -502,7 +535,7 @@ final class CompanionFlowTests: XCTestCase {
         }
     }
 
-    private struct Fixture: Decodable { let link: String; let reconnect: Bool?; let resumeURL: String? }
+    private struct Fixture: Decodable { let link: String; let reconnect: Bool?; let resumeURL: String?; let macURL: String? }
 }
 
 /// 127.0.0.1 with port 0, for `bind` to pick an ephemeral port.
