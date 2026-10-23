@@ -54,7 +54,7 @@ Independent security review identified mismatched network executables, insuffici
 
 `pnpm build` completed with exit 0 (the existing large-chunk advisory remains). `pnpm test` completed with exit 0: 2,016 passed and 21 skipped across the worktree, core, desktop, native/package, site and store suites. Five of those skips are the explicitly opt-in isolation probes; 16 are pre-existing environment gates. The separate final `MODEX_CR6_NATIVE=1 pnpm --filter @modex/desktop test:review-isolation` completed with exit 0: five passed, zero failed and zero skipped. No renderer or production behavior changed, so UI E2E was not required for this test/documentation-only slice. This is not real-app integration acceptance.
 
-Final logs are `cr6-build.log`, `cr6-test.log` and `cr6-native-final.log` in the artifact directory above. The PR receipt binds these results to the signed implementation SHA; subsequent receipt-only documentation does not change tested inputs.
+Final logs are `cr6-build.log`, `cr6-test.log` and `cr6-native-final.log` in the artifact directory above. Tested implementation source: `10326f2adf505cbb5e833c8f29a88c777ca60ff9` (signed). Subsequent receipt-only documentation does not change tested inputs.
 
 ## Sources and next action
 
