@@ -11,7 +11,7 @@ import { LineBuffer, stderrTail, writeJsonResponse } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
-import type { MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
+import type { MessageAsk, MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
 import { boundOutput, byteLength, codexWebSearch, memoryEvidence, type ExecAction } from "../../../shared/evidence.js";
 import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
@@ -52,6 +52,12 @@ export class CodexBackend implements Backend {
    * here means Codex settled it itself (codex-cli 0.163.0): the card is withdrawn and no answer is sent.
    */
   private readonly openRequests = new Map<string, { controller: AbortController; thread: unknown }>();
+
+  /**
+   * How long a turn stays open after Codex's final answer with nothing else in progress, when Codex
+   * never sends `turn/completed` (seen live on codex-cli 0.163.0, docs/task-context.md#live-codex-captures).
+   */
+  quietAfterFinalMs = 5 * 60_000;
 
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
@@ -348,6 +354,9 @@ export class CodexBackend implements Backend {
       let starting = true;
       const queued: RpcMessage[] = [];
       let abortTimer: ReturnType<typeof setTimeout> | undefined;
+      // Set by Codex's final answer and cleared by any later item; arms `quiet` while nothing else is open.
+      let answered = false;
+      let quiet: ReturnType<typeof setTimeout> | undefined;
       let interrupted = false;
       // Set once Codex reports the turn interrupted while ending its background terminals.
       let stopping = false;
@@ -368,6 +377,7 @@ export class CodexBackend implements Backend {
         this.subscribers.delete(onMsg);
         this.disconnects.delete(onDisconnect);
         clearTimeout(abortTimer);
+        clearTimeout(quiet);
         signal.removeEventListener("abort", onAbort);
         if (outputBase !== undefined && outputNow !== undefined) meter.addOutput(outputNow - outputBase);
         resolve(withUsage(r, meter));
@@ -425,6 +435,22 @@ export class CodexBackend implements Backend {
         }
         const messageTurn = p.turnId ?? (p.turn as { id?: string } | undefined)?.id;
         if (messageTurn && messageTurn !== turnId) return;
+        clearTimeout(quiet);
+        if (msg.method === "item/started") answered = false;
+        else if (msg.method === "item/completed") {
+          const item = p.item as CodexItem;
+          if (item.type === "agentMessage") answered = item.phase === "final_answer";
+        }
+        if (answered && msg.method !== "turn/completed") {
+          quiet = setTimeout(() => {
+            // Codex can go quiet after its final answer without ending the turn. Nothing else is open, so
+            // Modex ends it and says so; the interrupt lets Codex close its side.
+            if (done || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
+            sink.notice("warn", `Codex gave its final answer but did not report the turn finished. Modex ended the turn after ${Math.round(this.quietAfterFinalMs / 60_000) || 1} minute${this.quietAfterFinalMs > 60_000 ? "s" : ""} without activity.`);
+            interrupt();
+            finish({ status: "completed", detail: detail({ endedBy: "modex", quietAfterFinalMs: this.quietAfterFinalMs }) });
+          }, this.quietAfterFinalMs);
+        }
         // Server → client requests (approvals).
         if (msg.id !== undefined && msg.method) {
           void this.handleServerRequest(msg, sink, seenRequests);
@@ -511,7 +537,8 @@ export class CodexBackend implements Backend {
             if (item.type === "agentMessage") {
               // A message that completes without streaming is kept, commentary included: its phase says what it is.
               const evidence = memoryEvidence(item.memoryCitation);
-              sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}), ...(evidence.length ? { evidence } : {}) });
+              const asks = codexAsks(item.questions);
+              sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: codexPhase(item.phase), ...(item.phase ? { nativePhase: item.phase } : {}), ...(evidence.length ? { evidence } : {}), ...(asks.length ? { asks } : {}) });
             } else if (item.type === "plan") {
               // The completed plan item is authoritative; its deltas joined may differ.
               sink.observe({ type: "message.done", native: native(item.id), ...(typeof item.text === "string" ? { text: item.text } : {}), phase: "final", nativePhase: "plan" });
@@ -764,6 +791,8 @@ interface CodexItem {
   id: string;
   /** Codex's own parse of a command (0.163.0): `read`, `search`, `listFiles` or `unknown`. */
   commandActions?: unknown;
+  /** An agent message's own questions (0.163.0 `AsyncUserInputQuestion`): `{ title, options }`, answered by the next message. */
+  questions?: unknown;
   text?: string;
   phase?: string | null;
   command?: string;
@@ -880,4 +909,15 @@ export function codexActions(value: unknown): ExecAction[] | undefined {
     return [];
   });
   return actions.length ? actions : undefined;
+}
+
+/** Codex `agentMessage.questions`, as reported: titled questions with plain-text options. Anything else is dropped. */
+export function codexAsks(value: unknown): MessageAsk[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((q) => {
+    const { title, options } = (q ?? {}) as { title?: unknown; options?: unknown };
+    if (typeof title !== "string" || !title.trim()) return [];
+    const opts = Array.isArray(options) ? options.filter((o): o is string => typeof o === "string" && o.trim() !== "") : null;
+    return [{ title, options: opts?.length ? opts : null }];
+  });
 }

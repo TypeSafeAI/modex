@@ -111,7 +111,7 @@ export interface TaskClarification {
   /** The answers as shown, saved and exported (a secret one is "(hidden)"), or null when nobody answered. */
   answer: string[] | null;
   /** Why an unanswered question closed (docs/human-requests.md). */
-  closed?: "native" | "stopped" | "ended";
+  closed?: "native" | "stopped" | "ended" | "message";
   /** Answered, but Modex stopped before it could confirm the CLI received the answer. */
   uncertain?: true;
 }
@@ -135,6 +135,8 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
         clarifications.push({ question: question.text, answer, ...(!answer && item.withdrawn ? { closed: item.withdrawn } : {}), ...(answer && item.delivery === "uncertain" ? { uncertain: true as const } : {}) });
       }
     }
+    // A question the agent asked in its message has no answer in this turn: the next message is the answer.
+    if (item.kind === "assistant") for (const ask of item.asks ?? []) clarifications.push({ question: ask.title, answer: null, closed: "message" });
     if (item.kind !== "tool") continue;
     if (PATCH_TOOLS.has(item.name)) {
       for (const file of patchFiles(item)) {
@@ -207,10 +209,11 @@ export function taskMarkdown(record: TaskRecord): string {
   return lines.join("\n") + "\n";
 }
 
-const CLOSED_WORDS: Record<NonNullable<TaskClarification["closed"]>, string> = { native: "the agent withdrew it", stopped: "the turn was stopped", ended: "the turn ended first" };
+const CLOSED_WORDS: Record<NonNullable<TaskClarification["closed"]>, string> = { native: "the agent withdrew it", stopped: "the turn was stopped", ended: "the turn ended first", message: "it was asked in a message" };
 
 /** A clarification as one line: the question, then its answer or why it has none. */
 export function clarificationLine(c: TaskClarification): string {
+  if (!c.answer && c.closed === "message") return `${c.question} — asked in a message: the answer is the next message`;
   if (!c.answer) return `${c.question} — not answered${c.closed ? `: ${CLOSED_WORDS[c.closed]}` : ""}`;
   return `${c.question} — ${c.answer.join(", ")}${c.uncertain ? " (Modex could not confirm the agent received this answer)" : ""}`;
 }

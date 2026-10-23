@@ -106,7 +106,7 @@ test("live Codex (gpt-6.1-sol): the requestUserInput clarification, the edit and
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });
 
-test("live Codex (gpt-6-astra): an async question in an agent message is no question card, and its sleeps are not tools that ran", async () => {
+test("live Codex (gpt-6-astra): an async question in an agent message is kept with the reply, answered by the next message, and its sleeps are not tools that ran", async () => {
   const proc = new FakeProcess();
   const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
   const h = await harness(codex);
@@ -119,10 +119,33 @@ test("live Codex (gpt-6-astra): an async question in an agent message is no ques
     assert.equal(items.some((i) => i.kind === "plan"), false);
     const asked = items.find((i) => i.kind === "assistant" && i.text.includes("English or in Spanish")) as ThreadItem & { kind: "assistant" } | undefined;
     assert.ok(asked, "the question is shown as Codex's message");
+    assert.deepEqual(asked.asks, [{ title: "Should greeting.txt say hello in English or in Spanish?", options: ["English", "Spanish"] }], "with the questions Codex attached");
     const sleeps = items.filter((i) => i.kind === "tool" && /sleep/i.test(`${i.name} ${i.title}`));
     assert.equal(sleeps.length, 0, `sleep items are not commands: ${JSON.stringify(sleeps.map((i) => i.kind === "tool" && i.title))}`);
     const record = taskRecord(items, { threadId: h.thread.id, title: "Greeting", cwd: h.cwd });
-    assert.deepEqual(record.clarifications ?? [], []);
+    assert.deepEqual(record.clarifications, [{ question: "Should greeting.txt say hello in English or in Spanish?", answer: null, closed: "message" }]);
+    assert.ok(taskMarkdown(record).includes("- Should greeting.txt say hello in English or in Spanish? — asked in a message: the answer is the next message"), taskMarkdown(record));
     assert.deepEqual(record.files, []);
+  } finally { await h.runner.dispose(); await codex.dispose(); }
+});
+
+test("live Codex (gpt-6.1-sol) never sent turn/completed: after its final answer and a quiet period, Modex ends the turn, says so and interrupts it", async () => {
+  const proc = new FakeProcess();
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  codex.quietAfterFinalMs = 50;
+  const h = await harness(codex);
+  const { lines } = capture("codex-plan-question-0.163.0.jsonl", h.cwd);
+  const interrupts: unknown[] = [];
+  proc.stdin.on("data", (d: Buffer) => { for (const l of d.toString().split("\n")) if (l.includes('"turn/interrupt"')) interrupts.push(JSON.parse(l)); });
+  replay(proc, lines);
+  try {
+    const sent = h.runner.send(h.thread.id, "Write the greeting");
+    await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "question"));
+    const card = h.runner.items(h.thread.id).find((i) => i.kind === "question")!;
+    h.runner.answerQuestion(h.thread.id, card.id, { greeting_language: ["English"] });
+    await sent;
+    assert.notEqual(h.runner.status(h.thread.id), "running");
+    assert.equal(interrupts.length, 1, "Codex is asked to end the turn it never reported finished");
+    assert.match(JSON.stringify(h.runner.items(h.thread.id)), /did not report the turn finished/);
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });

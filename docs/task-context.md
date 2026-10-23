@@ -162,7 +162,7 @@ captures are redacted and replayed through the Codex backend and the runner in
   turn still waiting. Modex shows the question as Codex's message, with no card, since there is no
   request to answer, and shows no sleep as a tool.
 
-The parser needed no change for either shape. What these turns show, and what remains open:
+The parser needed no change for either shape. What these turns show, and what Val decided:
 
 - A Codex plan in a real turn has not been observed. Val asked for one more try. Two further
   `gpt-6.1-sol` turns asked directly for `update_plan`, without the question flag: one with default
@@ -170,8 +170,16 @@ The parser needed no change for either shape. What these turns show, and what re
   `turn/completed`. That makes four live turns on this machine's Codex configuration with no plan
   tool, so the `turn/plan/updated` path is still tested only with schema-shaped fixtures. These two
   turns add no new shape, so they are not fixtures.
-- Async questions in agent messages are shown as text, not as a question card.
-- A Codex turn whose `turn/completed` never arrives leaves the thread running.
+- **Questions asked in a reply.** Codex `agentMessage.questions` are kept with the reply as `asks`.
+  The reply shows each question with its options. They are not a request, so pressing an option
+  sends it as the next message; only the latest reply's options are live, and only while no turn
+  runs. The task record lists each one as "asked in a message: the answer is the next message",
+  under Not settled.
+- **A turn Codex never ends.** After Codex's final answer, with no command running and no request
+  open, Modex waits five minutes (`CodexBackend.quietAfterFinalMs`) for `turn/completed`. Any later
+  item resets the wait. Then it ends the turn as completed, with a notice that Codex did not report
+  it finished, and sends `turn/interrupt` so Codex closes its side. A command that outlives the
+  answer keeps the turn open.
 
 ## Save to Notes
 
