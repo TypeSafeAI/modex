@@ -154,12 +154,16 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   sends it as the next message. When Codex gives its final answer but never reports the turn finished,
   Modex ends the turn after five quiet minutes and says so. Live codex-cli 0.163.0 turns are replayed
   as fixtures; none sent a plan. [Live captures](task-context.md#live-codex-captures).
+- **A turn says when its CLI reported no plan** (CF-7 #280). A finished Claude Code or Codex turn that
+  changed files or ran commands without a plan says "Claude Code reported no plan for this turn" in
+  its footer and saved note. Claude Code 2.1.308 and later offer Modex no `TodoWrite`.
+  [Plans](task-context.md#plans).
 
 ## In flight
 
-- **Claude plans after `TodoWrite`** (CF-7 #280). Claude Code 2.1.308 and 2.1.309 no longer offer
-  Modex `TodoWrite`, so Claude turns show no plan. Val chose to say "Claude reported no plan"
-  now and read `TaskCreate`/`TaskUpdate` after a live capture ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
+- **Reading Claude's task tools** (CF-7 #280). Once a live Claude turn using `TaskCreate`/`TaskUpdate`
+  has been captured, Modex reads them as the turn's plan
+  ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through

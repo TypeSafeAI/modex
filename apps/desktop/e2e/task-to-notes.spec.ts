@@ -96,6 +96,9 @@ test("a turn's footer says whether a check verified its last change, and a plain
   await expect(lines.nth(0).locator("code")).toHaveAttribute("title", "/bin/zsh -lc 'pnpm test'");
   await expect(lines.nth(1)).toHaveAttribute("data-state", "stale");
   await expect(lines.nth(1)).toHaveText("Not verified: pnpm test ran before a later change");
+  // Both Codex turns did work without a plan and say so; the chat turn says nothing.
+  await expect(tid(page, "task-no-plan")).toHaveCount(2);
+  await expect(tid(page, "task-no-plan").first()).toHaveText("Codex reported no plan for this turn");
 });
 
 test("a turn's footer lists the files it touched, on demand, as the CLI reported them", async () => {

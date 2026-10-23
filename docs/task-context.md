@@ -21,10 +21,12 @@ statuses map to `pending`, `in-progress` and `completed`; a status Modex does no
 counting its revisions. Codex gives steps no ids, so a step is its position in the latest revision.
 Codex's experimental plan-mode `plan` items and `item/plan/delta` are not read.
 
-Claude Code 2.1.308 and 2.1.309, launched with Modex's arguments, offer no `TodoWrite`, so their
-turns show no plan. An undocumented variable makes 2.1.309 offer `TaskCreate`/`TaskUpdate`
-instead; Modex neither sets it nor reads those tools. Val decided that Modex
-says so first, then reads the task tools once a live turn has been captured
+Claude Code 2.1.308 and 2.1.309, launched with Modex's arguments, offer no `TodoWrite`. An
+undocumented variable makes 2.1.309 offer `TaskCreate`/`TaskUpdate` instead; Modex neither sets it
+nor reads those tools. A finished turn that changed files or ran commands, with no plan from its
+CLI, says so: its footer and saved note read "Claude Code reported no plan for this turn" or "Codex
+reported no plan for this turn". A chat turn says nothing. Val chose this for now, and reading the
+task tools once a live turn has been captured
 ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
 The codex-cli row is the generated schema's shape. In two live default-mode turns on 2026-10-23,

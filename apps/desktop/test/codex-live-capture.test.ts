@@ -13,7 +13,7 @@ import { gitRepo, tmpdir } from "./helpers.js";
 /**
  * Live codex-cli 0.163.0 turns replayed through the Codex backend and the runner (docs/task-context.md#live-codex-captures):
  * the clarification, files and checks reach the task record as Codex reported them, and a turn that
- * sent no plan has none. Fixtures are redacted captures; `/repo` stands for the capture's project.
+ * sent no plan has none and says so. Fixtures are redacted captures; `/repo` stands for the capture's project.
  */
 
 type Line = { dir: "in" | "out"; msg: { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown } };
@@ -69,7 +69,7 @@ async function harness(codex: CodexBackend) {
 }
 const waitFor = async (check: () => boolean) => { for (let i = 0; i < 400 && !check(); i++) await new Promise((r) => setTimeout(r, 5)); assert.ok(check()); };
 
-test("live Codex (gpt-6.1-sol): the requestUserInput clarification, the edit and the check reach the task record; no plan was sent, so none is shown", async () => {
+test("live Codex (gpt-6.1-sol): the requestUserInput clarification, the edit and the check reach the task record; no plan was sent, so the turn says Codex reported none", async () => {
   const proc = new FakeProcess();
   const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
   const h = await harness(codex);
@@ -94,6 +94,7 @@ test("live Codex (gpt-6.1-sol): the requestUserInput clarification, the edit and
     assert.equal(items.some((i) => i.kind === "plan"), false, "Codex sent no turn/plan/updated");
     const record = taskRecord(items, { threadId: h.thread.id, title: "Greeting", cwd: h.cwd });
     assert.equal(record.plan, undefined);
+    assert.equal(record.noPlan, "codex");
     assert.deepEqual(record.clarifications, [{ question: "Should greeting.txt say hello in English or in Spanish?", answer: ["English"] }]);
     assert.deepEqual(record.files, ["greeting.txt"]);
     assert.deepEqual(record.commands.map((c) => [c.command, c.outcome, c.exitCode]).at(-1), ["/bin/zsh -lc 'node check.js'", "succeeded", 0], "as Codex reported it");
@@ -102,7 +103,7 @@ test("live Codex (gpt-6.1-sol): the requestUserInput clarification, the edit and
     assert.deepEqual(record.context?.files.map((f) => [f.path, f.relations]), [["greeting.txt", ["changed"]]]);
     const md = taskMarkdown(record);
     for (const expected of ["- Should greeting.txt say hello in English or in Spanish? — English", "- `greeting.txt`", "- `/bin/zsh -lc 'node check.js'` — succeeded, exit code 0"]) assert.ok(md.includes(expected), `missing: ${expected}\n${md}`);
-    assert.ok(!md.includes("## Plan"), md);
+    assert.ok(md.includes("## Plan\n\nCodex reported no plan for this turn."), md);
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });
 
