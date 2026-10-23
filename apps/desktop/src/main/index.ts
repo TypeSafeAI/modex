@@ -795,6 +795,7 @@ handle("project:remove", async ({ projectId }) => {
 handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
+handle("task:note", ({ pageId }) => runner.taskNote(pageId));
 handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
 /**
  * Starts a turn without waiting for it. A rejection the runner can detect up front (busy thread,

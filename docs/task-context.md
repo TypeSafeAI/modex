@@ -152,6 +152,28 @@ saves on its own, and an agent cannot use this.
 - **A missing note is replaced.** If the note was deleted or trashed, a new one is written.
 - **Saving never reruns** anything, and never reads beyond the transcript.
 
+## Reopening a saved note
+
+A saved task note opens as the task it saved. In Notes, a task note has a **Task view** button
+(`task:note`, `ThreadRunner.taskNote`). It shows the request, the clarifications, the plan, the files
+the turn touched and its verification, as the save recorded them. It is read-only.
+
+- **What it shows is the save's record, not the note's text.** Each save also keeps the structured
+  record it rendered, in `notes/.modex/tasks/<page id>.json` (see [Notes folder](notes.md#layout)).
+  Saving again replaces it. Editing the note never changes it, and the Markdown is never parsed
+  back into a plan or a verification.
+- **It says what happened to the note since:**
+  - **edited after it was saved**, with the first version that changed its title or text, and by
+    whom (you, outside Modex or an agent). A move's own version is not an edit;
+  - **moved** from the notes of the project the task ran in to another project's notes (#363). A
+    move within the project is not mentioned;
+  - the task's project **no longer has linked notes**, the note is **in Trash**, or a later save
+    of the task **went to another note**, with a link to it.
+- **Opening it runs nothing.** It reads the record, the note's history and the notes tree. It does not
+  start a turn, call either CLI, or write the note, its history or the thread. **Open thread** only
+  shows the thread; continuing is a new message there.
+- Notes saved before this change have no task view. Saving the turn again writes the record.
+
 ## Not done yet
 
 - Linking a check to the plan step it verifies. Neither CLI reports that link.
@@ -159,4 +181,3 @@ saves on its own, and an agent cannot use this.
   ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
   reported; none is suggested.
-- Reopening a saved note as a read-only task view.

@@ -7,6 +7,7 @@ import { nameKey, noteStem, uniqueName } from "../../shared/notes-names.js";
 import { formatNote, parseNote, type ParsedNote } from "./notes-frontmatter.js";
 import { fsyncDir, moveNoClobber, writeFileDurably } from "./durable-file.js";
 import { planMigration, type PlannedNote } from "./notes-migration.js";
+import { isTaskSnapshot, type TaskSnapshot } from "../../shared/task-context.js";
 import { readSpaceDocument, validate, validateChange, validateComment, type SpaceDocument, type SpacePagesStore } from "./space-store.js";
 
 const ID = /^[a-z0-9-]{1,64}$/i;
@@ -31,6 +32,8 @@ export function watchedChange(filename: string | Buffer | null | undefined): boo
   return !parts.some(part => part.startsWith(".")) || MARKER_FILE.test(parts.at(-1) ?? "");
 }
 export const DEFAULT_WORKSPACE = "Personal";
+/** Page ids that can name a task record file. */
+const TASK_ID = /^[A-Za-z0-9_-]{1,128}$/;
 export const DEFAULT_PROJECT = "Notes";
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 
@@ -145,6 +148,29 @@ export class NotesStore implements SpacePagesStore {
   deleteComment(pageId: string, id: string): void {
     this.find(this.load(), pageId);
     this.writeJson(this.commentsFile(pageId), this.readComments(pageId).filter(comment => comment.id !== id));
+  }
+
+  /**
+   * The task record a Save to Notes wrote with this page (docs/task-context.md#reopening-a-saved-note), or
+   * null when it has none. Only reads.
+   */
+  taskSnapshot(pageId: string): TaskSnapshot | null {
+    // Save writes records only for ids that can name a file; any other id has none.
+    if (!TASK_ID.test(pageId)) return null;
+    let data: unknown;
+    try { data = JSON.parse(fs.readFileSync(this.taskFile(pageId), "utf8")); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw preserved(error);
+    }
+    if (!isTaskSnapshot(data) || data.pageId !== pageId) throw preserved(new Error("Invalid saved task record."));
+    return data;
+  }
+
+  /** Keeps the record a task save just wrote into `snapshot.pageId`, replacing an earlier save's. */
+  writeTaskSnapshot(snapshot: TaskSnapshot): void {
+    if (!isTaskSnapshot(snapshot)) throw new Error("Invalid task record.");
+    this.find(this.peek(), snapshot.pageId);
+    this.writeJson(this.taskFile(snapshot.pageId), snapshot);
   }
 
   /** Versions oldest first. */
@@ -1435,6 +1461,10 @@ export class NotesStore implements SpacePagesStore {
   private abs(rel: string): string { return path.join(this.root, ...rel.split("/")); }
   private historyFile(id: string): string { return path.join(this.meta, "history", `${id}.json`); }
   private commentsFile(id: string): string { return path.join(this.meta, "comments", `${id}.json`); }
+  private taskFile(id: string): string {
+    if (!TASK_ID.test(id)) throw new Error("Invalid page id.");
+    return path.join(this.meta, "tasks", `${id}.json`);
+  }
   private manifestFile(batch: string): string { return path.join(this.meta, "trash", `${batch}.json`); }
   private trashAbs(batch: string, rel: string): string { return path.join(this.meta, "trash", batch, ...rel.split("/")); }
   private readText(rel: string): string { return fs.readFileSync(this.abs(rel), "utf8"); }

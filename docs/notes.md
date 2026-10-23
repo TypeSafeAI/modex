@@ -14,6 +14,7 @@ notes/
     index.json                where each note file was last seen, and its hash as Modex confirmed it
     history/<id>.json         every version of one page, oldest first
     comments/<id>.json        that page's comments
+    tasks/<id>.json           the task record a Save to Notes wrote with that page (docs/task-context.md)
     trash/<batch>/…           trashed note files, by original path; <batch>.json lists them
     migration.json            receipt: what was migrated from space.json, and when
   Personal/                   a workspace        (.modex-workspace.json)

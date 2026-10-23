@@ -30,7 +30,7 @@ import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
 import { boundOutput } from "../../shared/evidence.js";
-import { taskMarkdown, taskRecord } from "../../shared/task-context.js";
+import { taskMarkdown, taskRecord, type TaskNoteView } from "../../shared/task-context.js";
 import { actionDigest, emptyRequests, publicAnswers, register as registerRequest, resolve as resolveRequest, settle as settleRequest, validateAnswers, withdraw as withdrawRequests, type Question, type RequestBinding, type RequestsState, type Resolution } from "../../shared/human-requests.js";
 import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, toolItemId, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
@@ -354,9 +354,51 @@ export class ThreadRunner {
     if (!project) throw new Error("This project has no notes yet. Open Notes for it, then save again.");
     const existing = saved ? notes.list().find(page => page.id === saved.pageId && !page.trashedAt) : undefined;
     const page = reused ?? notes.create({ title: existing ? `${record.title} (saved again)` : record.title, markdown, containerId: project.id }, change);
+    notes.writeTaskSnapshot({ version: 1, pageId: page.id, revision: page.revision, projectId: thread.projectId, threadId, turnId, savedAt: page.updatedAt, record });
     const updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
     this.o.emit({ threadId, type: "thread", thread: updated });
     return { pageId: page.id, title: page.title, revision: page.revision, created: !reused, preserved: Boolean(existing && !reused) };
+  }
+
+  /**
+   * A saved task note, reopened read-only (docs/task-context.md#reopening-a-saved-note): the record its save
+   * wrote, and whether the note was edited, moved to another project's notes or saved again elsewhere since.
+   * Null when the page is not a saved task. Only reads: it runs nothing, asks no CLI and writes no note.
+   */
+  taskNote(pageId: string): TaskNoteView | null {
+    const notes = this.o.store.space;
+    const page = notes.list().find((p) => p.id === pageId);
+    const snapshot = page ? notes.taskSnapshot(pageId) : null;
+    if (!page || !snapshot) return null;
+    // Edited: the title or text differs from the version the save wrote. A move's own version changes neither.
+    const versions = notes.history(pageId);
+    const saved = versions.find((v) => v.page.revision === snapshot.revision)?.page;
+    const changedFrom = (a: { title: string; markdown: string }, b: { title: string; markdown: string }) => a.title !== b.title || a.markdown !== b.markdown;
+    let edited: TaskNoteView["edited"];
+    if (!saved) {
+      if (page.revision !== snapshot.revision) edited = { revision: page.revision, by: "other", at: page.updatedAt };
+    } else if (changedFrom(page, saved)) {
+      const first = versions.find((v) => v.page.revision > snapshot.revision && changedFrom(v.page, saved));
+      const actor = first?.actor ?? "";
+      edited = { revision: first?.page.revision ?? page.revision, by: actor === "human" ? "you" : actor === "external" ? "outside" : actor.startsWith("thread:") ? "agent" : "other", at: first?.page.updatedAt ?? page.updatedAt };
+    }
+    // Moved: the note's notes project is not the one linked to the project the task ran in.
+    const nodes = notes.tree().nodes;
+    const projects = nodes.filter((node) => node.kind === "project");
+    const home = projects.find((node) => node.kind === "project" && node.modexProjectId === snapshot.projectId);
+    const rel = notes.pageRel(pageId);
+    const now = rel === undefined ? undefined : projects.find((node) => rel.startsWith(`${node.rel}/`));
+    const thread = this.o.store.thread(snapshot.threadId);
+    const latest = thread?.taskNotes?.[snapshot.turnId];
+    const other = latest && latest.pageId !== pageId ? notes.list().find((p) => p.id === latest.pageId && !p.trashedAt) : undefined;
+    return {
+      record: snapshot.record, threadId: snapshot.threadId, turnId: snapshot.turnId, savedAt: snapshot.savedAt, savedRevision: snapshot.revision,
+      note: { title: page.title, revision: page.revision, trashed: Boolean(page.trashedAt) },
+      ...(edited ? { edited } : {}),
+      ...(!home ? { unlinked: true as const } : now && now.id !== home.id ? { moved: { from: home.name, to: now.name } } : {}),
+      ...(other ? { superseded: { pageId: other.id, title: other.title } } : {}),
+      thread: Boolean(thread),
+    };
   }
 
   /** A tool's kept raw output from `offset`, a page at a time; null when its output fit in the preview. */

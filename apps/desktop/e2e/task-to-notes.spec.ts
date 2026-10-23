@@ -152,3 +152,128 @@ test("a successful shell receipt cannot verify masked failures or writes after a
   }
   await expect(lines.last()).toHaveAttribute("data-state", "verified");
 });
+
+/**
+ * A scripted codex-cli 0.163.0 app-server for one task: a plan, a clarifying question, an edit, a passing
+ * `pnpm test` and an answer. Every `turn/start` is counted, so reopening can prove it asked the CLI nothing.
+ */
+function taskCodex(dir: string): string {
+  const cli = path.join(dir, "codex-task.cjs");
+  fs.writeFileSync(cli, `#!${process.execPath}
+const fs = require('node:fs');
+if (process.argv.includes('--version')) { console.log('codex-cli 0.163.0'); process.exit(0); }
+if (process.argv.includes('login') || process.argv.includes('auth')) { console.log('Logged in using ChatGPT'); process.exit(0); }
+const starts = ${JSON.stringify(path.join(dir, "turn-starts.log"))};
+const emit = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+let turn = 0, open = null;
+const cwds = new Map();
+require('node:readline').createInterface({ input: process.stdin }).on('line', (line) => {
+  const msg = JSON.parse(line);
+  const p = msg.params || {};
+  if (msg.method === 'initialize') return emit({ id: msg.id, result: { userAgent: 'codex-task/0.163.0' } });
+  if (msg.method === 'initialized') return;
+  if (msg.method === 'account/read') return emit({ id: msg.id, result: { account: { type: 'chatgpt' }, requiresOpenaiAuth: true } });
+  if (msg.method === 'model/list') return emit({ id: msg.id, result: { data: [{ id: 'fixture', model: 'fixture', displayName: 'Fixture', isDefault: true }], nextCursor: null } });
+  if (msg.method === 'thread/start' || msg.method === 'thread/resume') { const id = p.threadId || 'thr-' + cwds.size; cwds.set(id, p.cwd || ''); return emit({ id: msg.id, result: { thread: { id } } }); }
+  const n = (method, params) => emit({ method, params: { threadId: open.thread, turnId: open.turn, ...params } });
+  if (msg.method === 'turn/start') {
+    fs.appendFileSync(starts, (cwds.get(p.threadId) || '') + '\\n');
+    const id = 'turn-' + (++turn);
+    emit({ id: msg.id, result: { turn: { id } } });
+    if (/modex-title-/.test(cwds.get(p.threadId) || '')) {
+      emit({ method: 'item/completed', params: { threadId: p.threadId, turnId: id, item: { id: 'name-' + turn, type: 'agentMessage', text: 'Fix the import', phase: 'final_answer' } } });
+      return emit({ method: 'turn/completed', params: { threadId: p.threadId, turn: { id, status: 'completed', error: null } } });
+    }
+    open = { thread: p.threadId, turn: id, request: 800 + turn, cwd: cwds.get(p.threadId) };
+    emit({ method: 'turn/started', params: { threadId: p.threadId, turn: { id } } });
+    n('turn/plan/updated', { explanation: null, plan: [{ step: 'Ask which import', status: 'inProgress' }, { step: 'Fix the import', status: 'pending' }, { step: 'Run the tests', status: 'pending' }] });
+    return emit({ id: open.request, method: 'item/tool/requestUserInput', params: { threadId: p.threadId, turnId: id, itemId: 'ask-' + turn, isBlocking: true, autoResolutionMs: null,
+      questions: [{ id: 'q-file', header: 'Import', question: 'Which import should I fix?', isOther: false, isSecret: false, options: [{ label: 'lodash', description: '' }, { label: 'react', description: '' }] }] } });
+  }
+  if (open && msg.id === open.request && !msg.method) {
+    const change = { path: open.cwd + '/src/app.ts', kind: { type: 'update' }, diff: '-a\\n+b' };
+    n('item/started', { item: { type: 'fileChange', id: 'edit-1', changes: [change], status: 'inProgress' } });
+    n('item/completed', { item: { type: 'fileChange', id: 'edit-1', changes: [change], status: 'completed' } });
+    n('item/started', { item: { type: 'commandExecution', id: 'check-1', command: 'pnpm test', cwd: open.cwd, status: 'inProgress' } });
+    n('item/completed', { item: { type: 'commandExecution', id: 'check-1', command: 'pnpm test', cwd: open.cwd, status: 'completed', exitCode: 0, aggregatedOutput: '' } });
+    n('turn/plan/updated', { explanation: null, plan: [{ step: 'Ask which import', status: 'completed' }, { step: 'Fix the import', status: 'completed' }, { step: 'Run the tests', status: 'completed' }] });
+    n('item/completed', { item: { type: 'agentMessage', id: 'final-' + turn, text: 'Fixed the ' + msg.result.answers['q-file'].answers[0] + ' import; the tests pass.', phase: 'final_answer' } });
+    return emit({ method: 'turn/completed', params: { threadId: open.thread, turn: { id: open.turn, status: 'completed', error: null } } });
+  }
+  if (msg.id !== undefined && msg.method) emit({ id: msg.id, error: { code: -32601, message: 'fixture does not implement ' + msg.method } });
+});
+`, { mode: 0o755 });
+  return cli;
+}
+
+test("a saved task note reopens read-only as the task it saved, asks the CLI nothing, writes nothing, and says when it was edited or moved", async () => {
+  const seeded = seedHome({ default_backend: "codex", default_mode: "agent" });
+  const logs = fs.mkdtempSync(path.join(path.dirname(seeded.home), "modex-e2e-reopen-"));
+  const statePath = path.join(seeded.home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  state.settings.codex_bin = taskCodex(logs);
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  const { app: reopenApp, page: win } = await launch(seeded.home);
+  const starts = () => fs.existsSync(path.join(logs, "turn-starts.log")) ? fs.readFileSync(path.join(logs, "turn-starts.log"), "utf8").split("\n").filter((line) => line && !/modex-title-/.test(line)).length : 0;
+  type Note = { id: string; title: string; markdown: string; revision: number };
+  const notes = async () => (await win.evaluate(() => window.modex!.invoke("space:list", undefined))) as Note[];
+  try {
+    await win.keyboard.press("Meta+n");
+    await tid(win, "composer-input").fill("Fix the failing import");
+    await win.keyboard.press("Meta+Enter");
+    const card = items(win, "question").first();
+    await card.getByRole("radio", { name: "lodash" }).check();
+    await tid(card, "question-submit").click();
+    await expect(items(win, "assistant").last()).toContainText("Fixed the lodash import");
+    await expect(currentRow(win)).toHaveAttribute("data-status", "idle");
+    const thread = (await currentRow(win).getAttribute("data-thread-id"))!;
+    expect(starts()).toBe(1);
+
+    await tid(win, "save-task-note").last().click();
+    const saved = tid(win, "task-note-saved").last();
+    await expect(saved).toContainText("Saved to Notes · Task:");
+    const note = (await notes()).find((p) => p.title.startsWith("Task:"))!;
+    const turnItems = async () => JSON.stringify(await win.evaluate((threadId) => window.modex!.invoke("thread:items", { threadId }), thread));
+    const transcript = await turnItems();
+
+    // Open the note from the saved line, then its task view.
+    await saved.getByRole("button", { name: "Open" }).click();
+    await tid(win, "task-view-open").click();
+    const view = tid(win, "task-view");
+    await expect(view).toBeVisible();
+    await expect(view).toContainText("Read-only");
+    await expect(tid(view, "task-view-request")).toHaveText("Fix the failing import");
+    await expect(tid(view, "task-view-step")).toHaveText(["Reported done Ask which import", "Reported done Fix the import", "Reported done Run the tests"]);
+    await expect(tid(view, "task-view-clarification")).toHaveText(["Which import should I fix? — lodash"]);
+    await expect(tid(view, "task-view-file")).toHaveText(["src/app.ts changed"]);
+    await expect(tid(view, "task-view-verification")).toHaveAttribute("data-state", "verified");
+    await expect(tid(view, "task-view-verification")).toContainText("pnpm test");
+    await expect(tid(view, "task-view-edited")).toHaveCount(0);
+    await expect(tid(view, "task-view-moved")).toHaveCount(0);
+    await expect(view.locator("input, textarea, [contenteditable=true]")).toHaveCount(0);
+
+    // Nothing ran again, nothing was asked of the CLI, the note and the transcript are as they were.
+    expect(starts()).toBe(1);
+    expect((await notes()).find((p) => p.id === note.id)).toEqual(note);
+    expect(await turnItems()).toBe(transcript);
+
+    // An edit outside Modex after the save is said; the view still shows the record as saved.
+    const file = path.join(seeded.home, "notes", (await win.evaluate((id) => window.modex!.invoke("notes:page:path", { id }), note.id))!);
+    fs.appendFileSync(file, "\nMy own notes.\n");
+    await expect(tid(view, "task-view-edited")).toContainText("edited after it was saved", { timeout: 10_000 });
+    await expect(tid(view, "task-view-edited")).toContainText("Outside Modex");
+    await expect(tid(view, "task-view-request")).toHaveText("Fix the failing import");
+
+    // Moved to another project's notes: said, and the task still names the project it ran in.
+    const tree = await win.evaluate(() => window.modex!.invoke("notes:tree", undefined)) as { nodes: { id: string; kind: string; name: string; isDefault?: boolean; modexProjectId?: string | null; parentId: string | null }[] };
+    const workspace = tree.nodes.find((n) => n.kind === "workspace")!;
+    const own = tree.nodes.find((n) => n.kind === "project" && n.modexProjectId)!;
+    const elsewhere = await win.evaluate((workspaceId) => window.modex!.invoke("notes:project:create", { workspaceId, name: "Elsewhere" }), workspace.id);
+    await win.evaluate(({ ids, targetId }) => window.modex!.invoke("notes:move", { ids, targetId }), { ids: [note.id], targetId: elsewhere.id });
+    await expect(tid(view, "task-view-moved")).toContainText(`moved from ${own.name}'s notes to Elsewhere`, { timeout: 10_000 });
+    expect(starts()).toBe(1);
+  } finally {
+    await reopenApp.close();
+    for (const dir of [seeded.home, seeded.repo, logs]) fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

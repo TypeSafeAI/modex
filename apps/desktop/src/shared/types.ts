@@ -581,6 +581,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   /** Saves one turn's task record to its project's notes, or updates the note it was saved to (docs/task-context.md). */
   "task:save-note": { req: { threadId: string; turnId: string }; res: { pageId: string; title: string; revision: number; created: boolean; preserved: boolean } };
+  /** A saved task note, reopened read-only; null when the page is not one. Runs and writes nothing. */
+  "task:note": { req: { pageId: string }; res: import("./task-context.js").TaskNoteView | null };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
   "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[] }; res: { ok: boolean; error?: string } };
   /** Copies dropped, pasted or picked files into main's staging folder; over-limit files come back as errors. */

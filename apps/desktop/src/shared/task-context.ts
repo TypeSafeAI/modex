@@ -52,6 +52,59 @@ export interface TaskRecord {
   answer?: string;
 }
 
+/**
+ * The record a Save to Notes wrote, kept beside the note in the notes folder's `.modex/tasks/` so the note
+ * can reopen as the task it saved (docs/task-context.md#reopening-a-saved-note). Written only by a save.
+ */
+export interface TaskSnapshot {
+  version: 1;
+  pageId: string;
+  /** The note's revision as this save wrote it. */
+  revision: number;
+  /** The Modex project the task ran in. */
+  projectId: string;
+  threadId: string;
+  turnId: string;
+  savedAt: string;
+  record: TaskRecord;
+}
+
+/** A saved task note, reopened read-only: the record as saved, and what has happened to the note since. */
+export interface TaskNoteView {
+  record: TaskRecord;
+  threadId: string;
+  turnId: string;
+  savedAt: string;
+  savedRevision: number;
+  note: { title: string; revision: number; trashed: boolean };
+  /** The note's title or text changed after the save: the first version that changed it. */
+  edited?: { revision: number; by: "you" | "outside" | "agent" | "other"; at: string };
+  /** The note is now in another project's notes than the one the task ran in (#363). */
+  moved?: { from: string; to: string };
+  /** The project the task ran in no longer has notes linked to it. */
+  unlinked?: true;
+  /** A later save of this task went to another note. */
+  superseded?: { pageId: string; title: string };
+  /** Whether the thread is still in Modex. */
+  thread: boolean;
+}
+
+/** Whether `value` is a task snapshot this version can show; a damaged file is never rendered. */
+export function isTaskSnapshot(value: unknown): value is TaskSnapshot {
+  const v = value as TaskSnapshot | null;
+  const strings = (list: unknown) => Array.isArray(list) && list.every((s) => typeof s === "string");
+  const r = v?.record;
+  return typeof v === "object" && v !== null && v.version === 1 && typeof v.pageId === "string" && Number.isInteger(v.revision)
+    && typeof v.projectId === "string" && typeof v.threadId === "string" && typeof v.turnId === "string" && typeof v.savedAt === "string"
+    && typeof r === "object" && r !== null && typeof r.title === "string" && typeof r.request === "string" && strings(r.files)
+    && Number.isInteger(r.outsideFiles) && Array.isArray(r.commands) && r.commands.every((c) => typeof c?.command === "string")
+    && Array.isArray(r.clarifications) && r.clarifications.every((c) => typeof c?.question === "string" && (c.answer === null || strings(c.answer)))
+    && (r.plan === undefined || (Array.isArray(r.plan.steps) && r.plan.steps.every((s) => typeof s?.text === "string" && typeof s.status === "string")))
+    && (r.verification === undefined || (typeof r.verification.state === "string" && Array.isArray(r.verification.checks) && r.verification.checks.every((c) => typeof c?.command === "string")))
+    && (r.context === undefined || (Array.isArray(r.context.files) && r.context.files.every((f) => typeof f?.path === "string" && strings(f.relations)) && Number.isInteger(r.context.outside)))
+    && (r.answer === undefined || typeof r.answer === "string");
+}
+
 /** A question the CLI asked, with the answer as its card shows it. Nothing is filled in that the card does not hold. */
 export interface TaskClarification {
   question: string;
@@ -156,7 +209,8 @@ export function taskMarkdown(record: TaskRecord): string {
 
 const CLOSED_WORDS: Record<NonNullable<TaskClarification["closed"]>, string> = { native: "the agent withdrew it", stopped: "the turn was stopped", ended: "the turn ended first" };
 
-function clarificationLine(c: TaskClarification): string {
+/** A clarification as one line: the question, then its answer or why it has none. */
+export function clarificationLine(c: TaskClarification): string {
   if (!c.answer) return `${c.question} — not answered${c.closed ? `: ${CLOSED_WORDS[c.closed]}` : ""}`;
   return `${c.question} — ${c.answer.join(", ")}${c.uncertain ? " (Modex could not confirm the agent received this answer)" : ""}`;
 }
