@@ -127,8 +127,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 ## In flight
 
 - **Claude plans after `TodoWrite`** (CF-7 #280). Claude Code 2.1.308 and 2.1.309 no longer offer
-  Modex `TodoWrite`, so Claude turns show no plan. Waiting for Val to pick from the
-  [decision note](reviews/2026-10-22-cf7-claude-plans-decision.md); nothing is implemented.
+  Modex `TodoWrite`, so Claude turns show no plan. Val chose to say "Claude reported no plan"
+  now and read `TaskCreate`/`TaskUpdate` after a live capture ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through

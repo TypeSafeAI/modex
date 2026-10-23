@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-22 · **Issue:** [#280](https://github.com/TypeSafeAI/modex/issues/280) · **`main`:** `ec7be57`
 
-**Status:** waiting for Val's answer. Nothing is implemented.
+**Status:** decided. Val picked option 3 now, then option 1 after a capture, on 2026-10-23.
 
 ## The question
 
@@ -62,7 +62,7 @@ depending on an undocumented variable; if so, capture a live turn first and reco
 
 ## Val's answer
 
-- [ ] Option 3, then option 1 after a capture (recommended)
+- [x] Option 3, then option 1 after a capture (recommended). Val, 2026-10-23, in the CF-7 close-out session.
 - [ ] Option 1 only
 - [ ] Option 2 (enable the variable) with option 1
 - [ ] Option 3 only

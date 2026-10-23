@@ -23,8 +23,9 @@ Codex's experimental plan-mode `plan` items and `item/plan/delta` are not read.
 
 Claude Code 2.1.308 and 2.1.309, launched with Modex's arguments, offer no `TodoWrite`, so their
 turns show no plan. An undocumented variable makes 2.1.309 offer `TaskCreate`/`TaskUpdate`
-instead; Modex neither sets it nor reads those tools. What to do is
-[Val's decision](reviews/2026-10-22-cf7-claude-plans-decision.md).
+instead; Modex neither sets it nor reads those tools. Val decided that Modex
+says so first, then reads the task tools once a live turn has been captured
+([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
 The plan card lists each step with its status: Not started, In progress, Reported done or Status
 unknown. It also shows where the plan came from and its revision. A plan never folds away under the
