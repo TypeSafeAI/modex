@@ -961,3 +961,22 @@ test("Codex's own parse of a command (commandActions) is kept with the command i
     { kind: "list" },
   ], "unknown actions and a read without a path say nothing about files");
 });
+
+test("a Codex final answer does not end the turn while a command it started is still running", async () => {
+  const proc = new FakeProcess();
+  const { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  backend.quietAfterFinalMs = 20;
+  const { sink, events } = collectSink();
+  let settled = false;
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, sink, new AbortController().signal).finally(() => { settled = true; });
+  await proc.waitFor((line) => line.includes('"turn/start"'));
+  proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "commandExecution", id: "c1", command: "sleep 100", cwd: "/repo", status: "inProgress" } } });
+  proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "agentMessage", id: "m1", text: "Started it.", phase: "final_answer" } } });
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(settled, false, "a running command keeps the turn open");
+  proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+  assert.equal((await run).status, "completed");
+  assert.equal(events.some((e) => e.includes("did not report the turn finished")), false);
+  await backend.dispose();
+});

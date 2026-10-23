@@ -194,6 +194,13 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
   let lastUser = -1;
   turns.forEach((t, i) => { if (t.user) lastUser = i; });
   // Retry belongs on the newest failure, and only while nothing but notices has followed it.
+  // The latest reply's own questions can be answered while no turn runs and nothing was sent after it.
+  let askId: string | undefined;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.kind === "user") break;
+    if (item.kind === "assistant" && item.asks?.length) { askId = item.id; break; }
+  }
   let retryId: string | undefined;
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!;
@@ -214,7 +221,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         {turns.map((turn, i) => (
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
             footer={(t) => <><TaskVerificationLine items={t.rest} /><TaskContextLine items={t.rest} cwd={thread.cwd} /><SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} /></>}
-            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} />} />
+            render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} onReply={!thread.retired && !busy && item.id === askId ? (text) => void onSend(text) : undefined} />} />
         ))}
       </div>
       </TranscriptThread.Provider>
@@ -273,7 +280,7 @@ export function isNearBottom(el: { scrollTop: number; scrollHeight: number; clie
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
 }
 
-function Item({ item, live, onAnswer, onAnswerQuestion, onPolicy, onFix, onRetry }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onAnswerQuestion: Props["onAnswerQuestion"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void }) {
+function Item({ item, live, onAnswer, onAnswerQuestion, onPolicy, onFix, onRetry, onReply }: { item: ThreadItem; live?: boolean; onAnswer: Props["onAnswer"]; onAnswerQuestion: Props["onAnswerQuestion"]; onPolicy?: (p: ApprovalPolicy) => void; onFix: Props["onFix"]; onRetry?: () => void; onReply?: (text: string) => void }) {
   switch (item.kind) {
     case "user":
       return (
@@ -283,7 +290,7 @@ function Item({ item, live, onAnswer, onAnswerQuestion, onPolicy, onFix, onRetry
         </div>
       );
     case "assistant":
-      return <AssistantItem text={item.text} live={Boolean(live)} phase={item.phase} outcome={item.outcome} evidence={item.evidence} />;
+      return <AssistantItem text={item.text} live={Boolean(live)} phase={item.phase} outcome={item.outcome} evidence={item.evidence} asks={item.asks} onReply={onReply} />;
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
@@ -325,7 +332,7 @@ function KnowledgeReceipt({ item }: { item: Extract<ThreadItem, { kind: "notice"
  * until then it reads as the list it is, so the cards never flicker in and out mid-line.
  */
 /** A reply. Commentary reads as progress, not the answer; a reply that stopped or never completed says so. */
-function AssistantItem({ text, live, phase, outcome, evidence }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"]; evidence?: Extract<ThreadItem, { kind: "assistant" }>["evidence"] }) {
+function AssistantItem({ text, live, phase, outcome, evidence, asks, onReply }: { text: string; live: boolean; phase?: Extract<ThreadItem, { kind: "assistant" }>["phase"]; outcome?: Extract<ThreadItem, { kind: "assistant" }>["outcome"]; evidence?: Extract<ThreadItem, { kind: "assistant" }>["evidence"]; asks?: Extract<ThreadItem, { kind: "assistant" }>["asks"]; onReply?: (text: string) => void }) {
   const { body, sources } = useMemo(() => (live ? { body: text, sources: [] } : splitSources(text)), [text, live]);
   const ended = outcome === "interrupted" ? "Stopped before it finished" : outcome === "unknown" ? "This reply may be incomplete"
     : outcome === "failed" ? "Reply failed" : outcome === "denied" ? "Reply denied" : null;
@@ -333,8 +340,29 @@ function AssistantItem({ text, live, phase, outcome, evidence }: { text: string;
     <div className={`msg assistant${phase === "commentary" ? " commentary" : ""}`} data-testid="item" data-item-kind="assistant" data-phase={phase} data-outcome={outcome}>
       <Markdown text={body} />
       {evidence?.length ? <EvidenceCard evidence={evidence} /> : null}
+      {asks?.length ? <MessageAsks asks={asks} onReply={onReply} /> : null}
       {sources.length > 0 && <Sources links={sources} />}
       {ended && <div className="msg-status" data-testid="message-status">{ended}</div>}
+    </div>
+  );
+}
+
+/**
+ * Questions the agent asked in its reply (Codex `agentMessage.questions`). They are not a request: the next
+ * message is the answer, so an option sends itself as that message, and only from the latest reply.
+ */
+function MessageAsks({ asks, onReply }: { asks: NonNullable<Extract<ThreadItem, { kind: "assistant" }>["asks"]>; onReply?: (text: string) => void }) {
+  return (
+    <div className="message-asks" data-testid="message-asks">
+      {asks.map((ask, i) => (
+        <div key={i} className="message-ask" data-testid="message-ask">
+          <p className="message-ask-title">{ask.title}</p>
+          {ask.options && <div className="message-ask-options">
+            {ask.options.map((option) => <button key={option} type="button" className="btn small" data-testid="message-ask-option" disabled={!onReply} onClick={() => onReply?.(option)}>{option}</button>)}
+          </div>}
+        </div>
+      ))}
+      <p className="message-ask-note">{onReply ? "Codex asked this in its reply. Your next message is the answer." : "Codex asked this in its reply."}</p>
     </div>
   );
 }

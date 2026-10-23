@@ -18,6 +18,8 @@ export const CONVERSATION_SCHEMA = 1 as const;
 
 /** What assistant text is for. `unspecified` when the CLI does not say (Claude, older Codex models). */
 export type MessagePhase = "commentary" | "final" | "unspecified";
+/** A question the agent put in its message (Codex `agentMessage.questions`), answered by the next message, not by a request. */
+export interface MessageAsk { title: string; options: string[] | null }
 /**
  * What a reasoning item's text is. `summary`: a summary the provider publishes as such.
  * `provider-text`: reasoning text the provider sent in the clear, with no claim that it is a summary.
@@ -102,7 +104,7 @@ export type Observation = (
   | { type: "message.start"; native: NativeRef; phase: MessagePhase; nativePhase?: string }
   | { type: "message.delta"; native: NativeRef; text: string }
   /** The message ended. `text`, when given, is the final snapshot and replaces what streamed. */
-  | { type: "message.done"; native: NativeRef; text?: string; phase?: MessagePhase; nativePhase?: string; evidence?: Evidence[] }
+  | { type: "message.done"; native: NativeRef; text?: string; phase?: MessagePhase; nativePhase?: string; evidence?: Evidence[]; asks?: MessageAsk[] }
   | { type: "reasoning.start"; native: NativeRef }
   /** Reasoning text for one part (Codex `summaryIndex` or `contentIndex`) of one representation. */
   | { type: "reasoning.delta"; native: NativeRef; representation: "summary" | "provider-text"; index: number; text: string }
@@ -217,7 +219,7 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
       if (entry?.done) return state;
       const e = { ...(entry ?? fresh("message", turn)), done: true, ...(event.phase ? { phase: event.phase } : {}), ...(event.nativePhase !== undefined ? { nativePhase: event.nativePhase } : {}) };
       const id = e.ids.message;
-      const evidence = event.evidence?.length ? { evidence: event.evidence } : {};
+      const evidence = { ...(event.evidence?.length ? { evidence: event.evidence } : {}), ...(event.asks?.length ? { asks: event.asks } : {}) };
       if (id) return draft.patch(id, (item) => item.kind === "assistant" ? { ...item, ...(event.text !== undefined ? { text: event.text } : {}), phase: e.phase ?? "unspecified", ...(e.nativePhase !== undefined ? { nativePhase: e.nativePhase } : {}), outcome: "succeeded", ...evidence } : item).entry(key, e).done();
       if (!event.text?.trim()) return draft.entry(key, e).done();
       return draft.add({ ...message(newId, e, event.text, "succeeded", origin, event.at), ...evidence } as ConversationItem).entry(key, { ...e, ids: { message: newId } }).done();
@@ -341,7 +343,7 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
     switch (value.type) {
       case "message.start": return PHASES.includes(value.phase as string) && optional(value.nativePhase, isString);
       case "message.delta": return isString(value.text);
-      case "message.done": return optional(value.text, isString) && optional(value.phase, (p) => PHASES.includes(p as string)) && optional(value.nativePhase, isString) && optional(value.evidence, (e) => Array.isArray(e) && e.every(isRecord));
+      case "message.done": return optional(value.text, isString) && optional(value.phase, (p) => PHASES.includes(p as string)) && optional(value.nativePhase, isString) && optional(value.evidence, (e) => Array.isArray(e) && e.every(isRecord)) && optional(value.asks, isAsks);
       case "reasoning.start": return true;
       case "reasoning.delta": return (value.representation === "summary" || value.representation === "provider-text") && Number.isSafeInteger(value.index) && (value.index as number) >= 0 && isString(value.text);
       case "reasoning.done": return optional(value.summary, strings) && optional(value.text, strings);
@@ -458,4 +460,8 @@ function progress(value: unknown): boolean {
     && optional(value.outputBytes, (b) => Number.isSafeInteger(b) && (b as number) >= 0) && optional(value.outputTruncated, (t) => typeof t === "boolean")
     && optional(value.exitCode, (c) => c === null || Number.isSafeInteger(c))
     && optional(value.search, (s) => isRecord(s) && isString(s.query) && Array.isArray(s.results));
+}
+
+function isAsks(value: unknown): boolean {
+  return Array.isArray(value) && value.every((a) => isRecord(a) && typeof a.title === "string" && (a.options === null || (Array.isArray(a.options) && a.options.every((o) => typeof o === "string"))));
 }

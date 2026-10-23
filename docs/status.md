@@ -149,6 +149,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 - **CF-7 step linking is retired** (#280). Val retired linking a check to a plan step: neither CLI
   reports that link, and Modex does not infer it. Steps stay "Reported done", and verification stays
   per turn. [Decision](reviews/2026-10-22-cf7-step-linking-decision.md).
+- **Codex questions asked in a reply, and turns Codex never ends** (CF-7 #280, from live captures).
+  When Codex asks in its reply (`agentMessage.questions`), the reply shows the options, and pressing one
+  sends it as the next message. When Codex gives its final answer but never reports the turn finished,
+  Modex ends the turn after five quiet minutes and says so. Live codex-cli 0.163.0 turns are replayed
+  as fixtures; none sent a plan. [Live captures](task-context.md#live-codex-captures).
 
 ## In flight
 

@@ -562,6 +562,13 @@ a.thread-pr:hover { text-decoration: underline; }
 .md a:hover, .tool-link:hover { text-decoration: underline; }
 .md a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
+/* Questions an agent asked in its reply; an option sends itself as the next message. */
+.message-asks { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border-pane); border-radius: var(--radius-row); background: var(--bg-sunken); }
+.message-ask + .message-ask { margin-top: 10px; }
+.message-ask-title { margin: 0 0 6px; font-weight: var(--weight-medium); }
+.message-ask-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.message-ask-note { margin: 8px 0 0; color: var(--text-3); font-size: var(--text-xs); }
+
 /* Sources: the links a web answer cites, as numbered cards under the message. */
 .sources { margin-top: 14px; }
 .sources-label { margin-bottom: 6px; color: var(--text-3); font-size: var(--text-xs); font-weight: var(--weight-medium); }
