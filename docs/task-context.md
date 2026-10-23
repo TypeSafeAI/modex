@@ -112,9 +112,10 @@ touched** section with the same limit. The record keeps every file.
 
 A CLI that needs to ask before it plans or acts asks through the [question card](human-requests.md):
 Codex's `item/tool/requestUserInput`, with a control for each question. In codex-cli 0.163.0, Codex
-offers the tool in native plan collaboration mode with default settings. A separate through-app
-capture enabled the opt-in `default_mode_request_user_input` flag successfully. Modex's Plan mode
-still uses an ordinary turn (evidence and limits in
+offers the tool in native plan collaboration mode with default settings, and Modex's Plan mode on
+Codex runs in that mode, so a Plan turn can ask before it plans. Codex then answers with its proposed
+plan, which Modex shows as the turn's answer. On an ordinary turn, Codex asks only with the opt-in
+`default_mode_request_user_input` flag (evidence and limits in
 [human-requests.md](human-requests.md#codex-codex-cli-01630-app-server)). The answer reaches the CLI
 once, and the plan carries on from it. Claude Code 2.1.302 sends Modex no structured questions.
 

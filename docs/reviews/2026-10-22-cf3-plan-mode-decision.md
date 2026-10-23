@@ -9,6 +9,10 @@ start the turn in Codex's native **plan collaboration mode** (`turn/start` with
 Codex offers its question tool (`item/tool/requestUserInput`). It is also where Codex returns its plan
 as a `plan` item.
 
+**Decision, 2026-10-22: yes.** Val approved the recommendation below. It is implemented as described
+in "If Val says yes"; see [human-requests.md](../human-requests.md#plan-mode-on-codex) and the live
+check at the end of this document.
+
 **Recommendation: yes, as one change that also renders Codex's `plan` items.** Switching the mode
 without rendering them would be a regression: the capture below shows the native turn's answer
 arrives only as a `plan` item, which Modex does not read today. Claude's Plan mode is unchanged.
@@ -145,6 +149,25 @@ native run still asked before `rg`. Stop, withdrawal and secrets go through the 
 - Keep `PLAN_PREFIX` only for the fallback path, and say so in a notice when used.
 - Live-verify one Plan turn through the app, with the question answered on the desktop and on the phone.
 - Update `docs/task-context.md`, `docs/human-requests.md` and `docs/status.md` (Known rough edges).
+
+## After the decision: live check through Modex
+
+Val approved the decision on 2026-10-22. The implementation passes Modex's model and effort in
+`settings`, renders the `plan` item as the turn's final assistant answer (`nativePhase: "plan"`), and
+keeps the prefix as a fallback. Instead of `PLAN_PREFIX`, it sends `developer_instructions: null`.
+
+`apps/desktop/.probes/native-plan/live.mjs` (a copy is kept with the evidence) ran one Plan turn
+through Modex's real `CodexBackend`, `ThreadRunner` and broker against codex-cli 0.163.0, read-only,
+with every command declined. Captured at `2026-10-22T20:54:52Z`; `native-plan-live.json`, SHA-256
+`11ef2116c3a079465be7cb2545daac29c8d0dc987ba3341f9bdef4a69d8d6d82`. The transcript Modex recorded:
+
+1. A commentary message: "I'll check the repository for any greeting conventions, then ask you to choose a language."
+2. A declined command.
+3. A question card (Language: English (Recommended), Spanish, French, and Other), answered through
+   `answerQuestion` with `delivery: "sent"`.
+4. The final assistant answer, `nativePhase: "plan"`: "## Add a new-user greeting…".
+
+The turn completed in 13 s. No Plan-mode feature flag was set.
 
 ## Evidence
 
