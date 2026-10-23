@@ -433,7 +433,7 @@ const NO_KINDS: ReadonlySet<string> = new Set();
 export function phoneItem(item: ThreadItem, kinds: ReadonlySet<string>): Record<string, unknown> {
   switch (item.kind) {
     // Typed fields (docs/conversation-events.md) ride along for clients that read them; older phones ignore them.
-    case "assistant": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.phase ? { phase: item.phase } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
+    case "assistant": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.phase ? { phase: item.phase } : {}), ...(item.nativePhase ? { nativePhase: item.nativePhase } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
     case "thinking": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.reasoning ? { reasoning: item.reasoning } : {}), ...(item.outcome ? { outcome: item.outcome } : {}) };
     case "user": case "notice": return { id: item.id, kind: item.kind, text: item.text, at: item.at, ...(item.kind === "notice" ? { level: item.level } : {}) };
     case "approval":
