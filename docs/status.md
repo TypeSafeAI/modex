@@ -145,6 +145,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   read-only. A Codex that refuses the mode falls back to the old prompt, with a notice.
   [Decision and live capture](reviews/2026-10-22-cf3-plan-mode-decision.md).
 
+- **CF-7 step linking is retired** (#280). Val retired linking a check to a plan step: neither CLI
+  reports that link, and Modex does not infer it. Steps stay "Reported done", and verification stays
+  per turn. [Decision](reviews/2026-10-22-cf7-step-linking-decision.md).
+
 ## In flight
 
 - **Claude plans after `TodoWrite`** (CF-7 #280). Claude Code 2.1.308 and 2.1.309 no longer offer
@@ -157,11 +161,6 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   same tag, so it also carries thread archiving from the phone, which Companion 0.2.0 (7) was cut
   for. v0.2.0's gates, its banner upgrade from v0.1.0 and the build 7 upload, are superseded:
   v0.1.0 is now offered v0.3.0. [Review](reviews/2026-10-20-v0.3.0-release-review.md).
-
-- **CF-7 step linking: decision pending** ([#280](https://github.com/TypeSafeAI/modex/issues/280)).
-  Neither CLI ties a check to a plan step, so a link would have to be inferred. The
-  [decision note](reviews/2026-10-22-cf7-step-linking-decision.md) recommends retiring it and names
-  the native signal that would reopen it. Nothing is built until Val answers.
 
 - **Native conversation fidelity** ([tracker #273](https://github.com/TypeSafeAI/modex/issues/273)).
   The slices that landed through #335 and #333 shipped in v0.3.0; the

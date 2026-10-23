@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-22 · **Issue:** [#280](https://github.com/TypeSafeAI/modex/issues/280) · **`main`:** `0e674e7`
 
-**Status:** waiting for Val's answer. Nothing is implemented.
+**Status:** retired. Val chose to retire step linking on 2026-10-23. Nothing is implemented.
 
 ## The question
 
@@ -61,6 +61,6 @@ check's own passing result after the step's last change. Until then, nothing is 
 
 ## Val's answer
 
-- [ ] Retire step linking (recommended)
+- [x] Retire step linking (recommended). Val, 2026-10-23, in the CF-7 close-out session.
 - [ ] Keep it open, waiting for the native signal above
 - [ ] Other:
