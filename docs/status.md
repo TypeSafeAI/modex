@@ -146,6 +146,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   read-only. A Codex that refuses the mode falls back to the old prompt, with a notice.
   [Decision and live capture](reviews/2026-10-22-cf3-plan-mode-decision.md).
 
+- **CF-7 step linking is retired** (#280). Val retired linking a check to a plan step: neither CLI
+  reports that link, and Modex does not infer it. Steps stay "Reported done", and verification stays
+  per turn. [Decision](reviews/2026-10-22-cf7-step-linking-decision.md).
+
 ## In flight
 
 - **Claude plans after `TodoWrite`** (CF-7 #280). Claude Code 2.1.308 and 2.1.309 no longer offer
