@@ -460,7 +460,7 @@ export function phoneItem(item: ThreadItem, kinds: ReadonlySet<string>): Record<
         ...(item.answeredBy ? { answeredBy: item.answeredBy } : {}), ...(item.delivery ? { delivery: item.delivery } : {}), ...(item.withdrawn ? { withdrawn: item.withdrawn } : {}),
       };
       return { id: item.id, kind: "notice", level: "info", at: item.at,
-      text: `The agent asked: ${item.questions.map((q) => q.text).join(" · ")}\n${item.delivery === "uncertain" ? "Delivery uncertain. Not resent; check the agent on your Mac." : item.delivery === "sending" ? "Sending answer on your Mac." : item.answers ? "Answered on your Mac." : item.withdrawn ? "Not answered." : "Answer it in Modex on your Mac."}` };
+      text: `The agent asked: ${item.questions.map((q) => q.text).join(" · ")}\n${item.delivery === "uncertain" ? "Delivery uncertain. Not resent; check the agent on your Mac." : item.delivery === "sending" ? "Sending answer on your Mac." : item.answers ? item.answeredBy === "phone" ? "Answered on your phone." : "Answered on your Mac." : item.withdrawn ? "Not answered." : "Answer it in Modex on your Mac."}` };
     // A kind this build does not know, such as one a newer Modex saved before a downgrade: an inert
     // notice, never `undefined`, which goes out as null and makes the phone reject the whole snapshot.
     // Its own fields are not forwarded, since they may hold anything.
