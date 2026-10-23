@@ -125,3 +125,5 @@
 .cr-tree-file[aria-current="true"] { background: var(--bg-row-selected); color: var(--text-1); }
 .cr-tree-file:hover { background: var(--bg-row-hover); }
 .cr-file-section:focus-visible, .cr-tree-file:focus-visible, .cr-file-heading button:focus-visible, .cr-context-fold button:focus-visible, .cr-code .line-number:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cr-patch-state { font-size: 10px; color: var(--text-3); }
+.cr-context-actions > .diff-fold { width: 100%; height: auto; min-height: 28px; margin: 2px 0; padding: 5px 8px; white-space: normal; }

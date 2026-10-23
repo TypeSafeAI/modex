@@ -4,16 +4,17 @@ import { bridge } from "../bridge";
 import { Diff, FileIcon } from "../components/Diff";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { SPLIT } from "./navigation.js";
+import { FILE_LIMITS, filePageRows, pageStopReason, retainFilePage, type FilePage } from "./file-pages.js";
 import { Reader } from "./reader.js";
 import { prUrl } from "./model.js";
-import { anchorFor, anchorState, parsePatch, hunkBounds, type LineAnchor, type PatchRow } from "./patch.js";
+import { anchorFor, anchorState, parsePatch, hunkBounds, contextWindow, type LineAnchor, type PatchRow } from "./patch.js";
 import { unavailableText } from "./text.js";
 
 let sessionSequence = 0;
-export interface ChangesView { pages: ReadResult<PrFiles>[]; selected: string | null; expanded: string[]; filter: string; wrap: boolean; highlight: boolean }
+export interface ChangesView { pages: FilePage[]; selected: string | null; expanded: string[]; filter: string; wrap: boolean; highlight: boolean }
 /** Private window memory, owned and cleared by the account-aware host; at most two revisions. */
 export type ChangesViews = Map<string, ChangesView>;
-const DISPLAY = { files: 1000, open: 4, context: 200, chunk: 40 } as const;
+const DISPLAY = { files: FILE_LIMITS.files, open: 4, context: 200, chunk: 40 } as const;
 interface Props {
   overview: PrOverview;
   views: ChangesViews;
@@ -42,7 +43,7 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
   const reader = useMemo(() => new Reader(request => bridge.invoke("code-review:read", request), undefined, `diff-${++sessionSequence}`), []);
   const viewId = `${prKeyId(overview.key)}/${overview.revision.baseSha}/${overview.revision.headSha}/${overview.revision.baseRef}`;
   const saved = views.get(viewId);
-  const [pages, setPages] = useState<ReadResult<PrFiles>[]>(saved?.pages ?? []);
+  const [pages, setPages] = useState<FilePage[]>(saved?.pages ?? []);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(saved?.selected ?? null);
   const [expanded, setExpanded] = useState<string[]>(saved?.expanded ?? []);
@@ -51,22 +52,19 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
   const [highlight, setHighlight] = useState(saved?.highlight ?? true);
   const sections = useRef(new Map<string, HTMLElement>());
   const alive = useRef(true);
-  const last = pages.at(-1);
-  const lastData = [...pages].reverse().find(p => p.state !== "unavailable");
-  const requestedCursor = useRef<string | null>(null);
-  const files = useMemo(() => {
-    const byPath = new Map<string, PrFile>();
-    for (const page of pages) if (page.state !== "unavailable" && sameRevision(page.value.revision, overview.revision)) for (const file of page.value.files) byPath.set(file.path, file);
-    return [...byPath.values()].slice(0, DISPLAY.files);
-  }, [pages, overview.revision]);
+  const lastPage = pages.at(-1);
+  const last = lastPage?.result;
+  const lastData = [...pages].reverse().find(p => p.result.state !== "unavailable")?.result;
+  const files = useMemo(() => filePageRows(pages), [pages]);
+  const stopped = pageStopReason(pages);
   const load = async (cursor: string | null, replace = false) => {
-    requestedCursor.current = cursor;
+    if (!replace && cursor !== null && stopped && !pages.some(p => p.cursor === cursor)) return;
     setBusy(true);
     const outcome = await reader.read("files", { op: "files", key: overview.key, revision: overview.revision, cursor }, overview.key.account);
     if (!alive.current || outcome.status === "superseded") return;
     const result: ReadResult<PrFiles> = outcome.status === "mismatch" || (outcome.status === "applied" && outcome.result.state !== "unavailable" && !sameRevision(outcome.result.value.revision, overview.revision))
       ? { state: "unavailable", reason: "head-changed", fetchedAt: new Date().toISOString() } : outcome.result;
-    setPages(p => replace ? [result] : [...p.filter(page => page.state !== "unavailable"), result]);
+    setPages(p => retainFilePage(p, cursor, result, replace));
     if (replace && result.state !== "unavailable") {
       setExpanded(result.value.files.slice(0, DISPLAY.open).map(f => f.path));
       setSelected(result.value.files[0]?.path ?? null);
@@ -91,27 +89,31 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
       if (el && scroller) { scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top; el.focus({ preventScroll: true }); }
     });
   };
-  const total = last && last.state !== "unavailable" ? last.coverage?.total ?? overview.totals.files : overview.totals.files;
-  const next = lastData ? lastData.coverage?.next ?? null : null;
-  const incomplete = pages.some(p => p.state !== "ready") || !!next || files.length < total;
+  const total = lastData && lastData.state !== "unavailable" ? lastData.coverage?.total ?? overview.totals.files : overview.totals.files;
+  const next = lastData && lastData.state !== "unavailable" ? lastData.coverage?.next ?? null : null;
+  const incomplete = pages.some(p => p.result.state !== "ready") || !!next || files.length < total || (lastData && lastData.state !== "unavailable" && lastData.coverage?.complete === false);
+  const missing = files.filter(f => f.patch.kind === "omitted" && f.patch.reason !== "binary").length;
   const matching = files.filter(f => `${f.path}\n${f.previousPath ?? ""}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
   return <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"}>
     <div ref={bodyRef} className="cr-diff" data-testid="code-review-diff" tabIndex={-1}>
       <div className="cr-diff-toolbar">
         <button type="button" disabled={busy} onClick={() => void load(null, true)}>Refresh files</button>
-        <span>{files.length} of {total} files loaded{incomplete ? " · Incomplete coverage" : ""}</span>
+        <span>{files.length} of {total} files loaded{incomplete ? " · Incomplete file list" : ""}</span>
         <label><input type="checkbox" checked={wrap} onChange={e => setWrap(e.target.checked)} />Wrap lines</label>
         <label><input type="checkbox" checked={highlight} onChange={e => setHighlight(e.target.checked)} />Highlight changes</label>
       </div>
+      {missing > 0 && <p className="cr-patch-notice" role="status">Incomplete patch coverage · {missing} textual patches unavailable.</p>}
       <p className="cr-revision">Base {overview.revision.baseSha.slice(0, 8)} → head {overview.revision.headSha.slice(0, 8)}{stale ? " · Overview read earlier" : ""}</p>
-      {pages.some(p => p.state === "stale") && <p role="status">Files read earlier. Anchors refer only to the revision shown.</p>}
-      {last?.state === "unavailable" && <p role="alert">{unavailableText(last)} <button onClick={() => void load(requestedCursor.current, files.length === 0)}>Retry files</button></p>}
+      {pages.some(p => p.result.state === "stale") && <p role="status">Files read earlier. Anchors refer only to the revision shown.</p>}
+      {last?.state === "unavailable" && <p role="alert">{unavailableText(last)} <button onClick={() => void load(lastPage?.cursor ?? null, files.length === 0)}>Retry files</button></p>}
+      {last && last.state !== "ready" && last.state !== "unavailable" && <p role="status">This file page is {last.state}: {last.reason}. <button onClick={() => void load(lastPage?.cursor ?? null, pages.length === 1)}>Retry files</button></p>}
       {!files.length && !busy && last?.state === "ready" && <p>No changed files in this read.</p>}
       {files.map(file => <section key={file.path} ref={el => { if (el) sections.current.set(file.path, el); else sections.current.delete(file.path); }} tabIndex={-1} className="cr-file-section" data-testid="cr-file-section" data-path={file.path} data-base-sha={overview.revision.baseSha} data-head-sha={overview.revision.headSha} data-old-path={file.previousPath ?? file.path}>
         <header className="cr-file-heading">
           <button type="button" aria-label={`${expanded.includes(file.path) ? "Collapse" : "Expand"} ${file.path}`} aria-expanded={expanded.includes(file.path)} onClick={() => expanded.includes(file.path) ? setExpanded(paths => paths.filter(p => p !== file.path)) : open(file.path)}>
             <span aria-hidden="true">{expanded.includes(file.path) ? "▾" : "▸"}</span><FileIcon path={file.path} /><bdi dir="ltr" title={file.path}>{file.path}</bdi>
           </button>
+          {file.patch.kind === "omitted" && <span className="cr-patch-state">{file.patch.reason === "binary" ? "No text diff" : "Patch unavailable"}</span>}
           <span className="stat add" aria-label={`${file.additions} additions`}>+{file.additions}</span><span className="stat del" aria-label={`${file.deletions} deletions`}>−{file.deletions}</span>
           <details className="cr-file-menu"><summary aria-label={`File options for ${file.path}`}>⋯</summary><div><button onClick={() => void bridge.invoke("clipboard:write", { text: file.path })}>Copy path</button>{prUrl(overview.locator) && <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open in GitHub</a>}</div></details>
         </header>
@@ -119,7 +121,8 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
         {expanded.includes(file.path) && <FilePatch key={file.path} file={file} overview={overview} reader={reader} wrap={wrap} highlight={highlight} onAnchor={onAnchor} />}
       </section>)}
       {busy && <p role="status">Loading remote files… <button onClick={() => { reader.cancel("files"); setBusy(false); }}>Cancel</button></p>}
-      {!busy && next && files.length < DISPLAY.files && <button onClick={() => void load(next)}>Load next 100 files</button>}
+      {!busy && next && !stopped && last?.state === "ready" && files.length < DISPLAY.files && <button onClick={() => void load(next)}>Load next 100 files</button>}
+      {stopped && <p role="status">{stopped} <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open in GitHub</a></p>}
       {files.length >= DISPLAY.files && (next || files.length < total) && <p>Display limited to {DISPLAY.files} files. <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open remaining files in GitHub</a></p>}
       <p className="cr-hint">Text patches may be incomplete. Each open file reports its patch coverage. Up to {DISPLAY.open} file bodies are open at once.</p>
     </div>
@@ -167,7 +170,7 @@ function FilePatch({ file, overview, reader, wrap, highlight, onAnchor }: { file
   const reserve = (n: number) => { if (reserved.current + n > DISPLAY.context) return false; reserved.current += n; setContextUsed(reserved.current); return true; };
   const release = (n: number) => { reserved.current -= n; setContextUsed(reserved.current); };
   const line = (side: "base" | "head", number: number) => { const anchor = anchorFor(overview.key, overview.revision, file, side, number); if (anchor) onAnchor(anchor); };
-  if (model.state !== "text") return <p className="cr-patch-notice">{model.state === "binary" ? "Binary file · no textual patch" : model.state === "provider" ? "Patch omitted by provider · code unavailable" : "Patch exceeds display limit · code unavailable"}</p>;
+  if (model.state !== "text") return <p className="cr-patch-notice">{model.state === "binary" ? "No text diff · binary, empty or metadata-only change" : model.state === "provider" ? "Patch omitted by provider · code unavailable" : "Patch exceeds display limit · code unavailable"}</p>;
   return <div className="cr-patch" onKeyDown={event => {
     if (!(event.target instanceof HTMLButtonElement) || !event.target.classList.contains("line-number")) return;
     if (!["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"].includes(event.key)) return;
@@ -195,37 +198,53 @@ function FilePatch({ file, overview, reader, wrap, highlight, onAnchor }: { file
 }
 
 function ContextFold({ file, overview, reader, oldStart, newStart, count, wrap, highlight, onLine, budget, reserve, release }: { file: PrFile; overview: PrOverview; reader: Reader; oldStart: number; newStart: number; count: number | null; wrap: boolean; highlight: boolean; onLine: (side: "base" | "head", line: number) => void; budget: number; reserve: (n: number) => boolean; release: (n: number) => void }) {
-  const [rows, setRows] = useState<PatchRow[]>([]);
+  const [top, setTop] = useState<PatchRow[]>([]);
+  const [bottom, setBottom] = useState<PatchRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
   const live = useRef(true);
+  const direction = useRef<"before" | "after">(count === null ? "after" : "before");
   const slot = `context:${file.path}:${newStart}`;
   const pendingSize = useRef(0);
   const refund = () => { if (pendingSize.current) { release(pendingSize.current); pendingSize.current = 0; } };
   useEffect(() => { live.current = true; return () => { live.current = false; reader.cancel(slot); }; }, [reader, slot]);
-  const expand = async () => {
-    const start = newStart + rows.length;
-    const length = Math.min(DISPLAY.chunk, budget, count === null ? DISPLAY.chunk : count - rows.length);
-    if (length <= 0 || !reserve(length)) return;
-    pendingSize.current = length;
+  const expand = async (from: "before" | "after") => {
+    const window = contextWindow({ oldStart, newStart, count, top: top.length, bottom: bottom.length, budget, direction: from });
+    if (!window || !reserve(window.length)) return;
+    direction.current = from;
+    pendingSize.current = window.length;
     setBusy(true); setError(null);
-    const outcome = await reader.read(slot, { op: "context", key: overview.key, revision: overview.revision, side: "head", path: file.path, start, end: start + length - 1 }, overview.key.account);
+    const outcome = await reader.read(slot, { op: "context", key: overview.key, revision: overview.revision, side: "head", path: file.path, start: window.start, end: window.end }, overview.key.account);
     if (!live.current || outcome.status === "superseded") return;
     setBusy(false);
     if (outcome.status !== "applied") { refund(); setError("Context reply did not match the selected revision."); return; }
     const result = outcome.result;
     if (result.state !== "ready") { refund(); setError(result.state === "unavailable" ? unavailableText(result) : "Context is stale or incomplete; retry for this revision."); return; }
     const value = result.value;
-    if (!sameRevision(value.revision, overview.revision) || value.path !== file.path || value.side !== "head" || value.start !== start || value.lines.length > length) { refund(); setError("Context reply did not match the requested file and lines."); return; }
-    setRows(current => [...current, ...value.lines.map((text, i): PatchRow => ({ kind: "context", text, oldLine: oldStart + rows.length + i, newLine: start + i, noNewline: false }))]);
-    release(length - value.lines.length); pendingSize.current = 0;
-    setEnded(value.lines.length < length || (value.total !== null && start + value.lines.length > value.total));
+    if (!sameRevision(value.revision, overview.revision) || value.path !== file.path || value.side !== "head" || value.start !== window.start || value.lines.length > window.length) { refund(); setError("Context reply did not match the requested file and lines."); return; }
+    const rows = value.lines.map((text, i): PatchRow => ({ kind: "context", text, oldLine: window.oldStart + i, newLine: window.start + i, noNewline: false }));
+    if (from === "before") setBottom(current => [...rows, ...current]);
+    else setTop(current => [...current, ...rows]);
+    release(window.length - value.lines.length); pendingSize.current = 0;
+    setEnded(value.lines.length < window.length || (count === null && value.total !== null && window.start + value.lines.length > value.total));
   };
-  const remaining = count === null ? null : count - rows.length;
+  const remaining = count === null ? null : count - top.length - bottom.length;
+  const label = Math.min(DISPLAY.chunk, budget, remaining ?? DISPLAY.chunk);
+  const collapse = () => {
+    reader.cancel(slot); refund(); setBusy(false);
+    release(top.length + bottom.length); setTop([]); setBottom([]); setEnded(false); setError(null);
+  };
   return <div className="cr-context-fold">
-    {rows.length > 0 && <Diff rows={rows} wrap={wrap} highlight={highlight} onLine={onLine} />}
+    {top.length > 0 && <Diff rows={top} wrap={wrap} highlight={highlight} onLine={onLine} />}
     {error && <p role="alert">{error}</p>}
-    {busy ? <button onClick={() => { reader.cancel(slot); refund(); setBusy(false); }}>Cancel context</button> : !ended && remaining !== 0 && <button className="diff-fold" disabled={budget <= 0} onClick={() => void expand()}>{error ? "Retry context" : budget <= 0 ? "Context display limit reached" : `Expand ${Math.min(DISPLAY.chunk, budget, remaining ?? DISPLAY.chunk)} unchanged lines${remaining === null ? " · More unchanged context may be available" : ` (${remaining} folded)`}`}</button>}
+    {busy ? <button onClick={() => { reader.cancel(slot); refund(); setBusy(false); }}>Cancel context</button> : !ended && remaining !== 0 && <div className="cr-context-actions">
+      {error ? <button onClick={() => void expand(direction.current)}>Retry context</button> : budget <= 0 ? <span>Context display limit reached</span> : <>
+        {count !== null && <button className="diff-fold" onClick={() => void expand("before")}>Expand {label} unchanged lines above change{remaining === null ? "" : ` (${remaining} folded)`}</button>}
+        <button className="diff-fold" onClick={() => void expand("after")}>Expand {label} unchanged lines below{count === null ? " · More unchanged context may be available" : (newStart === 1 ? " from file start" : " previous change")}</button>
+      </>}
+    </div>}
+    {bottom.length > 0 && <Diff rows={bottom} wrap={wrap} highlight={highlight} onLine={onLine} />}
+    {(top.length > 0 || bottom.length > 0) && <button onClick={collapse}>Collapse expanded context</button>}
   </div>;
 }

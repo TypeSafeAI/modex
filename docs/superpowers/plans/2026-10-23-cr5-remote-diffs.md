@@ -32,3 +32,8 @@
 - Model/workspace tests passed 19/19; focused Electron diff/local Changes run passed 31/31. Zero-count hunk normalization and roving keyboard gutter entry were added after targeted failures. Return-navigation tests required bounded account-owned view memory and correct scroll-listener attachment.
 - Full build and unit gates passed (2,034 tests; 16 opt-in skips). Renderer typecheck passed. Full E2E is live in session 71387, logging to /tmp/modex-cr5-full-e2e.log. Raw focused artifacts are preserved in /Users/buns/Documents/ModexEvidence/cr5-remote-diffs-2026-10-23/.
 - Original R4 is unavailable in exact-name and image/date Spotlight searches. Fixture R4/narrow captures were inspected, but original-reference fidelity and CR-4 overview integration remain unverified.
+
+- Independent review of e22575a found four important issues; all accepted and covered by failing-first model/window tests and three real Electron RED→GREEN cases. Focused model/workspace tests passed 24/24 and remote/local/navigation Electron tests passed 51/51.
+- Ruling: correct the minor no-text wording in this fix pass because the accepted producer contract explicitly requires “No text diff”; leaving it would mislabel empty/metadata-only files as binary.
+- First full desktop E2E finished 406 passed, 7 opt-in skips, 1 navigation-fixture failure; its original trace/log are preserved externally. Corrected helper shadowing and added overview-total proof; focused rerun passed.
+- Production IPC/service/subprocess UI integration passed with only gh substituted, exact-head context endpoint and unchanged checkout. No authenticated or original-reference acceptance is claimed.

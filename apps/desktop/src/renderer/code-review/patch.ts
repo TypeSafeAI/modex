@@ -75,3 +75,15 @@ export function parsePatch(file: PrFile): PatchModel {
   finish();
   return { state: "text", hunks, complete: valid && additions === file.additions && deletions === file.deletions };
 }
+
+/** Reveal adjacent context from either end of a gap without crossing already displayed lines. */
+export function contextWindow({ oldStart, newStart, count, top, bottom, budget, direction }: { oldStart: number; newStart: number; count: number | null; top: number; bottom: number; budget: number; direction: "before" | "after" }): { start: number; end: number; oldStart: number; length: number } | null {
+  if (count === null && direction === "before") return null;
+  const remaining = count === null ? 40 : count - top - bottom;
+  const length = Math.min(40, budget, remaining);
+  if (length <= 0) return null;
+  const offset = direction === "before" ? count! - bottom - length : top;
+  const start = newStart + offset;
+  if (start < 1 || start + length - 1 > 10_000_000) return null;
+  return { start, end: start + length - 1, oldStart: oldStart + offset, length };
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anchorFor, anchorState, parsePatch, hunkBounds, PATCH_LIMITS } from "../src/renderer/code-review/patch.js";
+import { anchorFor, anchorState, parsePatch, hunkBounds, contextWindow, PATCH_LIMITS } from "../src/renderer/code-review/patch.js";
 import type { PrFile } from "../src/shared/code-review.js";
 import { R4, FAULTS } from "./fixtures/code-review.js";
 
@@ -85,4 +85,13 @@ test("zero-count hunk coordinates mean after that line, including context betwee
   assert.deepEqual(hunkBounds(m.hunks[1]!), { oldStart: 10, newStart: 12, oldEnd: 11, newEnd: 13 });
   const inconsistent = parsePatch(file("@@ -5,0 +7,2 @@\n+insert one\n+insert two\n@@ -10 +12 @@\n-old\n+new", { additions: 3, deletions: 1 }));
   assert.equal(inconsistent.complete, false);
+});
+
+test("context windows reveal both ends of a distant gap within the same file budget", () => {
+  const gap = { oldStart: 1, newStart: 1, count: 9999, top: 0, bottom: 0, budget: 200 };
+  assert.deepEqual(contextWindow({ ...gap, direction: "before" }), { start: 9960, end: 9999, oldStart: 9960, length: 40 });
+  assert.deepEqual(contextWindow({ ...gap, bottom: 40, budget: 160, direction: "after" }), { start: 1, end: 40, oldStart: 1, length: 40 });
+  assert.deepEqual(contextWindow({ oldStart: 6, newStart: 8, count: 4, top: 0, bottom: 0, budget: 200, direction: "before" }), { start: 8, end: 11, oldStart: 6, length: 4 });
+  assert.equal(contextWindow({ ...gap, budget: 0, direction: "before" }), null);
+  assert.equal(contextWindow({ ...gap, count: 10, top: 5, bottom: 5, direction: "before" }), null);
 });
