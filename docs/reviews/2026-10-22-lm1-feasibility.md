@@ -81,3 +81,52 @@ A final audit found that a settings revision alone did not snapshot the actual e
 ## Concurrent native-plan integration
 
 PR #385 opened during this work. Its reviewed diff adds a per-thread reported-model cache and sends the explicitly selected model/effort inside `collaborationMode.settings`; that nested model takes precedence over the turn-level field. LM-1 does not modify that backend, and current main remains the recorded base. LM-3 must bind both model locations to the exact pinned local target, include collaboration settings in its configuration revision and preserve provider/process isolation. Missing selection must be unavailable for a local run, never a cloud/default-model fallback. The present native qualification covers ordinary turns, not native Plan mode.
+
+## Codex 0.164.0 refresh, 2026-10-23
+
+Under the contract's own rule, a native-CLI change invalidates qualification. The installed CLI moved
+from 0.163.0 to `codex-cli 0.164.0` (`/opt/homebrew/bin/codex`), so the receipt above no longer
+qualified the installed combination. This session claimed the released `lm1-contract` worktree and
+rebased the commit onto `main` at `203a3505bfa46b67ea4cb47254ece26ac0f2da88`. The only conflict was
+in `docs/status.md`, where both entries were kept. The contract and tests are unchanged. The same
+probes were then rerun with nothing else changed.
+
+**Runtime identity.** `shasum -a 256 -c` against [runtime-sha256.txt](2026-10-22-lm1/runtime-sha256.txt)
+passed for all ten files: both model shards, tokenizer, engine binary, MTP weights, frontend, server,
+expert profile, Responses adapter and chat template. Strata desktop is still 0.2.2 with engine 0.1.47.
+The probe instance reused the earlier child-scoped configuration (loopback 18501, `--max-context
+32768`, vision omitted, `--offline --no-api-key`), with only its log path moved to
+`apps/desktop/.probes/lm1-0164/`. Nothing was downloaded. Saved Strata settings were not touched.
+
+**Schema.** Generated with a disposable `HOME`/`CODEX_HOME`:
+
+| File | 0.164.0 SHA-256 | Against 0.163.0 |
+| --- | --- | --- |
+| `v2/ThreadStartParams.json` | `80a40a7fac15b4bf70efb7f893fb353acc0a0d30c68f54aee4f01923deca85de` | Identical |
+| `v2/TurnStartParams.json` | `f671d01c24995e99fcc110862ff3251c26d334fba212c7dc12857fb939506e47` | Was `abf0d6d2…`. Adds `responsesapiClientMetadataPatch` and changes `responsesapiClientMetadata`. Model, effort, collaboration mode, sandbox and approval fields are unchanged |
+| `v2/ThreadResumeParams.json` | `8152ea774ace4eb5623081abd64a1135f28cbff1e73ca641cfb80ac16f6eed32` | Not hashed on 0.163.0 |
+
+**Selection.** [schema-probe.py](2026-10-22-lm1/schema-probe.py) ran unchanged. The native catalogue
+had eight entries without the requested ID. `thread/start` returned
+`lm1-unlisted/Exact-ID:Q4` on provider `lm1_probe` exactly as requested, with fallback disabled and no
+inference attempted ([result](2026-10-23-lm1-0164/schema-probe.json)).
+
+**Tool, Stop and continuation.** [native-probe.mjs](2026-10-22-lm1/native-probe.mjs) ran unchanged and
+passed on its first attempt. Initialize reported user agent `modex_lm1_probe/0.164.0`, and the thread
+selected `qwen3.8-flash-next-iq3_s` on `lm1_strata`. The results:
+
+- **Read:** `cat ./sentinel.txt` completed with exit 0 and returned `LM1_TOOL_SENTINEL_829173`.
+- **Stop:** the probe saw an owned OS `sleep` (PID 38264) before sending `turn/interrupt`, and the
+  turn ended `interrupted`.
+- **After Stop:** as on 0.163.0, the interrupted command was still listed as a background terminal
+  (process 35739). An explicit `thread/backgroundTerminals/terminate` removed it. The list was then
+  empty and no owned `sleep` remained.
+- **Continuation:** on the same thread, the read completed again with exit 0 and the same sentinel.
+
+[Filtered receipt](2026-10-23-lm1-0164/native-summary.json): command items and turn completions only,
+no reasoning. Raw events, receipt, Strata logs, the schema and a SHA-256 manifest are preserved
+outside the worktree under `/Users/buns/Documents/Codex/artifacts/modex-lm1/2026-10-23-cli-0.164.0/`.
+The Strata instance was stopped after the run, and nothing was left listening on 18501.
+
+This qualifies exactly codex-cli 0.164.0 with Strata 0.1.47 and the hashed files, at an effective
+context of 32768, for ordinary turns. Every boundary listed above for 0.163.0 still applies.
