@@ -30,7 +30,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
     const id = p.threadId || 'thr-' + cwds.size;
     cwds.set(id, p.cwd || '');
-    return emit({ id: msg.id, result: { thread: { id }, model: 'fixture-model' } });
+    return emit({ id: msg.id, result: { thread: { id }, model: 'fixture' } });
   }
   if (msg.method === 'turn/start') {
     const id = 'turn-' + (++turn);
@@ -98,7 +98,8 @@ test("Plan mode on Codex: native plan mode asks its question, and Codex's plan i
     await expect(tid(card, "question")).toHaveCount(1);
     await expect(currentRow(page)).toHaveAttribute("data-status", "waiting");
     const [planned] = turns(logs) as { collaborationMode: unknown; text: string }[];
-    // The thread's model as Modex picked it (the default from model/list), carried into the mode, which overrides the turn's.
+    // The model carried into the mode, which overrides the turn's: the picked default from model/list, or the thread's model
+    // if the turn is sent before the list loads. The fixture reports the same model for both; unit tests cover each source.
     expect(planned!.collaborationMode).toEqual({ mode: "plan", settings: { model: "fixture", reasoning_effort: null, developer_instructions: null } });
     expect(planned!.text).toMatch(/Add a greeting\.txt for new users$/);
     expect(planned!.text).not.toMatch(/PLAN MODE/);
