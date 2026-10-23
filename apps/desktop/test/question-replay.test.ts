@@ -7,7 +7,8 @@ import path from "node:path";
 import { once } from "node:events";
 import { EventJournal, replayItems } from "../src/main/engine/event-journal.js";
 import { DesktopHost } from "../src/main/engine/desktop-host.js";
-import { DesktopClient } from "../src/main/engine/desktop-client.js";
+import { DesktopClient, pinnedDesktopCertificate, type DesktopCredentials } from "../src/main/engine/desktop-client.js";
+import { DESKTOP_PROTOCOL } from "../src/shared/desktop-protocol.js";
 import { CompanionServer } from "../src/main/engine/companion.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
@@ -364,4 +365,96 @@ test("an older paired desktop, which can only approve or deny, cannot answer a q
     await sent;
     assert.equal(h.codex.replies.length, 1);
   } finally { await h.runner.dispose(); await h.backend.dispose(); h.journal.close(); }
+});
+
+/** A paired desktop's raw requests with its own credentials: an event stream it can stop reading, and invoke. */
+async function rawDesktop(credentials: DesktopCredentials) {
+  const ca = await pinnedDesktopCertificate(credentials.port, credentials.fingerprint);
+  const options = (route: string, method: string) => ({ hostname: "127.0.0.1", port: credentials.port, path: route, method, ca, rejectUnauthorized: true,
+    headers: { Authorization: `Bearer ${credentials.token}`, "x-modex-item-kinds": "user,assistant,approval,tool,notice,question", ...(method === "POST" ? { "Content-Type": "application/json" } : {}) } });
+  const invoke = (channel: string, payload: unknown) => new Promise<unknown>((resolve, reject) => {
+    const req = https.request(options("/invoke", "POST"), (res) => {
+      let text = "";
+      res.on("data", (chunk) => { text += chunk; });
+      res.on("end", () => resolve((JSON.parse(text) as { value: unknown }).value));
+    });
+    req.on("error", reject);
+    req.end(JSON.stringify({ channel, payload, protocol: DESKTOP_PROTOCOL }));
+  });
+  /** Opens the stream, reads its connected frame and any replay that arrives with it, then stops reading. */
+  const stall = (route: string) => new Promise<{ connected: { journal?: { id: string; cursor: number; resumed: boolean } }; replayed: number; closed: Promise<void> }>((resolve, reject) => {
+    const req = https.get(options(route, "GET"), (res) => {
+      let buffer = "";
+      let connected: { journal?: { id: string; cursor: number; resumed: boolean } } | undefined;
+      let replayed = 0;
+      const closed = new Promise<void>((done) => { res.once("close", () => done()); req.once("close", () => done()); });
+      res.setEncoding("utf8");
+      const read = (chunk: string) => {
+        buffer += chunk;
+        let end: number;
+        while ((end = buffer.indexOf("\n\n")) >= 0) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (/^event: connected$/m.test(frame)) connected = JSON.parse(frame.match(/^data: (.+)$/m)![1]!);
+          else if (/^event: thread$/m.test(frame)) replayed++;
+        }
+        if (connected) {
+          // Asleep from here: nothing more is read, so the host's writes back up behind the socket.
+          res.off("data", read);
+          res.pause();
+          resolve({ connected, replayed, closed });
+        }
+      };
+      res.on("data", read);
+    });
+    req.on("error", reject);
+  });
+  return { invoke, stall };
+}
+
+test("a paired desktop that stops reading falls 8 MB behind: the host drops its stream, and its reconnect reloads to the answered card", async () => {
+  const h = await harness({ flushMs: 5 });
+  let credentials: DesktopCredentials | undefined;
+  const host = new DesktopHost(h.home, { version: "test", channels: () => ["thread:items"], journal: () => h.journal,
+    async invoke(channel, payload) { return channel === "thread:items" ? h.runner.items((payload as { threadId: string }).threadId) : null; } });
+  h.journal.subscribe((entries) => host.broadcastJournal(entries));
+  const pairer = new DesktopClient((saved) => { if (saved) credentials = saved; });
+  try {
+    await host.start();
+    await pairer.pair(host.invite(), "c".repeat(64));
+    await once(pairer, "connected", { signal: AbortSignal.timeout(5000) });
+    pairer.dispose();
+    const desktop = await rawDesktop(credentials!);
+    const sent = h.runner.send(h.thread.id, "deploy it");
+    await waitFor(() => Boolean(question(h.runner.items(h.thread.id))) && h.runner.status(h.thread.id) === "waiting");
+    const open = question(h.runner.items(h.thread.id))!;
+    h.journal.flush();
+    const asleep = await desktop.stall(`/events?journal=${h.journal.id}&after=${h.journal.latest()}`);
+    assert.equal(asleep.connected.journal?.resumed, true, "it connected resuming from its cursor");
+    const cursor = { id: asleep.connected.journal!.id, cursor: asleep.connected.journal!.cursor };
+
+    // While it sleeps the question is answered, and other threads stream far more than 8 MB past it.
+    assert.deepEqual(h.runner.answerQuestion(h.thread.id, open.id, { "q-env": ["staging"], "q-token": [SECRET] }), { ok: true });
+    await sent;
+    // A client that is not reading never reads the end of its stream either, so the drop is seen on the host.
+    const streams = (host as unknown as { streams: Map<unknown, string> }).streams;
+    assert.equal(streams.size, 1);
+    const dropped = () => streams.size === 0;
+    for (let i = 0; i < 40 && !dropped(); i++) {
+      h.journal.record({ threadId: "busy", type: "item", item: { id: `out-${i}`, kind: "user", text: "o".repeat(512 * 1024), at: new Date().toISOString() } as ThreadItem });
+      h.journal.flush();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(dropped(), "the host dropped the stream that fell behind 8 MB");
+
+    // The wake-up: its cursor's replay is now far past 4 MB, so it reloads instead of resuming.
+    const awake = await desktop.stall(`/events?journal=${cursor.id}&after=${cursor.cursor}`);
+    assert.equal(awake.connected.journal?.resumed, false, "the reconnect reloads");
+    assert.equal(awake.replayed, 0, "and nothing is replayed into it");
+    const items = await desktop.invoke("thread:items", { threadId: h.thread.id }) as ThreadItem[];
+    assert.deepEqual(lifecycle(question(items)!), { answers: { "q-env": ["staging"], "q-token": ["(hidden)"] }, answeredBy: "desktop", delivery: "sent", withdrawn: null }, "the reload shows the card answered");
+    assert.deepEqual(h.runner.answerQuestion(h.thread.id, open.id, { "q-env": ["production"], "q-token": ["stale"] }, "paired-desktop"), { ok: false, reason: "already-resolved" });
+    assert.equal(h.codex.replies.length, 1, "Codex heard one answer");
+    assert.ok(!JSON.stringify(items).includes(SECRET));
+  } finally { pairer.dispose(); await host.dispose(); await h.runner.dispose(); await h.backend.dispose(); h.journal.close(); }
 });
