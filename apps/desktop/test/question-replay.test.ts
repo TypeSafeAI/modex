@@ -347,3 +347,21 @@ test("an answer from the phone still being handed to Codex when Modex died reads
     assert.equal(ran.turns, 0);
   } finally { await companion.dispose(); await runner.dispose(); journal.close(); }
 });
+
+test("an older paired desktop, which can only approve or deny, cannot answer a question: refused, and Codex hears nothing", async () => {
+  const h = await harness();
+  try {
+    const sent = h.runner.send(h.thread.id, "deploy it");
+    await waitFor(() => Boolean(question(h.runner.items(h.thread.id))) && h.runner.status(h.thread.id) === "waiting");
+    const open = question(h.runner.items(h.thread.id))!;
+    // What thread:answer does for a Store build cut before CF-3 (index.ts hands it to runner.answer).
+    for (const answer of ["yes", "no", "always"] as const) {
+      assert.deepEqual(h.runner.answer(h.thread.id, open.id, answer, "paired-desktop"), { ok: false, reason: "invalid" });
+    }
+    assert.deepEqual(lifecycle(question(h.runner.items(h.thread.id))!), { answers: null, answeredBy: null, delivery: null, withdrawn: null }, "the card stays open for a client that can answer it");
+    assert.deepEqual(h.codex.replies, []);
+    assert.deepEqual(h.runner.answerQuestion(h.thread.id, open.id, { "q-env": ["staging"], "q-token": ["t"] }), { ok: true });
+    await sent;
+    assert.equal(h.codex.replies.length, 1);
+  } finally { await h.runner.dispose(); await h.backend.dispose(); h.journal.close(); }
+});
