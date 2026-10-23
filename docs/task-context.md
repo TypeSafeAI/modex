@@ -164,8 +164,12 @@ captures are redacted and replayed through the Codex backend and the runner in
 
 The parser needed no change for either shape. What these turns show, and what remains open:
 
-- A Codex plan in a real turn has not been observed. The `turn/plan/updated` path is tested only
-  with schema-shaped fixtures.
+- A Codex plan in a real turn has not been observed. Val asked for one more try. Two further
+  `gpt-6.1-sol` turns asked directly for `update_plan`, without the question flag: one with default
+  features, one with `--disable goals`. Both said the tool was not provided, did the work and sent
+  `turn/completed`. That makes four live turns on this machine's Codex configuration with no plan
+  tool, so the `turn/plan/updated` path is still tested only with schema-shaped fixtures. These two
+  turns add no new shape, so they are not fixtures.
 - Async questions in agent messages are shown as text, not as a question card.
 - A Codex turn whose `turn/completed` never arrives leaves the thread running.
 
