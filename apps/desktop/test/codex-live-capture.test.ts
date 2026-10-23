@@ -192,3 +192,32 @@ test("live Codex (gpt-6.1-sol) in plan mode: the clarification and the proposed 
     assert.ok(!md.includes("reported no plan"), md);
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });
+
+test("live Codex (gpt-6.1-sol) in plan mode: a Stop after the proposed plan is never turned into a completed turn by the quiet end", async () => {
+  const proc = new FakeProcess();
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  codex.quietAfterFinalMs = 50;
+  const h = await harness(codex, { plan: true });
+  const { lines } = capture("codex-plan-mode-0.163.0.jsonl", h.cwd);
+  const thr = lines.find((l) => l.msg.method === "turn/started")!.msg.params as { threadId: string; turn: { id: string } };
+  const interrupts: unknown[] = [];
+  proc.stdin.on("data", (d: Buffer) => { for (const l of d.toString().split("\n")) if (l.includes('"turn/interrupt"')) interrupts.push(JSON.parse(l)); });
+  replay(proc, lines);
+  try {
+    const sent = h.runner.send(h.thread.id, "Plan the greeting");
+    await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "question"));
+    const card = h.runner.items(h.thread.id).find((i) => i.kind === "question")!;
+    h.runner.answerQuestion(h.thread.id, card.id, { greeting_language: ["English"] });
+    await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "assistant" && i.nativePhase === "plan"));
+    h.runner.stop(h.thread.id);
+    // Codex sends nothing more, as live: well past the quiet period, the stop is still waiting for Codex.
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(h.runner.status(h.thread.id), "running", "a requested stop is not an acknowledgement");
+    assert.doesNotMatch(JSON.stringify(h.runner.items(h.thread.id)), /did not report the turn finished/);
+    assert.equal(interrupts.length, 1, "the stop's own interrupt, and no second one from the quiet end");
+    proc.emitLine({ method: "turn/completed", params: { threadId: thr.threadId, turn: { id: thr.turn.id, status: "interrupted", error: null } } });
+    await sent;
+    assert.notEqual(h.runner.status(h.thread.id), "running");
+    assert.doesNotMatch(JSON.stringify(h.runner.items(h.thread.id)), /did not report the turn finished/);
+  } finally { await h.runner.dispose(); await codex.dispose(); }
+});

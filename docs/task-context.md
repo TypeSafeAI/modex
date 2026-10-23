@@ -200,7 +200,8 @@ The parser needed no change for either shape. What these turns show, and what Va
   open, Modex waits five minutes (`CodexBackend.quietAfterFinalMs`) for `turn/completed`. Any later
   item resets the wait. Then it ends the turn as completed, with a notice that Codex did not report
   it finished, and sends `turn/interrupt` so Codex closes its side. A command that outlives the
-  answer keeps the turn open.
+  answer keeps the turn open. After Stop the quiet end never applies: a stopped turn waits for Codex to
+  acknowledge the interrupt, as any stop does, and is never recorded as completed.
 
 ## Save to Notes
 
