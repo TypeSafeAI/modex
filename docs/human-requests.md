@@ -243,7 +243,7 @@ Both `collaborationMode` and the `plan` item are experimental in codex-cli 0.163
     or `withdrawn`. Answers are passed through `publicAnswers` again, so a secret is `"(hidden)"`
     whatever the card holds. A phone that names nothing, such as Companion 0.3.0 (8) and earlier, keeps
     the `info` notice with the question text and its state ("Answer it in Modex on your Mac.",
-    "Answered on your Mac.", "Not answered."), never the answers. It cannot answer a question it
+    "Answered on your Mac.", "Answered on your phone.", "Not answered."), never the answers. It cannot answer a question it
     cannot draw.
   - **Answering.** `POST /v1/threads/:id/answer-question { itemId, answers: { [questionId]: string[] } }`
     calls the runner's `answerQuestion`. A malformed body is a 400 that reaches nothing. `invalid` is a
@@ -315,6 +315,19 @@ paired desktops and the phone carry it with no new event type. This is the reque
   waiting as whichever of them switched it.
 - **The window** adds "Answered on your phone." or "Answered from a paired desktop." under a card one
   of them answered, and the uncertain line above. An answer given in the window and sent adds nothing.
+- **A question closed while a client was away** (CF-6, on the phone answers above). A phone or paired desktop
+  that slept while a question was answered, withdrawn by Codex or stopped catches up the way it catches up on
+  anything else:
+  - **Journal delta.** The phone sends its cursor back and gets the card in the delta, closed, with
+    `answeredBy`, `delivery` or `withdrawn`. A phone that draws questions closes its card, and its unsent draft
+    goes with it. Drafts for other cards in the thread stay. A phone that does not draw questions gets the
+    notice again, with how it closed.
+  - **Reload.** A cursor from another journal, ahead of the log or pruned gets the whole transcript, with the
+    same card. So does every poll when the journal is off. After an unclean shutdown the journal takes a new
+    id, so a phone answer saved inside the 250 ms batch window is never skipped: the old cursor reloads.
+  - **No second answer.** A tap queued from before the sleep is refused (`already-resolved` or `withdrawn`);
+    the approval route cannot answer a question, and neither can an older paired desktop, which can only
+    approve or deny (`invalid`). Codex hears one reply per question.
 
 ## Secrets
 
@@ -384,12 +397,34 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 - `apps/ios/ModexCompanion/Tests/CompanionModelTests.swift` (`QuestionCardTests`) covers the iPhone
   model: decoding a card and its closed states, the answers sent (secret whitespace kept, Other text),
   a refusal on the card, a 409 that rereads and drops the closed draft, drafts across threads and
-  after forgetting the Mac, nothing in `UserDefaults`, and the item-kinds header.
+  after forgetting the Mac, nothing in `UserDefaults`, and the item-kinds header. For replay, it checks
+  that a journal delta closing one card drops that card's draft and keeps another's, that a withdrawn card
+  sends nothing, that a reload replaces the transcript rather than merging into it, and that an uncertain
+  answer stays closed.
 - `apps/ios/ModexCompanion/UITests/CompanionFlowTests.swift` answers a question in the simulator
   against the real companion and runner (`Scripts/fixture.mjs`). It sends an incomplete answer and
   sees it refused on the card, chooses an option, and types a secret into the secure field. The agent
   then reports the secret matched exactly, and the card reads "Answered on your phone" and shows
-  "(hidden)".
+  "(hidden)". The fixture keeps an event journal, so the phone polls with its cursor. Two more cards are
+  closed on the Mac while open on the phone with a choice made, one answered and one stopped. The next
+  poll closes each card ("Answered on your Mac", "Not answered — the turn was stopped") and removes its
+  controls, and the agent gets the Mac's answer.
+- `test/question-replay.test.ts` covers a question across replay and reconnect on a real Codex app-server
+  fixture, journal, companion and paired desktop:
+  - answered on the desktop, withdrawn by Codex, or stopped while the phone was away: the delta closes the
+    card for a phone that draws it and as a notice for one that does not, taps queued from before the sleep
+    get a 409, Codex hears one reply, and the delta, journal and events never hold the secret;
+  - cursors from another journal, ahead of the log or pruned, and no journal at all: a full transcript;
+  - a paired desktop that slept while the phone answered resumes to the card answered on the phone;
+  - a crash inside the batch window after a phone answer: the old cursor reloads, and nothing is sent again;
+  - an answer still `sending` at a crash reads as uncertain on both kinds of phone and is never resent;
+  - an older paired desktop's approve or deny on a question is refused.
+- `test/journal-resume.test.ts` replays one typed turn on every path: a commentary message, a question
+  answered on the phone while the desktop slept, and Codex's plan through a failed attempt and its retry.
+  The live projection, the saved files, both journals (live and coalesced, each also replayed twice), the
+  paired desktop and both kinds of phone (full snapshot against mid-run snapshot plus delta) agree.
+- `test/conversation-migration.test.ts` loads questions and a plan as v0.3.0 saved them: the open one closes
+  as `ended`, older answers gain no invented sender or delivery, and the draft file is byte-identical.
 - `test/turn-layout.test.ts` checks that an open question never folds away.
 - `e2e/human-requests.spec.ts` runs a fixture Codex app-server through the real UI:
   - the turn header while a question waits;

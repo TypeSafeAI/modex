@@ -152,12 +152,17 @@ replays them unchanged.
 - **Converging views.** `test/event-journal.test.ts` replays a captured Codex turn through the
   runner with the journal on. Its transcript, the saved snapshot, the journal replay (also delivered
   twice) and the phone's full and delta snapshots agree on every item's id, text, phase and outcome.
+  `test/journal-resume.test.ts` does the same for a typed turn with a question answered on the phone
+  while a paired desktop slept, and Codex's plan (`nativePhase: "plan"`) through a failed attempt and
+  its retry: the live projection, the saved files, a live and a fully coalesced journal, the paired
+  desktop, and phones that do and do not draw questions all agree.
 - **Work left running at a restart.** A tool, message or reasoning row (or a sub-agent) that a
   process saw start but never end is settled when its thread next loads: `unknown`, spinner
   stopped. That change is saved and sent as `item_update` events, so the journal and every client
   resuming from it see the same thing. Nothing is run again. Only those items are sent, with only the
   fields that changed; a thread with nothing to settle sends nothing and is not rewritten.
-- **The phone.** It gets `phase`, `outcome` and `reasoning` alongside the fields it already read.
+- **The phone.** It gets `phase`, `nativePhase`, `outcome` and `reasoning` alongside the fields it already
+  read, so it can tell Codex's plan (`nativePhase: "plan"`) from an ordinary answer.
   A phone that reads only a tool's title and status shows every finished tool as done, so a
   finished tool that did not succeed also says how it ended in its title: "· Failed", "· Denied",
   "· Stopped" or "· Status unavailable".
@@ -165,7 +170,12 @@ replays them unchanged.
 - **Approvals and questions.** A card carries who answered (`answeredBy`), whether the answer reached the
   CLI (`delivery`) and why an unanswered card closed (`withdrawn`), as whole field values like every other
   item field. Replay and resume show resolved and withdrawn cards inert and never send an answer. A secret
-  answer is never written here. See [across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+  answer is never written here. A phone or desktop that was away while a question was answered,
+  withdrawn or stopped finds it closed through its delta or its reload, and nothing it sends afterwards
+  reaches the CLI (`test/question-replay.test.ts`). See [across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+- **The paired iPhone fixture** (`apps/ios/ModexCompanion/Scripts/fixture.mjs`) keeps a journal, so
+  the simulator's UI tests poll with a cursor and merge deltas as a phone paired to a Mac with the
+  journal on does.
 
 ## Compatibility and rollback
 
