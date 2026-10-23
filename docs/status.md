@@ -152,6 +152,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
+- **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324)). The `cr5-remote-diffs` worktree adds grouped patches, both line gutters, exact-revision context expansion, a hierarchical filterable tree, keyboard navigation, explicit incomplete-data states and bounded rendering. Focused model and Electron race/stress checks pass; full repository gates, independent review, original R4 comparison and signed PR delivery remain in progress. [Evidence and limits](reviews/2026-10-23-cr5-remote-diffs.md).
+
 - **Claude plans after `TodoWrite`** (CF-7 #280). Claude Code 2.1.308 and 2.1.309 no longer offer
   Modex `TodoWrite`, so Claude turns show no plan. Val chose to say "Claude reported no plan"
   now and read `TaskCreate`/`TaskUpdate` after a live capture ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).

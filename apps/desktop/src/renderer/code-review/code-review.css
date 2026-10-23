@@ -89,3 +89,39 @@
 .cr-changes-body[data-tree="only"] > .cr-tree { flex: 1; width: auto; border-left: 0; }
 .cr-changes-body > .cr-tree-resizer { right: var(--cr-tree-w); }
 .cr-placeholder { margin: 0; color: var(--text-3); font-size: var(--text-md); line-height: 1.5; }
+
+/* Remote paths remain inert display data. Both panes own their scroll independently. */
+.cr-diff-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: 11px; color: var(--text-3); margin-bottom: 8px; }
+.cr-diff-toolbar label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.cr-revision, .cr-previous, .cr-anchor { font-size: 11px; color: var(--text-3); overflow-wrap: anywhere; }
+.cr-anchor { margin: 4px 12px; }
+.cr-file-section { border: 1px solid var(--border-pane); border-radius: 6px; margin: 0 0 12px; outline: none; }
+.cr-file-heading { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 8px; background: var(--bg-2); border-radius: 6px 6px 0 0; }
+.cr-file-heading > button { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; text-align: left; font-size: 11px; color: var(--text-2); background: transparent; border: 0; padding: 3px 0; cursor: pointer; }
+.cr-file-heading bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-file-heading .stat { flex-shrink: 0; font-size: 10px; }
+.cr-file-menu { position: relative; }
+.cr-file-menu summary { list-style: none; cursor: pointer; padding: 0 4px; }
+.cr-file-menu > div { position: absolute; z-index: 4; top: 22px; right: 0; display: grid; gap: 6px; width: 150px; padding: 8px; background: var(--bg-2); border: 1px solid var(--border-pane); border-radius: 6px; }
+.cr-file-menu a, .cr-file-menu button { font-size: 11px; }
+.cr-previous, .cr-patch-notice { margin: 8px; font-size: 11px; overflow-wrap: anywhere; }
+.cr-patch { overflow-x: auto; border-radius: 0 0 6px 6px; }
+.cr-code.review-code .review-code-line { display: flex; }
+.cr-code .line-number { flex: 0 0 38px; width: 38px; padding: 0 5px; margin: 0; background: transparent; border: 0; font: inherit; color: var(--text-4); text-align: right; cursor: pointer; }
+.cr-code .line-number:disabled { cursor: default; }
+.cr-code .cr-line-sign { flex: 0 0 14px; text-align: center; user-select: none; }
+.cr-code .review-code-line code { flex: 1; min-width: 0; }
+.cr-code:not(.wrap) { min-width: max-content; }
+.cr-context-fold { font-size: 11px; }
+.cr-context-fold > .diff-fold { width: 100%; text-align: left; justify-content: flex-start; padding: 5px 8px; }
+.cr-file-filter { display: grid; gap: 5px; font-size: 11px; color: var(--text-3); }
+.cr-file-filter input { width: 100%; min-width: 0; }
+.cr-folder { font-size: 11px; margin: 6px 0; }
+.cr-folder > summary { color: var(--text-3); cursor: pointer; overflow-wrap: anywhere; }
+.cr-folder > div { padding-left: 10px; }
+.cr-tree-file { width: 100%; display: flex; gap: 5px; align-items: center; background: transparent; border: 0; color: var(--text-2); padding: 5px 3px; text-align: left; border-radius: 4px; cursor: pointer; font-size: 11px; }
+.cr-tree-file bdi { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-tree-file .stat { font-size: 9px; flex-shrink: 0; }
+.cr-tree-file[aria-current="true"] { background: var(--bg-row-selected); color: var(--text-1); }
+.cr-tree-file:hover { background: var(--bg-row-hover); }
+.cr-file-section:focus-visible, .cr-tree-file:focus-visible, .cr-file-heading button:focus-visible, .cr-context-fold button:focus-visible, .cr-code .line-number:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
