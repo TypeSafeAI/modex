@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONVERSATION_SCHEMA, projectConversation, type ConversationEvent, type Observation, type AttemptMark, type TurnRef } from "../src/shared/conversation-events.js";
-import { CONTEXT_SHOWN, displayCommand, isCheckCommand, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
+import { CONTEXT_SHOWN, displayCommand, isCheckCommand, noPlan, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { ThreadItem } from "../src/shared/types.js";
@@ -640,4 +640,26 @@ test("external file counts use resolved identities without exposing paths", () =
   const aliases = [run("/private", "secret.txt"), run("/private", "/private/secret.txt"), run("/private", "/private/sub/../secret.txt")];
   assert.deepEqual(taskContext(aliases, "/repo"), { files: [], outside: 1 });
   assert.doesNotMatch(taskMarkdown(taskRecord([user, ...aliases], { threadId: "T", title: "Read", cwd: "/repo" })), /private|secret/);
+});
+
+test("a finished turn that did work without a plan says which CLI reported none; a chat turn or a planned turn does not", () => {
+  const at = "2026-10-23T09:00:00.000Z";
+  const origin = (backend: "claude" | "codex") => ({ thread: "T", turn: "u1", attempt: "A1", backend, native: { runtime: "R", item: "x" } });
+  const turn = (backend: "claude" | "codex", extra: ThreadItem[] = []): ThreadItem[] => [
+    { id: "u1", kind: "user", text: "Fix the import", at },
+    { id: "e", kind: "tool", name: "Edit", title: "edit src/a.ts", args: { file_path: "/repo/src/a.ts" }, status: "done", outcome: "succeeded", ok: true, origin: origin(backend), at },
+    ...extra,
+    { id: "f", kind: "assistant", text: "Fixed.", phase: "final", outcome: "succeeded", origin: origin(backend), at },
+  ] as ThreadItem[];
+  const md = (items: ThreadItem[]) => taskMarkdown(taskRecord(items, { threadId: "T", title: "Fix", cwd: "/repo" }));
+  assert.equal(noPlan(turn("claude")), "claude");
+  assert.ok(md(turn("claude")).includes("## Plan\n\nClaude Code reported no plan for this turn.\n"), md(turn("claude")));
+  assert.equal(noPlan(turn("codex")), "codex");
+  assert.ok(md(turn("codex")).includes("Codex reported no plan for this turn."));
+  const chat = [{ id: "u1", kind: "user", text: "Where?", at }, { id: "f", kind: "assistant", text: "In a.ts.", phase: "final", outcome: "succeeded", origin: origin("claude"), at }] as ThreadItem[];
+  assert.equal(noPlan(chat), null, "a turn that changed and ran nothing has nothing to plan");
+  assert.ok(!md(chat).includes("## Plan"));
+  const planned = turn("claude", [{ id: "p", kind: "plan", from: "claude-todo", revision: 1, steps: [{ text: "Fix", status: "completed" }], outcome: "succeeded", origin: origin("claude"), at } as ThreadItem]);
+  assert.equal(noPlan(planned), null);
+  assert.ok(!md(planned).includes("reported no plan"));
 });

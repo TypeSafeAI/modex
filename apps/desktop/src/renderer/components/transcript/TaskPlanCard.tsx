@@ -3,7 +3,7 @@ import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
-import { CONTEXT_SHOWN, displayCommand, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
+import { CONTEXT_SHOWN, displayCommand, noPlan, noPlanText, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
 
 export const PLAN_STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
 export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" } as const;
@@ -53,6 +53,13 @@ export function SaveTaskNote({ threadId, turnId, saved }: { threadId: string; tu
       {state.error && <ErrorNotice testId="task-note-error" where="Notes · save task" message={state.error} onRetry={state.busy ? undefined : () => void save()} context={{ threadId, turnId }} />}
     </div>
   );
+}
+
+/** A finished turn that did work without a plan says which CLI reported none (docs/task-context.md#plans). */
+export function TaskNoPlanLine({ items }: { items: readonly ThreadItem[] }) {
+  const cli = useMemo(() => noPlan(items), [items]);
+  if (!cli) return null;
+  return <div className="task-no-plan" data-testid="task-no-plan">{noPlanText(cli)}</div>;
 }
 
 /** One check, as its script, with the exact command the CLI reported on hover. */
