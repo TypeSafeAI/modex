@@ -84,7 +84,8 @@ test("bounded GETs: redirects, oversize bodies, slow answers and cancellation fa
     if (req.url === "/slow") { setTimeout(() => res.end("{}"), 2_000); return; }
     if (req.url === "/auth") { res.end(JSON.stringify({ auth: req.headers.authorization ?? null, cookie: req.headers.cookie ?? null })); return; }
     if (req.url === "/denied") { res.writeHead(401); res.end("Bearer token-secret-xyz is wrong"); return; }
-    res.end(JSON.stringify({ path: req.url }));
+    if (req.url === "/ok") { res.end('{"path":"/ok"}'); return; }
+    res.writeHead(404); res.end();
   });
   try {
     const e = endpoint(s.origin);
