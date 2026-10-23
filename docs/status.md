@@ -158,12 +158,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   changed files or ran commands without a plan says "Claude Code reported no plan for this turn" in
   its footer and saved note. Claude Code 2.1.308 and later offer Modex no `TodoWrite`.
   [Plans](task-context.md#plans).
+- **Claude's task tools and Codex's proposed plans** (CF-7 #280, from live captures). When Claude Code
+  2.1.309 offers `TaskCreate`/`TaskUpdate`, the tasks it creates and updates are the turn's plan,
+  counted once the CLI confirms each call. Codex's plan-mode `plan` item is kept as the turn's
+  proposed plan, so that turn does not say "no plan", and a plan-mode turn Codex never ends is ended
+  like one after a final answer. [Plans](task-context.md#plans).
 
 ## In flight
-
-- **Reading Claude's task tools** (CF-7 #280). Once a live Claude turn using `TaskCreate`/`TaskUpdate`
-  has been captured, Modex reads them as the turn's plan
-  ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through

@@ -6,7 +6,7 @@ import { ErrorNotice } from "../ui/ErrorNotice";
 import { CONTEXT_SHOWN, displayCommand, noPlan, noPlanText, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
 
 export const PLAN_STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
-export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" } as const;
+export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list" } as const;
 
 /**
  * The plan a CLI reported for a turn (docs/task-context.md), in its own statuses. A step the CLI

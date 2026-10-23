@@ -14,20 +14,30 @@ marked completed is "reported done": what the CLI said, not a check Modex ran.
 | --- | --- | --- |
 | codex-cli 0.163.0 | `turn/plan/updated`: `plan: [{ step, status }]` and an optional `explanation` | `pending`, `inProgress`, `completed` |
 | Claude Code 2.1.302 and earlier | the `TodoWrite` tool: `todos: [{ content, status, activeForm }]` | `pending`, `in_progress`, `completed` |
+| Claude Code 2.1.309, when it offers them | `TaskCreate` (`subject`) and `TaskUpdate` (`taskId`, `status`, `subject`) | `pending`, `in_progress`, `completed`; `deleted` removes the task |
 
-Both become a `plan.update` observation with `from` set to `codex-plan` or `claude-todo`. The
+Each becomes a `plan.update` observation with `from` set to `codex-plan`, `claude-todo` or `claude-tasks`. The
 statuses map to `pending`, `in-progress` and `completed`; a status Modex does not know becomes
 `unknown`. Each update replaces the whole plan, and the transcript keeps one `plan` item per turn,
 counting its revisions. Codex gives steps no ids, so a step is its position in the latest revision.
-Codex's experimental plan-mode `plan` items and `item/plan/delta` are not read.
+In plan mode, which Modex's Plan mode uses on Codex since #385, Codex proposes its plan as a `plan`
+item: text, with no step statuses. Modex shows it as Codex's message. The task record keeps it as
+`proposedPlan`, and the note shows it under Plan as "Codex proposed this plan in plan mode".
+`item/plan/delta` is not read.
 
 Claude Code 2.1.308 and 2.1.309, launched with Modex's arguments, offer no `TodoWrite`. An
-undocumented variable makes 2.1.309 offer `TaskCreate`/`TaskUpdate` instead; Modex neither sets it
-nor reads those tools. A finished turn that changed files or ran commands, with no plan from its
-CLI, says so: its footer and saved note read "Claude Code reported no plan for this turn" or "Codex
-reported no plan for this turn". A chat turn says nothing. Val chose this for now, and reading the
-task tools once a live turn has been captured
-([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
+undocumented variable, `CLAUDE_CODE_ENABLE_TODO_TOOLS`, makes 2.1.309 offer `TaskCreate` and
+`TaskUpdate` instead. Modex does not set it, but reads those tools whenever the CLI offers them, as
+Val chose ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)). Each call changes one task,
+and it counts only once the CLI's result confirms it. A created task's id is the number in "Task #N
+created". An update to a task this turn did not create is not guessed at. A live 2.1.309 turn is
+replayed in `test/claude-live-capture.test.ts` (`test/fixtures/claude-tasks-2.1.309.jsonl`). In it,
+Claude loaded both tools through `ToolSearch`, created three tasks and updated them. When
+`node check.js` failed, it left that task in progress, and the plan shows it that way.
+
+A finished turn that changed files or ran commands, with no plan from its CLI, says so: its footer
+and saved note read "Claude Code reported no plan for this turn" or "Codex reported no plan for this
+turn". A proposed plan counts as a plan. A chat turn says nothing.
 
 The codex-cli row is the generated schema's shape. In two live default-mode turns on 2026-10-23,
 neither model sent `turn/plan/updated`: each said its plan tool was not available, so those turns
@@ -157,6 +167,13 @@ captures are redacted and replayed through the Codex backend and the runner in
   parsed every command as an `unknown` action, so none counts as a read. After its final message,
   Codex sent no `turn/completed` in the 600 s the probe waited, and the thread stayed `active`. The
   test ends that turn itself and says so.
+- **`gpt-6.1-sol` in plan mode** (`test/fixtures/codex-plan-mode-0.163.0.jsonl`), with
+  `collaborationMode: plan` on `turn/start` as Modex sends it. Asked to plan a greeting checked by
+  `node check.js`, and to ask first whether it should be English or Spanish, Codex read the files,
+  asked through `item/tool/requestUserInput`, took the answer and completed a `plan` item. It sent
+  no `turn/plan/updated` and edited nothing. The thread went `idle`, but no `turn/completed` came
+  in the 300 s the probe waited. Replayed, the record has the clarification and the proposed plan,
+  and the turn does not say "no plan". Modex ends the turn after the quiet period.
 - **`gpt-6-astra`**, the model from the user's Codex config (`test/fixtures/codex-async-question-0.163.0.jsonl`).
   No plan tool and no `requestUserInput`. The question came as an `agentMessage` with
   `delivery: "async"` and `questions: [{ title, options }]`, a shape the 0.163.0 schema calls
@@ -166,18 +183,20 @@ captures are redacted and replayed through the Codex backend and the runner in
 
 The parser needed no change for either shape. What these turns show, and what Val decided:
 
-- A Codex plan in a real turn has not been observed. Val asked for one more try. Two further
+- A Codex plan in a real turn has now been observed, in plan mode, as a proposed `plan` item. A
+  `turn/plan/updated` step plan has not. Val asked for one more try. Two further
   `gpt-6.1-sol` turns asked directly for `update_plan`, without the question flag: one with default
   features, one with `--disable goals`. Both said the tool was not provided, did the work and sent
   `turn/completed`. That makes four live turns on this machine's Codex configuration with no plan
-  tool, so the `turn/plan/updated` path is still tested only with schema-shaped fixtures. These two
+  tool, so the `turn/plan/updated` path is still tested only with schema-shaped fixtures. The
+  plan-mode capture came later. These two
   turns add no new shape, so they are not fixtures.
 - **Questions asked in a reply.** Codex `agentMessage.questions` are kept with the reply as `asks`.
   The reply shows each question with its options. They are not a request, so pressing an option
   sends it as the next message; only the latest reply's options are live, and only while no turn
   runs. The task record lists each one as "asked in a message: the answer is the next message",
   under Not settled.
-- **A turn Codex never ends.** After Codex's final answer, with no command running and no request
+- **A turn Codex never ends.** After Codex's final answer, or the plan it proposes in plan mode, with no command running and no request
   open, Modex waits five minutes (`CodexBackend.quietAfterFinalMs`) for `turn/completed`. Any later
   item resets the wait. Then it ends the turn as completed, with a notice that Codex did not report
   it finished, and sends `turn/interrupt` so Codex closes its side. A command that outlives the
@@ -224,10 +243,11 @@ the turn touched and its verification, as the save recorded them. It is read-onl
 
 ## Not done yet
 
-- A plan for Claude Code 2.1.308 and later, which no longer offers `TodoWrite`
+- A Claude plan with Modex's own launch arguments: Claude Code 2.1.308 and later offer no plan tool
+  unless the CLI is started with `CLAUDE_CODE_ENABLE_TODO_TOOLS`, which Modex does not set
   ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
-- A Codex plan from a real turn: in the [live captures](#live-codex-captures), neither model
-  offered its plan tool.
+- A Codex `turn/plan/updated` step plan from a real turn: no default-mode turn in the
+  [live captures](#live-codex-captures) offered the plan tool.
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
   reported; none is suggested.
 

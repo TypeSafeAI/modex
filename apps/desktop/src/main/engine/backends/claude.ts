@@ -134,6 +134,7 @@ export class ClaudeBackend implements Backend {
       const background = new Set<string>();
       // Task ids the CLI's own `background_tasks_changed` list has named, so leaving that list ends them.
       const listed = new Set<string>();
+      const taskList = new TaskList();
       let finished = false;
       // Whether the model has spoken since the last `system/init`: a `result` without that is not a reply to this turn.
       let sawAssistant = false;
@@ -355,7 +356,7 @@ export class ClaudeBackend implements Backend {
         let part = 0;
         const observe = (o: Observation) => sink.observe({ ...o, ...(msg.uuid ? { source: `${msg.uuid}#${part++}` } : {}) });
         const native = (item: string, block?: number): NativeRef => ({ runtime, ...(session.id ? { thread: session.id } : {}), item, ...(block !== undefined ? { part: String(block) } : {}) });
-        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, writeResponse, requests, seenRequests, stopping: () => stopAt !== undefined, init, agents, tasks, background, listed, blocks, denied, observe, native });
+        const handled = this.handle(msg, sink, { cwd: opts.cwd, started, write, writeResponse, requests, seenRequests, stopping: () => stopAt !== undefined, init, agents, tasks, taskList, background, listed, blocks, denied, observe, native });
         if (msg.type === "control_request") {
           approvals++;
           void handled.finally(() => {
@@ -388,7 +389,7 @@ export class ClaudeBackend implements Backend {
   }
 
   /** Everything but `result`, which `runTurn` handles itself because it decides when the turn ends. */
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; writeResponse: (o: unknown) => Promise<void>; requests: Map<string, AbortController>; seenRequests: Map<string, string>; stopping: () => boolean; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { agents: AgentTracker; tasks: Map<string, string>; taskList: TaskList; background: Set<string>; listed: Set<string>; cwd?: string; started: Map<string, number>; write: (o: unknown) => void; writeResponse: (o: unknown) => Promise<void>; requests: Map<string, AbortController>; seenRequests: Map<string, string>; stopping: () => boolean; init: Record<string, unknown>; blocks: Blocks; denied: Set<string>; observe: (o: Observation) => void; native: (item: string, block?: number) => NativeRef }): Promise<void> {
     // Subagent text/thinking belongs to that agent, never to the parent's streaming buffer.
     if (msg.parent_tool_use_id && ["assistant", "user", "stream_event"].includes(msg.type)) {
       const tool = msg.message?.content?.find((b) => b.type === "tool_use");
@@ -515,6 +516,7 @@ export class ClaudeBackend implements Backend {
               const steps = (block.input.todos as { content?: unknown; status?: unknown }[]).map((t) => ({ text: String(t.content ?? ""), status: claudeStepStatus(t.status) }));
               ctx.observe({ type: "plan.update", native: ctx.native("todos"), from: "claude-todo", steps });
             }
+            if (block.name === "TaskCreate" || block.name === "TaskUpdate") ctx.taskList.called(block.id, block.name, block.input ?? {});
             // Bash's command is what ran; its working directory is the CLI's own and persists between calls, so none is claimed.
             const command = block.name === "Bash" && typeof block.input?.command === "string" ? block.input.command : undefined;
             ctx.observe({ type: "tool.start", native: ctx.native(block.id), tool: { name: block.name ?? "tool", title: toolTitle(block.name ?? "tool", block.input ?? {}), args: block.input ?? {}, ...(command ? { exec: { command } } : {}) } });
@@ -528,6 +530,10 @@ export class ClaudeBackend implements Backend {
             const content = typeof block.content === "string" ? block.content : (block.content ?? []).map((c) => (c.type === "text" ? c.text : `[${c.type}]`)).join("\n");
             // A background launch that failed (or was denied) leaves nothing running.
             if (block.is_error) ctx.background.delete(block.tool_use_id);
+            else {
+              const steps = ctx.taskList.confirmed(block.tool_use_id, content);
+              if (steps) ctx.observe({ type: "plan.update", native: ctx.native("tasks"), from: "claude-tasks", steps });
+            }
             if (ctx.agents.has(block.tool_use_id)) {
               if (block.is_error || !ctx.background.has(block.tool_use_id)) ctx.agents.update(block.tool_use_id, { state: block.is_error ? "failed" : "completed" }, content);
               continue;
@@ -718,6 +724,43 @@ export function isApiErrorReply(msg: { type: string; parent_tool_use_id?: string
  */
 export function thinkingRepresentation(display: string | undefined): "summary" | "provider-text" {
   return display === "summarized" ? "summary" : "provider-text";
+}
+
+/**
+ * Claude's task list from `TaskCreate`/`TaskUpdate` (Claude Code 2.1.309 with
+ * `CLAUDE_CODE_ENABLE_TODO_TOOLS`): each call changes one task, and counts only once the CLI's result
+ * confirms it. A created task's id is the number in "Task #N created"; an update to a task this turn
+ * did not create is not guessed at.
+ */
+export class TaskList {
+  private readonly steps: { id: string; text: string; status: PlanStepStatus }[] = [];
+  private readonly calls = new Map<string, { name: "TaskCreate" | "TaskUpdate"; input: Record<string, unknown> }>();
+
+  called(toolUseId: string, name: "TaskCreate" | "TaskUpdate", input: Record<string, unknown>): void {
+    this.calls.set(toolUseId, { name, input });
+  }
+
+  /** The whole list after a confirmed call, or undefined when the result changed nothing Modex can show. */
+  confirmed(toolUseId: string, result: string): { text: string; status: PlanStepStatus }[] | undefined {
+    const call = this.calls.get(toolUseId);
+    if (!call) return undefined;
+    this.calls.delete(toolUseId);
+    if (call.name === "TaskCreate") {
+      const id = /^Task #(\S+) created/.exec(result.trim())?.[1];
+      if (!id || typeof call.input.subject !== "string" || !call.input.subject.trim()) return undefined;
+      this.steps.push({ id, text: call.input.subject.trim(), status: "pending" });
+    } else {
+      const i = this.steps.findIndex((step) => step.id === String(call.input.taskId));
+      if (i < 0) return undefined;
+      if (call.input.status === "deleted") this.steps.splice(i, 1);
+      else this.steps[i] = {
+        ...this.steps[i]!,
+        ...(call.input.status !== undefined ? { status: claudeStepStatus(call.input.status) } : {}),
+        ...(typeof call.input.subject === "string" && call.input.subject.trim() ? { text: call.input.subject.trim() } : {}),
+      };
+    }
+    return this.steps.map(({ text, status }) => ({ text, status }));
+  }
 }
 
 function claudeStepStatus(status: unknown): PlanStepStatus {

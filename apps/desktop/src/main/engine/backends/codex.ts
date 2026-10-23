@@ -354,8 +354,9 @@ export class CodexBackend implements Backend {
       let starting = true;
       const queued: RpcMessage[] = [];
       let abortTimer: ReturnType<typeof setTimeout> | undefined;
-      // Set by Codex's final answer and cleared by any later item; arms `quiet` while nothing else is open.
-      let answered = false;
+      // Set by Codex's final answer, or by the plan it proposes in plan mode, and cleared by any later item;
+      // arms `quiet` while nothing else is open.
+      let answered: "answer" | "plan" | false = false;
       let quiet: ReturnType<typeof setTimeout> | undefined;
       let interrupted = false;
       // Set once Codex reports the turn interrupted while ending its background terminals.
@@ -439,14 +440,16 @@ export class CodexBackend implements Backend {
         if (msg.method === "item/started") answered = false;
         else if (msg.method === "item/completed") {
           const item = p.item as CodexItem;
-          if (item.type === "agentMessage") answered = item.phase === "final_answer";
+          if (item.type === "agentMessage") answered = item.phase === "final_answer" && "answer";
+          else if (item.type === "plan") answered = "plan";
         }
         if (answered && msg.method !== "turn/completed") {
           quiet = setTimeout(() => {
-            // Codex can go quiet after its final answer without ending the turn. Nothing else is open, so
+            // Codex can go quiet after its final answer or proposed plan without ending the turn (live in
+            // codex-cli 0.163.0, default and plan mode). Nothing else is open, so
             // Modex ends it and says so; the interrupt lets Codex close its side.
             if (done || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
-            sink.notice("warn", `Codex gave its final answer but did not report the turn finished. Modex ended the turn after ${Math.round(this.quietAfterFinalMs / 60_000) || 1} minute${this.quietAfterFinalMs > 60_000 ? "s" : ""} without activity.`);
+            sink.notice("warn", `Codex ${answered === "plan" ? "proposed its plan" : "gave its final answer"} but did not report the turn finished. Modex ended the turn after ${Math.round(this.quietAfterFinalMs / 60_000) || 1} minute${this.quietAfterFinalMs > 60_000 ? "s" : ""} without activity.`);
             interrupt();
             finish({ status: "completed", detail: detail({ endedBy: "modex", quietAfterFinalMs: this.quietAfterFinalMs }) });
           }, this.quietAfterFinalMs);
