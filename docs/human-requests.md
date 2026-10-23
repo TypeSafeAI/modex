@@ -418,7 +418,12 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
   - a paired desktop that slept while the phone answered resumes to the card answered on the phone;
   - a crash inside the batch window after a phone answer: the old cursor reloads, and nothing is sent again;
   - an answer still `sending` at a crash reads as uncertain on both kinds of phone and is never resent;
-  - an older paired desktop's approve or deny on a question is refused.
+  - an older paired desktop's approve or deny on a question is refused;
+  - a paired desktop that stops reading falls 8 MB behind: the host drops its stream, and its reconnect
+    reloads to the answered card.
+
+  Live Codex and Claude runs with the journal on, and the gates that need an iPhone or other platforms, are in
+  the [CF-6 gate review](reviews/2026-10-22-cf6-gates.md).
 - `test/journal-resume.test.ts` replays one typed turn on every path: a commentary message, a question
   answered on the phone while the desktop slept, and Codex's plan through a failed attempt and its retry.
   The live projection, the saved files, both journals (live and coalesced, each also replayed twice), the

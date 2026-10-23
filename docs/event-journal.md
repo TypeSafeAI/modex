@@ -173,6 +173,9 @@ replays them unchanged.
   answer is never written here. A phone or desktop that was away while a question was answered,
   withdrawn or stopped finds it closed through its delta or its reload, and nothing it sends afterwards
   reaches the CLI (`test/question-replay.test.ts`). See [across replay and reconnect](human-requests.md#across-replay-and-reconnect).
+- **Gates beyond the tests.** Live Codex and Claude turns with the journal on, the 8 MB slow-stream
+  drop, and steps for a physical iPhone, Windows and Linux are in the
+  [CF-6 gate review](reviews/2026-10-22-cf6-gates.md).
 - **The paired iPhone fixture** (`apps/ios/ModexCompanion/Scripts/fixture.mjs`) keeps a journal, so
   the simulator's UI tests poll with a cursor and merge deltas as a phone paired to a Mac with the
   journal on does.
