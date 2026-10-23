@@ -266,3 +266,38 @@ test("a saved localhost profile whose name now resolves off this Mac is refused 
     assert.equal(rt.hits.length, 0);
   } finally { await rt.close(); }
 });
+
+test("a server that repeats the saved token in its model list is ignored, never shown", async () => {
+  const SECRET = "reflect-tok-31337";
+  const echo = (req: http.IncomingMessage) => (req.headers.authorization ?? "").replace(/^Bearer /, "");
+  const listings: [string, "responses" | "lmstudio" | "ollama", Route][] = [
+    ["exact Responses ID", "responses", req => (req.url === "/v1/models" ? { json: { data: [{ id: "ok-model" }, { id: echo(req) }] } } : undefined)],
+    ["embedded Responses ID", "responses", req => (req.url === "/v1/models" ? { json: { data: [{ id: `org/${echo(req)}:Q4` }] } } : undefined)],
+    ["LM Studio native listing", "lmstudio", req => (req.url === "/api/v0/models" ? { json: { data: [{ id: `lms-${echo(req)}`, type: "llm", state: "loaded" }] } } : undefined)],
+    ["Ollama tags", "ollama", req => (req.url === "/api/tags" ? { json: { models: [{ name: `${echo(req)}:latest` }] } } : req.url === "/api/ps" ? { json: { models: [] } } : undefined)],
+  ];
+  for (const [name, kind, route] of listings) {
+    const rt = await runtime(route);
+    const { store, discovery } = setup();
+    try {
+      const c = store.create({ label: name, runtime: kind, url: rt.url, token: SECRET, manualModels: ["manual/kept", `manual/${SECRET}`] });
+      const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
+      assert.equal(JSON.stringify(result).includes(SECRET), false, `${name}: the token never reaches IPC`);
+      assert.equal(result.state, "unavailable", name);
+      if (result.state !== "unavailable") continue;
+      assert.equal(result.reason, "reflected-credential", name);
+      assert.deepEqual(result.models.map(m => m.model.id), ["manual/kept"], `${name}: the untouched manual ID stays available`);
+    } finally { await rt.close(); }
+  }
+});
+
+test("model IDs that merely resemble a token are kept exactly, not redacted into another identity", async () => {
+  const rt = await runtime(req => (req.url === "/v1/models" ? { json: { data: [{ id: "reflect-tok" }, { id: "31337" }] } } : undefined));
+  const { store, discovery } = setup();
+  try {
+    const c = store.create({ label: "r", runtime: "responses", url: rt.url, token: "reflect-tok-31337" });
+    const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
+    assert.equal(result.state, "ready");
+    assert.deepEqual(result.state === "ready" ? result.models.map(m => m.model.id) : [], ["reflect-tok", "31337"]);
+  } finally { await rt.close(); }
+});

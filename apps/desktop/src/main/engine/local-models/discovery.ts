@@ -9,6 +9,8 @@ import { LocalGetFailure, localGet, localPost, type LocalGetOptions } from "./en
  *
  * What a runtime reports is recorded as reported: "installed"/"loaded" only where the runtime says
  * so, "unknown" otherwise; advertised capabilities are metadata, not coding qualification (#377).
+ * A listing that repeats the saved token anywhere in a model ID is dropped whole rather than
+ * redacted, since a redacted ID would name a different model; manual IDs holding it are left out.
  * Answers are bound to the profile revision they were read under. An answer that arrives after
  * the profile was edited, deleted or re-read is returned as `stale` and never as current.
  */
@@ -181,9 +183,14 @@ export class LocalModelDiscovery {
     }
     // Superseded, cancelled, edited or deleted while this ran: the answer is not current.
     if (signal.aborted || failure?.reason === "cancelled" || !this.store.resolve(ref)) return stale;
+    const reflects = (id: string) => resolved.token !== null && id.includes(resolved.token);
+    if (listing?.entries.some(e => reflects(e.id))) {
+      listing = null;
+      failure = new LocalGetFailure("reflected-credential");
+    }
     const discovered = (listing?.entries ?? []).map(e => descriptor(ref, e.id, "discovered", e.facts));
     const ids = new Set(discovered.map(d => d.model.id));
-    const manual = resolved.manualModels.filter(id => !ids.has(id)).map(id => descriptor(ref, id, "manual", UNKNOWN));
+    const manual = resolved.manualModels.filter(id => !ids.has(id) && !reflects(id)).map(id => descriptor(ref, id, "manual", UNKNOWN));
     const models = [...discovered, ...manual];
     const checkedAt = this.now().toISOString();
     if (failure) return { state: "unavailable", connection: { ...ref }, requestId, reason: failure.reason, detail: failure.message, models, checkedAt };

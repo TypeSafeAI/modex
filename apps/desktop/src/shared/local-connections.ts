@@ -62,7 +62,7 @@ export interface LocalModelDescriptor {
   unselectableReason?: "embedding" | "cloud" | "other";
 }
 
-export type DiscoveryFailure = "invalid" | "not-loopback" | "redirect" | "too-large" | "timeout" | "cancelled" | "unauthorized" | "not-found" | "http-error" | "malformed" | "unavailable";
+export type DiscoveryFailure = "invalid" | "not-loopback" | "redirect" | "too-large" | "timeout" | "cancelled" | "unauthorized" | "not-found" | "http-error" | "malformed" | "unavailable" | "reflected-credential";
 
 export type DiscoveryResult =
   | { state: "ready"; connection: ConnectionRef; requestId: string; models: LocalModelDescriptor[]; truncated: boolean; checkedAt: string }
