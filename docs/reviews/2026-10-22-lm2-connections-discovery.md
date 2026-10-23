@@ -72,15 +72,34 @@ Ollama/LM Studio/vLLM/llama.cpp runtime was contacted, no model was loaded, down
   picker (LM-4 #381). Only main's typed channel exists.
 - Locality remains `unverified` for every non-cloud model; loopback does not prove local inference.
 
-## Commands and results (macOS, Node from the pinned pnpm workspace)
+## Commands and results
 
-- Focused: `node --test dist/test/local-model-*.test.js` passed 21/21 (endpoint 6, connections 6,
-  discovery 8, IPC 1). Each file was compiled and confirmed failing before its module existed.
-  Discovery's resolver test failed once against the first implementation: an injected resolver
-  replaced the loopback wrapper instead of feeding it. The fix always wraps it.
-- `pnpm build && pnpm test` from the repository root exited 0. Desktop unit: 1848 tests, 1832
-  passed, 0 failed, 16 skipped (Windows-only native tests and the pinned OpenKnowledge test). The
-  other suites passed 117, 16, 21, 10 and 16. The first run failed because the Store desktop
-  offline demo lacked the new channel. It now refuses the channel like other system tools.
-- `npx playwright test e2e/local-models-ipc.spec.ts e2e/code-review-ipc.spec.ts` passed 2/2.
-  The full `pnpm test:e2e` suite was not run: this branch has no renderer change.
+Environment: macOS (Darwin 25.6.0), Node v24.22.0, pnpm 10.34.5, Electron 44.4.5, Playwright 1.63.0.
+Code under test: `1c0dd37ef09669d061f3ee4810da0f7c44c09ae1` on base
+`ec7be578765f9ce54976882853e57ca190252361` (main unchanged at the rerun). The commit that adds
+this section changes documentation only.
+
+| Command | Result |
+|---|---|
+| `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 21/21 passed: endpoint 6, connections 6, discovery 8, IPC 1 |
+| `pnpm build && pnpm test` (repository root) | exit 0. Desktop unit: 1848 tests, 1832 passed, 0 failed, 16 skipped (Windows-only native tests, pinned OpenKnowledge). Other suites: 117, 16, 21, 10, 16 passed, 0 failed |
+| `pnpm --filter @modex/desktop typecheck` | exit 0 (main and renderer) |
+| `npx playwright test e2e/local-models-ipc.spec.ts e2e/code-review-ipc.spec.ts` | 2/2 passed |
+
+Each test file was compiled and failed before its module existed. Discovery's resolver test
+failed once against the first implementation, because an injected resolver replaced the loopback
+wrapper instead of feeding it; the fix always wraps it. An earlier full run failed because the
+Store desktop offline demo lacked the new channel; that demo now refuses it like other system tools.
+The full `pnpm test:e2e` suite was not run, because this branch has no renderer change.
+
+`git merge-tree` against the heads of open PRs #370–#372, #374, #375 and #385 reported no
+conflicts. #374 and #375 add lines to the same channel registries (`types.ts`, `index.ts`, Store
+demo), so whichever lands second may need a trivial rebase.
+
+## #377 delta when it is accepted
+
+As of this rerun, #377 is open with no comments and no PR. The LM-1 session's draft (uncommitted,
+in its own worktree, not read into this branch) declares the same `ConnectionRef { id, revision }`
+and a `LocalModelRef` that adds `schema: 1`. Adopting it means importing those types here and adding
+`schema: 1` to descriptor model references, with no behaviour change. The draft assigns endpoint
+validation, bounded metadata and the public projection to LM-2, which matches this branch.
