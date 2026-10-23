@@ -38,6 +38,8 @@ export interface TaskRecord {
   threadId: string;
   request: string;
   plan?: { steps: PlanStep[]; from: PlanSource; revision: number };
+  /** The plan Codex proposed in plan mode, as it wrote it: text, with no step statuses. */
+  proposedPlan?: string;
   /** The CLI that did this turn's work and reported no plan (docs/task-context.md#plans). */
   noPlan?: "claude" | "codex";
   /** Changed files inside the project, relative to it. */
@@ -126,11 +128,12 @@ const CLI_NAMES = { claude: "Claude Code", codex: "Codex" } as const;
 
 /**
  * Which CLI did a turn's work without reporting a plan: it changed files or ran commands, and no plan
- * item came. Claude Code 2.1.308 and later offer Modex no plan tool, and live Codex turns sent none.
+ * item or proposed plan came. Claude Code 2.1.308 and later offer Modex no plan tool, and live Codex
+ * turns outside plan mode sent none.
  * A chat turn, or one from any other engine, gets null.
  */
 export function noPlan(items: readonly ThreadItem[]): "claude" | "codex" | null {
-  if (items.some((item) => item.kind === "plan")) return null;
+  if (items.some((item) => item.kind === "plan" || proposedPlan(item))) return null;
   const work = items.find((item) => item.kind === "tool" && (PATCH_TOOLS.has(item.name) || item.exec));
   const backend = work?.kind === "tool" ? work.origin?.backend : undefined;
   return backend === "claude" || backend === "codex" ? backend : null;
@@ -139,6 +142,11 @@ export function noPlan(items: readonly ThreadItem[]): "claude" | "codex" | null 
 /** "Claude Code reported no plan for this turn", in the footer and the saved note. */
 export function noPlanText(cli: "claude" | "codex"): string {
   return `${CLI_NAMES[cli]} reported no plan for this turn`;
+}
+
+/** Codex's plan-mode `plan` item arrives as a message with its native phase kept. */
+function proposedPlan(item: ThreadItem): boolean {
+  return item.kind === "assistant" && item.nativePhase === "plan" && Boolean(item.text.trim());
 }
 
 export function taskRecord(items: readonly ThreadItem[], opts: { threadId: string; title: string; cwd: string }): TaskRecord {
@@ -171,17 +179,20 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
   const final = finalAnswerIndex(rest);
   const answer = final >= 0 ? rest[final] : undefined;
   const missing = noPlan(rest);
+  const proposed = [...rest].reverse().find(proposedPlan);
   return {
     title: opts.title, threadId: opts.threadId, request: user?.kind === "user" ? user.text : "",
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
+    ...(proposed?.kind === "assistant" ? { proposedPlan: proposed.text.trim() } : {}),
     ...(missing ? { noPlan: missing } : {}),
     files: [...files], outsideFiles, commands, clarifications, verification: verification(rest), context: taskContext(rest, opts.cwd),
-    ...(answer?.kind === "assistant" && answer.text.trim() ? { answer: answer.text.trim() } : {}),
+    ...(answer?.kind === "assistant" && answer !== proposed && answer.text.trim() ? { answer: answer.text.trim() } : {}),
   };
 }
 
+export const PROPOSED_WORDS = "Codex proposed this plan in plan mode. Its steps have no statuses.";
 const STEP_WORDS: Record<PlanStep["status"], string> = { pending: "not started", "in-progress": "in progress", completed: "reported done", unknown: "status unknown" };
-const FROM_WORDS: Record<PlanSource, string> = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list" };
+const FROM_WORDS: Record<PlanSource, string> = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list" };
 
 /** The record as portable Markdown for a note. */
 export function taskMarkdown(record: TaskRecord): string {
@@ -189,7 +200,8 @@ export function taskMarkdown(record: TaskRecord): string {
   if (record.request.trim()) lines.push(...record.request.trim().split("\n").map((line) => `> ${line}`), "");
   const clarifications = record.clarifications ?? [];
   if (clarifications.length) lines.push("## Clarifications", "", ...clarifications.map((c) => `- ${clarificationLine(c)}`), "");
-  if (!record.plan && record.noPlan) lines.push("## Plan", "", `${noPlanText(record.noPlan)}.`, "");
+  if (!record.plan && record.proposedPlan) lines.push("## Plan", "", `${PROPOSED_WORDS}`, "", ...record.proposedPlan.split("\n").map((line) => line ? `> ${line}` : ">"), "");
+  if (!record.plan && !record.proposedPlan && record.noPlan) lines.push("## Plan", "", `${noPlanText(record.noPlan)}.`, "");
   if (record.plan) {
     lines.push("## Plan", "");
     for (const step of record.plan.steps) lines.push(`- [${step.status === "completed" ? "x" : " "}] ${step.text} (${STEP_WORDS[step.status]})`);

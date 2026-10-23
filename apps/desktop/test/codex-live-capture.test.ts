@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
-import { taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
+import { PROPOSED_WORDS, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { gitRepo, tmpdir } from "./helpers.js";
@@ -57,13 +57,13 @@ function replay(proc: FakeProcess, lines: Line[], close?: () => unknown) {
   return answers;
 }
 
-async function harness(codex: CodexBackend) {
+async function harness(codex: CodexBackend, opts: { plan?: boolean } = {}) {
   const home = tmpdir("modex-live-");
   const store = new Store(home);
   const events: ThreadEvent[] = [];
   const runner = new ThreadRunner({ home, store, emit: (e) => events.push(e), backends: { codex } });
   const project = store.addProject(gitRepo());
-  const thread = await runner.createThread(project.id, { backend: "codex", auto: false });
+  const thread = await runner.createThread(project.id, { backend: "codex", auto: false, ...(opts.plan ? { plan: true } : {}) });
   store.updateThread(thread.id, { title: "Greeting", titleSource: "manual" });
   return { runner, thread, cwd: project.path };
 }
@@ -148,5 +148,76 @@ test("live Codex (gpt-6.1-sol) never sent turn/completed: after its final answer
     assert.notEqual(h.runner.status(h.thread.id), "running");
     assert.equal(interrupts.length, 1, "Codex is asked to end the turn it never reported finished");
     assert.match(JSON.stringify(h.runner.items(h.thread.id)), /did not report the turn finished/);
+  } finally { await h.runner.dispose(); await codex.dispose(); }
+});
+
+test("live Codex (gpt-6.1-sol) in plan mode: the clarification and the proposed plan reach the task record, it does not say no plan, and the turn Codex never ended is ended", async () => {
+  const proc = new FakeProcess();
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  codex.quietAfterFinalMs = 50;
+  const h = await harness(codex, { plan: true });
+  const { lines } = capture("codex-plan-mode-0.163.0.jsonl", h.cwd);
+  assert.equal(lines.filter((l) => l.msg.method === "turn/completed").length, 0, "the capture has no turn/completed");
+  const sentLines: { method?: string; params?: Record<string, unknown> }[] = [];
+  proc.stdin.on("data", (d: Buffer) => { for (const l of d.toString().split("\n")) if (l.trim()) sentLines.push(JSON.parse(l)); });
+  const answers = replay(proc, lines);
+  try {
+    const sent = h.runner.send(h.thread.id, "Plan the greeting");
+    await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "question"));
+    const card = h.runner.items(h.thread.id).find((i) => i.kind === "question") as ThreadItem & { kind: "question" };
+    assert.deepEqual(card.questions.map((q) => [q.id, q.text, q.options?.map((o) => o.label)]),
+      [["greeting_language", "Should the greeting be in English or in Spanish?", ["English (Recommended)", "Spanish"]]]);
+    h.runner.answerQuestion(h.thread.id, card.id, { greeting_language: ["English"] });
+    await sent;
+    const accepted = lines.find((l) => l.dir === "out" && !l.msg.method && (l.msg.result as { answers?: unknown })?.answers)!.msg.result;
+    assert.deepEqual(answers, [accepted], "Modex sends the answer Codex accepted live");
+    assert.equal((sentLines.find((m) => m.method === "turn/start")?.params?.collaborationMode as { mode?: string })?.mode, "plan");
+    assert.equal(sentLines.filter((m) => m.method === "turn/interrupt").length, 1, "Codex is asked to end the turn it never reported finished");
+
+    const items = h.runner.items(h.thread.id);
+    assert.match(JSON.stringify(items), /Codex proposed its plan but did not report the turn finished/);
+    assert.equal(items.some((i) => i.kind === "plan"), false, "Codex sent no turn/plan/updated: the plan is its plan item");
+    const proposed = items.find((i) => i.kind === "assistant" && i.nativePhase === "plan") as ThreadItem & { kind: "assistant" } | undefined;
+    assert.ok(proposed, "the plan item is shown as a message");
+    assert.ok(proposed.text.startsWith("## Add and verify the greeting"), "as Codex wrote it");
+
+    const record = taskRecord(items, { threadId: h.thread.id, title: "Greeting", cwd: h.cwd });
+    assert.equal(record.proposedPlan, proposed.text.trim());
+    assert.equal(record.noPlan, undefined, "a proposed plan is a plan Codex reported");
+    assert.equal(record.answer, undefined, "the plan is not repeated as the answer");
+    assert.deepEqual(record.clarifications, [{ question: "Should the greeting be in English or in Spanish?", answer: ["English"] }]);
+    assert.deepEqual(record.files, [], "plan mode edited nothing");
+    const md = taskMarkdown(record);
+    assert.ok(md.includes(`## Plan\n\n${PROPOSED_WORDS}\n\n> ## Add and verify the greeting\n>\n> 1. Create \`greeting.txt\``), md);
+    assert.ok(!md.includes("reported no plan"), md);
+  } finally { await h.runner.dispose(); await codex.dispose(); }
+});
+
+test("live Codex (gpt-6.1-sol) in plan mode: a Stop after the proposed plan is never turned into a completed turn by the quiet end", async () => {
+  const proc = new FakeProcess();
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  codex.quietAfterFinalMs = 50;
+  const h = await harness(codex, { plan: true });
+  const { lines } = capture("codex-plan-mode-0.163.0.jsonl", h.cwd);
+  const thr = lines.find((l) => l.msg.method === "turn/started")!.msg.params as { threadId: string; turn: { id: string } };
+  const interrupts: unknown[] = [];
+  proc.stdin.on("data", (d: Buffer) => { for (const l of d.toString().split("\n")) if (l.includes('"turn/interrupt"')) interrupts.push(JSON.parse(l)); });
+  replay(proc, lines);
+  try {
+    const sent = h.runner.send(h.thread.id, "Plan the greeting");
+    await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "question"));
+    const card = h.runner.items(h.thread.id).find((i) => i.kind === "question")!;
+    h.runner.answerQuestion(h.thread.id, card.id, { greeting_language: ["English"] });
+    await waitFor(() => h.runner.items(h.thread.id).some((i) => i.kind === "assistant" && i.nativePhase === "plan"));
+    h.runner.stop(h.thread.id);
+    // Codex sends nothing more, as live: well past the quiet period, the stop is still waiting for Codex.
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(h.runner.status(h.thread.id), "running", "a requested stop is not an acknowledgement");
+    assert.doesNotMatch(JSON.stringify(h.runner.items(h.thread.id)), /did not report the turn finished/);
+    assert.equal(interrupts.length, 1, "the stop's own interrupt, and no second one from the quiet end");
+    proc.emitLine({ method: "turn/completed", params: { threadId: thr.threadId, turn: { id: thr.turn.id, status: "interrupted", error: null } } });
+    await sent;
+    assert.notEqual(h.runner.status(h.thread.id), "running");
+    assert.doesNotMatch(JSON.stringify(h.runner.items(h.thread.id)), /did not report the turn finished/);
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });
