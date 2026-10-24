@@ -170,6 +170,7 @@ export class StoreDemo {
       "thread:delete": ({ threadId }) => { this.thread(threadId); this.removeThread(threadId); return this.state; },
       "thread:context": ({ threadId }) => { this.thread(threadId); return { isRepo: true, branch: "demo/review", pullRequest: { state: "disabled", detail: "Demo workspace: no remote repository or pull request." } }; },
       "code-review:read": unavailable,
+      "local-models:command": unavailable,
       "changes:status": ({ threadId }) => this.changes(threadId),
       "changes:diff": ({ threadId, path }) => {
         this.file(threadId, path);
