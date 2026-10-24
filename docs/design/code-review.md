@@ -306,8 +306,11 @@ accessing the user's GitHub login.
 
 ## References and calibration
 
-The four references stay on Val's Mac, at `~/Desktop`. The Desktop is not a permanent home, so if they
-move, update this table and #320. Each was checked by SHA-256 on 2026-10-19. Times are the file names'
+The four references were kept on Val's Mac, at `~/Desktop`. **On 2026-10-22 Val confirmed the originals are
+gone.** They are not at that path, and Spotlight finds no file by these names. The table below remains the
+record of what they were: size, scale, checksums and measured geometry. No capture can now be compared with
+an original. Fidelity work measures against this page's numbers until Val re-captures references. Any new
+capture needs its own row and checksums, and must not be read as one of these. Each was checked by SHA-256 on 2026-10-19. Times are the file names'
 local times (UTC−5), converted.
 
 | ID | File | Pixels | SHA-256 | Device px per CSS px | CSS size | Offset from R2 | Captured | State |
@@ -593,3 +596,5 @@ Descriptions and comment bodies use the existing inert Markdown renderer. No ava
 The title uses 22px/29px and prose uses the existing 14px token with a 24px pitch. At reference width the main column has a 156px left inset and 40px gap to the 305px sidebar, with a 166px trailing margin. The sidebar scrolls independently. At narrow widths, details follow activity in one readable scroll region. The Changes summary opens the existing Changes tab. Check rows expand natively, show elapsed time at the read timestamp and expose all checks on request. Comment menus offer Copy link only. Edit, reviewer and comment callbacks are explicit `OverviewActions` slots and remain unavailable through `capabilities()` until CR-7 connects them. The PR-question composer remains CR-6's; content reserves bottom clearance for that later host.
 
 These are implementation decisions within the accepted contract, not original-reference or human accessibility acceptance. The original R1/R2 images were absent from the manifest paths on 2026-10-23; synthetic normal, narrow, stale and error captures are separate evidence.
+
+CR-8's [acceptance matrix](../reviews/2026-10-22-cr8-acceptance-matrix.md) maps every control and slice criterion to its evidence and says which gates are still open.
