@@ -636,6 +636,7 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "thread:context": { req: { threadId: string }; res: ThreadContext };
   /** A Code Review read (#321). Main validates the payload first; `cancel` answers null. */
   "code-review:read": { req: CodeReviewRequest; res: CodeReviewReply | null };
+  "local-models:command": { req: import("./local-connections.js").LocalModelsRequest; res: import("./local-connections.js").LocalModelsReply };
   /** Opens (or reattaches to) the thread's shell; cols/rows are the panel's current size. */
   "terminal:open": { req: { threadId: string; cols: number; rows: number }; res: TerminalSnapshot };
   "terminal:write": { req: { threadId: string; sessionId: string; data: string }; res: void };
