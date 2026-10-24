@@ -1,0 +1,54 @@
+{
+  "sourceCommit": "3f0f2bc789c1e1c6fb9658a2f2dda23c8515e455",
+  "fixture": "docs/reviews/2026-10-20-keyboard-voiceover/markdown-fixture.json",
+  "fixtureSha256": "cbb42e222e3dca2fbe5c8ec3fe046caf6ede48634b33bd45e57324a110b674e8",
+  "command": "pnpm --filter @modex/desktop ui:capture",
+  "reference": {
+    "width": 1786,
+    "height": 1049
+  },
+  "states": [
+    {
+      "state": "markdown-graphite",
+      "file": "markdown-graphite.png",
+      "viewport": {
+        "width": 1786,
+        "height": 1049
+      },
+      "sha256": "0b4e020af830ad396756a6218cc115f1155b567fac68d5ad78638f5ba2fe95e1",
+      "pixelSize": {
+        "width": 3572,
+        "height": 2098
+      },
+      "scale": 2.0
+    },
+    {
+      "state": "markdown-jev",
+      "file": "markdown-jev.png",
+      "viewport": {
+        "width": 1786,
+        "height": 1049
+      },
+      "sha256": "4d9a025153a6c5da2463541145231c9790d71003d793f93e3dde360e31b2a32c",
+      "pixelSize": {
+        "width": 3572,
+        "height": 2098
+      },
+      "scale": 2.0
+    },
+    {
+      "state": "markdown-coven",
+      "file": "markdown-coven.png",
+      "viewport": {
+        "width": 1786,
+        "height": 1049
+      },
+      "sha256": "c29c152670d218f322b2af0f8a3da31dc9142ac92165aff69374c43da975e0ad",
+      "pixelSize": {
+        "width": 3572,
+        "height": 2098
+      },
+      "scale": 2.0
+    }
+  ]
+}

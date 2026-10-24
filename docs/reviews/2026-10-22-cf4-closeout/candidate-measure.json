@@ -1,0 +1,391 @@
+{
+  "measuredAt": "2026-10-22T19:23:19.825Z",
+  "sha": "3f0f2bc789c1e1c6fb9658a2f2dda23c8515e455",
+  "machine": {
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "memoryGiB": 128,
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.6.0",
+    "loadAverage": [
+      451.9345703125,
+      185.7158203125,
+      95.68115234375
+    ]
+  },
+  "coldLaunches": [
+    {
+      "turns": 200,
+      "items": 1400,
+      "savedBytes": 3001221,
+      "viewport": {
+        "width": 1380,
+        "height": 880,
+        "scale": 2
+      },
+      "firstOpenMs": 196,
+      "repeatOpenMs": [
+        90,
+        88,
+        75,
+        75
+      ],
+      "repeatMedianMs": 88,
+      "rendererLongTasks": {
+        "first": {
+          "count": 1,
+          "totalMs": 163,
+          "maxMs": 163
+        },
+        "repeats": [
+          {
+            "count": 1,
+            "totalMs": 65,
+            "maxMs": 65
+          },
+          {
+            "count": 1,
+            "totalMs": 64,
+            "maxMs": 64
+          },
+          {
+            "count": 1,
+            "totalMs": 58,
+            "maxMs": 58
+          },
+          {
+            "count": 1,
+            "totalMs": 57,
+            "maxMs": 57
+          }
+        ]
+      },
+      "threadItemsIpcMs": [
+        7,
+        7,
+        7
+      ],
+      "selectedAtLaunch": false,
+      "renderedItems": 1400,
+      "threadEventsOnOpen": {
+        "thread": 1
+      }
+    },
+    {
+      "turns": 200,
+      "items": 1400,
+      "savedBytes": 3001221,
+      "viewport": {
+        "width": 1380,
+        "height": 880,
+        "scale": 2
+      },
+      "firstOpenMs": 180,
+      "repeatOpenMs": [
+        78,
+        82,
+        81,
+        83
+      ],
+      "repeatMedianMs": 82,
+      "rendererLongTasks": {
+        "first": {
+          "count": 1,
+          "totalMs": 150,
+          "maxMs": 150
+        },
+        "repeats": [
+          {
+            "count": 1,
+            "totalMs": 57,
+            "maxMs": 57
+          },
+          {
+            "count": 1,
+            "totalMs": 60,
+            "maxMs": 60
+          },
+          {
+            "count": 1,
+            "totalMs": 62,
+            "maxMs": 62
+          },
+          {
+            "count": 1,
+            "totalMs": 59,
+            "maxMs": 59
+          }
+        ]
+      },
+      "threadItemsIpcMs": [
+        7,
+        7,
+        7
+      ],
+      "selectedAtLaunch": false,
+      "renderedItems": 1400,
+      "threadEventsOnOpen": {}
+    },
+    {
+      "turns": 200,
+      "items": 1400,
+      "savedBytes": 3001221,
+      "viewport": {
+        "width": 1380,
+        "height": 880,
+        "scale": 2
+      },
+      "firstOpenMs": 194,
+      "repeatOpenMs": [
+        87,
+        86,
+        76,
+        75
+      ],
+      "repeatMedianMs": 86,
+      "rendererLongTasks": {
+        "first": {
+          "count": 1,
+          "totalMs": 166,
+          "maxMs": 166
+        },
+        "repeats": [
+          {
+            "count": 1,
+            "totalMs": 61,
+            "maxMs": 61
+          },
+          {
+            "count": 1,
+            "totalMs": 62,
+            "maxMs": 62
+          },
+          {
+            "count": 1,
+            "totalMs": 59,
+            "maxMs": 59
+          },
+          {
+            "count": 1,
+            "totalMs": 56,
+            "maxMs": 56
+          }
+        ]
+      },
+      "threadItemsIpcMs": [
+        7,
+        7,
+        7
+      ],
+      "selectedAtLaunch": false,
+      "renderedItems": 1400,
+      "threadEventsOnOpen": {
+        "thread": 2
+      }
+    },
+    {
+      "turns": 200,
+      "items": 1400,
+      "savedBytes": 3001221,
+      "viewport": {
+        "width": 1380,
+        "height": 880,
+        "scale": 2
+      },
+      "firstOpenMs": 198,
+      "repeatOpenMs": [
+        94,
+        87,
+        76,
+        79
+      ],
+      "repeatMedianMs": 87,
+      "rendererLongTasks": {
+        "first": {
+          "count": 1,
+          "totalMs": 168,
+          "maxMs": 168
+        },
+        "repeats": [
+          {
+            "count": 1,
+            "totalMs": 66,
+            "maxMs": 66
+          },
+          {
+            "count": 1,
+            "totalMs": 62,
+            "maxMs": 62
+          },
+          {
+            "count": 1,
+            "totalMs": 58,
+            "maxMs": 58
+          },
+          {
+            "count": 1,
+            "totalMs": 59,
+            "maxMs": 59
+          }
+        ]
+      },
+      "threadItemsIpcMs": [
+        7,
+        7,
+        7
+      ],
+      "selectedAtLaunch": false,
+      "renderedItems": 1400,
+      "threadEventsOnOpen": {
+        "thread": 1
+      }
+    },
+    {
+      "turns": 200,
+      "items": 1400,
+      "savedBytes": 3001221,
+      "viewport": {
+        "width": 1380,
+        "height": 880,
+        "scale": 2
+      },
+      "firstOpenMs": 195,
+      "repeatOpenMs": [
+        92,
+        84,
+        75,
+        73
+      ],
+      "repeatMedianMs": 84,
+      "rendererLongTasks": {
+        "first": {
+          "count": 1,
+          "totalMs": 167,
+          "maxMs": 167
+        },
+        "repeats": [
+          {
+            "count": 1,
+            "totalMs": 65,
+            "maxMs": 65
+          },
+          {
+            "count": 1,
+            "totalMs": 61,
+            "maxMs": 61
+          },
+          {
+            "count": 1,
+            "totalMs": 59,
+            "maxMs": 59
+          },
+          {
+            "count": 1,
+            "totalMs": 54,
+            "maxMs": 54
+          }
+        ]
+      },
+      "threadItemsIpcMs": [
+        7,
+        8,
+        6
+      ],
+      "selectedAtLaunch": false,
+      "renderedItems": 1400,
+      "threadEventsOnOpen": {
+        "thread": 2
+      }
+    }
+  ],
+  "longTranscript": {
+    "turns": 200,
+    "items": 1400,
+    "savedBytes": 3001221,
+    "viewport": {
+      "width": 1380,
+      "height": 880,
+      "scale": 2
+    },
+    "firstOpenMs": 196,
+    "repeatOpenMs": [
+      90,
+      88,
+      75,
+      75
+    ],
+    "repeatMedianMs": 88,
+    "rendererLongTasks": {
+      "first": {
+        "count": 1,
+        "totalMs": 163,
+        "maxMs": 163
+      },
+      "repeats": [
+        {
+          "count": 1,
+          "totalMs": 65,
+          "maxMs": 65
+        },
+        {
+          "count": 1,
+          "totalMs": 64,
+          "maxMs": 64
+        },
+        {
+          "count": 1,
+          "totalMs": 58,
+          "maxMs": 58
+        },
+        {
+          "count": 1,
+          "totalMs": 57,
+          "maxMs": 57
+        }
+      ]
+    },
+    "threadItemsIpcMs": [
+      7,
+      7,
+      7
+    ],
+    "selectedAtLaunch": false,
+    "renderedItems": 1400,
+    "threadEventsOnOpen": {
+      "thread": 1
+    }
+  },
+  "firstOpenBudget": {
+    "approvedBy": "Val",
+    "approvedOn": "2026-10-22",
+    "limitMs": 500,
+    "samplesMs": [
+      195.7999999821186,
+      180.2999999821186,
+      193.5,
+      198.2000000178814,
+      194.5
+    ],
+    "medianMs": 194.5
+  },
+  "logStream": {
+    "loggedBytes": 3145728,
+    "deltas": 48,
+    "deltaSpacingMs": 10,
+    "sentToWindow": {
+      "bytes": 664367,
+      "events": 57,
+      "largestEventBytes": 262260,
+      "largestOutputBytes": 262144
+    },
+    "mainStreamMs": 1204,
+    "mainCpuMs": 263,
+    "sendToAnswerShownMs": 2559,
+    "rendererLongTasks": {
+      "count": 0,
+      "totalMs": 0,
+      "maxMs": 0
+    }
+  }
+}

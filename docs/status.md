@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-20._
+_Last updated 2026-10-22._
 
 ## Shipped
 
@@ -166,7 +166,13 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
+- **Integrated review candidate.** CF-4 keyboard/performance, CR-5 remote diffs, CR-8 acceptance checks and the unwired CR-7 intent foundation are reconciled on signed candidate `e25a554`. Full build, unit and typecheck passed; full E2E passed 450 desktop cases with seven skips and seven site cases. [The integration receipt](reviews/2026-10-24-integrated-review.md) preserves the first failures, their repairs, source ancestry and remaining human, policy and provider gates. Hosted validation and protected delivery are recorded separately.
+
+- **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324), [PR #395](https://github.com/TypeSafeAI/modex/pull/395)). The integration repair distinguishes the proven three-dot diff base from the target tip in file pages, context, anchors and labels. Four failing-first regressions and a real GitHub read confirmed the defect and correction; full build, unit, typecheck and E2E checks passed (430 desktop passes, seven skips, seven site passes). The original candidate's resource bounds remain in place. Original R4 comparison, human acceptance and the Viewed decision remain open. [Repair evidence](reviews/2026-10-24-cr5-merge-base.md); [original candidate evidence](reviews/2026-10-23-cr5-remote-diffs.md).
+
 - **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build; acceptance review remains open, and downstream execution must not assume support beyond that combination. The shared identity owner and metadata-runtime mapping are defined, with a fixture-verified adoption patch for LM-2 #398 and a sanitized Strata launch configuration in the receipt. LM-2 adoption, Val's network-policy sign-off and Gate A acceptance remain open; Ollama/LM Studio probes require separate explicit authorization. See [the contract and source map](local-models.md).
+
+- **CF-4 Markdown closeout (#277).** `cf4-closeout` adds named keyboard stops for table/code overflow, reference-viewport captures, and Markdown rows in the shared #281 human checklist. [New evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) separates local measurements from the approved 500 ms median cold-open gate, passing hosted evidence on the original reviewed head, and Val's still-pending VoiceOver result. The [integrated candidate](reviews/2026-10-24-integrated-review.md) passed full build, unit, typecheck and E2E gates, including a 129.5 ms local median; #277 stays open for human acceptance.
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
@@ -189,19 +195,11 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 - **CR-6 isolation proof** (#325, Phase 1). Native CLI proof tests exercise Codex 0.164.0 and Claude Code 2.1.310 using disposable fixtures and a scripted loopback provider. Codex read-only alone still allows shell/outside reads/inherited fixture credentials; Claude's restricted Read-only tool palette rejects the tested malicious calls, with working hook/MCP controls. These are bounded native-CLI fixture results, not authenticated provider or production launch acceptance. Review, PR questions and instructions remain unavailable; see [the isolation evidence](reviews/2026-10-23-cr6-isolation.md). C82 and Phase 2 integration retain their existing gates.
 
-- **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
-  inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
-  rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
-  CR-1 (#320) defines the account- and revision-scoped read contract and synthetic fixtures, and
-  its [design page](design/code-review.md) maps every reference control to an owner. CR-2 (#321)
-  adds main's read service on the `code-review:read` channel: GET-only reads through the person's
-  `gh` login, keyed by account, repository id and revision. The separate `cr2-cache-denial`
-  follow-up invalidates retained PR data after visibility loss, including reads already in flight;
-  it covers pending inbox searches, sibling file slices and denial during identity confirmation,
-  while preserving unrelated repositories and ordinary offline/rate-limit fallback.
-  [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
-  coverage through the production preload/IPC/service with a synthetic GitHub executable.
-  The CR-3 development flag exposes the integrated inbox and workspace host. CR-4 (#323) adds the PR description, paginated activity, checks, inferred branch stack and provider/comment preview provenance through that host; validation and delivery evidence is recorded in [the CR-4 review](reviews/2026-10-23-cr4-overview.md). Remote diff content, AI review (#325) and GitHub writes (#326) retain their own gates. Original-reference comparison and human accessibility remain open.
+- **CR-7 draft/intent preparation** (#326). An unwired main-only foundation stores scoped drafts and revision-bound intents, consumes confirmations once after durable admission, and recovers interrupted dispatches as unknown without resend. It adds no GitHub mutation transport or UI/capability enablement. Write authorization and scope decisions 2–4 remain open; CR-6 isolation and C82 remain unchanged. See [the preparation evidence](reviews/2026-10-23-cr7-intents.md).
+
+- **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop, rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way. CR-1 (#320) defines the account- and revision-scoped read contract and synthetic fixtures, and its [design page](design/code-review.md) maps every reference control to an owner. CR-2 (#321) adds main's read service on the `code-review:read` channel: GET-only reads through the person's `gh` login, keyed by account, repository id and revision. The separate `cr2-cache-denial` follow-up invalidates retained PR data after visibility loss, including reads already in flight; it covers pending inbox searches, sibling file slices and denial during identity confirmation, while preserving unrelated repositories and ordinary offline/rate-limit fallback. [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files coverage through the production preload/IPC/service with a synthetic GitHub executable. The CR-3 development flag exposes the integrated inbox and workspace host. CR-4 (#323) adds the PR description, paginated activity, checks, inferred branch stack and provider/comment preview provenance through that host; validation and delivery evidence is recorded in [the CR-4 review](reviews/2026-10-23-cr4-overview.md). Remote diff content, AI review (#325) and GitHub writes (#326) retain their own gates. Original-reference comparison and human accessibility remain open.
+
+  CR-8 (#327) keeps the [acceptance matrix](reviews/2026-10-22-cr8-acceptance-matrix.md). It has one row per control C01–C82 and per AC of #321–#326, with fixture, authenticated, live-provider, live-write and human evidence kept apart. It adds Electron journeys and cross-slice regressions through the production read path with a synthetic `gh`: inbox → R1 → R4, identity, head moves, incomplete data, hostile links, no dispatch, and local Discard. It also adds keyboard/contrast checks and stress measurements, and a [VoiceOver checklist](reviews/2026-10-22-cr8-voiceover/checklist.md) for Val. The read-only authenticated service smoke and the navigation probe were re-run on `main` at `0e674e7`, and both passed. That historical matrix predates the implemented R2 overview and remote diffs; R3 (#325), the original-reference comparison (blocked: Val confirmed the original R1–R4 files are gone), and the human VoiceOver pass remain open.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).

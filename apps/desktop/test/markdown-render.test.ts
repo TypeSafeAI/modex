@@ -56,12 +56,12 @@ test("tables, blockquotes, nested and task lists, emphasis and strikethrough ren
 test("headings keep their place below the transcript's own titles, and a fence keeps its language and indentation", async () => {
   const html = await render("# One\n## Two\n### Three\n#### Four\n\n```ts\nif (a) {\n    return 1;\n}\n```");
   assert.match(html, /<h2>One<\/h2><h3>Two<\/h3><h4>Three<\/h4><h5>Four<\/h5>/);
-  assert.match(html, /<pre class="code" data-lang="ts"><code>if \(a\) \{\n    return 1;\n\}<\/code><\/pre>/);
+  assert.match(html, /<pre class="code" data-lang="ts"[^>]*><code>if \(a\) \{\n    return 1;\n\}<\/code><\/pre>/);
 });
 
 test("a fence that is still streaming shows its code so far, and the closing fence changes nothing before it", async () => {
   const open = await render("Here:\n\n```js\nconst a = 1;\nconst b = ");
-  assert.match(open, /<pre class="code" data-lang="js"><code>const a = 1;\nconst b = <\/code><\/pre>/);
+  assert.match(open, /<pre class="code" data-lang="js"[^>]*><code>const a = 1;\nconst b = <\/code><\/pre>/);
   const closed = await render("Here:\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nDone.");
   assert.match(closed, /<code>const a = 1;\nconst b = 2;<\/code><\/pre>.*?<p>Done\.<\/p>/s);
 });
@@ -163,8 +163,8 @@ test("the settled cache keeps recent renders, drops the oldest past its limit, a
 
 test("a code block names its language and offers Copy", async () => {
   const html = await render("```ts\nconst a = 1;\n```\n\n```\nplain\n```");
-  assert.match(html, /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"><code>const a = 1;<\/code><\/pre>/);
-  assert.match(html, /<span class="code-lang">text<\/span><button[^>]*aria-label="Copy code">Copy<\/button><\/div><pre class="code"><code>plain<\/code>/);
+  assert.match(html, /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"[^>]*><code>const a = 1;<\/code><\/pre>/);
+  assert.match(html, /<span class="code-lang">text<\/span><button[^>]*aria-label="Copy code">Copy<\/button><\/div><pre class="code"[^>]*><code>plain<\/code>/);
 });
 
 

@@ -258,7 +258,7 @@ const changelogPatch = `@@ -3,5 +3,8 @@
  ## 2026.10`;
 
 const R4_FILES: PrFiles = {
-  revision: R4_REVISION,
+  revision: R4_REVISION, diffBaseSha: R4_REVISION.baseSha,
   files: [
     { path: "src/holds/move.ts", previousPath: null, status: "modified", additions: 4, deletions: 2, patch: { kind: "text", patch: movePatch } },
     { path: "src/holds/move.test.ts", previousPath: null, status: "modified", additions: 3, deletions: 1, patch: { kind: "text", patch: testPatch } },
@@ -339,12 +339,12 @@ export const FAULTS = {
     check("502", "build", R4_REVISION.headSha, "completed", "success", "2026-10-18T20:31:00Z"),
   ]),
   /** GitHub stops listing files at 3,000; this PR has 3,412. One patch is binary, one too large to send. */
-  truncatedFiles: { state: "partial", value: { revision: R4_REVISION, files: truncated }, fetchedAt: NOW, reason: "capped", coverage: { loaded: 3000, total: 3412, complete: false, next: null, cap: 3000 } } as ReadResult<PrFiles>,
+  truncatedFiles: { state: "partial", value: { revision: R4_REVISION, diffBaseSha: R4_REVISION.baseSha, files: truncated }, fetchedAt: NOW, reason: "capped", coverage: { loaded: 3000, total: 3412, complete: false, next: null, cap: 3000 } } as ReadResult<PrFiles>,
   /** R4's PR before its last push, and the diff read then. */
   headChanged: {
     before: R4_BEFORE,
     after: R4_REVISION,
-    filesBefore: { state: "stale", value: { revision: R4_BEFORE, files: R4_FILES.files.slice(0, 3) }, fetchedAt: "2026-10-18T19:12:00Z", reason: "head-changed" } as ReadResult<PrFiles>,
+    filesBefore: { state: "stale", value: { revision: R4_BEFORE, diffBaseSha: R4_BEFORE.baseSha, files: R4_FILES.files.slice(0, 3) }, fetchedAt: "2026-10-18T19:12:00Z", reason: "head-changed" } as ReadResult<PrFiles>,
   },
 };
 

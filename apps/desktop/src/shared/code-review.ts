@@ -158,10 +158,10 @@ export interface PrFile {
   patch: PatchState;
 }
 
-export interface PrFiles { revision: PrRevision; files: PrFile[] }
+export interface PrFiles { revision: PrRevision; diffBaseSha: string; files: PrFile[] }
 
 /** Lines of one side of a file at a revision, for expanding context; `total` is the file's line count when known. */
-export interface PrContext { revision: PrRevision; side: "base" | "head"; path: string; start: number; lines: string[]; total: number | null }
+export interface PrContext { revision: PrRevision; commitSha: string; side: "base" | "head"; path: string; start: number; lines: string[]; total: number | null }
 
 /** What each read returns, by operation. */
 export interface CodeReviewReads {

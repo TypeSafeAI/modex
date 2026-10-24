@@ -1,0 +1,11 @@
+
+Running 2 tests using 1 worker
+
+(node:15507) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[transcript-budget] {"approvedBy":"Val","approvedOn":"2026-10-22","limitMs":500,"samplesMs":[195.7999999821186,180.2999999821186,193.5,198.2000000178814,194.5],"medianMs":194.5,"cpu":"Apple M5 Max","cores":18,"platform":"darwin","arch":"arm64","node":"v24.22.0"}
+  ✓  1 e2e/transcript-measure.spec.ts:221:1 › a 200-turn transcript opens within the agreed median budget across five fresh launches (48.5s)
+
+  ✓  2 e2e/transcript-measure.spec.ts:241:1 › a 3 MiB command log streams to the window bounded, and the turn settles (9.4s)
+
+  2 passed (1.1m)
