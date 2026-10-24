@@ -1,0 +1,10 @@
+
+Running 2 tests using 1 worker
+
+(node:52341) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+3:07:27 PM [vite] (client) Re-optimizing dependencies because vite config has changed
+  ✓  1 e2e/usage.spec.ts:24:1 › collapsed navigation reopens for a destination and stays accessible on mobile (1.8s)
+  ✓  2 e2e/usage.spec.ts:60:1 › Copilot demo rows stay unpriced across overview, activity, accounts and CSV (879ms)
+
+  2 passed (5.6s)

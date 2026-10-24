@@ -828,11 +828,22 @@ export class CodeReviewService {
     return { state: "ready", value, fetchedAt, coverage };
   }
 
+  /** PR patch old coordinates are relative to the three-dot merge base, not the target tip. */
+  private async diffBase(context: Context, key: PrKey, revision: PrRevision): Promise<string> {
+    const endpoint = `${repoPath(this.repoFor(key))}/compare/${revision.baseSha}...${revision.headSha}?per_page=1&page=1`;
+    const answer = json((await this.get(context, endpoint, { maxBytes: 24 * MB, timeoutMs: LONG_TIMEOUT_MS })).body) as
+      { base_commit?: { sha?: unknown }; merge_base_commit?: { sha?: unknown } } | null;
+    const base = answer?.merge_base_commit?.sha;
+    if (answer?.base_commit?.sha !== revision.baseSha || typeof base !== "string" || !/^[0-9a-f]{40}$/.test(base)) throw new ReadFailure("failed", DETAIL.failed);
+    return base;
+  }
+
   /** One page of files, bracketed by reads of the PR: a head that moves before or during the page labels it. */
   private async files(context: Context, key: PrKey, revision: PrRevision, cursor: string | null): Promise<ReadResult<PrFiles>> {
     const number = page(cursor, FILES_CAP / PAGE);
     const before = await this.pull(context, key.repoId, key.number);
     if (!sameRevision(before.revision, revision)) throw new ReadFailure("head-changed", DETAIL.headChanged);
+    const diffBaseSha = await this.diffBase(context, key, revision);
     const listed = json((await this.get(context, `${repoPath(this.repoFor(key))}/pulls/${key.number}/files?per_page=${PAGE}&page=${number}`,
       { maxBytes: 24 * MB, timeoutMs: LONG_TIMEOUT_MS })).body);
     if (!Array.isArray(listed)) throw new ReadFailure("failed", DETAIL.failed);
@@ -847,7 +858,7 @@ export class CodeReviewService {
     const short = next === null && loaded < reachable;
     const capped = total > FILES_CAP;
     const coverage: Coverage = { loaded, total, complete: next === null && !capped && !short, next, ...(capped ? { cap: FILES_CAP } : {}) };
-    const value: PrFiles = { revision, files: files as PrFiles["files"] };
+    const value: PrFiles = { revision, diffBaseSha, files: files as PrFiles["files"] };
     const fetchedAt = this.at();
     if (!sameRevision(after.revision, revision)) return { state: "stale", value, fetchedAt, reason: "head-changed", coverage };
     if (short) return { state: "partial", value, fetchedAt, reason: "failed", coverage };
@@ -860,7 +871,7 @@ export class CodeReviewService {
     const { key, revision, side, path, start, end } = request;
     const repo = this.repoFor(key);
     if (!(this.revisions.get(prId(key.repoId, key.number)) ?? []).some((seen) => sameRevision(seen, revision))) throw new ReadFailure("invalid", DETAIL.unknownRevision);
-    const ref = side === "base" ? revision.baseSha : revision.headSha;
+    const ref = side === "base" ? await this.diffBase(context, key, revision) : revision.headSha;
     const fetched = await this.get(context, `${repoPath(repo)}/contents/${path.split("/").map(enc).join("/")}?ref=${ref}`,
       { accept: RAW, maxBytes: 10 * MB, timeoutMs: LONG_TIMEOUT_MS });
     // A directory answers with a JSON listing even when the raw file was asked for.
@@ -874,7 +885,7 @@ export class CodeReviewService {
     if (content.includes("\u0000")) throw new ReadFailure("failed", DETAIL.binary);
     const lines = content.split("\n").map((line) => line.replace(/\r$/, ""));
     if (lines.at(-1) === "") lines.pop();
-    return { state: "ready", fetchedAt: this.at(), value: { revision, side, path, start, lines: lines.slice(start - 1, end), total: lines.length } };
+    return { state: "ready", fetchedAt: this.at(), value: { revision, commitSha: ref, side, path, start, lines: lines.slice(start - 1, end), total: lines.length } };
   }
 }
 

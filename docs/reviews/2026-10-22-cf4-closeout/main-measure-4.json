@@ -1,0 +1,69 @@
+{
+  "measuredAt": "2026-10-22T19:09:24.920Z",
+  "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+  "machine": {
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "memoryGiB": 128,
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.6.0",
+    "loadAverage": [
+      31.8193359375,
+      42.75830078125,
+      38.33935546875
+    ]
+  },
+  "longTranscript": {
+    "turns": 200,
+    "items": 1400,
+    "savedBytes": 3001221,
+    "firstOpenMs": 135,
+    "repeatOpenMs": [
+      59,
+      64,
+      63,
+      66
+    ],
+    "repeatMedianMs": 64,
+    "rendererLongTasks": {
+      "first": {
+        "count": 1,
+        "totalMs": 115,
+        "maxMs": 115
+      },
+      "repeats": [
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        }
+      ]
+    },
+    "threadItemsIpcMs": [
+      6,
+      6,
+      6
+    ],
+    "selectedAtLaunch": false,
+    "renderedItems": 1400,
+    "threadEventsOnOpen": {
+      "thread": 1
+    }
+  }
+}

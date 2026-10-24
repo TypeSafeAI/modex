@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, items, launch, resizeWindow, seedHome, tid, currentRow } from "./support";
+import { appDir, items, launch, resizeWindow, seedHome, tid, currentRow, setTheme } from "./support";
 
 /**
  * Visual harness for the Modex desktop shell.
@@ -16,6 +16,7 @@ const outDir = path.join(appDir, "test-results", "ui");
 
 let app: ElectronApplication;
 let page: Page;
+let captureHome: string;
 const manifest: { state: string; file: string; viewport: { width: number; height: number } }[] = [];
 
 async function capture(state: string): Promise<void> {
@@ -44,6 +45,7 @@ test.beforeAll(async () => {
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
   const { home } = seedHome({ theme: "jev" });
+  captureHome = home;
   ({ app, page } = await launch(home));
   // Content size, not window size: the capture must match the reference pixel for pixel.
   await resizeWindow(app, page, REFERENCE.width, REFERENCE.height);
@@ -344,4 +346,27 @@ test.describe("Phase 5 · draft", () => {
     // The 11 px taller resting composer shifts the centred draft hero up by 5.5 px.
     expect(Math.abs(b.y + b.height / 2 - 483.5)).toBeLessThanOrEqual(2);
   });
+});
+
+// CF-4 uses the same reference viewport, capture helper and manifest as the shell.
+test("captures Markdown elements in every theme at the reference size", async () => {
+  await resizeWindow(app, page, REFERENCE.width, REFERENCE.height);
+  const fixture = JSON.parse(fs.readFileSync(path.join(appDir, "../../docs/reviews/2026-10-20-keyboard-voiceover/markdown-fixture.json"), "utf8"));
+  const script = path.join(captureHome, "markdown.json");
+  fs.writeFileSync(script, JSON.stringify([fixture]));
+  await page.evaluate(mock_script => window.modex!.invoke("settings:update", { mock_script }), script);
+  await page.keyboard.press("Meta+n");
+  await tid(page, "composer-input").fill("Review Markdown");
+  await page.keyboard.press("Meta+Enter");
+  await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+  await expect(items(page, "assistant").getByRole("heading", { name: "Markdown review" })).toBeVisible();
+  if (await tid(page, "workspace").isVisible()) await page.keyboard.press("Meta+j");
+  for (const theme of ["graphite", "jev", "coven"] as const) {
+    await setTheme(page, theme);
+    await page.keyboard.press("Escape");
+    expect(await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(REFERENCE);
+    await expect(items(page, "assistant").getByRole("link", { name: "End link", exact: true })).toBeInViewport();
+    expect(await tid(page, "transcript").evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    await capture(`markdown-${theme}`);
+  }
 });

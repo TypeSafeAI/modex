@@ -1,0 +1,103 @@
+
+Running 11 tests using 1 worker
+
+(node:78680) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✓   1 e2e/keyboard-answers.spec.ts:47:1 › Approve from the keyboard moves focus to the card's answer, then to the turn's toggle when its work folds (5.6s)
+  ✓   2 e2e/keyboard-answers.spec.ts:57:1 › Deny from the keyboard does the same: the card's answer, then the turn's toggle once the denied card folds (5.9s)
+  ✓   3 e2e/keyboard-answers.spec.ts:66:1 › a turn that finishes while the reader is in the composer leaves focus there (5.8s)
+  ✓   4 e2e/keyboard-answers.spec.ts:76:1 › Stop from the keyboard hands focus to the composer once the turn ends (2.2s)
+  ✓   5 e2e/keyboard-answers.spec.ts:88:1 › Jump to latest from the keyboard hands focus to the message box at the bottom (16.8s)
+  ✓   6 e2e/keyboard-answers.spec.ts:136:1 › after Jump to latest, the transcript stays at the bottom when the composer grows before the scroll event (1.0s)
+  ✓   7 e2e/keyboard-answers.spec.ts:153:1 › a Page Up still animating when Jump to latest is pressed does not carry the view back up (750ms)
+  ✓   8 e2e/keyboard-answers.spec.ts:168:1 › after Jump to latest, the reader scrolling up again is followed at once (561ms)
+
+  ✘   9 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite (21.5s)
+(node:89657) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✓  10 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in jev (10.0s)
+
+  ✘  11 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in coven (20.1s)
+
+
+  1) e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite
+
+    Error: expect(locator).toBeFocused() failed
+
+    Locator:  locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table')
+    Expected: focused
+    Received: inactive
+    Timeout:  15000ms
+
+    Call log:
+      - Expect "toBeFocused" locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table') with timeout 15000ms
+      - waiting for locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table')
+        28 × locator resolved to <div tabindex="0" role="region" class="md-table" aria-label="Markdown table">…</div>
+           - unexpected value "inactive"
+
+
+      30 |       const stops = [link, table, evidence, copy, code, end];
+      31 |       await expect(table).toHaveAccessibleName("Markdown table");
+    > 32 |       await expect(code).toHaveAccessibleName("ts code");
+         |                            ^
+      33 |       const focused = async (stop: Locator) => {
+      34 |         await expect(stop).toBeFocused();
+      35 |         expect(await stop.evaluate(el => {
+        at focused (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/e2e/markdown-keyboard.spec.ts:32:28)
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/e2e/markdown-keyboard.spec.ts:46:15
+
+    Error Context: test-results/markdown-keyboard-Markdown-ecd0f--reduced-motion-in-graphite/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/markdown-keyboard-Markdown-ecd0f--reduced-motion-in-graphite/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/markdown-keyboard-Markdown-ecd0f--reduced-motion-in-graphite/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in coven ───
+
+    Error: expect(locator).toBeFocused() failed
+
+    Locator:  locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table')
+    Expected: focused
+    Received: inactive
+    Timeout:  15000ms
+
+    Call log:
+      - Expect "toBeFocused" locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table') with timeout 15000ms
+      - waiting for locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table')
+        28 × locator resolved to <div tabindex="0" role="region" class="md-table" aria-label="Markdown table">…</div>
+           - unexpected value "inactive"
+
+
+      30 |       const stops = [link, table, evidence, copy, code, end];
+      31 |       await expect(table).toHaveAccessibleName("Markdown table");
+    > 32 |       await expect(code).toHaveAccessibleName("ts code");
+         |                            ^
+      33 |       const focused = async (stop: Locator) => {
+      34 |         await expect(stop).toBeFocused();
+      35 |         expect(await stop.evaluate(el => {
+        at focused (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/e2e/markdown-keyboard.spec.ts:32:28)
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/e2e/markdown-keyboard.spec.ts:46:15
+
+    Error Context: test-results/markdown-keyboard-Markdown-46171-and-reduced-motion-in-coven/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/markdown-keyboard-Markdown-46171-and-reduced-motion-in-coven/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/markdown-keyboard-Markdown-46171-and-reduced-motion-in-coven/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite ─
+    e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in coven ────
+  9 passed (1.7m)
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test e2e/markdown-keyboard.spec.ts e2e/transcript-continuity.spec.ts e2e/keyboard-answers.spec.ts

@@ -364,3 +364,19 @@ test("selecting a file never shows the previous file's diff while loading", asyn
   await expect(tid(page, "changes-diff")).toContainText("Loading diff…");
   await expect(tid(page, "changes-diff")).toContainText("replacement diff");
 });
+
+test("local Discard still confirms and targets only the selected working-tree file", async () => {
+  await expect(tid(page, "changes-file")).toHaveCount(2);
+  await app.evaluate(({ ipcMain }) => {
+    const g = globalThis as unknown as { __localDiscards: unknown[] };
+    g.__localDiscards = [];
+    ipcMain.removeHandler("changes:revert");
+    ipcMain.handle("changes:revert", (_event, payload) => { g.__localDiscards.push(payload); });
+  });
+  page.once("dialog", dialog => { expect(dialog.message()).toContain("Discard changes to b.txt?"); void dialog.accept(); });
+  await page.getByRole("button", { name: "Discard changes to b.txt", exact: true }).click();
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __localDiscards: unknown[] }).__localDiscards)).toEqual([{ threadId: "one", path: "b.txt" }]);
+  page.once("dialog", dialog => { void dialog.dismiss(); });
+  await page.getByRole("button", { name: "Discard changes to a.txt", exact: true }).click();
+  expect(await app.evaluate(() => (globalThis as unknown as { __localDiscards: unknown[] }).__localDiscards)).toHaveLength(1);
+});

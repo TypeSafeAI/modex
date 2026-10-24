@@ -25,7 +25,7 @@ export function CodeBlock({ code, lang }: { code: string; lang?: string }) {
         <span className="code-lang">{lang || "text"}</span>
         <button type="button" className="code-copy" data-testid="code-copy" aria-label={`Copy ${name}`} onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button>
       </div>
-      <pre className="code" data-lang={lang || undefined}><code>{code}</code></pre>
+      <pre className="code" data-lang={lang || undefined} tabIndex={0} role="region" aria-label={name}><code>{code}</code></pre>
       <span role="status" className={failed ? "code-copy-error" : "sr-only"}>{failed ? "Could not copy. Select the code to copy it." : copied ? `Copied ${name}` : ""}</span>
     </div>
   );

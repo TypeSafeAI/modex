@@ -1,0 +1,115 @@
+
+> modex-monorepo@0.3.0 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout
+> pnpm --filter @modex/core build && pnpm --filter @modex/desktop build && pnpm --filter @modex/site build && pnpm --filter @modex/store-desktop build
+
+
+> @modex/core@0.3.0 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/packages/core
+> tsc -p tsconfig.json
+
+
+> @modex/desktop@0.3.0 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop
+> pnpm run build:main && pnpm run build:renderer && pnpm run build:usage
+
+
+> @modex/desktop@0.3.0 build:main /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop
+> node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && node scripts/copy-main-assets.mjs
+
+
+> @modex/desktop@0.3.0 build:renderer /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 303 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/renderer/index.html                            0.69 kB │ gzip:   0.39 kB
+dist/renderer/assets/modex-mark-DNmRLW2u.png      128.36 kB
+dist/renderer/assets/TerminalPanel-BmfB5bmM.css     3.52 kB │ gzip:   0.96 kB
+dist/renderer/assets/RoutinesView-DHaCvtkN.css      3.83 kB │ gzip:   1.18 kB
+dist/renderer/assets/ImagesView-BKu_xtPa.css        4.59 kB │ gzip:   1.32 kB
+dist/renderer/assets/PluginSurface-Y6Oy41MY.css     4.98 kB │ gzip:   1.44 kB
+dist/renderer/assets/CodeReviewView-L5CG1C44.css    6.34 kB │ gzip:   1.88 kB
+dist/renderer/assets/SpaceView-gtkDjca6.css        36.63 kB │ gzip:   7.17 kB
+dist/renderer/assets/index-CelM2SV9.css            89.39 kB │ gzip:  18.13 kB
+dist/renderer/assets/RoutinesView-DGrL72Uj.js      11.04 kB │ gzip:   3.35 kB
+dist/renderer/assets/PluginSurface-CCXLT_vM.js     14.77 kB │ gzip:   4.33 kB
+dist/renderer/assets/ErrorNotice-C7VNUtG0.js       16.65 kB │ gzip:   6.71 kB
+dist/renderer/assets/ImagesView-BYEaqKZ4.js        17.27 kB │ gzip:   5.24 kB
+dist/renderer/assets/CodeReviewView-Dtgps2Oz.js    28.23 kB │ gzip:   9.54 kB
+dist/renderer/assets/SpaceView-BsA6ND6V.js         89.57 kB │ gzip:  25.98 kB
+dist/renderer/assets/TerminalPanel-DOOYgqnl.js    336.04 kB │ gzip:  84.71 kB
+dist/renderer/assets/index-D9r-deql.js            554.96 kB │ gzip: 164.85 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.23s
+
+> @modex/desktop@0.3.0 build:usage /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop
+> vite build --config vite.usage.config.ts
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 21 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/usage-preview/index.html                   0.45 kB │ gzip:  0.29 kB
+dist/usage-preview/assets/index-C3JYFm-9.css   36.23 kB │ gzip:  8.31 kB
+dist/usage-preview/assets/index-Ba6WCjgq.js   262.96 kB │ gzip: 81.24 kB
+
+✓ built in 314ms
+
+> @modex/site@0.0.1 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/site
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 10 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/manrope-vietnamese-wght-normal-usUDDRr7.woff2   8.52 kB
+dist/assets/manrope-greek-wght-normal-DL7QRZyv.woff2        9.44 kB
+dist/assets/manrope-cyrillic-wght-normal-Dvxsihut.woff2    14.50 kB
+dist/assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2   15.12 kB
+dist/index.html                                            22.22 kB │ gzip: 5.53 kB
+dist/assets/manrope-latin-wght-normal-DHIcAJRg.woff2       24.83 kB
+dist/assets/index-CMxcTpr5.css                             22.45 kB │ gzip: 7.78 kB
+dist/assets/index-CdCZ8Dj0.js                               6.00 kB │ gzip: 2.68 kB
+
+✓ built in 796ms
+
+> @modex/store-desktop@0.0.8 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/store-desktop
+> tsc -p tsconfig.main.json && node scripts/prepare.mjs && vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 305 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/renderer/index.html                            0.51 kB │ gzip:   0.32 kB
+dist/renderer/assets/modex-mark-DNmRLW2u.png      128.36 kB
+dist/renderer/assets/TerminalPanel-BmfB5bmM.css     3.52 kB │ gzip:   0.96 kB
+dist/renderer/assets/RoutinesView-DHaCvtkN.css      3.83 kB │ gzip:   1.18 kB
+dist/renderer/assets/ImagesView-BKu_xtPa.css        4.59 kB │ gzip:   1.32 kB
+dist/renderer/assets/PluginSurface-Y6Oy41MY.css     4.98 kB │ gzip:   1.44 kB
+dist/renderer/assets/CodeReviewView-L5CG1C44.css    6.34 kB │ gzip:   1.88 kB
+dist/renderer/assets/SpaceView-gtkDjca6.css        36.63 kB │ gzip:   7.17 kB
+dist/renderer/assets/index-CrNLusmV.css            93.12 kB │ gzip:  18.93 kB
+dist/renderer/assets/RoutinesView-DGrL72Uj.js      11.04 kB │ gzip:   3.35 kB
+dist/renderer/assets/PluginSurface-CCXLT_vM.js     14.77 kB │ gzip:   4.33 kB
+dist/renderer/assets/ErrorNotice-C7VNUtG0.js       16.65 kB │ gzip:   6.71 kB
+dist/renderer/assets/ImagesView-EAtDZpxC.js        17.27 kB │ gzip:   5.24 kB
+dist/renderer/assets/CodeReviewView-DdYG5y9s.js    28.23 kB │ gzip:   9.55 kB
+dist/renderer/assets/SpaceView-x3mYrl8W.js         89.57 kB │ gzip:  25.98 kB
+dist/renderer/assets/TerminalPanel-BRF1sYJC.js    336.04 kB │ gzip:  84.71 kB
+dist/renderer/assets/index-D9KEhHXB.js            561.13 kB │ gzip: 166.62 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 461ms
