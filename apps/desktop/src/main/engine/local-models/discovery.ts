@@ -137,7 +137,7 @@ async function ollamaListing(get: (path: string) => Promise<unknown>, show: (mod
 
 function descriptor(connection: ConnectionRef, id: string, source: LocalModelDescriptor["source"], facts: Partial): LocalModelDescriptor {
   const reason = facts.locality === "cloud" ? "cloud" : facts.kind === "embedding" ? "embedding" : facts.kind === "other" ? "other" : undefined;
-  return { model: { connection: { ...connection }, id }, source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
+  return { model: { schema: 1, connection: { ...connection }, id }, source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
 }
 
 export class LocalModelDiscovery {

@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import fs from "node:fs";
 import type { AddressInfo } from "node:net";
 import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
 import { LocalConnectionStore } from "../src/main/engine/local-models/connections.js";
 import { LocalModelDiscovery } from "../src/main/engine/local-models/discovery.js";
 import type { DiscoveryResult, LocalModelDescriptor } from "../src/shared/local-connections.js";
+import { threadTarget } from "../src/shared/local-models.js";
 import { tmpdir } from "./helpers.js";
 
 /** LM-2 (#378) AC1, AC3–AC6: bounded metadata discovery against fixture runtimes on loopback. */
@@ -43,6 +45,50 @@ const byId = (result: DiscoveryResult) => Object.fromEntries((result.state === "
 /** Inference, pulls, loads and unloads: none of these may ever be requested by discovery. */
 const FORBIDDEN = /\/(generate|chat|completions|responses|embed|embeddings|pull|push|create|copy|delete|load|unload|blobs)\b/;
 
+test("discovered and manual identities survive the shared local-target reader", async () => {
+  const rt = await runtime(() => ({ json: { data: [{ id: "Org/Exact Model:Q4" }] } }));
+  const { store, discovery } = setup();
+  try {
+    const c = store.create({ label: "identity", runtime: "responses", url: rt.url, manualModels: ["Manual/Exact:Q8"] });
+    const result = await discovery.discover(c, "identity");
+    assert.equal(result.state, "ready");
+    if (result.state !== "ready") return;
+    assert.equal(result.models.length, 2);
+    for (const descriptor of result.models) {
+      const target = threadTarget({ backend: "codex", localTarget: { schema: 1, harness: "codex", model: descriptor.model } });
+      assert.equal(target.kind, "local");
+      if (target.kind === "local") assert.deepEqual(target.target.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: descriptor.model.id });
+    }
+  } finally { await rt.close(); }
+});
+
+test("unavailable saved credentials never dispatch anonymous discovery; tokenless profiles still work", async () => {
+  const rt = await runtime(() => ({ json: { data: [{ id: "model" }] } }));
+  try {
+    for (const failure of ["missing", "locked", "corrupt"] as const) {
+      const home = tmpdir("modex-lm-credential-");
+      let locked = false;
+      const secrets = new SecretStore(home, { ...testCipher, available: () => !locked });
+      const store = new LocalConnectionStore(home, secrets);
+      const discovery = new LocalModelDiscovery(store);
+      const c = store.create({ label: failure, runtime: "responses", url: rt.url, token: "private-fixture-token" });
+      if (failure === "missing") fs.unlinkSync(secrets.file);
+      if (failure === "locked") locked = true;
+      if (failure === "corrupt") {
+        const data = JSON.parse(fs.readFileSync(secrets.file, "utf8"));
+        for (const entry of Object.values(data.entries) as { enc: string }[]) entry.enc = Buffer.from("invalid cipher blob").toString("base64");
+        fs.writeFileSync(secrets.file, JSON.stringify(data));
+      }
+      await assert.rejects(discovery.discover(c, failure), /credential.*unavailable/i);
+      assert.equal(rt.hits.length, 0, `${failure}: no request without its configured credential`);
+    }
+    const { store, discovery } = setup();
+    const c = store.create({ label: "intentionally anonymous", runtime: "responses", url: rt.url });
+    assert.equal((await discovery.discover(c, "anonymous")).state, "ready");
+    assert.deepEqual(rt.hits.map(hit => hit.auth), [null]);
+  } finally { await rt.close(); }
+});
+
 const OLLAMA: Route = (req, body) => {
   if (req.method === "GET" && req.url === "/api/tags") return { json: { models: [
     { name: "qwen3-coder:30b", model: "qwen3-coder:30b", details: { family: "qwen3moe" } },
@@ -71,7 +117,7 @@ test("Ollama: installed, loaded, kind, advertised capabilities, cloud models and
     const m = byId(result);
     assert.deepEqual(Object.keys(m).sort(), ["custom:tag", "gpt-oss:120b-cloud", "hf.co/Org/My Model:Q4_K_M", "nomic-embed-text:latest", "qwen3-coder:30b"]);
     const coder = m["qwen3-coder:30b"]!;
-    assert.deepEqual(coder.model, { connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
+    assert.deepEqual(coder.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
     assert.deepEqual([coder.source, coder.kind, coder.installed, coder.loaded, coder.advertisedContext, coder.locality, coder.selectable], ["discovered", "generative", "yes", "yes", 262144, "unverified", true]);
     assert.deepEqual(coder.advertised, { tools: "advertised", vision: "not-advertised", reasoning: "not-advertised" });
     const embed = m["nomic-embed-text:latest"]!;

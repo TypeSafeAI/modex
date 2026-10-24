@@ -248,7 +248,10 @@ export class LocalConnectionStore {
     const c = this.read().connections.find(x => x.id === ref.id);
     if (!c || c.deletedAt || c.revision !== ref.revision) return null;
     const endpoint = endpointFor(c.runtime, `${c.origin}${c.basePath}`);
-    return { ref: { id: c.id, revision: c.revision }, runtime: c.runtime, endpoint, token: c.credential ? this.secrets.get(c.credential) : null, manualModels: [...c.manualModels] };
+    const token = c.credential ? this.secrets.get(c.credential) : null;
+    // A configured credential must never silently turn into anonymous access.
+    if (c.credential && token === null) throw new Error("Saved local connection credential is unavailable. Re-enter it before retrying.");
+    return { ref: { id: c.id, revision: c.revision }, runtime: c.runtime, endpoint, token, manualModels: [...c.manualModels] };
   }
 
   /** What history may show about a connection, deleted or not. */

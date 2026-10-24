@@ -181,16 +181,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   still open. The tracker keeps the dependency order and each slice's evidence, and its child issues
   link their open PRs.
 
-- **Local models v1** ([tracker #376](https://github.com/TypeSafeAI/modex/issues/376)). LM-2
-  (#378) has a branch with main-owned, loopback-only connection profiles, tokens in the existing
-  encrypted secret store, and bounded metadata discovery for Ollama, LM Studio and
-  Responses-compatible servers. Discovery uses one local-only IPC channel; there is no UI and no
-  execution binding yet. Evidence comes from fixtures only. The PR is a draft. Completion stays
-  blocked on LM-1 (#377), whose contract and native app-server probe are not yet accepted, and on
-  metadata evidence from a real Ollama and LM Studio. The review's two defects are fixed on
-  `lm2-fixes`: a failed profile write no longer changes an old revision's token, and a listing that
-  repeats the saved token is rejected before IPC.
-  [Review](reviews/2026-10-22-lm2-connections-discovery.md).
+- **Local models v1** ([tracker #376](https://github.com/TypeSafeAI/modex/issues/376)). LM-2 (#378) provides main-owned loopback connection profiles, encrypted tokens and bounded metadata discovery through local-only IPC; UI and execution remain unavailable. The integration repair adopts LM-1 schema-1 model identities, preserves the prior transactional credential and token-reflection fixes, and refuses requests when a configured credential is missing or unreadable. Fixture regressions cover discovered/manual identity consumption and missing, locked or corrupt credentials, with intentionally tokenless discovery retained. Real Ollama/LM Studio metadata evidence and broader native acceptance remain open. [Review](reviews/2026-10-24-lm2-integration.md).
 
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and
   pages, retains per-page failure/retry notices, and deduplicates first and later pages using the

@@ -1,18 +1,16 @@
+import type { ConnectionRef, LocalModelRef } from "./local-models.js";
+export type { ConnectionRef } from "./local-models.js";
+
 /**
  * Local-model connections and discovery as the renderer sees them (#378). Main owns the profiles,
  * the tokens and every request; these views carry no secret and no address beyond the origin the
- * person typed. Model identity (`connection` + exact `id`) follows the #377 contract draft: the
+ * person typed. Model identity follows the schema-1 shared #377 contract: the
  * same id on two connections, or on two revisions of one, is two different targets.
  */
 
 /** Metadata adapter. "responses" covers llama.cpp, vLLM and other servers listing `/v1/models`. */
 export type LocalRuntime = "ollama" | "lmstudio" | "responses";
 export const LOCAL_RUNTIMES: readonly LocalRuntime[] = ["ollama", "lmstudio", "responses"];
-
-export interface ConnectionRef {
-  id: string;
-  revision: number;
-}
 
 export interface LocalConnectionView extends ConnectionRef {
   label: string;
@@ -42,7 +40,7 @@ export type Advertised = "advertised" | "not-advertised" | "unknown";
 export type ModelKind = "generative" | "embedding" | "other" | "unknown";
 
 export interface LocalModelDescriptor {
-  model: { connection: ConnectionRef; id: string };
+  model: LocalModelRef;
   /** Where this entry came from: the runtime's listing, or typed by the person. */
   source: "discovered" | "manual";
   kind: ModelKind;
