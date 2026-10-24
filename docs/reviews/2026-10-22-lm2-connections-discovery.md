@@ -299,3 +299,11 @@ Open after Gate A: listing-only reads against a real Ollama and LM Studio (needs
 authorization); Val's decision on the AGENTS.md loopback-metadata wording; the choice between #386
 and #398; landing #398, #402 and #403 in that order, each rebased after the squash below it; LM-3
 execution binding and LM-4 UI.
+
+## Landing, 2026-10-24
+
+At Val's request, #403 lands LM-2 on `main` by itself, retargeted from `lm2-integrate` to `main`.
+Its squash carries #398's six commits and two review fixes, #402's hardening and the LM-1 adoption.
+That supersedes #386, #398 and #402, which do not merge separately. Before retargeting, the branch
+merged `main` at `21e50ba`. Its diff against `main` is the 17 LM-2 files, and its LM-1 files are
+identical to `main`'s.
