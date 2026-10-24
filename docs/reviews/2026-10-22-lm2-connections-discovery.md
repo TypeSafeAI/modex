@@ -233,7 +233,9 @@ for #377: first its commit `91deb281ad36f522636d9b6e2fe55105b74d47ae`, then the 
 [#400](https://github.com/TypeSafeAI/modex/pull/400) (`lm1-handoff` at
 `cb7ca6c30a3aa68012187aaf508cc552c84445d3`). That head descends from `91deb28` with identical
 contract files, and brings in `main` up to `6c40547`, including LM-1's producer from #397
-(`ffb9e1d`). #377 is not accepted, so nothing here may land before it, and #400 must land first.
+(`ffb9e1d`). #400 then landed on `main` as `bb0e1a4`, and the branch merges that `main`, so its LM-1
+files are identical to `main`'s. #377's Gate A acceptance is not recorded, so nothing here may land
+before it.
 
 - **Shared identity.** The LM-1 session's consumer patch (`docs/reviews/2026-10-24-lm1/lm2-identity.patch`,
   written against `954cd5b`) applied unchanged on top of the hardening. `shared/local-connections.ts`
@@ -278,5 +280,16 @@ environment:
 |---|---|
 | `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 42/42 passed |
 | `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1907 tests, 1891 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
+| `pnpm typecheck` | exit 0 |
+| `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
+
+After merging `main` at `bb0e1a4` (#400 landed), the code is at
+`3457e0ad5a7c7503cd4a968cdce21224e85109a7`. The `docs/local-models.md` conflict was resolved to this
+branch's text: `main`'s copy matched `cb7ca6c`, so only this branch's adoption paragraph differed.
+
+| Command | Result |
+|---|---|
+| `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 42/42 passed |
+| `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1907 tests, 1891 passed, 16 skipped, 0 failed; native/package 26 tests, 21 passed, 5 skipped (from `main`'s #396 native code-review isolation tests), 0 failed; site 10/10, Store desktop 16/16 |
 | `pnpm typecheck` | exit 0 |
 | `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
