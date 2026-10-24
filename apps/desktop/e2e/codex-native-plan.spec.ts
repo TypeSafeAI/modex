@@ -45,6 +45,10 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     }
     open = { thread: p.threadId, turn: id, request: 700 + turn };
     emit({ method: 'item/completed', params: { threadId: p.threadId, turnId: id, item: { id: 'pre-' + turn, type: 'agentMessage', text: 'I will settle the greeting language before preparing the plan.', phase: 'commentary' } } });
+    // The 2026-10-23 live plan-mode turn read the project before asking; a read is work, but the plan is still a plan.
+    const cwd = cwds.get(p.threadId) || '';
+    emit({ method: 'item/started', params: { threadId: p.threadId, turnId: id, item: { id: 'read-' + turn, type: 'commandExecution', command: 'ls', cwd, status: 'inProgress' } } });
+    emit({ method: 'item/completed', params: { threadId: p.threadId, turnId: id, item: { id: 'read-' + turn, type: 'commandExecution', command: 'ls', cwd, status: 'completed', exitCode: 0, aggregatedOutput: '' } } });
     emit({ id: open.request, method: 'item/tool/requestUserInput', params: { threadId: p.threadId, turnId: id, itemId: 'ask-' + turn, isBlocking: true, autoResolutionMs: null, questions: [
       { id: 'greeting_language', header: 'Language', question: 'Which language should the greeting use?', isOther: true, isSecret: false, options: [{ label: 'English (Recommended)', description: 'Welcome!' }, { label: 'Spanish', description: '¡Bienvenido!' }] },
     ] } });
@@ -125,6 +129,18 @@ test("Plan mode on Codex: native plan mode asks its question, and Codex's plan i
     await tid(page, "send").click();
     await expect(items(page, "assistant").last()).toContainText("An ordinary answer.");
     expect(turns(logs)[2]).toMatchObject({ collaborationMode: null, text: expect.stringMatching(/Now just say hi$/) });
+
+    // The proposed plan is the plan turn's plan: no "reported no plan" line, and its saved note keeps it.
+    await expect(tid(page, "task-no-plan")).toHaveCount(0);
+    await tid(page, "save-task-note").first().click();
+    const savedLine = tid(page, "task-note-saved").first();
+    await expect(savedLine).toContainText("Saved to Notes");
+    await savedLine.getByRole("button", { name: "Open" }).click();
+    await tid(page, "task-view-open").click();
+    const view = tid(page, "task-view");
+    await expect(view).toContainText("Codex proposed this plan in plan mode. Its steps have no statuses.");
+    await expect(tid(view, "task-view-proposed-plan")).toContainText("### Add a new-user greeting");
+    await expect(tid(view, "task-view-step")).toHaveCount(0);
   } finally {
     await app?.close();
     fs.rmSync(logs, { recursive: true, force: true });

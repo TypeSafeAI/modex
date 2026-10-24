@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { SpacePage } from "../../shared/space";
-import { CONTEXT_SHOWN, clarificationLine, type TaskNoteView as View } from "../../shared/task-context";
+import { CONTEXT_SHOWN, PROPOSED_WORDS, clarificationLine, type TaskNoteView as View } from "../../shared/task-context";
 import { bridge } from "../bridge";
 import { PLAN_FROM, PLAN_STATUS, VerificationText } from "../components/transcript/TaskPlanCard";
 
@@ -60,6 +60,9 @@ export function TaskNoteView({ view, onOpenThread, onClose }: { view: View; onOp
       <ol className="plan-steps">{record.plan.steps.map((step, i) => <li key={i} className={`plan-step ${step.status}`} data-testid="task-view-step" data-status={step.status}>
         <span className="plan-status">{PLAN_STATUS[step.status] ?? PLAN_STATUS.unknown}</span> {step.text}
       </li>)}</ol></>}
+    {!record.plan && record.proposedPlan && <><h3>Plan</h3>
+      <p className="task-view-note">{PROPOSED_WORDS}</p>
+      <pre className="task-view-proposed" data-testid="task-view-proposed-plan">{record.proposedPlan}</pre></>}
     {context && (context.files.length > 0 || context.outside > 0) && <><h3>Files touched · {context.files.length}</h3>
       <p className="task-view-note">As the CLI reported them. Modex did not index the project.</p>
       <ul className="task-context-files">
