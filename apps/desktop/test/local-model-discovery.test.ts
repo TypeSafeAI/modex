@@ -302,3 +302,46 @@ test("model IDs that merely resemble a token are kept exactly, not redacted into
     assert.deepEqual(result.state === "ready" ? result.models.map(m => m.model.id) : [], ["reflect-tok", "31337"]);
   } finally { await rt.close(); }
 });
+test("a saved token that can't be decrypted is reported, and no request goes out without it", async () => {
+  const rt = await runtime(req => (req.url === "/v1/models" ? { json: { data: [{ id: "org/model" }] } } : undefined));
+  const home = tmpdir("modex-lm-");
+  let keychain = true;
+  const secrets = new SecretStore(home, { ...testCipher, available: () => keychain });
+  const store = new LocalConnectionStore(home, secrets);
+  const discovery = new LocalModelDiscovery(store, { timeoutMs: 1000 });
+  try {
+    const c = store.create({ label: "vLLM", runtime: "responses", url: rt.url, token: "locked-token", manualModels: ["org/manual"] });
+    keychain = false;
+    const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
+    assert.equal(result.state === "unavailable" && result.reason, "credential-unavailable");
+    assert.deepEqual(result.state === "unavailable" ? result.models.map(m => m.model.id) : null, ["org/manual"], "manual IDs stay available");
+    assert.equal(rt.hits.length, 0, "an unauthenticated request is never sent in its place");
+    keychain = true;
+    assert.equal((await discovery.discover({ id: c.id, revision: 1 }, "r2")).state, "ready");
+    assert.deepEqual(rt.hits.map(h => h.auth), ["Bearer locked-token"]);
+  } finally { await rt.close(); }
+});
+
+test("slow per-model reads can't hold discovery past its overall deadline; unread models stay unknown", async () => {
+  const rt = await runtime((req) => {
+    if (req.url === "/api/tags") return { json: { models: Array.from({ length: 32 }, (_, i) => ({ name: `m${i}:latest` })) } };
+    if (req.url === "/api/ps") return { json: { models: [] } };
+    if (req.url === "/api/show") return { json: { capabilities: ["completion"] }, delayMs: 900 };
+    return undefined;
+  });
+  const { store, discovery } = setup();
+  try {
+    const c = store.create({ label: "o", runtime: "ollama", url: rt.url });
+    const started = Date.now();
+    const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
+    const elapsed = Date.now() - started;
+    // Each read is under the 1 s per-request deadline; 32 of them, four at a time, would take ~7 s.
+    assert.ok(elapsed < 4500, `discovery took ${elapsed} ms`);
+    assert.equal(result.state, "ready", "running out of time for per-model detail is not a failure");
+    if (result.state !== "ready") return;
+    assert.equal(result.models.length, 32);
+    assert.ok(result.models.some(m => m.kind === "generative"), "reads that finished in time are used");
+    assert.ok(result.models.some(m => m.kind === "unknown"), "the rest stay unknown");
+  } finally { await rt.close(); }
+});
+
