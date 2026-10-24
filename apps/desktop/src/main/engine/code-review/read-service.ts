@@ -1,10 +1,10 @@
 import {
   parsePrLocator, sameRevision, scopeOf, validateRequest,
   type CodeReviewAccount, type CodeReviewConnection, type CodeReviewReply, type CodeReviewRequest, type Coverage, type Inbox, type InboxGroup,
-  type PrActivity, type PrCheck, type PrContext, type PrFiles, type PrKey, type PrOverview, type PrRevision, type PrSummary, type ReadResult, type ResolvedPr, type Unavailable,
+  type PrStack, type PrActivity, type PrCheck, type PrContext, type PrFiles, type PrKey, type PrOverview, type PrRevision, type PrSummary, type ReadResult, type ResolvedPr, type Unavailable,
 } from "../../../shared/code-review.js";
 import { ghHostsStamp, ghTransport, type GhAnswer, type GhCall, type GhTransport } from "./gh.js";
-import { changedFile, checkRun, commitStatus, hasNext, json, pull, repository, searchRow, timeline, type Pull, type Repository } from "./github.js";
+import { deployment, changedFile, checkRun, commitStatus, hasNext, json, pull, repository, searchRow, timeline, type Pull, type Repository } from "./github.js";
 
 /**
  * Main's Code Review reads (#321): narrow GETs through the person's `gh` login, each bound to the
@@ -64,7 +64,6 @@ const DETAIL = {
   notFile: "That path isn't a file at this revision.",
   cancelled: "Cancelled.",
   failed: "GitHub's answer could not be read.",
-  stack: "Stack reads arrive with #323.",
 } as const;
 
 class ReadFailure extends Error {
@@ -308,7 +307,7 @@ export class CodeReviewService {
       case "overview": return this.overview(context, request.key);
       case "activity": return this.activity(context, request.key, request.cursor);
       case "checks": return this.checks(context, request.key, request.revision);
-      case "stack": throw new ReadFailure("failed", DETAIL.stack);
+      case "stack": return this.stack(context, request.key);
       case "files": return this.files(context, request.key, request.revision, request.cursor);
       case "context": return this.context(context, request);
     }
@@ -625,6 +624,53 @@ export class CodeReviewService {
     } };
   }
 
+  /**
+   * Inference only: GET /repos/{owner}/{repo}/pulls?state=open, linked by base.ref = head.ref
+   * within the same stable repository. No prose, issue numbers or adjacent list positions.
+   * A complete bounded list is required; branching, cycles and unresolved roots have no order.
+   */
+  private async stack(context: Context, key: PrKey): Promise<ReadResult<PrStack>> {
+    const selected = await this.pull(context, key.repoId, key.number);
+    const repo = this.repoFor(key);
+    type Member = { number: number; title: string; state: "open" | "draft"; baseRef: string; headRef: string };
+    const members: Member[] = [];
+    let complete = false;
+    for (let page = 1; page <= 10; page++) {
+      const fetched = await this.get(context, `${repoPath(repo)}/pulls?state=open&per_page=100&page=${page}`, { maxBytes: 8 * MB });
+      const rows: unknown = json(fetched.body);
+      if (!Array.isArray(rows)) throw new ReadFailure("failed", DETAIL.failed);
+      for (const raw of rows) {
+        const row = raw as Record<string, any>;
+        const base = repository(row?.base?.repo), head = repository(row?.head?.repo);
+        if (!base || base.id !== key.repoId || !Number.isSafeInteger(row.number) || row.number < 1 || typeof row.title !== "string" || typeof row.base.ref !== "string" || typeof row.head?.ref !== "string") throw new ReadFailure("failed", DETAIL.failed);
+        if (head?.id === key.repoId) members.push({ number: row.number, title: row.title.slice(0, 1024), state: row.draft ? "draft" : "open", baseRef: row.base.ref, headRef: row.head.ref });
+      }
+      if (rows.length < 100) { complete = true; break; }
+    }
+    if (!complete) throw new ReadFailure("invalid", "Stack relationships exceed the bounded read. No order is available.");
+    const current = members.find(m => m.number === key.number);
+    if (!current || current.headRef !== selected.headRef || current.baseRef !== selected.revision.baseRef) throw new ReadFailure("invalid", "Stack relationships are unavailable for this pull request.");
+    const related = new Set<Member>([current]);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const member of members) if (!related.has(member) && [...related].some(other => member.baseRef === other.headRef || other.baseRef === member.headRef)) { related.add(member); changed = true; }
+    }
+    const ambiguous = () => new ReadFailure("invalid", "Stack relationships are ambiguous, branching, cyclic or incomplete. No order is available.");
+    if (new Set([...related].map(m => m.number)).size !== related.size) throw ambiguous();
+    for (const member of related) {
+      if ([...related].filter(other => other.headRef === member.baseRef).length > 1 || [...related].filter(other => other.baseRef === member.headRef).length > 1) throw ambiguous();
+    }
+    const roots = [...related].filter(member => ![...related].some(other => other.headRef === member.baseRef));
+    if (roots.length !== 1 || !selected.base.defaultBranch || roots[0]!.baseRef !== selected.base.defaultBranch) throw ambiguous();
+    const ordered: Member[] = [];
+    let next: Member | undefined = roots[0];
+    while (next && !ordered.includes(next)) { ordered.push(next); const head: string = next.headRef; next = [...related].find(m => m.baseRef === head); }
+    if (next || ordered.length !== related.size) throw ambiguous();
+    const after = await this.pull(context, key.repoId, key.number);
+    const value: PrStack = { source: "inferred", position: ordered.indexOf(current), members: ordered.map(m => ({ locator: { host: "github.com", owner: repo.owner, repo: repo.name, number: m.number }, title: m.title, state: m.state })) };
+    return !sameRevision(selected.revision, after.revision) ? { state: "stale", reason: "head-changed", value, fetchedAt: this.at() } : { state: "ready", value, fetchedAt: this.at() };
+  }
+
   // --- Inbox ----------------------------------------------------------------------------------
 
   /** Each group is its own search and its own result: one failing leaves the other usable. */
@@ -708,12 +754,39 @@ export class CodeReviewService {
     const items = json(fetched.body);
     if (!Array.isArray(items)) throw new ReadFailure("failed", DETAIL.failed);
     const { activity, dropped } = timeline(items);
-    if (pr) activity.unshift({ kind: "opened", id: `pr-${pr.id}`, at: pr.createdAt, actor: pr.author });
+    let deploymentFailure: Unavailable | "capped" | null = null;
+    if (pr) {
+      activity.unshift({ kind: "opened", id: `pr-${pr.id}`, at: pr.createdAt, actor: pr.author });
+      // A bounded current-head preview read, independent of arbitrary links in bot comments.
+      // Endpoint strings are built from main's repository and numeric provider IDs only.
+      try {
+        const base = repoPath(this.repoFor(key));
+        const fetchedDeployments = await this.get(context, `${base}/deployments?sha=${pr.revision.headSha}&per_page=20&page=1`, { maxBytes: 2 * MB });
+        const records: unknown = json(fetchedDeployments.body);
+        if (!Array.isArray(records)) throw new ReadFailure("failed", DETAIL.failed);
+        if (hasNext(fetchedDeployments.headers.link)) deploymentFailure = "capped";
+        for (const record of records.slice(0, 20)) {
+          const mapped = deployment(record, null);
+          if (!mapped || mapped.commit !== pr.revision.headSha) { deploymentFailure = "failed"; continue; }
+          const deploymentId = mapped.id.slice("deployment-".length);
+          const statuses = json((await this.get(context, `${base}/deployments/${deploymentId}/statuses?per_page=1&page=1`, { maxBytes: MB })).body);
+          if (!Array.isArray(statuses)) throw new ReadFailure("failed", DETAIL.failed);
+          activity.push(deployment(record, statuses[0])!);
+        }
+        const after = await this.pull(context, key.repoId, key.number);
+        if (!sameRevision(pr.revision, after.revision)) deploymentFailure = "head-changed";
+      } catch (error) {
+        const failure = this.failure(error);
+        if (failure.cancelled || failure.reason === "signed-out") throw error;
+        deploymentFailure = failure.reason;
+      }
+    }
     const more = hasNext(fetched.headers.link);
     const next = more && number < TIMELINE_PAGES ? `p${number + 1}` : null;
     // `loaded` counts the provider's items, so pages line up: the opening is main's, a pending review is skipped.
-    const coverage: Coverage = { loaded: (number - 1) * PAGE + items.length, total: null, complete: !more && dropped === 0, next, ...(more && !next ? { cap: TIMELINE_PAGES * PAGE } : {}) };
+    const coverage: Coverage = { loaded: (number - 1) * PAGE + items.length, total: null, complete: !more && dropped === 0 && deploymentFailure === null, next, ...(more && !next ? { cap: TIMELINE_PAGES * PAGE } : {}) };
     const fetchedAt = this.at();
+    if (deploymentFailure) return { state: "partial", value: activity, fetchedAt, reason: deploymentFailure, coverage };
     if (dropped) return { state: "partial", value: activity, fetchedAt, reason: "failed", coverage };
     if (more && !next) return { state: "partial", value: activity, fetchedAt, reason: "capped", coverage };
     return { state: "ready", value: activity, fetchedAt, coverage };

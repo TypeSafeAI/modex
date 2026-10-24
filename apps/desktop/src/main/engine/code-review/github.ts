@@ -190,3 +190,15 @@ export function changedFile(value: unknown): PrFile | null {
 export function hasNext(header: string | undefined): boolean {
   return typeof header === "string" && /<[^>]+>;\s*rel="next"/.test(header);
 }
+
+/** Provider deployment + its latest status; a comment URL never enters this mapping. */
+export function deployment(value: unknown, latest: unknown): Extract<PrActivity, { kind: "deployment" }> | null {
+  const record = object(value), status = object(latest);
+  const deploymentId = id(record?.id), commit = sha(record?.sha), at = time(record?.created_at);
+  if (!record || !deploymentId || !commit || !at || typeof record.environment !== "string") return null;
+  const state = status?.state;
+  return { kind: "deployment", id: `deployment-${deploymentId}`, at, environment: text(record.environment, 255), commit,
+    status: state === "success" ? "success" : state === "failure" || state === "error" ? "failure" : state === "inactive" ? "inactive" : state === "pending" || state === "queued" || state === "in_progress" ? "pending" : "unknown",
+    url: link(status?.environment_url),
+  };
+}

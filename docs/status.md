@@ -199,8 +199,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   while preserving unrelated repositories and ordinary offline/rate-limit fallback.
   [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
   coverage through the production preload/IPC/service with a synthetic GitHub executable.
-  The CR-3 development flag exposes the integrated inbox and workspace host; overview/diff content, AI
-  review (#325) and GitHub writes (#326) are later gates.
+  The CR-3 development flag exposes the integrated inbox and workspace host. CR-4 (#323) adds the PR description, paginated activity, checks, inferred branch stack and provider/comment preview provenance through that host; validation and delivery evidence is recorded in [the CR-4 review](reviews/2026-10-23-cr4-overview.md). Remote diff content, AI review (#325) and GitHub writes (#326) retain their own gates. Original-reference comparison and human accessibility remain open.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
