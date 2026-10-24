@@ -3,7 +3,18 @@ import assert from "node:assert/strict";
 import { retainFilePage, filePageRows, FILE_LIMITS, pageStopReason } from "../src/renderer/code-review/file-pages.js";
 import type { PrFile, PrFiles, ReadResult } from "../src/shared/code-review.js";
 import { NOW, R4, stressFiles } from "./fixtures/code-review.js";
-const ready = (files: PrFile[], next: string | null = null): Extract<ReadResult<PrFiles>, { state: "ready" }> => ({ state: "ready", value: { revision: R4.overview.revision, files }, fetchedAt: NOW, coverage: { loaded: files.length, total: 1000, complete: next === null, next } });
+const ready = (files: PrFile[], next: string | null = null): Extract<ReadResult<PrFiles>, { state: "ready" }> => ({ state: "ready", value: { revision: R4.overview.revision, diffBaseSha: R4.overview.revision.baseSha, files }, fetchedAt: NOW, coverage: { loaded: files.length, total: 1000, complete: next === null, next } });
+
+test("page retention preserves merge-base identity and refuses mixed provenance", () => {
+  const first = ready([]);
+  Object.assign(first.value, { diffBaseSha: "a".repeat(40) });
+  const pages = retainFilePage([], null, first);
+  assert.equal((pages[0]!.result as typeof first).value && Reflect.get((pages[0]!.result as typeof first).value, "diffBaseSha"), "a".repeat(40));
+  const next = ready([]);
+  Object.assign(next.value, { diffBaseSha: "b".repeat(40) });
+  const mixed = retainFilePage(pages, "p2", next);
+  assert.equal(mixed[1]!.result.state, "unavailable");
+});
 
 test("file pages retain failed cursor identity and replace that page on retry", () => {
   let pages = retainFilePage([], null, ready(stressFiles(1), "p2"));

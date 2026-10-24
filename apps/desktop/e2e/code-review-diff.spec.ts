@@ -31,14 +31,14 @@ async function open(files?: PrFile[], hold: string | null = null) {
       else if (req.op === "files") {
         const source = req.key.repoId === data.alternate.key.repoId ? [{ ...s.files[0], path: "other-pr.ts" }] : s.files;
         const offset = req.cursor ? (Number(req.cursor.slice(1)) - 1) * 100 : 0, files = source.slice(offset, offset + 100);
-        result = ready({ revision: req.revision, files }, { loaded: offset + files.length, total: source.length, complete: offset + files.length >= source.length, next: offset + files.length < source.length ? `p${offset / 100 + 2}` : null });
-      } else if (req.op === "context") result = ready({ revision: req.revision, side: req.side, path: req.path, start: req.start, lines: s.contextLines ?? Array.from({ length: req.end - req.start + 1 }, (_, i) => `remote context ${req.start + i}`), total: Math.max(req.end + 100, 900) });
+        result = ready({ revision: req.revision, diffBaseSha: s.diffBaseSha ?? req.revision.baseSha, files }, { loaded: offset + files.length, total: source.length, complete: offset + files.length >= source.length, next: offset + files.length < source.length ? `p${offset / 100 + 2}` : null });
+      } else if (req.op === "context") result = ready({ revision: req.revision, commitSha: s.badContextCommit ? "f".repeat(40) : req.revision.headSha, side: req.side, path: req.path, start: req.start, lines: s.contextLines ?? Array.from({ length: req.end - req.start + 1 }, (_, i) => `remote context ${req.start + i}`), total: Math.max(req.end + 100, 900) });
       else result = { state: "unavailable", reason: "failed", fetchedAt: data.at };
       // Capture the old answer before holding it, so changing the head really delivers an old reply.
       if (s.badFilesRevision && req.op === "files") result = ready({ revision: { ...req.revision, headSha: "0".repeat(40) }, files: s.files });
-      if (s.repeatCursor && req.op === "files" && req.cursor) result = ready({ revision: req.revision, files: s.files.slice(0, 100) }, { loaded: 100, total: s.files.length, complete: false, next: req.cursor });
+      if (s.repeatCursor && req.op === "files" && req.cursor) result = ready({ revision: req.revision, diffBaseSha: s.diffBaseSha ?? req.revision.baseSha, files: s.files.slice(0, 100) }, { loaded: 100, total: s.files.length, complete: false, next: req.cursor });
       if (s.failCursor && req.cursor === s.failCursor) result = { state: "unavailable", reason: "timeout", fetchedAt: data.at };
-      if (s.badContext && req.op === "context") result = ready({ revision: req.revision, side: "head", path: "other.ts", start: req.start, lines: ["wrong file code"], total: 20 });
+      if (s.badContext && req.op === "context") result = ready({ revision: req.revision, commitSha: s.badContextCommit ? "f".repeat(40) : req.revision.headSha, side: "head", path: "other.ts", start: req.start, lines: ["wrong file code"], total: 20 });
       if (s.hold === req.op) await new Promise<void>(resolve => s.held.push(resolve));
       return { requestId: req.requestId, op: req.op, scope: { account: req.key?.account ?? data.account, key: req.key ?? null, revision: req.revision ?? null }, result };
     });
@@ -427,4 +427,28 @@ test("context text budget is shared between folds and refunded on collapse", asy
   await section.getByRole("button", { name: "Retry context", exact: true }).click();
   await expect(section.locator(".cr-context-fold").nth(1).locator("code")).toHaveCount(4);
   await expect(section).not.toContainText("Context exceeds display text limit");
+});
+
+
+test("old-line anchors name the merge base when the target tip differs", async () => {
+  await open();
+  await app.evaluate(() => { (globalThis as any).__diff.diffBaseSha = "a".repeat(40); });
+  await page.getByRole("button", { name: "Refresh files", exact: true }).click();
+  await tid(page, "cr-file-section").first().getByRole("button", { name: /^Old line/ }).first().click();
+  const section = tid(page, "cr-file-section").first();
+  await expect(section).toHaveAttribute("data-base-sha", "a".repeat(40));
+  await expect(section).toHaveAttribute("data-target-sha", R4.overview.revision.baseSha);
+  await expect(page.locator(".cr-revision")).toContainText("Diff base aaaaaaaa");
+  await expect(page.locator(".cr-revision")).toContainText(`Target ${R4.overview.revision.baseSha.slice(0, 8)}`);
+  const anchor = page.getByRole("status").filter({ hasText: "Line anchor" });
+  await expect(anchor).toContainText("aaaaaaaa");
+  await expect(anchor).not.toContainText(R4.overview.revision.baseSha.slice(0, 8));
+});
+
+test("context from a different commit is refused even when revision and path match", async () => {
+  await open();
+  await app.evaluate(() => { (globalThis as any).__diff.badContextCommit = true; });
+  await tid(page, "cr-file-section").first().getByRole("button", { name: /Expand.*unchanged/ }).first().click();
+  await expect(page.getByRole("alert")).toContainText("did not match the requested file");
+  await expect(tid(page, "code-review-diff")).not.toContainText("remote context");
 });

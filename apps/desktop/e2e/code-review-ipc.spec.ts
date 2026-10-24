@@ -74,7 +74,7 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
       "repos/example-org/lending/issues/73/timeline?per_page=100&page=1",
       "repos/example-org/lending/pulls?state=open&per_page=100&page=1",
     ]);
-    expect(endpoints.filter(endpoint => !overviewReads.has(endpoint) && !/^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?|\/contents\/src\/holds\/move\.ts\?ref=c{40})?)$/.test(endpoint))).toEqual([]);
+    expect(endpoints.filter(endpoint => !overviewReads.has(endpoint) && !/^repos\/example-org\/lending\/compare\/b{40}\.\.\.c{40}\?per_page=1&page=1$/.test(endpoint) && !/^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?|\/contents\/src\/holds\/move\.ts\?ref=c{40})?)$/.test(endpoint))).toEqual([]);
     expect({ head: git("rev-parse", "HEAD"), branch: git("symbolic-ref", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") }).toEqual(before);
   } finally {
     await app.close();

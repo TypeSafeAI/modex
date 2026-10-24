@@ -5,7 +5,7 @@ export const PATCH_LIMITS = { characters: 512 * 1024, rows: 4000 } as const;
 export interface PatchRow { kind: "context" | "add" | "del"; text: string; oldLine: number | null; newLine: number | null; noNewline: boolean }
 export interface PatchHunk { oldStart: number; newStart: number; oldCount: number; newCount: number; rows: PatchRow[] }
 export interface PatchModel { state: "text" | "binary" | "provider" | "too-large"; hunks: PatchHunk[]; complete: boolean }
-export interface LineAnchor { key: PrKey; revision: PrRevision; path: string; side: "base" | "head"; start: number; end: number }
+export interface LineAnchor { key: PrKey; revision: PrRevision; commitSha: string; path: string; side: "base" | "head"; start: number; end: number }
 
 /** A zero-count range is an insertion point after its start line, not that line itself. */
 export function hunkBounds(hunk: PatchHunk): { oldStart: number; newStart: number; oldEnd: number; newEnd: number } {
@@ -13,11 +13,13 @@ export function hunkBounds(hunk: PatchHunk): { oldStart: number; newStart: numbe
 }
 
 /** Use the shared request validator for path, revision, key and range validation, never local paths. */
-export function anchorFor(key: PrKey, revision: PrRevision, file: PrFile, side: "base" | "head", start: number, end = start): LineAnchor | null {
+export function anchorFor(key: PrKey, revision: PrRevision, file: PrFile, side: "base" | "head", start: number, end = start, diffBaseSha?: string): LineAnchor | null {
+  const commitSha = side === "head" ? revision.headSha : diffBaseSha;
+  if (!commitSha || !/^[0-9a-f]{40}$/.test(commitSha)) return null;
   const path = side === "base" ? file.previousPath ?? file.path : file.path;
   const request = validateRequest({ op: "context", requestId: "anchor", key, revision, path, side, start, end });
   if (!request || request.op !== "context") return null;
-  return { key: { ...key }, revision: { ...revision }, path, side, start, end };
+  return { key: { ...key }, revision: { ...revision }, commitSha, path, side, start, end };
 }
 
 export function anchorState(anchor: LineAnchor, key: PrKey, revision: PrRevision): "current" | "outdated" {

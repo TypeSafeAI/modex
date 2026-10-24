@@ -35,7 +35,7 @@ export function PrChanges(props: Props) {
   const [anchor, setAnchor] = useState<LineAnchor | null>(null);
   const { overview } = props;
   return <>
-    {anchor && sameKey(anchor.key, overview.key) && <p className="cr-anchor" role="status">{anchorState(anchor, overview.key, overview.revision) === "outdated" ? "Outdated line anchor" : "Line anchor"}: <bdi dir="ltr">{anchor.path}</bdi> · {anchor.side} {anchor.start} · {anchor.revision.headSha.slice(0, 8)}</p>}
+    {anchor && sameKey(anchor.key, overview.key) && <p className="cr-anchor" role="status">{anchorState(anchor, overview.key, overview.revision) === "outdated" ? "Outdated line anchor" : "Line anchor"}: <bdi dir="ltr">{anchor.path}</bdi> · {anchor.side} {anchor.start} · {anchor.commitSha.slice(0, 8)}</p>}
     <ChangesSession key={`${prKeyId(overview.key)}/${overview.revision.baseSha}/${overview.revision.headSha}/${overview.revision.baseRef}`} {...props} onAnchor={setAnchor} />
   </>;
 }
@@ -57,6 +57,7 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
   const last = lastPage?.result;
   const lastData = [...pages].reverse().find(p => p.result.state !== "unavailable")?.result;
   const files = useMemo(() => filePageRows(pages), [pages]);
+  const diffBaseSha = lastData && lastData.state !== "unavailable" ? lastData.value.diffBaseSha : undefined;
   const stopped = pageStopReason(pages);
   const load = async (cursor: string | null, replace = false) => {
     if (!replace && cursor !== null && stopped && !pages.some(p => p.cursor === cursor)) return;
@@ -104,12 +105,12 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
         <label><input type="checkbox" checked={highlight} onChange={e => setHighlight(e.target.checked)} />Highlight changes</label>
       </div>
       {missing > 0 && <p className="cr-patch-notice" role="status">Incomplete patch coverage · {missing} textual patches unavailable.</p>}
-      <p className="cr-revision">Base {overview.revision.baseSha.slice(0, 8)} → head {overview.revision.headSha.slice(0, 8)}{stale ? " · Overview read earlier" : ""}</p>
+      <p className="cr-revision">Diff base {diffBaseSha?.slice(0, 8) ?? "unavailable"} → head {overview.revision.headSha.slice(0, 8)} · Target {overview.revision.baseSha.slice(0, 8)}{stale ? " · Overview read earlier" : ""}</p>
       {pages.some(p => p.result.state === "stale") && <p role="status">Files read earlier. Anchors refer only to the revision shown.</p>}
       {last?.state === "unavailable" && <p role="alert">{unavailableText(last)} <button onClick={() => void load(lastPage?.cursor ?? null, files.length === 0)}>Retry files</button></p>}
       {last && last.state !== "ready" && last.state !== "unavailable" && <p role="status">This file page is {last.state}: {last.reason}. <button onClick={() => void load(lastPage?.cursor ?? null, pages.length === 1)}>Retry files</button></p>}
       {!files.length && !busy && last?.state === "ready" && <p>No changed files in this read.</p>}
-      {files.map(file => <section key={file.path} ref={el => { if (el) sections.current.set(file.path, el); else sections.current.delete(file.path); }} tabIndex={-1} className="cr-file-section" data-testid="cr-file-section" data-path={file.path} data-base-sha={overview.revision.baseSha} data-head-sha={overview.revision.headSha} data-old-path={file.previousPath ?? file.path}>
+      {files.map(file => <section key={file.path} ref={el => { if (el) sections.current.set(file.path, el); else sections.current.delete(file.path); }} tabIndex={-1} className="cr-file-section" data-testid="cr-file-section" data-path={file.path} data-base-sha={diffBaseSha} data-target-sha={overview.revision.baseSha} data-head-sha={overview.revision.headSha} data-old-path={file.previousPath ?? file.path}>
         <header className="cr-file-heading">
           <button type="button" aria-label={`${expanded.includes(file.path) ? "Collapse" : "Expand"} ${file.path}`} aria-expanded={expanded.includes(file.path)} onClick={() => expanded.includes(file.path) ? setExpanded(paths => paths.filter(p => p !== file.path)) : open(file.path)}>
             <span aria-hidden="true">{expanded.includes(file.path) ? "▾" : "▸"}</span><FileIcon path={file.path} /><bdi dir="ltr" title={file.path}>{file.path}</bdi>
@@ -119,7 +120,7 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
           <details className="cr-file-menu"><summary aria-label={`File options for ${file.path}`}>⋯</summary><div><button onClick={() => void bridge.invoke("clipboard:write", { text: file.path })}>Copy path</button>{prUrl(overview.locator) && <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open in GitHub</a>}</div></details>
         </header>
         {file.previousPath && <p className="cr-previous">Renamed from <bdi dir="ltr">{file.previousPath}</bdi></p>}
-        {expanded.includes(file.path) && <FilePatch key={file.path} file={file} overview={overview} reader={reader} wrap={wrap} highlight={highlight} onAnchor={onAnchor} />}
+        {expanded.includes(file.path) && <FilePatch key={file.path} file={file} diffBaseSha={diffBaseSha} overview={overview} reader={reader} wrap={wrap} highlight={highlight} onAnchor={onAnchor} />}
       </section>)}
       {busy && <p role="status">Loading remote files… <button onClick={() => { reader.cancel("files"); setBusy(false); }}>Cancel</button></p>}
       {!busy && next && !stopped && last?.state === "ready" && files.length < DISPLAY.files && <button onClick={() => void load(next)}>Load next 100 files</button>}
@@ -164,7 +165,7 @@ function FileTree({ files, selected, onSelect }: { files: PrFile[]; selected: st
   }}>{render(root)}</div>;
 }
 
-function FilePatch({ file, overview, reader, wrap, highlight, onAnchor }: { file: PrFile; overview: PrOverview; reader: Reader; wrap: boolean; highlight: boolean; onAnchor: (anchor: LineAnchor) => void }) {
+function FilePatch({ file, diffBaseSha, overview, reader, wrap, highlight, onAnchor }: { file: PrFile; diffBaseSha?: string; overview: PrOverview; reader: Reader; wrap: boolean; highlight: boolean; onAnchor: (anchor: LineAnchor) => void }) {
   const model = useMemo(() => parsePatch(file), [file]);
   const tokens = useMemo(() => highlightRows(model.hunks.flatMap(hunk => hunk.rows)), [model]);
   const textUsed = useRef(0);
@@ -174,7 +175,7 @@ function FilePatch({ file, overview, reader, wrap, highlight, onAnchor }: { file
   const reserved = useRef(0);
   const reserve = (n: number) => { if (reserved.current + n > DISPLAY.context) return false; reserved.current += n; setContextUsed(reserved.current); return true; };
   const release = (n: number) => { reserved.current -= n; setContextUsed(reserved.current); };
-  const line = (side: "base" | "head", number: number) => { const anchor = anchorFor(overview.key, overview.revision, file, side, number); if (anchor) onAnchor(anchor); };
+  const line = (side: "base" | "head", number: number) => { const anchor = anchorFor(overview.key, overview.revision, file, side, number, number, diffBaseSha); if (anchor) onAnchor(anchor); };
   if (model.state !== "text") return <p className="cr-patch-notice">{model.state === "binary" ? "No text diff · binary, empty or metadata-only change" : model.state === "provider" ? "Patch omitted by provider · code unavailable" : "Patch exceeds display limit · code unavailable"}</p>;
   return <div className="cr-patch" onKeyDown={event => {
     if (!(event.target instanceof HTMLButtonElement) || !event.target.classList.contains("line-number")) return;
@@ -228,7 +229,7 @@ function ContextFold({ file, overview, reader, oldStart, newStart, count, wrap, 
     const result = outcome.result;
     if (result.state !== "ready") { refund(); setError(result.state === "unavailable" ? unavailableText(result) : "Context is stale or incomplete; retry for this revision."); return; }
     const value = result.value;
-    if (!sameRevision(value.revision, overview.revision) || value.path !== file.path || value.side !== "head" || value.start !== window.start || value.lines.length > window.length) { refund(); setError("Context reply did not match the requested file and lines."); return; }
+    if (value.commitSha !== overview.revision.headSha || !sameRevision(value.revision, overview.revision) || value.path !== file.path || value.side !== "head" || value.start !== window.start || value.lines.length > window.length) { refund(); setError("Context reply did not match the requested file and lines."); return; }
     const characters = value.lines.reduce((sum, text) => sum + text.length, 0);
     if (!admitText(characters)) { refund(); setError("Context exceeds display text limit · requested lines were not displayed. Open in GitHub for full context."); return; }
     renderedCharacters.current += characters;

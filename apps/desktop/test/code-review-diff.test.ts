@@ -37,9 +37,17 @@ test("binary, provider omitted, oversized and truncated text remain distinguisha
   assert.ok(PATCH_LIMITS.characters < 3 * 1024 * 1024);
 });
 
+test("base anchors identify the proven merge-base commit and never substitute the target tip", () => {
+  const f = file("");
+  const mergeBase = "a".repeat(40);
+  const anchor = Reflect.apply(anchorFor, undefined, [R4.overview.key, R4.overview.revision, f, "base", 3, 3, mergeBase]);
+  assert.equal(anchor?.commitSha, mergeBase);
+  assert.equal(anchorFor(R4.overview.key, R4.overview.revision, f, "base", 3), null);
+});
+
 test("anchors retain renamed paths, side and exact revision; changed keys or heads are outdated", () => {
   const f = file("", { status: "renamed", previousPath: "old/空 name.ts" });
-  const a = anchorFor(R4.overview.key, R4.overview.revision, f, "base", 3, 5);
+  const a = anchorFor(R4.overview.key, R4.overview.revision, f, "base", 3, 5, R4.overview.revision.baseSha);
   assert.ok(a);
   assert.equal(a.path, "old/空 name.ts");
   assert.equal(anchorFor(R4.overview.key, R4.overview.revision, f, "head", 4)?.path, f.path);
@@ -60,7 +68,7 @@ test("R4 fixture patches preserve provider totals and valid line references", ()
     const m = parsePatch(f);
     assert.equal(m.complete, true, f.path);
     for (const h of m.hunks) for (const r of h.rows) {
-      if (r.oldLine !== null) assert.ok(anchorFor(R4.overview.key, R4.overview.revision, f, "base", r.oldLine));
+      if (r.oldLine !== null) assert.ok(anchorFor(R4.overview.key, R4.overview.revision, f, "base", r.oldLine, r.oldLine, R4.files.value.diffBaseSha));
       if (r.newLine !== null) assert.ok(anchorFor(R4.overview.key, R4.overview.revision, f, "head", r.newLine));
     }
   }

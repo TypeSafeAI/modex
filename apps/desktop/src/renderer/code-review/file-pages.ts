@@ -7,6 +7,10 @@ export interface FilePage { cursor: string | null; result: ReadResult<PrFiles> }
 
 /** Replace by cursor, then discard duplicate files and oversized payloads before saving private data. */
 export function retainFilePage(pages: readonly FilePage[], cursor: string | null, result: ReadResult<PrFiles>, replace = false): FilePage[] {
+  const existing = pages.find(page => page.result.state !== "unavailable")?.result;
+  if (!replace && result.state !== "unavailable" && existing && existing.state !== "unavailable" && existing.value.diffBaseSha !== result.value.diffBaseSha) {
+    result = { state: "unavailable", reason: "failed", fetchedAt: result.fetchedAt };
+  }
   const next = replace ? [] : [...pages];
   const index = next.findIndex(p => p.cursor === cursor);
   if (index >= 0) next[index] = { cursor, result };
@@ -30,7 +34,7 @@ export function retainFilePage(pages: readonly FilePage[], cursor: string | null
       }
       files.push(file);
     }
-    return { cursor: page.cursor, result: { ...read, value: { revision: read.value.revision, files } } };
+    return { cursor: page.cursor, result: { ...read, value: { revision: read.value.revision, diffBaseSha: read.value.diffBaseSha, files } } };
   });
 }
 

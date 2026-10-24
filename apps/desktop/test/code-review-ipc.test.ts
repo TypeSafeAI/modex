@@ -67,7 +67,7 @@ test("main's code-review:read handler is local-only and serves inbox, overview a
     assert.deepEqual(listed.map((f) => [f.path, f.patch.kind]), [["src/holds/move.ts", "text"], ["assets/shelf.png", "omitted"]]);
 
     const endpoints = fs.readFileSync(log, "utf8").trim().split("\n");
-    assert.ok(endpoints.every((e) => /^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?)?)$/.test(e)), endpoints.join("\n"));
+    assert.ok(endpoints.every((e) => /^repos\/example-org\/lending\/compare\/b{40}\.\.\.c{40}\?per_page=1&page=1$/.test(e) || /^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?)?)$/.test(e)), endpoints.join("\n"));
     assert.deepEqual(fs.readdirSync(dir).sort(), ["calls.log", "gh"], "nothing written but the fake's log");
   } finally {
     delete process.env.FAKE_GH_LOG;
