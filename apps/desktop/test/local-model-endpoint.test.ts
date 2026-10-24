@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { isLoopbackAddress, loopbackLookup, parseLocalEndpoint, localGet, type LocalGetFailure } from "../src/main/engine/local-models/endpoint-policy.js";
 
 /** LM-2 (#378) AC2: only explicitly configured same-machine HTTP(S) origins are reachable. */
@@ -119,4 +122,26 @@ test("an unreachable or non-JSON server is a typed failure, not a crash", async 
   assert.equal(await reason(localGet(e, "/x", { maxBytes: 1024, timeoutMs: 1000 })), "malformed");
   await s.close();
   assert.equal(await reason(localGet(e, "/x", { maxBytes: 1024, timeoutMs: 1000 })), "unavailable");
+});
+
+test("environment proxy settings never reroute a metadata read or its token", async () => {
+  // Node 24 sends http.request through HTTP_PROXY when NODE_USE_ENV_PROXY or --use-env-proxy is set.
+  const proxy = await server((_req, res) => res.end(JSON.stringify({ via: "proxy" })));
+  const target = await server((_req, res) => res.end(JSON.stringify({ via: "target" })));
+  const policy = path.resolve(import.meta.dirname, "../src/main/engine/local-models/endpoint-policy.js");
+  const child = `import { localGet, parseLocalEndpoint } from ${JSON.stringify(policy)};
+    const parsed = parseLocalEndpoint(process.argv[1]);
+    console.log(JSON.stringify(await localGet(parsed.endpoint, "/v1/models", { maxBytes: 1024, timeoutMs: 2000, token: "proxy-probe-token" })));`;
+  const env: NodeJS.ProcessEnv = { ...process.env, HTTP_PROXY: proxy.origin, http_proxy: proxy.origin, HTTPS_PROXY: proxy.origin, NO_PROXY: "", no_proxy: "" };
+  delete env.NODE_OPTIONS;
+  const modes: [string, string[], NodeJS.ProcessEnv][] = [["NODE_USE_ENV_PROXY", [], { ...env, NODE_USE_ENV_PROXY: "1" }]];
+  if (process.allowedNodeEnvironmentFlags.has("--use-env-proxy")) modes.push(["--use-env-proxy", ["--use-env-proxy"], env]);
+  try {
+    for (const [name, flags, childEnv] of modes) {
+      const { stdout } = await promisify(execFile)(process.execPath, [...flags, "--input-type=module", "-e", child, target.origin], { env: childEnv });
+      assert.deepEqual(JSON.parse(stdout), { via: "target" }, name);
+    }
+    assert.deepEqual(proxy.hits, [], "the proxy never saw a request or the token");
+    assert.deepEqual(target.hits, modes.map(() => "GET /v1/models"));
+  } finally { await Promise.all([proxy.close(), target.close()]); }
 });
