@@ -2,7 +2,7 @@ import { test, expect, _electron as electron } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { appDir, seedHome } from "./support.js";
+import { appDir, seedHome, tid } from "./support.js";
 import { FAKE_GH } from "../test/fixtures/code-review-gh.js";
 import type { CodeReviewRequest, Inbox, PrOverview } from "../src/shared/code-review.js";
 
@@ -50,12 +50,31 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
     expect(files?.result).toMatchObject({ state: "ready", value: { files: [
       { path: "src/holds/move.ts", patch: { kind: "text" } }, { path: "assets/shelf.png", patch: { kind: "omitted" } },
     ] } });
+    // CR-5: drive the populated Changes pane through the production read path too.
+    await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
+    await page.reload();
+    await tid(page, "rail-code-review").click();
+    await page.locator('[data-testid="code-review-row"][data-pr="example-org/lending#73"]').click();
+    await tid(page, "code-review-tab-changes").click();
+    await expect(tid(page, "cr-file-section")).toHaveCount(2);
+    await expect(tid(page, "cr-file-section").first()).toHaveAttribute("data-head-sha", revision.headSha);
+    await expect(tid(page, "cr-file-section").last()).toContainText("No text diff");
+    await tid(page, "cr-file-section").first().getByRole("button", { name: /Expand.*unchanged lines below/ }).click();
+    await expect(page.locator('[data-old-line="2"][data-new-line="4"]')).toContainText("remote unchanged four");
     const foreign = await invoke({ op: "overview", requestId: "foreign", key: { ...lending.key, account: "2002" } });
     expect(foreign?.result).toMatchObject({ state: "unavailable", reason: "signed-out" });
     await expect(invoke({ op: "overview", requestId: "invalid", key: { ...lending.key, number: 0 } })).rejects.toThrow(/Invalid Code Review request/);
     const endpoints = fs.readFileSync(calls, "utf8").trim().split("\n");
     expect(endpoints).toContain("repos/example-org/lending/pulls/73/files?per_page=100&page=1");
-    expect(endpoints.every(endpoint => /^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?)?)$/.test(endpoint))).toBe(true);
+    expect(endpoints).toContain(`repos/example-org/lending/contents/src/holds/move.ts?ref=${revision.headSha}`);
+    // CR-4 starts these read-only requests when the populated overview mounts. This fixture
+    // intentionally returns 404 for their data; permit only the exact scoped endpoints.
+    const overviewReads = new Set([
+      `repos/example-org/lending/commits/${revision.headSha}/check-runs?per_page=100&page=1`,
+      "repos/example-org/lending/issues/73/timeline?per_page=100&page=1",
+      "repos/example-org/lending/pulls?state=open&per_page=100&page=1",
+    ]);
+    expect(endpoints.filter(endpoint => !overviewReads.has(endpoint) && !/^repos\/example-org\/lending\/compare\/b{40}\.\.\.c{40}\?per_page=1&page=1$/.test(endpoint) && !/^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?|\/contents\/src\/holds\/move\.ts\?ref=c{40})?)$/.test(endpoint))).toEqual([]);
     expect({ head: git("rev-parse", "HEAD"), branch: git("symbolic-ref", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") }).toEqual(before);
   } finally {
     await app.close();

@@ -57,6 +57,7 @@ class FakeGitHub {
   checkRuns = new Map<string, unknown[]>();
   statuses = new Map<string, unknown[]>();
   contents = new Map<string, string>();
+  mergeBases = new Map<string, string>();
   search: Record<"authored" | "review-requested", { total?: number; incomplete?: boolean; items: { repo: Repo; number: number }[] }> = {
     authored: { items: [{ repo: LENDING, number: 73 }, { repo: LENDING, number: 74 }] },
     "review-requested": { items: [{ repo: FIELD, number: 73 }] },
@@ -132,6 +133,10 @@ class FakeGitHub {
     const parts = path!.split("/").map(decodeURIComponent);
     const repo = this.repos.get(`${parts[1]}/${parts[2]}`);
     if (!repo) return this.missing();
+    if (parts[3] === "compare") {
+      const [base, head] = parts[4]!.split("...");
+      return this.json(call, { base_commit: { sha: base }, merge_base_commit: { sha: this.mergeBases.get(`${base}...${head}`) ?? base } });
+    }
     if (parts[3] === "deployments") return this.json(call, []);
     if (parts.length === 3) return this.json(call, repo);
     if (parts[3] === "pulls" && parts.length === 4) {
@@ -504,6 +509,44 @@ test("AC4: a head that moved is never presented as the revision that was asked f
   assert.equal(moved.result.state === "stale" && moved.result.reason, "head-changed");
 });
 
+test("patch provenance and base context use the merge base when the target branch has advanced", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  const mergeBase = sha("a");
+  github.mergeBases.set(`${revision.baseSha}...${revision.headSha}`, mergeBase);
+  github.files.set("7301#73", [{ filename: "file.txt", status: "modified", additions: 1, deletions: 1, changes: 2, patch: "@@ -1 +1 @@\n-original\n+proposed" }]);
+  github.contents.set(`7301@${revision.baseSha}:file.txt`, "unrelated target edit\n");
+  github.contents.set(`7301@${mergeBase}:file.txt`, "original\n");
+  github.contents.set(`7301@${revision.headSha}:file.txt`, "proposed\n");
+  const files = value<{ diffBaseSha: string; revision: PrRevision }>(await read({ op: "files", key, revision, cursor: null }));
+  assert.equal(files.diffBaseSha, mergeBase);
+  assert.deepEqual(files.revision, revision, "target tip stays in freshness identity");
+  const context = value<{ lines: string[]; commitSha: string }>(await read({ op: "context", key, revision, side: "base", path: "file.txt", start: 1, end: 1 }));
+  assert.deepEqual(context.lines, ["original"]);
+  assert.equal(context.commitSha, mergeBase);
+  assert.equal(github.calls.some(c => c.endpoint.includes(`/contents/file.txt?ref=${revision.baseSha}`)), false);
+});
+
+test("unproven merge-base identity refuses files and base context without reading target-tip content", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  await read({ op: "overview", key });
+  for (const answer of [
+    { base_commit: { sha: sha("f") }, merge_base_commit: { sha: sha("a") } },
+    { base_commit: { sha: revision.baseSha } },
+    { base_commit: { sha: revision.baseSha }, merge_base_commit: { sha: "not-a-commit" } },
+  ]) {
+    github.overrides = [{ pattern: /\/compare\//, answer: { kind: "http", status: 200, headers: {}, body: Buffer.from(JSON.stringify(answer)) } }];
+    assert.equal(reason(await read({ op: "files", key, revision, cursor: null })), "failed");
+    assert.equal(reason(await read({ op: "context", key, revision, side: "base", path: "file.txt", start: 1, end: 1 })), "failed");
+  }
+  assert.equal(github.calls.some(c => c.endpoint.includes("/contents/")), false);
+});
+
 test("context lines come from the asked side of a revision main has seen, with every path segment encoded", async () => {
   const { github, read, prime } = setup();
   await prime();
@@ -517,7 +560,7 @@ test("context lines come from the asked side of a revision main has seen, with e
   github.contents.set(`7301@${revision.headSha}:docs`, "<dir>");
   await read({ op: "overview", key });
   assert.deepEqual(value(await read({ op: "context", key, revision, side: "head", path, start: 2, end: 3 })),
-    { revision, side: "head", path, start: 2, lines: ["two", "three"], total: 4 });
+    { revision, commitSha: revision.headSha, side: "head", path, start: 2, lines: ["two", "three"], total: 4 });
   assert.deepEqual(value<{ lines: string[] }>(await read({ op: "context", key, revision, side: "base", path, start: 1, end: 9 })).lines, ["base one", "base two"]);
   const call = github.calls.filter((c) => c.endpoint.includes("/contents/")).at(-1)!;
   assert.equal(call.endpoint, `repos/example-org/lending/contents/docs/holds%20%26%20queues/50%25%20%231%3F.md?ref=${revision.baseSha}`);

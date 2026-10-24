@@ -23,8 +23,14 @@ const routes = {
     { filename: "assets/shelf.png", status: "added", additions: 0, deletions: 0, changes: 0 },
   ],
 };
+if (endpoint === "repos/example-org/lending/contents/src/holds/move.ts?ref=" + sha("c")) {
+  process.stdout.write("HTTP/2.0 200 OK\nContent-Type: application/vnd.github.raw\r\n\r\nb\nc\nd\nremote unchanged four\nremote unchanged five\n");
+  process.exit(0);
+}
 let body;
-if (endpoint.startsWith("search/issues?")) {
+if (/^repos\/example-org\/(lending|field-guide)\/compare\/[a-f0-9]{40}\.\.\.[a-f0-9]{40}\?per_page=1&page=1$/.test(endpoint)) {
+  body = { base_commit: { sha: endpoint.split("/compare/")[1].split("...")[0] }, merge_base_commit: { sha: sha("b") } };
+} else if (endpoint.startsWith("search/issues?")) {
   const q = new URLSearchParams(endpoint.split("?")[1]).get("q");
   const items = q.includes("review-requested:@me") ? [row(FIELD, "Move the field notes index")] : [row(LENDING, "Lend a hold to another branch")];
   body = { total_count: items.length, incomplete_results: false, items };

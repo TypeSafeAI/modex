@@ -1,0 +1,88 @@
+{
+  "measuredAt": "2026-10-22T19:09:00.365Z",
+  "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+  "machine": {
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "memoryGiB": 128,
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.6.0",
+    "loadAverage": [
+      31.4873046875,
+      43.8310546875,
+      38.58447265625
+    ]
+  },
+  "longTranscript": {
+    "turns": 200,
+    "items": 1400,
+    "savedBytes": 3001221,
+    "firstOpenMs": 129,
+    "repeatOpenMs": [
+      56,
+      58,
+      57,
+      59
+    ],
+    "repeatMedianMs": 58,
+    "rendererLongTasks": {
+      "first": {
+        "count": 1,
+        "totalMs": 108,
+        "maxMs": 108
+      },
+      "repeats": [
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        }
+      ]
+    },
+    "threadItemsIpcMs": [
+      5,
+      6,
+      5
+    ],
+    "selectedAtLaunch": false,
+    "renderedItems": 1400,
+    "threadEventsOnOpen": {
+      "thread": 1
+    }
+  },
+  "logStream": {
+    "loggedBytes": 3145728,
+    "deltas": 48,
+    "deltaSpacingMs": 10,
+    "sentToWindow": {
+      "bytes": 663894,
+      "events": 56,
+      "largestEventBytes": 262260,
+      "largestOutputBytes": 262144
+    },
+    "mainStreamMs": 838,
+    "mainCpuMs": 219,
+    "sendToAnswerShownMs": 1883,
+    "rendererLongTasks": {
+      "count": 0,
+      "totalMs": 0,
+      "maxMs": 0
+    }
+  }
+}

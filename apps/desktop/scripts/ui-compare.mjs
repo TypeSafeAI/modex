@@ -6,14 +6,22 @@
 //
 //   pnpm run ui:capture                # writes test-results/ui/*.png + manifest.json
 //   pnpm run ui:compare ~/refs/codex   # writes test-results/ui/compare.html
+//
+// `--captures <dir>` reads another capture folder with the same manifest shape, such as the Code Review
+// journey's (e2e/code-review-journey.spec.ts writes test-results/ui-code-review/, states R1, R4, …):
+//
+//   pnpm run ui:compare --captures test-results/ui-code-review ~/refs/code-review
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const uiDir = path.join(appDir, "test-results", "ui");
+const args = process.argv.slice(2);
+const at = args.indexOf("--captures");
+const captures = at >= 0 ? args.splice(at, 2)[1] : null;
+const uiDir = captures ? path.resolve(appDir, captures) : path.join(appDir, "test-results", "ui");
 const manifestPath = path.join(uiDir, "manifest.json");
-const refDir = process.argv[2] ? path.resolve(process.argv[2]) : process.env.MODEX_UI_REFERENCE ? path.resolve(process.env.MODEX_UI_REFERENCE) : null;
+const refDir = args[0] ? path.resolve(args[0]) : process.env.MODEX_UI_REFERENCE ? path.resolve(process.env.MODEX_UI_REFERENCE) : null;
 
 if (!fs.existsSync(manifestPath)) {
   console.error(`No captures at ${uiDir}. Run \`pnpm run ui:capture\` first.`);

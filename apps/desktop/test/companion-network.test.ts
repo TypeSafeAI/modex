@@ -171,6 +171,52 @@ test("an occupied port on a new interface does not move or disconnect the existi
   }
 });
 
+test("revoking access during a DHCP rebind rejects the old token on the replacement listener", { skip: !lan, timeout: 10000 }, async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-net-revoke-"));
+  let addresses = ["127.0.0.1"];
+  const server = new CompanionServer(home, source, () => addresses, () => () => {});
+  let agent: https.Agent | undefined;
+  let release = () => {};
+  let refreshing: Promise<void> | undefined;
+  try {
+    const original = decode((await server.start()).pairingUri!);
+    agent = pinnedAgent(home, original.fingerprint);
+    assert.equal((await request(original.url, original.token, agent)).code, 200);
+    let entered!: () => void;
+    const bound = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const listen = https.Server.prototype.listen;
+    t.mock.method(https.Server.prototype, "listen", function (this: https.Server, port: number, host: string, ready: () => void) {
+      return Reflect.apply(listen, this, [port, host, () => {
+        entered();
+        void gate.then(ready);
+      }]);
+    });
+    // The old interface disappears; pause the real replacement socket before publication.
+    addresses = [lan!];
+    refreshing = server.refreshNetwork();
+    await bound;
+    server.resetAccess();
+    release();
+    await refreshing;
+    const replacement = decode(server.status().pairingUri!);
+    assert.notEqual(replacement.token, original.token);
+    assert.equal(replacement.fingerprint, original.fingerprint);
+    assert.equal(new URL(replacement.url).hostname, lan);
+    await assert.rejects(request(original.url, original.token, agent));
+    assert.equal((await request(replacement.url, original.token, agent)).code, 401);
+    assert.equal((await request(replacement.url, replacement.token, agent)).code, 200);
+    await server.refreshNetwork();
+    assert.equal((await request(replacement.url, original.token, agent)).code, 401);
+  } finally {
+    release();
+    await refreshing?.catch(() => {});
+    agent?.destroy();
+    await server.stop();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 for (const shutdown of ["stop", "dispose"] as const) {
   test(`${shutdown} wins while adding another listener`, { skip: !lan }, async (t) => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-net-race-"));

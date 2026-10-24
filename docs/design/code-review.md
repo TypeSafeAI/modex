@@ -306,8 +306,11 @@ accessing the user's GitHub login.
 
 ## References and calibration
 
-The four references stay on Val's Mac, at `~/Desktop`. The Desktop is not a permanent home, so if they
-move, update this table and #320. Each was checked by SHA-256 on 2026-10-19. Times are the file names'
+The four references were kept on Val's Mac, at `~/Desktop`. **On 2026-10-22 Val confirmed the originals are
+gone.** They are not at that path, and Spotlight finds no file by these names. The table below remains the
+record of what they were: size, scale, checksums and measured geometry. No capture can now be compared with
+an original. Fidelity work measures against this page's numbers until Val re-captures references. Any new
+capture needs its own row and checksums, and must not be read as one of these. Each was checked by SHA-256 on 2026-10-19. Times are the file names'
 local times (UTC−5), converted.
 
 | ID | File | Pixels | SHA-256 | Device px per CSS px | CSS size | Offset from R2 | Captured | State |
@@ -593,3 +596,17 @@ Descriptions and comment bodies use the existing inert Markdown renderer. No ava
 The title uses 22px/29px and prose uses the existing 14px token with a 24px pitch. At reference width the main column has a 156px left inset and 40px gap to the 305px sidebar, with a 166px trailing margin. The sidebar scrolls independently. At narrow widths, details follow activity in one readable scroll region. The Changes summary opens the existing Changes tab. Check rows expand natively, show elapsed time at the read timestamp and expose all checks on request. Comment menus offer Copy link only. Edit, reviewer and comment callbacks are explicit `OverviewActions` slots and remain unavailable through `capabilities()` until CR-7 connects them. The PR-question composer remains CR-6's; content reserves bottom clearance for that later host.
 
 These are implementation decisions within the accepted contract, not original-reference or human accessibility acceptance. The original R1/R2 images were absent from the manifest paths on 2026-10-23; synthetic normal, narrow, stale and error captures are separate evidence.
+
+CR-8's [acceptance matrix](../reviews/2026-10-22-cr8-acceptance-matrix.md) maps every control and slice criterion to its evidence and says which gates are still open.
+
+## CR-7 preparation: local drafts and intents
+
+The preparatory `src/main/engine/code-review-actions/intents.ts` module is main-only and unwired. It adds no bridge command, GitHub mutation transport, UI control or capability. Authorization through the person's gh login versus a GitHub App, and scope decisions 2–4 above, remain unanswered on #326. The existing `code-review:read` channel remains GET-only. CR-6 isolation gates and C82 are unchanged.
+
+`ReviewActions` keys drafts by the accepted account/repository/PR identity, full base/head revision, target branch and draft kind. Version comparison rejects late editor responses; outcomes never erase a draft or overwrite a newer edit. Inline draft anchors have CR-5's inspected key/revision/path/side/start/end shape and reuse the accepted request validator, without importing or integrating its unmerged implementation. Matching a revision does not establish that an arbitrary line is part of a valid provider patch: future integration must validate against accepted CR-5 evidence, including the actual diff-base commit for old-side coordinates.
+
+Preparation snapshots operation, exact payload and draft version. A process-local confirmation is bound to its main document session. Dispatch returns at most one permit only after the existing `AttachmentRecoveryFile` adapter durably records `dispatched`. An explicit cancellation can reject a prepared preview after navigation or a head change; it cannot cancel a dispatched or unknown operation. Fresh main-owned identity, permission, session and provider-policy validation remains mandatory in a future adapter; the context's Boolean is a model input, not server authority.
+
+Receipts distinguish prepared, dispatched, confirmed, rejected and unknown. Startup rejects unused preparations and converts interrupted dispatches to unknown without executing anything. Unknown blocks another intent for that PR, even at a new head. Absence or ambiguity in a readback never proves a request was unsent. Exact-match assertions must carry the intended scope and an attempt-specific digest; a remote ID already assigned to another operation of the same kind on that PR cannot resolve another attempt. This is a contract for a future trusted reconciliation adapter, not proof that current GitHub responses can supply that correlation. Repeated text alone is insufficient.
+
+The fixed local file is bounded to 2 MiB and 128 drafts/128 receipts, with a 64 Ki-character text bound and up to 100 inline comments. Capacity refuses new records rather than evicting duplicate protection. There is no retention/deletion UI yet. Files use the existing private recovery-file permissions and fail-closed validation/durability checks. One main-process owner is required; this module does not provide a multiprocess dispatch lease or server exactly-once execution. Windows durable writes remain unsupported by the reused adapter. See the [preparation evidence](../reviews/2026-10-23-cr7-intents.md) for scope, request counts and validation.
