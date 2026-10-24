@@ -228,11 +228,12 @@ LM-1 session proposes for AGENTS.md; LM-3 execution binding and LM-4 UI.
 ## LM-1 adoption, 2026-10-24
 
 Branch `lm2-adopt` (session-owned worktree) is stacked on `lm2-integrate` at
-`a5da8292b87b89b142854c8c0dba31e692ef2d63`. It merges LM-1's branch at
-`91deb281ad36f522636d9b6e2fe55105b74d47ae`, the LM-1 session's identity reconciliation for #377.
-When this was written, that commit existed only in the LM-1 session's local branch, not yet on
-#397 (which was at `c30633d`), so `lm2-adopt` was not pushed. #377 is not accepted, so nothing here
-may land before it.
+`a5da8292b87b89b142854c8c0dba31e692ef2d63`. It merges the LM-1 session's identity reconciliation
+for #377: first its commit `91deb281ad36f522636d9b6e2fe55105b74d47ae`, then the published head of
+[#400](https://github.com/TypeSafeAI/modex/pull/400) (`lm1-handoff` at
+`cb7ca6c30a3aa68012187aaf508cc552c84445d3`). That head descends from `91deb28` with identical
+contract files, and brings in `main` up to `6c40547`, including LM-1's producer from #397
+(`ffb9e1d`). #377 is not accepted, so nothing here may land before it, and #400 must land first.
 
 - **Shared identity.** The LM-1 session's consumer patch (`docs/reviews/2026-10-24-lm1/lm2-identity.patch`,
   written against `954cd5b`) applied unchanged on top of the hardening. `shared/local-connections.ts`
@@ -267,5 +268,15 @@ Environment: macOS 27.0.1 arm64, Node v24.22.0, pnpm 10.34.5, Electron 44.4.5, P
 |---|---|
 | `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 42/42 passed: LM-1 contract 9, endpoint 7, connections 12, discovery 13, IPC 1 |
 | `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1898 tests, 1882 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
+| `pnpm typecheck` | exit 0 |
+| `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
+
+After merging #400's head the code is at `1cf5ca2643d44ce9aec4a3dca5a3a70426c0983f`. Same
+environment:
+
+| Command | Result |
+|---|---|
+| `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 42/42 passed |
+| `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1907 tests, 1891 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
 | `pnpm typecheck` | exit 0 |
 | `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
