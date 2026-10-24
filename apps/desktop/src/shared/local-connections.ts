@@ -5,7 +5,7 @@
  * `LocalModelRef`): the same id on two connections, or on two revisions of one, is two targets.
  */
 
-import type { ConnectionRef, LocalModelRef, LocalMetadataRuntime } from "./local-models.js";
+import type { Capability, ConnectionRef, LocalModelRef, LocalMetadataRuntime } from "./local-models.js";
 export type { ConnectionRef, LocalModelRef } from "./local-models.js";
 
 /** Metadata adapter. "responses" covers llama.cpp, vLLM and other servers listing `/v1/models`. */
@@ -46,8 +46,11 @@ export interface LocalModelDescriptor {
   kind: ModelKind;
   installed: "yes" | "unknown";
   loaded: "yes" | "no" | "unknown";
-  /** Runtime-reported metadata only. Coding qualification is a separate, tested fact (#377). */
-  advertised: { tools: Advertised; vision: Advertised; reasoning: Advertised };
+  /**
+   * Runtime-reported metadata per #377 capability, "unknown" where the runtime says nothing. Never a
+   * test result: coding qualification is separate, tested evidence (`capabilityStatus`).
+   */
+  advertised: Record<Capability, Advertised>;
   /** The runtime's advertised maximum context, not an effective or tested one. */
   advertisedContext: number | null;
   /**

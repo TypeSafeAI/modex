@@ -40,7 +40,9 @@ const CONTROL = /[\x00-\x1f\x7f]/;
 type Partial = Omit<LocalModelDescriptor, "model" | "source" | "selectable" | "unselectableReason">;
 interface Listing { entries: { id: string; facts: Partial }[]; truncated: boolean }
 
-const UNKNOWN: Partial = { kind: "unknown", installed: "unknown", loaded: "unknown", advertised: { tools: "unknown", vision: "unknown", reasoning: "unknown" }, advertisedContext: null, locality: "unverified" };
+/** One entry per #377 capability; no runtime here advertises structured outputs, resume or cancellation. */
+const NOT_SAID: LocalModelDescriptor["advertised"] = { tools: "unknown", images: "unknown", structuredOutputs: "unknown", reasoning: "unknown", resume: "unknown", cancellation: "unknown" };
+const UNKNOWN: Partial = { kind: "unknown", installed: "unknown", loaded: "unknown", advertised: NOT_SAID, advertisedContext: null, locality: "unverified" };
 
 const record = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null);
 const validId = (v: unknown): v is string => typeof v === "string" && v.trim() !== "" && v.length <= MAX_ID && !CONTROL.test(v);
@@ -82,7 +84,7 @@ function lmStudioFacts(i: Record<string, unknown>): Partial {
   return {
     kind, installed: "yes",
     loaded: i.state === "loaded" ? "yes" : i.state === "not-loaded" ? "no" : "unknown",
-    advertised: { tools: has(caps, "tool_use"), vision: type === "vlm" ? "advertised" : type === "llm" ? "not-advertised" : "unknown", reasoning: "unknown" },
+    advertised: { ...NOT_SAID, tools: has(caps, "tool_use"), images: type === "vlm" ? "advertised" : type === "llm" ? "not-advertised" : "unknown" },
     advertisedContext: positive(i.max_context_length), locality: "unverified",
   };
 }
@@ -134,7 +136,7 @@ async function ollamaListing(get: (path: string) => Promise<unknown>, show: (mod
       entry.facts = {
         ...entry.facts,
         kind: caps.includes("completion") ? "generative" : caps.includes("embedding") ? "embedding" : caps.length ? "other" : "unknown",
-        advertised: { tools: has(caps, "tools"), vision: has(caps, "vision"), reasoning: has(caps, "thinking") },
+        advertised: { ...NOT_SAID, tools: has(caps, "tools"), images: has(caps, "vision"), reasoning: has(caps, "thinking") },
         advertisedContext: positive(context),
       };
     }
