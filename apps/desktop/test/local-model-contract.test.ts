@@ -81,3 +81,22 @@ test("qualification binds effective settings values, not just a caller-supplied 
     { ...configuration.effectiveSettings, toolsetRevision: "tools-2" },
   ]) assert.equal(capabilityStatus("tools", { ...configuration, effectiveSettings: settings }, [evidence]), "unknown");
 });
+
+test("metadata adapters map to connection profiles without inventing runtime identity", async () => {
+  const contracts = await import("../src/shared/local-models.js");
+  assert.equal(contracts.metadataRuntimeForProfile("ollama"), "ollama");
+  assert.equal(contracts.metadataRuntimeForProfile("lmstudio"), "lmstudio");
+  for (const profile of ["llamacpp", "vllm", "custom"] as const) assert.equal(contracts.metadataRuntimeForProfile(profile), "responses");
+  assert.equal(contracts.connectionProfileForRuntime("ollama"), "ollama");
+  assert.equal(contracts.connectionProfileForRuntime("lmstudio"), "lmstudio");
+  assert.equal(contracts.connectionProfileForRuntime("responses"), "custom");
+});
+
+test("discovered and manual model references carry schema 1 and snapshot exact identity", async () => {
+  const contracts = await import("../src/shared/local-models.js");
+  const connection = { id: "local-a", revision: 3 };
+  const model = contracts.localModelRef(connection, " org/Arbitrary Model:Q4 ");
+  connection.revision = 4;
+  assert.deepEqual(model, { schema: 1, connection: { id: "local-a", revision: 3 }, id: " org/Arbitrary Model:Q4 " });
+  assert.equal(modelKey(model), '[1,"local-a",3," org/Arbitrary Model:Q4 "]');
+});

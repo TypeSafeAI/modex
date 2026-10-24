@@ -1,0 +1,35 @@
+{
+  "cwd": "${STRATA_RESOURCES}/control",
+  "tokenizer": "${STRATA_ASSETS}/packs/iq3_s/tokenizer",
+  "model_name": "qwen3.8-flash-next-iq3_s",
+  "lib_dirs": [],
+  "env": {
+    "STRATA_METAL_STREAM": "0"
+  },
+  "exe": "${STRATA_RESOURCES}/engine-bundle/0.1.47-macos-arm64-metal/strata",
+  "args": [
+    "--pack",
+    "${STRATA_ASSETS}/packs/iq3_s",
+    "--native",
+    "${STRATA_ASSETS}/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+    "--ple-gguf",
+    "${STRATA_ASSETS}/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+    "--expert-profile",
+    "${STRATA_RESOURCES}/control/data/expert-profile.bin",
+    "--expert-cache",
+    "64",
+    "--prefill",
+    "auto",
+    "--spec",
+    "2",
+    "--mtp",
+    "${STRATA_ASSETS}/mtp/rt",
+    "--max-context",
+    "32768",
+    "--mmap-experts",
+    "--vram-reserve-mib",
+    "2048"
+  ],
+  "log": "${LM1_PROBE_DIR}/strata-engine.log",
+  "port": 18501
+}
