@@ -1,13 +1,15 @@
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { sameKey, sameRevision, validateRequest, type PrKey, type PrRevision } from "../../../shared/code-review.js";
+import { sameKey, sameRevision, validateRequest, type LineAnchor, type PrKey, type PrRevision } from "../../../shared/code-review.js";
 import { AttachmentRecoveryFile, recoveryJSON, type RecoveryFileSnapshot } from "../attachment-recovery-file.js";
 
 /** Main-only preparation, deliberately not wired to IPC or a mutation transport.
  * A future adapter must obtain this context from fresh trusted identity/policy
  * checks. A caller-supplied `permitted` flag is not provider authorization. */
 export interface ReviewContext { account: string; session: string; permitted: boolean; key: PrKey; revision: PrRevision }
-export interface ReviewAnchor { key: PrKey; revision: PrRevision; path: string; side: "base" | "head"; start: number; end: number }
+/** CR-5's anchor as produced. A base-side `commitSha` is bound into the digest; the
+ * write adapter must still match it to the fresh read's `diffBaseSha` before dispatch. */
+export type ReviewAnchor = LineAnchor;
 export interface InlineComment { anchor: ReviewAnchor; body: string }
 export type DraftKind = "comment" | "review";
 export type ReviewOperation = { kind: "comment" } | { kind: "review"; event: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" }
@@ -26,6 +28,7 @@ export type ReviewReconciliation = { kind: "absent" | "ambiguous" }
   | { kind: "matched"; key: PrKey; revision: PrRevision; digest: string; remoteId: string };
 interface Document { schema: 1; drafts: ReviewDraft[]; intents: ReviewIntent[] }
 const BYTES = 2 * 1024 * 1024, MAX_RECORDS = 128, TEXT = 64 * 1024;
+const SHA = /^[0-9a-f]{40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const failure = () => new Error("Review action data is invalid; existing records were preserved.");
 const copy = <T>(value: T): T => structuredClone(value);
@@ -57,16 +60,17 @@ function operation(value: unknown): value is ReviewOperation {
 function payload(scope: { key: PrKey; revision: PrRevision }, kind: DraftKind, body: unknown, comments: unknown): boolean {
   if (!validText(body) || !Array.isArray(comments) || comments.length > 100 || (kind === "comment" && comments.length > 0)) return false;
   return comments.every(c => {
-    if (!shape(c, ["anchor", "body"]) || !validText(c.body, false) || !shape(c.anchor, ["key", "revision", "path", "side", "start", "end"])) return false;
-    const a = c.anchor as unknown as ReviewAnchor;
-    return target(a) && scoped(a, scope) && validateRequest({ op: "context", requestId: "anchor", ...a }) !== null;
+    if (!shape(c, ["anchor", "body"]) || !validText(c.body, false) || !shape(c.anchor, ["key", "revision", "commitSha", "path", "side", "start", "end"])) return false;
+    const { commitSha, ...a } = c.anchor as unknown as ReviewAnchor;
+    return typeof commitSha === "string" && SHA.test(commitSha) && (a.side !== "head" || commitSha === a.revision.headSha)
+      && target(a) && scoped(a, scope) && validateRequest({ op: "context", requestId: "anchor", ...a }) !== null;
   });
 }
 function digest(intent: Pick<ReviewIntent, "id" | "key" | "revision" | "operation" | "payload" | "draftVersion">): string {
   // Canonical fields/order, independent of the persisted record's key order.
   const k = intent.key, r = intent.revision, op = intent.operation;
   const operation = op.kind === "comment" ? { kind: op.kind } : op.kind === "merge" ? { kind: op.kind, method: op.method } : { kind: op.kind, event: op.event };
-  const anchor = (a: ReviewAnchor) => ({ key: { account: a.key.account, host: a.key.host, repoId: a.key.repoId, number: a.key.number }, revision: { baseRef: a.revision.baseRef, baseSha: a.revision.baseSha, headSha: a.revision.headSha }, path: a.path, side: a.side, start: a.start, end: a.end });
+  const anchor = (a: ReviewAnchor) => ({ key: { account: a.key.account, host: a.key.host, repoId: a.key.repoId, number: a.key.number }, revision: { baseRef: a.revision.baseRef, baseSha: a.revision.baseSha, headSha: a.revision.headSha }, commitSha: a.commitSha, path: a.path, side: a.side, start: a.start, end: a.end });
   return createHash("sha256").update(JSON.stringify({ id: intent.id, key: { account: k.account, host: k.host, repoId: k.repoId, number: k.number },
     revision: { baseRef: r.baseRef, baseSha: r.baseSha, headSha: r.headSha }, operation,
     payload: intent.payload && { body: intent.payload.body, comments: intent.payload.comments.map(c => ({ anchor: anchor(c.anchor), body: c.body })) }, draftVersion: intent.draftVersion })).digest("hex");

@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { ReviewActions, type ReviewContext } from "../src/main/engine/code-review-actions/intents.js";
+import { anchorFor } from "../src/renderer/code-review/patch.js";
+import type { PrFile } from "../src/shared/code-review.js";
 
 const nativeTest = process.platform === "win32" ? test.skip : test;
 
@@ -122,12 +124,37 @@ nativeTest("rejected and unknown outcomes keep drafts; only an exact correlated 
 
 nativeTest("inline drafts refuse stale or cross-account anchors and malformed repository paths", t => {
   const { actions, ctx } = fixture(t);
-  const anchor = { key: ctx.key, revision: ctx.revision, path: "src/example.ts", side: "head" as const, start: 4, end: 4 };
+  const anchor = { key: ctx.key, revision: ctx.revision, commitSha: ctx.revision.headSha, path: "src/example.ts", side: "head" as const, start: 4, end: 4 };
   assert(actions.saveDraft(ctx, "review", 0, "body", [{ anchor, body: "line comment" }]));
   assert.equal(actions.saveDraft(ctx, "review", 1, "bad", [{ anchor: { ...anchor, revision: { ...ctx.revision, headSha: "d".repeat(40) } }, body: "x" }]), null);
   assert.equal(actions.saveDraft(ctx, "review", 1, "bad", [{ anchor: { ...anchor, key: { ...ctx.key, account: "2002" } }, body: "x" }]), null);
   assert.equal(actions.saveDraft(ctx, "review", 1, "bad", [{ anchor: { ...anchor, path: "../escape" }, body: "x" }]), null);
   assert.equal(actions.saveDraft(ctx, "comment", 0, "bad", [{ anchor, body: "x" }]), null);
+});
+
+nativeTest("CR-5 line anchors are accepted as produced, with their diff commit bound into the intent", t => {
+  const { actions, ctx } = fixture(t);
+  const file: PrFile = { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", additions: 1, deletions: 1, patch: { kind: "text", patch: "@@ -2,2 +4 @@\n-a\n-b\n+c\n" } };
+  const mergeBase = "e".repeat(40);
+  const head = anchorFor(ctx.key, ctx.revision, file, "head", 4)!, base = anchorFor(ctx.key, ctx.revision, file, "base", 2, 3, mergeBase)!;
+  assert.equal(base.commitSha, mergeBase);
+  const saved = actions.saveDraft(ctx, "review", 0, "", [{ anchor: head, body: "head line" }, { anchor: base, body: "base lines" }]);
+  assert.deepEqual(saved?.comments.map(c => c.anchor), [head, base]);
+  const prepared = actions.prepare(ctx, review, 1)!;
+  assert.deepEqual(prepared.intent.payload?.comments.map(c => c.anchor.commitSha), [ctx.revision.headSha, mergeBase]);
+  actions.cancel(ctx, prepared.intent.id);
+  const moved = actions.saveDraft(ctx, "review", 1, "", [{ anchor: head, body: "head line" }, { anchor: { ...base, commitSha: "f".repeat(40) }, body: "base lines" }])!;
+  assert.notEqual(actions.prepare(ctx, review, moved.version)!.intent.digest, prepared.intent.digest);
+});
+
+nativeTest("anchors without a provable diff commit, or naming another head, are refused", t => {
+  const { actions, ctx } = fixture(t);
+  const head = { key: ctx.key, revision: ctx.revision, commitSha: ctx.revision.headSha, path: "src/example.ts", side: "head" as const, start: 4, end: 4 };
+  const { commitSha: _, ...legacy } = head;
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: legacy as never, body: "x" }]), null);
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: { ...head, commitSha: "d".repeat(40) }, body: "x" }]), null);
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: { ...head, side: "base", commitSha: "NOT-A-SHA" }, body: "x" }]), null);
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: { ...head, extra: true } as never, body: "x" }]), null);
 });
 
 nativeTest("one outstanding intent per PR prevents new IDs from bypassing ambiguous writes", t => {
