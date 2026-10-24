@@ -166,7 +166,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build; acceptance review remains open, and downstream execution must not assume support beyond that combination. See [the contract and source map](local-models.md).
+- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build; acceptance review remains open, and downstream execution must not assume support beyond that combination. The shared identity owner and metadata-runtime mapping are defined, with a fixture-verified adoption patch for LM-2 #398 and a sanitized Strata launch configuration in the receipt. LM-2 adoption, Val's network-policy sign-off and Gate A acceptance remain open; Ollama/LM Studio probes require separate explicit authorization. See [the contract and source map](local-models.md).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
