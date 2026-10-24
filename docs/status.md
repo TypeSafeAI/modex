@@ -192,7 +192,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   repeats the saved token is rejected before IPC. Hardening on `lm2-integrate`, stacked on it: an
   unreadable or newer profiles file is never overwritten, the saved token can't be saved into a
   name or model ID, leftover token entries are swept, an unreadable token never becomes an
-  unauthenticated read, and a whole discovery has one deadline.
+  unauthenticated read, and a whole discovery has one deadline. `lm2-adopt`, stacked on that,
+  adopts LM-1's shared identity and capability names; it waits for #377.
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and

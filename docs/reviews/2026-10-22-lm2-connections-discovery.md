@@ -224,3 +224,48 @@ Still open: #377 acceptance and adopting its shared identity (the LM-1 session's
 not yet published on #397); listing-only reads against a real Ollama and LM Studio, which need
 Val's authorization; Val's sign-off on the loopback metadata-discovery network wording that the
 LM-1 session proposes for AGENTS.md; LM-3 execution binding and LM-4 UI.
+
+## LM-1 adoption, 2026-10-24
+
+Branch `lm2-adopt` (session-owned worktree) is stacked on `lm2-integrate` at
+`a5da8292b87b89b142854c8c0dba31e692ef2d63`. It merges LM-1's branch at
+`91deb281ad36f522636d9b6e2fe55105b74d47ae`, the LM-1 session's identity reconciliation for #377.
+When this was written, that commit existed only in the LM-1 session's local branch, not yet on
+#397 (which was at `c30633d`), so `lm2-adopt` was not pushed. #377 is not accepted, so nothing here
+may land before it.
+
+- **Shared identity.** The LM-1 session's consumer patch (`docs/reviews/2026-10-24-lm1/lm2-identity.patch`,
+  written against `954cd5b`) applied unchanged on top of the hardening. `shared/local-connections.ts`
+  imports and re-exports `ConnectionRef` and schema-1 `LocalModelRef` from `shared/local-models.ts`,
+  and `LocalRuntime` is an alias for `LocalMetadataRuntime`. Discovered and manual descriptors use
+  `localModelRef`, so each carries `schema: 1` and a copied revision; IDs are not normalized. Failed
+  first: the Ollama fixture's `schema: 1` assertion failed on the merged tree before the source
+  half was applied.
+- **One capability vocabulary.** `advertised` was `{ tools, vision, reasoning }` beside #377's
+  `Capability`. It is now `Record<Capability, Advertised>`. `vision` becomes `images` from the
+  same runtime facts. `structuredOutputs`, `resume` and `cancellation` are always `unknown`, because
+  no listing advertises them. These values are still metadata, never qualification. Failed first in
+  the Ollama, LM Studio and Responses fixtures.
+- **No proxy routing** (regression only). LM-1's proposed AGENTS.md wording says discovery refuses
+  proxy routing. Node 24 can send `http.request` through `HTTP_PROXY` when `NODE_USE_ENV_PROXY` or
+  `--use-env-proxy` is set, and the bearer token would reach that proxy before the loopback check on
+  the response. A child process with each setting and a recording proxy shows that the read and its
+  token go straight to the loopback target, and the proxy sees nothing. It passed first on Node
+  v24.22.0 because each request uses its own agent (`agent: false`). Removing that from the compiled
+  policy made it fail, so it would catch a regression.
+
+Not adopted, deliberately: LM-1's `ConnectionHealth` and the main-only `LocalConnection` projection
+have no consumer yet; LM-3/LM-4 can derive them from discovery reasons and the stored profile.
+Explicit llama.cpp/vLLM presets (the many-to-one profile mapping) belong to LM-6 (#382); every
+generic listing stays `responses`/`custom`.
+
+Results on `121170801d504c96ac57a48600f1379c0da1dbdb` (code; the commit adding this section changes
+documentation only). Because LM-1's branch is on `main` at `70123b9`, the merge also brings in #394.
+Environment: macOS 27.0.1 arm64, Node v24.22.0, pnpm 10.34.5, Electron 44.4.5, Playwright 1.63.0.
+
+| Command | Result |
+|---|---|
+| `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 42/42 passed: LM-1 contract 9, endpoint 7, connections 12, discovery 13, IPC 1 |
+| `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1898 tests, 1882 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
+| `pnpm typecheck` | exit 0 |
+| `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
