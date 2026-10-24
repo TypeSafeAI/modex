@@ -15,8 +15,12 @@ import { parseLocalEndpoint, type LocalEndpoint } from "./endpoint-policy.js";
  * Deleting a profile keeps a tombstone so history still reads, but nothing resolves through it.
  *
  * Each saved token gets its own secret entry and the profile names the entry it uses. A change
- * writes any new token first, then the profile, and only then removes the superseded entry, so a
- * failed write leaves the old revision resolving exactly the token it was saved with.
+ * writes any new token first, then the profile, and only then removes entries no profile names, so
+ * a failed write leaves the old revision resolving exactly the token it was saved with, and a token
+ * left behind by a crash or a failed clear goes with the next successful save.
+ *
+ * A file Modex can't read is reported and never overwritten, and an entry this build can't validate
+ * (hand-edited, or written by a newer Modex) is written back exactly as found but never resolved.
  */
 
 interface StoredConnection {
@@ -37,6 +41,8 @@ interface StoredConnection {
 interface ConnectionsFile {
   version: 1;
   connections: StoredConnection[];
+  /** Entries this build can't validate: kept as found, never listed or resolved. */
+  foreign: unknown[];
 }
 
 /** Main-only: what discovery and execution need to reach one revision of a profile. */
@@ -45,6 +51,8 @@ export interface ResolvedConnection {
   runtime: LocalRuntime;
   endpoint: LocalEndpoint;
   token: string | null;
+  /** A token is saved for this revision but can't be read now; never send a request without it. */
+  credentialUnavailable: boolean;
   manualModels: string[];
 }
 
@@ -94,6 +102,13 @@ function token(value: unknown): string {
   return value.trim();
 }
 
+/** The token never goes into the plain-text profile: not in its name, not in a model ID. */
+function refuseCopies(secret: string | null, name: string, manualModels: string[]): void {
+  if (secret && [name, ...manualModels].some(value => value.includes(secret))) throw new Error("A connection's name and model IDs can't contain its token.");
+}
+
+const unreadable = () => new Error("Modex can't read its local connections file, so it left the file unchanged.");
+
 function endpointFor(rt: LocalRuntime, url: unknown): LocalEndpoint {
   const parsed = parseLocalEndpoint(url, { allowV1: rt === "responses" });
   if (!parsed.ok) throw new Error(parsed.reason);
@@ -127,25 +142,36 @@ export class LocalConnectionStore {
     this.file = path.join(home, "app", "local-connections.json");
   }
 
+  /** Only a missing file reads as empty; anything else Modex can't read throws rather than being replaced. */
   private read(): ConnectionsFile {
+    let raw: unknown;
     try {
-      const raw = JSON.parse(fs.readFileSync(this.file, "utf8")) as Partial<ConnectionsFile>;
-      const seen = new Set<string>();
-      const connections = (Array.isArray(raw.connections) ? raw.connections : []).map(validStored).filter((c): c is StoredConnection => {
-        if (!c || seen.has(c.id)) return false;
-        seen.add(c.id);
-        return true;
-      });
-      return { version: 1, connections };
-    } catch {
-      return { version: 1, connections: [] };
+      raw = JSON.parse(fs.readFileSync(this.file, "utf8"));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, connections: [], foreign: [] };
+      throw unreadable();
     }
+    const file = raw as Partial<ConnectionsFile> | null;
+    if (!file || typeof file !== "object" || file.version !== 1 || !Array.isArray(file.connections)) throw unreadable();
+    const seen = new Set<string>();
+    const connections: StoredConnection[] = [];
+    const foreign: unknown[] = [];
+    for (const entry of file.connections) {
+      const c = validStored(entry);
+      if (c && !seen.has(c.id)) { seen.add(c.id); connections.push(c); } else foreign.push(entry);
+    }
+    return { version: 1, connections, foreign };
+  }
+
+  /** Reads for main's own requests: a file Modex can't read resolves nothing. */
+  private readOrNull(): ConnectionsFile | null {
+    try { return this.read(); } catch { return null; }
   }
 
   private write(data: ConnectionsFile): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify({ version: 1, connections: [...data.connections, ...data.foreign] }, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, this.file);
   }
 
@@ -166,17 +192,29 @@ export class LocalConnectionStore {
   }
 
   /**
-   * Makes `data` durable, then drops the entry it no longer uses. If the write fails, the new entry
-   * is dropped instead and the stored profile, still naming its old entry, is left as it was.
+   * Makes `data` durable, then drops every token entry it no longer names. If the write fails, the
+   * new entry is dropped instead and the stored profile, still naming its old entry, is left as it was.
    */
-  private commit(data: ConnectionsFile, added: SecretName | null, superseded: SecretName | null): void {
+  private commit(data: ConnectionsFile, added: SecretName | null): void {
     try {
       this.write(data);
     } catch (err) {
       if (added) this.forget(added);
       throw err;
     }
-    if (superseded && superseded !== added) this.forget(superseded);
+    this.sweep(data);
+  }
+
+  /** Best effort, like `forget`: removes local-connection entries no profile, live or foreign, names. */
+  private sweep(data: ConnectionsFile): void {
+    const named = new Set<string>(data.connections.flatMap(c => (c.credential ? [c.credential] : [])));
+    for (const entry of data.foreign) {
+      const ref = entry && typeof entry === "object" ? (entry as Record<string, unknown>).credential : undefined;
+      if (typeof ref === "string") named.add(ref);
+    }
+    let names: SecretName[];
+    try { names = this.secrets.names(); } catch { return; }
+    for (const name of names) if (name.startsWith("local_connection:") && !named.has(name)) this.forget(name);
   }
 
   /** Best effort: a leftover entry is unreachable because no profile names it. */
@@ -195,6 +233,7 @@ export class LocalConnectionStore {
     const name = label(input.label);
     const manualModels = modelIds(input.manualModels);
     const secret = input.token === undefined || input.token === null ? null : token(input.token);
+    refuseCopies(secret, name, manualModels);
     const data = this.read();
     if (data.connections.filter(c => !c.deletedAt).length >= MAX_CONNECTIONS) throw new Error(`Modex keeps at most ${MAX_CONNECTIONS} local connections.`);
     const at = this.now().toISOString();
@@ -202,7 +241,7 @@ export class LocalConnectionStore {
     const credential = secret ? this.saveToken(id, secret) : null;
     const stored: StoredConnection = { id, label: name, runtime: rt, origin: endpoint.origin, basePath: endpoint.basePath, revision: 1, manualModels, credential, createdAt: at, updatedAt: at };
     data.connections.push(stored);
-    this.commit(data, credential, null);
+    this.commit(data, credential);
     return this.view(stored);
   }
 
@@ -223,6 +262,15 @@ export class LocalConnectionStore {
     // A token stays with the address it was saved for unless the person enters it again.
     const clearsToken = secret === null || (moved && secret === undefined && hadToken);
     const targetChanged = rt !== current.runtime || moved || typeof secret === "string" || (clearsToken && hadToken);
+    const previousToken = current.credential ? this.secrets.get(current.credential) : null;
+    // Clearing or rotating a profile does not revoke its old token at the server.
+    // If it cannot be read, refuse new metadata that cannot be checked for copies.
+    if (current.credential && previousToken === null && (patch.label !== undefined || patch.manualModels !== undefined)) {
+      throw new Error("Saved local connection credential is unavailable. Unlock it before editing its label or model IDs.");
+    }
+    refuseCopies(previousToken, name, manualModels);
+    const kept = typeof secret === "string" ? secret : clearsToken ? null : previousToken;
+    refuseCopies(kept, name, manualModels);
     const added = typeof secret === "string" ? this.saveToken(id, secret) : null;
     const credential = added ?? (clearsToken ? null : current.credential);
     const next: StoredConnection = {
@@ -230,7 +278,7 @@ export class LocalConnectionStore {
       revision: targetChanged ? current.revision + 1 : current.revision, updatedAt: this.now().toISOString(),
     };
     data.connections = data.connections.map(c => (c.id === id ? next : c));
-    this.commit(data, added, credential === current.credential ? null : current.credential);
+    this.commit(data, added);
     return this.view(next);
   }
 
@@ -240,23 +288,21 @@ export class LocalConnectionStore {
     if (!current || current.deletedAt) throw new Error("That connection no longer exists.");
     if (current.revision !== expected) throw new Error("That connection changed. Review it and try again.");
     data.connections = data.connections.map(c => (c.id === id ? { ...c, manualModels: [], credential: null, deletedAt: this.now().toISOString() } : c));
-    this.commit(data, null, current.credential);
+    this.commit(data, null);
   }
 
   /** Exactly this revision of a live profile, or null: never a newer revision, never a replacement. */
   resolve(ref: ConnectionRef): ResolvedConnection | null {
-    const c = this.read().connections.find(x => x.id === ref.id);
+    const c = this.readOrNull()?.connections.find(x => x.id === ref.id);
     if (!c || c.deletedAt || c.revision !== ref.revision) return null;
     const endpoint = endpointFor(c.runtime, `${c.origin}${c.basePath}`);
     const token = c.credential ? this.secrets.get(c.credential) : null;
-    // A configured credential must never silently turn into anonymous access.
-    if (c.credential && token === null) throw new Error("Saved local connection credential is unavailable. Re-enter it before retrying.");
-    return { ref: { id: c.id, revision: c.revision }, runtime: c.runtime, endpoint, token, manualModels: [...c.manualModels] };
+    return { ref: { id: c.id, revision: c.revision }, runtime: c.runtime, endpoint, token, credentialUnavailable: c.credential !== null && token === null, manualModels: [...c.manualModels] };
   }
 
   /** What history may show about a connection, deleted or not. */
   provenance(id: string): { label: string; runtime: LocalRuntime; origin: string; deleted: boolean } | null {
-    const c = this.read().connections.find(x => x.id === id);
+    const c = this.readOrNull()?.connections.find(x => x.id === id);
     return c ? { label: c.label, runtime: c.runtime, origin: c.origin, deleted: Boolean(c.deletedAt) } : null;
   }
 }

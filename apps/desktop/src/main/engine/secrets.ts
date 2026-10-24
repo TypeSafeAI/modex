@@ -59,6 +59,11 @@ export class SecretStore {
     fs.chmodSync(this.file, 0o600);
   }
 
+  /** Which entries exist, never their values. */
+  names(): SecretName[] {
+    return Object.keys(this.read().entries) as SecretName[];
+  }
+
   has(name: SecretName): boolean {
     return Boolean(this.read().entries[name]);
   }

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SecretStore, noCipher, testCipher } from "../src/main/engine/secrets.js";
 import { LocalConnectionStore } from "../src/main/engine/local-models/connections.js";
+import type { LocalConnectionInput } from "../src/shared/local-connections.js";
 import { tmpdir } from "./helpers.js";
 
 /** LM-2 (#378): main-owned profiles; tokens live only in the encrypted secret store (AC3, AC6). */
@@ -117,7 +118,94 @@ test("a corrupt or foreign profiles file is ignored entry by entry, not trusted"
   const store = new LocalConnectionStore(home, secrets);
   assert.deepEqual(store.list().map(c => [c.label, c.revision]), [["ok", 3]]);
   fs.writeFileSync(file, "{not json");
-  assert.deepEqual(new LocalConnectionStore(home, secrets).list(), []);
+  assert.throws(() => new LocalConnectionStore(home, secrets).list(), /can't read/i, "an unreadable file is reported, not shown as empty");
+});
+
+test("an unreadable or newer profiles file is never overwritten, and nothing resolves through it", () => {
+  const { home, secrets, store } = setup();
+  const c = store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN });
+  const files = ["{not json", JSON.stringify({ version: 1, connections: "nope" }), JSON.stringify({ version: 2, connections: [], profiles: [{ id: c.id }] })];
+  for (const body of files) {
+    fs.writeFileSync(store.file, body);
+    const reopened = new LocalConnectionStore(home, secrets);
+    for (const [name, attempt] of [
+      ["list", () => reopened.list()],
+      ["create", () => reopened.create({ label: "new", runtime: "ollama", url: "http://127.0.0.1:11434" })],
+      ["update", () => reopened.update(c.id, 1, { label: "renamed" })],
+      ["delete", () => reopened.delete(c.id, 1)],
+    ] as const) assert.throws(attempt, /can't read/i, `${name} refuses ${body}`);
+    assert.equal(reopened.resolve({ id: c.id, revision: 1 }), null, "nothing resolves through a file Modex can't read");
+    assert.equal(reopened.provenance(c.id), null);
+    assert.equal(fs.readFileSync(store.file, "utf8"), body, "the file is left exactly as found");
+    assert.equal(credentialKeys(secrets, c.id).length, 1, "and its token is kept for recovery");
+  }
+});
+
+test("entries this build can't read survive later edits, and are never trusted", () => {
+  const { home, secrets } = setup();
+  const file = path.join(home, "app", "local-connections.json");
+  const ok = { id: "lc_00000000-0000-4000-8000-000000000001", label: "ok", runtime: "ollama", origin: "http://127.0.0.1:11434", basePath: "", revision: 1, manualModels: [], credential: null, createdAt: "t", updatedAt: "t" };
+  const newer = { id: "lc_00000000-0000-4000-8000-000000000002", label: "from a newer Modex", runtime: "future-runtime", origin: "http://127.0.0.1:9", basePath: "", revision: 4, manualModels: [], credential: "local_connection:lc_00000000-0000-4000-8000-000000000002:00000000-0000-4000-8000-000000000009", createdAt: "t", updatedAt: "t" };
+  const remote = { ...ok, id: "lc_00000000-0000-4000-8000-000000000003", label: "remote", origin: "http://10.0.0.1:11434" };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ version: 1, connections: [ok, newer, remote] }));
+  secrets.set(newer.credential as `local_connection:${string}`, "newer-token");
+  const store = new LocalConnectionStore(home, secrets);
+  store.update(ok.id, 1, { label: "renamed" });
+  store.create({ label: "added", runtime: "responses", url: "http://127.0.0.1:8000" });
+  const saved = (JSON.parse(fs.readFileSync(file, "utf8")) as { connections: { id: string }[] }).connections;
+  assert.deepEqual(saved.find(e => e.id === newer.id), newer, "kept exactly as written");
+  assert.deepEqual(saved.find(e => e.id === remote.id), remote);
+  assert.deepEqual(store.list().map(c => c.label), ["renamed", "added"], "and never listed");
+  assert.equal(store.resolve({ id: newer.id, revision: 4 }), null, "or resolved");
+  assert.equal(store.resolve({ id: remote.id, revision: 1 }), null);
+  assert.equal(secrets.get(newer.credential as `local_connection:${string}`), "newer-token", "the token it names is not swept");
+});
+
+test("the saved token is never copied into the profiles file or a view through the label or a manual ID", () => {
+  const { home, store } = setup();
+  const file = path.join(home, "app", "local-connections.json");
+  const base = { label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN } as const;
+  const copies: LocalConnectionInput[] = [{ ...base, label: `LM ${TOKEN}` }, { ...base, manualModels: ["org/ok", `org/${TOKEN}:Q4`] }, { ...base, manualModels: [TOKEN] }];
+  copies.forEach((input, i) => assert.throws(() => store.create(input), err => /token/i.test(String(err)) && !String(err).includes(TOKEN), `copy ${i}`));
+  assert.equal(fs.existsSync(file), false, "refused before anything is written");
+  const c = store.create({ ...base, manualModels: ["org/kept-model"] });
+  const patches: [string, Partial<LocalConnectionInput>][] = [
+    ["label", { label: `x${TOKEN}` }],
+    ["manual ID", { manualModels: ["org/kept-model", TOKEN] }],
+    ["new token already inside a saved manual ID", { token: "kept-model" }],
+    ["new token already inside the saved label", { token: "LM" }],
+  ];
+  for (const [name, patch] of patches) assert.throws(() => store.update(c.id, 1, patch), /token/i, name);
+  // Changing the local address does not revoke the token at its original server.
+  assert.throws(() => store.update(c.id, 1, { url: "http://127.0.0.1:4321", manualModels: ["org/kept-model", `org/${TOKEN}`] }), /token/i);
+  const moved = store.update(c.id, 1, { url: "http://127.0.0.1:4321", manualModels: ["org/kept-model"] });
+  assert.equal(moved.credential.present, false);
+  store.update(c.id, moved.revision, { manualModels: ["org/kept-model"] });
+  const again = store.update(c.id, moved.revision, { token: TOKEN });
+  assert.equal(again.credential.present, true);
+  const everything = [fs.readFileSync(file, "utf8"), JSON.stringify(store.list()), JSON.stringify(again)].join("\n");
+  assert.equal(everything.includes(TOKEN), false, "no plaintext token on disk or in a view");
+});
+
+test("token entries no profile names are removed by the next successful save; other secrets are untouched", () => {
+  const { secrets, store } = setup();
+  secrets.set("typesafe_api_key", "ts-cloud-key-NEVER");
+  const c = store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN });
+  // A crash between saving a token and writing its profile leaves an entry nothing names.
+  secrets.set(`local_connection:${c.id}:00000000-0000-4000-8000-000000000000`, "orphaned-token");
+  // A deletion whose token clear fails still deletes, but the token stays behind.
+  const d = store.create({ label: "D", runtime: "lmstudio", url: "http://127.0.0.1:4321", token: "doomed-token" });
+  const clear = mock.method(secrets, "clear", () => { throw Object.assign(new Error("EIO"), { code: "EIO" }); });
+  try { store.delete(d.id, 1); } finally { clear.mock.restore(); }
+  assert.equal(store.resolve({ id: d.id, revision: 1 }), null);
+  assert.equal(credentialKeys(secrets, d.id).length, 1, "left behind by the failed clear");
+
+  store.update(c.id, 1, { label: "renamed" });
+  assert.equal(credentialKeys(secrets, c.id).length, 1, "only the entry revision 1 names is kept");
+  assert.equal(store.resolve({ id: c.id, revision: 1 })?.token, TOKEN);
+  assert.deepEqual(credentialKeys(secrets, d.id), [], "the deleted connection's token is gone");
+  assert.equal(secrets.get("typesafe_api_key"), "ts-cloud-key-NEVER", "a cloud credential is never touched");
 });
 
 /** Every secret entry belonging to one connection, whatever its credential version. */
@@ -169,4 +257,27 @@ test("a failed create leaves neither a profile nor its token behind", () => {
   try { assert.throws(() => store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN }), /EIO/); } finally { restore(); }
   assert.deepEqual(store.list(), []);
   assert.equal(fs.existsSync(secrets.file) ? credentialKeys(secrets, "").length : 0, 0);
+});
+
+for (const locked of [false, true]) test(`credential copies are refused across edits and token removal when ${locked ? "locked" : "readable"}`, () => {
+  const home = tmpdir("modex-lm-copies-");
+  let available = true;
+  const secrets = new SecretStore(home, { ...testCipher, available: () => available });
+  const store = new LocalConnectionStore(home, secrets);
+  const c = store.create({ label: "protected", runtime: "responses", url: "http://127.0.0.1:8000", token: TOKEN });
+  const before = fs.readFileSync(store.file, "utf8");
+  available = !locked;
+  const patches: Partial<LocalConnectionInput>[] = [
+    { label: TOKEN }, { manualModels: [TOKEN] },
+    { manualModels: [TOKEN], token: null },
+    { label: TOKEN, url: "http://127.0.0.1:8001" },
+    { manualModels: [TOKEN], token: "replacement-token" },
+  ];
+  for (const patch of patches) {
+    assert.throws(() => store.update(c.id, c.revision, patch), err => /credential|token/i.test(String(err)) && !String(err).includes(TOKEN));
+    assert.equal(fs.readFileSync(store.file, "utf8"), before, "refusal preserves the exact profile bytes");
+    assert.equal(JSON.stringify(store.list()).includes(TOKEN), false);
+  }
+  const cleared = store.update(c.id, c.revision, { token: null });
+  assert.equal(cleared.credential.present, false, "credential-only recovery remains available");
 });
