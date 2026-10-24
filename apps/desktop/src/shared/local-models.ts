@@ -9,11 +9,28 @@ export interface LocalModelRef {
   /** Exact runtime-served identifier: never trim, case-fold, split or infer a brand. */
   readonly id: string;
 }
+/** Metadata protocol only; this is neither a harness nor a compatibility claim. */
+export type LocalMetadataRuntime = "ollama" | "lmstudio" | "responses";
+export type LocalConnectionProfile = "ollama" | "lmstudio" | "llamacpp" | "vllm" | "custom";
+
+export function metadataRuntimeForProfile(profile: LocalConnectionProfile): LocalMetadataRuntime {
+  return profile === "ollama" || profile === "lmstudio" ? profile : "responses";
+}
+
+/** A generic listing never establishes which server implementation is behind it. */
+export function connectionProfileForRuntime(runtime: LocalMetadataRuntime): LocalConnectionProfile {
+  return runtime === "responses" ? "custom" : runtime;
+}
+
+/** Main validates the connection and exact ID before constructing a reference. */
+export function localModelRef(connection: ConnectionRef, id: string): LocalModelRef {
+  return { schema: 1, connection: { id: connection.id, revision: connection.revision }, id };
+}
 export interface LocalConnection {
   readonly schema: 1;
   readonly ref: ConnectionRef;
   readonly label: string;
-  readonly profile: "ollama" | "lmstudio" | "llamacpp" | "vllm" | "custom";
+  readonly profile: LocalConnectionProfile;
   /** Validated by main in LM-2; no credentials, query, fragment or non-loopback destination. */
   readonly endpoint: string;
   readonly wire: "responses";
