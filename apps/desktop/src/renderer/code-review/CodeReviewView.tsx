@@ -14,6 +14,7 @@ import { isPinned, loadPins, togglePin, type Pin } from "./pins.js";
 import { additions, deletions, unavailableText } from "./text.js";
 import { InboxPane } from "./Inbox";
 import { rowsOf, titleOf, type GroupPages, type OpenPr } from "./model.js";
+import type { ChangesViews } from "./PrChanges";
 import { PrPane } from "./PrPane";
 import "./code-review.css";
 
@@ -45,6 +46,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
   const [connection, setConnection] = useState<ReadResult<CodeReviewConnection> | null>(null);
   const account = connected(connection);
   const accountRef = useRef<CodeReviewAccount | null>(null);
+  const changesViews = useRef<ChangesViews>(new Map());
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [inbox, setInbox] = useState<ReadResult<Inbox> | null>(null);
   const [pages, setPages] = useState<GroupPages>({});
@@ -77,6 +79,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
     if (next?.id === accountRef.current?.id) return;
     // Another account, or none: nothing asked under the old one may land, and none of its PRs stay open.
     reader.cancelAll();
+    changesViews.current.clear();
     accountRef.current = next;
     setBusy(new Set());
     setInbox(null); setPages({}); setPrs({}); setViews({}); setHistory(EMPTY_HISTORY); setResolveError(null);
@@ -314,7 +317,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
           <Icon name="pull-request" size={20} />
           <p>{account ? "Choose a pull request from the inbox, or paste a link to one." : "Pull requests appear here once GitHub CLI is signed in."}</p>
         </div>}
-        {selected && panes.map((pane) => <PrPane key={pane} pane={pane} pr={selected} keyId={selectedId!} changesWidth={changesWidth} treeWidth={treeWidth}
+        {selected && panes.map((pane) => <PrPane key={pane} pane={pane} changesViews={changesViews.current} pr={selected} keyId={selectedId!} changesWidth={changesWidth} treeWidth={treeWidth}
           busy={busy.has(`overview:${selectedId}`)} pinned={pinned} caps={caps} onPin={pin} onRetry={() => void readOverview(selected)}
           onShowChanges={() => { setView(v => showTab(v, "changes")); focusTab("changes"); }} onActivityPage={(cursor) => void readActivity(selected, cursor)} contextBusy={busy} onTreeResize={(w) => setLayout({ codeReviewTree: w })} onTreeReset={() => setLayout({ codeReviewTree: undefined })} />)}
         {split && <PanelResizeHandle side="sidebar" className="cr-split-resizer" label="Resize the pull request pane" width={splitWidth} min={SPLIT.overviewMin} max={Math.max(SPLIT.overviewMin, width - 1 - SPLIT.changesMin)}

@@ -61,6 +61,20 @@ MODEX_HOME=/tmp/modex-voiceover/home npx electron .
 | B6 | Stop a running turn (A7) | Record whether "Stopped." is announced on its own or only when you reach it. It's plain text, so expect only when you reach it. | |
 | B7 | The composer | A text field named "Message", then the buttons **Plan, Auto and backend**, **Read only**, **Attach files**, **Scripted mock**, and **Send** (dimmed until there is text) | |
 
+## C. Markdown (CF-4 / #277, part of this same #281 gate)
+
+Use the updated seed and select **Markdown review** in the sidebar. It uses `markdown-fixture.json`, also used by the automated keyboard and reference-capture tests. Use a 900×600 window with Review open to make the table and code overflow. Repeat in Graphite, Jev and OpenCoven. Enable macOS Reduce Motion for C3. Record the actual build; these steps require the CF-4 closeout changes, not just #342/#352.
+
+| # | Do | Expect / record | Pass? Notes |
+| --- | --- | --- | --- |
+| C1 | With VoiceOver off, Tab from Review link through the reply, then Shift-Tab back | Order: Review link → table scroll region → Evidence link → Copy ts code → ts code scroll region → End link. Every stop has a visible ring. Disabled task checkboxes are skipped. | |
+| C2 | At the table and code scroll regions, use Left/Right arrows. At Copy, press Return | Overflow content scrolls within its box. Copy keeps focus, copies the exact code, and starts no tool or approval. | |
+| C3 | With Reduce Motion enabled, repeat C1/C2, then switch threads and return | No animated Markdown transitions; focus and scrolling remain usable. Record any unexpected motion. | |
+| C4 | With VoiceOver on, navigate the heading, formatted paragraph, table, quote, nested/task lists, code and links | Heading and links have meaningful names. Interact with the table and verify File/Result/Detail/Owner/Next action/Evidence headers and their cells are understandable. Record actual announcements and navigation order, including disabled checked/unchecked tasks. | |
+| C5 | Navigate and interact with the table and code scroll regions; activate Copy ts code | Regions are named Markdown table and ts code. Overflow is reachable with VoiceOver. Copy announces Copied ts code and leaves the reader at the control. Record actual wording and any trapped or skipped content. | |
+
+These rows remain unverified until Val records the human result or explicitly accepts a known limit/deferral on #281. Automated keyboard results do not fill the human result cells.
+
 ## Record
 
 - **Reviewer:**

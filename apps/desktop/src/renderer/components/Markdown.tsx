@@ -150,7 +150,7 @@ function block(node: RootContent, key: number, ctx: Context): ReactNode {
         <tr key={i}>{r.children.map((cell, c) => <Cell key={c} style={align[c] ? { textAlign: align[c]! } : undefined}>{inline(cell.children, ctx)}</Cell>)}</tr>
       );
       return (
-        <div key={key} className="md-table">
+        <div key={key} className="md-table" tabIndex={0} role="region" aria-label="Markdown table">
           <table>
             {head && <thead>{row(head, 0, "th")}</thead>}
             {body.length > 0 && <tbody>{body.map((r, i) => row(r, i, "td"))}</tbody>}

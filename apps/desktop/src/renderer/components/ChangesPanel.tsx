@@ -1,3 +1,5 @@
+import { Diff, FileIcon } from "./Diff";
+export { Diff, FileIcon } from "./Diff";
 import { SecretInput } from "../streamer";
 import { useEffect, useRef, useState } from "react";
 import type { ChangesSnapshot, Thread } from "../../shared/types";
@@ -93,40 +95,7 @@ export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: 
   </section>;
 }
 
-export function FileIcon({ path }: { path: string }) {
-  return /\.(jsonl?|[cm]?[jt]sx?)$/.test(path) ? <span className="file-code-icon" aria-hidden="true">{"{}"}</span> : <Icon name="file" size={15} />;
-}
-
 export function FileGroup({ folder, children }: { folder: string; children: React.ReactNode }) {
   if (!folder) return <div>{children}</div>;
   return <details className="review-folder" open><summary><Icon name="chevron-down" size={12} /><span>{folder}</span><i className="folder-change-dot" aria-hidden="true" /></summary>{children}</details>;
-}
-
-/** Gutter numbers follow each hunk, including removed lines; headers never masquerade as code. */
-export function Diff({ text, wrap = true, highlight = true, onExpand }: { text: string; wrap?: boolean; highlight?: boolean; onExpand?: () => void }) {
-  if (!text) return <p className="hint pad">No textual diff.</p>;
-  let oldLine = 0, newLine = 0, end = 0, inHunk = false;
-  return <div className={`review-code${wrap ? " wrap" : ""}${highlight ? " highlight" : ""}`} data-testid="diff">
-    {text.split("\n").map((line, i) => {
-      const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-      if (hunk) {
-        oldLine = Number(hunk[1]); newLine = Number(hunk[2]); inHunk = true;
-        const hidden = Math.max(0, newLine - end - 1);
-        return hidden ? <button key={i} className="diff-fold" onClick={onExpand}><Icon name="chevron-up" size={14} /><span>{hidden} unmodified lines</span></button> : null;
-      }
-      if (!inHunk) return /^(Binary files|GIT binary patch|rename from|rename to)/.test(line) ? <div className="hint pad" key={i}>{line}</div> : null;
-      if (line.startsWith("\\")) return <div key={i} className="diff-no-newline">{line.slice(2)}</div>;
-      if (!/^[ +\-]/.test(line)) return null;
-      const kind = line[0] === "+" ? "add" : line[0] === "-" ? "del" : "context";
-      const number = kind === "del" ? oldLine++ : newLine++;
-      if (kind === "context") oldLine++;
-      if (kind !== "del") end = number;
-      return <div key={i} className={`review-code-line ${kind}`} data-line={kind}><span className="line-number">{number}</span><code><Syntax text={line.slice(1)} /></code></div>;
-    })}
-  </div>;
-}
-
-function Syntax({ text }: { text: string }) {
-  return <>{text.split(/("(?:[^"\\]|\\.)*"\s*:|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|\b(?:true|false|null|const|let|return|function|export|import|from)\b)/g).map((part, i) =>
-    <span key={i} className={/^".*":$/.test(part) ? "syntax-key" : /^['"]/.test(part) ? "syntax-string" : /^(true|false|null|const|let|return|function|export|import|from)$/.test(part) ? "syntax-keyword" : /^\d/.test(part) ? "syntax-number" : undefined}>{part}</span>)}</>;
 }

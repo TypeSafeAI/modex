@@ -1,0 +1,84 @@
+
+> @modex/desktop@0.3.0 build:renderer /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 303 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/renderer/index.html                            0.69 kB │ gzip:   0.39 kB
+dist/renderer/assets/modex-mark-DNmRLW2u.png      128.36 kB
+dist/renderer/assets/TerminalPanel-BmfB5bmM.css     3.52 kB │ gzip:   0.96 kB
+dist/renderer/assets/RoutinesView-DHaCvtkN.css      3.83 kB │ gzip:   1.18 kB
+dist/renderer/assets/ImagesView-BKu_xtPa.css        4.59 kB │ gzip:   1.32 kB
+dist/renderer/assets/PluginSurface-Y6Oy41MY.css     4.98 kB │ gzip:   1.44 kB
+dist/renderer/assets/CodeReviewView-L5CG1C44.css    6.34 kB │ gzip:   1.88 kB
+dist/renderer/assets/SpaceView-gtkDjca6.css        36.63 kB │ gzip:   7.17 kB
+dist/renderer/assets/index-CelM2SV9.css            89.39 kB │ gzip:  18.13 kB
+dist/renderer/assets/RoutinesView-DGrL72Uj.js      11.04 kB │ gzip:   3.35 kB
+dist/renderer/assets/PluginSurface-CCXLT_vM.js     14.77 kB │ gzip:   4.33 kB
+dist/renderer/assets/ErrorNotice-C7VNUtG0.js       16.65 kB │ gzip:   6.71 kB
+dist/renderer/assets/ImagesView-HgcXW3QZ.js        17.27 kB │ gzip:   5.24 kB
+dist/renderer/assets/CodeReviewView-CU0zR4Q2.js    28.23 kB │ gzip:   9.55 kB
+dist/renderer/assets/SpaceView-txQL_Mbv.js         89.57 kB │ gzip:  25.98 kB
+dist/renderer/assets/TerminalPanel-DYbu-8jS.js    336.04 kB │ gzip:  84.71 kB
+dist/renderer/assets/index-DlQLn_yI.js            554.90 kB │ gzip: 164.85 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.00s
+
+Running 1 test using 1 worker
+
+(node:48832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  ✘  1 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite (27.1s)
+
+
+  1) e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite
+
+    Error: active element: <a href="https://example.com/evidence" target="_blank" rel="noreferrer" title="https://example.com/evidence">Evidence link</a>
+
+    expect(locator).toBeFocused() failed
+
+    Locator:  locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table')
+    Expected: focused
+    Received: inactive
+    Timeout:  15000ms
+
+    Call log:
+      - active element: <a href="https://example.com/evidence" target="_blank" rel="noreferrer" title="https://example.com/evidence">Evidence link</a> locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table') with timeout 15000ms
+      - waiting for locator('[data-testid="item"][data-item-kind="assistant"]').locator('.md-table')
+        34 × locator resolved to <div class="md-table">…</div>
+           - unexpected value "inactive"
+
+
+      34 |       const stops = [link, table, evidence, copy, code, end];
+      35 |       const focused = async (stop: Locator) => {
+    > 36 |         await expect(stop, `active element: ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 400))}`).toBeFocused();
+         |                                                                                                                             ^
+      37 |         expect(await stop.evaluate(el => {
+      38 |           const s = getComputedStyle(el);
+      39 |           return el.matches(":focus-visible") && s.outlineStyle !== "none" && parseFloat(s.outlineWidth) >= 2 && s.outlineColor !== "rgba(0, 0, 0, 0)";
+        at focused (/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/e2e/markdown-keyboard.spec.ts:36:125)
+        at /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/e2e/markdown-keyboard.spec.ts:50:9
+
+    Error Context: test-results/markdown-keyboard-Markdown-ecd0f--reduced-motion-in-graphite/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/markdown-keyboard-Markdown-ecd0f--reduced-motion-in-graphite/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/markdown-keyboard-Markdown-ecd0f--reduced-motion-in-graphite/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite ─
+
+Exit: 1
