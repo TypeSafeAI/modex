@@ -182,12 +182,16 @@ test("early send and retry rejections return errors without adding transcript ca
 
 test("the model-list Retry requests the catalogue again and clears the error", async () => {
   await app.evaluate(({ ipcMain }) => {
-    let calls = 0;
+    const probe = { calls: 0, recovered: false };
+    (globalThis as unknown as { modelsRetryProbe: typeof probe }).modelsRetryProbe = probe;
     ipcMain.removeHandler("models:list");
-    ipcMain.handle("models:list", (_event, { backend }) => backend !== "codex"
-      ? { models: [{ id: "mock", label: "Mock", isDefault: true }] }
-      : ++calls === 1 ? { models: [], error: "Catalogue temporarily unavailable" }
-      : { models: [{ id: "recovered-model", label: "Recovered model", isDefault: true }] });
+    ipcMain.handle("models:list", (_event, { backend }) => {
+      if (backend !== "codex") return { models: [{ id: "mock", label: "Mock", isDefault: true }] };
+      probe.calls++;
+      return probe.recovered
+        ? { models: [{ id: "recovered-model", label: "Recovered model", isDefault: true }] }
+        : { models: [], error: "Catalogue temporarily unavailable" };
+    });
   });
   await page.evaluate(() => window.modex!.invoke("settings:update", { default_backend: "codex" }));
   await page.reload();
@@ -195,7 +199,16 @@ test("the model-list Retry requests the catalogue again and clears the error", a
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "draft-view")).toBeVisible();
   await expect(tid(tid(page, "models-error"), "error-retry")).toBeVisible();
+  // Startup and reload may both read the catalogue. Recovery belongs to this explicit Retry,
+  // not whichever incidental request happens to be second.
+  const beforeRetry = await app.evaluate(() => {
+    const probe = (globalThis as unknown as { modelsRetryProbe: { calls: number; recovered: boolean } }).modelsRetryProbe;
+    probe.recovered = true;
+    return probe.calls;
+  });
+  expect(beforeRetry).toBeGreaterThan(0);
   await tid(tid(page, "models-error"), "error-retry").click();
   await expect(tid(tid(page, "models-error"), "error-retry")).toHaveCount(0);
   await expect(tid(page, "model-picker")).toContainText("Recovered model");
+  expect(await app.evaluate(() => (globalThis as unknown as { modelsRetryProbe: { calls: number } }).modelsRetryProbe.calls)).toBe(beforeRetry + 1);
 });
