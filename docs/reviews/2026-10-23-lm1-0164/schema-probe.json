@@ -1,0 +1,17 @@
+{
+  "catalogueCount": 8,
+  "requestedInCatalogue": false,
+  "requestedModel": "lm1-unlisted/Exact-ID:Q4",
+  "returnedModel": "lm1-unlisted/Exact-ID:Q4",
+  "returnedProvider": "lm1_probe",
+  "inferenceAttempted": false,
+  "configuration": [
+    "model_provider=\"lm1_probe\"",
+    "model_providers.lm1_probe.name=\"LM1 isolated unavailable endpoint\"",
+    "model_providers.lm1_probe.base_url=\"http://127.0.0.1:1/v1\"",
+    "model_providers.lm1_probe.wire_api=\"responses\"",
+    "model_providers.lm1_probe.requires_openai_auth=false",
+    "model_providers.lm1_probe.supports_websockets=false",
+    "web_search=\"disabled\""
+  ]
+}

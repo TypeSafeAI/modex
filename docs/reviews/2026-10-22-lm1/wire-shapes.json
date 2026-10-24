@@ -1,0 +1,181 @@
+{
+  "capture": "Strata built-in API monitor; five native requests, no proxy",
+  "limitation": "The monitor does not retain raw streamed HTTP response frames. Native command/turn responses are in native-summary.json; response function calls and reasoning are observed as replay in later requests.",
+  "requestCount": 5,
+  "path": "/v1/responses",
+  "model": "qwen3.8-flash-next-iq3_s",
+  "stream": true,
+  "requestKeys": [
+    "model",
+    "stream",
+    "input",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
+    "reasoning",
+    "store",
+    "include",
+    "prompt_cache_key",
+    "client_metadata"
+  ],
+  "store": false,
+  "reasoning": {
+    "effort": "low",
+    "summary": "auto"
+  },
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "inputShapes": [
+    {
+      "type": "message",
+      "role": "developer",
+      "keys": [
+        "type",
+        "id",
+        "role",
+        "content"
+      ]
+    },
+    {
+      "type": "message",
+      "role": "user",
+      "keys": [
+        "type",
+        "id",
+        "role",
+        "content"
+      ]
+    },
+    {
+      "type": "reasoning",
+      "role": null,
+      "keys": [
+        "type",
+        "id",
+        "summary",
+        "content",
+        "encrypted_content"
+      ]
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "keys": [
+        "type",
+        "status",
+        "id",
+        "role",
+        "content"
+      ]
+    },
+    {
+      "type": "function_call",
+      "role": null,
+      "keys": [
+        "type",
+        "status",
+        "id",
+        "name",
+        "arguments",
+        "call_id"
+      ]
+    },
+    {
+      "type": "function_call_output",
+      "role": null,
+      "keys": [
+        "type",
+        "id",
+        "call_id",
+        "output"
+      ]
+    }
+  ],
+  "toolShapes": [
+    {
+      "type": "function",
+      "name": "exec_command",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    },
+    {
+      "type": "function",
+      "name": "write_stdin",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    },
+    {
+      "type": "function",
+      "name": "request_user_input",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    },
+    {
+      "type": "function",
+      "name": "view_image",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    },
+    {
+      "type": "function",
+      "name": "get_goal",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    },
+    {
+      "type": "function",
+      "name": "create_goal",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    },
+    {
+      "type": "function",
+      "name": "update_goal",
+      "keys": [
+        "type",
+        "name",
+        "description",
+        "strict",
+        "parameters"
+      ]
+    }
+  ],
+  "states": [
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "completed"
+  ]
+}

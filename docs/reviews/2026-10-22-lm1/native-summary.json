@@ -1,0 +1,214 @@
+{
+  "status": "passed",
+  "cliVersion": "0.163.0",
+  "runtime": "Strata 0.1.47 Metal",
+  "model": "qwen3.8-flash-next-iq3_s",
+  "configuration": [
+    "model_provider=\"lm1_strata\"",
+    "model_providers.lm1_strata.name=\"LM1 Strata probe\"",
+    "model_providers.lm1_strata.base_url=\"http://127.0.0.1:18501/v1\"",
+    "model_providers.lm1_strata.wire_api=\"responses\"",
+    "model_providers.lm1_strata.requires_openai_auth=false",
+    "model_providers.lm1_strata.supports_websockets=false",
+    "web_search=\"disabled\"",
+    "model_context_window=32768",
+    "model_auto_compact_token_limit=28000",
+    "features.multi_agent=false",
+    "features.multi_agent_v2=false"
+  ],
+  "observedRunningSleepPids": [
+    2439
+  ],
+  "sleepPidsAfterStop": [],
+  "terminalsBefore": {
+    "data": [
+      {
+        "itemId": "call_1f1c97c7316744229c2a0205",
+        "processId": "38155",
+        "command": "printf LM1_STOP_STARTED; sleep 30",
+        "cwd": "/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-lm1-roundtrip-sm5YZJ/fixture",
+        "osPid": null,
+        "cpuPercent": null,
+        "rssKb": null
+      }
+    ],
+    "nextCursor": null
+  },
+  "terminalsAfter": {
+    "data": [],
+    "nextCursor": null
+  },
+  "events": [
+    {
+      "phase": "read",
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "call_288a9be2234246f186afecb6",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/bin/zsh -lc 'cat ./sentinel.txt'",
+          "cwd": "/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-lm1-roundtrip-sm5YZJ/fixture",
+          "processId": "14372",
+          "source": "unifiedExecStartup",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "read",
+              "command": "cat ./sentinel.txt",
+              "name": "sentinel.txt",
+              "path": "/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-lm1-roundtrip-sm5YZJ/fixture/sentinel.txt"
+            }
+          ],
+          "aggregatedOutput": "LM1_TOOL_SENTINEL_829173\n",
+          "exitCode": 0,
+          "durationMs": 0
+        },
+        "threadId": "01a16602-e655-7963-beca-bc60c42da6e1",
+        "turnId": "01a16602-e666-7cf1-bee9-a14ff61d5a80",
+        "completedAtMs": 1792712840240
+      },
+      "emittedAtMs": 1792712840241
+    },
+    {
+      "phase": "read",
+      "method": "turn/completed",
+      "params": {
+        "threadId": "01a16602-e655-7963-beca-bc60c42da6e1",
+        "turn": {
+          "id": "01a16602-e666-7cf1-bee9-a14ff61d5a80",
+          "rootTurnId": "01a16602-e666-7cf1-bee9-a14ff61d5a80",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_fdcc445f86024b86a21a5e0c8a13b2cc",
+              "text": "Read `./sentinel.txt` successfully.\n\n**Contents**\n```\nLM1_TOOL_SENTINEL_829173\n```\n\nThat is the exact content (a single line, 24 characters plus trailing newline). No files were edited and no network was used.",
+              "phase": null,
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1792712828,
+          "completedAt": 1792712842,
+          "durationMs": 13483
+        }
+      },
+      "emittedAtMs": 1792712842005
+    },
+    {
+      "phase": "stop",
+      "method": "turn/completed",
+      "params": {
+        "threadId": "01a16602-e655-7963-beca-bc60c42da6e1",
+        "turn": {
+          "id": "01a16603-1b17-7353-bf86-de44bce952cf",
+          "rootTurnId": "01a16603-1b17-7353-bf86-de44bce952cf",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "interrupted",
+          "error": null,
+          "startedAt": 1792712842,
+          "completedAt": 1792712847,
+          "durationMs": 5124
+        }
+      },
+      "emittedAtMs": 1792712847134
+    },
+    {
+      "phase": "stop",
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "call_1f1c97c7316744229c2a0205",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/bin/zsh -lc 'printf LM1_STOP_STARTED; sleep 30'",
+          "cwd": "/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-lm1-roundtrip-sm5YZJ/fixture",
+          "processId": "38155",
+          "source": "unifiedExecStartup",
+          "status": "failed",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "printf LM1_STOP_STARTED; sleep 30"
+            }
+          ],
+          "aggregatedOutput": "LM1_STOP_STARTED",
+          "exitCode": -1,
+          "durationMs": 257
+        },
+        "threadId": "01a16602-e655-7963-beca-bc60c42da6e1",
+        "turnId": "01a16603-1b17-7353-bf86-de44bce952cf",
+        "completedAtMs": 1792712847171
+      },
+      "emittedAtMs": 1792712847171
+    },
+    {
+      "phase": "continue",
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "call_d3722318ef5941128fcad278",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/bin/zsh -lc 'cat ./sentinel.txt'",
+          "cwd": "/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-lm1-roundtrip-sm5YZJ/fixture",
+          "processId": "93656",
+          "source": "unifiedExecStartup",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "read",
+              "command": "cat ./sentinel.txt",
+              "name": "sentinel.txt",
+              "path": "/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-lm1-roundtrip-sm5YZJ/fixture/sentinel.txt"
+            }
+          ],
+          "aggregatedOutput": "LM1_TOOL_SENTINEL_829173\n",
+          "exitCode": 0,
+          "durationMs": 0
+        },
+        "threadId": "01a16602-e655-7963-beca-bc60c42da6e1",
+        "turnId": "01a16603-2fbe-72e1-856a-9484592bc7b4",
+        "completedAtMs": 1792712849775
+      },
+      "emittedAtMs": 1792712849775
+    },
+    {
+      "phase": "continue",
+      "method": "turn/completed",
+      "params": {
+        "threadId": "01a16602-e655-7963-beca-bc60c42da6e1",
+        "turn": {
+          "id": "01a16603-2fbe-72e1-856a-9484592bc7b4",
+          "rootTurnId": "01a16603-2fbe-72e1-856a-9484592bc7b4",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_4b45b5ecb2ce486e891239aa53944fcc",
+              "text": "Re-read `./sentinel.txt` \u2014 contents unchanged.\n\n**Contents**\n```\nLM1_TOOL_SENTINEL_829173\n```\n\nExact content is a single line, 24 characters plus a trailing newline. No files edited, no network used, and I did not re-run the sleep. Note: the interrupted `sleep 30` may still be lingering in the background; it exits on its own and has no side effects, but let me know if you'd like me to check for it.",
+              "phase": null,
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1792712847,
+          "completedAt": 1792712855,
+          "durationMs": 8129
+        }
+      },
+      "emittedAtMs": 1792712855425
+    }
+  ]
+}
