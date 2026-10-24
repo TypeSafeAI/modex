@@ -155,3 +155,72 @@ Results on `512016f`: macOS 27.0.1 arm64, Node v24.22.0, pnpm 10.34.5.
 | `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1877 tests, 1861 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
 | `pnpm typecheck` | exit 0 |
 | `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed. Playwright fetched the Electron binary into the fresh worktree first; no model or runtime was downloaded |
+
+## Hardening, 2026-10-24
+
+Branch `lm2-integrate` (session-owned worktree), stacked on `lm2-fixes` at
+`954cd5b7d0627333835db41f9b0dfb477b72176f` without changing it. `lm2-fixes` and `lm2-discovery`
+are claimed by other sessions and were not edited. Every regression below was compiled and run
+against `954cd5b` first; the five that found a defect failed there before any fix.
+
+**History: an unreadable profiles file was replaced.** `local-connections.json` that failed to
+parse, had the wrong shape or declared a newer `version` read as empty, and the next save wrote a
+fresh file over it, losing every profile and deletion tombstone (AC6). Now only a missing file
+reads as empty. `list` and every edit throw a fixed message and leave the file byte-for-byte, and
+`resolve`/`provenance` return null. Entries this build can't validate are written back exactly as
+found and are never listed or resolved. Failed first with `Missing expected exception: list refuses
+{not json` and `kept exactly as written` (the newer entry had been dropped).
+
+**Credential: the saved token could be written in plain text.** A token pasted into the label or a
+manual model ID was saved to the plain-text profiles file and returned in views (AC3). Create and
+update now refuse it, including a new token already inside a saved name or ID. Moving the address
+still drops the token, so nothing saved can repeat it. Failed first with `Missing expected
+exception: copy 0`.
+
+**Credential: leftover token entries.** A crash between saving a token and writing its profile, or a
+failed clear on delete, left an encrypted entry in `secrets.json` that nothing named. After every
+successful save, `local_connection:` entries no profile (live or foreign) names are removed. Other
+secrets, including `typesafe_api_key`, are never touched. `SecretStore.names()` lists entry names
+only. Failed first with `only the entry revision 1 names is kept` (2 entries, expected 1).
+
+**Credential: an unreadable token became an unauthenticated read.** When a saved token couldn't be
+decrypted (keychain locked or unavailable), discovery sent its reads without it and could report
+`ready`. It now returns `unavailable` with the fixed reason `credential-unavailable`, keeps manual
+IDs and makes zero requests; once the keychain is back, one read carries the token. Failed first
+with `actual: false, expected: 'credential-unavailable'` (the result had been `ready`).
+
+**Time: no deadline for a whole discovery.** Every read had a deadline, but 32 Ollama `/api/show`
+reads just under it, four at a time, held the answer for 7.2 s at a 1 s deadline (about 40 s at the
+5 s default). A discovery now ends within three per-request deadlines: listings use at most two
+(LM Studio's fallback, Ollama's tags and ps) and per-model reads share what remains. Detail still
+unread then stays `unknown`, which is not a failure; a cancel or a newer read still returns
+`stale`. Failed first with `discovery took 7228 ms`.
+
+**Regression coverage that found no defect** (passed on first run against `954cd5b`): through
+`LocalModelsService`, a slow read is stale after a label-only, manual-IDs-only, address or token
+edit and after deletion; octal and trailing-dot IPv4 and fullwidth `localhost` normalize to loopback
+origins; IPv4-compatible and NAT64 embeddings of 127.0.0.1, `localhost.` and port 65536 are refused.
+
+One existing fixture changed: the reflection test no longer saves a manual ID that holds the token,
+because saving it is now refused. Discovery still filters such IDs as a second line of defence.
+
+Request counts: the credential-unavailable fixture records 0 requests while the token is
+unreadable and exactly `["Bearer locked-token"]` after; the existing fixtures still assert their
+exact request lists, none of them an inference, pull, load or unload route.
+
+Results on `b12483c2439639ae274d1fcb2bca03e638a03207` (three commits on `954cd5b`; `main` at
+`70123b966aaad0377311a105ae3fa739c0d63179`): macOS 27.0.1 arm64, Node v24.22.0, pnpm 10.34.5,
+Electron 44.4.5, Playwright 1.63.0. Each of the three commits was also checked out on its own and
+passed the focused tests (29, 31 and 32).
+
+| Command | Result |
+|---|---|
+| `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 32/32 passed: endpoint 6, connections 12, discovery 13, IPC 1 |
+| `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1884 tests, 1868 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
+| `pnpm typecheck` | exit 0 |
+| `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed. Playwright fetched the Electron binary into the fresh worktree first; no model or runtime was downloaded |
+
+Still open: #377 acceptance and adopting its shared identity (the LM-1 session's reconciliation is
+not yet published on #397); listing-only reads against a real Ollama and LM Studio, which need
+Val's authorization; Val's sign-off on the loopback metadata-discovery network wording that the
+LM-1 session proposes for AGENTS.md; LM-3 execution binding and LM-4 UI.
