@@ -191,6 +191,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   passed with CR-2 through the real Electron IPC/service path. Overview and diff content, original
   reference comparison and human accessibility remain separate acceptance gates.
 
+- **CR-7 draft/intent preparation** (#326). An unwired main-only foundation stores scoped drafts and revision-bound intents, consumes confirmations once after durable admission, and recovers interrupted dispatches as unknown without resend. It adds no GitHub mutation transport or UI/capability enablement. Write authorization and scope decisions 2–4 remain open; CR-6 isolation and C82 remain unchanged. See [the preparation evidence](reviews/2026-10-23-cr7-intents.md).
+
 - **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
   rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
