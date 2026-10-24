@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-22._
+_Last updated 2026-10-24._
 
 ## Shipped
 
@@ -177,6 +177,25 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   like one after a final answer. [Plans](task-context.md#plans).
 
 ## In flight
+
+- **Desktop v0.4.0 and Companion 0.4.0 (9) preparation.** The release ships everything under "On
+  main, unreleased":
+  - task context: the task view, files touched and verification, and Claude's and Codex's plans;
+  - answering an agent's questions from the iPhone, and across replay and reconnect;
+  - Codex's own Plan mode;
+  - the keyboard, Jump to latest and Codex Stop fixes;
+  - Markdown overflow keyboard stops.
+
+  The Code Review workspace stays hidden in built apps, and local-model discovery has no UI. Val
+  asked for the next version. No rc rehearsal is needed, because the release workflow and updater
+  are unchanged since v0.3.0. Companion build 9 supersedes the never-uploaded build 8. Remaining:
+  - the signed `v0.4.0` tag, with a key the workflow allows;
+  - the Release run;
+  - independent download checks and publication;
+  - the v0.3.0 → v0.4.0 background upgrade on the release Mac;
+  - the TestFlight upload of build 9.
+
+  [Candidate review](reviews/2026-10-24-v0.4.0-release-review.md).
 
 - **Companion network acceptance (#109).** A new regression covers token revocation while a replacement listener is binding during a DHCP change. Existing production behavior passes; a stale-token negative control fails. [Evidence and physical procedure](reviews/2026-10-24-companion-revoke-race.md) preserve the remaining physical secondary-LAN and VPN-policy gates.
 
