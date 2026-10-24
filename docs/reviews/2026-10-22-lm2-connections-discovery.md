@@ -295,10 +295,11 @@ branch's text: `main`'s copy matched `cb7ca6c`, so only this branch's adoption p
 | `pnpm typecheck` | exit 0 |
 | `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
 
-Open after Gate A: listing-only reads against a real Ollama and LM Studio (needs Val's
-authorization); Val's decision on the AGENTS.md loopback-metadata wording; the choice between #386
-and #398; landing #398, #402 and #403 in that order, each rebased after the squash below it; LM-3
-execution binding and LM-4 UI.
+Open after Gate A: real-runtime discovery evidence and LM-3/LM-4. Val has since approved the
+AGENTS.md metadata boundary (#405). The authorized CLI inventory in
+[the LM-1 acceptance receipt](2026-10-24-lm1-acceptance.md) found no local generative model
+(Ollama 0.40.10 has none; this Mac's only LM Studio model is an embedding model, and the LM Studio
+HTTP server was not running), so LM-2's own discovery has not yet run against a real runtime.
 
 ## Landing, 2026-10-24
 
@@ -307,3 +308,8 @@ Its squash carries #398's six commits and two review fixes, #402's hardening and
 That supersedes #386, #398 and #402, which do not merge separately. Before retargeting, the branch
 merged `main` at `21e50ba`. Its diff against `main` is the 17 LM-2 files, and its LM-1 files are
 identical to `main`'s.
+
+Before landing, the branch also merged `main` at `e5252ea` (#405). Docs only, so the code under
+test is unchanged from `c592eeefd3d10aef7a4ce79c866b4b5f55208176`, where `pnpm build && pnpm test`
+exited 0 (desktop 1955 tests, 1938 passed, 17 skipped; native/package 26, 21 passed, 5 skipped),
+`pnpm typecheck` exited 0 and the IPC e2e spec passed 1/1.
