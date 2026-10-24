@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
 import { LocalConnectionStore } from "../src/main/engine/local-models/connections.js";
 import { LocalModelDiscovery } from "../src/main/engine/local-models/discovery.js";
+import { LocalModelsService } from "../src/main/engine/local-models/service.js";
 import type { DiscoveryResult, LocalModelDescriptor } from "../src/shared/local-connections.js";
 import { tmpdir } from "./helpers.js";
 
@@ -251,6 +252,40 @@ test("same model ID on two connections stays two targets; late answers after edi
     const cancelled = discovery.discover({ id: a.id, revision: 2 }, "a4");
     discovery.cancel(a.id);
     assert.equal((await cancelled).state, "stale");
+  } finally { await rt.close(); }
+});
+
+test("through the service, any edit or deletion during a slow read turns its answer stale", async () => {
+  const rt = await runtime(req => (req.url === "/v1/models" ? { json: { data: [{ id: "late/model" }] }, delayMs: 300 } : undefined));
+  const home = tmpdir("modex-lm-");
+  const service = new LocalModelsService(home, new SecretStore(home, testCipher), { timeoutMs: 2000 });
+  const view = async (request: unknown) => { const r = await service.handle(request); return r.op === "create" || r.op === "update" ? r.connection : null; };
+  const discover = async (id: string, revision: number, requestId: string) => {
+    const r = await service.handle({ op: "discover", connection: { id, revision }, requestId });
+    return r.op === "discover" ? r.result : null;
+  };
+  try {
+    const c = (await view({ op: "create", input: { label: "a", runtime: "responses", url: rt.url, manualModels: ["m/one"] } }))!;
+    const edits: [string, (revision: number) => unknown][] = [
+      ["label only", revision => ({ op: "update", id: c.id, revision, patch: { label: "renamed" } })],
+      ["manual IDs only", revision => ({ op: "update", id: c.id, revision, patch: { manualModels: ["m/two"] } })],
+      ["address", revision => ({ op: "update", id: c.id, revision, patch: { url: `http://localhost:${new URL(rt.url).port}` } })],
+      ["token", revision => ({ op: "update", id: c.id, revision, patch: { token: "fresh-token" } })],
+    ];
+    let revision = 1;
+    for (const [name, edit] of edits) {
+      const read = revision;
+      const pending = discover(c.id, read, name);
+      await new Promise(r => setTimeout(r, 50));
+      revision = (await view(edit(read)))!.revision;
+      assert.deepEqual(await pending, { state: "stale", connection: { id: c.id, revision: read }, requestId: name }, name);
+    }
+    const doomed = discover(c.id, revision, "delete");
+    await new Promise(r => setTimeout(r, 50));
+    await service.handle({ op: "delete", id: c.id, revision });
+    assert.equal((await doomed)?.state, "stale");
+    const current = (await view({ op: "create", input: { label: "b", runtime: "responses", url: rt.url } }))!;
+    assert.equal((await discover(current.id, 1, "fresh"))?.state, "ready", "an untouched profile still reads normally");
   } finally { await rt.close(); }
 });
 
