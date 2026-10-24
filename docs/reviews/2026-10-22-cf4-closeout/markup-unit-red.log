@@ -1,0 +1,83 @@
+✔ tables, blockquotes, nested and task lists, emphasis and strikethrough render as their elements (425.292167ms)
+✖ headings keep their place below the transcript's own titles, and a fence keeps its language and indentation (2.98975ms)
+✖ a fence that is still streaming shows its code so far, and the closing fence changes nothing before it (2.917791ms)
+✔ every prefix of a streamed reply renders, and no prefix loses or doubles its text (133.022458ms)
+✔ Unicode passes through untouched (2.114292ms)
+✔ raw HTML stays text: no element, attribute or handler reaches the page (1.789541ms)
+✔ only web links are links; other schemes stay as the text that was written (1.278459ms)
+✔ bare URLs link without the sentence's punctuation, and reference links resolve (0.750583ms)
+✔ images are never fetched: a web image becomes a link named by its alt text (2.196625ms)
+✔ a streaming reply splits at blank lines outside code fences, and the pieces join back to the text (2.335083ms)
+✔ rendering a reply piece by piece shows the same text as rendering it whole (2.71925ms)
+✔ the settled cache keeps recent renders, drops the oldest past its limit, and never holds very long text (0.4345ms)
+✖ a code block names its language and offers Copy (0.698458ms)
+✔ typed items stay with their explicit turn when another user message intervenes (54.103708ms)
+✔ streamed references and loose nested lists retain whole-document meaning (5.627583ms)
+✔ reasoning rows label summaries while streaming and expose non-success outcomes (8.548375ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 13
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1066.781792
+
+✖ failing tests:
+
+test at dist/test/markdown-render.test.js:53:1
+✖ headings keep their place below the transcript's own titles, and a fence keeps its language and indentation (2.98975ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /<pre class="code" data-lang="ts"><code>if \(a\) \{\n    return 1;\n\}<\/code><\/pre>/. Input:
+
+  '<div class="md"><h2>One</h2><h3>Two</h3><h4>Three</h4><h5>Four</h5><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">ts</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy</button></div><pre class="code" data-lang="ts" tabindex="0" role="region" aria-label="ts code"><code>if (a) {\n' +
+    '    return 1;\n' +
+    '}</code></pre><span role="status" class="sr-only"></span></div></div>'
+
+      at TestContext.<anonymous> (file:///Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/dist/test/markdown-render.test.js:56:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<div class="md"><h2>One</h2><h3>Two</h3><h4>Three</h4><h5>Four</h5><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">ts</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy</button></div><pre class="code" data-lang="ts" tabindex="0" role="region" aria-label="ts code"><code>if (a) {\n    return 1;\n}</code></pre><span role="status" class="sr-only"></span></div></div>',
+    expected: /<pre class="code" data-lang="ts"><code>if \(a\) \{\n    return 1;\n\}<\/code><\/pre>/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at dist/test/markdown-render.test.js:58:1
+✖ a fence that is still streaming shows its code so far, and the closing fence changes nothing before it (2.917791ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /<pre class="code" data-lang="js"><code>const a = 1;\nconst b = <\/code><\/pre>/. Input:
+
+  '<div class="md"><p>Here:</p><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">js</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy js code">Copy</button></div><pre class="code" data-lang="js" tabindex="0" role="region" aria-label="js code"><code>const a = 1;\n' +
+    'const b = </code></pre><span role="status" class="sr-only"></span></div></div>'
+
+      at TestContext.<anonymous> (file:///Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/dist/test/markdown-render.test.js:60:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<div class="md"><p>Here:</p><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">js</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy js code">Copy</button></div><pre class="code" data-lang="js" tabindex="0" role="region" aria-label="js code"><code>const a = 1;\nconst b = </code></pre><span role="status" class="sr-only"></span></div></div>',
+    expected: /<pre class="code" data-lang="js"><code>const a = 1;\nconst b = <\/code><\/pre>/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at dist/test/markdown-render.test.js:150:1
+✖ a code block names its language and offers Copy (0.698458ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"><code>const a = 1;<\/code><\/pre>/. Input:
+
+  '<div class="md"><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">ts</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy</button></div><pre class="code" data-lang="ts" tabindex="0" role="region" aria-label="ts code"><code>const a = 1;</code></pre><span role="status" class="sr-only"></span></div><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">text</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy code">Copy</button></div><pre class="code" tabindex="0" role="region" aria-label="code"><code>plain</code></pre><span role="status" class="sr-only"></span></div></div>'
+
+      at TestContext.<anonymous> (file:///Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop/dist/test/markdown-render.test.js:152:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<div class="md"><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">ts</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy</button></div><pre class="code" data-lang="ts" tabindex="0" role="region" aria-label="ts code"><code>const a = 1;</code></pre><span role="status" class="sr-only"></span></div><div class="code-block" data-testid="code-block"><div class="code-head"><span class="code-lang">text</span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy code">Copy</button></div><pre class="code" tabindex="0" role="region" aria-label="code"><code>plain</code></pre><span role="status" class="sr-only"></span></div></div>',
+    expected: /<span class="code-lang">ts<\/span><button type="button" class="code-copy" data-testid="code-copy" aria-label="Copy ts code">Copy<\/button><\/div><pre class="code" data-lang="ts"><code>const a = 1;<\/code><\/pre>/,
+    operator: 'match',
+    diff: 'simple'
+  }
+undefined
+/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node --test dist/test/markdown-render.test.js

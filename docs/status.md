@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-20._
+_Last updated 2026-10-22._
 
 ## Shipped
 
@@ -169,6 +169,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 - **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324), [PR #395](https://github.com/TypeSafeAI/modex/pull/395)). The integration repair distinguishes the proven three-dot diff base from the target tip in file pages, context, anchors and labels. Four failing-first regressions and a real GitHub read confirmed the defect and correction; full build, unit, typecheck and E2E checks passed (430 desktop passes, seven skips, seven site passes). The original candidate's resource bounds remain in place. Original R4 comparison, human acceptance and the Viewed decision remain open. [Repair evidence](reviews/2026-10-24-cr5-merge-base.md); [original candidate evidence](reviews/2026-10-23-cr5-remote-diffs.md).
 
 - **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build; acceptance review remains open, and downstream execution must not assume support beyond that combination. See [the contract and source map](local-models.md).
+
+- **CF-4 Markdown closeout (#277).** `cf4-closeout` adds named keyboard stops for table/code overflow, reference-viewport captures, and Markdown rows in the shared #281 human checklist. [New evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) separates local measurements from the approved 500 ms median cold-open gate, passing hosted evidence on the original reviewed head, and Val's still-pending VoiceOver result. Integration validation remains separate; #277 stays open.
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through

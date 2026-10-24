@@ -1,0 +1,13 @@
+
+> modex-monorepo@0.3.0 typecheck /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-closeout
+> pnpm -r --if-present typecheck
+
+Scope: 4 of 5 workspace projects
+apps/site typecheck$ tsc --noEmit
+packages/core typecheck$ tsc -p tsconfig.json --noEmit
+apps/store-desktop typecheck$ tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit
+apps/site typecheck: Done
+packages/core typecheck: Done
+apps/store-desktop typecheck: Done
+apps/desktop typecheck$ tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit
+apps/desktop typecheck: Done
