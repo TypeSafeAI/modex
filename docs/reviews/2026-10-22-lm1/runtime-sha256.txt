@@ -1,0 +1,10 @@
+4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3  /Users/buns/Documents/Strata/Models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
+316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113  /Users/buns/Documents/Strata/Models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf
+c0bd435efbc6c3b28964b47999afe16c4ad268c7c7c4e8cb3af410796a6f30bf  /Users/buns/Documents/Strata/packs/iq3_s/tokenizer/tokenizer.json
+9f40390b43c328de290e501cb3699e1e50267db625e2286a1f1fcf2f67e2d743  /Applications/Strata.app/Contents/Resources/engine-bundle/0.1.47-macos-arm64-metal/strata
+a22206a4d74eafbf31063a84610292535fb3b49af9a339963817fd04aed81e4d  /Users/buns/Documents/Strata/mtp/mtp-q2_0.gguf
+f8ea0ca4df1a01372795d1195803e3899d4341cf1cd5f540e55fda715c644354  /Applications/Strata.app/Contents/Resources/control/serve/frontend.py
+bc09af76400932500f9ce09f401bf097ad7e7b120374d2cfbe3f4142fadd2304  /Applications/Strata.app/Contents/Resources/control/serve/server.py
+8f59b4aa8873209dff11c11e37bcda9529a1335b724a1afeea37bf6388975baf  /Applications/Strata.app/Contents/Resources/control/data/expert-profile.bin
+5215aafab91eea1b77b4c81a1405731cd175fcbdcc9b0e56aa64db701a7100f4  /Applications/Strata.app/Contents/Resources/control/serve/responses.py
+12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce  /Applications/Strata.app/Contents/Resources/control/serve/chat_template.jinja

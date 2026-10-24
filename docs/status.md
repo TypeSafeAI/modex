@@ -126,7 +126,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   drop, v0.3.0 history, older paired desktops, and the iPhone app closing cards closed on the Mac.
   Live Codex and Claude turns with the journal on agreed on every path, also in the app through the live
   smoke. The journal suites pass on Windows and Linux CI. Val deferred the Windows and Linux app sessions and
-  a real power cut (2026-10-23). The physical iPhone gate waits for Val.
+  a real power cut (2026-10-23), and then the physical iPhone gate, so #279 closed.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect), [gates](reviews/2026-10-22-cf6-gates.md).
 
 - **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
@@ -167,6 +167,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 ## In flight
 
 - **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324), [PR #395](https://github.com/TypeSafeAI/modex/pull/395)). The integration repair distinguishes the proven three-dot diff base from the target tip in file pages, context, anchors and labels. Four failing-first regressions and a real GitHub read confirmed the defect and correction; full build, unit, typecheck and E2E checks passed (430 desktop passes, seven skips, seven site passes). The original candidate's resource bounds remain in place. Original R4 comparison, human acceptance and the Viewed decision remain open. [Repair evidence](reviews/2026-10-24-cr5-merge-base.md); [original candidate evidence](reviews/2026-10-23-cr5-remote-diffs.md).
+
+- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build; acceptance review remains open, and downstream execution must not assume support beyond that combination. See [the contract and source map](local-models.md).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
