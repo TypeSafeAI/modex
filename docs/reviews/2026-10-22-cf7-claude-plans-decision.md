@@ -2,7 +2,8 @@
 
 **Date:** 2026-10-22 · **Issue:** [#280](https://github.com/TypeSafeAI/modex/issues/280) · **`main`:** `ec7be57`
 
-**Status:** decided. Val picked option 3 now, then option 1 after a capture, on 2026-10-23.
+**Status:** decided. Val picked option 3 now, then option 1 after a capture, on 2026-10-23. Both are
+done: option 3 in #391, and option 1 after a live 2.1.309 capture (`test/fixtures/claude-tasks-2.1.309.jsonl`).
 
 ## The question
 

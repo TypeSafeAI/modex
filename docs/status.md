@@ -126,7 +126,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   drop, v0.3.0 history, older paired desktops, and the iPhone app closing cards closed on the Mac.
   Live Codex and Claude turns with the journal on agreed on every path, also in the app through the live
   smoke. The journal suites pass on Windows and Linux CI. Val deferred the Windows and Linux app sessions and
-  a real power cut (2026-10-23). The physical iPhone gate waits for Val.
+  a real power cut (2026-10-23), and then the physical iPhone gate, so #279 closed.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect), [gates](reviews/2026-10-22-cf6-gates.md).
 
 - **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
@@ -158,12 +158,15 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   changed files or ran commands without a plan says "Claude Code reported no plan for this turn" in
   its footer and saved note. Claude Code 2.1.308 and later offer Modex no `TodoWrite`.
   [Plans](task-context.md#plans).
+- **Claude's task tools and Codex's proposed plans** (CF-7 #280, from live captures). When Claude Code
+  2.1.309 offers `TaskCreate`/`TaskUpdate`, the tasks it creates and updates are the turn's plan,
+  counted once the CLI confirms each call. Codex's plan-mode `plan` item is kept as the turn's
+  proposed plan, so that turn does not say "no plan", and a plan-mode turn Codex never ends is ended
+  like one after a final answer. [Plans](task-context.md#plans).
 
 ## In flight
 
-- **Reading Claude's task tools** (CF-7 #280). Once a live Claude turn using `TaskCreate`/`TaskUpdate`
-  has been captured, Modex reads them as the turn's plan
-  ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
+- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build. Val [accepted Gate A narrowly](https://github.com/TypeSafeAI/modex/issues/377#issuecomment-6382280214) on 2026-10-24 at `bb0e1a4`; downstream execution must not assume support beyond that combination. The shared identity owner and metadata-runtime mapping are defined, with a fixture-verified adoption patch for LM-2 #398 and a sanitized Strata launch configuration in the receipt. LM-2 adoption is in draft #403; Val's network-policy sign-off remains open; Ollama/LM Studio probes require separate explicit authorization. See [the contract and source map](local-models.md).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
@@ -189,7 +192,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   repeats the saved token is rejected before IPC. Hardening on `lm2-integrate`, stacked on it: an
   unreadable or newer profiles file is never overwritten, the saved token can't be saved into a
   name or model ID, leftover token entries are swept, an unreadable token never becomes an
-  unauthenticated read, and a whole discovery has one deadline.
+  unauthenticated read, and a whole discovery has one deadline. `lm2-adopt`, stacked on that,
+  adopts LM-1's shared identity and capability names, accepted under #377 at `bb0e1a4`.
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and
@@ -197,6 +201,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   producer contract helper. The [authenticated integration check](reviews/2026-10-21-cr3-read-integration.md)
   passed with CR-2 through the real Electron IPC/service path. Overview and diff content, original
   reference comparison and human accessibility remain separate acceptance gates.
+
+- **CR-6 isolation proof** (#325, Phase 1). Native CLI proof tests exercise Codex 0.164.0 and Claude Code 2.1.310 using disposable fixtures and a scripted loopback provider. Codex read-only alone still allows shell/outside reads/inherited fixture credentials; Claude's restricted Read-only tool palette rejects the tested malicious calls, with working hook/MCP controls. These are bounded native-CLI fixture results, not authenticated provider or production launch acceptance. Review, PR questions and instructions remain unavailable; see [the isolation evidence](reviews/2026-10-23-cr6-isolation.md). C82 and Phase 2 integration retain their existing gates.
 
 - **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
@@ -210,8 +216,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   while preserving unrelated repositories and ordinary offline/rate-limit fallback.
   [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
   coverage through the production preload/IPC/service with a synthetic GitHub executable.
-  The CR-3 development flag exposes the integrated inbox and workspace host; overview/diff content, AI
-  review (#325) and GitHub writes (#326) are later gates.
+  The CR-3 development flag exposes the integrated inbox and workspace host. CR-4 (#323) adds the PR description, paginated activity, checks, inferred branch stack and provider/comment preview provenance through that host; validation and delivery evidence is recorded in [the CR-4 review](reviews/2026-10-23-cr4-overview.md). Remote diff content, AI review (#325) and GitHub writes (#326) retain their own gates. Original-reference comparison and human accessibility remain open.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).

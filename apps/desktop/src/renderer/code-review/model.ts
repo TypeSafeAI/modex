@@ -1,7 +1,7 @@
-import { canonicalPrUrl, inboxGroup, mergePages, parsePrLocator, type Inbox, type InboxGroup, type PrKey, type PrLocator, type PrOverview, type PrState, type PrSummary, type ReadResult } from "../../shared/code-review.js";
+import { canonicalPrUrl, inboxGroup, mergePages, parsePrLocator, type PrActivity, type PrCheck, type PrStack, type Inbox, type InboxGroup, type PrKey, type PrLocator, type PrOverview, type PrState, type PrSummary, type ReadResult } from "../../shared/code-review.js";
 
 /** An open PR: how it was named, and its overview read (which carries the totals and state). */
-export interface OpenPr { key: PrKey; locator: PrLocator; title: string | null; state: PrState | null; overview: ReadResult<PrOverview> | null }
+export interface OpenPr { key: PrKey; locator: PrLocator; title: string | null; state: PrState | null; overview: ReadResult<PrOverview> | null; activityRefreshing?: boolean; activity?: Record<string, ReadResult<PrActivity[]>>; checks?: ReadResult<PrCheck[]>; stack?: ReadResult<PrStack> }
 
 /** Page reads keyed by cursor. Retain earlier stale/partial evidence until that page is retried. */
 export type GroupPages = Partial<Record<InboxGroup, { reads: Record<string, ReadResult<PrSummary[]>> }>>;

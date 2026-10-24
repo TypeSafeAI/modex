@@ -1,18 +1,16 @@
 /**
  * Local-model connections and discovery as the renderer sees them (#378). Main owns the profiles,
  * the tokens and every request; these views carry no secret and no address beyond the origin the
- * person typed. Model identity (`connection` + exact `id`) follows the #377 contract draft: the
- * same id on two connections, or on two revisions of one, is two different targets.
+ * person typed. Identity is #377's (`shared/local-models.ts` owns `ConnectionRef` and schema-1
+ * `LocalModelRef`): the same id on two connections, or on two revisions of one, is two targets.
  */
 
-/** Metadata adapter. "responses" covers llama.cpp, vLLM and other servers listing `/v1/models`. */
-export type LocalRuntime = "ollama" | "lmstudio" | "responses";
-export const LOCAL_RUNTIMES: readonly LocalRuntime[] = ["ollama", "lmstudio", "responses"];
+import type { Capability, ConnectionRef, LocalModelRef, LocalMetadataRuntime } from "./local-models.js";
+export type { ConnectionRef, LocalModelRef } from "./local-models.js";
 
-export interface ConnectionRef {
-  id: string;
-  revision: number;
-}
+/** Metadata adapter. "responses" covers llama.cpp, vLLM and other servers listing `/v1/models`. */
+export type LocalRuntime = LocalMetadataRuntime;
+export const LOCAL_RUNTIMES: readonly LocalRuntime[] = ["ollama", "lmstudio", "responses"];
 
 export interface LocalConnectionView extends ConnectionRef {
   label: string;
@@ -42,14 +40,17 @@ export type Advertised = "advertised" | "not-advertised" | "unknown";
 export type ModelKind = "generative" | "embedding" | "other" | "unknown";
 
 export interface LocalModelDescriptor {
-  model: { connection: ConnectionRef; id: string };
+  model: LocalModelRef;
   /** Where this entry came from: the runtime's listing, or typed by the person. */
   source: "discovered" | "manual";
   kind: ModelKind;
   installed: "yes" | "unknown";
   loaded: "yes" | "no" | "unknown";
-  /** Runtime-reported metadata only. Coding qualification is a separate, tested fact (#377). */
-  advertised: { tools: Advertised; vision: Advertised; reasoning: Advertised };
+  /**
+   * Runtime-reported metadata per #377 capability, "unknown" where the runtime says nothing. Never a
+   * test result: coding qualification is separate, tested evidence (`capabilityStatus`).
+   */
+  advertised: Record<Capability, Advertised>;
   /** The runtime's advertised maximum context, not an effective or tested one. */
   advertisedContext: number | null;
   /**

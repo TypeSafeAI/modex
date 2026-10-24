@@ -72,16 +72,18 @@ test("Ollama: installed, loaded, kind, advertised capabilities, cloud models and
     const m = byId(result);
     assert.deepEqual(Object.keys(m).sort(), ["custom:tag", "gpt-oss:120b-cloud", "hf.co/Org/My Model:Q4_K_M", "nomic-embed-text:latest", "qwen3-coder:30b"]);
     const coder = m["qwen3-coder:30b"]!;
-    assert.deepEqual(coder.model, { connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
+    assert.deepEqual(coder.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
     assert.deepEqual([coder.source, coder.kind, coder.installed, coder.loaded, coder.advertisedContext, coder.locality, coder.selectable], ["discovered", "generative", "yes", "yes", 262144, "unverified", true]);
-    assert.deepEqual(coder.advertised, { tools: "advertised", vision: "not-advertised", reasoning: "not-advertised" });
+    // Keyed by #377's capabilities; whatever the runtime doesn't advertise either way stays unknown.
+    assert.deepEqual(coder.advertised, { tools: "advertised", images: "not-advertised", structuredOutputs: "unknown", reasoning: "not-advertised", resume: "unknown", cancellation: "unknown" });
     const embed = m["nomic-embed-text:latest"]!;
     assert.deepEqual([embed.kind, embed.loaded, embed.selectable, embed.unselectableReason], ["embedding", "no", false, "embedding"]);
     const cloud = m["gpt-oss:120b-cloud"]!;
     assert.deepEqual([cloud.locality, cloud.selectable, cloud.unselectableReason, cloud.installed], ["cloud", false, "cloud", "unknown"]);
     const spaced = m["hf.co/Org/My Model:Q4_K_M"]!;
-    assert.deepEqual([spaced.kind, spaced.advertised.vision, spaced.advertised.reasoning, spaced.advertised.tools, spaced.advertisedContext], ["generative", "advertised", "advertised", "not-advertised", null]);
+    assert.deepEqual([spaced.kind, spaced.advertised.images, spaced.advertised.reasoning, spaced.advertised.tools, spaced.advertisedContext], ["generative", "advertised", "advertised", "not-advertised", null]);
     const manual = m["custom:tag"]!;
+    assert.deepEqual(manual.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "custom:tag" });
     assert.deepEqual([manual.source, manual.kind, manual.installed, manual.loaded, manual.selectable], ["manual", "unknown", "unknown", "unknown", true]);
 
     // Only metadata reads, no cloud model shown, nothing loaded, pulled or run; no credential sent.
@@ -111,7 +113,7 @@ test("LM Studio: native listing states and types; authenticated with only its ow
     assert.equal(result.state, "ready");
     const m = byId(result);
     assert.deepEqual([m["qwen/qwen3-coder-30b"]!.loaded, m["qwen/qwen3-coder-30b"]!.advertised.tools, m["qwen/qwen3-coder-30b"]!.advertisedContext], ["yes", "advertised", 262144]);
-    assert.deepEqual([m["google/gemma-3-12b"]!.loaded, m["google/gemma-3-12b"]!.advertised.vision, m["google/gemma-3-12b"]!.advertised.tools], ["no", "advertised", "unknown"]);
+    assert.deepEqual([m["google/gemma-3-12b"]!.loaded, m["google/gemma-3-12b"]!.advertised.images, m["google/gemma-3-12b"]!.advertised.tools], ["no", "advertised", "unknown"]);
     assert.deepEqual([m["text-embedding-nomic-embed-text-v1.5"]!.kind, m["text-embedding-nomic-embed-text-v1.5"]!.selectable], ["embedding", false]);
     assert.deepEqual([m["some-tts"]!.kind, m["some-tts"]!.selectable, m["some-tts"]!.unselectableReason], ["other", false, "other"]);
     assert.deepEqual(rt.hits.map(h => `${h.method} ${h.url} ${h.auth}`), ["GET /api/v0/models Bearer lms-tok"]);
@@ -145,7 +147,7 @@ test("Responses-compatible servers: IDs only, unknown states, with or without th
       const m = byId(result);
       assert.deepEqual(Object.keys(m), ["Qwen/Qwen3-Coder-30B-A3B-Instruct", "local model.gguf"]);
       const q = m["Qwen/Qwen3-Coder-30B-A3B-Instruct"]!;
-      assert.deepEqual([q.kind, q.installed, q.loaded, q.advertised, q.advertisedContext, q.locality, q.selectable], ["unknown", "unknown", "unknown", { tools: "unknown", vision: "unknown", reasoning: "unknown" }, 65536, "unverified", true]);
+      assert.deepEqual([q.kind, q.installed, q.loaded, q.advertised, q.advertisedContext, q.locality, q.selectable], ["unknown", "unknown", "unknown", { tools: "unknown", images: "unknown", structuredOutputs: "unknown", reasoning: "unknown", resume: "unknown", cancellation: "unknown" }, 65536, "unverified", true]);
     }
     assert.deepEqual(rt.hits.map(h => h.url), ["/v1/models", "/v1/models"]);
   } finally { await rt.close(); }

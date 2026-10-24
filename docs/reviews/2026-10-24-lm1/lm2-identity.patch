@@ -1,0 +1,65 @@
+--- a/apps/desktop/src/shared/local-connections.ts
++++ b/apps/desktop/src/shared/local-connections.ts
+@@ -5,14 +5,12 @@
+  * same id on two connections, or on two revisions of one, is two different targets.
+  */
+ 
++import type { ConnectionRef, LocalModelRef, LocalMetadataRuntime } from "./local-models.js";
++export type { ConnectionRef, LocalModelRef } from "./local-models.js";
++
+ /** Metadata adapter. "responses" covers llama.cpp, vLLM and other servers listing `/v1/models`. */
+-export type LocalRuntime = "ollama" | "lmstudio" | "responses";
++export type LocalRuntime = LocalMetadataRuntime;
+ export const LOCAL_RUNTIMES: readonly LocalRuntime[] = ["ollama", "lmstudio", "responses"];
+-
+-export interface ConnectionRef {
+-  id: string;
+-  revision: number;
+-}
+ 
+ export interface LocalConnectionView extends ConnectionRef {
+   label: string;
+@@ -42,7 +40,7 @@
+ export type ModelKind = "generative" | "embedding" | "other" | "unknown";
+ 
+ export interface LocalModelDescriptor {
+-  model: { connection: ConnectionRef; id: string };
++  model: LocalModelRef;
+   /** Where this entry came from: the runtime's listing, or typed by the person. */
+   source: "discovered" | "manual";
+   kind: ModelKind;
+--- a/apps/desktop/src/main/engine/local-models/discovery.ts
++++ b/apps/desktop/src/main/engine/local-models/discovery.ts
+@@ -1,3 +1,4 @@
++import { localModelRef } from "../../../shared/local-models.js";
+ import type { Advertised, ConnectionRef, DiscoveryResult, LocalModelDescriptor, ModelKind } from "../../../shared/local-connections.js";
+ import type { LocalConnectionStore, ResolvedConnection } from "./connections.js";
+ import { LocalGetFailure, localGet, localPost, type LocalGetOptions } from "./endpoint-policy.js";
+@@ -137,7 +138,7 @@
+ 
+ function descriptor(connection: ConnectionRef, id: string, source: LocalModelDescriptor["source"], facts: Partial): LocalModelDescriptor {
+   const reason = facts.locality === "cloud" ? "cloud" : facts.kind === "embedding" ? "embedding" : facts.kind === "other" ? "other" : undefined;
+-  return { model: { connection: { ...connection }, id }, source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
++  return { model: localModelRef(connection, id), source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
+ }
+ 
+ export class LocalModelDiscovery {
+--- a/apps/desktop/test/local-model-discovery.test.ts
++++ b/apps/desktop/test/local-model-discovery.test.ts
+@@ -71,7 +71,7 @@
+     const m = byId(result);
+     assert.deepEqual(Object.keys(m).sort(), ["custom:tag", "gpt-oss:120b-cloud", "hf.co/Org/My Model:Q4_K_M", "nomic-embed-text:latest", "qwen3-coder:30b"]);
+     const coder = m["qwen3-coder:30b"]!;
+-    assert.deepEqual(coder.model, { connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
++    assert.deepEqual(coder.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
+     assert.deepEqual([coder.source, coder.kind, coder.installed, coder.loaded, coder.advertisedContext, coder.locality, coder.selectable], ["discovered", "generative", "yes", "yes", 262144, "unverified", true]);
+     assert.deepEqual(coder.advertised, { tools: "advertised", vision: "not-advertised", reasoning: "not-advertised" });
+     const embed = m["nomic-embed-text:latest"]!;
+@@ -81,6 +81,7 @@
+     const spaced = m["hf.co/Org/My Model:Q4_K_M"]!;
+     assert.deepEqual([spaced.kind, spaced.advertised.vision, spaced.advertised.reasoning, spaced.advertised.tools, spaced.advertisedContext], ["generative", "advertised", "advertised", "not-advertised", null]);
+     const manual = m["custom:tag"]!;
++    assert.deepEqual(manual.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "custom:tag" });
+     assert.deepEqual([manual.source, manual.kind, manual.installed, manual.loaded, manual.selectable], ["manual", "unknown", "unknown", "unknown", true]);
+ 
+     // Only metadata reads, no cloud model shown, nothing loaded, pulled or run; no credential sent.
