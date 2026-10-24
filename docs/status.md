@@ -202,6 +202,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   passed with CR-2 through the real Electron IPC/service path. Overview and diff content, original
   reference comparison and human accessibility remain separate acceptance gates.
 
+- **CR-6 isolation proof** (#325, Phase 1). Native CLI proof tests exercise Codex 0.164.0 and Claude Code 2.1.310 using disposable fixtures and a scripted loopback provider. Codex read-only alone still allows shell/outside reads/inherited fixture credentials; Claude's restricted Read-only tool palette rejects the tested malicious calls, with working hook/MCP controls. These are bounded native-CLI fixture results, not authenticated provider or production launch acceptance. Review, PR questions and instructions remain unavailable; see [the isolation evidence](reviews/2026-10-23-cr6-isolation.md). C82 and Phase 2 integration retain their existing gates.
+
 - **Code Review workspace** ([tracker #319](https://github.com/TypeSafeAI/modex/issues/319)). A PR
   inbox, an overview with activity and checks, and a revision-bound remote diff in Modex desktop,
   rebuilt from four reference screenshots. Gate A, the read-only workspace (#320–#324), is under way.
