@@ -165,12 +165,29 @@ test("hostile content: PR text renders inert, and unsafe or look-alike links nev
   expect(h.calls().filter((c) => c.startsWith("repos/") && /evil|\.\.|etc/.test(c))).toEqual([]);
 });
 
-test("dispatch: unavailable review, instructions, merge and new-tab actions start nothing however often they are pressed", async () => {
-  h = await launchWithGh(baseWorld());
+for (const delayed of [false, true]) test(`dispatch: unavailable actions start nothing after ${delayed ? "held" : "ordinary"} overview reads`, async () => {
+  const world = baseWorld();
+  if (delayed) world.holds = {
+    [`repos/example-org/lending/commits/${"c".repeat(40)}/check-runs`]: "initial-context",
+    "repos/example-org/lending/issues/73/timeline": "initial-context",
+    "repos/example-org/lending/pulls": "initial-context",
+  };
+  h = await launchWithGh(world);
   const { page } = h;
   await tid(page, "rail-code-review").click();
   await prRow(page, "example-org/lending#73").click();
   await expect(tid(page, "code-review-tab-changes")).toContainText("+8,912");
+  // Overview totals arrive before the independent context reads. A connection IPC
+  // reply cannot drain those reads; require each mounted section to finish first.
+  const sections = ["cr-activity", "cr-stack", "cr-checks"].map(id => tid(page, id));
+  for (const section of sections) {
+    await expect(section).toBeVisible();
+    if (delayed) await expect(section.getByRole("status").filter({ hasText: /Loading/ })).toHaveCount(1);
+  }
+  if (delayed) h.release("initial-context");
+  for (const section of sections) {
+    await expect(section.getByRole("status").filter({ hasText: /Loading|Refreshing/ })).toHaveCount(0);
+  }
   await settle(page);
   const calls = h.calls().length, starts = h.providerStarts().length;
   for (const id of ["code-review-review", "code-review-instructions", "code-review-merge", "code-review-new-tab"]) {
