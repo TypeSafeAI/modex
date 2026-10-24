@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Capabilities, Capability } from "../../shared/code-review.js";
+import { PrOverview } from "./PrOverview";
 import { bridge } from "../bridge";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
@@ -21,6 +22,9 @@ interface Props {
   caps: Capabilities;
   onPin: () => void;
   onRetry: () => void;
+  onShowChanges: () => void;
+  onActivityPage: (cursor: string | null) => void;
+  contextBusy: ReadonlySet<string>;
   onTreeResize: (width: number) => void;
   onTreeReset: () => void;
 }
@@ -41,10 +45,9 @@ function useScrollMemory(ref: RefObject<HTMLElement | null>, id: string) {
 
 /**
  * One pane of a PR: its header (C21–C29, repeated over Changes as C62) and the region below it. The
- * overview's content is #323's and the remote diff and file tree are #324's; until they land, this
- * pane says what it has read and nothing more.
+ * overview renders #323's read-only content. The remote diff and file tree remain #324's.
  */
-export function PrPane({ pane, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onTreeResize, onTreeReset }: Props) {
+export function PrPane({ pane, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onShowChanges, onActivityPage, contextBusy, onTreeResize, onTreeReset }: Props) {
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
@@ -59,7 +62,7 @@ export function PrPane({ pane, pr, keyId, changesWidth, treeWidth, busy, pinned,
     <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
       <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
-        {status ?? <p className="cr-placeholder">The overview isn't shown here yet.{overview?.state === "stale" ? " What is known was read earlier." : ""}</p>}
+        {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} />}
       </div>}
       {pane === "changes" && <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"}>
         <div ref={body} className="cr-diff" data-testid="code-review-diff" tabIndex={-1}>

@@ -126,7 +126,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   drop, v0.3.0 history, older paired desktops, and the iPhone app closing cards closed on the Mac.
   Live Codex and Claude turns with the journal on agreed on every path, also in the app through the live
   smoke. The journal suites pass on Windows and Linux CI. Val deferred the Windows and Linux app sessions and
-  a real power cut (2026-10-23). The physical iPhone gate waits for Val.
+  a real power cut (2026-10-23), and then the physical iPhone gate, so #279 closed.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect), [gates](reviews/2026-10-22-cf6-gates.md).
 
 - **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
@@ -214,8 +214,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   while preserving unrelated repositories and ordinary offline/rate-limit fallback.
   [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
   coverage through the production preload/IPC/service with a synthetic GitHub executable.
-  The CR-3 development flag exposes the integrated inbox and workspace host; overview/diff content, AI
-  review (#325) and GitHub writes (#326) are later gates.
+  The CR-3 development flag exposes the integrated inbox and workspace host. CR-4 (#323) adds the PR description, paginated activity, checks, inferred branch stack and provider/comment preview provenance through that host; validation and delivery evidence is recorded in [the CR-4 review](reviews/2026-10-23-cr4-overview.md). Remote diff content, AI review (#325) and GitHub writes (#326) retain their own gates. Original-reference comparison and human accessibility remain open.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).
