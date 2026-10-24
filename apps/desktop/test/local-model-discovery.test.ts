@@ -280,7 +280,8 @@ test("a server that repeats the saved token in its model list is ignored, never 
     const rt = await runtime(route);
     const { store, discovery } = setup();
     try {
-      const c = store.create({ label: name, runtime: kind, url: rt.url, token: SECRET, manualModels: ["manual/kept", `manual/${SECRET}`] });
+      // Saving a manual ID that holds the token is refused (see local-model-connections), so only the clean one is here.
+      const c = store.create({ label: name, runtime: kind, url: rt.url, token: SECRET, manualModels: ["manual/kept"] });
       const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
       assert.equal(JSON.stringify(result).includes(SECRET), false, `${name}: the token never reaches IPC`);
       assert.equal(result.state, "unavailable", name);
