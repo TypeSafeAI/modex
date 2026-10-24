@@ -72,7 +72,7 @@ test("Ollama: installed, loaded, kind, advertised capabilities, cloud models and
     const m = byId(result);
     assert.deepEqual(Object.keys(m).sort(), ["custom:tag", "gpt-oss:120b-cloud", "hf.co/Org/My Model:Q4_K_M", "nomic-embed-text:latest", "qwen3-coder:30b"]);
     const coder = m["qwen3-coder:30b"]!;
-    assert.deepEqual(coder.model, { connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
+    assert.deepEqual(coder.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "qwen3-coder:30b" });
     assert.deepEqual([coder.source, coder.kind, coder.installed, coder.loaded, coder.advertisedContext, coder.locality, coder.selectable], ["discovered", "generative", "yes", "yes", 262144, "unverified", true]);
     assert.deepEqual(coder.advertised, { tools: "advertised", vision: "not-advertised", reasoning: "not-advertised" });
     const embed = m["nomic-embed-text:latest"]!;
@@ -82,6 +82,7 @@ test("Ollama: installed, loaded, kind, advertised capabilities, cloud models and
     const spaced = m["hf.co/Org/My Model:Q4_K_M"]!;
     assert.deepEqual([spaced.kind, spaced.advertised.vision, spaced.advertised.reasoning, spaced.advertised.tools, spaced.advertisedContext], ["generative", "advertised", "advertised", "not-advertised", null]);
     const manual = m["custom:tag"]!;
+    assert.deepEqual(manual.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: "custom:tag" });
     assert.deepEqual([manual.source, manual.kind, manual.installed, manual.loaded, manual.selectable], ["manual", "unknown", "unknown", "unknown", true]);
 
     // Only metadata reads, no cloud model shown, nothing loaded, pulled or run; no credential sent.

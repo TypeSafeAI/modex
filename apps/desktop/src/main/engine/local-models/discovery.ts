@@ -1,3 +1,4 @@
+import { localModelRef } from "../../../shared/local-models.js";
 import type { Advertised, ConnectionRef, DiscoveryResult, LocalModelDescriptor, ModelKind } from "../../../shared/local-connections.js";
 import type { LocalConnectionStore, ResolvedConnection } from "./connections.js";
 import { LocalGetFailure, localGet, localPost, type LocalGetOptions } from "./endpoint-policy.js";
@@ -144,7 +145,7 @@ async function ollamaListing(get: (path: string) => Promise<unknown>, show: (mod
 
 function descriptor(connection: ConnectionRef, id: string, source: LocalModelDescriptor["source"], facts: Partial): LocalModelDescriptor {
   const reason = facts.locality === "cloud" ? "cloud" : facts.kind === "embedding" ? "embedding" : facts.kind === "other" ? "other" : undefined;
-  return { model: { connection: { ...connection }, id }, source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
+  return { model: localModelRef(connection, id), source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
 }
 
 export class LocalModelDiscovery {
