@@ -232,3 +232,6 @@ Verify processing and install from TestFlight on a physical iPhone on the Mac's 
 The App Store Connect key used for macOS notarization has the Developer role; an Account
 Holder, Admin, or App Manager must create the app record if it does not already exist. Do not
 place signing keys in this tree.
+
+
+The [network-change and revocation evidence](reviews/2026-10-24-companion-revoke-race.md) maps #109 to automated coverage and provides the pending physical two-LAN acceptance procedure. Private-address VPN support remains a policy decision; automated socket tests do not establish physical secondary-LAN acceptance.
