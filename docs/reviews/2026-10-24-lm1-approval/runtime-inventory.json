@@ -1,0 +1,53 @@
+{
+  "observedAt": "2026-10-24T09:07:57.545531+00:00",
+  "purpose": "authorized prerequisite inventory; no inference qualification",
+  "codexCli": "0.164.0",
+  "ollama": {
+    "version": "0.40.10",
+    "installedModels": []
+  },
+  "lmStudio": {
+    "cliVersionOutput": "CLI commit: 43d4b26",
+    "apiServer": "not running",
+    "models": [
+      {
+        "id": "text-embedding-nomic-embed-text-v1.5",
+        "type": "embedding",
+        "locality": "this-machine",
+        "format": "gguf",
+        "trainedForToolUse": null
+      },
+      {
+        "id": "recursivesi/flint",
+        "type": "llm",
+        "locality": "linked-device",
+        "format": "gguf",
+        "trainedForToolUse": true
+      },
+      {
+        "id": "qwen3-8b",
+        "type": "llm",
+        "locality": "linked-device",
+        "format": "gguf",
+        "trainedForToolUse": true
+      },
+      {
+        "id": "text-embedding-nomic-embed-text-v1.5",
+        "type": "embedding",
+        "locality": "linked-device",
+        "format": "gguf",
+        "trainedForToolUse": null
+      }
+    ]
+  },
+  "outcome": "unavailable: no installed local generative target; linked-device LLMs are outside local v1 scope",
+  "inferenceRequests": 0,
+  "modelDownloads": 0,
+  "globalCodexConfigEdits": 0,
+  "decision": {
+    "state": "deferred",
+    "authority": "Val",
+    "reason": "until a local coding model exists",
+    "recordedOn": "2026-10-24"
+  }
+}
