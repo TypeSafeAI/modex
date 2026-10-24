@@ -67,9 +67,10 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   `app/local-connections.json`, with any token in the existing encrypted secret store, and reads
   bounded model metadata through one local-only IPC channel. There is no UI, no execution binding
   and no inference. Discovery never pulls, loads or unloads a model, and a loopback address is not a
-  locality claim. Model identity is LM-1's accepted schema-1 contract. The evidence is fixtures and
-  real Electron IPC. Listing-only reads against a real Ollama and LM Studio still need Val's
-  authorization, and the AGENTS.md wording for this metadata traffic still awaits Val's decision.
+  locality claim. Model identity is LM-1's accepted schema-1 contract, and AGENTS.md records Val's
+  approval of this metadata traffic. The evidence is fixtures and real Electron IPC. LM-2's discovery
+  has not yet run against a real runtime: an authorized CLI inventory found no local generative model
+  (Ollama 0.40.10 has none; this Mac's only LM Studio model is an embedding model).
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
@@ -183,7 +184,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 - **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324), [PR #395](https://github.com/TypeSafeAI/modex/pull/395)). The integration repair distinguishes the proven three-dot diff base from the target tip in file pages, context, anchors and labels. Four failing-first regressions and a real GitHub read confirmed the defect and correction; full build, unit, typecheck and E2E checks passed (430 desktop passes, seven skips, seven site passes). The original candidate's resource bounds remain in place. Original R4 comparison, human acceptance and the Viewed decision remain open. [Repair evidence](reviews/2026-10-24-cr5-merge-base.md); [original candidate evidence](reviews/2026-10-23-cr5-remote-diffs.md).
 
-- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build. Val [accepted Gate A narrowly](https://github.com/TypeSafeAI/modex/issues/377#issuecomment-6382280214) on 2026-10-24 at `bb0e1a4`; downstream execution must not assume support beyond that combination. The shared identity owner and metadata-runtime mapping are defined, with a fixture-verified adoption patch for LM-2 #398 and a sanitized Strata launch configuration in the receipt. LM-2 consumes it through #403; Val's network-policy sign-off remains open; Ollama/LM Studio probes require separate explicit authorization. See [the contract and source map](local-models.md).
+- **LM-1 local-model contract and native feasibility (#377 / #376).** Val accepted narrow Gate A on 2026-10-24 for the producer at main `bb0e1a4`, including the shared identity/runtime mapping from #400, and the recorded Codex 0.163.0/0.164.0 + Strata 0.1.47 tool/Stop/continuation evidence. The loopback metadata boundary is separately approved; no local execution feature is enabled. LM-2 consumes it through #403. Val explicitly deferred the additional Ollama/LM Studio app-server probe until a local coding model exists: Ollama has no models, and this Mac has only an LM Studio embedding model; linked-device LLMs are outside scope. [Contract/source map](local-models.md), [native feasibility](reviews/2026-10-22-lm1-feasibility.md) and [acceptance/availability](reviews/2026-10-24-lm1-acceptance.md).
 
 - **CF-4 Markdown closeout (#277).** `cf4-closeout` adds named keyboard stops for table/code overflow, reference-viewport captures, and Markdown rows in the shared #281 human checklist. [New evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) separates local measurements from the approved 500 ms median cold-open gate, passing hosted evidence on the original reviewed head, and Val's still-pending VoiceOver result. The [integrated candidate](reviews/2026-10-24-integrated-review.md) passed full build, unit, typecheck and E2E gates, including a 129.5 ms local median; #277 stays open for human acceptance.
 
