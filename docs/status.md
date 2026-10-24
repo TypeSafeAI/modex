@@ -126,7 +126,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   drop, v0.3.0 history, older paired desktops, and the iPhone app closing cards closed on the Mac.
   Live Codex and Claude turns with the journal on agreed on every path, also in the app through the live
   smoke. The journal suites pass on Windows and Linux CI. Val deferred the Windows and Linux app sessions and
-  a real power cut (2026-10-23). The physical iPhone gate waits for Val.
+  a real power cut (2026-10-23), and then the physical iPhone gate, so #279 closed.
   [Across replay and reconnect](human-requests.md#across-replay-and-reconnect), [gates](reviews/2026-10-22-cf6-gates.md).
 
 - **Native question drafts survive thread navigation** (CF-3 #276, PR #348). Unsent choices
