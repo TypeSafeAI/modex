@@ -13,10 +13,12 @@ import { LocalGetFailure, localGet, localPost, type LocalGetOptions } from "./en
  * redacted, since a redacted ID would name a different model; manual IDs holding it are left out.
  * Answers are bound to the profile revision they were read under. An answer that arrives after
  * the profile was edited, deleted or re-read is returned as `stale` and never as current.
+ * A whole discovery ends within DEADLINES_PER_DISCOVERY per-request deadlines: per-model detail
+ * still unread by then is left unknown rather than holding the answer.
  */
 
 export interface DiscoveryOptions {
-  /** Per-request deadline. */
+  /** Per-request deadline; the whole discovery gets DEADLINES_PER_DISCOVERY of them. */
   timeoutMs?: number;
   /** Test seam for `localhost` resolution. */
   lookup?: LocalGetOptions["lookup"];
@@ -29,6 +31,8 @@ const MAX_MODELS = 500;
 /** Ollama answers capabilities per model; read at most this many, a few at a time. */
 const MAX_SHOW = 32;
 const SHOW_CONCURRENCY = 4;
+/** At most two listing reads (LM Studio's fallback, Ollama's tags and ps), then per-model reads in what remains. */
+const DEADLINES_PER_DISCOVERY = 3;
 const MAX_ID = 512;
 const CONTROL = /[\x00-\x1f\x7f]/;
 
@@ -97,7 +101,7 @@ async function lmStudioListing(c: ResolvedConnection, get: (path: string) => Pro
 /** Ollama marks models it forwards to ollama.com with remote_host, and names them `…-cloud`/`…:cloud`. */
 const ollamaCloud = (i: Record<string, unknown>, id: string) => typeof i.remote_host === "string" || typeof i.remote_model === "string" || /[:-]cloud$/.test(id);
 
-async function ollamaListing(get: (path: string) => Promise<unknown>, show: (model: string) => Promise<unknown>, signal: AbortSignal): Promise<Listing> {
+async function ollamaListing(get: (path: string) => Promise<unknown>, show: (model: string, signal: AbortSignal) => Promise<unknown>, signal: AbortSignal, deadline: number): Promise<Listing> {
   const tags = list(await get("/api/tags"), "models");
   let loaded: Set<string> | null = null;
   try {
@@ -111,12 +115,15 @@ async function ollamaListing(get: (path: string) => Promise<unknown>, show: (mod
     return { ...UNKNOWN, installed: cloud ? "unknown" : "yes", loaded: loaded ? (loaded.has(id) ? "yes" : "no") : "unknown", locality: cloud ? "cloud" : "unverified" };
   });
   const queue = listing.entries.filter(e => e.facts.locality !== "cloud").slice(0, MAX_SHOW);
+  // Out of time is not a failure: what was read is kept and the rest stays unknown.
+  const outOfTime = AbortSignal.timeout(Math.max(0, deadline - Date.now()));
+  const reads = AbortSignal.any([signal, outOfTime]);
   const worker = async () => {
-    for (let entry = queue.shift(); entry; entry = queue.shift()) {
+    for (let entry = queue.shift(); entry && !outOfTime.aborted; entry = queue.shift()) {
       if (signal.aborted) throw new LocalGetFailure("cancelled");
       let info: Record<string, unknown> | null;
-      try { info = record(await show(entry.id)); } catch (err) {
-        if (err instanceof LocalGetFailure && err.reason === "cancelled") throw err;
+      try { info = record(await show(entry.id, reads)); } catch {
+        if (signal.aborted) throw new LocalGetFailure("cancelled");
         continue;
       }
       const caps = Array.isArray(info?.capabilities) ? (info.capabilities as unknown[]).filter((x): x is string => typeof x === "string") : null;
@@ -163,17 +170,24 @@ export class LocalModelDiscovery {
     const stale: DiscoveryResult = { state: "stale", connection: { ...ref }, requestId };
     const resolved = this.store.resolve(ref);
     if (!resolved) return stale;
+    // The profile was saved with a token: reading without it would be a different, unauthenticated request.
+    if (resolved.credentialUnavailable) {
+      const models = resolved.manualModels.map(id => descriptor(ref, id, "manual", UNKNOWN));
+      const reason = "credential-unavailable";
+      return { state: "unavailable", connection: { ...ref }, requestId, reason, detail: new LocalGetFailure(reason).message, models, checkedAt: this.now().toISOString() };
+    }
+    const deadline = Date.now() + DEADLINES_PER_DISCOVERY * this.timeoutMs;
     this.inflight.get(ref.id)?.controller.abort();
     const entry = { controller: new AbortController(), requestId };
     this.inflight.set(ref.id, entry);
     const signal = entry.controller.signal;
     const opts = (maxBytes: number): LocalGetOptions => ({ maxBytes, timeoutMs: this.timeoutMs, signal, ...(resolved.token ? { token: resolved.token } : {}), ...(this.options.lookup ? { lookup: this.options.lookup } : {}) });
     const get = (path: string) => localGet(resolved.endpoint, path, opts(LIST_BYTES));
-    const show = (model: string) => localPost(resolved.endpoint, "/api/show", { model }, opts(SHOW_BYTES));
+    const show = (model: string, reads: AbortSignal) => localPost(resolved.endpoint, "/api/show", { model }, { ...opts(SHOW_BYTES), signal: reads });
     let listing: Listing | null = null;
     let failure: LocalGetFailure | null = null;
     try {
-      listing = resolved.runtime === "ollama" ? await ollamaListing(get, show, signal)
+      listing = resolved.runtime === "ollama" ? await ollamaListing(get, show, signal, deadline)
         : resolved.runtime === "lmstudio" ? await lmStudioListing(resolved, get)
           : await responsesListing(resolved, get);
     } catch (err) {

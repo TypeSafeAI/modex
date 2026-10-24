@@ -83,7 +83,7 @@ export function loopbackLookup(base: BaseLookup = dns.lookup as unknown as BaseL
   };
 }
 
-export type LocalGetReason = "invalid" | "not-loopback" | "redirect" | "too-large" | "timeout" | "cancelled" | "unauthorized" | "not-found" | "http-error" | "malformed" | "unavailable" | "reflected-credential";
+export type LocalGetReason = "invalid" | "not-loopback" | "redirect" | "too-large" | "timeout" | "cancelled" | "unauthorized" | "not-found" | "http-error" | "malformed" | "unavailable" | "reflected-credential" | "credential-unavailable";
 
 /** Messages are fixed: a local server's own text can contain the token it was sent. */
 const DETAIL: Record<LocalGetReason, string> = {
@@ -99,6 +99,7 @@ const DETAIL: Record<LocalGetReason, string> = {
   malformed: "The server's answer could not be read.",
   unavailable: "Nothing answered at that address.",
   "reflected-credential": "The server repeated the saved token in its answer, so Modex ignored the answer.",
+  "credential-unavailable": "Modex can't read the saved token right now, so it didn't contact the server.",
 };
 
 export class LocalGetFailure extends Error {

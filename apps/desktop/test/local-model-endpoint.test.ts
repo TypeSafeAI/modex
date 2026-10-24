@@ -20,6 +20,9 @@ test("accepts loopback HTTP(S) origins and normalizes IPv4 and IPv6 spellings", 
     ["http://[::ffff:127.0.0.1]:8000", "http://[::ffff:7f00:1]:8000"],
     ["https://localhost:8443", "https://localhost:8443"],
     ["http://localhost", "http://localhost"],
+    ["http://0177.0.0.1:8080", "http://127.0.0.1:8080"],
+    ["http://127.0.0.1.:8080", "http://127.0.0.1:8080"],
+    ["http://ｌｏｃａｌｈｏｓｔ:11434", "http://localhost:11434"],
   ];
   for (const [input, origin] of cases) {
     const parsed = parseLocalEndpoint(input);
@@ -40,6 +43,8 @@ test("refuses non-loopback hosts, schemes, credentials, queries, fragments and u
     "http://user:pass@127.0.0.1:1", "http://token@localhost:1", "http://127.0.0.1:1?x=1", "http://127.0.0.1:1/#a",
     "http://127.0.0.1:1/api/tags", "http://127.0.0.1:1/v1", "http://127.0.0.1:1/v1/../admin", "http://127.0.0.1:1/%2e%2e/",
     "http://127.0.0.1@evil.example:80", "http://evil.example\\@127.0.0.1", "http://127.0.0.1\n.evil", "http://127.0.0.1:0",
+    // IPv4-compatible, NAT64 and other embeddings of 127.0.0.1 are not loopback; neither is a dotted localhost.
+    "http://[::127.0.0.1]:1", "http://[64:ff9b::7f00:1]:1", "http://[::ffff:0:127.0.0.1]:1", "http://localhost.:1", "http://127.0.0.1:65536",
   ];
   for (const input of refused) assert.equal(parseLocalEndpoint(input).ok, false, `${JSON.stringify(input)} is refused`);
   assert.equal(parseLocalEndpoint("http://127.0.0.1:1/v2", { allowV1: true }).ok, false);
