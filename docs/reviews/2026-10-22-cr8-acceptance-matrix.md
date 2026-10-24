@@ -1,5 +1,7 @@
 # Code Review acceptance matrix (CR-8), 2026-10-22
 
+**Historical baseline:** This matrix records the CR-8 candidate based on product `0e674e7`. Its “not started” entries describe that snapshot. Later overview, remote-diff and unwired action-foundation implementations have separate receipts; the integration candidate must reconcile their automated evidence without claiming missing original-reference or human acceptance.
+
 CR-8 ([#327](https://github.com/TypeSafeAI/modex/issues/327)) runs the integration and acceptance pass for the
 Code Review workspace ([#319](https://github.com/TypeSafeAI/modex/issues/319)), alongside the implementation
 slices. This page maps every control in the

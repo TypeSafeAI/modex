@@ -88,7 +88,7 @@ export const prRow = (p: Page, slug: string) => p.locator(`[data-testid="code-re
 export const settle = (p: Page) => p.evaluate(() => window.modex!.invoke("code-review:read", { op: "connection", requestId: `settle-${Date.now()}` }));
 
 /** Every endpoint the read service may ask for (docs/design/code-review.md, Read operations). */
-export const READ_ENDPOINT = /^(user|search\/issues\?[^/]+|repos\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+(\/(pulls\/\d+(\/files)?|issues\/\d+\/timeline|commits\/[0-9a-f]{40}\/(check-runs|status)|contents\/[^?]+))?(\?[^/]*)?)$/;
+export const READ_ENDPOINT = /^(user|search\/issues\?[^/]+|repos\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+(\/(pulls(\/\d+(\/files)?)?|compare\/[0-9a-f]{40}\.\.\.[0-9a-f]{40}|issues\/\d+\/timeline|commits\/[0-9a-f]{40}\/(check-runs|status)|contents\/[^?]+))?(\?[^/]*)?)$/;
 
 /**
  * resizeWindow, but within the display. These launches can't set MODEX_E2E (it disables the read service), so

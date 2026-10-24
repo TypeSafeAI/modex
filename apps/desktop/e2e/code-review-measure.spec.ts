@@ -110,7 +110,8 @@ test("a 1,000-file PR and a 3 MiB patch read over IPC in bounded requests", asyn
     pagesRead++;
     if (!cursor) expect(reply.result).toMatchObject({ state: "ready", coverage: { loaded: 1000, total: 1000, complete: true } });
   } while (cursor);
-  const thousand = { ms: Date.now() - t, pages: pagesRead, replyBytes: bytes, requests: h.calls().length - before };
+  const thousandCalls = h.calls().slice(before);
+  const thousand = { ms: Date.now() - t, pages: pagesRead, replyBytes: bytes, requests: thousandCalls.length };
   const o70 = await invoke({ op: "overview", requestId: "o70", key: keyOf(70) });
   const t2 = Date.now();
   const large = await invoke({ op: "files", requestId: "large", key: keyOf(70), revision: (o70.result as { value: PrOverview }).value.revision, cursor: null });
@@ -118,8 +119,9 @@ test("a 1,000-file PR and a 3 MiB patch read over IPC in bounded requests", asyn
   record("files", { thousand, patch3MiB: patch });
   expect(loaded).toBe(1000);
   expect(pagesRead).toBe(10);
-  // Each page is the list plus a read of the PR on either side of it: 1 overview + 10 × 3.
-  expect(thousand.requests).toBe(1 + 10 * 3);
+  // Each page proves its merge base and brackets the file list with target/head freshness reads.
+  expect(thousandCalls.filter(endpoint => endpoint === `repos/example-org/lending/compare/${revision.baseSha}...${revision.headSha}?per_page=1&page=1`)).toHaveLength(10);
+  expect(thousand.requests).toBe(1 + 10 * 4);
   expect(large.result).toMatchObject({ state: "ready", value: { files: [{ patch: { kind: "text" } }] } });
   expect(patch.replyBytes).toBeGreaterThan(3 * 2 ** 20);
 });

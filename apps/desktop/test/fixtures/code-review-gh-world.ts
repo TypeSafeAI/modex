@@ -53,7 +53,16 @@ if (route === "user") {
   const rows = (world.search[group] || []).filter((row) => !text || String(row.title).toLowerCase().includes(text));
   send(200, { total_count: rows.length, incomplete_results: Boolean((world.incomplete || {})[group]), items: paged(rows) });
 } else {
-  const found = world.routes[route];
+  let found = world.routes[route];
+  // These synthetic PRs fork directly from their named base. Only a declared PR pair
+  // supplies comparison provenance; explicit routes can model divergent or failed comparisons.
+  const comparison = /^(repos\/[^/]+\/[^/]+)\/compare\/([a-f0-9]{40})\.\.\.([a-f0-9]{40})$/.exec(route);
+  if (found === undefined && comparison) {
+    const declared = Object.entries(world.routes).some(([endpoint, value]) =>
+      endpoint.startsWith(comparison[1] + "/pulls/") && /\/pulls\/\d+$/.test(endpoint)
+      && value && value.base && value.head && value.base.sha === comparison[2] && value.head.sha === comparison[3]);
+    if (declared) found = { base_commit: { sha: comparison[2] }, merge_base_commit: { sha: comparison[2] } };
+  }
   if (found === undefined) send(404, { message: "Not Found" });
   else if (found && typeof found === "object" && !Array.isArray(found) && typeof found.status === "number") {
     if (found.stderr) process.stderr.write(found.stderr);

@@ -36,7 +36,7 @@ const contrast = (page: Page, selector: string) => page.locator(selector).first(
 const TEXT: [string, string][] = [
   ["inbox title", ".cr-inbox-title"], ["group label", ".cr-group-label"], ["row title", ".cr-row-title"], ["row meta (login · age)", ".cr-row-meta"],
   ["PR id in header", '[data-testid="code-review-pr-id"]'], ["state pill", '[data-testid="code-review-state"]'], ["PR tab title", '[data-testid="code-review-tab-overview"]'],
-  ["pane placeholder", ".cr-placeholder"], ["search field text", '[data-testid="code-review-search"]'],
+  ["PR description", '[data-testid="cr-description"]'], ["search field text", '[data-testid="code-review-search"]'],
 ];
 
 for (const theme of Object.keys(THEMES) as Theme[]) {
