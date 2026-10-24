@@ -234,8 +234,9 @@ for #377: first its commit `91deb281ad36f522636d9b6e2fe55105b74d47ae`, then the 
 `cb7ca6c30a3aa68012187aaf508cc552c84445d3`). That head descends from `91deb28` with identical
 contract files, and brings in `main` up to `6c40547`, including LM-1's producer from #397
 (`ffb9e1d`). #400 then landed on `main` as `bb0e1a4`, and the branch merges that `main`, so its LM-1
-files are identical to `main`'s. #377's Gate A acceptance is not recorded, so nothing here may land
-before it.
+files are identical to `main`'s. Val [accepted Gate A](https://github.com/TypeSafeAI/modex/issues/377#issuecomment-6382280214) narrowly on 2026-10-24 for that
+producer (`bb0e1a4`) and the recorded Strata combination, so this branch consumes the accepted
+contract. It still lands only after #398 and #402, and only with Val's go-ahead to merge.
 
 - **Shared identity.** The LM-1 session's consumer patch (`docs/reviews/2026-10-24-lm1/lm2-identity.patch`,
   written against `954cd5b`) applied unchanged on top of the hardening. `shared/local-connections.ts`
@@ -293,3 +294,8 @@ branch's text: `main`'s copy matched `cb7ca6c`, so only this branch's adoption p
 | `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1907 tests, 1891 passed, 16 skipped, 0 failed; native/package 26 tests, 21 passed, 5 skipped (from `main`'s #396 native code-review isolation tests), 0 failed; site 10/10, Store desktop 16/16 |
 | `pnpm typecheck` | exit 0 |
 | `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed |
+
+Open after Gate A: listing-only reads against a real Ollama and LM Studio (needs Val's
+authorization); Val's decision on the AGENTS.md loopback-metadata wording; the choice between #386
+and #398; landing #398, #402 and #403 in that order, each rebased after the squash below it; LM-3
+execution binding and LM-4 UI.

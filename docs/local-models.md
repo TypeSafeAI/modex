@@ -1,6 +1,6 @@
 # Local models: LM-1 contract and feasibility
 
-Status: proposed LM-1 contracts under #377 / #376; Gate A is not accepted. No local execution option is enabled by this change. Existing `BackendId`, thread persistence, account policy, native execution, approval handling and companion messages are unchanged.
+Status: LM-1 contracts under #377 / #376. Val [accepted Gate A narrowly](https://github.com/TypeSafeAI/modex/issues/377#issuecomment-6382280214) on 2026-10-24 for `main` at `bb0e1a4`: the contract and the recorded Strata combination only. No local execution option is enabled by this change. Existing `BackendId`, thread persistence, account policy, native execution, approval handling and companion messages are unchanged.
 
 ## Identity and migration
 
@@ -20,7 +20,7 @@ Status: proposed LM-1 contracts under #377 / #376; Gate A is not accepted. No lo
 
 `metadataRuntimeForProfile` and `connectionProfileForRuntime` define this mapping. The mapping is deliberately many-to-one: selecting an explicit llama.cpp/vLLM preset remains separate from the metadata protocol and must be retained in the main-owned profile. Responses is the coding wire in each case; neither the adapter nor the connection kind changes the native harness.
 
-#386 and #398 still declare LM-2's own identity. The [consumer adoption patch](reviews/2026-10-24-lm1/lm2-identity.patch), written against #398 at `954cd5b7d0627333835db41f9b0dfb477b72176f`, is applied unchanged on LM-2's `lm2-adopt` branch, which is stacked on #398 and its hardening (#402). That branch also keys advertised model metadata by `Capability`, with `unknown` for anything a listing doesn't advertise. Producer acceptance is still required before it lands.
+#386 and #398 still declare LM-2's own identity. The [consumer adoption patch](reviews/2026-10-24-lm1/lm2-identity.patch), written against #398 at `954cd5b7d0627333835db41f9b0dfb477b72176f`, is applied unchanged on LM-2's `lm2-adopt` branch, which is stacked on #398 and its hardening (#402). That branch also keys advertised model metadata by `Capability`, with `unknown` for anything a listing doesn't advertise. The producer was accepted on 2026-10-24 at `bb0e1a4`.
 
 `LocalThreadTarget` is the proposed additive schema-1 binding for LM-3. The pure `threadTarget` reader preserves an absent target as legacy harness/model/account/resume semantics without writing or relabeling history. A present invalid or mismatched target is unavailable, never silently interpreted as cloud. Local selection deliberately does not import a legacy resume handle. Production Thread/Store/IPC adoption waits for LM-3 admission and process isolation; do not persist local targets into today's unchanged runner.
 

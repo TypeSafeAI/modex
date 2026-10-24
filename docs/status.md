@@ -166,7 +166,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
-- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build; acceptance review remains open, and downstream execution must not assume support beyond that combination. The shared identity owner and metadata-runtime mapping are defined, with a fixture-verified adoption patch for LM-2 #398 and a sanitized Strata launch configuration in the receipt. LM-2 adoption, Val's network-policy sign-off and Gate A acceptance remain open; Ollama/LM Studio probes require separate explicit authorization. See [the contract and source map](local-models.md).
+- **LM-1 local-model contract and native feasibility (#377 / #376).** Proposed connection/model/provenance and qualification contracts preserve legacy execution; no local feature is enabled. Contract tests and native schema selection are recorded in the [LM-1 receipt](reviews/2026-10-22-lm1-feasibility.md). Real tool/Stop/continuation passed on Codex 0.163.0 and again on 0.164.0 against the same Strata build. Val [accepted Gate A narrowly](https://github.com/TypeSafeAI/modex/issues/377#issuecomment-6382280214) on 2026-10-24 at `bb0e1a4`; downstream execution must not assume support beyond that combination. The shared identity owner and metadata-runtime mapping are defined, with a fixture-verified adoption patch for LM-2 #398 and a sanitized Strata launch configuration in the receipt. LM-2 adoption is in draft #403; Val's network-policy sign-off remains open; Ollama/LM Studio probes require separate explicit authorization. See [the contract and source map](local-models.md).
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
@@ -193,7 +193,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   unreadable or newer profiles file is never overwritten, the saved token can't be saved into a
   name or model ID, leftover token entries are swept, an unreadable token never becomes an
   unauthenticated read, and a whole discovery has one deadline. `lm2-adopt`, stacked on that,
-  adopts LM-1's shared identity and capability names; it waits for #377.
+  adopts LM-1's shared identity and capability names, accepted under #377 at `bb0e1a4`.
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and
