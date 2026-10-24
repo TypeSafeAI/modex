@@ -26,7 +26,7 @@ decisions and leaves completion blocked:
 | Module | Role |
 |---|---|
 | `main/engine/local-models/endpoint-policy.ts` | Loopback-only URL parsing; every resolved `localhost` address re-checked at connect; bounded JSON GET/POST |
-| `main/engine/local-models/connections.ts` | Main-owned profiles in `app/local-connections.json`; tokens in `SecretStore` as `local_connection:<id>` |
+| `main/engine/local-models/connections.ts` | Main-owned profiles in `app/local-connections.json`; tokens in `SecretStore`, one versioned entry `local_connection:<id>:<uuid>` per saved token |
 | `main/engine/local-models/discovery.ts` | Ollama / LM Studio / Responses metadata adapters; revision-bound, supersedable reads |
 | `main/engine/local-models/service.ts` | The single `local-models:command` handler, registered `localOnly` |
 | `shared/local-connections.ts` | Renderer-safe views, descriptors and the strict request validator |
@@ -113,3 +113,45 @@ in its own worktree, not read into this branch) declares the same `ConnectionRef
 and a `LocalModelRef` that adds `schema: 1`. Adopting it means importing those types here and adding
 `schema: 1` to descriptor model references, with no behaviour change. The draft assigns endpoint
 validation, bounded metadata and the public projection to LM-2, which matches this branch.
+
+## Review fixes, 2026-10-23
+
+An independent review of draft PR #386 (recorded in the `lm-foundation` session, not on `main`)
+found two defects in `3654053`.
+Both are fixed on `lm2-fixes`, which replays the six LM-2 commits onto `main` at
+`203a3505bfa46b67ea4cb47254ece26ac0f2da88` without changes and adds one commit per fix. Each fix
+started with a regression that failed on the reviewed code.
+
+**P1: a failed profile write changed an old revision's credential.** `update` used to replace or
+clear the token before writing the profile, so when the rename failed, the old revision resolved
+the new token. Each saved token now has its own secret entry, `local_connection:<id>:<uuid>`, and
+the profile names the entry it uses. An edit writes any new token first, then the profile. Only
+after the profile is durable does it remove the superseded entry. If the write fails, the new entry
+is removed instead. Delete writes the tombstone before clearing the token. The regression injects
+EIO on the profiles-file rename for rotation, clear, endpoint move with and without a token, delete
+and create. In every case, revision 1 still resolves its own token and address, the view does not
+change and no orphaned entry is left behind. It failed first with `rotation: revision 1 still
+resolves its own token`. Profiles saved by the unmerged draft, which name no entry, read as having
+no token. That fails closed.
+
+**P2: successful metadata could put the saved credential into IPC.** Discovery now rejects the
+whole listing as `reflected-credential` when any model ID contains the saved token, exactly or
+embedded. It never redacts, because a redacted ID would name a different model. Manual IDs that
+contain the token are left out, and other manual IDs stay available. Fixtures cover exact and
+embedded reflection through Responses `/v1/models`, LM Studio `/api/v0/models` and Ollama
+`/api/tags`. A second fixture keeps IDs that only resemble parts of the token exactly as reported.
+It failed first with `exact Responses ID: the token never reaches IPC`. One side effect: a very
+short token rejects every listing that contains it. That fails closed and is visible as
+`reflected-credential`.
+
+The contract reconciliation (schema 1 and the shared `ConnectionRef`) is unchanged here. It waits
+for LM-1's PR.
+
+Results on `512016f`: macOS 27.0.1 arm64, Node v24.22.0, pnpm 10.34.5.
+
+| Command | Result |
+|---|---|
+| `node --test dist/test/local-model-*.test.js` (in `apps/desktop`) | 25/25 passed: endpoint 6, connections 8, discovery 10, IPC 1 |
+| `pnpm build && pnpm test` | exit 0. Worktree 117/117, core 16/16, desktop 1877 tests, 1861 passed, 16 skipped, 0 failed; native/package 21/21, site 10/10, Store desktop 16/16 |
+| `pnpm typecheck` | exit 0 |
+| `playwright test e2e/local-models-ipc.spec.ts` | 1/1 passed. Playwright fetched the Electron binary into the fresh worktree first; no model or runtime was downloaded |

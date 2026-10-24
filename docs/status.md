@@ -184,7 +184,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   Responses-compatible servers. Discovery uses one local-only IPC channel; there is no UI and no
   execution binding yet. Evidence comes from fixtures only. The PR is a draft. Completion stays
   blocked on LM-1 (#377), whose contract and native app-server probe are not yet accepted, and on
-  metadata evidence from a real Ollama and LM Studio.
+  metadata evidence from a real Ollama and LM Studio. The review's two defects are fixed on
+  `lm2-fixes`: a failed profile write no longer changes an old revision's token, and a listing that
+  repeats the saved token is rejected before IPC.
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
 - **Code Review inbox integration repair.** The renderer labels independently stale groups and
