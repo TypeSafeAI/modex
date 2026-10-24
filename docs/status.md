@@ -166,6 +166,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
+- **Revision-bound remote diffs** (CR-5 [#324](https://github.com/TypeSafeAI/modex/issues/324), [PR #395](https://github.com/TypeSafeAI/modex/pull/395)). The signed review candidate combines #393's overview with grouped remote patches, exact-revision context, a filterable tree, line anchors and explicit incomplete-data states. Full build/tests passed (2,039 passed, 16 skipped); E2E passed 428 desktop cases (seven skipped) and seven site cases. The reviewed resource-bound repair is included. #395 is stacked on #393; original R4 comparison, human acceptance and the Viewed decision remain open. [Evidence, candidate identity and limits](reviews/2026-10-23-cr5-remote-diffs.md).
+
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
   its own update banner, and uploading Companion 0.3.0 (8) to TestFlight. Build 8 is cut from the
@@ -197,8 +199,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   while preserving unrelated repositories and ordinary offline/rate-limit fallback.
   [AC1 Electron evidence](reviews/2026-10-21-cr2-electron-ipc.md) adds inbox → overview → files
   coverage through the production preload/IPC/service with a synthetic GitHub executable.
-  The CR-3 development flag exposes the integrated inbox and workspace host; overview/diff content, AI
-  review (#325) and GitHub writes (#326) are later gates.
+  The CR-3 development flag exposes the integrated inbox and workspace host. CR-4 (#323) adds the PR description, paginated activity, checks, inferred branch stack and provider/comment preview provenance through that host; validation and delivery evidence is recorded in [the CR-4 review](reviews/2026-10-23-cr4-overview.md). Remote diff content, AI review (#325) and GitHub writes (#326) retain their own gates. Original-reference comparison and human accessibility remain open.
 
 - **Mac App Store edition.** A sandboxed Store front end with a separately installed signed
   host, as Val chose. [Investigation and parity matrix](mac-app-store.md).

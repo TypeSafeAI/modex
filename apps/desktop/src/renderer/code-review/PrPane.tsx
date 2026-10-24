@@ -1,17 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Capabilities, Capability } from "../../shared/code-review.js";
+import { PrOverview } from "./PrOverview";
 import { bridge } from "../bridge";
-import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Icon, type IconName } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
 import { Tooltip } from "../components/ui/Tooltip";
 import { prUrl, type OpenPr } from "./model.js";
-import { SPLIT, type Pane } from "./navigation.js";
+import { type Pane } from "./navigation.js";
+import { PrChanges, type ChangesViews } from "./PrChanges";
 import { STATE_LABELS, unavailableText } from "./text.js";
 
 interface Props {
   pane: Pane;
+  changesViews: ChangesViews;
   pr: OpenPr;
   keyId: string;
   changesWidth: number;
@@ -21,6 +23,9 @@ interface Props {
   caps: Capabilities;
   onPin: () => void;
   onRetry: () => void;
+  onShowChanges: () => void;
+  onActivityPage: (cursor: string | null) => void;
+  contextBusy: ReadonlySet<string>;
   onTreeResize: (width: number) => void;
   onTreeReset: () => void;
 }
@@ -28,29 +33,29 @@ interface Props {
 /** Where each scroll region was, per PR, for returning to it. Session memory only. */
 const scrolled = new Map<string, number>();
 
-function useScrollMemory(ref: RefObject<HTMLElement | null>, id: string) {
+function useScrollMemory(ref: RefObject<HTMLElement | null>, id: string, content: string) {
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
     element.scrollTop = scrolled.get(id) ?? 0;
     const remember = () => { scrolled.set(id, element.scrollTop); };
     element.addEventListener("scroll", remember, { passive: true });
-    return () => element.removeEventListener("scroll", remember);
-  }, [ref, id]);
+    return () => { remember(); element.removeEventListener("scroll", remember); };
+  }, [ref, id, content]);
 }
 
 /**
  * One pane of a PR: its header (C21–C29, repeated over Changes as C62) and the region below it. The
- * overview's content is #323's and the remote diff and file tree are #324's; until they land, this
- * pane says what it has read and nothing more.
+ * overview renders #323's read-only content; #324 supplies revision-bound remote diffs and the file tree.
  */
-export function PrPane({ pane, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onTreeResize, onTreeReset }: Props) {
+export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onShowChanges, onActivityPage, contextBusy, onTreeResize, onTreeReset }: Props) {
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
-  useScrollMemory(body, `${keyId}:${pane}`);
-  useScrollMemory(tree, `${keyId}:tree`);
   const overview = pr.overview;
+  const content = overview && overview.state !== "unavailable" ? `${overview.value.revision.baseSha}/${overview.value.revision.headSha}` : "loading";
+  useScrollMemory(body, `${keyId}:${pane}`, content);
+  useScrollMemory(tree, `${keyId}:tree`, content);
   const notice = overview?.state === "unavailable"
     ? <ErrorNotice className="cr-notice" testId="code-review-overview-error" where="Code Review · pull request" message={unavailableText(overview)} onRetry={onRetry} />
     : null;
@@ -59,18 +64,11 @@ export function PrPane({ pane, pr, keyId, changesWidth, treeWidth, busy, pinned,
     <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
       <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
-        {status ?? <p className="cr-placeholder">The overview isn't shown here yet.{overview?.state === "stale" ? " What is known was read earlier." : ""}</p>}
+        {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} />}
       </div>}
-      {pane === "changes" && <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"}>
-        <div ref={body} className="cr-diff" data-testid="code-review-diff" tabIndex={-1}>
-          {status ?? <p className="cr-placeholder">The diff isn't shown here yet.</p>}
-        </div>
-        {treeWidth !== null && <PanelResizeHandle side="workspace" className="cr-tree-resizer" label="Resize the file tree" width={treeWidth} min={SPLIT.treeMin}
-          max={Math.max(SPLIT.treeMin, changesWidth - 1 - SPLIT.diffMin)} onResize={onTreeResize} onReset={onTreeReset} />}
-        <nav ref={tree} className="cr-tree" aria-label="Changed files" data-testid="code-review-tree">
-          {overview?.state !== "unavailable" && <p className="cr-placeholder">Files aren't listed here yet.</p>}
-        </nav>
-      </div>}
+      {pane === "changes" && (overview && overview.state !== "unavailable"
+        ? <PrChanges views={changesViews} overview={overview.value} stale={overview.state !== "ready"} bodyRef={body} treeRef={tree} treeWidth={treeWidth} changesWidth={changesWidth} filesShown={filesShown} onSelect={() => setFilesShown(false)} onTreeResize={onTreeResize} onTreeReset={onTreeReset} />
+        : <div ref={body} className="cr-diff" data-testid="code-review-diff">{status}</div>)}
     </section>
   );
 }

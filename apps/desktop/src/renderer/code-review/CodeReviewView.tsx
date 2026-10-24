@@ -1,18 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { bridge } from "../bridge";
-import { capabilities, canonicalPrUrl, parsePrLocator, prKeyId, sameKey, type CodeReviewAccount, type CodeReviewConnection, type Inbox, type InboxGroup, type ReadResult } from "../../shared/code-review.js";
+import { capabilities, canonicalPrUrl, parsePrLocator, prKeyId, sameKey, sameRevision, type CodeReviewAccount, type CodeReviewConnection, type Inbox, type InboxGroup, type ReadResult } from "../../shared/code-review.js";
 import type { Layout } from "../../shared/layout";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
 import { Tooltip } from "../components/ui/Tooltip";
+import { refreshingRead, retainRead } from "../../shared/code-review-overview.js";
 import { Reader, type Ask, type Outcome } from "./reader.js";
 import { back, canBack, canForward, closeChanges, current, DEFAULT_VIEW, EMPTY_HISTORY, fitSplit, fitTree, forward, panesFor, showTab, SPLIT, toggleSplit, visit, type History, type Pane, type PrView } from "./navigation.js";
 import { isPinned, loadPins, togglePin, type Pin } from "./pins.js";
 import { additions, deletions, unavailableText } from "./text.js";
 import { InboxPane } from "./Inbox";
 import { rowsOf, titleOf, type GroupPages, type OpenPr } from "./model.js";
+import type { ChangesViews } from "./PrChanges";
 import { PrPane } from "./PrPane";
 import "./code-review.css";
 
@@ -44,6 +46,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
   const [connection, setConnection] = useState<ReadResult<CodeReviewConnection> | null>(null);
   const account = connected(connection);
   const accountRef = useRef<CodeReviewAccount | null>(null);
+  const changesViews = useRef<ChangesViews>(new Map());
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [inbox, setInbox] = useState<ReadResult<Inbox> | null>(null);
   const [pages, setPages] = useState<GroupPages>({});
@@ -54,6 +57,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [prs, setPrs] = useState<Record<string, OpenPr>>({});
   const prsRef = useRef(prs); prsRef.current = prs;
+  const activityEpoch = useRef(new Map<string, number>());
   const [views, setViews] = useState<Record<string, PrView>>({});
   const [history, setHistory] = useState<History>(EMPTY_HISTORY);
   const [pins, setPins] = useState<Pin[]>([]);
@@ -75,6 +79,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
     if (next?.id === accountRef.current?.id) return;
     // Another account, or none: nothing asked under the old one may land, and none of its PRs stay open.
     reader.cancelAll();
+    changesViews.current.clear();
     accountRef.current = next;
     setBusy(new Set());
     setInbox(null); setPages({}); setPrs({}); setViews({}); setHistory(EMPTY_HISTORY); setResolveError(null);
@@ -103,9 +108,59 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
     const result = outcome.result;
     if (result.state !== "unavailable" && !sameKey(result.value.key, pr.key)) return;
     setPrs((p) => p[id] ? { ...p, [id]: { ...p[id]!, overview: result } } : p);
+    if (result.state !== "unavailable") void readContext(pr, result.value.revision);
     // A key for another account than gh's: the account changed under us.
     if (result.state === "unavailable" && result.reason === "signed-out") void readConnectionRef.current();
   };
+
+  async function readActivity(pr: OpenPr, cursor: string | null, epoch = activityEpoch.current.get(prKeyId(pr.key)) ?? 0) {
+    const id = prKeyId(pr.key);
+    const outcome = await run(`activity:${id}:${cursor ?? "first"}`, { op: "activity", key: pr.key, cursor }, pr.key.account);
+    if ((activityEpoch.current.get(id) ?? 0) !== epoch) return null;
+    if (outcome.status === "mismatch") { void readConnectionRef.current(); return null; }
+    if (outcome.status !== "applied") return null;
+    setPrs(p => p[id] ? { ...p, [id]: { ...p[id]!, activity: { ...p[id]!.activity, [cursor ?? "first"]: retainRead(p[id]!.activity?.[cursor ?? "first"], outcome.result) } } } : p);
+    return outcome.result;
+  }
+
+  async function readContext(pr: OpenPr, revision: import("../../shared/code-review.js").PrRevision) {
+    const id = prKeyId(pr.key);
+    const epoch = (activityEpoch.current.get(id) ?? 0) + 1;
+    activityEpoch.current.set(id, epoch);
+    // Snapshot at launch, not before the overview request: pagination may have completed meanwhile.
+    const cached = prsRef.current[id]?.activity ?? {};
+    for (const cursor of Object.keys(cached)) reader.cancel(`activity:${id}:${cursor}`);
+    setPrs(p => p[id] ? { ...p, [id]: { ...p[id]!, activityRefreshing: true,
+      activity: Object.fromEntries(Object.entries(p[id]!.activity ?? {}).map(([cursor, read]) => [cursor, refreshingRead(read)])),
+      ...(p[id]!.checks ? { checks: refreshingRead(p[id]!.checks!) } : {}),
+    } } : p);
+    const checks = run(`checks:${id}`, { op: "checks", key: pr.key, revision }, pr.key.account).then(outcome => {
+      if (outcome.status === "mismatch") return void readConnectionRef.current();
+      if (outcome.status !== "applied") return;
+      setPrs(p => p[id]?.overview && p[id]!.overview!.state !== "unavailable" && sameRevision(p[id]!.overview!.value.revision, revision)
+        ? { ...p, [id]: { ...p[id]!, checks: retainRead(p[id]!.checks, outcome.result) } } : p);
+    });
+    const stack = run(`stack:${id}`, { op: "stack", key: pr.key }, pr.key.account).then(outcome => {
+      if (outcome.status === "mismatch") return void readConnectionRef.current();
+      if (outcome.status !== "applied") return;
+      setPrs(p => p[id] ? { ...p, [id]: { ...p[id]!, stack: retainRead(p[id]!.stack, outcome.result) } } : p);
+    });
+    const refreshActivity = async () => {
+      let cursor: string | null = null;
+      const seen = new Set<string>();
+      // Refresh as much as the reader had opened, following new cursors in order.
+      const limit = Math.max(1, Object.keys(cached).length);
+      for (let i = 0; i < limit; i++) {
+        const result = await readActivity(pr, cursor, epoch);
+        if (!result || result.state === "unavailable" || result.state === "stale") break;
+        cursor = result.coverage?.next ?? null;
+        if (!cursor || seen.has(cursor)) break;
+        seen.add(cursor);
+      }
+      if (activityEpoch.current.get(id) === epoch) setPrs(p => p[id] ? { ...p, [id]: { ...p[id]!, activityRefreshing: false } } : p);
+    };
+    await Promise.all([checks, stack, refreshActivity()]);
+  }
 
   const openPr = (pr: Omit<OpenPr, "overview">) => {
     const id = prKeyId(pr.key);
@@ -262,9 +317,9 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
           <Icon name="pull-request" size={20} />
           <p>{account ? "Choose a pull request from the inbox, or paste a link to one." : "Pull requests appear here once GitHub CLI is signed in."}</p>
         </div>}
-        {selected && panes.map((pane) => <PrPane key={pane} pane={pane} pr={selected} keyId={selectedId!} changesWidth={changesWidth} treeWidth={treeWidth}
+        {selected && panes.map((pane) => <PrPane key={pane} pane={pane} changesViews={changesViews.current} pr={selected} keyId={selectedId!} changesWidth={changesWidth} treeWidth={treeWidth}
           busy={busy.has(`overview:${selectedId}`)} pinned={pinned} caps={caps} onPin={pin} onRetry={() => void readOverview(selected)}
-          onTreeResize={(w) => setLayout({ codeReviewTree: w })} onTreeReset={() => setLayout({ codeReviewTree: undefined })} />)}
+          onShowChanges={() => { setView(v => showTab(v, "changes")); focusTab("changes"); }} onActivityPage={(cursor) => void readActivity(selected, cursor)} contextBusy={busy} onTreeResize={(w) => setLayout({ codeReviewTree: w })} onTreeReset={() => setLayout({ codeReviewTree: undefined })} />)}
         {split && <PanelResizeHandle side="sidebar" className="cr-split-resizer" label="Resize the pull request pane" width={splitWidth} min={SPLIT.overviewMin} max={Math.max(SPLIT.overviewMin, width - 1 - SPLIT.changesMin)}
           onResize={(w) => setLayout({ codeReviewSplit: w })} onReset={() => setLayout({ codeReviewSplit: undefined })} />}
       </div>

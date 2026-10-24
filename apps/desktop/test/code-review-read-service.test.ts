@@ -132,7 +132,13 @@ class FakeGitHub {
     const parts = path!.split("/").map(decodeURIComponent);
     const repo = this.repos.get(`${parts[1]}/${parts[2]}`);
     if (!repo) return this.missing();
+    if (parts[3] === "deployments") return this.json(call, []);
     if (parts.length === 3) return this.json(call, repo);
+    if (parts[3] === "pulls" && parts.length === 4) {
+      const all = [...this.pulls.values()].filter(p => p.base.repo.id === repo.id);
+      const { slice, link } = this.page(all, query, path!);
+      return this.json(call, slice, link);
+    }
     const id = `${repo.id}#${parts[4]}`;
     if (parts[3] === "pulls" && parts.length === 5) return this.pulls.has(id) ? this.json(call, this.pulls.get(id)) : this.missing();
     if (parts[3] === "pulls" && parts[5] === "files") {
@@ -550,12 +556,12 @@ test("activity lists the opening, commits, comments, reviews and events, one ite
   assert.deepEqual(activity.result.state === "ready" && activity.result.coverage, { loaded: 9, total: null, complete: true, next: null });
 });
 
-test("stack reads wait for #323 and say so", async () => {
+test("stack reads use inferred branch relationships instead of a placeholder", async () => {
   const { read, prime } = setup();
   await prime();
-  const reply = await read({ op: "stack", key: keyOf(LENDING, 73) });
-  assert.equal(reason(reply), "failed");
-  assert.match(reply.result.state === "unavailable" ? reply.result.detail ?? "" : "", /#323/);
+  const stack = value<import("../src/shared/code-review.js").PrStack>(await read({ op: "stack", key: keyOf(LENDING, 73) }));
+  assert.equal(stack.source, "inferred");
+  assert.deepEqual(stack.members.map(m => m.locator.number), [73, 74]);
 });
 
 test("requests are checked before anything runs; cancel stops a read and answers null", async () => {
@@ -989,4 +995,52 @@ test("visibility review: a denied lookup in one inbox group removes the same rep
   assert.ok(JSON.stringify(inbox).includes("Move the field notes"));
   const refreshed = value<Inbox>(await read({ op: "inbox", query: "" }));
   assert.ok(!JSON.stringify(refreshed).includes('"repoId":"7301"'), "a fresh inbox still cannot reuse denied repository metadata");
+});
+
+test("CR-4 stack uses same-repository base/head relationships and refuses branching or cycles", async () => {
+  const { github, prime, read } = setup();
+  await prime();
+  const answer = (rows: unknown[]) => ({ kind: "http" as const, status: 200, headers: {}, body: Buffer.from(JSON.stringify(rows)) });
+  const p73 = github.pulls.get("7301#73")!;
+  const p74 = github.pulls.get("7301#74")!;
+  github.overrides.push({ pattern: /\/pulls\?state=open/, answer: answer([p73, p74]) });
+  const stack = value<import("../src/shared/code-review.js").PrStack>(await read({ op: "stack", key: keyOf(LENDING, 74) }));
+  assert.equal(stack.source, "inferred");
+  assert.deepEqual(stack.members.map(m => m.locator.number), [73, 74]);
+  assert.equal(stack.position, 1);
+  const p75 = pull(LENDING, 75, { base: "topic-73" });
+  github.overrides[0]!.answer = answer([p73, p74, p75]);
+  assert.equal(reason(await read({ op: "stack", key: keyOf(LENDING, 74) })), "invalid");
+  const cyclic73 = { ...p73, base: { ...p73.base, ref: "topic-74" } };
+  github.pulls.set("7301#73", cyclic73);
+  github.overrides[0]!.answer = answer([cyclic73, p74]);
+  assert.equal(reason(await read({ op: "stack", key: keyOf(LENDING, 74) })), "invalid");
+});
+
+test("CR-4 provider deployment evidence is read for the PR head with fixed status endpoints", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const answer = (rows: unknown[]) => ({ kind: "http" as const, status: 200, headers: {}, body: Buffer.from(JSON.stringify(rows)) });
+  const commit = github.pulls.get("7301#73")!.head.sha;
+  github.overrides.push({ pattern: /\/deployments\?/, answer: answer([{ id: 42, sha: commit, created_at: "2026-10-19T10:00:00Z", environment: "preview" }]) });
+  github.overrides.push({ pattern: /\/deployments\/42\/statuses/, answer: answer([{ id: 43, state: "success", created_at: "2026-10-19T10:01:00Z", environment_url: "https://preview.example/73" }]) });
+  const rows = value<import("../src/shared/code-review.js").PrActivity[]>(await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null }));
+  const deployment = rows.find(r => r.kind === "deployment");
+  assert(deployment?.kind === "deployment");
+  assert.equal(deployment.status, "success");
+  assert.equal(deployment.commit, commit);
+  assert.equal(deployment.url, "https://preview.example/73");
+  assert(github.calls.some(c => c.endpoint.includes(`/deployments?sha=${commit}`)));
+});
+
+test("CR-4 denied deployment enrichment leaves timeline useful and explicitly partial", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  github.overrides.push({ pattern: /\/deployments\?/, answer: { kind: "http", status: 403, headers: {}, body: Buffer.from('{}') } });
+  const reply = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert.equal(reply.result.state, "partial");
+  assert(reply.result.state === "partial");
+  assert.equal(reply.result.reason, "denied");
+  assert.equal(reply.result.coverage.complete, false);
+  assert(value<import("../src/shared/code-review.js").PrActivity[]>(reply).some(r => r.kind === "opened"));
 });
