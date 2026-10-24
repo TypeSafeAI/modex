@@ -53,6 +53,9 @@ export interface LastTurn {
 }
 
 export interface Thread {
+  /** Explicit local native target; absence preserves legacy cloud execution. */
+  localTarget?: import("./local-models.js").LocalThreadTarget;
+  localContextTokens?: number;
   pluginRevision?: number;
   imageJobId?: string;
   id: string;
@@ -361,7 +364,7 @@ export interface RoutingStatus {
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
 }
 
-export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals">>;
+export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals" | "localContextTokens">> & { localTarget?: import("./local-models.js").LocalThreadTarget | null };
 
 /** A suggested next message for an idle thread, chosen by Jev or the built-in heuristic from typed facts about the last turn. */
 export interface FollowUp {

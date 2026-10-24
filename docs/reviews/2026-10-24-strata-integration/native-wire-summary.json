@@ -1,0 +1,54 @@
+{
+  "kind": "scripted Responses fixture with real native Codex and tool execution; not a real-model test",
+  "cli": "codex-cli 0.164.0",
+  "status": "passed",
+  "requests": [
+    {
+      "path": "/v1/responses",
+      "model": "qwen3.8-flash-next-iq3_s",
+      "toolNames": [
+        "exec_command",
+        "write_stdin",
+        "request_user_input",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ],
+      "hasSentinel": false,
+      "credentialReflected": false
+    },
+    {
+      "path": "/v1/responses",
+      "model": "qwen3.8-flash-next-iq3_s",
+      "toolNames": [
+        "exec_command",
+        "write_stdin",
+        "request_user_input",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ],
+      "hasSentinel": true,
+      "credentialReflected": false
+    }
+  ],
+  "result": {
+    "status": "completed",
+    "usage": {
+      "first": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "uncached": 100
+      },
+      "contextTokens": 100,
+      "outputTokens": 60,
+      "calls": 2,
+      "totals": {
+        "input": 200,
+        "cached": 0,
+        "cacheWrite": 0
+      }
+    }
+  },
+  "limitations": "Scripted model responses; real installed Codex and native shell. Does not qualify Strata inference, offline operation, Plan, images or restart resume."
+}

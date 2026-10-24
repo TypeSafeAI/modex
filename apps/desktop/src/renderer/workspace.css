@@ -189,3 +189,11 @@
   .review-body.tree-hidden > .review-diff { grid-row: 1; }
 }
 @media (hover: none) { .review-revert { opacity: 1; } }
+
+.local-model-controls { margin: 0 var(--space-4, 16px) 6px; font-size: 12px; }
+.local-model-controls summary { cursor: pointer; overflow-wrap: anywhere; }
+.local-model-form { max-height: 42vh; overflow: auto; padding: 8px 0; }
+.local-model-form fieldset { border: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.local-model-form label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; min-width: 0; }
+.local-model-form input, .local-model-form select { width: 100%; box-sizing: border-box; }
+.local-model-form p { flex-basis: 100%; margin: 6px 0; }

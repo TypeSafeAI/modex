@@ -1,3 +1,4 @@
+import { LocalModelControls } from "./LocalModelControls";
 import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AnswerResult, ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
@@ -27,6 +28,8 @@ import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
 export { formatElapsed } from "./transcript/TurnContent";
 
 interface Props {
+  localSelectionPending?: boolean;
+  onLocalSelectionPending?: (pending: boolean) => void;
   thread: Thread;
   project: Project;
   items: ThreadItem[];
@@ -75,14 +78,14 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
+export function ThreadView({ localSelectionPending, onLocalSelectionPending, thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const reader = useMemo(() => readerStateFor(thread.id), [thread.id]);
   const restored = useRef(false);
   const busy = thread.status === "running" || thread.status === "waiting";
   // The follow-up suggestion answers one transcript state; main caches per state, so re-asking is cheap.
   const [followUp, setFollowUp] = useState<{ key: string; value: FollowUp | null } | null>(null);
-  const suggestionKey = JSON.stringify([thread.id, thread.status, thread.plan, thread.mode, thread.auto, items.at(-1)?.id]);
+  const suggestionKey = JSON.stringify([thread.id, thread.status, thread.plan, thread.mode, thread.auto, thread.localTarget, items.at(-1)?.id]);
   useEffect(() => {
     // A put-away thread is not asking for a next step; Jev is not consulted for it.
     if (thread.retired || thread.archived || thread.status !== "idle" || !items.length) return;
@@ -240,6 +243,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         <p>This thread is archived.{!thread.retired && " Sending a message brings it back."}</p>
         <button type="button" className="btn small" data-testid="archived-restore" onClick={onUnarchive}>Unarchive</button>
       </div>}
+      {!thread.retired && !thread.imageJobId && bridge.platform !== "web" && <LocalModelControls thread={thread} busy={busy} onSelecting={onLocalSelectionPending} />}
       {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
         text={text}
         onText={onText}
@@ -247,6 +251,8 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         attachmentActions={attachmentActions}
         busy={busy}
         context={{ project: project.name, cwd: thread.cwd, worktree: thread.worktree, branch }}
+        selectionPending={localSelectionPending}
+        local={thread.localTarget !== undefined}
         backend={thread.backend}
         mode={thread.mode}
         approvals={thread.approvals ?? "ask"}
@@ -256,10 +262,10 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         effort={thread.effort}
         auto={Boolean(thread.auto)}
         models={models}
-        modelsError={modelsError}
+        modelsError={thread.localTarget ? undefined : modelsError}
         onRetryModels={onRetryModels}
         openModelPickerRequest={openModelPickerRequest}
-        suggestion={followUp?.key === suggestionKey ? followUp.value : null}
+        suggestion={thread.localTarget === undefined && followUp?.key === suggestionKey ? followUp.value : null}
         onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}
         onPlan={(plan: boolean) => onUpdate({ plan })}

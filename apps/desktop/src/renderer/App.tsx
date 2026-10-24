@@ -359,6 +359,14 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // A thread just created from a draft has no history to load, and reloading it could overwrite
   // the first streamed items; the selection effect skips its one load.
   const justCreated = useRef<string | null>(null);
+  const localSelectionsRef = useRef(new Set<string>());
+  const [localSelections, setLocalSelections] = useState(new Set<string>());
+  const markLocalSelection = (id: string, pending: boolean) => {
+    const next = new Set(localSelectionsRef.current);
+    if (pending) next.add(id); else next.delete(id);
+    localSelectionsRef.current = next;
+    setLocalSelections(next);
+  };
 
   const refresh = useCallback(async () => {
     const s = await bridge.invoke("state:get", undefined);
@@ -525,9 +533,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // Model catalogue per backend, fetched lazily from the CLIs (Codex: live `model/list`).
   useEffect(() => {
     const b = thread?.backend ?? draft?.settings.backend;
-    if (!b || models[b]) return;
+    if (thread?.localTarget !== undefined || !b || models[b]) return;
     void bridge.invoke("models:list", { backend: b }).then((r) => setModels((m) => ({ ...m, [b]: r }))).catch((err) => setModels((m) => ({ ...m, [b]: { models: [], error: (err as Error).message } })));
-  }, [thread?.backend, draft?.settings.backend, models]);
+  }, [thread?.backend, thread?.localTarget, draft?.settings.backend, models]);
 
   // A draft, like a thread, always shows a model the CLI knows: the settings default or the CLI's own.
   useEffect(() => {
@@ -542,7 +550,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // Like the Codex App, a thread always has a concrete model the CLI knows: pick the CLI's
   // default (or the settings default) when the thread has none or names one the CLI no longer lists.
   useEffect(() => {
-    if (!thread) return;
+    if (!thread || thread.localTarget !== undefined) return;
     const list = models[thread.backend]?.models;
     if (!list?.length) return;
     const current = list.find((m) => m.id === thread.model);
@@ -553,7 +561,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     const preferred = state?.settings.default_model[thread.backend];
     const pick = list.find((m) => m.id === preferred) ?? list.find((m) => m.isDefault) ?? list[0]!;
     void updateThread({ model: pick.id, effort: pick.defaultEffort });
-  }, [thread?.id, thread?.backend, thread?.model, models]);
+  }, [thread?.id, thread?.backend, thread?.model, thread?.localTarget, models]);
   const project = useMemo(() => (thread ? state?.projects.find((p) => p.id === thread.projectId) ?? null : null), [state, thread]);
 
   // Workspaces group the sidebar's projects; they change with projects and in Space, so read them then.
@@ -591,6 +599,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (p) await refresh();
   });
   const resumeNativeSend = async (initial: PendingSendView): Promise<void> => {
+    if (localSelectionsRef.current.has(ownerKey(initial.owner))) return;
     const capability = nativeRef.current;
     if (!capability || pendingRuns.current.has(initial.id) || nativeHoldRef.current || nativeRecoveryError) return;
     pendingRuns.current.add(initial.id); redrawAttachments(value => value + 1);
@@ -645,6 +654,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     } finally { pendingRuns.current.delete(initial.id); redrawAttachments(value => value + 1); }
   };
   const beginNativeSend = async (key: string, rawText: string, configuration: PendingSendView["configuration"]): Promise<void> => {
+    if (localSelectionsRef.current.has(key)) return;
     const capability = nativeRef.current;
     if (!capability || nativeHoldRef.current || nativeRecoveryError || attachmentDrafts.get(key).copying || attachmentDrafts.get(key).sending) return;
     holdNative(true);
@@ -710,7 +720,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
   };
   const send = async (text: string): Promise<void> => {
-    if (!thread || thread.retired || thread.status === "running" || thread.status === "waiting") return;
+    if (!thread || localSelectionsRef.current.has(thread.id) || thread.retired || thread.status === "running" || thread.status === "waiting") return;
     const threadId = thread.id;
     if (native) return beginNativeSend(threadId, text, { worktree: Boolean(thread.worktree), settings: { backend: thread.backend, mode: thread.mode, plan: thread.plan, auto: Boolean(thread.auto), model: thread.model, ...(thread.effort ? { effort: thread.effort } : {}) } });
     const attachments = attachmentDrafts.beginSend(threadId);
@@ -726,7 +736,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (sent !== true) restoreUnsentIfCurrent(threadId, revision, text);
   };
   /** The failure card's Retry: main runs the thread's last message again without adding a second bubble. */
-  const retry = () => thread && act(async () => {
+  const retry = () => thread && !localSelectionsRef.current.has(thread.id) && act(async () => {
     const r = await bridge.invoke("thread:retry", { threadId: thread.id });
     if (!r.ok) setError({ message: r.error ?? "retry failed", retry: () => void retry() });
   });
@@ -986,6 +996,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               onStop={stop}
               onAnswer={answer}
               onAnswerQuestion={answerQuestion}
+              localSelectionPending={localSelections.has(thread.id)}
+              onLocalSelectionPending={pending => markLocalSelection(thread.id, pending)}
               onUpdate={updateThread}
               onRetry={() => void retry()}
               onFix={applyFix}

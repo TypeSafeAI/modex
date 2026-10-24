@@ -34,6 +34,8 @@ interface Props {
   attachmentActions: AttachmentActions;
   busy: boolean;
   context: ComposerContext;
+  local?: boolean;
+  selectionPending?: boolean;
   backend: BackendId;
   mode: Mode;
   /** The thread's standing answer to approvals; absent in a draft, which has no thread yet. */
@@ -71,7 +73,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, attachments, attachmentActions, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ selectionPending, local, text, onText: setText, attachments, attachmentActions, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const { copying, sending, warning: attachWarning, onFiles: attach, onPick: pick, onRemove, onDismissWarning } = attachmentActions;
@@ -92,7 +94,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
     ta.current?.focus({ preventScroll: true });
   }, [busy]);
 
-  const canSend = Boolean(text.trim() || attachments.length);
+  const canSend = !selectionPending && Boolean(text.trim() || attachments.length);
   const submit = () => {
     if (!canSend || busy || copying || sending) return;
     void onSend(text);
@@ -181,7 +183,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
           />
           <AttachmentChips attachments={attachments} onRemove={busy ? undefined : remove} testId="composer-attachments" />
           <div className="composer-bar">
-            <PlusMenu onAttach={() => void pick()} busy={busy} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
+            <PlusMenu onAttach={() => void pick()} busy={busy || Boolean(local)} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
             <AccessMenu busy={busy} mode={mode} onMode={onMode} approvals={approvals} onApprovals={onApprovals} />
             {/* After the access pill: `+` and the pill keep their 22 px / 40 px insets (e2e/layout.spec.ts). */}
             <IconButton icon="paperclip" label="Attach files" size="md" className="composer-attach-btn" data-testid="composer-attach" tooltipSide="top" disabled={busy} onClick={() => void pick()} />
@@ -201,7 +203,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
               </button>
             )}
             <span className="spacer" />
-            <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} openRequest={openModelPickerRequest} onModel={onModel} onEffort={onEffort} />
+            {local ? <span className="composer-chip" title="Configured local provider through Codex">Local · {model}</span> : <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} openRequest={openModelPickerRequest} onModel={onModel} onEffort={onEffort} />}
             {busy ? (
               <IconButton icon="stop" label="Stop" shortcut="⌘." className="send-btn stop" data-testid="stop" tooltipSide="top" onClick={(e) => { stopFocused.current = document.activeElement === e.currentTarget; onStop(); }} />
             ) : (

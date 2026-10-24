@@ -56,7 +56,7 @@ import { codexCall } from "../src/main/engine/backends/usage.js";
 import { OUTPUT_PREVIEW_BYTES } from "../src/shared/evidence.js";
 
 /** Minimal scripted app-server: answers initialize, thread/start|resume, turn/start, model/list. */
-function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string } = {}) {
+function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null } = {}) {
   const threadId = opts.threadId ?? "thr-1";
   const turnId = opts.turnId ?? "turn-1";
   const seen: { method: string; params: Record<string, unknown> }[] = [];
@@ -67,7 +67,7 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
       if (msg.method) seen.push({ method: msg.method, params: msg.params ?? {} });
       if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: { userAgent: "fake" } });
       else if (msg.method === "model/list") proc.emitLine({ id: msg.id, result: { data: [{ id: "gpt-6-astra", displayName: "GPT-6-Astra", hidden: false, isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "medium" }, { id: "secret", displayName: "hidden", hidden: true, isDefault: false }], nextCursor: null } });
-      else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId } } });
+      else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId }, model: msg.params?.model, modelProvider: Object.hasOwn(opts, "provider") ? opts.provider : msg.params?.modelProvider } });
       else if (msg.method === "turn/start") {
         proc.emitLine({ id: msg.id, result: { turn: { id: turnId } } });
         proc.emitLine({ method: "turn/started", params: { threadId, turn: { id: turnId } } });
@@ -357,7 +357,7 @@ function failingServer(proc: FakeProcess, message: string, opts: { threadId?: st
       const msg = JSON.parse(line) as { id?: number; method?: string; params?: Record<string, unknown> };
       if (msg.method) seen.push({ method: msg.method, params: msg.params ?? {} });
       if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: { userAgent: "codex-cli/0.157.1" } });
-      else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId } } });
+      else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId }, model: msg.params?.model, modelProvider: msg.params?.modelProvider } });
       else if (msg.method === "turn/start") {
         const turnId = `turn-${++turns}`;
         proc.emitLine({ id: msg.id, result: { turn: { id: turnId } } });
@@ -980,3 +980,57 @@ test("a Codex final answer does not end the turn while a command it started is s
   assert.equal(events.some((e) => e.includes("did not report the turn finished")), false);
   await backend.dispose();
 });
+
+test("local Codex pins provider and model, disables fallback and refuses foreign resume before spawn", async () => {
+  const proc = new FakeProcess();
+  const { seen, threadId, turnId } = fakeServer(proc);
+  const spawned = fakeSpawn(proc);
+  const configuration = { args: [], env: {}, redact: (text: string) => text, local: { model: "qwen3.8-flash-next-iq3_s", provider: "modex_local" } };
+  const backend = new CodexBackend("codex", spawned.spawn, configuration);
+  const opts = { cwd: "/fixture", mode: "agent" as const, plan: false, model: configuration.local.model };
+  try {
+    const foreign = await backend.runTurn("read", { ...opts, resume: "cloud-thread" }, collectSink().sink, AbortSignal.timeout(100));
+    assert.equal(foreign.status, "failed");
+    assert.match(foreign.error ?? "", /resume/i);
+    assert.equal(proc.written.length, 0, "foreign resume must not initialize a process");
+    const run = backend.runTurn("read", opts, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    const start = seen.find(item => item.method === "thread/start")!.params;
+    assert.equal(start.modelProvider, "modex_local");
+    assert.equal(start.allowProviderModelFallback, false);
+    assert.equal(start.model, "qwen3.8-flash-next-iq3_s");
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    assert.equal((await run).status, "completed");
+    const mismatch = await backend.runTurn("read", { ...opts, model: "cloud-default" }, collectSink().sink, new AbortController().signal);
+    assert.equal(mismatch.status, "failed");
+  } finally { await backend.dispose(); }
+});
+
+test("local Codex does not replay a stale-auth failure", async () => {
+  const proc = new FakeProcess();
+  const { seen, threadId, turnId } = fakeServer(proc);
+  const configuration = { args: [], env: {}, redact: (text: string) => text, local: { model: "local", provider: "modex_local" } };
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, configuration);
+  try {
+    const run = backend.runTurn("read", { cwd: "/fixture", mode: "agent", plan: false, model: "local" }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", error: { message: "Your access token could not be refreshed" } } } });
+    const result = await Promise.race([run, new Promise<undefined>(resolve => setTimeout(resolve, 100))]);
+    assert.equal(result?.status, "failed", "a local failure must settle without starting another attempt");
+    assert.equal(seen.filter(item => item.method === "turn/start").length, 1);
+  } finally { await backend.dispose(); }
+});
+
+for (const provider of [null, "cloud"]) {
+  test(`local Codex refuses native provider confirmation ${provider}`, async () => {
+    const proc = new FakeProcess();
+    const { seen } = fakeServer(proc, { provider });
+    const config = { args: [], env: {}, redact: (text: string) => text, local: { model: "local", provider: "modex_local" } };
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, config);
+    try {
+      const result = await backend.runTurn("private fixture", { cwd: "/fixture", mode: "agent", plan: false, model: "local" }, collectSink().sink, AbortSignal.timeout(100));
+      assert.equal(result.status, "failed");
+      assert.equal(seen.some(item => item.method === "turn/start"), false, "no content may reach a contradictory provider");
+    } finally { await backend.dispose(); }
+  });
+}
