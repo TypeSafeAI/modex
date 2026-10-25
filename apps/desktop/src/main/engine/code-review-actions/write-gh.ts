@@ -8,9 +8,9 @@ import { environment, parseIncluded, type GhAnswer } from "../code-review/gh.js"
  * from its own reads; a body goes to gh on stdin as JSON. Modex never sees or stores the token.
  */
 export interface GhWriteCall {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   endpoint: string;
-  /** The JSON body of a POST; null for a GET. */
+  /** The JSON body of a POST or PUT; null for a GET. */
   input: Record<string, unknown> | null;
   maxBytes: number;
   timeoutMs: number;
@@ -24,6 +24,8 @@ const REPO = `repos/${OWNER}/${NAME}`;
 const NUMBER = "[1-9][0-9]{0,9}";
 const SHA = "[0-9a-f]{40}";
 const PAGE = "page=[1-9][0-9]{0,2}";
+/** A branch name, percent-encoded into one path segment (slashes as %2F). */
+const BRANCH = "[A-Za-z0-9_.%-]{1,1024}";
 const READS = [
   "user",
   `repositories/${NUMBER}`,
@@ -31,15 +33,18 @@ const READS = [
   `${REPO}/compare/${SHA}\\.\\.\\.${SHA}\\?per_page=1&page=1`,
   `${REPO}/issues/${NUMBER}/comments\\?per_page=100&${PAGE}`,
   `${REPO}/pulls/${NUMBER}/reviews\\?per_page=100&${PAGE}`,
+  `${REPO}/rules/branches/${BRANCH}\\?per_page=100&page=1`,
 ].map((pattern) => new RegExp(`^${pattern}$`));
-/** The only mutations: a top-level comment and a submitted review. */
+/** The only mutations: a top-level comment, a submitted review, and a merge guarded by the reviewed head. */
 const WRITES = [`${REPO}/issues/${NUMBER}/comments`, `${REPO}/pulls/${NUMBER}/reviews`].map((pattern) => new RegExp(`^${pattern}$`));
+const MERGES = [`${REPO}/pulls/${NUMBER}/merge`].map((pattern) => new RegExp(`^${pattern}$`));
 
 export function ghWriteArgs(call: GhWriteCall): string[] {
-  const allowed = call.method === "GET" ? READS : call.method === "POST" ? WRITES : [];
-  const name = call.endpoint.split("?")[0]!.split("/")[2];
-  if (!allowed.some((pattern) => pattern.test(call.endpoint)) || name === "." || name === ".." || name?.includes("%2e%2e")) throw new Error("Code Review endpoint is not allowed.");
-  if ((call.method === "POST") !== (call.input !== null)) throw new Error("Code Review request body is not allowed.");
+  const allowed = call.method === "GET" ? READS : call.method === "POST" ? WRITES : call.method === "PUT" ? MERGES : [];
+  const segments = call.endpoint.split("?")[0]!.split("/");
+  // No segment may climb out of the path GitHub is asked for, encoded or not.
+  if (!allowed.some((pattern) => pattern.test(call.endpoint)) || segments.some((s) => s === "." || s === ".." || /%2e%2e|^%2e$|^\.%2e$|^%2e\.$/i.test(s))) throw new Error("Code Review endpoint is not allowed.");
+  if ((call.method !== "GET") !== (call.input !== null)) throw new Error("Code Review request body is not allowed.");
   return ["api", call.endpoint, "--hostname", "github.com", "--method", call.method, "--include", "-H", "Accept: application/vnd.github+json",
     "-H", "X-GitHub-Api-Version: 2022-11-28", ...(call.input ? ["--input", "-"] : [])];
 }

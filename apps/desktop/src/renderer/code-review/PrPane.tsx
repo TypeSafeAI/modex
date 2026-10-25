@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import type { Capabilities, Capability } from "../../shared/code-review.js";
+import type { Capabilities, Capability, PrOverview as Overview } from "../../shared/code-review.js";
 import { PrOverview } from "./PrOverview";
 import { bridge } from "../bridge";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
@@ -11,6 +11,7 @@ import { type Pane } from "./navigation.js";
 import { PrChanges, type ChangesViews } from "./PrChanges";
 import { STATE_LABELS, unavailableText } from "./text.js";
 import type { Writes } from "./writes.js";
+import { MergeAction, MergePanel } from "./MergePanel";
 
 interface Props {
   pane: Pane;
@@ -54,7 +55,10 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
+  const [merging, setMerging] = useState(false);
   const overview = pr.overview;
+  const loaded = overview && overview.state !== "unavailable" ? overview.value : null;
+  const merge = writes && loaded ? { writes, overview: loaded, open: merging, onToggle: () => setMerging((v) => !v) } : null;
   const content = overview && overview.state !== "unavailable" ? `${overview.value.revision.baseSha}/${overview.value.revision.headSha}` : "loading";
   useScrollMemory(body, `${keyId}:${pane}`, content);
   useScrollMemory(tree, `${keyId}:tree`, content);
@@ -64,7 +68,8 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   const status = !overview ? <p className="cr-hint" role="status">{busy ? "Loading the pull request…" : "Not loaded yet."}</p> : notice;
   return (
     <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
-      <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
+      <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} merge={merge} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
+      {merge && merging && <MergePanel key={keyId} writes={merge.writes} overview={merge.overview} onClose={() => setMerging(false)} onMerged={onRetry} />}
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
         {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} writes={writes} />}
       </div>}
@@ -75,7 +80,9 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   );
 }
 
-function PrHeader({ pr, busy, pinned, caps, onPin, filesToggle }: { pr: OpenPr; busy: boolean; pinned: boolean; caps: Capabilities; onPin: () => void; filesToggle: { shown: boolean; toggle: () => void } | null }) {
+type MergeSlot = { writes: Writes; overview: Overview; open: boolean; onToggle: () => void } | null;
+
+function PrHeader({ pr, busy, pinned, caps, onPin, merge, filesToggle }: { pr: OpenPr; busy: boolean; pinned: boolean; caps: Capabilities; onPin: () => void; merge: MergeSlot; filesToggle: { shown: boolean; toggle: () => void } | null }) {
   const state = pr.overview && pr.overview.state !== "unavailable" ? pr.overview.value.state : pr.state;
   const { owner, repo, number } = pr.locator;
   const url = prUrl(pr.locator);
@@ -105,10 +112,14 @@ function PrHeader({ pr, busy, pinned, caps, onPin, filesToggle }: { pr: OpenPr; 
       </span>
       <Unavailable label="Review with Codex" icon="review" iconWhenNarrow capability={caps.review} testId="code-review-review" text />
       <Unavailable label="Review instructions" icon="gear" capability={caps.instructions} testId="code-review-instructions" />
-      <Unavailable label="Merge" icon="branch" capability={caps.merge} testId="code-review-merge" text primary />
+      {merge ? <MergeAction writes={merge.writes} overview={merge.overview} fallback={caps.merge} open={merge.open} onToggle={merge.onToggle} />
+        : <Unavailable label="Merge" icon="branch" capability={caps.merge.available ? LOADING : caps.merge} testId="code-review-merge" text primary />}
     </header>
   );
 }
+
+/** Merge before the PR it would merge has loaded: nothing to check yet. */
+const LOADING: Capability = { available: false, reason: "Merge is available once the pull request has loaded.", owner: null };
 
 /** A control whose slice has not delivered it: focusable, named, and saying why it does nothing. */
 function Unavailable({ label, icon, iconWhenNarrow = false, capability, testId, text = false, primary = false }: { label: string; icon?: IconName; iconWhenNarrow?: boolean; capability: Capability; testId: string; text?: boolean; primary?: boolean }) {

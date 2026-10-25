@@ -1,5 +1,5 @@
 import { prKeyId, sameKey, type PrKey, type PrRevision } from "../../shared/code-review.js";
-import type { WriteDraft, WriteInline, WriteKind, WriteOperation, WritePreview, WriteReceipt, WriteReply, WriteRequest, WriteStatus } from "../../shared/code-review-write.js";
+import type { MergeCheck, MergeMethod, WriteDraft, WriteInline, WriteKind, WritePreview, WriteReceipt, WriteReply, WriteRequest, WriteStatus } from "../../shared/code-review-write.js";
 
 /** One way to ask main: the bridge's `code-review:write` in the app, a fake in tests. */
 export type WriteSend = (request: WriteRequest) => Promise<WriteReply>;
@@ -65,8 +65,17 @@ export class Writes {
     return done;
   }
 
-  prepare(key: PrKey, revision: PrRevision, operation: WriteOperation, draftVersion: number): Promise<Done<WritePreview>> {
+  prepare(key: PrKey, revision: PrRevision, operation: Extract<WriteRequest, { op: "prepare" }>["operation"], draftVersion: number): Promise<Done<WritePreview>> {
     return this.ask<"prepare">({ op: "prepare", key, revision, operation, draftVersion });
+  }
+
+  /** Main reads GitHub now and says whether, and how, the reviewed head may be merged. */
+  mergeCheck(key: PrKey, revision: PrRevision): Promise<Done<MergeCheck>> {
+    return this.ask<"merge-check">({ op: "merge-check", key, revision });
+  }
+
+  prepareMerge(key: PrKey, revision: PrRevision, method: MergeMethod): Promise<Done<WritePreview>> {
+    return this.ask<"prepare-merge">({ op: "prepare-merge", key, revision, method });
   }
 
   async settle(op: "submit" | "cancel" | "reconcile" | "abandon", key: PrKey, revision: PrRevision, intentId: string): Promise<Done<WriteReceipt>> {

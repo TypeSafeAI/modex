@@ -27,7 +27,12 @@ class FakeGitHub {
   user: typeof ADA | null = ADA;
   stamp = "hosts-1";
   permissions: Record<string, boolean> | undefined = { admin: false, maintain: false, push: false, triage: false, pull: true };
-  pr = { id: 7301073, number: 73, title: "Lend a hold", body: "", state: "open", draft: false, merged_at: null, locked: false, user: KIT,
+  /** The repository's merge settings, as GitHub shows them to an account with push access. */
+  settings: Record<string, boolean> | null = { allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: true };
+  /** The target branch's active ruleset rules. */
+  rules: { type: string }[] | null = [{ type: "pull_request" }];
+  pr = { id: 7301073, number: 73, title: "Lend a hold", body: "", state: "open", draft: false, merged_at: null as string | null, locked: false, user: KIT,
+    mergeable: true as boolean | null, mergeable_state: "clean", merged: false, merged_by: null as typeof ADA | null, merge_commit_sha: null as string | null,
     created_at: "2026-10-18T10:00:00Z", updated_at: "2026-10-19T09:00:00Z", base: { ref: "main", sha: sha("b"), repo: LENDING },
     head: { ref: "topic-73", sha: sha("c"), repo: LENDING }, changed_files: 1, additions: 1, deletions: 0, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [] };
   mergeBase = sha("a");
@@ -45,6 +50,7 @@ class FakeGitHub {
     return () => release();
   }
   posts(): GhWriteCall[] { return this.calls.filter((c) => c.method === "POST"); }
+  merges(): GhWriteCall[] { return this.calls.filter((c) => c.method === "PUT"); }
 
   transport = async (call: GhWriteCall): Promise<GhAnswer> => {
     ghWriteArgs(call);
@@ -59,7 +65,13 @@ class FakeGitHub {
   private answer(call: GhWriteCall): GhAnswer {
     const e = call.endpoint;
     if (e === "user") return this.user ? ok(200, this.user) : { kind: "signed-out" };
-    if (e === "repositories/7301") return ok(200, { ...LENDING, ...(this.permissions ? { permissions: this.permissions } : {}) });
+    if (e === "repositories/7301") return ok(200, { ...LENDING, ...(this.permissions ? { permissions: this.permissions } : {}), ...(this.settings ?? {}) });
+    if (e === "repos/example-org/lending/rules/branches/main?per_page=100&page=1") return this.rules ? ok(200, this.rules) : ok(403, { message: "Resource not accessible" });
+    if (call.method === "PUT" && e === "repos/example-org/lending/pulls/73/merge") {
+      if (call.input!.sha !== this.pr.head.sha) return ok(409, { message: "Head branch was modified. Review and try the merge again." });
+      Object.assign(this.pr, { merged: true, merged_at: "2026-10-25T12:00:00Z", state: "closed", merged_by: this.user, merge_commit_sha: sha("e"), mergeable: null, mergeable_state: "unknown" });
+      return ok(200, { sha: sha("e"), merged: true, message: "Pull Request successfully merged" });
+    }
     if (e === "repos/example-org/lending/pulls/73") return ok(200, this.pr);
     if (e.startsWith("repos/example-org/lending/compare/")) return ok(200, { base_commit: { sha: this.pr.base.sha }, merge_base_commit: { sha: this.mergeBase } });
     const page = Number(/[?&]page=(\d+)/.exec(e)?.[1] ?? 1);
@@ -316,3 +328,155 @@ nativeTest("writes are off in demos and tests, and nothing about a token reaches
   const refused = await f.ask<"status">({ op: "status", key: KEY, revision: REV });
   assert.doesNotMatch(JSON.stringify(refused), /ghp_|Bad credentials/);
 });
+
+// --- Merge (increment 2) ----------------------------------------------------------------------------
+
+function merger(t: { after(fn: () => void): void }) {
+  const gh = new FakeGitHub();
+  gh.permissions = { admin: false, maintain: false, push: true, triage: true, pull: true };
+  return fixture(t, gh);
+}
+const checkMerge = async (f: ReturnType<typeof fixture>) => f.value(await f.ask<"merge-check">({ op: "merge-check", key: KEY, revision: REV }));
+
+test("merge requests are exact: a known method, no draft, and no merge through prepare", () => {
+  assert.ok(validateWrite({ op: "merge-check", requestId: "a", key: KEY, revision: REV }));
+  assert.ok(validateWrite({ op: "prepare-merge", requestId: "a", key: KEY, revision: REV, method: "squash" }));
+  assert.equal(validateWrite({ op: "prepare-merge", requestId: "a", key: KEY, revision: REV, method: "fast-forward" }), null);
+  assert.equal(validateWrite({ op: "prepare-merge", requestId: "a", key: KEY, revision: REV, method: "squash", sha: sha("c") }), null);
+  assert.equal(validateWrite({ op: "merge-check", requestId: "a", key: KEY, revision: REV, checks: "green" }), null);
+});
+
+test("the merge transport allows one PUT, to the PR's merge endpoint, with a body", () => {
+  const call = (method: "GET" | "POST" | "PUT", endpoint: string, input: Record<string, unknown> | null) => () => ghWriteArgs({ method, endpoint, input, maxBytes: 1, timeoutMs: 1 });
+  assert.deepEqual(call("PUT", "repos/example-org/lending/pulls/73/merge", { sha: sha("c"), merge_method: "squash" })().slice(4, 6), ["--method", "PUT"]);
+  assert.ok(call("GET", "repos/example-org/lending/rules/branches/release%2F2026?per_page=100&page=1", null)());
+  for (const [method, endpoint] of [["PUT", "repos/example-org/lending/pulls/73/reviews"], ["PUT", "repos/example-org/lending/issues/73/comments"], ["PUT", "repos/example-org/lending/pulls/73"],
+    ["GET", "repos/example-org/lending/rules/branches/..?per_page=100&page=1"], ["GET", "repos/example-org/lending/rules/branches/%2e%2e?per_page=100&page=1"]] as const) {
+    assert.throws(call(method, endpoint, method === "PUT" ? { sha: sha("c") } : null), /not allowed/, `${method} ${endpoint}`);
+  }
+  assert.throws(call("PUT", "repos/example-org/lending/pulls/73/merge", null), /body/);
+});
+
+nativeTest("merge offers only the allowed methods, previews without sending, and sends the reviewed head once", async t => {
+  const f = merger(t);
+  const offer = await checkMerge(f);
+  assert.equal(offer.kind, "offer");
+  assert.deepEqual(offer.kind === "offer" && offer.methods, ["squash", "rebase"], "a method the repository doesn't allow is never offered");
+  const refused = await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "merge" });
+  assert.equal(f.refusal(refused), "merge-unavailable");
+  const preview = f.value(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" }));
+  assert.deepEqual(preview.operation, { kind: "merge", method: "squash" });
+  assert.equal(preview.destination.url, "https://github.com/example-org/lending/pull/73");
+  assert.equal(f.gh.merges().length, 0, "a check and a preview send nothing");
+  const [first, second] = await Promise.all([
+    f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId }),
+    f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId }),
+  ]);
+  assert.equal(f.value(first).state, "confirmed");
+  assert.equal(f.value(first).remoteUrl, "https://github.com/example-org/lending/pull/73");
+  assert.equal(f.refusal(second), "no-preview");
+  assert.deepEqual(f.gh.merges().map((c) => c.input), [{ sha: sha("c"), merge_method: "squash" }]);
+  const after = await checkMerge(f);
+  assert.deepEqual(after.kind === "unavailable" && after.reason, "not-open");
+});
+
+nativeTest("merge is never offered on unknown, blocked or unreadable state, and needs push permission read now", async t => {
+  const cases: [string, (gh: FakeGitHub) => void, string][] = [
+    ["mergeability not computed", (gh) => { gh.pr.mergeable = null; gh.pr.mergeable_state = "unknown"; }, "unknown"],
+    ["unknown state with mergeable true", (gh) => { gh.pr.mergeable_state = "unknown"; }, "unknown"],
+    ["required checks or reviews", (gh) => { gh.pr.mergeable_state = "blocked"; }, "blocked"],
+    ["conflicts", (gh) => { gh.pr.mergeable = false; gh.pr.mergeable_state = "dirty"; }, "conflicts"],
+    ["behind", (gh) => { gh.pr.mergeable_state = "behind"; }, "behind"],
+    ["draft", (gh) => { gh.pr.draft = true; gh.pr.mergeable_state = "draft"; }, "draft"],
+    ["settings hidden from this account", (gh) => { gh.settings = null; }, "policy-unreadable"],
+    ["rules unreadable", (gh) => { gh.rules = null; }, "policy-unreadable"],
+    ["merge queue", (gh) => { gh.rules = [{ type: "merge_queue" }]; }, "queue"],
+    ["no method allowed", (gh) => { gh.settings = { allow_merge_commit: false, allow_squash_merge: false, allow_rebase_merge: false }; }, "no-methods"],
+    ["unrecognised state", (gh) => { gh.pr.mergeable_state = "green"; }, "unknown"],
+  ];
+  for (const [name, change, reason] of cases) {
+    const f = merger(t);
+    change(f.gh);
+    const check = await checkMerge(f);
+    assert.equal(check.kind === "unavailable" && check.reason, reason, name);
+    assert.equal(check.kind === "unavailable" && check.url, "https://github.com/example-org/lending/pull/73", name);
+    assert.equal(f.refusal(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" })), "merge-unavailable", name);
+    assert.equal(f.gh.merges().length, 0, name);
+  }
+  // Failing checks that aren't required leave GitHub's state `unstable`: offered, and said so.
+  const unstable = merger(t);
+  unstable.gh.pr.mergeable_state = "unstable";
+  const offer = await checkMerge(unstable);
+  assert.equal(offer.kind === "offer" && offer.unstable, true);
+  const noPush = fixture(t);
+  assert.equal(noPush.refusal(await noPush.ask<"merge-check">({ op: "merge-check", key: KEY, revision: REV })), "denied");
+  const unknown = fixture(t);
+  unknown.gh.permissions = undefined;
+  assert.equal(unknown.refusal(await unknown.ask<"merge-check">({ op: "merge-check", key: KEY, revision: REV })), "permission-unknown");
+});
+
+nativeTest("a moved head, a moved target or a withdrawn method between preview and merge sends nothing", async t => {
+  const cases: [string, (gh: FakeGitHub) => void, string][] = [
+    ["head", (gh) => { gh.pr.head.sha = sha("d"); }, "head-changed"],
+    ["target", (gh) => { gh.pr.base.sha = sha("9"); }, "target-changed"],
+    ["method", (gh) => { gh.settings = { ...gh.settings!, allow_squash_merge: false }; }, "merge-unavailable"],
+    ["blocked", (gh) => { gh.pr.mergeable_state = "blocked"; }, "merge-unavailable"],
+    ["push", (gh) => { gh.permissions = { ...gh.permissions!, push: false }; }, "denied"],
+    ["account", (gh) => { gh.stamp = "hosts-2"; gh.user = KIT; }, "account-changed"],
+  ];
+  for (const [name, change, reason] of cases) {
+    const f = merger(t);
+    const preview = f.value(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" }));
+    change(f.gh);
+    assert.equal(f.refusal(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })), reason, name);
+    assert.equal(f.gh.merges().length, 0, name);
+    assert.equal(f.refusal(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })), "no-preview", `${name}: the preview is spent`);
+  }
+});
+
+nativeTest("a refused merge is rejected; an unclear one is unknown, blocks the PR and is confirmed only by GitHub's own record", async t => {
+  // GitHub refuses: the branch moved after main's last read (409), or it can't merge now (405).
+  for (const status of [405, 409]) {
+    const f = merger(t);
+    f.gh.overrides.push({ method: "PUT", pattern: /\/merge$/, answer: ok(status, { message: "nope" }) });
+    const preview = f.value(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" }));
+    const receipt = f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId }));
+    assert.deepEqual([receipt.state, receipt.reason], ["rejected", "failed"], String(status));
+  }
+  // A gateway error after GitHub merged it.
+  const f = merger(t);
+  f.gh.overrides.push({ method: "PUT", pattern: /\/merge$/, answer: ok(502, { message: "Bad gateway" }), after: true });
+  const preview = f.value(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "rebase" }));
+  const unclear = f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId }));
+  assert.equal(unclear.state, "unknown");
+  assert.equal(f.refusal(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "rebase" })), "merge-unavailable", "the PR now reads as merged");
+  const settled = f.value(await f.ask<"reconcile">({ op: "reconcile", key: KEY, intentId: preview.intentId }));
+  assert.equal(settled.state, "confirmed");
+  assert.equal(f.gh.merges().length, 1);
+
+  // Someone else merged it: that proves nothing about this request, which stays unknown.
+  const g = merger(t);
+  g.gh.overrides.push({ method: "PUT", pattern: /\/merge$/, answer: { kind: "timeout" } });
+  const other = g.value(await g.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" }));
+  assert.equal(g.value(await g.ask<"submit">({ op: "submit", key: KEY, intentId: other.intentId })).state, "unknown");
+  Object.assign(g.gh.pr, { merged: true, merged_at: "2026-10-25T12:00:00Z", state: "closed", merged_by: KIT, merge_commit_sha: sha("e") });
+  assert.equal(g.value(await g.ask<"reconcile">({ op: "reconcile", key: KEY, intentId: other.intentId })).state, "unknown");
+  const saved = await draft(g, "comment", "Merged?");
+  assert.equal(g.refusal(await g.ask<"prepare">({ op: "prepare", key: KEY, revision: REV, operation: { kind: "comment" }, draftVersion: saved.version })), "busy");
+});
+
+nativeTest("a crash after a merge is admitted restarts unknown and never merges again on its own", async t => {
+  const f = merger(t);
+  const release = f.gh.hold(/\/merge$/);
+  const preview = f.value(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" }));
+  const inFlight = f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId });
+  while (f.gh.merges().length === 0) await new Promise((r) => setTimeout(r, 5));
+  f.restart();
+  const after = f.value(await f.ask<"status">({ op: "status", key: KEY, revision: REV }));
+  assert.deepEqual(after.receipts.map((r) => [r.operation.kind, r.state]), [["merge", "unknown"]]);
+  assert.equal(f.refusal(await f.ask<"prepare-merge">({ op: "prepare-merge", key: KEY, revision: REV, method: "squash" })), "busy");
+  release();
+  await inFlight;
+  assert.equal(f.gh.merges().length, 1);
+});
+

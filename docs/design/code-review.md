@@ -613,7 +613,7 @@ Receipts distinguish prepared, dispatched, confirmed, rejected and unknown. Star
 
 The fixed local file is bounded to 2 MiB and 128 drafts/128 receipts, with a 64 Ki-character text bound and up to 100 inline comments. When it is full, the oldest settled receipts of PRs with nothing in doubt are dropped first, then empty drafts; a PR with a dispatched or unknown send keeps every receipt, since their remote ids are its duplicate protection, and unsent text is never dropped. If nothing can go, a new record is refused. There is no retention/deletion UI yet. Files use the existing private recovery-file permissions and fail-closed validation/durability checks. One main-process owner is required; this module does not provide a multiprocess dispatch lease or server exactly-once execution. Windows durable writes remain unsupported by the reused adapter. See the [preparation evidence](../reviews/2026-10-23-cr7-intents.md) for scope, request counts and validation.
 
-**Merge preflight** (`code-review-actions/merge-preflight.ts`, unwired). `mergePreflight` takes the revision the person reviewed and one set of fresh `MergeFacts`: PR state, GitHub's `mergeable` and `mergeable_state`, the repository's allowed methods, and whether a merge queue is required. `null` means the read didn't establish a value. The current read service supplies none of these facts; the merge increment adds a fresh main-owned read for them.
+**Merge preflight** (`code-review-actions/merge-preflight.ts`). Wired by the [merge increment](#cr-7-merge) below. `mergePreflight` takes the revision the person reviewed and one set of fresh `MergeFacts`: PR state, GitHub's `mergeable` and `mergeable_state`, the repository's allowed methods, and whether a merge queue is required. `null` means the read didn't establish a value. The write service fills these facts from its own fresh reads.
 
 - A different account, repository or PR, a moved head, or a changed base SHA or ref returns `reconfirm`. It never adapts to the new state.
 - Closed, merged, draft, conflicting, blocked, behind, unknown or unreadable states return `unavailable`, with Open in GitHub as the fallback. So does a required merge queue: there's no queue enrollment and no rules bypass.
@@ -643,7 +643,7 @@ permission, an endpoint or a credential:
   anchors), and the PR's issue comments and reviews (for read-back).
 - Writes: `POST repos/{o}/{r}/issues/{n}/comments` and `POST repos/{o}/{r}/pulls/{n}/reviews`.
 
-There is no PATCH, PUT, DELETE, GraphQL or merge; a test checks the sources for them.
+There is no PATCH, DELETE or GraphQL, and the only PUT is the merge (below); a test checks the sources for them.
 
 **Flow.**
 1. *Drafts.* Text is saved as a local draft per account, repository id, PR, revision and kind, with
@@ -702,7 +702,62 @@ There is no PATCH, PUT, DELETE, GraphQL or merge; a test checks the sources for 
 - The read-back reads at most 30 pages of 100.
 - Offline, a draft can't be shown: the account can't be confirmed.
 - A live write has not been run; it needs a disposable repository Val names.
-- The merge, and decisions 2–4 (state menu, title/description, reviewer requests), are later increments.
+- Decisions 2–4 (state menu, title/description, reviewer requests) are a later increment. Merge is below.
 
 Evidence: [CR-7 write increment](../reviews/2026-10-25-cr7-write-submit.md).
+
+## CR-7 merge
+
+The second write increment (#326). The header's Merge button opens a panel under the header. It is
+disabled until the PR has loaded and main has answered for this account.
+
+**Requests.** `merge-check` and `prepare-merge` are added, with exactly `key`, `revision` and (for the
+preview) `method`. `submit`, `cancel`, `reconcile` and `abandon` are shared with comments and reviews.
+`prepare` refuses a merge operation: a merge has no draft.
+
+**Facts, read now.** Each check, preview and submit reads its facts fresh:
+- the account and the repository by id;
+- this account's `permissions`, where merging needs `push`;
+- the repository's `allow_merge_commit`, `allow_squash_merge` and `allow_rebase_merge`;
+- the PR's state, `mergeable` and `mergeable_state`;
+- the target branch's active rules (`GET repos/{o}/{r}/rules/branches/{branch}`), to see whether a merge
+  queue is required.
+
+`mergePreflight` decides from these facts alone:
+- **Offered:** only the methods the repository explicitly allows.
+- **Unavailable, with Open on GitHub:**
+  - closed or merged;
+  - draft;
+  - conflicts;
+  - blocked by required reviews or checks;
+  - behind;
+  - GitHub's `unknown` (or an unrecognised state);
+  - no allowed method;
+  - a required merge queue;
+  - settings or rules that can't be read.
+- **Reconfirm:** a different account, a moved head or a moved target. Merging needs a new review, never an
+  adapted one.
+- **Not inputs:** check counts and model findings. `unstable` (failing checks that aren't required) is
+  offered, and the panel says so.
+
+**Send.** `PUT repos/{o}/{r}/pulls/{n}/merge` with `sha` = the reviewed head from the durable intent and
+`merge_method`. GitHub refuses with 409 if the head moved after main's last read.
+- **Confirmed:** a 200 that says `merged` with the merge commit.
+- **Refused:** 405 (not mergeable now), 409 and 422. A 401, 403, 404 or 410 is denied.
+- **Unknown:** anything else.
+
+After a confirmed merge the PR is read again.
+
+**Reconciliation.** A read-back of the PR confirms the merge only if GitHub says it merged, by this
+account, at the reviewed head. Merged by someone else, or not merged, proves nothing about this request,
+which stays unknown until a read-back proves it or the person stops tracking it. A send in doubt shows with
+the comment and review doubts and blocks every write to the PR.
+
+**Limits.**
+- A queue required by classic branch protection isn't visible to the rules read. GitHub refuses a direct
+  merge then, and the panel shows the refusal.
+- Merge commit title and message are GitHub's defaults.
+- No live merge has been run.
+
+Evidence: [CR-7 merge increment](../reviews/2026-10-25-cr7-merge.md).
 

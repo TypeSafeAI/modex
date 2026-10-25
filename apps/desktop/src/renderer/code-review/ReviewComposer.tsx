@@ -30,7 +30,7 @@ export function useWrite(writes: Writes, overview: PrOverview) {
 }
 
 const short = (sha: string) => sha.slice(0, 8);
-const noun = (kind: WriteKind) => kind === "comment" ? "comment" : "review";
+const noun = (kind: WriteKind | "merge") => kind === "comment" ? "comment" : kind === "review" ? "review" : "merge";
 
 /** The comment and review composers, and any send still in doubt, under the activity. */
 export function ReviewComposer({ writes, overview, fallback }: { writes: Writes; overview: PrOverview; fallback: Capability }) {
@@ -49,7 +49,7 @@ export function ReviewComposer({ writes, overview, fallback }: { writes: Writes;
 }
 
 /** Whether the composers can be used at all: a connection, and main's answer for this account. Permission is checked when previewing. */
-function writeCapability(entry: WriteEntry | undefined, fallback: Capability): Capability {
+export function writeCapability(entry: WriteEntry | undefined, fallback: Capability): Capability {
   if (!fallback.available) return fallback;
   if (entry?.status) return { available: true };
   return entry?.error ? { available: false, reason: entry.error, owner: null } : CHECKING;
@@ -179,7 +179,7 @@ function Doubt({ receipt, writes, overview }: { receipt: WriteReceipt; writes: W
     if (op === "reconcile" && done.value.state === "unknown") setNote("Modex didn't find it on GitHub. That doesn't prove it wasn't sent.");
   };
   return <div className="cr-doubt" role="alert" data-testid="cr-doubt">
-    <p><strong>Modex can't tell whether GitHub received a {noun(receipt.operation.kind)}</strong> (head <code>{short(receipt.revision.headSha)}</code>). It won't be sent again on its own.</p>
+    <p><strong>{receipt.operation.kind === "merge" ? "Modex can't tell whether GitHub merged this pull request" : `Modex can't tell whether GitHub received a ${noun(receipt.operation.kind)}`}</strong> (head <code>{short(receipt.revision.headSha)}</code>). It won't be sent again on its own.</p>
     <div className="cr-compose-buttons">
       <button className="btn" type="button" disabled={busy} onClick={() => void act("reconcile")}>Check GitHub</button>
       <button className="btn" type="button" disabled={busy} onClick={() => void act("abandon")}>Stop tracking</button>

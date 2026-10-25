@@ -1,8 +1,9 @@
 import { canonicalPrUrl, prKeyId, sameRevision, type PrKey, type PrRevision } from "../../../shared/code-review.js";
 import {
-  intentMarker, REFUSALS, validateWrite,
-  type EarlierDraft, type WriteDraft, type WriteOperation, type WritePreview, type WriteReceipt, type WriteRefusal, type WriteReply, type WriteRequest, type WriteResult, type WriteStatus,
+  intentMarker, MERGE_BLOCKS, REFUSALS, validateWrite,
+  type EarlierDraft, type MergeCheck, type MergeMethod, type WriteDraft, type WriteOperation, type WritePreview, type WriteReceipt, type WriteRefusal, type WriteReply, type WriteRequest, type WriteResult, type WriteStatus,
 } from "../../../shared/code-review-write.js";
+import { mergePreflight, type MergeFacts, type MergePreflight, type MergeState } from "./merge-preflight.js";
 import { ReviewActions, type ReviewContext, type ReviewDraft, type ReviewIntent, type ReviewOutcome } from "./intents.js";
 import type { GhAnswer } from "../code-review/gh.js";
 import { ghHostsStamp } from "../code-review/gh.js";
@@ -10,8 +11,8 @@ import { json, pull, repository, type Pull } from "../code-review/github.js";
 import { ghWriteTransport, type GhWriteCall, type GhWriteTransport } from "./write-gh.js";
 
 /**
- * CR-7's `code-review:write` (#326): comments and submitted reviews through the person's own `gh` login,
- * approved by Val on 2026-10-25. Separate from `code-review:read`. Before preparing a preview, and again
+ * CR-7's `code-review:write` (#326): comments, submitted reviews and a head-guarded merge through the
+ * person's own `gh` login, approved by Val on 2026-10-25. Separate from `code-review:read`. Before preparing a preview, and again
  * before sending it, main reads the signed-in account, the repository's permission for it, and the pull
  * request's head, target, state and lock itself; nothing the renderer says is authority. A preview is
  * bound to the window that asked for it and is spent by one send or one refusal. A send whose outcome is
@@ -30,14 +31,19 @@ export interface CodeReviewWriteOptions {
 }
 
 type Account = { id: string; login: string };
-interface Fresh { account: Account; stamp: string | null; owner: string; name: string; permissions: { pull: boolean; push: boolean } | null; locked: boolean | null; pr: Pull }
+interface Fresh {
+  key: PrKey; account: Account; stamp: string | null; owner: string; name: string; permissions: { pull: boolean; push: boolean } | null; locked: boolean | null; pr: Pull;
+  /** GitHub's own merge state and the repository's allowed methods, as read; null where the read didn't say. */
+  merge: Pick<MergeFacts, "mergeable" | "mergeState" | "methods">;
+}
 
 const KB = 1024, MB = 1024 * KB;
 const READ_TIMEOUT_MS = 15_000, SEND_TIMEOUT_MS = 30_000;
 const READ_BACK_PAGES = 30, PAGE = 100, RECEIPTS = 20;
 
 class Refused extends Error {
-  constructor(readonly reason: WriteRefusal) { super(reason); }
+  /** `detail` replaces the reason's fixed text with another fixed text, never with GitHub's words. */
+  constructor(readonly reason: WriteRefusal, readonly detail?: string) { super(reason); }
 }
 
 export class CodeReviewWrites {
@@ -79,7 +85,7 @@ export class CodeReviewWrites {
         return reply({ state: "ok", value: await this.run(request, session) });
       } catch (error) {
         // Anything that is not one of this file's refusals reads as `failed`: no exception text leaves main.
-        return reply(refuse(error instanceof Refused ? error.reason : "failed"));
+        return reply(error instanceof Refused ? refuse(error.reason, error.detail) : refuse("failed"));
       }
     });
     this.queues.set(id, run);
@@ -96,6 +102,8 @@ export class CodeReviewWrites {
       case "save": return this.save(request, session);
       case "carry": return this.carry(request, session);
       case "prepare": return this.prepare(request, session);
+      case "merge-check": return this.mergeCheck(request.key, request.revision);
+      case "prepare-merge": return this.prepareMerge(request, session);
       case "submit": return this.submit(request.key, request.intentId, session);
       case "cancel": return this.cancel(request.key, request.intentId, session);
       case "reconcile": return this.reconcile(request.key, request.intentId, session);
@@ -186,9 +194,35 @@ export class CodeReviewWrites {
     this.previews.set(prepared.intent.id, { confirmation: prepared.confirmation, session });
     return {
       intentId: prepared.intent.id, account: fresh.account, operation: request.operation, revision: request.revision,
-      destination: { owner: fresh.owner, repo: fresh.name, number: request.key.number, url: canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: request.key.number }) },
+      destination: this.destination(fresh, request.key),
       body: draft.body, comments: draft.comments.length,
     };
+  }
+
+  /** Whether Merge may be offered for the reviewed head, read now. An offer grants nothing by itself. */
+  private async mergeCheck(key: PrKey, revision: PrRevision): Promise<MergeCheck> {
+    const fresh = await this.fresh(key, true);
+    const decision = await this.mergeable(fresh, revision);
+    const destination = this.destination(fresh, key);
+    if (decision.kind === "unavailable") return { kind: "unavailable", reason: decision.reason, detail: MERGE_BLOCKS[decision.reason], url: destination.url };
+    return { kind: "offer", account: fresh.account, destination, revision, methods: (decision as Extract<MergePreflight, { kind: "offer" }>).methods, unstable: fresh.merge.mergeState === "unstable" };
+  }
+
+  private async prepareMerge(request: Extract<WriteRequest, { op: "prepare-merge" }>, session: string): Promise<WritePreview> {
+    const fresh = await this.fresh(request.key, true);
+    this.offered(await this.mergeable(fresh, request.revision), request.method);
+    const operation = { kind: "merge", method: request.method } as const;
+    const ctx = this.context(fresh.account.id, session, request.key, request.revision, true);
+    const prepared = this.local((actions) => {
+      for (const intent of actions.list(ctx)) {
+        if (intent.state === "prepared") { actions.cancel(ctx, intent.id); this.previews.delete(intent.id); }
+        else if (intent.state === "dispatched" || intent.state === "unknown") throw new Refused("busy");
+      }
+      return actions.prepare(ctx, operation);
+    });
+    if (!prepared) throw new Refused("storage");
+    this.previews.set(prepared.intent.id, { confirmation: prepared.confirmation, session });
+    return { intentId: prepared.intent.id, account: fresh.account, operation, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0 };
   }
 
   private async submit(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
@@ -203,9 +237,12 @@ export class CodeReviewWrites {
     let fresh: Fresh, ctx: ReviewContext;
     try {
       fresh = await this.fresh(key, true);
-      this.current(fresh, intent.revision);
-      this.allow(fresh, intent.operation as WriteOperation);
-      if (intent.payload) await this.anchors(fresh, intent.payload);
+      if (intent.operation.kind === "merge") this.offered(await this.mergeable(fresh, intent.revision), intent.operation.method);
+      else {
+        this.current(fresh, intent.revision);
+        this.allow(fresh, intent.operation as WriteOperation);
+        if (intent.payload) await this.anchors(fresh, intent.payload);
+      }
       // gh's login changed after main checked it: the request could go out as someone else.
       if (this.stamp() !== fresh.stamp) throw new Refused("account-changed");
       ctx = this.context(fresh.account.id, session, key, intent.revision, true);
@@ -244,7 +281,9 @@ export class CodeReviewWrites {
     const fresh = await this.fresh(key, true);
     const intent = this.local((actions) => actions.list(this.context(fresh.account.id, session, key, placeholder(key))).find((i) => i.id === id));
     if (!intent) throw new Refused("no-preview");
-    if (intent.state !== "unknown" || !intent.payload) return receipt(intent, fresh);
+    if (intent.state !== "unknown") return receipt(intent, fresh);
+    if (intent.operation.kind === "merge") return this.reconcileMerge(fresh, intent, session);
+    if (!intent.payload) return receipt(intent, fresh);
     const expected = posted(intent.payload.body, intent.id);
     const review = intent.operation.kind === "review";
     const base = `repos/${enc(fresh.owner)}/${enc(fresh.name)}/${review ? "pulls" : "issues"}/${key.number}/${review ? "reviews" : "comments"}`;
@@ -263,6 +302,20 @@ export class CodeReviewWrites {
     if (!found) return receipt(intent, fresh);
     const reconciled = this.local((actions) => actions.reconcile(this.context(fresh.account.id, session, key, intent.revision), id,
       { kind: "matched", key: intent.key, revision: intent.revision, digest: intent.digest, remoteId: found! }));
+    return receipt(reconciled ?? intent, fresh);
+  }
+
+  /**
+   * A merge is ours only if GitHub says the PR merged, by this account, at the head it was asked to merge.
+   * Merged by someone else, or not merged, proves nothing about the request: it stays unknown.
+   */
+  private async reconcileMerge(fresh: Fresh, intent: ReviewIntent, session: string): Promise<WriteReceipt> {
+    const raw = json((await this.get(`repos/${enc(fresh.owner)}/${enc(fresh.name)}/pulls/${intent.key.number}`, 4 * MB)).body) as
+      { merged?: unknown; merged_by?: { id?: unknown } | null; merge_commit_sha?: unknown; head?: { sha?: unknown } } | undefined;
+    const sha = raw?.merge_commit_sha;
+    if (raw?.merged !== true || String(raw.merged_by?.id) !== fresh.account.id || raw.head?.sha !== intent.revision.headSha || typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) return receipt(intent, fresh);
+    const reconciled = this.local((actions) => actions.reconcile(this.context(fresh.account.id, session, intent.key, intent.revision), intent.id,
+      { kind: "matched", key: intent.key, revision: intent.revision, digest: intent.digest, remoteId: sha }));
     return receipt(reconciled ?? intent, fresh);
   }
 
@@ -288,6 +341,48 @@ export class CodeReviewWrites {
     if (operation.kind === "review" && (fresh.pr.state === "closed" || fresh.pr.state === "merged")) throw new Refused("not-open");
     if (fresh.locked && !fresh.permissions.push) throw new Refused("locked");
     if (operation.kind === "review" && operation.event !== "COMMENT" && fresh.pr.author.id === fresh.account.id) throw new Refused("self-review");
+  }
+
+  /**
+   * Merging needs push permission, read now, and `mergePreflight`'s offer from GitHub's own state. Check counts
+   * and model findings are not inputs. A moved head or target, or another account, asks for a new review.
+   */
+  private async mergeable(fresh: Fresh, revision: PrRevision): Promise<MergePreflight> {
+    if (!fresh.permissions) throw new Refused("permission-unknown");
+    if (!fresh.permissions.push) throw new Refused("denied");
+    const facts: MergeFacts = { key: fresh.key, revision: fresh.pr.revision, state: fresh.pr.state, ...fresh.merge, queue: await this.queue(fresh) };
+    const decision = mergePreflight({ key: fresh.key, revision }, facts);
+    if (decision.kind === "reconfirm") throw new Refused(decision.reason === "head-changed" ? "head-changed" : decision.reason === "target-changed" ? "target-changed" : "account-changed");
+    return decision;
+  }
+
+  /** Only a method the fresh offer contains may be previewed or sent. */
+  private offered(decision: MergePreflight, method: MergeMethod): void {
+    if (decision.kind === "unavailable") throw new Refused("merge-unavailable", MERGE_BLOCKS[decision.reason]);
+    if (decision.kind !== "offer" || !decision.methods.includes(method)) throw new Refused("merge-unavailable", MERGE_BLOCKS["no-methods"]);
+  }
+
+  /**
+   * Whether the target branch merges through a queue, from its rulesets. null when unreadable or when the
+   * listing may be cut short. Classic branch protection's queue setting isn't readable here; GitHub refuses
+   * a direct merge then, and the outcome is shown as a refusal.
+   */
+  private async queue(fresh: Fresh): Promise<MergeFacts["queue"]> {
+    const branch = fresh.pr.revision.baseRef;
+    if (branch.includes("..")) return null;
+    let rows: unknown;
+    try {
+      rows = json((await this.get(`repos/${enc(fresh.owner)}/${enc(fresh.name)}/rules/branches/${enc(branch)}?per_page=100&page=1`, 2 * MB)).body);
+    } catch (error) {
+      if (error instanceof Refused && ["no-cli", "signed-out", "offline", "timeout"].includes(error.reason)) throw error;
+      return null;
+    }
+    if (!Array.isArray(rows) || rows.length >= 100) return null;
+    return rows.some((row) => (row as { type?: unknown })?.type === "merge_queue") ? "required" : "none";
+  }
+
+  private destination(fresh: Fresh, key: PrKey): WritePreview["destination"] {
+    return { owner: fresh.owner, repo: fresh.name, number: key.number, url: canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: key.number }) };
   }
 
   /** A base-side line counts in the diff base it was read under; the PR must still have that one. */
@@ -339,16 +434,27 @@ export class CodeReviewWrites {
   private async fresh(key: PrKey, force: boolean): Promise<Fresh> {
     const stamp = this.stamp();
     const account = await this.account(key, force);
-    const raw = json((await this.get(`repositories/${key.repoId}`, MB)).body) as { permissions?: { pull?: unknown; push?: unknown } } | undefined;
+    const raw = json((await this.get(`repositories/${key.repoId}`, MB)).body) as
+      { permissions?: { pull?: unknown; push?: unknown }; allow_merge_commit?: unknown; allow_squash_merge?: unknown; allow_rebase_merge?: unknown } | undefined;
     const repo = repository(raw);
     if (!repo || repo.id !== key.repoId) throw new Refused("not-found");
     const p = raw?.permissions;
     const permissions = p && typeof p.pull === "boolean" && typeof p.push === "boolean" ? { pull: p.pull, push: p.push } : null;
-    const rawPull = json((await this.get(`repos/${enc(repo.owner)}/${enc(repo.name)}/pulls/${key.number}`, 4 * MB)).body) as { locked?: unknown } | undefined;
+    const rawPull = json((await this.get(`repos/${enc(repo.owner)}/${enc(repo.name)}/pulls/${key.number}`, 4 * MB)).body) as
+      { locked?: unknown; mergeable?: unknown; mergeable_state?: unknown } | undefined;
     const pr = pull(rawPull);
     if (!pr || pr.base.id !== key.repoId || pr.number !== key.number) throw new Refused("not-found");
     this.names.set(prKeyId(key), { owner: repo.owner, name: repo.name });
-    return { account, stamp, owner: repo.owner, name: repo.name, permissions, locked: typeof rawPull?.locked === "boolean" ? rawPull.locked : null, pr };
+    const allowed = (value: unknown) => typeof value === "boolean" ? value : null;
+    const methods = { merge: allowed(raw?.allow_merge_commit), squash: allowed(raw?.allow_squash_merge), rebase: allowed(raw?.allow_rebase_merge) };
+    const state = rawPull?.mergeable_state;
+    const merge = {
+      mergeable: typeof rawPull?.mergeable === "boolean" ? rawPull.mergeable : null,
+      mergeState: typeof state === "string" && (MERGE_STATES as readonly string[]).includes(state) ? state as MergeState : null,
+      // Settings this account can't see come back absent: unreadable, never allowed.
+      methods: Object.values(methods).every((v) => v === null) ? null : methods,
+    };
+    return { key, account, stamp, owner: repo.owner, name: repo.name, permissions, locked: typeof rawPull?.locked === "boolean" ? rawPull.locked : null, pr, merge };
   }
 
   private async get(endpoint: string, maxBytes: number): Promise<{ body: Buffer }> {
@@ -364,8 +470,9 @@ export class CodeReviewWrites {
    * reached GitHub and is unknown.
    */
   private async send(fresh: Fresh, intent: ReviewIntent): Promise<ReviewOutcome> {
-    const payload = intent.payload!;
     const base = `repos/${enc(fresh.owner)}/${enc(fresh.name)}`;
+    if (intent.operation.kind === "merge") return this.sendMerge(base, intent, intent.operation.method);
+    const payload = intent.payload!;
     const body = posted(payload.body, intent.id);
     const call: GhWriteCall = intent.operation.kind === "comment"
       ? { method: "POST", endpoint: `${base}/issues/${intent.key.number}/comments`, input: { body }, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS }
@@ -391,13 +498,36 @@ export class CodeReviewWrites {
     if ([400, 409, 422, 429].includes(answer.status)) return { state: "rejected", reason: "failed" };
     return { state: "unknown" };
   }
+
+  /**
+   * `sha` is the reviewed head: GitHub refuses the merge (409) if the branch moved since. A 200 that says it
+   * merged, with the merge commit, is confirmed. 405 (not mergeable now) and 409/422 are refusals.
+   */
+  private async sendMerge(base: string, intent: ReviewIntent, method: MergeMethod): Promise<ReviewOutcome> {
+    let answer: GhAnswer;
+    try {
+      answer = await this.transport({ method: "PUT", endpoint: `${base}/pulls/${intent.key.number}/merge`, input: { sha: intent.revision.headSha, merge_method: method }, maxBytes: MB, timeoutMs: SEND_TIMEOUT_MS });
+    } catch {
+      return { state: "unknown" };
+    }
+    if (answer.kind !== "http") return answer.kind === "no-cli" || answer.kind === "signed-out" ? { state: "rejected", reason: "failed" } : { state: "unknown" };
+    if (answer.status === 200) {
+      const merged = json(answer.body) as { merged?: unknown; sha?: unknown } | undefined;
+      return merged?.merged === true && typeof merged.sha === "string" && /^[0-9a-f]{40}$/.test(merged.sha) ? { state: "confirmed", remoteId: merged.sha } : { state: "unknown" };
+    }
+    if ([401, 403, 404, 410].includes(answer.status)) return { state: "rejected", reason: "denied" };
+    if ([400, 405, 409, 422, 429].includes(answer.status)) return { state: "rejected", reason: "failed" };
+    return { state: "unknown" };
+  }
 }
+
+const MERGE_STATES: readonly MergeState[] = ["clean", "unstable", "has_hooks", "blocked", "behind", "dirty", "draft", "unknown"];
 
 const enc = encodeURIComponent;
 /** A revision for operations that only name the PR (list, cancel, abandon): ReviewActions matches those by key. */
 const placeholder = (_key: PrKey): PrRevision => ({ baseRef: "main", baseSha: "0".repeat(40), headSha: "0".repeat(40) });
 const posted = (body: string, id: string) => body.trim() ? `${body}\n\n${intentMarker(id)}` : intentMarker(id);
-const refuse = (reason: WriteRefusal): WriteResult<never> => ({ state: "refused", reason, detail: REFUSALS[reason] });
+const refuse = (reason: WriteRefusal, detail?: string): WriteResult<never> => ({ state: "refused", reason, detail: detail ?? REFUSALS[reason] });
 
 function draftView(draft: ReviewDraft): WriteDraft {
   return { kind: draft.kind, revision: draft.revision, version: draft.version, body: draft.body, comments: draft.comments };
@@ -407,9 +537,10 @@ function earlierView(draft: ReviewDraft): EarlierDraft {
 }
 function receipt(intent: ReviewIntent, fresh: { owner: string; name: string } | null): WriteReceipt {
   const operation = intent.operation as WriteOperation;
-  const anchor = operation.kind === "comment" ? "issuecomment" : "pullrequestreview";
-  const remoteUrl = intent.state === "confirmed" && intent.remoteId && fresh
-    ? `${canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: intent.key.number })}#${anchor}-${intent.remoteId}` : null;
+  const pr = fresh ? canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: intent.key.number }) : null;
+  // A merge's id is its merge commit; the PR itself is the place to see it.
+  const remoteUrl = intent.state !== "confirmed" || !intent.remoteId || !pr ? null
+    : operation.kind === "merge" ? pr : `${pr}#${operation.kind === "comment" ? "issuecomment" : "pullrequestreview"}-${intent.remoteId}`;
   return { id: intent.id, operation, revision: intent.revision, state: intent.state, reason: intent.reason, remoteUrl };
 }
 

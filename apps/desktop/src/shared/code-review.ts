@@ -449,21 +449,20 @@ export function diffCoverage(result: ReadResult<PrFiles>): DiffCoverage | null {
   return { files, total, complete: whole(result) && missing === 0, binary, missing };
 }
 
-/** Commenting and submitting a review (#326) need the same connection reads do; main then checks each PR's permission itself. */
-const WRITES = new Set<CodeReviewFeature>(["comment", "submit-review"]);
+/** Commenting, submitting a review and merging (#326) need the same connection reads do; main then checks each PR's permission itself. */
+const WRITES = new Set<CodeReviewFeature>(["comment", "submit-review", "merge"]);
 
-const OWNERS: Record<Exclude<CodeReviewFeature, "read" | "comment" | "submit-review">, { owner: string; reason: string }> = {
+const OWNERS: Record<Exclude<CodeReviewFeature, "read" | "comment" | "submit-review" | "merge">, { owner: string; reason: string }> = {
   review: { owner: "#325", reason: "Reviewing with an agent isn't available yet." },
   ask: { owner: "#325", reason: "Asking about a pull request isn't available yet." },
   instructions: { owner: "#325", reason: "Review instructions aren't available yet." },
   "request-reviewers": { owner: "#326", reason: "Requesting reviewers from Modex isn't available yet." },
   edit: { owner: "#326", reason: "Editing a pull request from Modex isn't available yet." },
   state: { owner: "#326", reason: "Closing or reopening a pull request from Modex isn't available yet." },
-  merge: { owner: "#326", reason: "Merging from Modex isn't available yet. Open the pull request on GitHub to merge." },
 };
 
 /**
- * What the workspace may offer. Reads, comments and submitted reviews follow the connection; whether a given PR
+ * What the workspace may offer. Reads, comments, submitted reviews and Merge follow the connection; whether a given PR
  * accepts them is main's answer for that PR (`code-review:write` status). Review with an agent and the other
  * writes stay unavailable until their issues land.
  */

@@ -1,8 +1,9 @@
 import { sameKey, validateRequest, type PrKey, type PrRevision, type PrState } from "../../../shared/code-review.js";
+import type { MergeBlock, MergeMethod } from "../../../shared/code-review-write.js";
 
-/** Main-only and unwired: no read supplies these facts yet. A future adapter must fill them
- * from one fresh GitHub read immediately before the merge, never from cached UI state. */
-export type MergeMethod = "merge" | "squash" | "rebase";
+/** Main-only. The write service (`write-service.ts`) fills these facts from fresh GitHub reads
+ * immediately before a check, a preview and a merge, never from cached UI state. */
+export type { MergeMethod };
 /** GitHub's `mergeable_state` values. */
 export type MergeState = "clean" | "unstable" | "has_hooks" | "blocked" | "behind" | "dirty" | "draft" | "unknown";
 /** `null` means the read didn't establish the value. Check counts and model findings are
@@ -12,7 +13,7 @@ export interface MergeFacts {
   mergeable: boolean | null; mergeState: MergeState | null;
   methods: Record<MergeMethod, boolean | null> | null; queue: "none" | "required" | null;
 }
-export type MergeUnavailable = "not-open" | "draft" | "conflicts" | "blocked" | "behind" | "unknown" | "no-methods" | "queue" | "policy-unreadable";
+export type MergeUnavailable = MergeBlock;
 export type MergePreflight =
   | { kind: "offer"; key: PrKey; revision: PrRevision; expectedHeadSha: string; methods: MergeMethod[]; mergeState: MergeState }
   | { kind: "reconfirm"; reason: "scope-changed" | "head-changed" | "target-changed" }

@@ -209,3 +209,10 @@
 .cr-anchor-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cr-line-composer { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; flex: 1 1 280px; }
 .cr-line-composer .cr-textarea { min-height: 40px; flex: 1 1 220px; }
+
+/* CR-7 Merge panel: under the PR header, above the pane's content. */
+.cr-merge { margin: 8px 16px; padding: 16px; border: 1px solid var(--border-pane); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cr-merge .cr-preview { padding: 12px; border: 1px solid var(--accent, var(--border-pane)); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cr-merge-head { display: flex; align-items: center; gap: 8px; }
+.cr-merge .spacer { flex: 1; }
+.cr-merge p { margin: 0; }

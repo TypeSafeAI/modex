@@ -11,7 +11,9 @@ import { validateRequest, type LineAnchor, type PrKey, type PrRevision } from ".
 
 export type WriteKind = "comment" | "review";
 export type ReviewEvent = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
-export type WriteOperation = { kind: "comment" } | { kind: "review"; event: ReviewEvent };
+export type MergeMethod = "merge" | "squash" | "rebase";
+export const MERGE_METHODS: readonly MergeMethod[] = ["merge", "squash", "rebase"];
+export type WriteOperation = { kind: "comment" } | { kind: "review"; event: ReviewEvent } | { kind: "merge"; method: MergeMethod };
 export interface WriteInline { anchor: LineAnchor; body: string }
 export interface WriteDraft { kind: WriteKind; revision: PrRevision; version: number; body: string; comments: WriteInline[] }
 /** A draft kept for an earlier head of the same PR. Only its body can be carried over; its line anchors are outdated. */
@@ -34,6 +36,17 @@ export interface WritePreview {
   comments: number;
 }
 
+/** Why Merge can't be offered, from GitHub's own state and settings. Each comes with Open on GitHub. */
+export type MergeBlock = "not-open" | "draft" | "conflicts" | "blocked" | "behind" | "unknown" | "no-methods" | "queue" | "policy-unreadable";
+
+/**
+ * Main's answer to "may this account merge the reviewed head now?", from reads it made for this question.
+ * An offer lists only the methods the repository allows. It is not a permit: preview and submit read again.
+ */
+export type MergeCheck =
+  | { kind: "offer"; account: { id: string; login: string }; destination: WritePreview["destination"]; revision: PrRevision; methods: MergeMethod[]; unstable: boolean }
+  | { kind: "unavailable"; reason: MergeBlock; detail: string; url: string };
+
 /**
  * Local state for one PR and revision, for the signed-in account: no GitHub read beyond the account. Whether
  * this account may comment or review here is main's answer at preview and again at submit, never this one.
@@ -51,7 +64,7 @@ export type WriteRefusal =
   | "disabled" | "no-cli" | "signed-out" | "account-changed" | "offline" | "timeout" | "rate-limited" | "not-found" | "failed"
   | "denied" | "locked" | "self-review" | "not-open" | "permission-unknown"
   | "head-changed" | "target-changed" | "anchor-outdated"
-  | "draft-conflict" | "draft-empty" | "busy" | "no-preview" | "storage";
+  | "draft-conflict" | "draft-empty" | "busy" | "no-preview" | "storage" | "merge-unavailable";
 
 export type WriteResult<T> = { state: "ok"; value: T } | { state: "refused"; reason: WriteRefusal; detail: string };
 
@@ -60,6 +73,8 @@ export interface WriteReads {
   save: WriteDraft;
   carry: WriteDraft;
   prepare: WritePreview;
+  "merge-check": MergeCheck;
+  "prepare-merge": WritePreview;
   submit: WriteReceipt;
   cancel: WriteReceipt;
   reconcile: WriteReceipt;
@@ -70,7 +85,9 @@ export type WriteRequest =
   | { op: "status"; requestId: string; key: PrKey; revision: PrRevision }
   | { op: "save"; requestId: string; key: PrKey; revision: PrRevision; kind: WriteKind; expectedVersion: number; body: string; comments: WriteInline[] }
   | { op: "carry"; requestId: string; key: PrKey; revision: PrRevision; kind: WriteKind; from: PrRevision }
-  | { op: "prepare"; requestId: string; key: PrKey; revision: PrRevision; operation: WriteOperation; draftVersion: number }
+  | { op: "prepare"; requestId: string; key: PrKey; revision: PrRevision; operation: Exclude<WriteOperation, { kind: "merge" }>; draftVersion: number }
+  | { op: "merge-check"; requestId: string; key: PrKey; revision: PrRevision }
+  | { op: "prepare-merge"; requestId: string; key: PrKey; revision: PrRevision; method: MergeMethod }
   | { [K in IntentOp]: { op: K; requestId: string; key: PrKey; intentId: string } }[IntentOp];
 type IntentOp = "submit" | "cancel" | "reconcile" | "abandon";
 
@@ -115,6 +132,7 @@ export function parseOperation(value: unknown): WriteOperation | null {
   if (!plain(value)) return null;
   if (value.kind === "comment" && exactly(value, ["kind"])) return { kind: "comment" };
   if (value.kind === "review" && exactly(value, ["kind", "event"]) && (value.event === "COMMENT" || value.event === "APPROVE" || value.event === "REQUEST_CHANGES")) return { kind: "review", event: value.event };
+  if (value.kind === "merge" && exactly(value, ["kind", "method"]) && MERGE_METHODS.includes(value.method as MergeMethod)) return { kind: "merge", method: value.method as MergeMethod };
   return null;
 }
 
@@ -123,6 +141,8 @@ const FIELDS: Record<WriteOp, readonly string[]> = {
   save: ["key", "revision", "kind", "expectedVersion", "body", "comments"],
   carry: ["key", "revision", "kind", "from"],
   prepare: ["key", "revision", "operation", "draftVersion"],
+  "merge-check": ["key", "revision"],
+  "prepare-merge": ["key", "revision", "method"],
   submit: ["key", "intentId"],
   cancel: ["key", "intentId"],
   reconcile: ["key", "intentId"],
@@ -148,7 +168,10 @@ export function validateWrite(input: unknown): WriteRequest | null {
   const kind = input.kind;
   switch (op) {
     case "status":
+    case "merge-check":
       return { op, requestId, ...scope };
+    case "prepare-merge":
+      return MERGE_METHODS.includes(input.method as MergeMethod) ? { op, requestId, ...scope, method: input.method as MergeMethod } : null;
     case "save": {
       const text = body(input.body, true);
       const version = input.expectedVersion;
@@ -170,7 +193,8 @@ export function validateWrite(input: unknown): WriteRequest | null {
     case "prepare": {
       const operation = parseOperation(input.operation);
       const version = input.draftVersion;
-      return operation && Number.isSafeInteger(version) && (version as number) >= 1 ? { op, requestId, ...scope, operation, draftVersion: version as number } : null;
+      // A merge has no draft: it is previewed with prepare-merge.
+      return operation && operation.kind !== "merge" && Number.isSafeInteger(version) && (version as number) >= 1 ? { op, requestId, ...scope, operation, draftVersion: version as number } : null;
     }
   }
 }
@@ -203,4 +227,19 @@ export const REFUSALS: Record<WriteRefusal, string> = {
   busy: "An earlier send to this pull request isn't settled yet. Resolve it first.",
   "no-preview": "That preview is no longer valid. Preview again.",
   storage: "Modex couldn't save review actions on this Mac. Nothing was sent.",
+  "merge-unavailable": "GitHub doesn't allow merging this pull request from here right now. Nothing was sent.",
 };
+
+export const MERGE_BLOCKS: Record<MergeBlock, string> = {
+  "not-open": "This pull request is closed or merged.",
+  draft: "This pull request is a draft. Mark it ready for review first.",
+  conflicts: "This branch has conflicts with its target. Resolve them first.",
+  blocked: "The target branch's rules block merging: required reviews or checks aren't satisfied.",
+  behind: "This branch is behind its target, and the target requires it to be up to date.",
+  unknown: "GitHub hasn't worked out whether this can merge yet. Check again in a moment.",
+  "no-methods": "This repository allows none of the merge methods Modex offers.",
+  queue: "The target branch merges through a merge queue. Use GitHub to add this pull request to it.",
+  "policy-unreadable": "Modex couldn't read this repository's merge settings for your account.",
+};
+
+export const MERGE_LABELS: Record<MergeMethod, string> = { merge: "Create a merge commit", squash: "Squash and merge", rebase: "Rebase and merge" };

@@ -6,7 +6,8 @@
 //   FAKE_GH_LOG    one line per call: the endpoint main asked for
 //   FAKE_GH_HOLDS  a directory: a held endpoint answers once a file of its hold's name appears there
 //   FAKE_GH_POSTS  CR-7 (#326): one JSON line per POST GitHub "received" ({ endpoint, body, id }). A posted
-//                  comment or review is then listed by the matching GET, as GitHub would list it.
+//                  comment or review is then listed by the matching GET, as GitHub would list it. A merge
+//                  (PUT …/pulls/N/merge) is recorded the same way, and the PR then reads as merged by the account.
 export interface GhWorld {
   /** `gh api user`; null answers as gh does when nobody is signed in (exit 4). */
   user: { id: number; login: string } | null;
@@ -20,9 +21,11 @@ export interface GhWorld {
   holds?: Record<string, string>;
   /** `GET /repositories/{id}`'s `permissions` per repository id; absent answers without the field. */
   permissions?: Record<string, Record<string, boolean>>;
-  /** POST endpoint to a hold name: GitHub records the write, then the answer waits, as when it is lost in flight. */
+  /** `GET /repositories/{id}`'s merge settings (`allow_merge_commit` …) per repository id, shown with push access. */
+  mergeSettings?: Record<string, Record<string, boolean>>;
+  /** POST or PUT endpoint to a hold name: GitHub records the write, then the answer waits, as when it is lost in flight. */
   postHolds?: Record<string, string>;
-  /** POST endpoint to a forced answer. `recorded`: GitHub carried the write out before answering it. */
+  /** POST or PUT endpoint to a forced answer. `recorded`: GitHub carried the write out before answering it. */
   postAnswers?: Record<string, GhAnswerSpec & { recorded?: boolean }>;
 }
 
@@ -42,7 +45,8 @@ wait((read().holds || {})[route]);
 const world = read();
 const postsFile = process.env.FAKE_GH_POSTS;
 const posts = () => postsFile && fs.existsSync(postsFile) ? fs.readFileSync(postsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
-const reason = { 200: "OK", 403: "Forbidden", 404: "Not Found", 410: "Gone" };
+const reason = { 200: "OK", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 409: "Conflict", 410: "Gone" };
+const mergedAs = (pullRoute) => posts().find((p) => p.endpoint === pullRoute + "/merge");
 function send(status, body, headers) {
   const all = { "Content-Type": "application/json; charset=utf-8", "X-Ratelimit-Remaining": "4999", ...(headers || {}) };
   process.stdout.write("HTTP/2.0 " + status + " " + (reason[status] || "Error") + "\n" + Object.entries(all).map(([k, v]) => k + ": " + v).join("\r\n") + "\r\n\r\n"
@@ -68,12 +72,24 @@ if (method === "POST") {
   wait((world.postHolds || {})[route]);
   if (forced) send(forced.status, forced.body === undefined ? {} : forced.body, forced.headers);
   else send(review ? 200 : 201, created);
+} else if (method === "PUT" && /\/pulls\/\d+\/merge$/.test(route)) {
+  const input = JSON.parse(fs.readFileSync(0, "utf8") || "null");
+  const forced = (world.postAnswers || {})[route];
+  const pull = world.routes[route.replace(/\/merge$/, "")];
+  const moved = !pull || !pull.head || pull.head.sha !== input.sha;
+  if ((!forced || forced.recorded) && !moved && !mergedAs(route.replace(/\/merge$/, ""))) {
+    fs.appendFileSync(postsFile, JSON.stringify({ endpoint: route, body: input, id: 900001 + posts().length, created: null }) + "\n");
+  }
+  wait((world.postHolds || {})[route]);
+  if (forced) send(forced.status, forced.body === undefined ? {} : forced.body, forced.headers);
+  else if (moved) send(409, { message: "Head branch was modified. Review and try the merge again." });
+  else send(200, { sha: "e".repeat(40), merged: true, message: "Pull Request successfully merged" });
 } else if (/^repositories\/\d+$/.test(route)) {
   const id = Number(route.split("/")[1]);
   const repo = Object.values(world.routes).find((value) => value && value.full_name && value.id === id);
   const permissions = (world.permissions || {})[String(id)];
   if (!repo) send(404, { message: "Not Found" });
-  else send(200, { ...repo, ...(permissions ? { permissions } : {}) });
+  else send(200, { ...repo, ...(permissions ? { permissions } : {}), ...((world.mergeSettings || {})[String(id)] || {}) });
 } else if (/\/(issues\/\d+\/comments|pulls\/\d+\/reviews)$/.test(route)) {
   const listed = [...(Array.isArray(world.routes[route]) ? world.routes[route] : []), ...posts().filter((p) => p.endpoint === route).map((p) => p.created)];
   send(200, paged(listed));
@@ -97,6 +113,10 @@ if (method === "POST") {
       && value && value.base && value.head && value.base.sha === comparison[2] && value.head.sha === comparison[3]);
     if (declared) found = { base_commit: { sha: comparison[2] }, merge_base_commit: { sha: comparison[2] } };
   }
+  if (found && /\/pulls\/\d+$/.test(route) && mergedAs(route)) {
+    found = { ...found, state: "closed", merged: true, merged_at: "2026-10-18T20:40:00Z", merged_by: { ...world.user, type: "User" },
+      merge_commit_sha: "e".repeat(40), mergeable: null, mergeable_state: "unknown" };
+  }
   if (found === undefined) send(404, { message: "Not Found" });
   else if (found && typeof found === "object" && !Array.isArray(found) && typeof found.status === "number") {
     if (found.stderr) process.stderr.write(found.stderr);
@@ -116,7 +136,8 @@ export function ghPull(repo: Repo, number: number, title: string, opts: { head?:
   return { id: repo.id * 1000 + number, number, title, body: opts.body ?? "", state: "open", draft: false, merged_at: null,
     user: person(...(opts.author ?? [1001, "ada-fixture"])), created_at: "2026-10-18T10:00:00Z", updated_at: "2026-10-18T20:30:00Z",
     base: { ref: "main", sha: sha("b"), repo }, head: { ref: `topic-${number}`, sha: opts.head ?? sha("c"), repo },
-    changed_files: opts.files ?? 2, additions: opts.additions ?? 3, deletions: opts.deletions ?? 1, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [], locked: false };
+    changed_files: opts.files ?? 2, additions: opts.additions ?? 3, deletions: opts.deletions ?? 1, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [], locked: false,
+    mergeable: true, mergeable_state: "clean", merged: false, merged_by: null, merge_commit_sha: null };
 }
 
 export function ghRow(repo: Repo, number: number, title: string, author: [number, string] = [1001, "ada-fixture"], updated = "2026-10-18T20:30:00Z") {
@@ -143,11 +164,13 @@ export function baseWorld(): GhWorld {
   return {
     user: { id: 1001, login: "ada-fixture" },
     permissions: { "7301": { admin: false, maintain: false, push: false, triage: false, pull: true }, "7302": { admin: false, maintain: false, push: false, triage: false, pull: true } },
+    mergeSettings: { "7301": { allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: true } },
     search: { authored: lendingRows, "review-requested": [ghRow(FIELD_GUIDE, 73, FIELD_GUIDE_73, [1002, "grace-fixture"], "2026-10-18T17:00:00Z")] },
     routes: {
       "repos/example-org/lending": LENDING,
       "repos/example-org/field-guide": FIELD_GUIDE,
       "repos/example-org/lending/pulls/73": ghPull(LENDING, 73, LENDING_73, { files: 11, additions: 8912, deletions: 47 }),
+      "repos/example-org/lending/rules/branches/main": [{ type: "pull_request" }],
       "repos/example-org/lending/pulls/70": ghPull(LENDING, 70, "Show each branch's opening hours on the hold slip"),
       "repos/example-org/field-guide/pulls/91": ghPull(FIELD_GUIDE, 91, FIELD_GUIDE_91, { files: 4, additions: 11, deletions: 4 }),
       "repos/example-org/field-guide/pulls/73": ghPull(FIELD_GUIDE, 73, FIELD_GUIDE_73, { files: 1, additions: 5, deletions: 2, author: [1002, "grace-fixture"] }),

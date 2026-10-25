@@ -3,9 +3,9 @@ import { tid } from "./support.js";
 import { baseWorld, fitWindow, launchWithGh, prRow, type Harness } from "./code-review-support.js";
 
 /**
- * CR-7 (#326): comments and reviews in real Electron, through main's production `code-review:write` service and
+ * CR-7 (#326): comments, reviews and Merge in real Electron, through main's production `code-review:write` service and
  * gh write transport, with the synthetic gh (e2e/code-review-support.ts) standing in for GitHub. Each POST it
- * receives is recorded (Harness.posts), so a test counts exactly what reached "GitHub". Nothing here touches a
+ * receives, and each merge, is recorded (Harness.posts), so a test counts exactly what reached "GitHub". Nothing here touches a
  * real repository: the world, its accounts and its PRs are made up.
  */
 let h: Harness;
@@ -157,3 +157,91 @@ test("a send GitHub may or may not have received is never resent; stopping track
   await expect(comment(page).getByRole("button", { name: "Preview comment" })).toBeEnabled();
   expect(h.calls().filter((c) => c.startsWith("POST "))).toHaveLength(1);
 });
+
+// --- Merge ------------------------------------------------------------------------------------------
+
+const MERGE = "repos/example-org/lending/pulls/73/merge";
+const panel = (p: Page) => p.getByRole("region", { name: "Merge this pull request" });
+const pushable = () => { const w = baseWorld(); w.permissions!["7301"] = { admin: false, maintain: false, push: true, triage: true, pull: true }; return w; };
+const mutations = () => h.calls().filter((c) => /^(POST|PUT|PATCH|DELETE) /.test(c));
+/** Opens the Merge panel once the PR has loaded and main has answered for this account. */
+async function openMerge(page: Page): Promise<void> {
+  const button = tid(page, "code-review-merge").first();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+  await button.click();
+  await expect(panel(page)).toBeVisible();
+}
+
+test("Merge offers only the repository's methods, previews the reviewed head and merges once despite a double click", async () => {
+  h = await launchWithGh(pushable());
+  const page = await openLending();
+  await openMerge(page);
+  const methods = panel(page).getByRole("group", { name: "Merge method" });
+  await expect(methods.getByRole("radio")).toHaveCount(2);
+  await expect(methods.getByRole("radio", { name: "Squash and merge" })).toBeChecked();
+  await expect(methods).not.toContainText("Create a merge commit");
+  await methods.getByRole("radio", { name: "Rebase and merge" }).check();
+  await panel(page).getByRole("button", { name: "Preview merge" }).click();
+  const preview = page.getByRole("region", { name: "Preview merge" });
+  await expect(preview).toContainText("Merge pull request · Rebase and merge");
+  await expect(preview.getByTestId("cr-preview-destination")).toHaveText("As ada-fixture on example-org/lending #73");
+  await expect(preview.getByTestId("cr-preview-revision")).toContainText("Head cccccccc into main");
+  expect(mutations()).toEqual([]);
+  await preview.getByRole("button", { name: "Merge pull request" }).dblclick();
+  await expect(panel(page).getByRole("status")).toContainText("Pull request merged.");
+  expect(h.posts().map((p) => [p.endpoint, p.body])).toEqual([[MERGE, { sha: "c".repeat(40), merge_method: "rebase" }]]);
+  expect(mutations()).toEqual([`PUT ${MERGE}`]);
+  // The PR is read again, and GitHub now says it merged.
+  await expect(tid(page, "code-review-state").first()).toHaveText("Merged");
+  expect(h.providerStarts()).toEqual([]);
+});
+
+test("Merge stays with GitHub when the rules block it, and needs push permission, read by main", async () => {
+  h = await launchWithGh(pushable());
+  const page = await openLending();
+  h.world((w) => { (w.routes["repos/example-org/lending/pulls/73"] as { mergeable_state: string }).mergeable_state = "blocked"; });
+  await openMerge(page);
+  const blocked = panel(page).getByTestId("cr-merge-unavailable");
+  await expect(blocked).toContainText("The target branch's rules block merging: required reviews or checks aren't satisfied.");
+  await expect(blocked.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", "https://github.com/example-org/lending/pull/73");
+  await expect(panel(page).getByRole("button", { name: "Preview merge" })).toHaveCount(0);
+  // Without push, main refuses before offering anything.
+  h.world((w) => { w.permissions!["7301"] = { ...w.permissions!["7301"]!, push: false }; });
+  await blocked.getByRole("button", { name: "Check again" }).click();
+  await expect(panel(page).getByRole("alert")).toHaveText("GitHub refused this. The account may lack permission, or the pull request doesn't allow it.");
+  expect(mutations()).toEqual([]);
+});
+
+test("a head that moves between preview and merge is refused before anything is sent", async () => {
+  h = await launchWithGh(pushable());
+  const page = await openLending();
+  await openMerge(page);
+  await panel(page).getByRole("button", { name: "Preview merge" }).click();
+  const preview = page.getByRole("region", { name: "Preview merge" });
+  await expect(preview).toBeVisible();
+  h.world((w) => { (w.routes["repos/example-org/lending/pulls/73"] as { head: { sha: string } }).head.sha = "d".repeat(40); });
+  await preview.getByRole("button", { name: "Merge pull request" }).click();
+  await expect(panel(page).getByRole("alert")).toContainText("newer head");
+  expect(mutations()).toEqual([]);
+  expect(h.posts()).toEqual([]);
+});
+
+test("a crash during a merge restarts in doubt, merges nothing again, and Check GitHub confirms it from the PR", async () => {
+  h = await launchWithGh(pushable());
+  let page = await openLending();
+  h.world((w) => { w.postHolds = { [MERGE]: "lost-merge" }; });
+  await openMerge(page);
+  await panel(page).getByRole("button", { name: "Preview merge" }).click();
+  await page.getByRole("region", { name: "Preview merge" }).getByRole("button", { name: "Merge pull request" }).click();
+  await expect.poll(() => h.posts().length).toBe(1);
+  await h.relaunch();
+  h.release("lost-merge");
+  page = await openLending();
+  const doubt = page.getByTestId("cr-doubt");
+  await expect(doubt).toContainText("Modex can't tell whether GitHub merged this pull request");
+  await doubt.getByRole("button", { name: "Check GitHub" }).click();
+  await expect(doubt).toHaveCount(0);
+  expect(mutations()).toEqual([`PUT ${MERGE}`]);
+  expect(h.posts()).toHaveLength(1);
+});
+

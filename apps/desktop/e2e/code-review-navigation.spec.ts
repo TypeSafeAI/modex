@@ -379,8 +379,9 @@ test("pin, copy and Open in GitHub use the canonical link, a pasted link opens i
   await tid(page, "code-review-instructions").first().focus();
   await page.keyboard.press("Tab");
   await expect(merge).toBeFocused();
-  await expect(page.getByRole("tooltip")).toContainText("Merging from Modex isn't available yet.");
-  await expect(merge).toHaveAccessibleDescription("Merging from Modex isn't available yet. Open the pull request on GitHub to merge.");
+  // MODEX_E2E turns main's write service off: Merge says so, and does nothing.
+  await expect(page.getByRole("tooltip")).toContainText("GitHub writes are disabled in demos, tests and browser development.");
+  await expect(merge).toHaveAccessibleDescription("GitHub writes are disabled in demos, tests and browser development.");
   const asked = (await log(app)).length;
   await merge.dispatchEvent("click");
   await settle(page);
