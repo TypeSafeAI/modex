@@ -10,6 +10,7 @@ import { prUrl, type OpenPr } from "./model.js";
 import { type Pane } from "./navigation.js";
 import { PrChanges, type ChangesViews } from "./PrChanges";
 import { STATE_LABELS, unavailableText } from "./text.js";
+import type { Writes } from "./writes.js";
 
 interface Props {
   pane: Pane;
@@ -28,6 +29,7 @@ interface Props {
   contextBusy: ReadonlySet<string>;
   onTreeResize: (width: number) => void;
   onTreeReset: () => void;
+  writes?: Writes;
 }
 
 /** Where each scroll region was, per PR, for returning to it. Session memory only. */
@@ -48,7 +50,7 @@ function useScrollMemory(ref: RefObject<HTMLElement | null>, id: string, content
  * One pane of a PR: its header (C21–C29, repeated over Changes as C62) and the region below it. The
  * overview renders #323's read-only content; #324 supplies revision-bound remote diffs and the file tree.
  */
-export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onShowChanges, onActivityPage, contextBusy, onTreeResize, onTreeReset }: Props) {
+export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onShowChanges, onActivityPage, contextBusy, onTreeResize, onTreeReset, writes }: Props) {
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
@@ -64,10 +66,10 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
     <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
       <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
-        {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} />}
+        {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} writes={writes} />}
       </div>}
       {pane === "changes" && (overview && overview.state !== "unavailable"
-        ? <PrChanges views={changesViews} overview={overview.value} stale={overview.state !== "ready"} bodyRef={body} treeRef={tree} treeWidth={treeWidth} changesWidth={changesWidth} filesShown={filesShown} onSelect={() => setFilesShown(false)} onTreeResize={onTreeResize} onTreeReset={onTreeReset} />
+        ? <PrChanges views={changesViews} overview={overview.value} stale={overview.state !== "ready"} bodyRef={body} treeRef={tree} treeWidth={treeWidth} changesWidth={changesWidth} filesShown={filesShown} onSelect={() => setFilesShown(false)} onTreeResize={onTreeResize} onTreeReset={onTreeReset} writes={writes} />
         : <div ref={body} className="cr-diff" data-testid="code-review-diff">{status}</div>)}
     </section>
   );

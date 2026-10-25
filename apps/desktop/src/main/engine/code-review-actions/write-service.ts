@@ -1,0 +1,425 @@
+import { canonicalPrUrl, prKeyId, sameRevision, type PrKey, type PrRevision } from "../../../shared/code-review.js";
+import {
+  intentMarker, REFUSALS, validateWrite,
+  type EarlierDraft, type WriteDraft, type WriteOperation, type WritePreview, type WriteReceipt, type WriteRefusal, type WriteReply, type WriteRequest, type WriteResult, type WriteStatus,
+} from "../../../shared/code-review-write.js";
+import { ReviewActions, type ReviewContext, type ReviewDraft, type ReviewIntent, type ReviewOutcome } from "./intents.js";
+import type { GhAnswer } from "../code-review/gh.js";
+import { ghHostsStamp } from "../code-review/gh.js";
+import { json, pull, repository, type Pull } from "../code-review/github.js";
+import { ghWriteTransport, type GhWriteCall, type GhWriteTransport } from "./write-gh.js";
+
+/**
+ * CR-7's `code-review:write` (#326): comments and submitted reviews through the person's own `gh` login,
+ * approved by Val on 2026-10-25. Separate from `code-review:read`. Before preparing a preview, and again
+ * before sending it, main reads the signed-in account, the repository's permission for it, and the pull
+ * request's head, target, state and lock itself; nothing the renderer says is authority. A preview is
+ * bound to the window that asked for it and is spent by one send or one refusal. A send whose outcome is
+ * unclear stays unknown until a read-back finds it or the person decides; nothing is resent on its own.
+ */
+export interface CodeReviewWriteOptions {
+  /** Where review-actions/state.json lives (MODEX_HOME). */
+  home: string;
+  /** Off in demos, E2E and browser development, like the read service. */
+  enabled?: boolean;
+  transport?: GhWriteTransport;
+  identityStamp?: () => string | null;
+  now?: () => number;
+  /** How long a checked account is trusted for drafts. Previews and sends always check again. */
+  identityTtlMs?: number;
+}
+
+type Account = { id: string; login: string };
+interface Fresh { account: Account; stamp: string | null; owner: string; name: string; permissions: { pull: boolean; push: boolean } | null; locked: boolean | null; pr: Pull }
+
+const KB = 1024, MB = 1024 * KB;
+const READ_TIMEOUT_MS = 15_000, SEND_TIMEOUT_MS = 30_000;
+const READ_BACK_PAGES = 30, PAGE = 100, RECEIPTS = 20;
+
+class Refused extends Error {
+  constructor(readonly reason: WriteRefusal) { super(reason); }
+}
+
+export class CodeReviewWrites {
+  private readonly home: string;
+  private readonly enabled: boolean;
+  private readonly transport: GhWriteTransport;
+  private readonly stamp: () => string | null;
+  private readonly now: () => number;
+  private readonly ttl: number;
+  private actions: ReviewActions | null = null;
+  /** Previews this process issued, by intent id: the proof a send needs, and the window it belongs to. */
+  private readonly previews = new Map<string, { confirmation: object; session: string }>();
+  private identity: (Account & { stamp: string | null; at: number }) | null = null;
+  /** Owner and name main last read for a PR, for receipt links only. Every write reads them again. */
+  private readonly names = new Map<string, { owner: string; name: string }>();
+  /** One operation at a time per pull request: a double click waits for the first to settle. */
+  private readonly queues = new Map<string, Promise<unknown>>();
+
+  constructor(options: CodeReviewWriteOptions) {
+    this.home = options.home;
+    this.enabled = options.enabled ?? true;
+    this.transport = options.transport ?? ghWriteTransport();
+    this.stamp = options.identityStamp ?? ghHostsStamp;
+    this.now = options.now ?? Date.now;
+    this.ttl = options.identityTtlMs ?? 30_000;
+  }
+
+  /** The `code-review:write` handler. `session` is main's name for the window that asked, never the renderer's. */
+  async handle(input: unknown, session: string): Promise<WriteReply> {
+    const request = validateWrite(input);
+    if (!request) throw new Error("Invalid Code Review write request.");
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(session)) throw new Error("Invalid Code Review session.");
+    const reply = (result: WriteResult<unknown>) => ({ requestId: request.requestId, op: request.op, key: request.key, result }) as WriteReply;
+    if (!this.enabled) return reply(refuse("disabled"));
+    const id = prKeyId(request.key);
+    const previous = this.queues.get(id) ?? Promise.resolve();
+    const run = previous.then(async () => {
+      try {
+        return reply({ state: "ok", value: await this.run(request, session) });
+      } catch (error) {
+        // Anything that is not one of this file's refusals reads as `failed`: no exception text leaves main.
+        return reply(refuse(error instanceof Refused ? error.reason : "failed"));
+      }
+    });
+    this.queues.set(id, run);
+    try {
+      return await run;
+    } finally {
+      if (this.queues.get(id) === run) this.queues.delete(id);
+    }
+  }
+
+  private run(request: WriteRequest, session: string): Promise<unknown> {
+    switch (request.op) {
+      case "status": return this.status(request.key, request.revision, session);
+      case "save": return this.save(request, session);
+      case "carry": return this.carry(request, session);
+      case "prepare": return this.prepare(request, session);
+      case "submit": return this.submit(request.key, request.intentId, session);
+      case "cancel": return this.cancel(request.key, request.intentId, session);
+      case "reconcile": return this.reconcile(request.key, request.intentId, session);
+      case "abandon": return this.abandon(request.key, request.intentId, session);
+    }
+  }
+
+  // --- Local state ------------------------------------------------------------------------------
+
+  private store(): ReviewActions {
+    try {
+      this.actions ??= new ReviewActions(this.home);
+      return this.actions;
+    } catch {
+      throw new Refused("storage");
+    }
+  }
+
+  /** A storage failure is never a send: ReviewActions admits a dispatch only after it is durable. */
+  private local<T>(work: (actions: ReviewActions) => T): T {
+    const actions = this.store();
+    try {
+      return work(actions);
+    } catch (error) {
+      throw error instanceof Refused ? error : new Refused("storage");
+    }
+  }
+
+  private context(account: string, session: string, key: PrKey, revision: PrRevision, permitted = false): ReviewContext {
+    return { account, session, permitted, key, revision };
+  }
+
+  // --- Operations -------------------------------------------------------------------------------
+
+  /** Drafts and receipts only, under the signed-in account: opening a PR costs no extra GitHub read. */
+  private async status(key: PrKey, revision: PrRevision, session: string): Promise<WriteStatus> {
+    const account = await this.account(key, false);
+    const ctx = this.context(account.id, session, key, revision);
+    return this.local((actions) => ({
+      account, revision,
+      drafts: Object.fromEntries((["comment", "review"] as const).flatMap((kind) => { const d = actions.getDraft(ctx, kind); return d ? [[kind, draftView(d)]] : []; })),
+      earlier: actions.earlier(ctx).filter((d) => d.body.trim() || d.comments.length).map(earlierView),
+      receipts: actions.list(ctx).slice(-RECEIPTS).map((intent) => receipt(intent, this.names.get(prKeyId(key)) ?? null)),
+    }));
+  }
+
+  private async save(request: Extract<WriteRequest, { op: "save" }>, session: string): Promise<WriteDraft> {
+    const account = await this.account(request.key, false);
+    const ctx = this.context(account.id, session, request.key, request.revision);
+    const saved = this.local((actions) => actions.saveDraft(ctx, request.kind, request.expectedVersion, request.body, request.comments));
+    if (!saved) throw new Refused(request.comments.some((c) => !sameRevision(c.anchor.revision, request.revision)) ? "anchor-outdated" : "draft-conflict");
+    return draftView(saved);
+  }
+
+  /** An earlier head's body into this head's draft. Its line anchors count in the old revision and stay behind. */
+  private async carry(request: Extract<WriteRequest, { op: "carry" }>, session: string): Promise<WriteDraft> {
+    const account = await this.account(request.key, false);
+    const here = this.context(account.id, session, request.key, request.revision);
+    const there = this.context(account.id, session, request.key, request.from);
+    const saved = this.local((actions) => {
+      const current = actions.getDraft(here, request.kind), earlier = actions.getDraft(there, request.kind);
+      if (!earlier || sameRevision(request.from, request.revision)) throw new Refused("draft-empty");
+      if (current && (current.body.trim() || current.comments.length)) throw new Refused("draft-conflict");
+      return actions.saveDraft(here, request.kind, current?.version ?? 0, earlier.body, []);
+    });
+    if (!saved) throw new Refused("draft-conflict");
+    return draftView(saved);
+  }
+
+  private async prepare(request: Extract<WriteRequest, { op: "prepare" }>, session: string): Promise<WritePreview> {
+    const fresh = await this.fresh(request.key, true);
+    this.current(fresh, request.revision);
+    this.allow(fresh, request.operation);
+    const ctx = this.context(fresh.account.id, session, request.key, request.revision, true);
+    const kind = request.operation.kind;
+    const draft = this.local((actions) => actions.getDraft(ctx, kind));
+    if (!draft || draft.version !== request.draftVersion) throw new Refused("draft-conflict");
+    await this.anchors(fresh, draft);
+    const prepared = this.local((actions) => {
+      // A newer preview replaces an unsent one, from this window or another. A send in doubt blocks the PR.
+      for (const intent of actions.list(ctx)) {
+        if (intent.state === "prepared") { actions.cancel(ctx, intent.id); this.previews.delete(intent.id); }
+        else if (intent.state === "dispatched" || intent.state === "unknown") throw new Refused("busy");
+      }
+      return actions.prepare(ctx, request.operation, request.draftVersion);
+    });
+    if (!prepared) throw new Refused("draft-empty");
+    this.previews.set(prepared.intent.id, { confirmation: prepared.confirmation, session });
+    return {
+      intentId: prepared.intent.id, account: fresh.account, operation: request.operation, revision: request.revision,
+      destination: { owner: fresh.owner, repo: fresh.name, number: request.key.number, url: canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: request.key.number }) },
+      body: draft.body, comments: draft.comments.length,
+    };
+  }
+
+  private async submit(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
+    const preview = this.previews.get(id);
+    if (!preview || preview.session !== session) throw new Refused("no-preview");
+    const intent = this.local((actions) => actions.list(this.context(key.account, session, key, placeholder(key))).find((i) => i.id === id));
+    if (!intent || intent.state !== "prepared") { this.previews.delete(id); throw new Refused("no-preview"); }
+    const spend = () => {
+      this.previews.delete(id);
+      this.local((actions) => actions.cancel(this.context(key.account, session, key, intent.revision), id));
+    };
+    let fresh: Fresh, ctx: ReviewContext;
+    try {
+      fresh = await this.fresh(key, true);
+      this.current(fresh, intent.revision);
+      this.allow(fresh, intent.operation as WriteOperation);
+      if (intent.payload) await this.anchors(fresh, intent.payload);
+      // gh's login changed after main checked it: the request could go out as someone else.
+      if (this.stamp() !== fresh.stamp) throw new Refused("account-changed");
+      ctx = this.context(fresh.account.id, session, key, intent.revision, true);
+    } catch (error) {
+      spend();
+      throw error;
+    }
+    const permit = this.local((actions) => actions.dispatch(ctx, preview.confirmation));
+    this.previews.delete(id);
+    if (!permit) throw new Refused("no-preview");
+    const outcome = await this.send(fresh, permit);
+    let settled: ReviewIntent | null = null;
+    try {
+      settled = this.store().complete(ctx, id, outcome);
+      if (settled?.state === "confirmed" && permit.draftVersion !== null) {
+        // The draft that was sent is done with; a newer edit made meanwhile is kept.
+        this.store().saveDraft(ctx, permit.operation.kind as "comment" | "review", permit.draftVersion, "", []);
+      }
+    } catch {
+      // The outcome could not be recorded: the durable receipt still says dispatched, which a restart reads as unknown.
+      return receipt({ ...permit, state: "unknown" }, fresh);
+    }
+    return receipt(settled ?? { ...permit, state: "unknown" }, fresh);
+  }
+
+  private async cancel(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
+    await this.account(key, false);
+    const cancelled = this.local((actions) => actions.cancel(this.context(key.account, session, key, placeholder(key)), id));
+    this.previews.delete(id);
+    if (!cancelled) throw new Refused("no-preview");
+    return receipt(cancelled, null);
+  }
+
+  /** Reads the PR's comments or reviews back for this intent's marker, by this account. Finding none proves nothing. */
+  private async reconcile(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
+    const fresh = await this.fresh(key, true);
+    const intent = this.local((actions) => actions.list(this.context(fresh.account.id, session, key, placeholder(key))).find((i) => i.id === id));
+    if (!intent) throw new Refused("no-preview");
+    if (intent.state !== "unknown" || !intent.payload) return receipt(intent, fresh);
+    const expected = posted(intent.payload.body, intent.id);
+    const review = intent.operation.kind === "review";
+    const base = `repos/${enc(fresh.owner)}/${enc(fresh.name)}/${review ? "pulls" : "issues"}/${key.number}/${review ? "reviews" : "comments"}`;
+    let found: string | null = null;
+    for (let page = 1; page <= READ_BACK_PAGES && !found; page++) {
+      const rows = json((await this.get(`${base}?per_page=${PAGE}&page=${page}`, 8 * MB)).body);
+      if (!Array.isArray(rows)) throw new Refused("failed");
+      for (const raw of rows) {
+        const row = raw as { id?: unknown; user?: { id?: unknown }; body?: unknown; commit_id?: unknown };
+        if (String(row?.user?.id) !== fresh.account.id || typeof row.body !== "string" || !Number.isSafeInteger(row.id)) continue;
+        if (review && row.commit_id !== intent.revision.headSha) continue;
+        if (row.body.replace(/\r\n/g, "\n") === expected) { found = String(row.id); break; }
+      }
+      if (rows.length < PAGE) break;
+    }
+    if (!found) return receipt(intent, fresh);
+    const reconciled = this.local((actions) => actions.reconcile(this.context(fresh.account.id, session, key, intent.revision), id,
+      { kind: "matched", key: intent.key, revision: intent.revision, digest: intent.digest, remoteId: found! }));
+    return receipt(reconciled ?? intent, fresh);
+  }
+
+  private async abandon(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
+    await this.account(key, true);
+    const abandoned = this.local((actions) => actions.abandon(this.context(key.account, session, key, placeholder(key)), id));
+    if (!abandoned) throw new Refused("no-preview");
+    return receipt(abandoned, null);
+  }
+
+  // --- Checks -----------------------------------------------------------------------------------
+
+  /** The revision the person reviewed must still be the PR's. */
+  private current(fresh: Fresh, revision: PrRevision): void {
+    if (fresh.pr.revision.headSha !== revision.headSha) throw new Refused("head-changed");
+    if (!sameRevision(fresh.pr.revision, revision)) throw new Refused("target-changed");
+  }
+
+  /** What this account may do here, from main's own reads. Unreadable permission is refusal, never permission. */
+  private allow(fresh: Fresh, operation: WriteOperation): void {
+    if (!fresh.permissions || fresh.locked === null) throw new Refused("permission-unknown");
+    if (!fresh.permissions.pull) throw new Refused("denied");
+    if (operation.kind === "review" && (fresh.pr.state === "closed" || fresh.pr.state === "merged")) throw new Refused("not-open");
+    if (fresh.locked && !fresh.permissions.push) throw new Refused("locked");
+    if (operation.kind === "review" && operation.event !== "COMMENT" && fresh.pr.author.id === fresh.account.id) throw new Refused("self-review");
+  }
+
+  /** A base-side line counts in the diff base it was read under; the PR must still have that one. */
+  private async anchors(fresh: Fresh, payload: { comments: { anchor: { side: string; commitSha: string } }[] }): Promise<void> {
+    if (!payload.comments.some((c) => c.anchor.side === "base")) return;
+    const { baseSha, headSha } = fresh.pr.revision;
+    const answer = json((await this.get(`repos/${enc(fresh.owner)}/${enc(fresh.name)}/compare/${baseSha}...${headSha}?per_page=1&page=1`, 24 * MB)).body) as
+      { base_commit?: { sha?: unknown }; merge_base_commit?: { sha?: unknown } } | undefined;
+    const base = answer?.merge_base_commit?.sha;
+    if (answer?.base_commit?.sha !== baseSha || typeof base !== "string") throw new Refused("failed");
+    if (payload.comments.some((c) => c.anchor.side === "base" && c.anchor.commitSha !== base)) throw new Refused("anchor-outdated");
+  }
+
+  // --- GitHub -----------------------------------------------------------------------------------
+
+  /** The signed-in account, which must be the key's. A remembered answer that disagrees is checked again, never trusted. */
+  private async account(key: PrKey, force: boolean): Promise<Account> {
+    let account = await this.who(force);
+    if (account.id !== key.account && !force) account = await this.who(true);
+    if (account.id !== key.account) throw new Refused("account-changed");
+    return account;
+  }
+
+  private async who(force: boolean): Promise<Account> {
+    const stamp = this.stamp();
+    const known = this.identity;
+    if (!force && known && this.now() - known.at < this.ttl && stamp !== null && stamp === known.stamp) return { id: known.id, login: known.login };
+    const answer = await this.transport({ method: "GET", endpoint: "user", input: null, maxBytes: 256 * KB, timeoutMs: READ_TIMEOUT_MS });
+    if (answer.kind !== "http") {
+      if (answer.kind === "signed-out" || answer.kind === "no-cli") this.identity = null;
+      throw new Refused(transportRefusal(answer.kind));
+    }
+    if (answer.status !== 200) {
+      if (answer.status === 401) this.identity = null;
+      throw new Refused(httpRefusal(answer));
+    }
+    const user = json(answer.body) as { id?: unknown; login?: unknown } | undefined;
+    const id = typeof user?.id === "number" && Number.isSafeInteger(user.id) && user.id > 0 ? String(user.id) : null;
+    const login = typeof user?.login === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(user.login) ? user.login : null;
+    if (!id || !login) throw new Refused("failed");
+    this.identity = { id, login, stamp, at: this.now() };
+    return { id, login };
+  }
+
+  /**
+   * The account, the repository by its stable id (with this account's permission on it), and the pull
+   * request, read now. `stamp` is gh's login state from before the account was checked.
+   */
+  private async fresh(key: PrKey, force: boolean): Promise<Fresh> {
+    const stamp = this.stamp();
+    const account = await this.account(key, force);
+    const raw = json((await this.get(`repositories/${key.repoId}`, MB)).body) as { permissions?: { pull?: unknown; push?: unknown } } | undefined;
+    const repo = repository(raw);
+    if (!repo || repo.id !== key.repoId) throw new Refused("not-found");
+    const p = raw?.permissions;
+    const permissions = p && typeof p.pull === "boolean" && typeof p.push === "boolean" ? { pull: p.pull, push: p.push } : null;
+    const rawPull = json((await this.get(`repos/${enc(repo.owner)}/${enc(repo.name)}/pulls/${key.number}`, 4 * MB)).body) as { locked?: unknown } | undefined;
+    const pr = pull(rawPull);
+    if (!pr || pr.base.id !== key.repoId || pr.number !== key.number) throw new Refused("not-found");
+    this.names.set(prKeyId(key), { owner: repo.owner, name: repo.name });
+    return { account, stamp, owner: repo.owner, name: repo.name, permissions, locked: typeof rawPull?.locked === "boolean" ? rawPull.locked : null, pr };
+  }
+
+  private async get(endpoint: string, maxBytes: number): Promise<{ body: Buffer }> {
+    const answer = await this.transport({ method: "GET", endpoint, input: null, maxBytes, timeoutMs: READ_TIMEOUT_MS });
+    if (answer.kind !== "http") throw new Refused(transportRefusal(answer.kind));
+    if (answer.status < 200 || answer.status >= 300) throw new Refused(httpRefusal(answer));
+    return answer;
+  }
+
+  /**
+   * The one mutation. A 2xx with an id is confirmed; an answer GitHub gave for a request it did not carry
+   * out is rejected; anything else (a 5xx, a timeout, a dropped connection, an unreadable answer) may have
+   * reached GitHub and is unknown.
+   */
+  private async send(fresh: Fresh, intent: ReviewIntent): Promise<ReviewOutcome> {
+    const payload = intent.payload!;
+    const base = `repos/${enc(fresh.owner)}/${enc(fresh.name)}`;
+    const body = posted(payload.body, intent.id);
+    const call: GhWriteCall = intent.operation.kind === "comment"
+      ? { method: "POST", endpoint: `${base}/issues/${intent.key.number}/comments`, input: { body }, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS }
+      : { method: "POST", endpoint: `${base}/pulls/${intent.key.number}/reviews`, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS, input: {
+        commit_id: intent.revision.headSha, event: (intent.operation as { event: string }).event, body,
+        comments: payload.comments.map(({ anchor, body: text }) => {
+          const side = anchor.side === "head" ? "RIGHT" : "LEFT";
+          return { path: anchor.path, body: text, side, line: anchor.end, ...(anchor.start < anchor.end ? { start_line: anchor.start, start_side: side } : {}) };
+        }),
+      } };
+    let answer: GhAnswer;
+    try {
+      answer = await this.transport(call);
+    } catch {
+      return { state: "unknown" };
+    }
+    if (answer.kind !== "http") return answer.kind === "no-cli" || answer.kind === "signed-out" ? { state: "rejected", reason: "failed" } : { state: "unknown" };
+    if (answer.status >= 200 && answer.status < 300) {
+      const created = json(answer.body) as { id?: unknown } | undefined;
+      return typeof created?.id === "number" && Number.isSafeInteger(created.id) && created.id > 0 ? { state: "confirmed", remoteId: String(created.id) } : { state: "unknown" };
+    }
+    if ([401, 403, 404, 410].includes(answer.status)) return { state: "rejected", reason: "denied" };
+    if ([400, 409, 422, 429].includes(answer.status)) return { state: "rejected", reason: "failed" };
+    return { state: "unknown" };
+  }
+}
+
+const enc = encodeURIComponent;
+/** A revision for operations that only name the PR (list, cancel, abandon): ReviewActions matches those by key. */
+const placeholder = (_key: PrKey): PrRevision => ({ baseRef: "main", baseSha: "0".repeat(40), headSha: "0".repeat(40) });
+const posted = (body: string, id: string) => body.trim() ? `${body}\n\n${intentMarker(id)}` : intentMarker(id);
+const refuse = (reason: WriteRefusal): WriteResult<never> => ({ state: "refused", reason, detail: REFUSALS[reason] });
+
+function draftView(draft: ReviewDraft): WriteDraft {
+  return { kind: draft.kind, revision: draft.revision, version: draft.version, body: draft.body, comments: draft.comments };
+}
+function earlierView(draft: ReviewDraft): EarlierDraft {
+  return { kind: draft.kind, revision: draft.revision, version: draft.version, bodyLength: draft.body.length, comments: draft.comments.length };
+}
+function receipt(intent: ReviewIntent, fresh: { owner: string; name: string } | null): WriteReceipt {
+  const operation = intent.operation as WriteOperation;
+  const anchor = operation.kind === "comment" ? "issuecomment" : "pullrequestreview";
+  const remoteUrl = intent.state === "confirmed" && intent.remoteId && fresh
+    ? `${canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: intent.key.number })}#${anchor}-${intent.remoteId}` : null;
+  return { id: intent.id, operation, revision: intent.revision, state: intent.state, reason: intent.reason, remoteUrl };
+}
+
+function transportRefusal(kind: Exclude<GhAnswer["kind"], "http">): WriteRefusal {
+  return kind === "no-cli" ? "no-cli" : kind === "signed-out" ? "signed-out" : kind === "offline" ? "offline" : kind === "timeout" ? "timeout" : "failed";
+}
+function httpRefusal(answer: Extract<GhAnswer, { kind: "http" }>): WriteRefusal {
+  if (answer.status === 401) return "signed-out";
+  if (answer.status === 429 || (answer.status === 403 && answer.headers["x-ratelimit-remaining"] === "0")) return "rate-limited";
+  if (answer.status === 403) return "denied";
+  if (answer.status === 404 || answer.status === 410) return "not-found";
+  return "failed";
+}

@@ -253,13 +253,30 @@ for (const corrupt of ["state", "digest", "duplicate", "unknown-field"] as const
 
 nativeTest("bounded receipt storage refuses new intents without evicting duplicate protection", t => {
   const { actions, ctx, home } = fixture(t);
+  for (let i = 0; i < 127; i++) {
+    const p = actions.prepare(ctx, merge)!; actions.dispatch(ctx, p.confirmation);
+    actions.complete(ctx, p.intent.id, { state: "confirmed", remoteId: `merged-${i}` });
+  }
+  // A send in doubt on this PR: its earlier receipts are what keep a read-back from matching an old remote id.
+  const doubt = actions.prepare(ctx, merge)!; actions.dispatch(ctx, doubt.confirmation);
+  const bounded = new ReviewActions(home);
+  const other = { ...ctx, key: { ...ctx.key, number: 74 } };
+  assert.equal(bounded.prepare(other, merge), null);
+  assert.equal(bounded.list(ctx).length, 128);
+});
+
+nativeTest("bounded receipt storage evicts the oldest settled receipts of PRs with nothing in doubt", t => {
+  const { actions, ctx, home } = fixture(t);
   for (let i = 0; i < 128; i++) {
     const p = actions.prepare(ctx, merge)!; actions.dispatch(ctx, p.confirmation);
     actions.complete(ctx, p.intent.id, { state: "confirmed", remoteId: `merged-${i}` });
   }
   const bounded = new ReviewActions(home);
-  assert.equal(bounded.prepare(ctx, merge), null);
-  assert.equal(bounded.list(ctx).length, 128);
+  assert.ok(bounded.prepare(ctx, merge));
+  const kept = bounded.list(ctx);
+  assert.equal(kept.length, 128);
+  assert.equal(kept.some(i => i.remoteId === "merged-0"), false);
+  assert.equal(kept.at(-2)?.remoteId, "merged-127");
 });
 
 nativeTest("wrong account, unsupported operations and oversized drafts stay inert", t => {

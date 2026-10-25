@@ -3,9 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { sameKey, sameRevision, validateRequest, type LineAnchor, type PrKey, type PrRevision } from "../../../shared/code-review.js";
 import { AttachmentRecoveryFile, recoveryJSON, type RecoveryFileSnapshot } from "../attachment-recovery-file.js";
 
-/** Main-only preparation, deliberately not wired to IPC or a mutation transport.
- * A future adapter must obtain this context from fresh trusted identity/policy
- * checks. A caller-supplied `permitted` flag is not provider authorization. */
+/** Main-only. CR-7's write service (./write-service.ts) builds this context from fresh
+ * identity, repository-permission and pull-request reads; a caller-supplied `permitted` flag is not
+ * provider authorization. */
 export interface ReviewContext { account: string; session: string; permitted: boolean; key: PrKey; revision: PrRevision }
 /** CR-5's anchor as produced. A base-side `commitSha` is bound into the digest; the
  * write adapter must still match it to the fresh read's `diffBaseSha` before dispatch. */
@@ -20,7 +20,7 @@ export type ReviewOutcome = { state: "confirmed"; remoteId: string } | { state: 
 export interface ReviewIntent {
   id: string; key: PrKey; revision: PrRevision; operation: ReviewOperation;
   payload: { body: string; comments: InlineComment[] } | null; draftVersion: number | null;
-  state: IntentState; digest: string; remoteId: string | null; reason: "denied" | "failed" | "restart" | "cancelled" | null;
+  state: IntentState; digest: string; remoteId: string | null; reason: "denied" | "failed" | "restart" | "cancelled" | "abandoned" | null;
 }
 /** `matched` is an adapter's exact correlation assertion, not a text search hit.
  * Absence (including a complete empty read) cannot prove a request was unsent. */
@@ -88,7 +88,7 @@ function validIntent(value: unknown): value is ReviewIntent {
   else if (!shape(v.payload, ["body", "comments"]) || !payload(v, v.operation.kind, v.payload.body, v.payload.comments)
     || !Number.isSafeInteger(v.draftVersion) || v.draftVersion! < 1 || (!v.payload.body.trim() && !v.payload.comments.length && (v.operation.kind === "comment" || v.operation.event !== "APPROVE"))) return false;
   return v.digest === digest(v) && (v.state === "confirmed" ? validText(v.remoteId, false) : v.remoteId === null)
-    && (v.state === "rejected" ? ["denied", "failed", "restart", "cancelled"].includes(v.reason!) : v.reason === null);
+    && (v.state === "rejected" ? ["denied", "failed", "restart", "cancelled", "abandoned"].includes(v.reason!) : v.reason === null);
 }
 function validate(value: unknown): void {
   if (!shape(value, ["schema", "drafts", "intents"]) || value.schema !== 1 || !Array.isArray(value.drafts) || !Array.isArray(value.intents)
@@ -97,6 +97,22 @@ function validate(value: unknown): void {
   if (drafts.some((d, i) => drafts.slice(0, i).some(p => scoped(p, d) && p.kind === d.kind)) || new Set(intents.map(i => i.id)).size !== intents.length) throw failure();
   const active = intents.filter(i => ["prepared", "dispatched", "unknown"].includes(i.state));
   if (active.some((d, i) => active.slice(0, i).some(p => sameKey(p.key, d.key)))) throw failure();
+}
+
+/** Room for one more record: the oldest settled receipts go first, then empty drafts. Unsent text is never
+ * dropped, and no receipt of a PR with a send in doubt is: its remote ids are that send's duplicate protection. */
+function prune(data: Document): void {
+  const doubtful = data.intents.filter(i => i.state === "dispatched" || i.state === "unknown");
+  while (data.intents.length >= MAX_RECORDS) {
+    const index = data.intents.findIndex(i => (i.state === "confirmed" || i.state === "rejected") && !doubtful.some(d => sameKey(d.key, i.key)));
+    if (index < 0) break;
+    data.intents.splice(index, 1);
+  }
+  while (data.drafts.length >= MAX_RECORDS) {
+    const index = data.drafts.findIndex(d => !d.body.trim() && !d.comments.length);
+    if (index < 0) break;
+    data.drafts.splice(index, 1);
+  }
 }
 
 /** One main-process owner, bounded local data only. Existing recovery-file CAS,
@@ -135,7 +151,9 @@ export class ReviewActions {
     try { next = JSON.parse(recoveryJSON({ key: ctx.key, revision: ctx.revision, kind, version: expectedVersion + 1, body, comments }, BYTES)); }
     catch { return null; }
     if (!context(ctx) || !validDraft(next) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) return null;
-    const data = this.data(), index = data.drafts.findIndex(d => d.kind === kind && scoped(d, ctx));
+    const data = this.data();
+    if (data.drafts.length >= MAX_RECORDS && !data.drafts.some(d => d.kind === kind && scoped(d, ctx))) prune(data);
+    const index = data.drafts.findIndex(d => d.kind === kind && scoped(d, ctx));
     if ((index < 0 ? 0 : data.drafts[index]!.version) !== expectedVersion || (index < 0 && data.drafts.length >= MAX_RECORDS)) return null;
     if (index < 0) data.drafts.push(next); else data.drafts[index] = next;
     this.commit(data); return copy(next);
@@ -145,6 +163,7 @@ export class ReviewActions {
     try { op = JSON.parse(recoveryJSON(input, 1024)); } catch { return null; }
     if (!context(ctx) || !ctx.permitted || !operation(op)) return null;
     const data = this.data();
+    prune(data);
     if (data.intents.length >= MAX_RECORDS || data.intents.some(i => sameKey(i.key, ctx.key) && ["prepared", "dispatched", "unknown"].includes(i.state))) return null;
     const draft = op.kind === "merge" ? null : data.drafts.find(d => scoped(d, ctx) && d.kind === op.kind && d.version === draftVersion);
     if (op.kind !== "merge" && (!draft || (!draft.body.trim() && !draft.comments.length && (op.kind === "comment" || op.event !== "APPROVE")))) return null;
@@ -201,6 +220,19 @@ export class ReviewActions {
       intent.state = "confirmed"; intent.remoteId = evidence.remoteId; this.commit(data);
     }
     return copy(intent);
+  }
+  /** Drafts for the same account and PR kept under another revision. Their anchors count in that revision only. */
+  earlier(ctx: ReviewContext): ReviewDraft[] {
+    return context(ctx) ? this.data().drafts.filter(d => sameKey(d.key, ctx.key) && !sameRevision(d.revision, ctx.revision)) : [];
+  }
+  /** The person's explicit decision to stop tracking an uncertain send after a read-back could not
+   * prove it. It may still have reached the provider; the receipt says so, and the PR can be written to again. */
+  abandon(ctx: ReviewContext, id: string): ReviewIntent | null {
+    if (!context(ctx)) return null;
+    const data = this.data(), intent = data.intents.find(i => i.id === id);
+    if (!intent || intent.state !== "unknown" || !sameKey(intent.key, ctx.key)) return null;
+    intent.state = "rejected"; intent.reason = "abandoned";
+    this.commit(data); return copy(intent);
   }
   /** Same PR only; older revision receipts remain inspectable, never dispatchable. */
   list(ctx: ReviewContext): ReviewIntent[] {

@@ -206,7 +206,7 @@ test("requests are bounded plain data, rebuilt from validated fields", () => {
   assert.equal(rebuilt?.op === "overview" && rebuilt.key === overview.key, false, "nested objects are copied too");
 });
 
-test("Gate A: reads follow the connection, and review and every write stay unavailable with a reason", () => {
+test("Gate A: reads, comments and reviews follow the connection; agent review and the other writes stay unavailable with a reason", () => {
   const connected = capabilities(fx.R1.connection.state === "ready" ? fx.R1.connection.value : fx.FAULTS.noCli);
   assert.deepEqual(connected.read, { available: true });
   for (const connection of [fx.FAULTS.noCli, { state: "signed-out", detail: "Not signed in." } as const]) {
@@ -214,7 +214,11 @@ test("Gate A: reads follow the connection, and review and every write stay unava
     assert.equal(read.available, false);
     assert.ok(!read.available && read.reason.length > 0 && read.owner === null, "the person fixes this, not an issue");
   }
-  for (const feature of CODE_REVIEW_FEATURES.filter((f) => f !== "read")) {
+  for (const feature of ["comment", "submit-review"] as const) {
+    assert.deepEqual(connected[feature], { available: true }, feature);
+    assert.deepEqual(capabilities(fx.FAULTS.noCli)[feature], capabilities(fx.FAULTS.noCli).read, feature);
+  }
+  for (const feature of CODE_REVIEW_FEATURES.filter((f) => !["read", "comment", "submit-review"].includes(f))) {
     const capability = connected[feature];
     assert.equal(capability.available, false, feature);
     assert.ok(!capability.available && capability.reason.length > 0 && /^#32[56]$/.test(capability.owner ?? ""), feature);

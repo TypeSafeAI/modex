@@ -479,9 +479,9 @@ must prove it.
 For Val. Each control stays unavailable until decided:
 
 1. **C16 and C81, avatars:** login only (D1), or fetch avatars?
-2. **C21, the state menu** (close, reopen, draft): in #326's scope?
-3. **C31 and C35, editing the title and description:** in #326's scope?
-4. **C38 and C43, requesting reviewers:** in #326's scope?
+2. **C21, the state menu** (close, reopen, draft): **in #326's scope** (Val, 2026-10-25). Delivered by a later CR-7 increment.
+3. **C31 and C35, editing the title and description:** **in #326's scope** (Val, 2026-10-25). Delivered by a later CR-7 increment.
+4. **C38 and C43, requesting reviewers:** **in #326's scope** (Val, 2026-10-25). Delivered by a later CR-7 increment.
 5. **C65, the Viewed toggle:** local only, or GitHub's viewed state?
 6. **C07, the new-tab button** on this surface: what does it open?
 7. **C82, the access-mode indicator.** The reference's PR composer shows full access. Review is
@@ -601,14 +601,98 @@ CR-8's [acceptance matrix](../reviews/2026-10-22-cr8-acceptance-matrix.md) maps 
 
 ## CR-7 preparation: local drafts and intents
 
-The preparatory `src/main/engine/code-review-actions/intents.ts` module is main-only and unwired. It adds no bridge command, GitHub mutation transport, UI control or capability. Authorization through the person's gh login versus a GitHub App, and scope decisions 2–4 above, remain unanswered on #326. The existing `code-review:read` channel remains GET-only. CR-6 isolation gates and C82 are unchanged.
+`src/main/engine/code-review-actions/intents.ts` is main-only. Since the first write increment (below) it backs `code-review:write`; on its own it still sends nothing. The existing `code-review:read` channel remains GET-only. CR-6 isolation gates and C82 are unchanged.
 
 `ReviewActions` keys drafts by the accepted account/repository/PR identity, full base/head revision, target branch and draft kind. Version comparison rejects late editor responses; outcomes never erase a draft or overwrite a newer edit. Inline draft anchors are CR-5's `LineAnchor` exactly as `anchorFor` produces it: one shared type in the contract, used by `patch.ts` and the model, so the two can't drift. The model accepts only that seven-field shape. `commitSha` must be a 40-hex SHA and, on the head side, the revision's head. It is part of the intent digest, so a base-side comment counted against a different diff base is a different intent. The model can't prove a base-side `commitSha` is the merge base: the write adapter must match it to the fresh read's `PrFiles.diffBaseSha` before dispatch. Matching a revision also doesn't establish that a line is in the provider's patch; the adapter validates that against the same read.
 
 **Producer check (2026-10-24, `main` at `a10fcc4`).** CR-5 (#395) anchors now round-trip into drafts and intents (above); before this change the model refused them for their extra field. CR-4's (#393) `OverviewActions` slots are zero-argument callbacks (`comment`, `edit`, `requestReviewers`), so the host binds the scope it rendered and the renderer supplies none. That fits the model: `comment` maps to a `comment` draft, and `edit` and `requestReviewers` stay unwired until decisions 3 and 4. There is no slot yet for submitting a review, for the state menu (decision 2), or for Merge, which `PrPane` renders as a bare unavailable button. The write increments add those.
 
-Preparation snapshots operation, exact payload and draft version. A process-local confirmation is bound to its main document session. Dispatch returns at most one permit only after the existing `AttachmentRecoveryFile` adapter durably records `dispatched`. An explicit cancellation can reject a prepared preview after navigation or a head change; it cannot cancel a dispatched or unknown operation. Fresh main-owned identity, permission, session and provider-policy validation remains mandatory in a future adapter; the context's Boolean is a model input, not server authority.
+Preparation snapshots operation, exact payload and draft version. A process-local confirmation is bound to its main document session. Dispatch returns at most one permit only after the existing `AttachmentRecoveryFile` adapter durably records `dispatched`. An explicit cancellation can reject a prepared preview after navigation or a head change; it cannot cancel a dispatched or unknown operation. Fresh main-owned identity, permission, session and provider-policy validation is the write service's job (below); the context's Boolean is a model input, not server authority.
 
 Receipts distinguish prepared, dispatched, confirmed, rejected and unknown. Startup rejects unused preparations and converts interrupted dispatches to unknown without executing anything. Unknown blocks another intent for that PR, even at a new head. Absence or ambiguity in a readback never proves a request was unsent. Exact-match assertions must carry the intended scope and an attempt-specific digest; a remote ID already assigned to another operation of the same kind on that PR cannot resolve another attempt. This is a contract for a future trusted reconciliation adapter, not proof that current GitHub responses can supply that correlation. Repeated text alone is insufficient.
 
-The fixed local file is bounded to 2 MiB and 128 drafts/128 receipts, with a 64 Ki-character text bound and up to 100 inline comments. Capacity refuses new records rather than evicting duplicate protection. There is no retention/deletion UI yet. Files use the existing private recovery-file permissions and fail-closed validation/durability checks. One main-process owner is required; this module does not provide a multiprocess dispatch lease or server exactly-once execution. Windows durable writes remain unsupported by the reused adapter. See the [preparation evidence](../reviews/2026-10-23-cr7-intents.md) for scope, request counts and validation.
+The fixed local file is bounded to 2 MiB and 128 drafts/128 receipts, with a 64 Ki-character text bound and up to 100 inline comments. When it is full, the oldest settled receipts of PRs with nothing in doubt are dropped first, then empty drafts; a PR with a dispatched or unknown send keeps every receipt, since their remote ids are its duplicate protection, and unsent text is never dropped. If nothing can go, a new record is refused. There is no retention/deletion UI yet. Files use the existing private recovery-file permissions and fail-closed validation/durability checks. One main-process owner is required; this module does not provide a multiprocess dispatch lease or server exactly-once execution. Windows durable writes remain unsupported by the reused adapter. See the [preparation evidence](../reviews/2026-10-23-cr7-intents.md) for scope, request counts and validation.
+
+## CR-7 writes: comments and reviews
+
+The first write increment (#326). Writes go through the person's own `gh` login (Val, 2026-10-25), on a
+channel of their own: `code-review:write`, registered `localOnly` and only for this Mac's window, never
+`code-review:read`. The contract is `src/shared/code-review-write.ts`. The service and its transport
+(`write-service.ts`, `write-gh.ts`) live beside the draft/intent model in
+`src/main/engine/code-review-actions/`, so the read path's directory stays provably GET-only.
+
+**What the renderer can ask.** `status`, `save`, `carry`, `prepare`, `submit`, `cancel`, `reconcile` and
+`abandon`, each validated to exactly its fields (`validateWrite`). No request carries a session, a
+permission, an endpoint or a credential:
+- main names the session from the IPC sender and the document epoch, so a reload or another window holds
+  no proof of an earlier preview;
+- replies carry fixed refusal texts (`REFUSALS`), never what GitHub or gh printed.
+
+**Endpoints.** The transport allows only these. Each body goes to gh on stdin.
+- Reads: `GET user`, `repositories/{id}`, `repos/{o}/{r}/pulls/{n}`, the PR's compare (for base-side
+  anchors), and the PR's issue comments and reviews (for read-back).
+- Writes: `POST repos/{o}/{r}/issues/{n}/comments` and `POST repos/{o}/{r}/pulls/{n}/reviews`.
+
+There is no PATCH, PUT, DELETE, GraphQL or merge; a test checks the sources for them.
+
+**Flow.**
+1. *Drafts.* Text is saved as a local draft per account, repository id, PR, revision and kind, with
+   version CAS, and debounced while typing. `status` reads only drafts, receipts and the account, so
+   opening a PR costs no extra GitHub read. Drafts of an earlier revision are listed. `carry` copies
+   such a draft's body into this revision; its line anchors count in the old revision and stay behind.
+2. *Preview* (`prepare`). Main reads, fresh:
+   - the account, which must be the key's;
+   - the repository by its stable id, with this account's `permissions`;
+   - the pull request, including `locked`.
+
+   The PR's head and target must equal the reviewed revision. It then refuses, with its reason:
+   - unreadable permission;
+   - no `pull` permission;
+   - a locked conversation without `push`;
+   - a review on a closed or merged PR;
+   - approving or requesting changes on one's own PR;
+   - a base-side line comment whose diff base the PR no longer has.
+
+   An unsent earlier preview for the PR is discarded. A dispatched or unknown send blocks the PR. The
+   preview names the account, `owner/repo #n`, the head and target, and the body.
+3. *Submit.* Main repeats every read and check, then requires gh's login state to be unchanged since it
+   checked the account. Any change spends the preview: a new one is needed. Only then does
+   `ReviewActions` durably admit one dispatch.
+   - A comment posts its body.
+   - A review posts `commit_id` = the reviewed head, the event, the body and its line comments (`RIGHT`
+     for head, `LEFT` for base, `start_line` for ranges).
+
+   Each body ends with a hidden `<!-- modex-intent: <id> -->` marker.
+4. *Outcome.*
+   - **Confirmed:** a 2xx with an id. The draft that was sent is cleared, unless it was edited meanwhile.
+   - **Rejected:** a 401/403/404/410 (denied), a 400/409/422/429 (failed), or gh not found or signed out.
+     The draft is kept.
+   - **Unknown:** anything else, including a 5xx, a timeout, a dropped connection or an unreadable answer.
+
+   A restart turns a dispatched send into unknown and sends nothing.
+5. *Reconciliation.* `reconcile` reads the PR's comments or reviews back. A row confirms the send only if
+   it is by this account, has the exact posted body with this intent's marker, and (for a review) is on
+   the reviewed head. Not finding one proves nothing, and the send stays unknown. `abandon` is the
+   person's decision to stop tracking it. It becomes rejected with the reason `abandoned`, the receipt
+   says it may still be on GitHub, and the PR can be written to again.
+
+**UI.**
+- Under the activity, a comment composer and a review composer (Comment, Approve, Request changes).
+  Approve and Request changes are disabled on one's own PR, a hint from the read; main enforces it.
+- In Changes, the selected line anchor offers *Comment on this line*, which adds to the review draft. An
+  outdated anchor offers nothing.
+- An unknown send shows above the composers with *Check GitHub* and *Stop tracking*, and blocks both
+  composers until it is settled.
+- `capabilities()` now lets `comment` and `submit-review` follow the connection; whether a PR accepts
+  them is main's answer at preview.
+
+**Limits.**
+- The marker is visible in the comment's Markdown source on GitHub.
+- A read-back checks the review's body, author and head, not each line comment.
+- The read-back reads at most 30 pages of 100.
+- Offline, a draft can't be shown: the account can't be confirmed.
+- A live write has not been run; it needs a disposable repository Val names.
+- The merge, and decisions 2–4 (state menu, title/description, reviewer requests), are later increments.
+
+Evidence: [CR-7 write increment](../reviews/2026-10-25-cr7-write-submit.md).
+

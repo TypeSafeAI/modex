@@ -5,6 +5,8 @@
 //   FAKE_GH_WORLD  the world file (see GhWorld)
 //   FAKE_GH_LOG    one line per call: the endpoint main asked for
 //   FAKE_GH_HOLDS  a directory: a held endpoint answers once a file of its hold's name appears there
+//   FAKE_GH_POSTS  CR-7 (#326): one JSON line per POST GitHub "received" ({ endpoint, body, id }). A posted
+//                  comment or review is then listed by the matching GET, as GitHub would list it.
 export interface GhWorld {
   /** `gh api user`; null answers as gh does when nobody is signed in (exit 4). */
   user: { id: number; login: string } | null;
@@ -16,6 +18,12 @@ export interface GhWorld {
   routes: Record<string, unknown>;
   /** Endpoint path to a hold name: the call waits until FAKE_GH_HOLDS/<name> exists. */
   holds?: Record<string, string>;
+  /** `GET /repositories/{id}`'s `permissions` per repository id; absent answers without the field. */
+  permissions?: Record<string, Record<string, boolean>>;
+  /** POST endpoint to a hold name: GitHub records the write, then the answer waits, as when it is lost in flight. */
+  postHolds?: Record<string, string>;
+  /** POST endpoint to a forced answer. `recorded`: GitHub carried the write out before answering it. */
+  postAnswers?: Record<string, GhAnswerSpec & { recorded?: boolean }>;
 }
 
 /** An explicit answer. `stderr` is printed as gh would print a diagnostic: main must never pass it on. */
@@ -24,14 +32,16 @@ export interface GhAnswerSpec { status: number; body?: unknown; raw?: string; he
 export const WORLD_GH = String.raw`#!/usr/bin/env node
 const fs = require("node:fs");
 const endpoint = process.argv[3] || "";
-fs.appendFileSync(process.env.FAKE_GH_LOG, endpoint + "\n");
+const method = process.argv[process.argv.indexOf("--method") + 1] || "GET";
+fs.appendFileSync(process.env.FAKE_GH_LOG, (method === "GET" ? "" : method + " ") + endpoint + "\n");
 const [route, query = ""] = endpoint.split("?");
 const params = new URLSearchParams(query);
 const read = () => JSON.parse(fs.readFileSync(process.env.FAKE_GH_WORLD, "utf8"));
-const hold = (read().holds || {})[route];
-const released = hold && require("node:path").join(process.env.FAKE_GH_HOLDS, hold);
-if (released) { const flag = new Int32Array(new SharedArrayBuffer(4)); while (!fs.existsSync(released)) Atomics.wait(flag, 0, 0, 25); }
+const wait = (hold) => { const released = hold && require("node:path").join(process.env.FAKE_GH_HOLDS, hold); if (released) { const flag = new Int32Array(new SharedArrayBuffer(4)); while (!fs.existsSync(released)) Atomics.wait(flag, 0, 0, 25); } };
+wait((read().holds || {})[route]);
 const world = read();
+const postsFile = process.env.FAKE_GH_POSTS;
+const posts = () => postsFile && fs.existsSync(postsFile) ? fs.readFileSync(postsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 const reason = { 200: "OK", 403: "Forbidden", 404: "Not Found", 410: "Gone" };
 function send(status, body, headers) {
   const all = { "Content-Type": "application/json; charset=utf-8", "X-Ratelimit-Remaining": "4999", ...(headers || {}) };
@@ -43,7 +53,31 @@ function paged(list) {
   const per = Number(params.get("per_page") || 30), page = Number(params.get("page") || 1);
   return list.slice((page - 1) * per, page * per);
 }
-if (route === "user") {
+if (method === "POST") {
+  const input = JSON.parse(fs.readFileSync(0, "utf8") || "null");
+  const forced = (world.postAnswers || {})[route];
+  const review = /\/pulls\/\d+\/reviews$/.test(route);
+  let created = null;
+  if (!forced || forced.recorded) {
+    const id = 900001 + posts().length;
+    created = review ? { id, user: { ...world.user, type: "User" }, body: input.body, commit_id: input.commit_id,
+      state: input.event === "APPROVE" ? "APPROVED" : input.event === "REQUEST_CHANGES" ? "CHANGES_REQUESTED" : "COMMENTED", submitted_at: "2026-10-18T20:40:00Z" }
+      : { id, user: { ...world.user, type: "User" }, body: input.body, created_at: "2026-10-18T20:40:00Z", updated_at: "2026-10-18T20:40:00Z" };
+    fs.appendFileSync(postsFile, JSON.stringify({ endpoint: route, body: input, id, created }) + "\n");
+  }
+  wait((world.postHolds || {})[route]);
+  if (forced) send(forced.status, forced.body === undefined ? {} : forced.body, forced.headers);
+  else send(review ? 200 : 201, created);
+} else if (/^repositories\/\d+$/.test(route)) {
+  const id = Number(route.split("/")[1]);
+  const repo = Object.values(world.routes).find((value) => value && value.full_name && value.id === id);
+  const permissions = (world.permissions || {})[String(id)];
+  if (!repo) send(404, { message: "Not Found" });
+  else send(200, { ...repo, ...(permissions ? { permissions } : {}) });
+} else if (/\/(issues\/\d+\/comments|pulls\/\d+\/reviews)$/.test(route)) {
+  const listed = [...(Array.isArray(world.routes[route]) ? world.routes[route] : []), ...posts().filter((p) => p.endpoint === route).map((p) => p.created)];
+  send(200, paged(listed));
+} else if (route === "user") {
   if (!world.user) { process.stderr.write("You are not logged into any GitHub hosts.\n"); process.exitCode = 4; }
   else send(200, { ...world.user, type: "User" });
 } else if (route === "search/issues") {
@@ -82,7 +116,7 @@ export function ghPull(repo: Repo, number: number, title: string, opts: { head?:
   return { id: repo.id * 1000 + number, number, title, body: opts.body ?? "", state: "open", draft: false, merged_at: null,
     user: person(...(opts.author ?? [1001, "ada-fixture"])), created_at: "2026-10-18T10:00:00Z", updated_at: "2026-10-18T20:30:00Z",
     base: { ref: "main", sha: sha("b"), repo }, head: { ref: `topic-${number}`, sha: opts.head ?? sha("c"), repo },
-    changed_files: opts.files ?? 2, additions: opts.additions ?? 3, deletions: opts.deletions ?? 1, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [] };
+    changed_files: opts.files ?? 2, additions: opts.additions ?? 3, deletions: opts.deletions ?? 1, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [], locked: false };
 }
 
 export function ghRow(repo: Repo, number: number, title: string, author: [number, string] = [1001, "ada-fixture"], updated = "2026-10-18T20:30:00Z") {
@@ -108,6 +142,7 @@ export function baseWorld(): GhWorld {
     ghRow(FIELD_GUIDE, 91, FIELD_GUIDE_91, [1001, "ada-fixture"], "2026-10-18T18:45:00Z")];
   return {
     user: { id: 1001, login: "ada-fixture" },
+    permissions: { "7301": { admin: false, maintain: false, push: false, triage: false, pull: true }, "7302": { admin: false, maintain: false, push: false, triage: false, pull: true } },
     search: { authored: lendingRows, "review-requested": [ghRow(FIELD_GUIDE, 73, FIELD_GUIDE_73, [1002, "grace-fixture"], "2026-10-18T17:00:00Z")] },
     routes: {
       "repos/example-org/lending": LENDING,

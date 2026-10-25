@@ -8,6 +8,8 @@ import { ErrorNotice } from "../components/ui/ErrorNotice";
 import type { OpenPr } from "./model.js";
 import { prUrl } from "./model.js";
 import { additions, deletions, shortfallText, unavailableText } from "./text.js";
+import { ReviewComposer } from "./ReviewComposer";
+import type { Writes } from "./writes.js";
 
 /** Explicit action boundary for CR-7. No draft or successful submission is invented here. */
 export interface OverviewActions { edit?: () => void; requestReviewers?: () => void; comment?: () => void }
@@ -38,7 +40,7 @@ function usePosition(id: string) {
   }, [id]);
   return ref;
 }
-export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions = {} }: { pr: OpenPr; caps: Capabilities; retry: () => void; onChanges: () => void; onPage: (cursor: string | null) => void; busy: ReadonlySet<string>; actions?: OverviewActions }) {
+export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions = {}, writes }: { pr: OpenPr; caps: Capabilities; retry: () => void; onChanges: () => void; onPage: (cursor: string | null) => void; busy: ReadonlySet<string>; actions?: OverviewActions; writes?: Writes }) {
   const main = usePosition(`${prKeyId(pr.key)}:content`);
   const sidebar = usePosition(`${prKeyId(pr.key)}:details`);
   const read = pr.overview;
@@ -86,7 +88,8 @@ export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions =
         {pr.activityRefreshing && <p role="status" className="cr-evidence">Refreshing activity · Earlier pages remain provisional.</p>}
         {activity.complete && !pr.activityRefreshing ? <p className="cr-evidence">{activity.rows.length ? "All activity loaded" : "No activity"}{filter !== "all" && rows.length === 0 ? " · No matching activity" : ""}</p> : <p className="cr-evidence">{activity.rows.length} activity items loaded · More activity may be missing.</p>}
         {activity.next && <button type="button" className="btn" disabled={pr.activityRefreshing || [...busy].some(s => s.startsWith(`activity:${prKeyId(pr.key)}:`))} onClick={() => onPage(activity.next)}>{pageFailed ? "Retry activity page" : "Load more activity"}</button>}
-        <div className="cr-comment-slot"><p>Comment on this pull request</p><Action label="Comment" capability={caps.comment} action={actions.comment} /><p className="cr-evidence">{!caps.comment.available && caps.comment.reason}</p></div>
+        {writes ? <ReviewComposer writes={writes} overview={overview} fallback={caps.comment} />
+          : <div className="cr-comment-slot"><p>Comment on this pull request</p><Action label="Comment" capability={caps.comment} action={actions.comment} /><p className="cr-evidence">{!caps.comment.available && caps.comment.reason}</p></div>}
       </section>
     </main>
     <aside ref={sidebar} className="cr-overview-sidebar" aria-label="Pull request details" tabIndex={0}>

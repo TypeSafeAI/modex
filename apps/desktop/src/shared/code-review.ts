@@ -449,26 +449,31 @@ export function diffCoverage(result: ReadResult<PrFiles>): DiffCoverage | null {
   return { files, total, complete: whole(result) && missing === 0, binary, missing };
 }
 
-const OWNERS: Record<Exclude<CodeReviewFeature, "read">, { owner: string; reason: string }> = {
+/** Commenting and submitting a review (#326) need the same connection reads do; main then checks each PR's permission itself. */
+const WRITES = new Set<CodeReviewFeature>(["comment", "submit-review"]);
+
+const OWNERS: Record<Exclude<CodeReviewFeature, "read" | "comment" | "submit-review">, { owner: string; reason: string }> = {
   review: { owner: "#325", reason: "Reviewing with an agent isn't available yet." },
   ask: { owner: "#325", reason: "Asking about a pull request isn't available yet." },
   instructions: { owner: "#325", reason: "Review instructions aren't available yet." },
-  comment: { owner: "#326", reason: "Commenting from Modex isn't available yet. Open the pull request on GitHub to comment." },
-  "submit-review": { owner: "#326", reason: "Submitting a review from Modex isn't available yet." },
   "request-reviewers": { owner: "#326", reason: "Requesting reviewers from Modex isn't available yet." },
   edit: { owner: "#326", reason: "Editing a pull request from Modex isn't available yet." },
   state: { owner: "#326", reason: "Closing or reopening a pull request from Modex isn't available yet." },
   merge: { owner: "#326", reason: "Merging from Modex isn't available yet. Open the pull request on GitHub to merge." },
 };
 
-/** What the workspace may offer. Reads follow the connection; review and every write stay unavailable until their issues land. */
+/**
+ * What the workspace may offer. Reads, comments and submitted reviews follow the connection; whether a given PR
+ * accepts them is main's answer for that PR (`code-review:write` status). Review with an agent and the other
+ * writes stay unavailable until their issues land.
+ */
 export function capabilities(connection: CodeReviewConnection): Capabilities {
   const read: Capability = connection.state === "connected" ? { available: true }
     : connection.state === "no-cli" ? { available: false, reason: "Install GitHub CLI (gh) to read pull requests.", owner: null }
     : connection.state === "signed-out" ? { available: false, reason: "Sign in to GitHub CLI (gh auth login) to read pull requests.", owner: null }
     : { available: false, reason: connection.detail, owner: null };
   const rest = Object.fromEntries(Object.entries(OWNERS).map(([feature, { owner, reason }]) => [feature, { available: false, reason, owner }]));
-  return { read, ...rest } as Capabilities;
+  return { read, ...Object.fromEntries([...WRITES].map((feature) => [feature, read])), ...rest } as Capabilities;
 }
 
 type Plain = Record<string, unknown>;
