@@ -110,7 +110,7 @@ nativeTest("main merges through gh with the reviewed head, once, and only with a
   }
 });
 
-test("the write path reaches only gh's three mutations and the local review-actions store", () => {
+test("the write path reaches only its fixed GitHub mutations and the local review-actions store", () => {
   const dir = path.resolve(import.meta.dirname, "../../src/main/engine/code-review-actions");
   const sources = Object.fromEntries(["write-gh.ts", "write-service.ts", "merge-preflight.ts"].map((name) => [name, fs.readFileSync(path.join(dir, name), "utf8")]));
   for (const [name, source] of Object.entries(sources)) {
@@ -118,17 +118,25 @@ test("the write path reaches only gh's three mutations and the local review-acti
       assert.ok(["node:child_process", "node:os", "../../../shared/code-review.js", "../../../shared/code-review-write.js", "./intents.js", "./write-gh.js", "../code-review/gh.js", "../code-review/github.js", "./merge-preflight.js"].includes(spec!), `${name} imports ${spec}`);
     }
     assert.doesNotMatch(source, /(?<![.\w])(spawn|exec|execSync|writeFile|appendFile|mkdir|rm|unlink|rename)\s*\(/, name);
-    // Decisions 2–4 (state, edits, reviewers) are a later increment: nothing here can reach them.
-    assert.doesNotMatch(source, /"(PATCH|DELETE)"|"-X"|graphql|requested_reviewers|\/labels|\/assignees|\/requested_reviewers/, name);
+    // No deletion, no raw method flag, no labels or assignees, and no GraphQL text but the two draft mutations.
+    assert.doesNotMatch(source, /"DELETE"|"-X"|\/labels|\/assignees|team_reviewers|deleteRef|mergePullRequest/, name);
+    if (name !== "write-gh.ts") assert.doesNotMatch(source, /mutation\s*[({]/, name);
   }
   const gh = sources["write-gh.ts"]!;
   assert.equal([...gh.matchAll(/execFile\(/g)].length, 1, "one call, to gh, with no shell");
-  // The mutation allowlist: a top-level comment and a submitted review by POST, and the merge by PUT; nothing else.
-  assert.match(gh, /const WRITES = \[`\$\{REPO\}\/issues\/\$\{NUMBER\}\/comments`, `\$\{REPO\}\/pulls\/\$\{NUMBER\}\/reviews`\]/);
+  // The mutation allowlist: a comment, a review, a reviewer request and the draft mutations by POST, the merge by
+  // PUT, and the PR itself by PATCH; nothing else.
+  assert.match(gh, /const WRITES = \[`\$\{REPO\}\/issues\/\$\{NUMBER\}\/comments`, `\$\{REPO\}\/pulls\/\$\{NUMBER\}\/reviews`, `\$\{REPO\}\/pulls\/\$\{NUMBER\}\/requested_reviewers`, "graphql"\]/);
   assert.match(gh, /const MERGES = \[`\$\{REPO\}\/pulls\/\$\{NUMBER\}\/merge`\]/);
+  assert.match(gh, /const EDITS = \[`\$\{REPO\}\/pulls\/\$\{NUMBER\}`\]/);
+  assert.equal([...gh.matchAll(/mutation\(\$id: ID!\)/g)].length, 2, "two GraphQL mutations, both fixed text");
+  // A PATCH may carry only state, title and body.
+  assert.match(gh, /k === "state" \|\| k === "title" \|\| k === "body"/);
   const service = sources["write-service.ts"]!;
-  assert.equal([...service.matchAll(/method: "POST"/g)].length, 2);
+  assert.equal([...service.matchAll(/method: "POST"/g)].length, 4);
   assert.equal([...service.matchAll(/method: "PUT"/g)].length, 1);
+  assert.equal([...service.matchAll(/method: "PATCH"/g)].length, 2);
+  assert.match(service, /query: DRAFT_MUTATIONS\[action\.to\]/);
   // The merge carries the reviewed head, from the durable intent, as GitHub's guard.
   assert.match(service, /method: "PUT", endpoint: `\$\{base\}\/pulls\/\$\{intent\.key\.number\}\/merge`, input: \{ sha: intent\.revision\.headSha, merge_method: method \}/);
   assert.doesNotMatch(service, /process\.env|token|GH_TOKEN/i);

@@ -1,5 +1,5 @@
 import { prKeyId, sameKey, type PrKey, type PrRevision } from "../../shared/code-review.js";
-import type { MergeCheck, MergeMethod, WriteDraft, WriteInline, WriteKind, WritePreview, WriteReceipt, WriteReply, WriteRequest, WriteStatus } from "../../shared/code-review-write.js";
+import type { MergeCheck, MergeMethod, PrAction, WriteDraft, WriteInline, WriteKind, WritePreview, WriteReceipt, WriteReply, WriteRequest, WriteStatus } from "../../shared/code-review-write.js";
 
 /** One way to ask main: the bridge's `code-review:write` in the app, a fake in tests. */
 export type WriteSend = (request: WriteRequest) => Promise<WriteReply>;
@@ -76,6 +76,11 @@ export class Writes {
 
   prepareMerge(key: PrKey, revision: PrRevision, method: MergeMethod): Promise<Done<WritePreview>> {
     return this.ask<"prepare-merge">({ op: "prepare-merge", key, revision, method });
+  }
+
+  /** A state change, an edit or a reviewer request, checked by main against GitHub's PR now. */
+  prepareAction(key: PrKey, revision: PrRevision, action: PrAction): Promise<Done<WritePreview>> {
+    return this.ask<"prepare-action">({ op: "prepare-action", key, revision, action });
   }
 
   async settle(op: "submit" | "cancel" | "reconcile" | "abandon", key: PrKey, revision: PrRevision, intentId: string): Promise<Done<WriteReceipt>> {

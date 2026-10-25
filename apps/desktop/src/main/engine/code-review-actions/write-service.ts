@@ -1,18 +1,19 @@
-import { canonicalPrUrl, prKeyId, sameRevision, type PrKey, type PrRevision } from "../../../shared/code-review.js";
+import { canonicalPrUrl, prKeyId, sameRevision, type PrKey, type PrRevision, type PrState } from "../../../shared/code-review.js";
 import {
   intentMarker, MERGE_BLOCKS, REFUSALS, validateWrite,
-  type EarlierDraft, type MergeCheck, type MergeMethod, type WriteDraft, type WriteOperation, type WritePreview, type WriteReceipt, type WriteRefusal, type WriteReply, type WriteRequest, type WriteResult, type WriteStatus,
+  type EarlierDraft, type MergeCheck, type MergeMethod, type PrAction, type PrStateChange, type WriteDraft, type WriteOperation, type WritePreview, type WriteReceipt, type WriteRefusal, type WriteReply, type WriteRequest, type WriteResult, type WriteStatus,
 } from "../../../shared/code-review-write.js";
 import { mergePreflight, type MergeFacts, type MergePreflight, type MergeState } from "./merge-preflight.js";
 import { ReviewActions, type ReviewContext, type ReviewDraft, type ReviewIntent, type ReviewOutcome } from "./intents.js";
 import type { GhAnswer } from "../code-review/gh.js";
 import { ghHostsStamp } from "../code-review/gh.js";
 import { json, pull, repository, type Pull } from "../code-review/github.js";
-import { ghWriteTransport, type GhWriteCall, type GhWriteTransport } from "./write-gh.js";
+import { DRAFT_MUTATIONS, ghWriteTransport, type GhWriteCall, type GhWriteTransport } from "./write-gh.js";
 
 /**
- * CR-7's `code-review:write` (#326): comments, submitted reviews and a head-guarded merge through the
- * person's own `gh` login, approved by Val on 2026-10-25. Separate from `code-review:read`. Before preparing a preview, and again
+ * CR-7's `code-review:write` (#326): comments, submitted reviews, a head-guarded merge, and the state menu,
+ * title/description edits and reviewer requests (decisions 2–4), through the person's own `gh` login,
+ * approved by Val on 2026-10-25. Separate from `code-review:read`. Before preparing a preview, and again
  * before sending it, main reads the signed-in account, the repository's permission for it, and the pull
  * request's head, target, state and lock itself; nothing the renderer says is authority. A preview is
  * bound to the window that asked for it and is spent by one send or one refusal. A send whose outcome is
@@ -32,7 +33,9 @@ export interface CodeReviewWriteOptions {
 
 type Account = { id: string; login: string };
 interface Fresh {
-  key: PrKey; account: Account; stamp: string | null; owner: string; name: string; permissions: { pull: boolean; push: boolean } | null; locked: boolean | null; pr: Pull;
+  key: PrKey; account: Account; stamp: string | null; owner: string; name: string; permissions: { pull: boolean; push: boolean; triage: boolean } | null; locked: boolean | null; pr: Pull;
+  /** The PR's GraphQL node id, for the draft mutations only. */
+  nodeId: string | null;
   /** GitHub's own merge state and the repository's allowed methods, as read; null where the read didn't say. */
   merge: Pick<MergeFacts, "mergeable" | "mergeState" | "methods">;
 }
@@ -104,6 +107,7 @@ export class CodeReviewWrites {
       case "prepare": return this.prepare(request, session);
       case "merge-check": return this.mergeCheck(request.key, request.revision);
       case "prepare-merge": return this.prepareMerge(request, session);
+      case "prepare-action": return this.prepareAction(request, session);
       case "submit": return this.submit(request.key, request.intentId, session);
       case "cancel": return this.cancel(request.key, request.intentId, session);
       case "reconcile": return this.reconcile(request.key, request.intentId, session);
@@ -225,6 +229,24 @@ export class CodeReviewWrites {
     return { intentId: prepared.intent.id, account: fresh.account, operation, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0 };
   }
 
+  /** A state change, an edit or a reviewer request: checked against GitHub's PR now, then previewed exactly. */
+  private async prepareAction(request: Extract<WriteRequest, { op: "prepare-action" }>, session: string): Promise<WritePreview> {
+    const fresh = await this.fresh(request.key, true);
+    this.current(fresh, request.revision);
+    this.allowAction(fresh, request.action);
+    const ctx = this.context(fresh.account.id, session, request.key, request.revision, true);
+    const prepared = this.local((actions) => {
+      for (const intent of actions.list(ctx)) {
+        if (intent.state === "prepared") { actions.cancel(ctx, intent.id); this.previews.delete(intent.id); }
+        else if (intent.state === "dispatched" || intent.state === "unknown") throw new Refused("busy");
+      }
+      return actions.prepare(ctx, request.action);
+    });
+    if (!prepared) throw new Refused("storage");
+    this.previews.set(prepared.intent.id, { confirmation: prepared.confirmation, session });
+    return { intentId: prepared.intent.id, account: fresh.account, operation: request.action, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0 };
+  }
+
   private async submit(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
     const preview = this.previews.get(id);
     if (!preview || preview.session !== session) throw new Refused("no-preview");
@@ -238,6 +260,7 @@ export class CodeReviewWrites {
     try {
       fresh = await this.fresh(key, true);
       if (intent.operation.kind === "merge") this.offered(await this.mergeable(fresh, intent.revision), intent.operation.method);
+      else if (isAction(intent.operation)) { this.current(fresh, intent.revision); this.allowAction(fresh, intent.operation); }
       else {
         this.current(fresh, intent.revision);
         this.allow(fresh, intent.operation as WriteOperation);
@@ -283,6 +306,7 @@ export class CodeReviewWrites {
     if (!intent) throw new Refused("no-preview");
     if (intent.state !== "unknown") return receipt(intent, fresh);
     if (intent.operation.kind === "merge") return this.reconcileMerge(fresh, intent, session);
+    if (isAction(intent.operation)) return this.reconcileAction(fresh, intent, intent.operation, session);
     if (!intent.payload) return receipt(intent, fresh);
     const expected = posted(intent.payload.body, intent.id);
     const review = intent.operation.kind === "review";
@@ -316,6 +340,18 @@ export class CodeReviewWrites {
     if (raw?.merged !== true || String(raw.merged_by?.id) !== fresh.account.id || raw.head?.sha !== intent.revision.headSha || typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) return receipt(intent, fresh);
     const reconciled = this.local((actions) => actions.reconcile(this.context(fresh.account.id, session, intent.key, intent.revision), intent.id,
       { kind: "matched", key: intent.key, revision: intent.revision, digest: intent.digest, remoteId: sha }));
+    return receipt(reconciled ?? intent, fresh);
+  }
+
+  /**
+   * A state change, an edit or a reviewer request is confirmed when the PR, read now, shows exactly what was
+   * asked. That shows the outcome, not who caused it: someone else may have made the same change.
+   */
+  private async reconcileAction(fresh: Fresh, intent: ReviewIntent, action: PrAction, session: string): Promise<WriteReceipt> {
+    const raw = json((await this.get(`repos/${enc(fresh.owner)}/${enc(fresh.name)}/pulls/${intent.key.number}`, 4 * MB)).body) as RawPull | undefined;
+    if (!raw || typeof raw.updated_at !== "string" || !reached(raw, action)) return receipt(intent, fresh);
+    const reconciled = this.local((actions) => actions.reconcile(this.context(fresh.account.id, session, intent.key, intent.revision), intent.id,
+      { kind: "matched", key: intent.key, revision: intent.revision, digest: intent.digest, remoteId: `${action.kind}@${raw.updated_at}` }));
     return receipt(reconciled ?? intent, fresh);
   }
 
@@ -385,6 +421,36 @@ export class CodeReviewWrites {
     return { owner: fresh.owner, repo: fresh.name, number: key.number, url: canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: key.number }) };
   }
 
+  /**
+   * Decisions 2–4, from main's own reads. GitHub lets a PR's author change its state and edit it; otherwise
+   * these need write access (triage suffices for state and reviewers). Unreadable permission is refusal.
+   */
+  private allowAction(fresh: Fresh, action: PrAction): void {
+    const p = fresh.permissions;
+    if (!p) throw new Refused("permission-unknown");
+    const author = fresh.pr.author.id === fresh.account.id;
+    const state = fresh.pr.state;
+    switch (action.kind) {
+      case "state": {
+        if (!(p.push || p.triage || author)) throw new Refused("denied");
+        if (!TRANSITIONS[action.to].includes(state)) throw new Refused("state-conflict");
+        return;
+      }
+      case "edit":
+        if (!(p.push || author)) throw new Refused("denied");
+        // Someone else's edit since the text was read is never overwritten.
+        if (fresh.pr.title !== action.expected.title || fresh.pr.body !== action.expected.body) throw new Refused("edit-conflict");
+        return;
+      case "reviewers": {
+        if (!(p.push || p.triage)) throw new Refused("denied");
+        if (state === "closed" || state === "merged") throw new Refused("not-open");
+        const own = [fresh.pr.author.login, fresh.account.login].map((l) => l.toLowerCase());
+        if (action.logins.some((l) => own.includes(l.toLowerCase()))) throw new Refused("reviewer-invalid");
+        return;
+      }
+    }
+  }
+
   /** A base-side line counts in the diff base it was read under; the PR must still have that one. */
   private async anchors(fresh: Fresh, payload: { comments: { anchor: { side: string; commitSha: string } }[] }): Promise<void> {
     if (!payload.comments.some((c) => c.anchor.side === "base")) return;
@@ -435,13 +501,13 @@ export class CodeReviewWrites {
     const stamp = this.stamp();
     const account = await this.account(key, force);
     const raw = json((await this.get(`repositories/${key.repoId}`, MB)).body) as
-      { permissions?: { pull?: unknown; push?: unknown }; allow_merge_commit?: unknown; allow_squash_merge?: unknown; allow_rebase_merge?: unknown } | undefined;
+      { permissions?: { pull?: unknown; push?: unknown; triage?: unknown }; allow_merge_commit?: unknown; allow_squash_merge?: unknown; allow_rebase_merge?: unknown } | undefined;
     const repo = repository(raw);
     if (!repo || repo.id !== key.repoId) throw new Refused("not-found");
     const p = raw?.permissions;
-    const permissions = p && typeof p.pull === "boolean" && typeof p.push === "boolean" ? { pull: p.pull, push: p.push } : null;
+    const permissions = p && typeof p.pull === "boolean" && typeof p.push === "boolean" ? { pull: p.pull, push: p.push, triage: p.triage === true } : null;
     const rawPull = json((await this.get(`repos/${enc(repo.owner)}/${enc(repo.name)}/pulls/${key.number}`, 4 * MB)).body) as
-      { locked?: unknown; mergeable?: unknown; mergeable_state?: unknown } | undefined;
+      { locked?: unknown; mergeable?: unknown; mergeable_state?: unknown; node_id?: unknown } | undefined;
     const pr = pull(rawPull);
     if (!pr || pr.base.id !== key.repoId || pr.number !== key.number) throw new Refused("not-found");
     this.names.set(prKeyId(key), { owner: repo.owner, name: repo.name });
@@ -454,7 +520,8 @@ export class CodeReviewWrites {
       // Settings this account can't see come back absent: unreadable, never allowed.
       methods: Object.values(methods).every((v) => v === null) ? null : methods,
     };
-    return { key, account, stamp, owner: repo.owner, name: repo.name, permissions, locked: typeof rawPull?.locked === "boolean" ? rawPull.locked : null, pr, merge };
+    const nodeId = typeof rawPull?.node_id === "string" && /^[A-Za-z0-9_=+/-]{1,200}$/.test(rawPull.node_id) ? rawPull.node_id : null;
+    return { key, account, stamp, owner: repo.owner, name: repo.name, permissions, locked: typeof rawPull?.locked === "boolean" ? rawPull.locked : null, pr, merge, nodeId };
   }
 
   private async get(endpoint: string, maxBytes: number): Promise<{ body: Buffer }> {
@@ -472,6 +539,7 @@ export class CodeReviewWrites {
   private async send(fresh: Fresh, intent: ReviewIntent): Promise<ReviewOutcome> {
     const base = `repos/${enc(fresh.owner)}/${enc(fresh.name)}`;
     if (intent.operation.kind === "merge") return this.sendMerge(base, intent, intent.operation.method);
+    if (isAction(intent.operation)) return this.sendAction(fresh, base, intent, intent.operation);
     const payload = intent.payload!;
     const body = posted(payload.body, intent.id);
     const call: GhWriteCall = intent.operation.kind === "comment"
@@ -500,6 +568,44 @@ export class CodeReviewWrites {
   }
 
   /**
+   * The state menu, an edit or a reviewer request: one fixed call each. A 2xx that shows the change is
+   * confirmed. GraphQL answers 200 even when it did nothing: errors without data are a refusal.
+   */
+  private async sendAction(fresh: Fresh, base: string, intent: ReviewIntent, action: PrAction): Promise<ReviewOutcome> {
+    const pull = `${base}/pulls/${intent.key.number}`;
+    let call: GhWriteCall;
+    if (action.kind === "state" && (action.to === "draft" || action.to === "ready")) {
+      if (!fresh.nodeId) return { state: "rejected", reason: "failed" };
+      call = { method: "POST", endpoint: "graphql", input: { query: DRAFT_MUTATIONS[action.to], variables: { id: fresh.nodeId } }, maxBytes: MB, timeoutMs: SEND_TIMEOUT_MS };
+    } else if (action.kind === "state") {
+      call = { method: "PATCH", endpoint: pull, input: { state: action.to }, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS };
+    } else if (action.kind === "edit") {
+      call = { method: "PATCH", endpoint: pull, input: { ...(action.title !== null ? { title: action.title } : {}), ...(action.body !== null ? { body: action.body } : {}) }, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS };
+    } else {
+      call = { method: "POST", endpoint: `${pull}/requested_reviewers`, input: { reviewers: action.logins }, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS };
+    }
+    let answer: GhAnswer;
+    try {
+      answer = await this.transport(call);
+    } catch {
+      return { state: "unknown" };
+    }
+    if (answer.kind !== "http") return answer.kind === "no-cli" || answer.kind === "signed-out" ? { state: "rejected", reason: "failed" } : { state: "unknown" };
+    if (answer.status >= 200 && answer.status < 300) {
+      const result = json(answer.body) as (RawPull & { data?: Record<string, { pullRequest?: { isDraft?: unknown; updatedAt?: unknown } } | null> | null; errors?: unknown }) | undefined;
+      if (call.endpoint === "graphql") {
+        const changed = result?.data ? Object.values(result.data)[0]?.pullRequest : undefined;
+        if (changed && changed.isDraft === (action.kind === "state" && action.to === "draft") && typeof changed.updatedAt === "string") return { state: "confirmed", remoteId: `state@${changed.updatedAt}` };
+        return Array.isArray(result?.errors) && !changed ? { state: "rejected", reason: "failed" } : { state: "unknown" };
+      }
+      return result && typeof result.updated_at === "string" && reached(result, action) ? { state: "confirmed", remoteId: `${action.kind}@${result.updated_at}` } : { state: "unknown" };
+    }
+    if ([401, 403, 404, 410].includes(answer.status)) return { state: "rejected", reason: "denied" };
+    if ([400, 409, 422, 429].includes(answer.status)) return { state: "rejected", reason: "failed" };
+    return { state: "unknown" };
+  }
+
+  /**
    * `sha` is the reviewed head: GitHub refuses the merge (409) if the branch moved since. A 200 that says it
    * merged, with the merge commit, is confirmed. 405 (not mergeable now) and 409/422 are refusals.
    */
@@ -518,6 +624,26 @@ export class CodeReviewWrites {
     if ([401, 403, 404, 410].includes(answer.status)) return { state: "rejected", reason: "denied" };
     if ([400, 405, 409, 422, 429].includes(answer.status)) return { state: "rejected", reason: "failed" };
     return { state: "unknown" };
+  }
+}
+
+type RawPull = { state?: unknown; draft?: unknown; merged?: unknown; title?: unknown; body?: unknown; updated_at?: unknown; requested_reviewers?: unknown };
+/** The PR states each change may start from: a merged PR changes no more. */
+const TRANSITIONS: Record<PrStateChange, readonly PrState[]> = { closed: ["open", "draft"], open: ["closed"], draft: ["open"], ready: ["draft"] };
+const isAction = (op: { kind: string }): op is PrAction => op.kind === "state" || op.kind === "edit" || op.kind === "reviewers";
+/** Whether a PR as GitHub returned it shows exactly what the action asked for. */
+function reached(pr: RawPull, action: PrAction): boolean {
+  const text = (v: unknown) => typeof v === "string" ? v.replace(/\r\n/g, "\n") : v === null ? "" : null;
+  switch (action.kind) {
+    case "state":
+      return action.to === "closed" ? pr.state === "closed" && pr.merged !== true
+        : pr.state === "open" && (action.to === "open" || pr.draft === (action.to === "draft"));
+    case "edit":
+      return (action.title === null || pr.title === action.title) && (action.body === null || text(pr.body) === action.body.replace(/\r\n/g, "\n"));
+    case "reviewers": {
+      const requested = Array.isArray(pr.requested_reviewers) ? pr.requested_reviewers.map((r) => String((r as { login?: unknown })?.login).toLowerCase()) : [];
+      return action.logins.every((l) => requested.includes(l.toLowerCase()));
+    }
   }
 }
 
@@ -540,7 +666,7 @@ function receipt(intent: ReviewIntent, fresh: { owner: string; name: string } | 
   const pr = fresh ? canonicalPrUrl({ host: "github.com", owner: fresh.owner, repo: fresh.name, number: intent.key.number }) : null;
   // A merge's id is its merge commit; the PR itself is the place to see it.
   const remoteUrl = intent.state !== "confirmed" || !intent.remoteId || !pr ? null
-    : operation.kind === "merge" ? pr : `${pr}#${operation.kind === "comment" ? "issuecomment" : "pullrequestreview"}-${intent.remoteId}`;
+    : operation.kind === "merge" || isAction(operation) ? pr : `${pr}#${operation.kind === "comment" ? "issuecomment" : "pullrequestreview"}-${intent.remoteId}`;
   return { id: intent.id, operation, revision: intent.revision, state: intent.state, reason: intent.reason, remoteUrl };
 }
 

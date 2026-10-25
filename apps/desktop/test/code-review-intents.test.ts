@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ReviewActions, type ReviewContext } from "../src/main/engine/code-review-actions/intents.js";
+import { ReviewActions, type ReviewContext, type ReviewOperation } from "../src/main/engine/code-review-actions/intents.js";
 import { anchorFor } from "../src/renderer/code-review/patch.js";
 import type { PrFile } from "../src/shared/code-review.js";
 
@@ -326,4 +326,51 @@ test("Windows refuses admission rather than returning an unsafe permit", { skip:
   const { actions, ctx } = fixture(t);
   assert.throws(() => actions.prepare(ctx, merge), /storage requires recovery/);
   assert.deepEqual(actions.list(ctx), []);
+});
+
+nativeTest("decisions 2–4: state, edit and reviewer operations carry their exact data, with no draft, through a restart", t => {
+  const { home, actions, ctx } = fixture(t);
+  const ops: ReviewOperation[] = [
+    { kind: "state", to: "closed" },
+    { kind: "edit", title: "Lend holds between branches", body: null, expected: { title: "Move holds between branches", body: "" } },
+    { kind: "reviewers", logins: ["grace-fixture", "kit-fixture"] },
+  ];
+  const digests = new Set<string>();
+  for (const op of ops) {
+    const prepared = actions.prepare(ctx, op);
+    assert.ok(prepared, op.kind);
+    assert.deepEqual([prepared.intent.payload, prepared.intent.draftVersion], [null, null], op.kind);
+    assert.deepEqual(prepared.intent.operation, op);
+    digests.add(prepared.intent.digest);
+    assert.ok(actions.cancel(ctx, prepared.intent.id));
+  }
+  assert.equal(digests.size, 3);
+  // A body edit may be long: up to the text bound, with the text it replaces.
+  const long = "x".repeat(60_000);
+  const big = actions.prepare(ctx, { kind: "edit", title: null, body: long, expected: { title: "T", body: long.slice(1) } });
+  assert.ok(big);
+  // A restart reads them back intact and turns the unsent one into a refusal.
+  const restarted = new ReviewActions(home);
+  assert.deepEqual(restarted.list(ctx).map((i) => [i.operation.kind, i.state, i.reason]),
+    [["state", "rejected", "cancelled"], ["edit", "rejected", "cancelled"], ["reviewers", "rejected", "cancelled"], ["edit", "rejected", "restart"]]);
+});
+
+nativeTest("malformed state, edit and reviewer operations are refused", t => {
+  const { actions, ctx } = fixture(t);
+  const expected = { title: "T", body: "" };
+  for (const op of [
+    { kind: "state", to: "merged" },
+    { kind: "state", to: "closed", extra: true },
+    { kind: "edit", title: null, body: null, expected },
+    { kind: "edit", title: "", body: null, expected },
+    { kind: "edit", title: "two\nlines", body: null, expected },
+    { kind: "edit", title: "x".repeat(257), body: null, expected },
+    { kind: "edit", title: "ok", body: null },
+    { kind: "edit", title: "ok", body: "bell\u0007", expected },
+    { kind: "reviewers", logins: [] },
+    { kind: "reviewers", logins: ["-bad"] },
+    { kind: "reviewers", logins: ["Ada", "ada"] },
+    { kind: "reviewers", logins: Array.from({ length: 16 }, (_, i) => `r${i}`) },
+    { kind: "reviewers", logins: "ada" },
+  ]) assert.equal(actions.prepare(ctx, op as never), null, JSON.stringify(op).slice(0, 80));
 });

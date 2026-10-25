@@ -7,7 +7,8 @@
 //   FAKE_GH_HOLDS  a directory: a held endpoint answers once a file of its hold's name appears there
 //   FAKE_GH_POSTS  CR-7 (#326): one JSON line per POST GitHub "received" ({ endpoint, body, id }). A posted
 //                  comment or review is then listed by the matching GET, as GitHub would list it. A merge
-//                  (PUT …/pulls/N/merge) is recorded the same way, and the PR then reads as merged by the account.
+//                  (PUT …/pulls/N/merge) is recorded the same way, and the PR then reads as merged by the account;
+//                  so are a PATCH of the PR, a reviewer request and the two draft mutations, which the PR then shows.
 export interface GhWorld {
   /** `gh api user`; null answers as gh does when nobody is signed in (exit 4). */
   user: { id: number; login: string } | null;
@@ -57,7 +58,31 @@ function paged(list) {
   const per = Number(params.get("per_page") || 30), page = Number(params.get("page") || 1);
   return list.slice((page - 1) * per, page * per);
 }
-if (method === "POST") {
+// Recorded changes to a PR, applied in order to what the world says about it.
+function changed(pullRoute, found) {
+  let pr = found;
+  for (const p of posts()) {
+    if (p.endpoint === pullRoute && p.method === "PATCH") pr = { ...pr, ...p.body };
+    else if (p.endpoint === pullRoute + "/requested_reviewers") pr = { ...pr, requested_reviewers: [...(pr.requested_reviewers || []), ...p.body.reviewers.map((login, i) => ({ id: 5000 + i, login, type: "User" }))] };
+    else if (p.endpoint === "graphql" && p.body.variables.id === pr.node_id) pr = { ...pr, draft: p.body.query.includes("convertPullRequestToDraft") };
+    else continue;
+    pr = { ...pr, updated_at: "2026-10-18T20:40:" + String(10 + posts().indexOf(p)).padStart(2, "0") + "Z" };
+  }
+  return pr;
+}
+const record = (route, input, extra) => fs.appendFileSync(postsFile, JSON.stringify({ endpoint: route, body: input, id: 900001 + posts().length, created: null, ...(extra || {}) }) + "\n");
+if (method === "PATCH" || (method === "POST" && (route === "graphql" || /\/requested_reviewers$/.test(route)))) {
+  const input = JSON.parse(fs.readFileSync(0, "utf8") || "null");
+  const forced = (world.postAnswers || {})[route];
+  const pullRoute = route === "graphql" ? Object.keys(world.routes).find((r) => world.routes[r] && world.routes[r].node_id === input.variables.id) : route.replace(/\/requested_reviewers$/, "");
+  if (!forced || forced.recorded) record(route, input, { method });
+  wait((world.postHolds || {})[route]);
+  const pr = pullRoute && changed(pullRoute, world.routes[pullRoute]);
+  if (forced) send(forced.status, forced.body === undefined ? {} : forced.body, forced.headers);
+  else if (!pr) send(route === "graphql" ? 200 : 404, route === "graphql" ? { data: null, errors: [{ type: "NOT_FOUND" }] } : { message: "Not Found" });
+  else if (route === "graphql") send(200, { data: { [input.query.includes("convertPullRequestToDraft") ? "convertPullRequestToDraft" : "markPullRequestReadyForReview"]: { pullRequest: { isDraft: pr.draft, updatedAt: pr.updated_at } } } });
+  else send(method === "PATCH" ? 200 : 201, pr);
+} else if (method === "POST") {
   const input = JSON.parse(fs.readFileSync(0, "utf8") || "null");
   const forced = (world.postAnswers || {})[route];
   const review = /\/pulls\/\d+\/reviews$/.test(route);
@@ -113,6 +138,7 @@ if (method === "POST") {
       && value && value.base && value.head && value.base.sha === comparison[2] && value.head.sha === comparison[3]);
     if (declared) found = { base_commit: { sha: comparison[2] }, merge_base_commit: { sha: comparison[2] } };
   }
+  if (found && /\/pulls\/\d+$/.test(route)) found = changed(route, found);
   if (found && /\/pulls\/\d+$/.test(route) && mergedAs(route)) {
     found = { ...found, state: "closed", merged: true, merged_at: "2026-10-18T20:40:00Z", merged_by: { ...world.user, type: "User" },
       merge_commit_sha: "e".repeat(40), mergeable: null, mergeable_state: "unknown" };
@@ -137,7 +163,7 @@ export function ghPull(repo: Repo, number: number, title: string, opts: { head?:
     user: person(...(opts.author ?? [1001, "ada-fixture"])), created_at: "2026-10-18T10:00:00Z", updated_at: "2026-10-18T20:30:00Z",
     base: { ref: "main", sha: sha("b"), repo }, head: { ref: `topic-${number}`, sha: opts.head ?? sha("c"), repo },
     changed_files: opts.files ?? 2, additions: opts.additions ?? 3, deletions: opts.deletions ?? 1, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [], locked: false,
-    mergeable: true, mergeable_state: "clean", merged: false, merged_by: null, merge_commit_sha: null };
+    mergeable: true, mergeable_state: "clean", merged: false, merged_by: null, merge_commit_sha: null, node_id: `PR_fixture_${repo.id}_${number}` };
 }
 
 export function ghRow(repo: Repo, number: number, title: string, author: [number, string] = [1001, "ada-fixture"], updated = "2026-10-18T20:30:00Z") {

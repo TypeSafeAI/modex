@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { GhAnswer } from "../src/main/engine/code-review/gh.js";
-import { ghWriteArgs, type GhWriteCall } from "../src/main/engine/code-review-actions/write-gh.js";
+import { DRAFT_MUTATIONS, ghWriteArgs, type GhWriteCall } from "../src/main/engine/code-review-actions/write-gh.js";
 import { CodeReviewWrites } from "../src/main/engine/code-review-actions/write-service.js";
 import { intentMarker, validateWrite, type WriteReply, type WriteRequest } from "../src/shared/code-review-write.js";
 import type { LineAnchor, PrKey, PrRevision } from "../src/shared/code-review.js";
@@ -33,8 +33,10 @@ class FakeGitHub {
   rules: { type: string }[] | null = [{ type: "pull_request" }];
   pr = { id: 7301073, number: 73, title: "Lend a hold", body: "", state: "open", draft: false, merged_at: null as string | null, locked: false, user: KIT,
     mergeable: true as boolean | null, mergeable_state: "clean", merged: false, merged_by: null as typeof ADA | null, merge_commit_sha: null as string | null,
+    node_id: "PR_kwFixture73", requested_reviewers: [] as { id: number; login: string; type: string }[],
     created_at: "2026-10-18T10:00:00Z", updated_at: "2026-10-19T09:00:00Z", base: { ref: "main", sha: sha("b"), repo: LENDING },
-    head: { ref: "topic-73", sha: sha("c"), repo: LENDING }, changed_files: 1, additions: 1, deletions: 0, commits: 1, comments: 0, review_comments: 0, requested_reviewers: [] };
+    head: { ref: "topic-73", sha: sha("c"), repo: LENDING }, changed_files: 1, additions: 1, deletions: 0, commits: 1, comments: 0, review_comments: 0 };
+  edits = 0;
   mergeBase = sha("a");
   comments: { id: number; user: typeof ADA; body: string }[] = [];
   reviews: { id: number; user: typeof ADA; body: string; state: string; commit_id: string }[] = [];
@@ -51,6 +53,7 @@ class FakeGitHub {
   }
   posts(): GhWriteCall[] { return this.calls.filter((c) => c.method === "POST"); }
   merges(): GhWriteCall[] { return this.calls.filter((c) => c.method === "PUT"); }
+  mutations(): GhWriteCall[] { return this.calls.filter((c) => c.method !== "GET"); }
 
   transport = async (call: GhWriteCall): Promise<GhAnswer> => {
     ghWriteArgs(call);
@@ -67,6 +70,24 @@ class FakeGitHub {
     if (e === "user") return this.user ? ok(200, this.user) : { kind: "signed-out" };
     if (e === "repositories/7301") return ok(200, { ...LENDING, ...(this.permissions ? { permissions: this.permissions } : {}), ...(this.settings ?? {}) });
     if (e === "repos/example-org/lending/rules/branches/main?per_page=100&page=1") return this.rules ? ok(200, this.rules) : ok(403, { message: "Resource not accessible" });
+    const touch = () => { this.pr.updated_at = `2026-10-25T12:00:${String(++this.edits).padStart(2, "0")}Z`; };
+    if (call.method === "PATCH" && e === "repos/example-org/lending/pulls/73") {
+      Object.assign(this.pr, call.input);
+      touch();
+      return ok(200, this.pr);
+    }
+    if (call.method === "POST" && e === "repos/example-org/lending/pulls/73/requested_reviewers") {
+      for (const login of call.input!.reviewers as string[]) this.pr.requested_reviewers.push({ id: 3000 + this.pr.requested_reviewers.length, login, type: "User" });
+      touch();
+      return ok(201, this.pr);
+    }
+    if (call.method === "POST" && e === "graphql") {
+      const draft = call.input!.query === DRAFT_MUTATIONS.draft;
+      if ((call.input!.variables as { id: string }).id !== this.pr.node_id) return ok(200, { data: null, errors: [{ type: "NOT_FOUND" }] });
+      this.pr.draft = draft;
+      touch();
+      return ok(200, { data: { [draft ? "convertPullRequestToDraft" : "markPullRequestReadyForReview"]: { pullRequest: { isDraft: draft, updatedAt: this.pr.updated_at } } } });
+    }
     if (call.method === "PUT" && e === "repos/example-org/lending/pulls/73/merge") {
       if (call.input!.sha !== this.pr.head.sha) return ok(409, { message: "Head branch was modified. Review and try the merge again." });
       Object.assign(this.pr, { merged: true, merged_at: "2026-10-25T12:00:00Z", state: "closed", merged_by: this.user, merge_commit_sha: sha("e"), mergeable: null, mergeable_state: "unknown" });
@@ -478,5 +499,153 @@ nativeTest("a crash after a merge is admitted restarts unknown and never merges 
   release();
   await inFlight;
   assert.equal(f.gh.merges().length, 1);
+});
+
+// --- Decisions 2–4: state, edits, reviewers (increment 3) -------------------------------------------
+
+const act = (f: ReturnType<typeof fixture>, action: unknown) => f.ask<"prepare-action">({ op: "prepare-action", key: KEY, revision: REV, action } as never);
+async function perform(f: ReturnType<typeof fixture>, action: unknown) {
+  const preview = f.value(await act(f, action));
+  return f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId }));
+}
+const EXPECTED = { title: "Lend a hold", body: "" };
+function triager(t: { after(fn: () => void): void }) {
+  const gh = new FakeGitHub();
+  gh.permissions = { admin: false, maintain: false, push: false, triage: true, pull: true };
+  return fixture(t, gh);
+}
+
+test("state, edit and reviewer requests are exact and bounded", () => {
+  const ok = (action: unknown) => validateWrite({ op: "prepare-action", requestId: "a", key: KEY, revision: REV, action });
+  assert.ok(ok({ kind: "state", to: "closed" }));
+  assert.ok(ok({ kind: "edit", title: "New", body: null, expected: EXPECTED }));
+  assert.ok(ok({ kind: "reviewers", logins: ["grace-fixture"] }));
+  for (const action of [{ kind: "state", to: "merged" }, { kind: "edit", title: "a\nb", body: null, expected: EXPECTED }, { kind: "edit", title: null, body: null, expected: EXPECTED },
+    { kind: "edit", title: "x", body: null, expected: { title: "x" } }, { kind: "reviewers", logins: [] }, { kind: "reviewers", logins: ["@grace"] }, { kind: "merge", method: "squash" }]) {
+    assert.equal(ok(action), null, JSON.stringify(action));
+  }
+  assert.equal(validateWrite({ op: "prepare", requestId: "a", key: KEY, revision: REV, operation: { kind: "state", to: "closed" }, draftVersion: 1 }), null);
+});
+
+test("the action transport allows one PATCH shape, the reviewer request and only GitHub's two draft mutations", () => {
+  const call = (method: GhWriteCall["method"], endpoint: string, input: Record<string, unknown> | null) => () => ghWriteArgs({ method, endpoint, input, maxBytes: 1, timeoutMs: 1 });
+  assert.ok(call("PATCH", "repos/example-org/lending/pulls/73", { state: "closed" })());
+  assert.ok(call("PATCH", "repos/example-org/lending/pulls/73", { title: "t", body: "b" })());
+  assert.ok(call("POST", "repos/example-org/lending/pulls/73/requested_reviewers", { reviewers: ["grace-fixture"] })());
+  assert.deepEqual(call("POST", "graphql", { query: DRAFT_MUTATIONS.draft, variables: { id: "PR_kwFixture73" } })().slice(0, 2), ["api", "graphql"]);
+  for (const [method, endpoint, input] of [
+    ["PATCH", "repos/example-org/lending/pulls/73", { base: "release" }],
+    ["PATCH", "repos/example-org/lending/pulls/73", { state: "closed", maintainer_can_modify: false }],
+    ["PATCH", "repos/example-org/lending/pulls/73", {}],
+    ["PATCH", "repos/example-org/lending/issues/73", { state: "closed" }],
+    ["POST", "repos/example-org/lending/pulls/73/requested_reviewers", { reviewers: ["a"], team_reviewers: ["b"] }],
+    ["POST", "graphql", { query: "mutation { deleteRepository(input: {}) { clientMutationId } }", variables: { id: "PR_x" } }],
+    ["POST", "graphql", { query: DRAFT_MUTATIONS.draft, variables: { id: "PR_x", extra: 1 } }],
+    ["POST", "graphql", { query: DRAFT_MUTATIONS.ready, variables: { id: "PR x" } }],
+  ] as const) assert.throws(call(method, endpoint, input as Record<string, unknown>), /not allowed/, `${method} ${endpoint} ${JSON.stringify(input)}`);
+  for (const method of ["DELETE"] as const) assert.throws(call(method as never, "repos/example-org/lending/pulls/73/requested_reviewers", { reviewers: ["a"] }), /not allowed/);
+});
+
+nativeTest("the state menu closes and reopens, converts to draft and back, each previewed and sent once", async t => {
+  const f = triager(t);
+  const preview = f.value(await act(f, { kind: "state", to: "closed" }));
+  assert.deepEqual(preview.operation, { kind: "state", to: "closed" });
+  assert.equal(f.gh.mutations().length, 0, "a preview changes nothing");
+  const closed = f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId }));
+  assert.deepEqual([closed.state, closed.remoteUrl], ["confirmed", "https://github.com/example-org/lending/pull/73"]);
+  assert.equal(f.refusal(await act(f, { kind: "state", to: "closed" })), "state-conflict", "already closed");
+  assert.equal(f.refusal(await act(f, { kind: "state", to: "draft" })), "state-conflict", "a closed PR isn't made a draft");
+  assert.equal((await perform(f, { kind: "state", to: "open" })).state, "confirmed");
+  assert.equal((await perform(f, { kind: "state", to: "draft" })).state, "confirmed");
+  assert.equal(f.gh.pr.draft, true);
+  assert.equal(f.refusal(await act(f, { kind: "state", to: "draft" })), "state-conflict");
+  assert.equal((await perform(f, { kind: "state", to: "ready" })).state, "confirmed");
+  assert.deepEqual(f.gh.mutations().map((c) => [c.method, c.endpoint, c.endpoint === "graphql" ? (c.input!.query === DRAFT_MUTATIONS.draft ? "draft" : "ready") : c.input]), [
+    ["PATCH", "repos/example-org/lending/pulls/73", { state: "closed" }],
+    ["PATCH", "repos/example-org/lending/pulls/73", { state: "open" }],
+    ["POST", "graphql", "draft"],
+    ["POST", "graphql", "ready"],
+  ]);
+  // A merged PR changes no more.
+  Object.assign(f.gh.pr, { state: "closed", merged: true, merged_at: "2026-10-25T13:00:00Z" });
+  for (const to of ["open", "closed", "draft", "ready"]) assert.equal(f.refusal(await act(f, { kind: "state", to })), "state-conflict", to);
+});
+
+nativeTest("changing state needs triage, push or authorship, read now; unreadable permission is refusal", async t => {
+  const reader = fixture(t);
+  assert.equal(reader.refusal(await act(reader, { kind: "state", to: "closed" })), "denied");
+  const author = fixture(t);
+  author.gh.pr.user = ADA;
+  assert.equal((await perform(author, { kind: "state", to: "closed" })).state, "confirmed", "an author may close their own PR");
+  const unknown = triager(t);
+  unknown.gh.permissions = undefined;
+  assert.equal(unknown.refusal(await act(unknown, { kind: "state", to: "closed" })), "permission-unknown");
+  // Permission withdrawn between preview and send: nothing is sent.
+  const withdrawn = triager(t);
+  const preview = withdrawn.value(await act(withdrawn, { kind: "state", to: "closed" }));
+  withdrawn.gh.permissions = { ...withdrawn.gh.permissions!, triage: false };
+  assert.equal(withdrawn.refusal(await withdrawn.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })), "denied");
+  assert.equal(withdrawn.gh.mutations().length, 0);
+});
+
+nativeTest("an edit never overwrites text that changed on GitHub since it was read", async t => {
+  const f = fixture(t);
+  f.gh.pr.user = ADA;
+  assert.equal(f.refusal(await act(f, { kind: "edit", title: "Mine", body: null, expected: { title: "An older title", body: "" } })), "edit-conflict");
+  const preview = f.value(await act(f, { kind: "edit", title: "Lend a hold, keep its place", body: "Fixes the queue.", expected: EXPECTED }));
+  f.gh.pr.body = "Someone else's description";
+  assert.equal(f.refusal(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })), "edit-conflict");
+  assert.equal(f.gh.mutations().length, 0);
+  const done = await perform(f, { kind: "edit", title: "Lend a hold, keep its place", body: null, expected: { title: "Lend a hold", body: "Someone else's description" } });
+  assert.equal(done.state, "confirmed");
+  assert.deepEqual(f.gh.mutations().map((c) => c.input), [{ title: "Lend a hold, keep its place" }], "only the changed field is sent");
+  assert.equal(f.gh.pr.body, "Someone else's description");
+  // Without authorship, editing needs push.
+  const other = triager(t);
+  assert.equal(other.refusal(await act(other, { kind: "edit", title: "x", body: null, expected: EXPECTED })), "denied");
+});
+
+nativeTest("reviewer requests go to others only, on an open PR, with triage or push", async t => {
+  const f = triager(t);
+  assert.equal(f.refusal(await act(f, { kind: "reviewers", logins: ["kit-fixture"] })), "reviewer-invalid", "the author");
+  assert.equal(f.refusal(await act(f, { kind: "reviewers", logins: ["Ada-Fixture"] })), "reviewer-invalid", "oneself, in any case");
+  const done = await perform(f, { kind: "reviewers", logins: ["grace-fixture", "lin-fixture"] });
+  assert.equal(done.state, "confirmed");
+  assert.deepEqual(f.gh.mutations().map((c) => [c.endpoint, c.input]), [["repos/example-org/lending/pulls/73/requested_reviewers", { reviewers: ["grace-fixture", "lin-fixture"] }]]);
+  f.gh.overrides.push({ method: "POST", pattern: /requested_reviewers$/, answer: ok(422, { message: "Reviews may only be requested from collaborators." }) });
+  const refused = await perform(f, { kind: "reviewers", logins: ["outsider"] });
+  assert.deepEqual([refused.state, refused.reason], ["rejected", "failed"]);
+  const reader = fixture(t);
+  assert.equal(reader.refusal(await act(reader, { kind: "reviewers", logins: ["grace-fixture"] })), "denied");
+});
+
+nativeTest("an unclear state change or edit stays unknown until the PR shows it; a GraphQL error is a refusal; a moved head re-asks", async t => {
+  const f = triager(t);
+  f.gh.overrides.push({ method: "PATCH", pattern: /pulls\/73$/, answer: ok(502, { message: "Bad gateway" }), after: true });
+  const preview = f.value(await act(f, { kind: "state", to: "closed" }));
+  assert.equal(f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })).state, "unknown");
+  // The close went through, but Modex can't know that yet: even reopening waits for it to be settled.
+  assert.equal(f.refusal(await act(f, { kind: "state", to: "open" })), "busy");
+  assert.equal(f.value(await f.ask<"reconcile">({ op: "reconcile", key: KEY, intentId: preview.intentId })).state, "confirmed");
+  assert.equal(f.gh.mutations().length, 1);
+
+  // GitHub didn't make the change: reconcile finds nothing and proves nothing.
+  const g = triager(t);
+  g.gh.overrides.push({ method: "PATCH", pattern: /pulls\/73$/, answer: { kind: "timeout" } });
+  const lost = g.value(await act(g, { kind: "state", to: "closed" }));
+  assert.equal(g.value(await g.ask<"submit">({ op: "submit", key: KEY, intentId: lost.intentId })).state, "unknown");
+  assert.equal(g.value(await g.ask<"reconcile">({ op: "reconcile", key: KEY, intentId: lost.intentId })).state, "unknown");
+  assert.equal(g.value(await g.ask<"abandon">({ op: "abandon", key: KEY, intentId: lost.intentId })).reason, "abandoned");
+
+  const h = triager(t);
+  h.gh.overrides.push({ method: "POST", pattern: /^graphql$/, answer: ok(200, { data: null, errors: [{ type: "FORBIDDEN" }] }) });
+  const refused = await perform(h, { kind: "state", to: "draft" });
+  assert.deepEqual([refused.state, refused.reason], ["rejected", "failed"]);
+
+  const moved = triager(t);
+  const stale = moved.value(await act(moved, { kind: "state", to: "closed" }));
+  moved.gh.pr.head.sha = sha("d");
+  assert.equal(moved.refusal(await moved.ask<"submit">({ op: "submit", key: KEY, intentId: stale.intentId })), "head-changed");
+  assert.equal(moved.gh.mutations().length, 0);
 });
 

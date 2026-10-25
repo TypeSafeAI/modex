@@ -3,7 +3,7 @@ import { tid } from "./support.js";
 import { baseWorld, fitWindow, launchWithGh, prRow, type Harness } from "./code-review-support.js";
 
 /**
- * CR-7 (#326): comments, reviews and Merge in real Electron, through main's production `code-review:write` service and
+ * CR-7 (#326): comments, reviews, Merge, the state menu, edits and reviewer requests in real Electron, through main's production `code-review:write` service and
  * gh write transport, with the synthetic gh (e2e/code-review-support.ts) standing in for GitHub. Each POST it
  * receives, and each merge, is recorded (Harness.posts), so a test counts exactly what reached "GitHub". Nothing here touches a
  * real repository: the world, its accounts and its PRs are made up.
@@ -243,5 +243,108 @@ test("a crash during a merge restarts in doubt, merges nothing again, and Check 
   await expect(doubt).toHaveCount(0);
   expect(mutations()).toEqual([`PUT ${MERGE}`]);
   expect(h.posts()).toHaveLength(1);
+});
+
+// --- Decisions 2–4: the state menu, edits and reviewer requests ---------------------------------------
+
+const PULL = "repos/example-org/lending/pulls/73";
+const statePill = (p: Page) => tid(p, "code-review-state").first();
+async function pickState(page: Page, item: string): Promise<void> {
+  await expect(statePill(page)).toHaveAttribute("aria-haspopup", "menu");
+  await statePill(page).click();
+  await page.getByRole("menu", { name: "Change state" }).getByRole("menuitem", { name: item }).click();
+}
+
+test("the state menu closes and reopens a PR, and converts it to draft, each previewed and sent once", async () => {
+  h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  await expect(statePill(page)).toHaveAttribute("aria-haspopup", "menu");
+  await statePill(page).click();
+  const menu = page.getByRole("menu", { name: "Change state" });
+  await expect(menu.getByRole("menuitem")).toHaveText(["Convert to draft", "Close pull request"]);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await pickState(page, "Close pull request");
+  const change = page.getByRole("region", { name: "Change pull request state" });
+  const preview = change.getByRole("region", { name: "Preview: Close pull request" });
+  await expect(preview.getByTestId("cr-preview-destination")).toHaveText("As ada-fixture on example-org/lending #73");
+  expect(mutations()).toEqual([]);
+  await preview.getByRole("button", { name: "Close pull request" }).dblclick();
+  await expect(change.getByRole("status")).toHaveText("Close pull request: done.");
+  await expect(statePill(page)).toHaveText("Closed");
+  await pickState(page, "Reopen pull request");
+  await page.getByRole("region", { name: "Preview: Reopen pull request" }).getByRole("button", { name: "Reopen pull request" }).click();
+  await expect(statePill(page)).toHaveText("Open");
+  await pickState(page, "Convert to draft");
+  await page.getByRole("region", { name: "Preview: Convert to draft" }).getByRole("button", { name: "Convert to draft" }).click();
+  await expect(statePill(page)).toHaveText("Draft");
+  expect(mutations()).toEqual([`PATCH ${PULL}`, `PATCH ${PULL}`, "POST graphql"]);
+  expect(h.posts().map((p) => p.endpoint === "graphql" ? ["graphql", (p.body as { variables: unknown }).variables] : [p.endpoint, p.body])).toEqual([
+    [PULL, { state: "closed" }], [PULL, { state: "open" }], ["graphql", { id: "PR_fixture_7301_73" }]]);
+});
+
+test("an edit saves only the changed field, and never overwrites a change made on GitHub meanwhile", async () => {
+  h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  await page.getByRole("button", { name: "Edit pull request" }).click();
+  const form = page.getByRole("region", { name: "Edit pull request" });
+  await form.getByRole("textbox", { name: "Title" }).fill("Move holds between branches, keeping their place");
+  // Someone edits the description on GitHub before the preview: main refuses rather than overwrite it.
+  h.world((w) => { (w.routes[PULL] as { body: string }).body = "Written on GitHub."; });
+  await form.getByRole("button", { name: "Preview changes" }).click();
+  await expect(form.getByRole("alert")).toHaveText("The title or description changed on GitHub since you started editing. Nothing was saved: review the new text and edit again.");
+  expect(mutations()).toEqual([]);
+  // The PR is read again: starting over begins from what GitHub has now.
+  await expect(page.getByTestId("cr-description")).toContainText("Written on GitHub.");
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Edit pull request" }).click();
+  await expect(form.getByRole("textbox", { name: "Description" })).toHaveValue("Written on GitHub.");
+  await form.getByRole("textbox", { name: "Title" }).fill("Move holds between branches, keeping their place");
+  await form.getByRole("button", { name: "Preview changes" }).click();
+  const preview = page.getByRole("region", { name: "Preview: Edit the title" });
+  await expect(preview).toContainText("Title: Move holds between branches, keeping their place");
+  await preview.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Pull request updated." })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Description and activity" }).getByRole("heading", { level: 1 })).toHaveText("Move holds between branches, keeping their place");
+  // Only the title is sent: the description someone else wrote stays theirs.
+  expect(h.posts().map((p) => [p.endpoint, p.body])).toEqual([[PULL, { title: "Move holds between branches, keeping their place" }]]);
+  await expect(page.getByTestId("cr-description")).toContainText("Written on GitHub.");
+});
+
+test("reviewer requests go to others, need triage, and show on the PR once GitHub has them", async () => {
+  h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  const ask = async (logins: string) => {
+    await page.getByRole("button", { name: "Request reviewers" }).click();
+    await page.getByRole("textbox", { name: "Reviewer logins" }).fill(logins);
+    await page.getByRole("button", { name: "Preview request" }).click();
+  };
+  await ask("grace-fixture");
+  await expect(page.getByTestId("cr-reviewers").getByRole("alert")).toHaveText("GitHub refused this. The account may lack permission, or the pull request doesn't allow it.");
+  h.world((w) => { w.permissions!["7301"] = { ...w.permissions!["7301"]!, triage: true }; });
+  await page.getByRole("textbox", { name: "Reviewer logins" }).fill("ada-fixture");
+  await page.getByRole("button", { name: "Preview request" }).click();
+  await expect(page.getByTestId("cr-reviewers").getByRole("alert")).toHaveText("A pull request's author, and you, can't be requested as reviewers. Nothing was sent.");
+  await page.getByRole("textbox", { name: "Reviewer logins" }).fill("grace-fixture, @lin-fixture");
+  await page.getByRole("button", { name: "Preview request" }).click();
+  const preview = page.getByRole("region", { name: "Preview: Request review from grace-fixture, lin-fixture" });
+  await preview.getByRole("button", { name: "Request review" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Review requested." })).toBeVisible();
+  await expect(page.getByRole("complementary").or(page.locator(".cr-overview-layout")).getByText("lin-fixture", { exact: true })).toBeVisible();
+  expect(h.posts().map((p) => [p.endpoint, p.body])).toEqual([[`${PULL}/requested_reviewers`, { reviewers: ["grace-fixture", "lin-fixture"] }]]);
+});
+
+test("a state change GitHub may have made stays in doubt, blocks the PR and is confirmed from the PR itself", async () => {
+  h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  h.world((w) => { w.postAnswers = { [PULL]: { status: 502, body: { message: "Bad gateway" }, recorded: true } }; });
+  await pickState(page, "Close pull request");
+  await page.getByRole("region", { name: "Preview: Close pull request" }).getByRole("button", { name: "Close pull request" }).click();
+  const doubt = page.getByTestId("cr-doubt");
+  await expect(doubt).toContainText("Modex can't tell whether GitHub changed this pull request's state");
+  await expect(comment(page).getByRole("button", { name: "Comment", exact: true })).toHaveAttribute("aria-disabled", "true");
+  await doubt.getByRole("button", { name: "Check GitHub" }).click();
+  await expect(doubt).toHaveCount(0);
+  expect(mutations()).toEqual([`PATCH ${PULL}`]);
 });
 

@@ -216,3 +216,13 @@
 .cr-merge-head { display: flex; align-items: center; gap: 8px; }
 .cr-merge .spacer { flex: 1; }
 .cr-merge p { margin: 0; }
+
+/* CR-7 decisions 2–4: the state menu, the edit form and reviewer requests. */
+.cr-state-menu { position: relative; display: inline-flex; }
+button.cr-state { cursor: pointer; font: inherit; }
+.cr-state-options { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 200px; padding: 4px; border: 1px solid var(--border-pane); border-radius: 10px; background: var(--bg-sidebar); display: flex; flex-direction: column; }
+.cr-state-option { text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.cr-state-option:hover, .cr-state-option:focus-visible { background: var(--border-pane); }
+.cr-field { display: flex; flex-direction: column; gap: 4px; }
+.cr-input { font: inherit; padding: 6px 8px; border: 1px solid var(--border-pane); border-radius: 8px; background: transparent; color: inherit; min-width: 0; }
+.cr-reviewers { display: flex; flex-direction: column; gap: 8px; }

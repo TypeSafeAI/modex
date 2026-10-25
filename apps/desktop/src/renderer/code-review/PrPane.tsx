@@ -12,6 +12,8 @@ import { PrChanges, type ChangesViews } from "./PrChanges";
 import { STATE_LABELS, unavailableText } from "./text.js";
 import type { Writes } from "./writes.js";
 import { MergeAction, MergePanel } from "./MergePanel";
+import { StateMenu, StatePanel } from "./PrActions";
+import type { PrStateChange } from "../../shared/code-review-write.js";
 
 interface Props {
   pane: Pane;
@@ -55,10 +57,11 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
-  const [merging, setMerging] = useState(false);
+  // At most one panel under the header: Merge, or a state change picked from the state menu.
+  const [panel, setPanel] = useState<"merge" | PrStateChange | null>(null);
   const overview = pr.overview;
   const loaded = overview && overview.state !== "unavailable" ? overview.value : null;
-  const merge = writes && loaded ? { writes, overview: loaded, open: merging, onToggle: () => setMerging((v) => !v) } : null;
+  const merge = writes && loaded ? { writes, overview: loaded, open: panel === "merge", onToggle: () => setPanel((v) => v === "merge" ? null : "merge"), onState: (to: PrStateChange) => setPanel(to) } : null;
   const content = overview && overview.state !== "unavailable" ? `${overview.value.revision.baseSha}/${overview.value.revision.headSha}` : "loading";
   useScrollMemory(body, `${keyId}:${pane}`, content);
   useScrollMemory(tree, `${keyId}:tree`, content);
@@ -69,7 +72,8 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   return (
     <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
       <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} merge={merge} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
-      {merge && merging && <MergePanel key={keyId} writes={merge.writes} overview={merge.overview} onClose={() => setMerging(false)} onMerged={onRetry} />}
+      {merge && panel === "merge" && <MergePanel key={keyId} writes={merge.writes} overview={merge.overview} onClose={() => setPanel(null)} onMerged={onRetry} />}
+      {merge && panel && panel !== "merge" && <StatePanel key={`${keyId}:${panel}`} writes={merge.writes} overview={merge.overview} to={panel} onClose={() => setPanel(null)} onDone={onRetry} />}
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
         {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} writes={writes} />}
       </div>}
@@ -80,7 +84,7 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   );
 }
 
-type MergeSlot = { writes: Writes; overview: Overview; open: boolean; onToggle: () => void } | null;
+type MergeSlot = { writes: Writes; overview: Overview; open: boolean; onToggle: () => void; onState: (to: PrStateChange) => void } | null;
 
 function PrHeader({ pr, busy, pinned, caps, onPin, merge, filesToggle }: { pr: OpenPr; busy: boolean; pinned: boolean; caps: Capabilities; onPin: () => void; merge: MergeSlot; filesToggle: { shown: boolean; toggle: () => void } | null }) {
   const state = pr.overview && pr.overview.state !== "unavailable" ? pr.overview.value.state : pr.state;
@@ -99,7 +103,8 @@ function PrHeader({ pr, busy, pinned, caps, onPin, merge, filesToggle }: { pr: O
   };
   return (
     <header className="cr-pr-header" data-testid="code-review-pr-header">
-      {state && <span className={`cr-state cr-state-${state}`} data-testid="code-review-state"><Icon name="pull-request" size={14} />{STATE_LABELS[state]}</span>}
+      {merge ? <StateMenu writes={merge.writes} overview={merge.overview} fallback={caps.state} onPick={merge.onState} />
+        : state && <span className={`cr-state cr-state-${state}`} data-testid="code-review-state"><Icon name="pull-request" size={14} />{STATE_LABELS[state]}</span>}
       <span className="cr-pr-id" data-testid="code-review-pr-id" title={`${owner}/${repo} #${number}`}>{repo} #{number}</span>
       {busy && <span className="spinner" role="status" aria-label="Loading the pull request" data-testid="code-review-loading" />}
       <span className="spacer" />
