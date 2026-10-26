@@ -38,6 +38,8 @@ function atomicFile(file, contents) {
   const fd = fs.openSync(temp, 'wx', 0o600);
   try { fs.writeFileSync(fd, contents); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   fs.renameSync(temp, file);
+  // Windows can't flush a directory handle (fsync is FlushFileBuffers there, which fails with EPERM).
+  if (process.platform === 'win32') return;
   const directory = fs.openSync(path.dirname(file), 'r');
   try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
 }
@@ -90,7 +92,8 @@ export class WorktreeMaintenance {
       const space = field.indexOf(' ');
       const key = space < 0 ? field : field.slice(0, space);
       const value = space < 0 ? true : field.slice(space + 1);
-      if (key === 'worktree') record = { path: value };
+      // Git for Windows reports C:/ paths; resolve them so they compare equal to realpathSync's C:\ form.
+      if (key === 'worktree') record = { path: path.resolve(value) };
       else if (record) record[key] = value;
     }
     if (record) records.push(record);
