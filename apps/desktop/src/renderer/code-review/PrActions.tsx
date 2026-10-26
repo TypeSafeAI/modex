@@ -158,7 +158,7 @@ export function EditPullRequest({ writes, overview, fallback, onDone }: { writes
       : <div className="cr-editor">
         <label className="cr-field">Title<input className="cr-input" type="text" value={title} maxLength={WRITE_LIMITS.title} onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))} /></label>
         <label className="cr-field">Description<textarea className="cr-textarea" rows={8} maxLength={WRITE_LIMITS.body} value={body} onChange={(e) => setBody(e.target.value)} /></label>
-        <p className="cr-evidence">Nothing changes on GitHub until you preview and save. If someone else edits this pull request first, Modex won't overwrite it.</p>
+        <p className="cr-evidence">Nothing changes on GitHub until you preview and save. Modex checks for newer edits before saving. An edit made after that check may still be overwritten.</p>
         <div className="cr-compose-buttons">
           <button className="btn primary" type="button" disabled={flow.busy || !valid || (!changed.title && !changed.body)}
             onClick={() => void flow.prepare({ kind: "edit", title: changed.title ? title : null, body: changed.body ? body : null, expected })}>Preview changes</button>

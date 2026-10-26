@@ -655,7 +655,7 @@ nativeTest("reviewer requests go to others only, on an open PR, with triage or p
   assert.equal(reader.refusal(await act(reader, { kind: "reviewers", logins: ["grace-fixture"] })), "denied");
 });
 
-nativeTest("an unclear state change or edit stays unknown until the PR shows it; a GraphQL error is a refusal; a moved head re-asks", async t => {
+nativeTest("an unclear state change or edit stays unknown until the PR shows it; a pre-execution GraphQL refusal is rejected; a moved head re-asks", async t => {
   const f = triager(t);
   f.gh.overrides.push({ method: "PATCH", pattern: /pulls\/73$/, answer: ok(502, { message: "Bad gateway" }), after: true });
   const preview = f.value(await act(f, { kind: "state", to: "closed" }));
@@ -674,7 +674,7 @@ nativeTest("an unclear state change or edit stays unknown until the PR shows it;
   assert.equal(g.value(await g.ask<"abandon">({ op: "abandon", key: KEY, intentId: lost.intentId })).reason, "abandoned");
 
   const h = triager(t);
-  h.gh.overrides.push({ method: "POST", pattern: /^graphql$/, answer: ok(200, { data: null, errors: [{ type: "FORBIDDEN" }] }) });
+  h.gh.overrides.push({ method: "POST", pattern: /^graphql$/, answer: ok(200, { errors: [{ type: "FORBIDDEN", message: "Operation refused before execution" }] }) });
   const refused = await perform(h, { kind: "state", to: "draft" });
   assert.deepEqual([refused.state, refused.reason], ["rejected", "failed"]);
 
@@ -685,3 +685,30 @@ nativeTest("an unclear state change or edit stays unknown until the PR shows it;
   assert.equal(moved.gh.mutations().length, 0);
 });
 
+
+nativeTest("an internal GraphQL error after a draft transition retains uncertainty until readback", async t => {
+  const f = triager(t);
+  f.gh.overrides.push({ method: "POST", pattern: /^graphql$/, answer: ok(200, { data: null, errors: [{ type: "INTERNAL" }] }), after: true });
+  const preview = f.value(await act(f, { kind: "state", to: "draft" }));
+  assert.equal(f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })).state, "unknown");
+  assert.equal(f.gh.pr.draft, true, "the remote action happened before the error");
+  assert.equal(f.refusal(await act(f, { kind: "state", to: "ready" })), "busy");
+  assert.equal(f.value(await f.ask<"reconcile">({ op: "reconcile", key: KEY, intentId: preview.intentId })).state, "confirmed");
+  assert.equal(f.gh.mutations().length, 1, "readback must not resend the mutation");
+});
+
+nativeTest("GraphQL execution errors and malformed refusals cannot release uncertainty", async t => {
+  for (const answer of [
+    { data: null, errors: [{ type: "FORBIDDEN", message: "A field was forbidden" }] },
+    { errors: [{ type: "INTERNAL", message: "Execution failed" }] },
+    { errors: [] },
+    { errors: [null] },
+    { errors: [{ type: "FORBIDDEN" }] },
+  ]) {
+    const f = triager(t);
+    f.gh.overrides.push({ method: "POST", pattern: /^graphql$/, answer: ok(200, answer) });
+    assert.equal((await perform(f, { kind: "state", to: "draft" })).state, "unknown", JSON.stringify(answer));
+    assert.equal(f.refusal(await act(f, { kind: "state", to: "closed" })), "busy");
+    assert.equal(f.gh.mutations().length, 1);
+  }
+});

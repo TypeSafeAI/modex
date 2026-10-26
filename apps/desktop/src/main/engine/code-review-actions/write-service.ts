@@ -634,7 +634,16 @@ export class CodeReviewWrites {
       if (call.endpoint === "graphql") {
         const changed = result?.data ? Object.values(result.data)[0]?.pullRequest : undefined;
         if (changed && changed.isDraft === (action.kind === "state" && action.to === "draft") && typeof changed.updatedAt === "string") return { state: "confirmed", remoteId: `state@${changed.updatedAt}` };
-        return Array.isArray(result?.errors) && !changed ? { state: "rejected", reason: "failed" } : { state: "unknown" };
+        // Request errors omit data. A present data entry, even null, can follow execution.
+        // Only recognized pre-execution refusals release the uncertainty blocker.
+        const refused = result && !Object.hasOwn(result, "data") && Array.isArray(result.errors) && result.errors.length > 0
+          && result.errors.every((error: unknown) => {
+            if (!error || typeof error !== "object") return false;
+            const item = error as { type?: unknown; message?: unknown };
+            return typeof item.message === "string" && item.message.length > 0
+              && ["FORBIDDEN", "GRAPHQL_PARSE_FAILED", "GRAPHQL_VALIDATION_FAILED"].includes(String(item.type));
+          });
+        return refused ? { state: "rejected", reason: "failed" } : { state: "unknown" };
       }
       return result && typeof result.updated_at === "string" && reached(result, action) ? { state: "confirmed", remoteId: `${action.kind}@${result.updated_at}` } : { state: "unknown" };
     }
