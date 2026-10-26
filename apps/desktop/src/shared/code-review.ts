@@ -163,6 +163,10 @@ export interface PrFiles { revision: PrRevision; diffBaseSha: string; files: PrF
 /** Lines of one side of a file at a revision, for expanding context; `total` is the file's line count when known. */
 export interface PrContext { revision: PrRevision; commitSha: string; side: "base" | "head"; path: string; start: number; lines: string[]; total: number | null }
 
+/** A selected line range at one revision. `commitSha` is the commit its line numbers count in:
+ * the head for `head`, the proven diff base (`PrFiles.diffBaseSha`) for `base`. */
+export interface LineAnchor { key: PrKey; revision: PrRevision; commitSha: string; path: string; side: "base" | "head"; start: number; end: number }
+
 /** What each read returns, by operation. */
 export interface CodeReviewReads {
   connection: CodeReviewConnection;
