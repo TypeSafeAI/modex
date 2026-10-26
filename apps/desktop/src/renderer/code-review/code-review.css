@@ -189,3 +189,40 @@
 .cr-file-section:focus-visible, .cr-tree-file:focus-visible, .cr-file-heading button:focus-visible, .cr-context-fold button:focus-visible, .cr-code .line-number:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cr-patch-state { font-size: 10px; color: var(--text-3); }
 .cr-context-actions > .diff-fold { width: 100%; height: auto; min-height: 28px; margin: 2px 0; padding: 5px 8px; white-space: normal; }
+
+/* CR-7 (#326): comment and review composers, previews and sends in doubt. */
+.cr-compose { display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
+.cr-compose .cr-comment-slot { margin-top: 0; }
+.cr-composer .cr-editor, .cr-composer .cr-preview, .cr-doubt { padding: 16px; border: 1px solid var(--border-pane); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cr-preview { border-color: var(--accent, var(--border-pane)); }
+.cr-doubt { border-color: var(--danger-border); background: var(--danger-bg); }
+.cr-textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; font: inherit; color: var(--text-1); background: var(--bg-input, transparent); border: 1px solid var(--border-pane); border-radius: 8px; padding: 8px; }
+.cr-compose-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.cr-events { display: flex; flex-wrap: wrap; gap: 12px; border: 0; padding: 0; margin: 0; }
+.cr-events legend { font-weight: 600; margin-bottom: 4px; }
+.cr-events label { display: inline-flex; gap: 4px; align-items: center; }
+.cr-line-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cr-line-comments li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 12px; overflow-wrap: anywhere; }
+.cr-line-comments li p { grid-column: 1; margin: 0; }
+.cr-line-comments li .btn { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+.cr-error { color: var(--danger-text); overflow-wrap: anywhere; }
+.cr-anchor-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cr-line-composer { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; flex: 1 1 280px; }
+.cr-line-composer .cr-textarea { min-height: 40px; flex: 1 1 220px; }
+
+/* CR-7 Merge panel: under the PR header, above the pane's content. */
+.cr-merge { margin: 8px 16px; padding: 16px; border: 1px solid var(--border-pane); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cr-merge .cr-preview { padding: 12px; border: 1px solid var(--accent, var(--border-pane)); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cr-merge-head { display: flex; align-items: center; gap: 8px; }
+.cr-merge .spacer { flex: 1; }
+.cr-merge p { margin: 0; }
+
+/* CR-7 decisions 2–4: the state menu, the edit form and reviewer requests. */
+.cr-state-menu { position: relative; display: inline-flex; }
+button.cr-state { cursor: pointer; font: inherit; }
+.cr-state-options { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 200px; padding: 4px; border: 1px solid var(--border-pane); border-radius: 10px; background: var(--bg-sidebar); display: flex; flex-direction: column; }
+.cr-state-option { text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.cr-state-option:hover, .cr-state-option:focus-visible { background: var(--border-pane); }
+.cr-field { display: flex; flex-direction: column; gap: 4px; }
+.cr-input { font: inherit; padding: 6px 8px; border: 1px solid var(--border-pane); border-radius: 8px; background: transparent; color: inherit; min-width: 0; }
+.cr-reviewers { display: flex; flex-direction: column; gap: 8px; }

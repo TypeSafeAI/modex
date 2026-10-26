@@ -73,7 +73,7 @@ export function parseIncluded(stdout: Buffer): { status: number; headers: Record
 }
 
 /** No shell, prompt, pager, colour, update check or debug output, and only absolute PATH entries. */
-function environment(): NodeJS.ProcessEnv {
+export function environment(): NodeJS.ProcessEnv {
   const searchPath = [...new Set([...(process.env.PATH ?? "").split(path.delimiter).filter(path.isAbsolute), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])].join(path.delimiter);
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: searchPath, GH_PROMPT_DISABLED: "1", GH_PAGER: "cat", NO_COLOR: "1", CLICOLOR: "0",
     GH_NO_UPDATE_NOTIFIER: "1", GH_SPINNER_DISABLED: "1" };

@@ -399,7 +399,7 @@ must prove it.
 | C18 | R1, R2, R3, R4 | Inbox | Selected and hover row states | #322 | Navigation spec and visual check |
 | C19 | R1, R2, R3, R4 | Inbox | Show more | #322 | `inbox-page`; `knownCount` (contract test) |
 | C20 | R1, R2, R3, R4 | Inbox | Independent list scroll | #322 | Scroll-isolation check (#322 AC3) |
-| C21 | R1, R2, R3, R4 | PR header | State pill "Open ▾" | needs decision | The state shows from `overview.state` (#323); its menu (close, reopen, draft) is capability `state`, #326 only if included |
+| C21 | R1, R2, R3, R4 | PR header | State pill "Open ▾" | #326 | The state shows from `overview.state` (#323); its menu (close, reopen, convert to draft, ready for review) is capability `state` ([CR-7 PR actions](#cr-7-state-edits-and-reviewers)) |
 | C22 | R1, R2, R3, R4 | PR header | Repository and number | #323 | From `overview.locator` |
 | C23 | R2 | PR header | Loading spinner | #322 | Shown while a read for this PR is in flight |
 | C24 | R1, R2, R3, R4 | PR header | Pin | #322 | Local only, never synced (D2) |
@@ -407,21 +407,21 @@ must prove it.
 | C26 | R1, R2, R3, R4 | PR header | Open in GitHub | #322 | `canonicalPrUrl` through the window-open handler (`index.ts:1032`) |
 | C27 | R1, R2, R3, R4 | PR header | Review with Codex | #325 | Capability `review`, unavailable in Gate A (contract test) |
 | C28 | R1, R2, R3, R4 | PR header | Review settings (gear) | #325 | Opens R3's popover; capability `instructions` |
-| C29 | R1, R2, R3, R4 | PR header | Merge split button and method menu | #326 | Capability `merge`, unavailable in Gate A (contract test) |
+| C29 | R1, R2, R3, R4 | PR header | Merge split button and method menu | #326 | Capability `merge`; one button opening a panel with the repository's allowed methods ([CR-7 merge](#cr-7-merge)) |
 | C30 | R1, R4 | Overview | Title | #323 | `overview.title`; long-title wrap check |
-| C31 | R1, R4 | Overview | Edit title (pencil) | needs decision | Capability `edit`; #326 only if included |
+| C31 | R1, R4 | Overview | Edit title (pencil) | #326 | Capability `edit`; "Edit pull request" opens one form for the title and description |
 | C32 | R1, R4 | Overview | Author, age, head → base branch | #323 | `overview.author`, `createdAt`, `headRef`, `revision.baseRef` |
 | C33 | R1, R2, R4 | Overview | Description Markdown: headings, lists, inline code, links | #323 | `Markdown.tsx` (inert HTML, http(s) links, no remote images); hostile-content fixture in #323 |
 | C34 | R2 | Overview | Reaction button under the description | deferred | D3 |
-| C35 | R2 | Overview | Edit description | needs decision | Capability `edit`; #326 only if included |
+| C35 | R2 | Overview | Edit description | #326 | Capability `edit`; the same form as C31 |
 | C36 | R4 | Overview | Summary card: files and totals | #323 | `overview.totals`; opens Changes (#322) |
 | C37 | R4 | Overview | Summary card: comment count | #323 | `overview.comments` |
-| C38 | R4 | Overview | Summary card: Request review | needs decision | Capability `request-reviewers`; #326 only if included |
+| C38 | R4 | Overview | Summary card: Request review | #326 | Capability `request-reviewers`; by login, previewed |
 | C39 | R4 | Overview | Summary card: passing checks | #323 | `summarizeChecks` verdict (contract test: 11 of 11 is `passing`) |
 | C40 | R1, R2, R3 | Sidebar | Changes: files and totals | #323 | `overview.totals` |
 | C41 | R1, R2, R3 | Sidebar | Stack: numbered members, current one highlighted | #323 | `PrStack`, labelled `explicit` or `inferred`; inaccessible members keep their place |
 | C42 | R1, R2, R3 | Sidebar | Comment count ("No comments") | #323 | `overview.comments`; zero only from a complete read |
-| C43 | R1, R2, R3 | Sidebar | Reviewers ("No reviewers") and + | needs decision | The list shows from `overview.reviewers` (#323); + is capability `request-reviewers` |
+| C43 | R1, R2, R3 | Sidebar | Reviewers ("No reviewers") and + | #326 | The list shows from `overview.reviewers` (#323); "Request reviewers" is capability `request-reviewers` |
 | C44 | R1, R2, R3 | Sidebar | Checks with an elapsed clock | #323 | `summarizeChecks`; elapsed from `startedAt` (the fixture reads 03:27 at its clock) |
 | C45 | R1, R2, R3 | Sidebar | Check row states: running ring, success tick | #323 | `PrCheck` status and conclusion; text, not colour alone |
 | C46 | R1, R2, R3 | Sidebar | Show more checks | #323 | `knownCount` |
@@ -479,9 +479,9 @@ must prove it.
 For Val. Each control stays unavailable until decided:
 
 1. **C16 and C81, avatars:** login only (D1), or fetch avatars?
-2. **C21, the state menu** (close, reopen, draft): in #326's scope?
-3. **C31 and C35, editing the title and description:** in #326's scope?
-4. **C38 and C43, requesting reviewers:** in #326's scope?
+2. **C21, the state menu** (close, reopen, draft): **in #326's scope** (Val, 2026-10-25). Built: [CR-7 state, edits and reviewers](#cr-7-state-edits-and-reviewers).
+3. **C31 and C35, editing the title and description:** **in #326's scope** (Val, 2026-10-25). Built, as above.
+4. **C38 and C43, requesting reviewers:** **in #326's scope** (Val, 2026-10-25). Built, as above.
 5. **C65, the Viewed toggle:** local only, or GitHub's viewed state?
 6. **C07, the new-tab button** on this surface: what does it open?
 7. **C82, the access-mode indicator.** The reference's PR composer shows full access. Review is
@@ -564,22 +564,24 @@ window when restored and never rewritten by the fit.
 | C62 | The header over Changes repeats C21–C29 | split captures |
 | C74, C75 | Pointer and keyboard dividers, persisted as `codeReviewSplit` and `codeReviewTree` | keyboard alone works… |
 
-C27–C29 (review, instructions, merge) and C07 (new tab) are shown focusable, named and
-`aria-disabled`, with the capability's reason as their description. C21's menu, C16's avatars and
-C57–C61's composer are not built (open decisions, #325).
+C27, C28 (review, instructions) and C07 (new tab) are shown focusable, named and `aria-disabled`, with
+the capability's reason as their description. C29 (Merge) and C21's menu are CR-7's (below). C16's
+avatars and C57–C61's composer are not built (open decisions, #325).
 
 **Deviations.**
 
 - **D6, repository in the header.** The header shows the repository name and number, as the references
   do, with `owner/name` in its tooltip. It reads them from the inbox row or the resolved link until #323
   binds `overview.locator` (C22).
-- **D7, state pill.** It shows the state with no menu: C21's menu is an open decision.
+- **D7, state pill.** It is the state menu once the PR has loaded and main has answered for the account;
+  otherwise, and for a merged PR, it shows the state with no menu.
 - **D8, a Pinned group.** Pins appear in a Pinned group above the inbox's own, which the references
   don't show. A pin from an earlier session resolves its link first, since main learns a repository's
   name only from its own reads.
 - **D9, the top-right buttons (C04).** Only the right-panel button applies here, and it toggles the
   split. There is no expand button on this surface.
-- **D10, Merge without its chevron.** The method menu is #326's, so Merge is one unavailable button.
+- **D10, Merge without its chevron.** Merge is one button. Its panel lists the methods the repository allows,
+  rather than a split button's menu.
 
 **Evidence.** Captures of the R1, R4, 900×600 and signed-out states are kept outside the repository
 with the PR's evidence. The authenticated navigation smoke test (#322 AC6) passed through CR-2's
@@ -601,14 +603,224 @@ CR-8's [acceptance matrix](../reviews/2026-10-22-cr8-acceptance-matrix.md) maps 
 
 ## CR-7 preparation: local drafts and intents
 
-The preparatory `src/main/engine/code-review-actions/intents.ts` module is main-only and unwired. It adds no bridge command, GitHub mutation transport, UI control or capability. Authorization through the person's gh login versus a GitHub App, and scope decisions 2–4 above, remain unanswered on #326. The existing `code-review:read` channel remains GET-only. CR-6 isolation gates and C82 are unchanged.
+`src/main/engine/code-review-actions/intents.ts` is main-only. Since the first write increment (below) it backs `code-review:write`; on its own it still sends nothing. The existing `code-review:read` channel remains GET-only. CR-6 isolation gates and C82 are unchanged.
 
 `ReviewActions` keys drafts by the accepted account/repository/PR identity, full base/head revision, target branch and draft kind. Version comparison rejects late editor responses; outcomes never erase a draft or overwrite a newer edit. Inline draft anchors are CR-5's `LineAnchor` exactly as `anchorFor` produces it: one shared type in the contract, used by `patch.ts` and the model, so the two can't drift. The model accepts only that seven-field shape. `commitSha` must be a 40-hex SHA and, on the head side, the revision's head. It is part of the intent digest, so a base-side comment counted against a different diff base is a different intent. The model can't prove a base-side `commitSha` is the merge base: the write adapter must match it to the fresh read's `PrFiles.diffBaseSha` before dispatch. Matching a revision also doesn't establish that a line is in the provider's patch; the adapter validates that against the same read.
 
 **Producer check (2026-10-24, `main` at `a10fcc4`).** CR-5 (#395) anchors now round-trip into drafts and intents (above); before this change the model refused them for their extra field. CR-4's (#393) `OverviewActions` slots are zero-argument callbacks (`comment`, `edit`, `requestReviewers`), so the host binds the scope it rendered and the renderer supplies none. That fits the model: `comment` maps to a `comment` draft, and `edit` and `requestReviewers` stay unwired until decisions 3 and 4. There is no slot yet for submitting a review, for the state menu (decision 2), or for Merge, which `PrPane` renders as a bare unavailable button. The write increments add those.
 
-Preparation snapshots operation, exact payload and draft version. A process-local confirmation is bound to its main document session. Dispatch returns at most one permit only after the existing `AttachmentRecoveryFile` adapter durably records `dispatched`. An explicit cancellation can reject a prepared preview after navigation or a head change; it cannot cancel a dispatched or unknown operation. Fresh main-owned identity, permission, session and provider-policy validation remains mandatory in a future adapter; the context's Boolean is a model input, not server authority.
+Preparation snapshots operation, exact payload and draft version. A process-local confirmation is bound to its main document session. Dispatch returns at most one permit only after the existing `AttachmentRecoveryFile` adapter durably records `dispatched`. An explicit cancellation can reject a prepared preview after navigation or a head change; it cannot cancel a dispatched or unknown operation. Fresh main-owned identity, permission, session and provider-policy validation is the write service's job (below); the context's Boolean is a model input, not server authority.
 
 Receipts distinguish prepared, dispatched, confirmed, rejected and unknown. Startup rejects unused preparations and converts interrupted dispatches to unknown without executing anything. Unknown blocks another intent for that PR, even at a new head. Absence or ambiguity in a readback never proves a request was unsent. Exact-match assertions must carry the intended scope and an attempt-specific digest; a remote ID already assigned to another operation of the same kind on that PR cannot resolve another attempt. This is a contract for a future trusted reconciliation adapter, not proof that current GitHub responses can supply that correlation. Repeated text alone is insufficient.
 
-The fixed local file is bounded to 2 MiB and 128 drafts/128 receipts, with a 64 Ki-character text bound and up to 100 inline comments. Capacity refuses new records rather than evicting duplicate protection. There is no retention/deletion UI yet. Files use the existing private recovery-file permissions and fail-closed validation/durability checks. One main-process owner is required; this module does not provide a multiprocess dispatch lease or server exactly-once execution. Windows durable writes remain unsupported by the reused adapter. See the [preparation evidence](../reviews/2026-10-23-cr7-intents.md) for scope, request counts and validation.
+The fixed local file is bounded to 2 MiB and 128 drafts/128 receipts, with a 64 Ki-character text bound and up to 100 inline comments. When it is full, the oldest settled receipts of PRs with nothing in doubt are dropped first, then empty drafts; a PR with a dispatched or unknown send keeps every receipt, since their remote ids are its duplicate protection, and unsent text is never dropped. If nothing can go, a new record is refused. There is no retention/deletion UI yet. Files use the existing private recovery-file permissions and fail-closed validation/durability checks. One main-process owner is required; this module does not provide a multiprocess dispatch lease or server exactly-once execution. Windows durable writes remain unsupported by the reused adapter. See the [preparation evidence](../reviews/2026-10-23-cr7-intents.md) for scope, request counts and validation.
+
+**Merge preflight** (`code-review-actions/merge-preflight.ts`). Wired by the [merge increment](#cr-7-merge) below. `mergePreflight` takes the revision the person reviewed and one set of fresh `MergeFacts`: PR state, GitHub's `mergeable` and `mergeable_state`, the repository's allowed methods, and whether a merge queue is required. `null` means the read didn't establish a value. The write service fills these facts from its own fresh reads.
+
+- A different account, repository or PR, a moved head, or a changed base SHA or ref returns `reconfirm`. It never adapts to the new state.
+- Closed, merged, draft, conflicting, blocked, behind, unknown or unreadable states return `unavailable`, with Open in GitHub as the fallback. So does a required merge queue: there's no queue enrollment and no rules bypass.
+- An offer lists only methods the repository explicitly allows and carries the reviewed head as `expectedHeadSha`. `unstable` (failing checks that aren't required) is offered with its state, so the UI can say so.
+- Check counts and model findings aren't inputs. The facts' exact shape refuses them, so they can't count as permission.
+- `mergeOperation` builds a merge operation for `ReviewActions.prepare` only from a method the offer contains.
+
+The expected head SHA guards the head, not the base. GitHub still enforces branch rules on the request, and the adapter must repeat the preflight right before dispatch.
+
+## CR-7 writes: comments and reviews
+
+The first write increment (#326). Writes go through the person's own `gh` login (Val, 2026-10-25), on a
+channel of their own: `code-review:write`, registered `localOnly` and only for this Mac's window, never
+`code-review:read`. The contract is `src/shared/code-review-write.ts`. The service and its transport
+(`write-service.ts`, `write-gh.ts`) live beside the draft/intent model in
+`src/main/engine/code-review-actions/`, so the read path's directory stays provably GET-only.
+
+**What the renderer can ask.** `status`, `save`, `carry`, `prepare`, `submit`, `cancel`, `reconcile` and
+`abandon`, each validated to exactly its fields (`validateWrite`). No request carries a session, a
+permission, an endpoint or a credential:
+- main names the session from the IPC sender and the document epoch, so a reload or another window holds
+  no proof of an earlier preview;
+- replies carry fixed refusal texts (`REFUSALS`), never what GitHub or gh printed.
+
+**Endpoints.** The transport allows only these. Each body goes to gh on stdin.
+- Reads: `GET user`, `repositories/{id}`, `repos/{o}/{r}/pulls/{n}`, the PR's compare (for base-side
+  anchors), and the PR's issue comments and reviews (for read-back).
+- Writes: `POST repos/{o}/{r}/issues/{n}/comments` and `POST repos/{o}/{r}/pulls/{n}/reviews`.
+
+Later increments add the merge's PUT and the PR actions' PATCH, reviewer request and two fixed GraphQL
+mutations (below). There is no DELETE, and a test pins every mutation in the sources.
+
+**Flow.**
+1. *Drafts.* Text is saved as a local draft per account, repository id, PR, revision and kind, with
+   version CAS, and debounced while typing. `status` reads only drafts, receipts and the account, so
+   opening a PR costs no extra GitHub read. Drafts of an earlier revision are listed. `carry` copies
+   such a draft's body into this revision; its line anchors count in the old revision and stay behind.
+2. *Preview* (`prepare`). Main reads, fresh:
+   - the account, which must be the key's;
+   - the repository by its stable id, with this account's `permissions`;
+   - the pull request, including `locked`.
+
+   The PR's head and target must equal the reviewed revision. It then refuses, with its reason:
+   - unreadable permission;
+   - no `pull` permission;
+   - a locked conversation without `push`;
+   - a review on a closed or merged PR;
+   - approving or requesting changes on one's own PR;
+   - a base-side line comment whose diff base the PR no longer has.
+
+   An unsent earlier preview for the PR is discarded. A dispatched or unknown send blocks the PR. The
+   preview names the account, `owner/repo #n`, the head and target, and the body.
+3. *Submit.* Main repeats every read and check, then requires gh's login state to be unchanged since it
+   checked the account. Any change spends the preview: a new one is needed. Only then does
+   `ReviewActions` durably admit one dispatch.
+   - A comment posts its body.
+   - A review posts `commit_id` = the reviewed head, the event, the body and its line comments (`RIGHT`
+     for head, `LEFT` for base, `start_line` for ranges).
+
+   Each body ends with a hidden `<!-- modex-intent: <id> -->` marker.
+4. *Outcome.*
+   - **Confirmed:** a 2xx with an id. The draft that was sent is cleared, unless it was edited meanwhile.
+   - **Rejected:** a 401/403/404/410 (denied), a 400/409/422/429 (failed), or gh not found or signed out.
+     The draft is kept.
+   - **Unknown:** anything else, including a 5xx, a timeout, a dropped connection or an unreadable answer.
+
+   A restart turns a dispatched send into unknown and sends nothing.
+5. *Reconciliation.* `reconcile` reads the PR's comments or reviews back. A row confirms the send only if
+   it is by this account, has the exact posted body with this intent's marker, and (for a review) is on
+   the reviewed head. Not finding one proves nothing, and the send stays unknown. `abandon` is the
+   person's decision to stop tracking it. It becomes rejected with the reason `abandoned`, the receipt
+   says it may still be on GitHub, and the PR can be written to again.
+
+**UI.**
+- Under the activity, a comment composer and a review composer (Comment, Approve, Request changes).
+  Approve and Request changes are disabled on one's own PR, a hint from the read; main enforces it.
+- In Changes, the selected line anchor offers *Comment on this line*, which adds to the review draft. An
+  outdated anchor offers nothing.
+- An unknown send shows above the composers with *Check GitHub* and *Stop tracking*, and blocks both
+  composers until it is settled.
+- `capabilities()` now lets `comment` and `submit-review` follow the connection; whether a PR accepts
+  them is main's answer at preview.
+
+**Limits.**
+- The marker is visible in the comment's Markdown source on GitHub.
+- A read-back checks the review's body, author and head, not each line comment.
+- The read-back reads at most 30 pages of 100.
+- Offline, a draft can't be shown: the account can't be confirmed.
+- A live write has not been run; it needs a disposable repository Val names.
+- Merge, and decisions 2–4 (state menu, title/description, reviewer requests), are below.
+
+Evidence: [CR-7 write increment](../reviews/2026-10-25-cr7-write-submit.md).
+
+## CR-7 merge
+
+The second write increment (#326). The header's Merge button opens a panel under the header. It is
+disabled until the PR has loaded and main has answered for this account.
+
+**Requests.** `merge-check` and `prepare-merge` are added, with exactly `key`, `revision` and (for the
+preview) `method`. `submit`, `cancel`, `reconcile` and `abandon` are shared with comments and reviews.
+`prepare` refuses a merge operation: a merge has no draft.
+
+**Facts, read now.** Each check, preview and submit reads its facts fresh:
+- the account and the repository by id;
+- this account's `permissions`, where merging needs `push`;
+- the repository's `allow_merge_commit`, `allow_squash_merge` and `allow_rebase_merge`;
+- the PR's state, `mergeable` and `mergeable_state`;
+- the target branch's active rules (`GET repos/{o}/{r}/rules/branches/{branch}`), to see whether a merge
+  queue is required.
+
+`mergePreflight` decides from these facts alone:
+- **Offered:** only the methods the repository explicitly allows.
+- **Unavailable, with Open on GitHub:**
+  - closed or merged;
+  - draft;
+  - conflicts;
+  - blocked by required reviews or checks;
+  - behind;
+  - GitHub's `unknown` (or an unrecognised state);
+  - no allowed method;
+  - a required merge queue;
+  - settings or rules that can't be read.
+- **Reconfirm:** a different account, a moved head or a moved target. Merging needs a new review, never an
+  adapted one.
+- **Not inputs:** check counts and model findings. `unstable` (failing checks that aren't required) is
+  offered, and the panel says so.
+
+**Send.** `PUT repos/{o}/{r}/pulls/{n}/merge` with `sha` = the reviewed head from the durable intent and
+`merge_method`. GitHub refuses with 409 if the head moved after main's last read.
+- **Confirmed:** a 200 that says `merged` with the merge commit.
+- **Refused:** 405 (not mergeable now), 409 and 422. A 401, 403, 404 or 410 is denied.
+- **Unknown:** anything else.
+
+After a confirmed merge the PR is read again.
+
+**Reconciliation.** A read-back of the PR confirms the merge only if GitHub says it merged, by this
+account, at the reviewed head. Merged by someone else, or not merged, proves nothing about this request,
+which stays unknown until a read-back proves it or the person stops tracking it. A send in doubt shows with
+the comment and review doubts and blocks every write to the PR.
+
+**Limits.**
+- A queue required by classic branch protection isn't visible to the rules read. GitHub refuses a direct
+  merge then, and the panel shows the refusal.
+- Merge commit title and message are GitHub's defaults.
+- No live merge has been run.
+
+Evidence: [CR-7 merge increment](../reviews/2026-10-25-cr7-merge.md).
+
+## CR-7 state, edits and reviewers
+
+The third write increment (#326) delivers decisions 2–4 (Val, 2026-10-25). These are the state menu (C21),
+title and description edits (C31, C35) and reviewer requests (C38, C43).
+
+Each is a `PrAction`, previewed with `prepare-action`; `submit`, `cancel`, `reconcile` and `abandon` are
+shared. Like a merge, an action has no draft. Its exact data is the intent's operation, so it is in the
+digest.
+
+**Actions.**
+- **`{ kind: "state", to }`**, where `to` is one of `closed`, `open`, `draft` or `ready`.
+  - Allowed only from a state GitHub permits: close from open or draft, reopen from closed, draft from
+    open, ready from draft. A merged PR changes no more.
+  - Needs push, triage or authorship.
+  - Close and reopen are `PATCH pulls/{n}` with `{ state }`. Draft and ready are GitHub's
+    `convertPullRequestToDraft` and `markPullRequestReadyForReview` mutations, the only GraphQL Modex
+    sends. REST can't change draft state. The transport accepts those two queries text for text, with
+    the PR's node id as their only variable.
+- **`{ kind: "edit", title, body, expected }`**: only the changed fields, plus the title and description
+  the person started from.
+  - Needs push or authorship.
+  - Main refuses the edit (`edit-conflict`) if GitHub's text differs from `expected`, at preview or at
+    submit. The pane then reads the PR again, so starting over begins from what GitHub has.
+  - `PATCH pulls/{n}` with only the changed fields; a test pins the PATCH body to `state`, `title` and
+    `body`.
+  - The title is 1–256 characters on one line; the description is within the 64 Ki text bound.
+- **`{ kind: "reviewers", logins }`**: 1–15 distinct logins.
+  - Needs push or triage, and an open PR.
+  - The PR's author and the signed-in account are refused (`reviewer-invalid`). GitHub decides whether
+    each login may review: a 422 is shown as a refusal.
+  - `POST pulls/{n}/requested_reviewers` with `{ reviewers }`. There are no team reviewers.
+
+**Checks.** At preview and again at submit, main reads the account, the repository's `permissions` and
+the PR. The head and target must still be the reviewed ones, and gh's login must be unchanged.
+Unreadable permission is refusal.
+
+**Outcome.** A 2xx whose returned PR shows the change is confirmed. A GraphQL answer with errors and no
+data is refused. Status codes map as for comments.
+
+**Reconciliation.** An unclear action (a 5xx, a timeout, a lost answer) stays unknown and blocks the PR.
+*Check GitHub* reads the PR: if it shows exactly the requested state, text or reviewers, the action is
+confirmed. This proves the outcome, not who caused it; someone else may have made the same change.
+
+**UI.**
+- The header's state pill becomes a menu (`aria-haspopup="menu"`, arrow keys, Escape), and the chosen
+  change is previewed in a panel under the header.
+- "Edit pull request" opens one form for the title and description.
+- "Request reviewers" takes logins separated by commas or spaces; a leading `@` is dropped.
+- Each confirmed change reads the PR again.
+- `capabilities()` lets `edit`, `request-reviewers` and `state` follow the connection. Only #325's agent
+  review, questions and instructions stay unavailable.
+
+**Limits.**
+- An edit's conflict check is main's read just before the PATCH: GitHub has no precondition for it, so an
+  edit made in the moment between them would still be overwritten.
+- Reviewer requests can't be withdrawn from Modex.
+- No live action has been run.
+
+Evidence: [CR-7 PR actions](../reviews/2026-10-25-cr7-pr-actions.md).
+

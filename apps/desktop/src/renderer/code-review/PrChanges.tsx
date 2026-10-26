@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { prKeyId, sameKey, sameRevision, type PrFile, type PrOverview, type ReadResult, type PrFiles } from "../../shared/code-review.js";
+import { LineComment } from "./ReviewComposer";
+import type { Writes } from "./writes.js";
 import { bridge } from "../bridge";
 import { Diff, FileIcon } from "../components/Diff";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
@@ -28,6 +30,8 @@ interface Props {
   onSelect: () => void;
   onTreeResize: (width: number) => void;
   onTreeReset: () => void;
+  /** CR-7: line comments go onto the review draft; absent where writes aren't offered. */
+  writes?: Writes;
 }
 
 /** The selected anchor survives a head refresh, but is never reinterpreted on that head. */
@@ -35,7 +39,7 @@ export function PrChanges(props: Props) {
   const [anchor, setAnchor] = useState<LineAnchor | null>(null);
   const { overview } = props;
   return <>
-    {anchor && sameKey(anchor.key, overview.key) && <p className="cr-anchor" role="status">{anchorState(anchor, overview.key, overview.revision) === "outdated" ? "Outdated line anchor" : "Line anchor"}: <bdi dir="ltr">{anchor.path}</bdi> · {anchor.side} {anchor.start} · {anchor.commitSha.slice(0, 8)}</p>}
+    {anchor && sameKey(anchor.key, overview.key) && <div className="cr-anchor-bar"><p className="cr-anchor" role="status">{anchorState(anchor, overview.key, overview.revision) === "outdated" ? "Outdated line anchor" : "Line anchor"}: <bdi dir="ltr">{anchor.path}</bdi> · {anchor.side} {anchor.start} · {anchor.commitSha.slice(0, 8)}</p>{props.writes && <LineComment key={`${anchor.path}:${anchor.side}:${anchor.start}`} writes={props.writes} overview={overview} anchor={anchor} />}</div>}
     <ChangesSession key={`${prKeyId(overview.key)}/${overview.revision.baseSha}/${overview.revision.headSha}/${overview.revision.baseRef}`} {...props} onAnchor={setAnchor} />
   </>;
 }

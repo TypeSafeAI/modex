@@ -28,6 +28,7 @@ import { WorkspaceBrowser } from "./workspace-browser.js";
 import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { CodeReviewService } from "./engine/code-review/read-service.js";
+import { CodeReviewWrites } from "./engine/code-review-actions/write-service.js";
 import { LocalModelsService } from "./engine/local-models/service.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
@@ -145,6 +146,8 @@ function projectNotes(projectId: string, create: boolean) {
 const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.MODEX_E2E });
 // Code Review reads (#321) use the same gh login and stay off in demos and E2E, which feeds fixtures through this channel.
 const codeReview = new CodeReviewService({ enabled: !demo && !process.env.MODEX_E2E });
+// Its writes (#326) are a separate service on a separate channel, through the same gh login and off in the same places.
+const codeReviewWrites = new CodeReviewWrites({ home, enabled: !demo && !process.env.MODEX_E2E });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
   enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
@@ -854,6 +857,14 @@ handle("files:list", ({ threadId }) => listWorkspaceFiles(cwdFor(threadId)));
 handle("thread:context", async ({ threadId }) => { await pathReady; return threadContexts.read(cwdFor(threadId)); });
 // Paired desktops cannot reach it; the payload is untrusted until the service's validateRequest has rebuilt it.
 handle("code-review:read", async (request) => { await pathReady; return codeReview.read(request); }, { localOnly: true });
+// Only this Mac's window can write: a preview belongs to the document that asked for it, so a reload needs a new one.
+handle("code-review:write", async (request, event) => {
+  if (!event) throw new Error("Code Review writes are available only in this window.");
+  const epoch = documentEpoch;
+  await pathReady;
+  return codeReviewWrites.handle(request, `w${event.sender.id}-${epoch}`,
+    () => !shuttingDown && epoch === documentEpoch && isTrustedTerminalSender(event, win));
+}, { localOnly: true });
 handle("local-models:command", (request) => localModels.handle(request), { localOnly: true });
 handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
 handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
