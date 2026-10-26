@@ -190,7 +190,8 @@ for (const delayed of [false, true]) test(`dispatch: unavailable actions start n
   }
   await settle(page);
   const calls = h.calls().length, starts = h.providerStarts().length;
-  for (const id of ["code-review-review", "code-review-instructions", "code-review-merge", "code-review-new-tab"]) {
+  // Merge is CR-7's now (e2e/code-review-actions.spec.ts): opening it reads, and only an explicit preview and confirm writes.
+  for (const id of ["code-review-review", "code-review-instructions", "code-review-new-tab"]) {
     const control = tid(page, id).first();
     await expect(control, id).toHaveAttribute("aria-disabled", "true");
     // aria-disabled, not disabled: it stays focusable, so force the pointer through to prove it does nothing.

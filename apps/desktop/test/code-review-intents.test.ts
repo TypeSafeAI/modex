@@ -4,7 +4,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ReviewActions, type ReviewContext } from "../src/main/engine/code-review-actions/intents.js";
+import { ReviewActions, type ReviewContext, type ReviewOperation } from "../src/main/engine/code-review-actions/intents.js";
+import { anchorFor } from "../src/renderer/code-review/patch.js";
+import type { PrFile } from "../src/shared/code-review.js";
 
 const nativeTest = process.platform === "win32" ? test.skip : test;
 
@@ -122,12 +124,37 @@ nativeTest("rejected and unknown outcomes keep drafts; only an exact correlated 
 
 nativeTest("inline drafts refuse stale or cross-account anchors and malformed repository paths", t => {
   const { actions, ctx } = fixture(t);
-  const anchor = { key: ctx.key, revision: ctx.revision, path: "src/example.ts", side: "head" as const, start: 4, end: 4 };
+  const anchor = { key: ctx.key, revision: ctx.revision, commitSha: ctx.revision.headSha, path: "src/example.ts", side: "head" as const, start: 4, end: 4 };
   assert(actions.saveDraft(ctx, "review", 0, "body", [{ anchor, body: "line comment" }]));
   assert.equal(actions.saveDraft(ctx, "review", 1, "bad", [{ anchor: { ...anchor, revision: { ...ctx.revision, headSha: "d".repeat(40) } }, body: "x" }]), null);
   assert.equal(actions.saveDraft(ctx, "review", 1, "bad", [{ anchor: { ...anchor, key: { ...ctx.key, account: "2002" } }, body: "x" }]), null);
   assert.equal(actions.saveDraft(ctx, "review", 1, "bad", [{ anchor: { ...anchor, path: "../escape" }, body: "x" }]), null);
   assert.equal(actions.saveDraft(ctx, "comment", 0, "bad", [{ anchor, body: "x" }]), null);
+});
+
+nativeTest("CR-5 line anchors are accepted as produced, with their diff commit bound into the intent", t => {
+  const { actions, ctx } = fixture(t);
+  const file: PrFile = { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", additions: 1, deletions: 1, patch: { kind: "text", patch: "@@ -2,2 +4 @@\n-a\n-b\n+c\n" } };
+  const mergeBase = "e".repeat(40);
+  const head = anchorFor(ctx.key, ctx.revision, file, "head", 4)!, base = anchorFor(ctx.key, ctx.revision, file, "base", 2, 3, mergeBase)!;
+  assert.equal(base.commitSha, mergeBase);
+  const saved = actions.saveDraft(ctx, "review", 0, "", [{ anchor: head, body: "head line" }, { anchor: base, body: "base lines" }]);
+  assert.deepEqual(saved?.comments.map(c => c.anchor), [head, base]);
+  const prepared = actions.prepare(ctx, review, 1)!;
+  assert.deepEqual(prepared.intent.payload?.comments.map(c => c.anchor.commitSha), [ctx.revision.headSha, mergeBase]);
+  actions.cancel(ctx, prepared.intent.id);
+  const moved = actions.saveDraft(ctx, "review", 1, "", [{ anchor: head, body: "head line" }, { anchor: { ...base, commitSha: "f".repeat(40) }, body: "base lines" }])!;
+  assert.notEqual(actions.prepare(ctx, review, moved.version)!.intent.digest, prepared.intent.digest);
+});
+
+nativeTest("anchors without a provable diff commit, or naming another head, are refused", t => {
+  const { actions, ctx } = fixture(t);
+  const head = { key: ctx.key, revision: ctx.revision, commitSha: ctx.revision.headSha, path: "src/example.ts", side: "head" as const, start: 4, end: 4 };
+  const { commitSha: _, ...legacy } = head;
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: legacy as never, body: "x" }]), null);
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: { ...head, commitSha: "d".repeat(40) }, body: "x" }]), null);
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: { ...head, side: "base", commitSha: "NOT-A-SHA" }, body: "x" }]), null);
+  assert.equal(actions.saveDraft(ctx, "review", 0, "bad", [{ anchor: { ...head, extra: true } as never, body: "x" }]), null);
 });
 
 nativeTest("one outstanding intent per PR prevents new IDs from bypassing ambiguous writes", t => {
@@ -226,13 +253,30 @@ for (const corrupt of ["state", "digest", "duplicate", "unknown-field"] as const
 
 nativeTest("bounded receipt storage refuses new intents without evicting duplicate protection", t => {
   const { actions, ctx, home } = fixture(t);
+  for (let i = 0; i < 127; i++) {
+    const p = actions.prepare(ctx, merge)!; actions.dispatch(ctx, p.confirmation);
+    actions.complete(ctx, p.intent.id, { state: "confirmed", remoteId: `merged-${i}` });
+  }
+  // A send in doubt on this PR: its earlier receipts are what keep a read-back from matching an old remote id.
+  const doubt = actions.prepare(ctx, merge)!; actions.dispatch(ctx, doubt.confirmation);
+  const bounded = new ReviewActions(home);
+  const other = { ...ctx, key: { ...ctx.key, number: 74 } };
+  assert.equal(bounded.prepare(other, merge), null);
+  assert.equal(bounded.list(ctx).length, 128);
+});
+
+nativeTest("bounded receipt storage evicts the oldest settled receipts of PRs with nothing in doubt", t => {
+  const { actions, ctx, home } = fixture(t);
   for (let i = 0; i < 128; i++) {
     const p = actions.prepare(ctx, merge)!; actions.dispatch(ctx, p.confirmation);
     actions.complete(ctx, p.intent.id, { state: "confirmed", remoteId: `merged-${i}` });
   }
   const bounded = new ReviewActions(home);
-  assert.equal(bounded.prepare(ctx, merge), null);
-  assert.equal(bounded.list(ctx).length, 128);
+  assert.ok(bounded.prepare(ctx, merge));
+  const kept = bounded.list(ctx);
+  assert.equal(kept.length, 128);
+  assert.equal(kept.some(i => i.remoteId === "merged-0"), false);
+  assert.equal(kept.at(-2)?.remoteId, "merged-127");
 });
 
 nativeTest("wrong account, unsupported operations and oversized drafts stay inert", t => {
@@ -282,4 +326,51 @@ test("Windows refuses admission rather than returning an unsafe permit", { skip:
   const { actions, ctx } = fixture(t);
   assert.throws(() => actions.prepare(ctx, merge), /storage requires recovery/);
   assert.deepEqual(actions.list(ctx), []);
+});
+
+nativeTest("decisions 2–4: state, edit and reviewer operations carry their exact data, with no draft, through a restart", t => {
+  const { home, actions, ctx } = fixture(t);
+  const ops: ReviewOperation[] = [
+    { kind: "state", to: "closed" },
+    { kind: "edit", title: "Lend holds between branches", body: null, expected: { title: "Move holds between branches", body: "" } },
+    { kind: "reviewers", logins: ["grace-fixture", "kit-fixture"] },
+  ];
+  const digests = new Set<string>();
+  for (const op of ops) {
+    const prepared = actions.prepare(ctx, op);
+    assert.ok(prepared, op.kind);
+    assert.deepEqual([prepared.intent.payload, prepared.intent.draftVersion], [null, null], op.kind);
+    assert.deepEqual(prepared.intent.operation, op);
+    digests.add(prepared.intent.digest);
+    assert.ok(actions.cancel(ctx, prepared.intent.id));
+  }
+  assert.equal(digests.size, 3);
+  // A body edit may be long: up to the text bound, with the text it replaces.
+  const long = "x".repeat(60_000);
+  const big = actions.prepare(ctx, { kind: "edit", title: null, body: long, expected: { title: "T", body: long.slice(1) } });
+  assert.ok(big);
+  // A restart reads them back intact and turns the unsent one into a refusal.
+  const restarted = new ReviewActions(home);
+  assert.deepEqual(restarted.list(ctx).map((i) => [i.operation.kind, i.state, i.reason]),
+    [["state", "rejected", "cancelled"], ["edit", "rejected", "cancelled"], ["reviewers", "rejected", "cancelled"], ["edit", "rejected", "restart"]]);
+});
+
+nativeTest("malformed state, edit and reviewer operations are refused", t => {
+  const { actions, ctx } = fixture(t);
+  const expected = { title: "T", body: "" };
+  for (const op of [
+    { kind: "state", to: "merged" },
+    { kind: "state", to: "closed", extra: true },
+    { kind: "edit", title: null, body: null, expected },
+    { kind: "edit", title: "", body: null, expected },
+    { kind: "edit", title: "two\nlines", body: null, expected },
+    { kind: "edit", title: "x".repeat(257), body: null, expected },
+    { kind: "edit", title: "ok", body: null },
+    { kind: "edit", title: "ok", body: "bell\u0007", expected },
+    { kind: "reviewers", logins: [] },
+    { kind: "reviewers", logins: ["-bad"] },
+    { kind: "reviewers", logins: ["Ada", "ada"] },
+    { kind: "reviewers", logins: Array.from({ length: 16 }, (_, i) => `r${i}`) },
+    { kind: "reviewers", logins: "ada" },
+  ]) assert.equal(actions.prepare(ctx, op as never), null, JSON.stringify(op).slice(0, 80));
 });

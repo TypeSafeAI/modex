@@ -1,31 +1,41 @@
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { sameKey, sameRevision, validateRequest, type PrKey, type PrRevision } from "../../../shared/code-review.js";
+import { sameKey, sameRevision, validateRequest, type LineAnchor, type PrKey, type PrRevision } from "../../../shared/code-review.js";
 import { AttachmentRecoveryFile, recoveryJSON, type RecoveryFileSnapshot } from "../attachment-recovery-file.js";
+import type { PrAction } from "../../../shared/code-review-write.js";
 
-/** Main-only preparation, deliberately not wired to IPC or a mutation transport.
- * A future adapter must obtain this context from fresh trusted identity/policy
- * checks. A caller-supplied `permitted` flag is not provider authorization. */
+/** Main-only. CR-7's write service (./write-service.ts) builds this context from fresh
+ * identity, repository-permission and pull-request reads; a caller-supplied `permitted` flag is not
+ * provider authorization. */
 export interface ReviewContext { account: string; session: string; permitted: boolean; key: PrKey; revision: PrRevision }
-export interface ReviewAnchor { key: PrKey; revision: PrRevision; path: string; side: "base" | "head"; start: number; end: number }
+/** CR-5's anchor as produced. A base-side `commitSha` is bound into the digest; the
+ * write adapter must still match it to the fresh read's `diffBaseSha` before dispatch. */
+export type ReviewAnchor = LineAnchor;
 export interface InlineComment { anchor: ReviewAnchor; body: string }
 export type DraftKind = "comment" | "review";
+/** Decisions 2–4 (the shared contract's `PrAction`). Like a merge they have no draft; their exact data is
+ * the operation, so it is in the digest. */
+export type { PrAction };
 export type ReviewOperation = { kind: "comment" } | { kind: "review"; event: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" }
-  | { kind: "merge"; method: "merge" | "squash" | "rebase" };
+  | { kind: "merge"; method: "merge" | "squash" | "rebase" } | PrAction;
 export interface ReviewDraft { key: PrKey; revision: PrRevision; kind: DraftKind; version: number; body: string; comments: InlineComment[] }
 export type IntentState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown";
 export type ReviewOutcome = { state: "confirmed"; remoteId: string } | { state: "rejected"; reason: "denied" | "failed" } | { state: "unknown" };
 export interface ReviewIntent {
   id: string; key: PrKey; revision: PrRevision; operation: ReviewOperation;
   payload: { body: string; comments: InlineComment[] } | null; draftVersion: number | null;
-  state: IntentState; digest: string; remoteId: string | null; reason: "denied" | "failed" | "restart" | "cancelled" | null;
+  state: IntentState; digest: string; remoteId: string | null; reason: "denied" | "failed" | "restart" | "cancelled" | "abandoned" | null;
 }
 /** `matched` is an adapter's exact correlation assertion, not a text search hit.
  * Absence (including a complete empty read) cannot prove a request was unsent. */
 export type ReviewReconciliation = { kind: "absent" | "ambiguous" }
   | { kind: "matched"; key: PrKey; revision: PrRevision; digest: string; remoteId: string };
 interface Document { schema: 1; drafts: ReviewDraft[]; intents: ReviewIntent[] }
-const BYTES = 2 * 1024 * 1024, MAX_RECORDS = 128, TEXT = 64 * 1024;
+const BYTES = 2 * 1024 * 1024, MAX_RECORDS = 128, TEXT = 64 * 1024, TITLE = 256, REVIEWERS = 15;
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+/** Operations made from a draft; every other kind has no payload or draft version. */
+const drafted = (op: ReviewOperation): op is Extract<ReviewOperation, { kind: DraftKind }> => op.kind === "comment" || op.kind === "review";
+const SHA = /^[0-9a-f]{40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const failure = () => new Error("Review action data is invalid; existing records were preserved.");
 const copy = <T>(value: T): T => structuredClone(value);
@@ -50,23 +60,50 @@ function scoped(a: { key: PrKey; revision: PrRevision }, b: { key: PrKey; revisi
 function operation(value: unknown): value is ReviewOperation {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return v.kind === "comment" ? shape(v, ["kind"])
-    : v.kind === "review" ? shape(v, ["kind", "event"]) && ["COMMENT", "APPROVE", "REQUEST_CHANGES"].includes(v.event as string)
-      : v.kind === "merge" && shape(v, ["kind", "method"]) && ["merge", "squash", "rebase"].includes(v.method as string);
+  switch (v.kind) {
+    case "comment": return shape(v, ["kind"]);
+    case "review": return shape(v, ["kind", "event"]) && ["COMMENT", "APPROVE", "REQUEST_CHANGES"].includes(v.event as string);
+    case "merge": return shape(v, ["kind", "method"]) && ["merge", "squash", "rebase"].includes(v.method as string);
+    case "state": return shape(v, ["kind", "to"]) && ["closed", "open", "draft", "ready"].includes(v.to as string);
+    case "edit": {
+      const title = (t: unknown) => validText(t, false) && t.length <= TITLE && !/[\r\n]/.test(t);
+      return shape(v, ["kind", "title", "body", "expected"]) && (v.title !== null || v.body !== null)
+        && (v.title === null || title(v.title)) && (v.body === null || validText(v.body))
+        && shape(v.expected, ["title", "body"]) && validText(v.expected.title) && (v.expected.title as string).length <= 1024 && validText(v.expected.body);
+    }
+    case "reviewers": {
+      const logins = v.logins;
+      return shape(v, ["kind", "logins"]) && Array.isArray(logins) && logins.length >= 1 && logins.length <= REVIEWERS
+        && logins.every((l) => typeof l === "string" && LOGIN.test(l)) && new Set(logins.map((l: string) => l.toLowerCase())).size === logins.length;
+    }
+    default: return false;
+  }
+}
+/** Canonical fields and order, independent of how the record was written. */
+function canonical(op: ReviewOperation): unknown {
+  switch (op.kind) {
+    case "comment": return { kind: op.kind };
+    case "review": return { kind: op.kind, event: op.event };
+    case "merge": return { kind: op.kind, method: op.method };
+    case "state": return { kind: op.kind, to: op.to };
+    case "edit": return { kind: op.kind, title: op.title, body: op.body, expected: { title: op.expected.title, body: op.expected.body } };
+    case "reviewers": return { kind: op.kind, logins: [...op.logins] };
+  }
 }
 function payload(scope: { key: PrKey; revision: PrRevision }, kind: DraftKind, body: unknown, comments: unknown): boolean {
   if (!validText(body) || !Array.isArray(comments) || comments.length > 100 || (kind === "comment" && comments.length > 0)) return false;
   return comments.every(c => {
-    if (!shape(c, ["anchor", "body"]) || !validText(c.body, false) || !shape(c.anchor, ["key", "revision", "path", "side", "start", "end"])) return false;
-    const a = c.anchor as unknown as ReviewAnchor;
-    return target(a) && scoped(a, scope) && validateRequest({ op: "context", requestId: "anchor", ...a }) !== null;
+    if (!shape(c, ["anchor", "body"]) || !validText(c.body, false) || !shape(c.anchor, ["key", "revision", "commitSha", "path", "side", "start", "end"])) return false;
+    const { commitSha, ...a } = c.anchor as unknown as ReviewAnchor;
+    return typeof commitSha === "string" && SHA.test(commitSha) && (a.side !== "head" || commitSha === a.revision.headSha)
+      && target(a) && scoped(a, scope) && validateRequest({ op: "context", requestId: "anchor", ...a }) !== null;
   });
 }
 function digest(intent: Pick<ReviewIntent, "id" | "key" | "revision" | "operation" | "payload" | "draftVersion">): string {
   // Canonical fields/order, independent of the persisted record's key order.
-  const k = intent.key, r = intent.revision, op = intent.operation;
-  const operation = op.kind === "comment" ? { kind: op.kind } : op.kind === "merge" ? { kind: op.kind, method: op.method } : { kind: op.kind, event: op.event };
-  const anchor = (a: ReviewAnchor) => ({ key: { account: a.key.account, host: a.key.host, repoId: a.key.repoId, number: a.key.number }, revision: { baseRef: a.revision.baseRef, baseSha: a.revision.baseSha, headSha: a.revision.headSha }, path: a.path, side: a.side, start: a.start, end: a.end });
+  const k = intent.key, r = intent.revision;
+  const operation = canonical(intent.operation);
+  const anchor = (a: ReviewAnchor) => ({ key: { account: a.key.account, host: a.key.host, repoId: a.key.repoId, number: a.key.number }, revision: { baseRef: a.revision.baseRef, baseSha: a.revision.baseSha, headSha: a.revision.headSha }, commitSha: a.commitSha, path: a.path, side: a.side, start: a.start, end: a.end });
   return createHash("sha256").update(JSON.stringify({ id: intent.id, key: { account: k.account, host: k.host, repoId: k.repoId, number: k.number },
     revision: { baseRef: r.baseRef, baseSha: r.baseSha, headSha: r.headSha }, operation,
     payload: intent.payload && { body: intent.payload.body, comments: intent.payload.comments.map(c => ({ anchor: anchor(c.anchor), body: c.body })) }, draftVersion: intent.draftVersion })).digest("hex");
@@ -80,11 +117,11 @@ function validIntent(value: unknown): value is ReviewIntent {
   if (!shape(value, ["id", "key", "revision", "operation", "payload", "draftVersion", "state", "digest", "remoteId", "reason"])) return false;
   const v = value as unknown as ReviewIntent;
   if (!UUID.test(v.id) || !target(v) || !operation(v.operation) || !["prepared", "dispatched", "confirmed", "rejected", "unknown"].includes(v.state)) return false;
-  if (v.operation.kind === "merge") { if (v.payload !== null || v.draftVersion !== null) return false; }
+  if (!drafted(v.operation)) { if (v.payload !== null || v.draftVersion !== null) return false; }
   else if (!shape(v.payload, ["body", "comments"]) || !payload(v, v.operation.kind, v.payload.body, v.payload.comments)
     || !Number.isSafeInteger(v.draftVersion) || v.draftVersion! < 1 || (!v.payload.body.trim() && !v.payload.comments.length && (v.operation.kind === "comment" || v.operation.event !== "APPROVE"))) return false;
   return v.digest === digest(v) && (v.state === "confirmed" ? validText(v.remoteId, false) : v.remoteId === null)
-    && (v.state === "rejected" ? ["denied", "failed", "restart", "cancelled"].includes(v.reason!) : v.reason === null);
+    && (v.state === "rejected" ? ["denied", "failed", "restart", "cancelled", "abandoned"].includes(v.reason!) : v.reason === null);
 }
 function validate(value: unknown): void {
   if (!shape(value, ["schema", "drafts", "intents"]) || value.schema !== 1 || !Array.isArray(value.drafts) || !Array.isArray(value.intents)
@@ -93,6 +130,22 @@ function validate(value: unknown): void {
   if (drafts.some((d, i) => drafts.slice(0, i).some(p => scoped(p, d) && p.kind === d.kind)) || new Set(intents.map(i => i.id)).size !== intents.length) throw failure();
   const active = intents.filter(i => ["prepared", "dispatched", "unknown"].includes(i.state));
   if (active.some((d, i) => active.slice(0, i).some(p => sameKey(p.key, d.key)))) throw failure();
+}
+
+/** Room for one more record: the oldest settled receipts go first, then empty drafts. Unsent text is never
+ * dropped, and no receipt of a PR with a send in doubt is: its remote ids are that send's duplicate protection. */
+function prune(data: Document): void {
+  const doubtful = data.intents.filter(i => i.state === "dispatched" || i.state === "unknown");
+  while (data.intents.length >= MAX_RECORDS) {
+    const index = data.intents.findIndex(i => (i.state === "confirmed" || i.state === "rejected") && !doubtful.some(d => sameKey(d.key, i.key)));
+    if (index < 0) break;
+    data.intents.splice(index, 1);
+  }
+  while (data.drafts.length >= MAX_RECORDS) {
+    const index = data.drafts.findIndex(d => !d.body.trim() && !d.comments.length);
+    if (index < 0) break;
+    data.drafts.splice(index, 1);
+  }
 }
 
 /** One main-process owner, bounded local data only. Existing recovery-file CAS,
@@ -131,19 +184,23 @@ export class ReviewActions {
     try { next = JSON.parse(recoveryJSON({ key: ctx.key, revision: ctx.revision, kind, version: expectedVersion + 1, body, comments }, BYTES)); }
     catch { return null; }
     if (!context(ctx) || !validDraft(next) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) return null;
-    const data = this.data(), index = data.drafts.findIndex(d => d.kind === kind && scoped(d, ctx));
+    const data = this.data();
+    if (data.drafts.length >= MAX_RECORDS && !data.drafts.some(d => d.kind === kind && scoped(d, ctx))) prune(data);
+    const index = data.drafts.findIndex(d => d.kind === kind && scoped(d, ctx));
     if ((index < 0 ? 0 : data.drafts[index]!.version) !== expectedVersion || (index < 0 && data.drafts.length >= MAX_RECORDS)) return null;
     if (index < 0) data.drafts.push(next); else data.drafts[index] = next;
     this.commit(data); return copy(next);
   }
   prepare(ctx: ReviewContext, input: ReviewOperation, draftVersion?: number): { intent: ReviewIntent; confirmation: object } | null {
     let op: ReviewOperation;
-    try { op = JSON.parse(recoveryJSON(input, 1024)); } catch { return null; }
+    // An edit carries its text and the text it replaces.
+    try { op = JSON.parse(recoveryJSON(input, 3 * TEXT + 1024)); } catch { return null; }
     if (!context(ctx) || !ctx.permitted || !operation(op)) return null;
     const data = this.data();
+    prune(data);
     if (data.intents.length >= MAX_RECORDS || data.intents.some(i => sameKey(i.key, ctx.key) && ["prepared", "dispatched", "unknown"].includes(i.state))) return null;
-    const draft = op.kind === "merge" ? null : data.drafts.find(d => scoped(d, ctx) && d.kind === op.kind && d.version === draftVersion);
-    if (op.kind !== "merge" && (!draft || (!draft.body.trim() && !draft.comments.length && (op.kind === "comment" || op.event !== "APPROVE")))) return null;
+    const draft = drafted(op) ? data.drafts.find(d => scoped(d, ctx) && d.kind === op.kind && d.version === draftVersion) : null;
+    if (drafted(op) && (!draft || (!draft.body.trim() && !draft.comments.length && (op.kind === "comment" || op.event !== "APPROVE")))) return null;
     const intent: ReviewIntent = { id: randomUUID(), key: copy(ctx.key), revision: copy(ctx.revision), operation: op,
       payload: draft ? { body: draft.body, comments: copy(draft.comments) } : null, draftVersion: draft?.version ?? null,
       state: "prepared", digest: "", remoteId: null, reason: null };
@@ -197,6 +254,19 @@ export class ReviewActions {
       intent.state = "confirmed"; intent.remoteId = evidence.remoteId; this.commit(data);
     }
     return copy(intent);
+  }
+  /** Drafts for the same account and PR kept under another revision. Their anchors count in that revision only. */
+  earlier(ctx: ReviewContext): ReviewDraft[] {
+    return context(ctx) ? this.data().drafts.filter(d => sameKey(d.key, ctx.key) && !sameRevision(d.revision, ctx.revision)) : [];
+  }
+  /** The person's explicit decision to stop tracking an uncertain send after a read-back could not
+   * prove it. It may still have reached the provider; the receipt says so, and the PR can be written to again. */
+  abandon(ctx: ReviewContext, id: string): ReviewIntent | null {
+    if (!context(ctx)) return null;
+    const data = this.data(), intent = data.intents.find(i => i.id === id);
+    if (!intent || intent.state !== "unknown" || !sameKey(intent.key, ctx.key)) return null;
+    intent.state = "rejected"; intent.reason = "abandoned";
+    this.commit(data); return copy(intent);
   }
   /** Same PR only; older revision receipts remain inspectable, never dispatchable. */
   list(ctx: ReviewContext): ReviewIntent[] {

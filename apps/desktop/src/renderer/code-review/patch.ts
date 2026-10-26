@@ -1,11 +1,12 @@
-import { sameKey, sameRevision, validateRequest, type PrFile, type PrKey, type PrRevision } from "../../shared/code-review.js";
+import { sameKey, sameRevision, validateRequest, type LineAnchor, type PrFile, type PrKey, type PrRevision } from "../../shared/code-review.js";
+
+export type { LineAnchor };
 
 /** Product limits, independent of any provider's limits. Checked before splitting or parsing. */
 export const PATCH_LIMITS = { characters: 512 * 1024, rows: 4000 } as const;
 export interface PatchRow { kind: "context" | "add" | "del"; text: string; oldLine: number | null; newLine: number | null; noNewline: boolean }
 export interface PatchHunk { oldStart: number; newStart: number; oldCount: number; newCount: number; rows: PatchRow[] }
 export interface PatchModel { state: "text" | "binary" | "provider" | "too-large"; hunks: PatchHunk[]; complete: boolean }
-export interface LineAnchor { key: PrKey; revision: PrRevision; commitSha: string; path: string; side: "base" | "head"; start: number; end: number }
 
 /** A zero-count range is an insertion point after its start line, not that line itself. */
 export function hunkBounds(hunk: PatchHunk): { oldStart: number; newStart: number; oldEnd: number; newEnd: number } {

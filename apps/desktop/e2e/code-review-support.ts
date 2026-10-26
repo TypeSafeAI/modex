@@ -28,6 +28,10 @@ export interface Harness {
   switchHosts: (login: string) => void;
   /** Lets every call held under this name answer. */
   release: (hold: string) => void;
+  /** CR-7: every POST GitHub "received", in order: `{ endpoint, body, id }`. */
+  posts: () => { endpoint: string; body: Record<string, unknown>; id: number }[];
+  /** Stops the app as a crash would leave it (no clean shutdown of its gh calls) and starts it again on the same home. */
+  relaunch: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -39,7 +43,7 @@ export async function launchWithGh(initial: GhWorld): Promise<Harness> {
   fs.mkdirSync(bin);
   fs.mkdirSync(config);
   const worldFile = path.join(home, "gh-world.json"), log = path.join(home, "gh-calls.log"), starts = path.join(home, "provider-starts.log");
-  const holds = path.join(home, "holds");
+  const holds = path.join(home, "holds"), posts = path.join(home, "gh-posts.jsonl");
   fs.mkdirSync(holds);
   fs.writeFileSync(log, "");
   fs.writeFileSync(starts, "");
@@ -51,35 +55,49 @@ export async function launchWithGh(initial: GhWorld): Promise<Harness> {
   const switchHosts = (login: string) => fs.writeFileSync(path.join(config, "hosts.yml"), `github.com:\n    user: ${login}\n    git_protocol: https\n`);
   switchHosts(initial.user?.login ?? "nobody");
   const env: Record<string, string | undefined> = { ...process.env, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
-    FAKE_GH_WORLD: worldFile, FAKE_GH_LOG: log, FAKE_GH_HOLDS: holds, GH_CONFIG_DIR: config, JEV_API_KEY: "", TYPESAFE_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") };
+    FAKE_GH_WORLD: worldFile, FAKE_GH_LOG: log, FAKE_GH_HOLDS: holds, FAKE_GH_POSTS: posts, GH_CONFIG_DIR: config, JEV_API_KEY: "", TYPESAFE_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") };
   for (const name of ["MODEX_E2E", "MODEX_DEMO", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]) delete env[name];
-  const app = await electron.launch({ args: [appDir], cwd: appDir, env: env as Record<string, string> });
-  const page = await app.firstWindow();
-  await page.waitForLoadState("domcontentloaded");
-  // waitForWindowReady needs MODEX_E2E's paint hooks; without them, wait for a visible window whose sizes agree.
-  await expect.poll(async () => {
-    const native = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return w && !w.isDestroyed() && w.isVisible() ? w.getContentSize() : null; });
-    const inner = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
-    return native !== null && native[0]! > 0 && native[0] === inner[0] && native[1] === inner[1];
-  }, { timeout: 15_000, intervals: [100] }).toBe(true);
-  // A built app hides the unfinished destination behind its local switch (src/renderer/code-review/feature.ts).
-  await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
-  // Row ages and captures read the renderer's clock: pin it to the fixtures' (test/fixtures/code-review.ts NOW).
-  await page.clock.setFixedTime(new Date("2026-10-18T20:41:00Z"));
-  await page.reload();
-  await expect(tid(page, "rail-code-review")).toBeVisible();
-  return {
+  const start = async () => {
+    const app = await electron.launch({ args: [appDir], cwd: appDir, env: env as Record<string, string> });
+    const page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    // waitForWindowReady needs MODEX_E2E's paint hooks; without them, wait for a visible window whose sizes agree.
+    await expect.poll(async () => {
+      const native = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return w && !w.isDestroyed() && w.isVisible() ? w.getContentSize() : null; });
+      const inner = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+      return native !== null && native[0]! > 0 && native[0] === inner[0] && native[1] === inner[1];
+    }, { timeout: 15_000, intervals: [100] }).toBe(true);
+    // A built app hides the unfinished destination behind its local switch (src/renderer/code-review/feature.ts).
+    await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
+    // Row ages and captures read the renderer's clock: pin it to the fixtures' (test/fixtures/code-review.ts NOW).
+    await page.clock.setFixedTime(new Date("2026-10-18T20:41:00Z"));
+    await page.reload();
+    await expect(tid(page, "rail-code-review")).toBeVisible();
+    return { app, page };
+  };
+  let { app, page } = await start();
+  const harness: Harness = {
     app, page, home, repo,
     world: (change) => { current = structuredClone(current); change(current); write(); },
     calls: () => fs.readFileSync(log, "utf8").split("\n").filter(Boolean),
     providerStarts: () => fs.readFileSync(starts, "utf8").split("\n").filter(Boolean),
     switchHosts,
     release: (hold) => fs.writeFileSync(path.join(holds, hold), ""),
+    posts: () => fs.existsSync(posts) ? fs.readFileSync(posts, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [],
+    relaunch: async () => {
+      // SIGKILL: no quit handlers run, as when the Mac loses power or Modex crashes mid-send.
+      const pid = app.process().pid;
+      if (pid) process.kill(pid, "SIGKILL");
+      await app.close().catch(() => {});
+      ({ app, page } = await start());
+      harness.app = app; harness.page = page;
+    },
     close: async () => {
       await app.close().catch(() => {});
       for (const dir of [home, repo]) fs.rmSync(dir, { recursive: true, force: true });
     },
   };
+  return harness;
 }
 
 export const prRow = (p: Page, slug: string) => p.locator(`[data-testid="code-review-row"][data-pr="${slug}"]`);

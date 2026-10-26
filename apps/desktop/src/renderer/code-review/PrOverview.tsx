@@ -8,6 +8,9 @@ import { ErrorNotice } from "../components/ui/ErrorNotice";
 import type { OpenPr } from "./model.js";
 import { prUrl } from "./model.js";
 import { additions, deletions, shortfallText, unavailableText } from "./text.js";
+import { ReviewComposer } from "./ReviewComposer";
+import type { Writes } from "./writes.js";
+import { EditPullRequest, RequestReviewers } from "./PrActions";
 
 /** Explicit action boundary for CR-7. No draft or successful submission is invented here. */
 export interface OverviewActions { edit?: () => void; requestReviewers?: () => void; comment?: () => void }
@@ -38,7 +41,7 @@ function usePosition(id: string) {
   }, [id]);
   return ref;
 }
-export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions = {} }: { pr: OpenPr; caps: Capabilities; retry: () => void; onChanges: () => void; onPage: (cursor: string | null) => void; busy: ReadonlySet<string>; actions?: OverviewActions }) {
+export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions = {}, writes }: { pr: OpenPr; caps: Capabilities; retry: () => void; onChanges: () => void; onPage: (cursor: string | null) => void; busy: ReadonlySet<string>; actions?: OverviewActions; writes?: Writes }) {
   const main = usePosition(`${prKeyId(pr.key)}:content`);
   const sidebar = usePosition(`${prKeyId(pr.key)}:details`);
   const read = pr.overview;
@@ -75,7 +78,7 @@ export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions =
     <main ref={main} className="cr-overview-main" tabIndex={0} aria-label="Description and activity">
       <Evidence result={read} label="pull request" retry={retry} />
       <h1>{overview.title}</h1>
-      <div className="cr-overview-meta"><strong>{overview.author.login}</strong> opened <time dateTime={overview.createdAt}>{new Date(overview.createdAt).toLocaleString()}</time><br /><code>{overview.headRepo ? `${overview.headRepo}:` : ""}{overview.headRef}</code> → <code>{overview.revision.baseRef}</code><Action label="Edit pull request" capability={caps.edit} action={actions.edit} /></div>
+      <div className="cr-overview-meta"><strong>{overview.author.login}</strong> opened <time dateTime={overview.createdAt}>{new Date(overview.createdAt).toLocaleString()}</time><br /><code>{overview.headRepo ? `${overview.headRepo}:` : ""}{overview.headRef}</code> → <code>{overview.revision.baseRef}</code>{writes ? <EditPullRequest writes={writes} overview={overview} fallback={caps.edit} onDone={retry} /> : <Action label="Edit pull request" capability={caps.edit} action={actions.edit} />}</div>
       <button type="button" className="cr-changes-summary" onClick={onChanges} aria-label="Open Changes">{overview.totals.files} changed files · <span className="cr-add">{additions(overview.totals.additions)}</span> <span className="cr-del">{deletions(overview.totals.deletions)}</span> · {overview.comments} comments</button>
       <article data-testid="cr-description" aria-label="Pull request description"><Markdown text={overview.body || "No description provided."} /></article>
       <section data-testid="cr-activity" className="cr-activity" aria-labelledby="cr-activity-heading">
@@ -86,13 +89,14 @@ export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions =
         {pr.activityRefreshing && <p role="status" className="cr-evidence">Refreshing activity · Earlier pages remain provisional.</p>}
         {activity.complete && !pr.activityRefreshing ? <p className="cr-evidence">{activity.rows.length ? "All activity loaded" : "No activity"}{filter !== "all" && rows.length === 0 ? " · No matching activity" : ""}</p> : <p className="cr-evidence">{activity.rows.length} activity items loaded · More activity may be missing.</p>}
         {activity.next && <button type="button" className="btn" disabled={pr.activityRefreshing || [...busy].some(s => s.startsWith(`activity:${prKeyId(pr.key)}:`))} onClick={() => onPage(activity.next)}>{pageFailed ? "Retry activity page" : "Load more activity"}</button>}
-        <div className="cr-comment-slot"><p>Comment on this pull request</p><Action label="Comment" capability={caps.comment} action={actions.comment} /><p className="cr-evidence">{!caps.comment.available && caps.comment.reason}</p></div>
+        {writes ? <ReviewComposer writes={writes} overview={overview} fallback={caps.comment} />
+          : <div className="cr-comment-slot"><p>Comment on this pull request</p><Action label="Comment" capability={caps.comment} action={actions.comment} /><p className="cr-evidence">{!caps.comment.available && caps.comment.reason}</p></div>}
       </section>
     </main>
     <aside ref={sidebar} className="cr-overview-sidebar" aria-label="Pull request details" tabIndex={0}>
       <section><h2>Changes</h2><p>{freshOverview ? "" : "Previously read · "}{overview.totals.files} files · <span className="cr-add">{additions(overview.totals.additions)}</span> <span className="cr-del">{deletions(overview.totals.deletions)}</span></p><p>{overview.totals.commits} commits · {overview.comments ? `${overview.comments} comments` : freshOverview ? "No comments" : "Comments unknown"}</p></section>
       <section data-testid="cr-stack"><h2>Stack</h2><Evidence result={stack} label="stack" retry={retry} />{stack && stack.state !== "unavailable" && <><p>{stack.value.source === "inferred" ? "Inferred from base/head branches · May be incomplete" : "Explicit stack metadata"}</p>{stackOrder(stack.value) ? <ol>{stack.value.members.map((member, index) => <li key={prUrl(member.locator) ?? index} aria-current={index === stack.value.position ? "true" : undefined}><External url={prUrl(member.locator)}>{member.title ?? "Inaccessible member"} #{member.locator.number}</External>{member.state && <span className="cr-stack-state">{member.state}</span>}</li>)}</ol> : <p>Ambiguous stack · No ordering available.</p>}</>}</section>
-      <section><h2>Reviewers</h2>{overview.reviewers.map(actor => <p key={actor.id ?? actor.login}>{actor.login}</p>)}{!overview.reviewers.length && <p>{freshOverview ? "No reviewers requested" : "Reviewers unknown"}</p>}<Action label="Request reviewers" capability={caps["request-reviewers"]} action={actions.requestReviewers} /></section>
+      <section><h2>Reviewers</h2>{overview.reviewers.map(actor => <p key={actor.id ?? actor.login}>{actor.login}</p>)}{!overview.reviewers.length && <p>{freshOverview ? "No reviewers requested" : "Reviewers unknown"}</p>}{writes ? <RequestReviewers writes={writes} overview={overview} fallback={caps["request-reviewers"]} onDone={retry} /> : <Action label="Request reviewers" capability={caps["request-reviewers"]} action={actions.requestReviewers} />}</section>
       <section data-testid="cr-checks"><h2>Checks · {summarizeChecks(checks ?? { state: "unavailable", reason: "failed", fetchedAt: read.fetchedAt }, overview.revision).verdict}</h2><Evidence result={checks} label="checks" retry={retry} /><p className="cr-evidence">Head {overview.revision.headSha.slice(0, 8)} · Evidence only; merge permission is separate.</p>{checks && checks.state !== "unavailable" && <>{checks.value.length === 0 && <p>{checks.state === "ready" && checks.coverage?.complete ? "No checks reported" : "Checks unknown"}</p>}{checks.value.slice(0, allChecks ? undefined : 4).map(check => <details key={`${check.source}:${check.id}`}><summary>{check.name} · {check.status === "completed" ? check.conclusion ?? "unknown" : check.status}{check.headSha !== overview.revision.headSha && " · Old revision"}</summary><p>{check.source} · {check.reporter ?? "Unknown reporter"} · {check.headSha.slice(0, 8)}</p><p>Elapsed at read · {elapsed(check.startedAt, check.completedAt ?? checks.fetchedAt)}</p><p>Started {check.startedAt ?? "unknown"} · Finished {check.completedAt ?? "unknown"}</p><External url={check.url}>Check details</External></details>)}{checks.value.length > 4 && <button className="btn" type="button" onClick={() => setAllChecks(v => !v)}>{allChecks ? "Show fewer checks" : "Show all checks"}</button>}</>}</section>
       <section data-testid="cr-deployments"><h2>Deployments</h2><Evidence result={pages[0]} label="deployment source" retry={retry} /><p className="cr-evidence">Provider deployment records and comment links have separate provenance. Only loaded activity is shown.</p>{activity.rows.filter((r): r is Extract<PrActivity, { kind: "deployment" }> => r.kind === "deployment").map(row => <Activity key={row.id} row={row} currentHead={overview.revision.headSha} />)}{!activity.rows.some(r => r.kind === "deployment") && <p>No provider deployment evidence in loaded activity.</p>}</section>
     </aside>
