@@ -99,7 +99,7 @@ const DETAIL: Record<LocalGetReason, string> = {
   malformed: "The server's answer could not be read.",
   unavailable: "Nothing answered at that address.",
   "reflected-credential": "The server repeated the saved token in its answer, so Modex ignored the answer.",
-  "credential-unavailable": "Modex can't read the saved token right now, so it didn't contact the server.",
+  "credential-unavailable": "Modex can't read the saved token right now. Unlock it and retry.",
 };
 
 export class LocalGetFailure extends Error {

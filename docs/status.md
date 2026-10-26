@@ -178,6 +178,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
+- **LM-2 credential repair, in review.** The later credential-copy and stale-discovery fixes from closed #401 are not in main. The current-main `lm2-credential-repair` branch preserves the reviewed source/tests and prevents fake child PIDs from reaching OS signals. Build, full unit tests, typechecks and the Electron IPC journey passed; hosted checks and protected delivery are pending. [Reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md).
+
 - **Desktop v0.4.0 and Companion 0.4.0 (9) preparation.** The release ships everything under "On
   main, unreleased":
   - task context: the task view, files touched and verification, and Claude's and Codex's plans;

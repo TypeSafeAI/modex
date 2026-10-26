@@ -1,18 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import fs from "node:fs";
 import type { AddressInfo } from "node:net";
 import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
 import { LocalConnectionStore } from "../src/main/engine/local-models/connections.js";
 import { LocalModelDiscovery } from "../src/main/engine/local-models/discovery.js";
 import { LocalModelsService } from "../src/main/engine/local-models/service.js";
 import type { DiscoveryResult, LocalModelDescriptor } from "../src/shared/local-connections.js";
+import { threadTarget } from "../src/shared/local-models.js";
 import { tmpdir } from "./helpers.js";
 
 /** LM-2 (#378) AC1, AC3–AC6: bounded metadata discovery against fixture runtimes on loopback. */
 
 interface Hit { method: string; url: string; auth: string | null; body: string }
-type Route = (req: http.IncomingMessage, body: string) => { status?: number; json?: unknown; raw?: string; delayMs?: number } | undefined;
+type Route = (req: http.IncomingMessage, body: string) => { status?: number; json?: unknown; raw?: string; delayMs?: number; hold?: Promise<void> } | undefined;
 
 async function runtime(route: Route) {
   const hits: Hit[] = [];
@@ -23,7 +25,8 @@ async function runtime(route: Route) {
       hits.push({ method: req.method ?? "", url: req.url ?? "", auth: req.headers.authorization ?? null, body });
       const answer = route(req, body) ?? { status: 404, json: { error: "not found" } };
       const send = () => { res.writeHead(answer.status ?? 200, { "content-type": "application/json" }); res.end(answer.raw ?? JSON.stringify(answer.json)); };
-      if (answer.delayMs) setTimeout(send, answer.delayMs); else send();
+      if (answer.hold) void answer.hold.then(send);
+      else if (answer.delayMs) setTimeout(send, answer.delayMs); else send();
     });
   });
   await new Promise<void>(resolve => s.listen(0, "127.0.0.1", resolve));
@@ -43,6 +46,51 @@ function setup() {
 const byId = (result: DiscoveryResult) => Object.fromEntries((result.state === "stale" ? [] : result.models).map(m => [m.model.id, m]));
 /** Inference, pulls, loads and unloads: none of these may ever be requested by discovery. */
 const FORBIDDEN = /\/(generate|chat|completions|responses|embed|embeddings|pull|push|create|copy|delete|load|unload|blobs)\b/;
+
+test("discovered and manual identities survive the shared local-target reader", async () => {
+  const rt = await runtime(() => ({ json: { data: [{ id: "Org/Exact Model:Q4" }] } }));
+  const { store, discovery } = setup();
+  try {
+    const c = store.create({ label: "identity", runtime: "responses", url: rt.url, manualModels: ["Manual/Exact:Q8"] });
+    const result = await discovery.discover(c, "identity");
+    assert.equal(result.state, "ready");
+    if (result.state !== "ready") return;
+    assert.equal(result.models.length, 2);
+    for (const descriptor of result.models) {
+      const target = threadTarget({ backend: "codex", localTarget: { schema: 1, harness: "codex", model: descriptor.model } });
+      assert.equal(target.kind, "local");
+      if (target.kind === "local") assert.deepEqual(target.target.model, { schema: 1, connection: { id: c.id, revision: 1 }, id: descriptor.model.id });
+    }
+  } finally { await rt.close(); }
+});
+
+test("unavailable saved credentials never dispatch anonymous discovery; tokenless profiles still work", async () => {
+  const rt = await runtime(() => ({ json: { data: [{ id: "model" }] } }));
+  try {
+    for (const failure of ["missing", "locked", "corrupt"] as const) {
+      const home = tmpdir("modex-lm-credential-");
+      let locked = false;
+      const secrets = new SecretStore(home, { ...testCipher, available: () => !locked });
+      const store = new LocalConnectionStore(home, secrets);
+      const discovery = new LocalModelDiscovery(store);
+      const c = store.create({ label: failure, runtime: "responses", url: rt.url, token: "private-fixture-token" });
+      if (failure === "missing") fs.unlinkSync(secrets.file);
+      if (failure === "locked") locked = true;
+      if (failure === "corrupt") {
+        const data = JSON.parse(fs.readFileSync(secrets.file, "utf8"));
+        for (const entry of Object.values(data.entries) as { enc: string }[]) entry.enc = Buffer.from("invalid cipher blob").toString("base64");
+        fs.writeFileSync(secrets.file, JSON.stringify(data));
+      }
+      const result = await discovery.discover(c, failure);
+      assert.equal(result.state === "unavailable" && result.reason, "credential-unavailable");
+      assert.equal(rt.hits.length, 0, `${failure}: no request without its configured credential`);
+    }
+    const { store, discovery } = setup();
+    const c = store.create({ label: "intentionally anonymous", runtime: "responses", url: rt.url });
+    assert.equal((await discovery.discover(c, "anonymous")).state, "ready");
+    assert.deepEqual(rt.hits.map(hit => hit.auth), [null]);
+  } finally { await rt.close(); }
+});
 
 const OLLAMA: Route = (req, body) => {
   if (req.method === "GET" && req.url === "/api/tags") return { json: { models: [
@@ -351,7 +399,7 @@ test("a saved token that can't be decrypted is reported, and no request goes out
     keychain = false;
     const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
     assert.equal(result.state === "unavailable" && result.reason, "credential-unavailable");
-    assert.deepEqual(result.state === "unavailable" ? result.models.map(m => m.model.id) : null, ["org/manual"], "manual IDs stay available");
+    assert.deepEqual(result.state === "unavailable" ? result.models : null, [], "unreadable credentials cannot validate manual IDs for token reflection");
     assert.equal(rt.hits.length, 0, "an unauthenticated request is never sent in its place");
     keychain = true;
     assert.equal((await discovery.discover({ id: c.id, revision: 1 }, "r2")).state, "ready");
@@ -382,3 +430,31 @@ test("slow per-model reads can't hold discovery past its overall deadline; unrea
   } finally { await rt.close(); }
 });
 
+
+for (const newer of [false, true]) test(`credential loss during discovery ${newer ? "supersedes the older read" : "refuses its late result"}`, async () => {
+  let arrived!: () => void, release!: () => void;
+  const started = new Promise<void>(r => { arrived = r; });
+  const held = new Promise<void>(r => { release = r; });
+  const rt = await runtime(() => { arrived(); return { json: { data: [{ id: "late/model" }] }, hold: held }; });
+  const home = tmpdir("modex-lm-late-credential-");
+  let available = true;
+  const secrets = new SecretStore(home, { ...testCipher, available: () => available });
+  const store = new LocalConnectionStore(home, secrets);
+  const discovery = new LocalModelDiscovery(store, { timeoutMs: 2000 });
+  try {
+    const c = store.create({ label: "late", runtime: "responses", url: rt.url, token: "private-late-token" });
+    const first = discovery.discover(c, "first");
+    await started;
+    available = false;
+    if (newer) {
+      const second = await discovery.discover(c, "second");
+      assert.equal(second.state === "unavailable" && second.reason, "credential-unavailable");
+    }
+    release();
+    const result = await first;
+    if (newer) assert.equal(result.state, "stale", "the newer unavailable read supersedes the old read");
+    else assert.equal(result.state === "unavailable" && result.reason, "credential-unavailable", "late credential loss refuses ready data");
+    assert.equal(JSON.stringify(result).includes("late/model"), false);
+    assert.equal(rt.hits.length, 1);
+  } finally { release(); await rt.close(); }
+});

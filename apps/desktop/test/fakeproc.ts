@@ -5,7 +5,9 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
 
-let nextPid = 40_000;
+// Stay outside Node's signed-int32 signal API: fake children must never name a real process or group.
+// Production group-signal attempts reject before the OS call and fall back to this fixture's kill method.
+let nextPid = 2 ** 32;
 
 /** A scriptable stand-in for a spawned CLI: tests feed stdout lines and inspect what was written to stdin. */
 export class FakeProcess extends EventEmitter {

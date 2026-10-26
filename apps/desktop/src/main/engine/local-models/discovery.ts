@@ -173,14 +173,15 @@ export class LocalModelDiscovery {
     const stale: DiscoveryResult = { state: "stale", connection: { ...ref }, requestId };
     const resolved = this.store.resolve(ref);
     if (!resolved) return stale;
-    // The profile was saved with a token: reading without it would be a different, unauthenticated request.
-    if (resolved.credentialUnavailable) {
-      const models = resolved.manualModels.map(id => descriptor(ref, id, "manual", UNKNOWN));
-      const reason = "credential-unavailable";
-      return { state: "unavailable", connection: { ...ref }, requestId, reason, detail: new LocalGetFailure(reason).message, models, checkedAt: this.now().toISOString() };
-    }
-    const deadline = Date.now() + DEADLINES_PER_DISCOVERY * this.timeoutMs;
+    // A newer read supersedes existing work even when its credential is unavailable.
     this.inflight.get(ref.id)?.controller.abort();
+    const unavailableCredential = (): DiscoveryResult => {
+      const reason = "credential-unavailable";
+      // Without the saved token, manual IDs cannot be checked for reflected credentials.
+      return { state: "unavailable", connection: { ...ref }, requestId, reason, detail: new LocalGetFailure(reason).message, models: [], checkedAt: this.now().toISOString() };
+    };
+    if (resolved.credentialUnavailable) return unavailableCredential();
+    const deadline = Date.now() + DEADLINES_PER_DISCOVERY * this.timeoutMs;
     const entry = { controller: new AbortController(), requestId };
     this.inflight.set(ref.id, entry);
     const signal = entry.controller.signal;
@@ -199,7 +200,9 @@ export class LocalModelDiscovery {
       if (this.inflight.get(ref.id) === entry) this.inflight.delete(ref.id);
     }
     // Superseded, cancelled, edited or deleted while this ran: the answer is not current.
-    if (signal.aborted || failure?.reason === "cancelled" || !this.store.resolve(ref)) return stale;
+    const current = this.store.resolve(ref);
+    if (signal.aborted || failure?.reason === "cancelled" || !current) return stale;
+    if (current.credentialUnavailable) return unavailableCredential();
     const reflects = (id: string) => resolved.token !== null && id.includes(resolved.token);
     if (listing?.entries.some(e => reflects(e.id))) {
       listing = null;

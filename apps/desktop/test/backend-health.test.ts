@@ -96,3 +96,15 @@ test("Codex account read distinguishes signed out, authenticated, custom, unsupp
   assert.equal((await backend.health()).authentication, "unsupported");
   await backend.dispose();
 });
+
+
+test("fake child PIDs cannot signal real processes and Codex disposal closes the fixture", { timeout: 1000 }, async () => {
+  const proc = new FakeProcess();
+  assert.ok(proc.pid > 0x7fffffff, "fake PIDs must be outside the OS signal API range");
+  // Check both process and group forms only after proving neither can name an OS process.
+  for (const pid of [proc.pid, -proc.pid]) assert.throws(() => process.kill(pid, 0), /pid/);
+  const fixture = scripted({ account: null, requiresOpenaiAuth: true });
+  const backend = new CodexBackend("fixture", fixture.spawnImpl);
+  assert.equal((await backend.health()).authentication, "signed-out");
+  await backend.dispose();
+});
