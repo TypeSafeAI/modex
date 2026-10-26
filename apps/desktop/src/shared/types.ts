@@ -53,6 +53,14 @@ export interface LastTurn {
 }
 
 export interface Thread {
+  /**
+   * An explicit local native target (shared/local-models.ts, #379). Absent means the thread runs on its
+   * cloud backend as before; present, main runs it through an isolated Codex child bound to this exact
+   * connection revision and model, and never through a cloud account.
+   */
+  localTarget?: import("./local-models.js").LocalThreadTarget;
+  /** The context window Modex tells Codex to assume for the local model, in tokens. Set with `localTarget`. */
+  localContextTokens?: number;
   pluginRevision?: number;
   imageJobId?: string;
   id: string;
@@ -361,7 +369,8 @@ export interface RoutingStatus {
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
 }
 
-export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals">>;
+/** `localTarget: null` clears a local target; the thread returns to its cloud backend with a fresh native conversation. */
+export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals" | "localContextTokens">> & { localTarget?: import("./local-models.js").LocalThreadTarget | null };
 
 /** A suggested next message for an idle thread, chosen by Jev or the built-in heuristic from typed facts about the last turn. */
 export interface FollowUp {
