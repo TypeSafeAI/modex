@@ -63,8 +63,9 @@ export function writeCapability(entry: WriteEntry | undefined, fallback: Capabil
 function Composer({ kind, writes, overview, status, capability, approve, blocked }: { kind: WriteKind; writes: Writes; overview: PrOverview; status: WriteStatus | null; capability: Capability; approve?: Capability; blocked: boolean }) {
   const { key, revision } = overview;
   const draft = status?.drafts[kind];
-  const [open, setOpen] = useState(false);
-  const [text, setTextState] = useState(draft?.body ?? "");
+  const pendingBody = writes.pendingBody(key, revision, kind);
+  const [open, setOpen] = useState(pendingBody !== undefined);
+  const [text, setTextState] = useState(pendingBody ?? draft?.body ?? "");
   // The latest text, for a debounced save that runs after the render it was scheduled in.
   const latest = useRef(text);
   const setText = (value: string) => { latest.current = value; setTextState(value); };
@@ -75,7 +76,6 @@ function Composer({ kind, writes, overview, status, capability, approve, blocked
   const saved = useRef(draft?.body ?? "");
   // A second click in the same frame, before React disables the button, must not ask main again.
   const inFlight = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Main's newer draft (another pane, a cleared send) replaces the text unless the person has typed since.
   useEffect(() => {
     const body = draft?.body ?? "";
@@ -83,23 +83,19 @@ function Composer({ kind, writes, overview, status, capability, approve, blocked
     saved.current = body;
     if (draft && (draft.body.trim() || draft.comments.length)) setOpen(true);
   }, [draft?.version]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => () => {
+    if (writes.pendingBody(key, revision, kind) !== undefined) void writes.flushBody(key, revision, kind);
+  }, [writes, key.account, key.host, key.repoId, key.number, revision.baseRef, revision.baseSha, revision.headSha, kind]);
   const comments = draft?.comments ?? [];
   const flush = async (): Promise<number | null> => {
-    clearTimeout(timer.current);
-    // Main's current draft, not this render's: another pane may have saved since.
-    const current = writes.entry(key, revision)?.status?.drafts[kind];
-    const body = latest.current;
-    if (current && body === current.body) return current.version;
-    const done = await writes.save(key, revision, kind, body, current?.comments ?? []);
+    const done = await writes.flushBody(key, revision, kind);
     if (!done.ok) { setMessage({ text: done.detail, tone: "error" }); return null; }
     saved.current = done.value.body;
     return done.value.version;
   };
   const edit = (value: string) => {
     setText(value); setMessage(null);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(), 400);
+    writes.editBody(key, revision, kind, value);
   };
   const removeComment = async (index: number) => {
     const done = await writes.save(key, revision, kind, latest.current, comments.filter((_, i) => i !== index));
@@ -139,6 +135,10 @@ function Composer({ kind, writes, overview, status, capability, approve, blocked
       <p data-testid="cr-preview-destination">As <strong>{preview.account.login}</strong> on <strong>{preview.destination.owner}/{preview.destination.repo} #{preview.destination.number}</strong></p>
       <p className="cr-evidence" data-testid="cr-preview-revision">Head <code>{short(preview.revision.headSha)}</code> into <code>{preview.revision.baseRef}</code>{preview.comments ? ` · ${preview.comments} line ${preview.comments === 1 ? "comment" : "comments"}` : ""}</p>
       {preview.body.trim() ? <Markdown text={preview.body} /> : <p className="cr-evidence">No summary.</p>}
+      {preview.inlineComments.length > 0 && <ul className="cr-line-comments" aria-label="Line comments to submit">{preview.inlineComments.map((c, i) => <li key={i}>
+        <span><bdi dir="ltr">{c.path}</bdi> · {c.side} {c.start}{c.end > c.start ? `–${c.end}` : ""}</span>
+        <Markdown text={c.body} />
+      </li>)}</ul>}
       <div className="cr-compose-buttons">
         <button className="btn primary" type="button" disabled={busy} onClick={() => void submit()}>{kind === "comment" ? "Post comment" : "Submit review"}</button>
         <button className="btn" type="button" disabled={busy} onClick={() => void back()}>Back to editing</button>
@@ -154,7 +154,8 @@ function Composer({ kind, writes, overview, status, capability, approve, blocked
         <span><bdi dir="ltr">{c.anchor.path}</bdi> · {c.anchor.side} {c.anchor.start}{c.anchor.end > c.anchor.start ? `–${c.anchor.end}` : ""}{anchorState(c.anchor, overview.key, overview.revision) === "outdated" ? " · Outdated" : ""}</span>
         <p>{c.body}</p><button className="btn" type="button" aria-label={`Remove line comment on ${c.anchor.path}`} onClick={() => void removeComment(i)}>Remove</button>
       </li>)}</ul>}
-      <p className="cr-evidence">Saved on this Mac only. Nothing is sent until you preview and submit it.</p>
+      <p className="cr-evidence">{pendingBody === undefined ? "Saved on this Mac only." : "Saving draft on this Mac…"} Nothing is sent until you preview and submit it.</p>
+      {writes.bodyError(key, revision, kind) && <p role="alert">{writes.bodyError(key, revision, kind)}</p>}
       <div className="cr-compose-buttons">
         <button className="btn primary" type="button" disabled={busy || unavailable} title={unavailable ? reason : undefined} onClick={() => void show()}>{kind === "comment" ? "Preview comment" : "Preview review"}</button>
       </div>

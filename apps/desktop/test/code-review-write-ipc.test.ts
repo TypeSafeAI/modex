@@ -25,7 +25,7 @@ function mainHandler(service: CodeReviewWrites, epoch: { value: number }) {
   assert.ok(start >= 0, "main registers code-review:write");
   const end = code.indexOf("}, { localOnly: true });", start) + "}, { localOnly: true });".length;
   const registered: { channel: string; handler: Function; options: { localOnly?: boolean } }[] = [];
-  const sandbox = { pathReady: Promise.resolve(), codeReviewWrites: service, documentEpoch: epoch.value,
+  const sandbox = { shuttingDown: false, win: {}, isTrustedTerminalSender: () => true, pathReady: Promise.resolve(), codeReviewWrites: service, documentEpoch: epoch.value,
     handle: (channel: string, handler: Function, options: { localOnly?: boolean } = {}) => registered.push({ channel, handler, options }) };
   vm.runInNewContext(code.slice(start, end), sandbox);
   assert.equal(registered.length, 1);
@@ -75,6 +75,45 @@ nativeTest("main's code-review:write handler is local-only, scopes previews to t
   }
 });
 
+nativeTest("a document reload during submit preflight fences the durable dispatch", async () => {
+  const dir = tmpdir("modex-cr-write-reload-");
+  const bin = path.join(dir, "gh"), log = path.join(dir, "calls.log"), world = path.join(dir, "world.json"), posts = path.join(dir, "posts.jsonl");
+  fs.writeFileSync(bin, WORLD_GH, { mode: 0o755 });
+  fs.writeFileSync(world, JSON.stringify(baseWorld()));
+  fs.writeFileSync(log, "");
+  Object.assign(process.env, { FAKE_GH_LOG: log, FAKE_GH_WORLD: world, FAKE_GH_POSTS: posts, FAKE_GH_HOLDS: dir });
+  let release!: () => void, entered!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const held = new Promise<void>((resolve) => { entered = resolve; });
+  let hold = false;
+  const transport = ghWriteTransport(bin);
+  try {
+    const service = new CodeReviewWrites({ home: path.join(dir, "home"), identityStamp: () => "hosts-1", transport: async (call) => {
+      if (hold && call.method === "GET") { entered(); await gate; }
+      return transport(call);
+    } });
+    const { handler, reload } = mainHandler(service, { value: 1 });
+    let n = 0;
+    const invoke = async (request: Record<string, unknown>) => await handler({ ...request, requestId: `reload${++n}` }, { sender: { id: 7 } }) as WriteReply;
+    const value = (reply: WriteReply) => { assert.equal(reply.result.state, "ok"); return (reply.result as { value: any }).value; };
+    const saved = value(await invoke({ op: "save", key: KEY, revision: REV, kind: "comment", expectedVersion: 0, body: "Do not send after reload", comments: [] }));
+    const preview = value(await invoke({ op: "prepare", key: KEY, revision: REV, operation: { kind: "comment" }, draftVersion: saved.version }));
+    hold = true;
+    const pending = invoke({ op: "submit", key: KEY, intentId: preview.intentId });
+    await held;
+    const queued = invoke({ op: "submit", key: KEY, intentId: preview.intentId });
+    reload();
+    release();
+    const reply = await pending;
+    assert.equal(reply.result.state, "refused");
+    assert.equal((await queued).result.state, "refused", "queued requests must recheck document authority too");
+    assert.equal(fs.existsSync(posts), false, "stale document must never reach a remote mutation");
+  } finally {
+    release();
+    for (const name of ["FAKE_GH_LOG", "FAKE_GH_WORLD", "FAKE_GH_POSTS", "FAKE_GH_HOLDS"]) delete process.env[name];
+  }
+});
+
 nativeTest("main merges through gh with the reviewed head, once, and only with a method GitHub's settings allow", async () => {
   const dir = tmpdir("modex-cr-merge-ipc-");
   const bin = path.join(dir, "gh"), log = path.join(dir, "calls.log"), world = path.join(dir, "world.json"), posts = path.join(dir, "posts.jsonl");
@@ -115,7 +154,7 @@ test("the write path reaches only its fixed GitHub mutations and the local revie
   const sources = Object.fromEntries(["write-gh.ts", "write-service.ts", "merge-preflight.ts"].map((name) => [name, fs.readFileSync(path.join(dir, name), "utf8")]));
   for (const [name, source] of Object.entries(sources)) {
     for (const spec of [...source.matchAll(/from "([^"]+)"/g)].map((m) => m[1])) {
-      assert.ok(["node:child_process", "node:os", "../../../shared/code-review.js", "../../../shared/code-review-write.js", "./intents.js", "./write-gh.js", "../code-review/gh.js", "../code-review/github.js", "./merge-preflight.js"].includes(spec!), `${name} imports ${spec}`);
+      assert.ok(["node:child_process", "node:os", "../../../shared/code-review.js", "../../../shared/code-review-patch.js", "../../../shared/code-review-write.js", "./intents.js", "./write-gh.js", "../code-review/gh.js", "../code-review/github.js", "./merge-preflight.js"].includes(spec!), `${name} imports ${spec}`);
     }
     assert.doesNotMatch(source, /(?<![.\w])(spawn|exec|execSync|writeFile|appendFile|mkdir|rm|unlink|rename)\s*\(/, name);
     // No deletion, no raw method flag, no labels or assignees, and no GraphQL text but the two draft mutations.

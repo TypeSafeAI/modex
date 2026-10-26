@@ -64,8 +64,28 @@ test("a comment stays a local draft across a reload, previews its exact destinat
   expect(h.providerStarts()).toEqual([]);
 });
 
-test("a review with a line comment from Changes pins the head; self-approval is offered nowhere", async () => {
+test("navigating before the draft debounce preserves the latest text", async () => {
   h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  await page.clock.pauseAt(new Date("2026-10-18T20:42:00Z"));
+  await writeComment(page, "Keep the last edit across navigation.");
+  await tid(page, "code-review-tab-changes").click();
+  await expect(comment(page)).toHaveCount(0);
+  await tid(page, "code-review-tab-overview").click();
+  await expect(comment(page).getByRole("textbox", { name: "Comment text" })).toHaveValue("Keep the last edit across navigation.");
+  await page.clock.runFor(450);
+  await expect.poll(() => page.evaluate(async () => {
+    const reply = await window.modex!.invoke("code-review:write", { op: "status", requestId: `navigation-${Date.now()}`, key: { account: "1001", host: "github.com", repoId: "7301", number: 73 }, revision: { baseRef: "main", baseSha: "b".repeat(40), headSha: "c".repeat(40) } });
+    return reply.result.state === "ok" ? reply.result.value.drafts.comment?.body : null;
+  })).toBe("Keep the last edit across navigation.");
+  expect(h.posts()).toEqual([]);
+});
+
+test("a review with a line comment from Changes pins the head; self-approval is offered nowhere", async () => {
+  const world = baseWorld();
+  // The display-density fixture advertises 11 files but supplies two; a writable review needs complete evidence.
+  Object.assign(world.routes["repos/example-org/lending/pulls/73"] as object, { changed_files: 2, additions: 3, deletions: 1 });
+  h = await launchWithGh(world);
   const page = await openLending();
   await fitWindow(h, 1766, 1057);
   await tid(page, "code-review-split-toggle").click();
@@ -87,6 +107,8 @@ test("a review with a line comment from Changes pins the head; self-approval is 
   const preview = page.getByRole("region", { name: "Preview review" });
   await expect(preview).toContainText("Submit a review · Comment");
   await expect(preview.getByTestId("cr-preview-revision")).toContainText("1 line comment");
+  await expect(preview.getByRole("list", { name: "Line comments to submit" })).toContainText("src/holds/move.ts · head 2");
+  await expect(preview).toContainText("Does this keep the hold's place?");
   await preview.getByRole("button", { name: "Submit review" }).click();
   await expect(region.getByRole("status")).toContainText("Review submitted.");
   const [posted] = h.posts();

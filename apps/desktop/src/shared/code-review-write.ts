@@ -43,6 +43,7 @@ export interface WritePreview {
   revision: PrRevision;
   body: string;
   comments: number;
+  inlineComments: { path: string; side: "base" | "head"; start: number; end: number; body: string }[];
 }
 
 /** Why Merge can't be offered, from GitHub's own state and settings. Each comes with Open on GitHub. */

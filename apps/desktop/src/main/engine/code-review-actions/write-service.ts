@@ -1,4 +1,5 @@
-import { canonicalPrUrl, prKeyId, sameRevision, type PrKey, type PrRevision, type PrState } from "../../../shared/code-review.js";
+import { parsePatch } from "../../../shared/code-review-patch.js";
+import { canonicalPrUrl, prKeyId, sameRevision, type LineAnchor, type PrFile, type PrKey, type PrRevision, type PrState } from "../../../shared/code-review.js";
 import {
   intentMarker, MERGE_BLOCKS, REFUSALS, validateWrite,
   type EarlierDraft, type MergeCheck, type MergeMethod, type PrAction, type PrStateChange, type WriteDraft, type WriteOperation, type WritePreview, type WriteReceipt, type WriteRefusal, type WriteReply, type WriteRequest, type WriteResult, type WriteStatus,
@@ -7,7 +8,7 @@ import { mergePreflight, type MergeFacts, type MergePreflight, type MergeState }
 import { ReviewActions, type ReviewContext, type ReviewDraft, type ReviewIntent, type ReviewOutcome } from "./intents.js";
 import type { GhAnswer } from "../code-review/gh.js";
 import { ghHostsStamp } from "../code-review/gh.js";
-import { json, pull, repository, type Pull } from "../code-review/github.js";
+import { changedFile, json, pull, repository, type Pull } from "../code-review/github.js";
 import { DRAFT_MUTATIONS, ghWriteTransport, type GhWriteCall, type GhWriteTransport } from "./write-gh.js";
 
 /**
@@ -75,7 +76,7 @@ export class CodeReviewWrites {
   }
 
   /** The `code-review:write` handler. `session` is main's name for the window that asked, never the renderer's. */
-  async handle(input: unknown, session: string): Promise<WriteReply> {
+  async handle(input: unknown, session: string, currentDocument: () => boolean = () => true): Promise<WriteReply> {
     const request = validateWrite(input);
     if (!request) throw new Error("Invalid Code Review write request.");
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(session)) throw new Error("Invalid Code Review session.");
@@ -85,7 +86,8 @@ export class CodeReviewWrites {
     const previous = this.queues.get(id) ?? Promise.resolve();
     const run = previous.then(async () => {
       try {
-        return reply({ state: "ok", value: await this.run(request, session) });
+        if (!currentDocument()) throw new Refused("no-preview");
+        return reply({ state: "ok", value: await this.run(request, session, currentDocument) });
       } catch (error) {
         // Anything that is not one of this file's refusals reads as `failed`: no exception text leaves main.
         return reply(error instanceof Refused ? refuse(error.reason, error.detail) : refuse("failed"));
@@ -99,7 +101,7 @@ export class CodeReviewWrites {
     }
   }
 
-  private run(request: WriteRequest, session: string): Promise<unknown> {
+  private run(request: WriteRequest, session: string, currentDocument: () => boolean): Promise<unknown> {
     switch (request.op) {
       case "status": return this.status(request.key, request.revision, session);
       case "save": return this.save(request, session);
@@ -108,7 +110,7 @@ export class CodeReviewWrites {
       case "merge-check": return this.mergeCheck(request.key, request.revision);
       case "prepare-merge": return this.prepareMerge(request, session);
       case "prepare-action": return this.prepareAction(request, session);
-      case "submit": return this.submit(request.key, request.intentId, session);
+      case "submit": return this.submit(request.key, request.intentId, session, currentDocument);
       case "cancel": return this.cancel(request.key, request.intentId, session);
       case "reconcile": return this.reconcile(request.key, request.intentId, session);
       case "abandon": return this.abandon(request.key, request.intentId, session);
@@ -185,7 +187,7 @@ export class CodeReviewWrites {
     const kind = request.operation.kind;
     const draft = this.local((actions) => actions.getDraft(ctx, kind));
     if (!draft || draft.version !== request.draftVersion) throw new Refused("draft-conflict");
-    await this.anchors(fresh, draft);
+    const inlinePaths = await this.anchors(fresh, draft);
     const prepared = this.local((actions) => {
       // A newer preview replaces an unsent one, from this window or another. A send in doubt blocks the PR.
       for (const intent of actions.list(ctx)) {
@@ -200,6 +202,7 @@ export class CodeReviewWrites {
       intentId: prepared.intent.id, account: fresh.account, operation: request.operation, revision: request.revision,
       destination: this.destination(fresh, request.key),
       body: draft.body, comments: draft.comments.length,
+      inlineComments: draft.comments.map(({ anchor, body }, index) => ({ path: inlinePaths[index]!, side: anchor.side, start: anchor.start, end: anchor.end, body })),
     };
   }
 
@@ -226,7 +229,7 @@ export class CodeReviewWrites {
     });
     if (!prepared) throw new Refused("storage");
     this.previews.set(prepared.intent.id, { confirmation: prepared.confirmation, session });
-    return { intentId: prepared.intent.id, account: fresh.account, operation, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0 };
+    return { intentId: prepared.intent.id, account: fresh.account, operation, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0, inlineComments: [] };
   }
 
   /** A state change, an edit or a reviewer request: checked against GitHub's PR now, then previewed exactly. */
@@ -244,10 +247,10 @@ export class CodeReviewWrites {
     });
     if (!prepared) throw new Refused("storage");
     this.previews.set(prepared.intent.id, { confirmation: prepared.confirmation, session });
-    return { intentId: prepared.intent.id, account: fresh.account, operation: request.action, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0 };
+    return { intentId: prepared.intent.id, account: fresh.account, operation: request.action, revision: request.revision, destination: this.destination(fresh, request.key), body: "", comments: 0, inlineComments: [] };
   }
 
-  private async submit(key: PrKey, id: string, session: string): Promise<WriteReceipt> {
+  private async submit(key: PrKey, id: string, session: string, currentDocument: () => boolean): Promise<WriteReceipt> {
     const preview = this.previews.get(id);
     if (!preview || preview.session !== session) throw new Refused("no-preview");
     const intent = this.local((actions) => actions.list(this.context(key.account, session, key, placeholder(key))).find((i) => i.id === id));
@@ -257,6 +260,7 @@ export class CodeReviewWrites {
       this.local((actions) => actions.cancel(this.context(key.account, session, key, intent.revision), id));
     };
     let fresh: Fresh, ctx: ReviewContext;
+    let inlinePaths: string[] = [];
     try {
       fresh = await this.fresh(key, true);
       if (intent.operation.kind === "merge") this.offered(await this.mergeable(fresh, intent.revision), intent.operation.method);
@@ -264,10 +268,12 @@ export class CodeReviewWrites {
       else {
         this.current(fresh, intent.revision);
         this.allow(fresh, intent.operation as WriteOperation);
-        if (intent.payload) await this.anchors(fresh, intent.payload);
+        if (intent.payload) inlinePaths = await this.anchors(fresh, intent.payload);
       }
       // gh's login changed after main checked it: the request could go out as someone else.
       if (this.stamp() !== fresh.stamp) throw new Refused("account-changed");
+      // Recheck main-owned document authority after every asynchronous preflight read, before dispatch.
+      if (!currentDocument()) throw new Refused("no-preview");
       ctx = this.context(fresh.account.id, session, key, intent.revision, true);
     } catch (error) {
       spend();
@@ -276,7 +282,7 @@ export class CodeReviewWrites {
     const permit = this.local((actions) => actions.dispatch(ctx, preview.confirmation));
     this.previews.delete(id);
     if (!permit) throw new Refused("no-preview");
-    const outcome = await this.send(fresh, permit);
+    const outcome = await this.send(fresh, permit, inlinePaths);
     let settled: ReviewIntent | null = null;
     try {
       settled = this.store().complete(ctx, id, outcome);
@@ -451,15 +457,47 @@ export class CodeReviewWrites {
     }
   }
 
-  /** A base-side line counts in the diff base it was read under; the PR must still have that one. */
-  private async anchors(fresh: Fresh, payload: { comments: { anchor: { side: string; commitSha: string } }[] }): Promise<void> {
-    if (!payload.comments.some((c) => c.anchor.side === "base")) return;
+  /** Resolve every destination against complete provider hunks, never renderer-supplied path/range authority. */
+  private async anchors(fresh: Fresh, payload: { comments: { anchor: LineAnchor }[] }): Promise<string[]> {
+    if (!payload.comments.length) return [];
     const { baseSha, headSha } = fresh.pr.revision;
-    const answer = json((await this.get(`repos/${enc(fresh.owner)}/${enc(fresh.name)}/compare/${baseSha}...${headSha}?per_page=1&page=1`, 24 * MB)).body) as
-      { base_commit?: { sha?: unknown }; merge_base_commit?: { sha?: unknown } } | undefined;
-    const base = answer?.merge_base_commit?.sha;
-    if (answer?.base_commit?.sha !== baseSha || typeof base !== "string") throw new Refused("failed");
-    if (payload.comments.some((c) => c.anchor.side === "base" && c.anchor.commitSha !== base)) throw new Refused("anchor-outdated");
+    const root = `repos/${enc(fresh.owner)}/${enc(fresh.name)}`;
+    if (payload.comments.some((c) => c.anchor.side === "base")) {
+      const answer = json((await this.get(`${root}/compare/${baseSha}...${headSha}?per_page=1&page=1`, 24 * MB)).body) as
+        { base_commit?: { sha?: unknown }; merge_base_commit?: { sha?: unknown } } | undefined;
+      const base = answer?.merge_base_commit?.sha;
+      if (answer?.base_commit?.sha !== baseSha || typeof base !== "string") throw new Refused("failed");
+      if (payload.comments.some((c) => c.anchor.side === "base" && c.anchor.commitSha !== base)) throw new Refused("anchor-outdated");
+    }
+    // GitHub exposes at most 3,000 PR files. An incomplete listing cannot establish a unique destination.
+    if (fresh.pr.totals.files > READ_BACK_PAGES * PAGE) throw new Refused("anchor-outdated");
+    const files: PrFile[] = [];
+    for (let page = 1; page <= READ_BACK_PAGES; page++) {
+      const rows = json((await this.get(`${root}/pulls/${fresh.key.number}/files?per_page=100&page=${page}`, 24 * MB)).body);
+      if (!Array.isArray(rows) || rows.length > PAGE) throw new Refused("failed");
+      for (const row of rows) {
+        const file = changedFile(row);
+        if (!file) throw new Refused("failed");
+        files.push(file);
+      }
+      if (rows.length < PAGE || files.length >= fresh.pr.totals.files) break;
+    }
+    if (files.length !== fresh.pr.totals.files || new Set(files.map((file) => file.path)).size !== files.length) throw new Refused("anchor-outdated");
+    // The files endpoint is mutable: bracket the listing with a revision check before using its evidence.
+    const after = await this.fresh(fresh.key, true);
+    this.current(after, fresh.pr.revision);
+    return payload.comments.map(({ anchor }) => {
+      const matches = files.filter((file) => (anchor.side === "base" ? file.previousPath ?? file.path : file.path) === anchor.path);
+      if (matches.length !== 1 || (anchor.side === "head" && anchor.commitSha !== headSha)) throw new Refused("anchor-outdated");
+      const file = matches[0]!, patch = parsePatch(file);
+      const supported = patch.state === "text" && patch.complete && patch.hunks.some((hunk) => {
+        const lines = hunk.rows.map((row) => anchor.side === "base" ? row.oldLine : row.newLine).filter((line): line is number => line !== null);
+        return lines.includes(anchor.start) && lines.includes(anchor.end);
+      });
+      if (!supported) throw new Refused("anchor-outdated");
+      // GitHub addresses LEFT-side comments on renamed files using the current filename too.
+      return file.path;
+    });
   }
 
   // --- GitHub -----------------------------------------------------------------------------------
@@ -536,7 +574,7 @@ export class CodeReviewWrites {
    * out is rejected; anything else (a 5xx, a timeout, a dropped connection, an unreadable answer) may have
    * reached GitHub and is unknown.
    */
-  private async send(fresh: Fresh, intent: ReviewIntent): Promise<ReviewOutcome> {
+  private async send(fresh: Fresh, intent: ReviewIntent, inlinePaths: string[]): Promise<ReviewOutcome> {
     const base = `repos/${enc(fresh.owner)}/${enc(fresh.name)}`;
     if (intent.operation.kind === "merge") return this.sendMerge(base, intent, intent.operation.method);
     if (isAction(intent.operation)) return this.sendAction(fresh, base, intent, intent.operation);
@@ -546,9 +584,9 @@ export class CodeReviewWrites {
       ? { method: "POST", endpoint: `${base}/issues/${intent.key.number}/comments`, input: { body }, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS }
       : { method: "POST", endpoint: `${base}/pulls/${intent.key.number}/reviews`, maxBytes: 4 * MB, timeoutMs: SEND_TIMEOUT_MS, input: {
         commit_id: intent.revision.headSha, event: (intent.operation as { event: string }).event, body,
-        comments: payload.comments.map(({ anchor, body: text }) => {
+        comments: payload.comments.map(({ anchor, body: text }, index) => {
           const side = anchor.side === "head" ? "RIGHT" : "LEFT";
-          return { path: anchor.path, body: text, side, line: anchor.end, ...(anchor.start < anchor.end ? { start_line: anchor.start, start_side: side } : {}) };
+          return { path: inlinePaths[index]!, body: text, side, line: anchor.end, ...(anchor.start < anchor.end ? { start_line: anchor.start, start_side: side } : {}) };
         }),
       } };
     let answer: GhAnswer;

@@ -30,6 +30,7 @@ const READS = [
   "user",
   `repositories/${NUMBER}`,
   `${REPO}/pulls/${NUMBER}`,
+  `${REPO}/pulls/${NUMBER}/files\\?per_page=100&${PAGE}`,
   `${REPO}/compare/${SHA}\\.\\.\\.${SHA}\\?per_page=1&page=1`,
   `${REPO}/issues/${NUMBER}/comments\\?per_page=100&${PAGE}`,
   `${REPO}/pulls/${NUMBER}/reviews\\?per_page=100&${PAGE}`,

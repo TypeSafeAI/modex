@@ -72,7 +72,7 @@ and the linked issues for later delivery.
 | Journal off | The golden fixture runs with the journal off, the default | Verified (fixture) |
 | Expired cursor | Existing `event-journal.test.ts` resume and reload cases | Verified (unit, existing) |
 | Stale Note revision | `task-context.test.ts`: a note edited since is kept and the new record becomes a new note | Verified (unit) |
-| Missing artifact | — | Open: CF-5's owned-artifact actions |
+| Missing artifact | `test/attachment-commands.test.ts`: "an attachment whose file was deleted cannot be opened, and nothing is revealed", supplied by #328 (merged as `b71e89e`); reconfirmed in the 2026-10-26 full unit run | Verified (unit); not live-provider or human acceptance |
 | Outcomes, reasoning and provenance match recorded events | CF-1 fixture tests on Claude Code 2.1.302 and codex-cli 0.163.0 captures; CF-5 evidence tests | Verified on captures, not live |
 | Themes and viewports | `e2e/conversation-fidelity.spec.ts` captures waiting, live, failed, completed and restored in Graphite, Jev and OpenCoven, at 900×600 and 1440×900, with no sideways scroll; `e2e/typed-turns.spec.ts` covers a typed turn in each theme at 900×600. 33 references are committed in [`screenshots/conversation-fidelity/`](../screenshots/conversation-fidelity/manifest.json) | Verified (fixture captures); human visual review open |
 | Keyboard and reduced motion | Existing `app.spec.ts` accessibility test; the new elements add no animation | Partial; human VoiceOver open |
@@ -156,3 +156,8 @@ Each one has a failing test first, then the fix, in the PR that added these chec
 - **The typed-turns theme test checked Graphite three times** (CF-4, #277). It set the theme with
   `settings:update`, which the window applies only on its next refresh. Specs now switch themes through
   Settings (`setTheme` in `e2e/support.ts`) and wait for the window to show it.
+
+
+## Missing-artifact matrix correction — 2026-10-26
+
+The missing-artifact row above was stale after #328 landed. Its deleted-attachment test passed again in the CR-7 integration repair's full unit run (2,163 passed, 22 skipped, zero failed); the test and attachment implementation match `main` at `deb373a3e34ddf890e7db9e2597c3e21ec6aa49c`. This corrects the unit-evidence classification only. The historical candidate receipts, unrun live rows and human acceptance decisions remain unchanged.

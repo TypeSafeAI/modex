@@ -36,6 +36,7 @@ class FakeGitHub {
     node_id: "PR_kwFixture73", requested_reviewers: [] as { id: number; login: string; type: string }[],
     created_at: "2026-10-18T10:00:00Z", updated_at: "2026-10-19T09:00:00Z", base: { ref: "main", sha: sha("b"), repo: LENDING },
     head: { ref: "topic-73", sha: sha("c"), repo: LENDING }, changed_files: 1, additions: 1, deletions: 0, commits: 1, comments: 0, review_comments: 0 };
+  files = [{ filename: "src/holds/move.ts", previous_filename: undefined as string | undefined, status: "modified", additions: 1, deletions: 1, changes: 2, patch: "@@ -1,3 +1,3 @@\n same\n-old\n+new\n last" as string | undefined }];
   edits = 0;
   mergeBase = sha("a");
   comments: { id: number; user: typeof ADA; body: string }[] = [];
@@ -96,6 +97,7 @@ class FakeGitHub {
     if (e === "repos/example-org/lending/pulls/73") return ok(200, this.pr);
     if (e.startsWith("repos/example-org/lending/compare/")) return ok(200, { base_commit: { sha: this.pr.base.sha }, merge_base_commit: { sha: this.mergeBase } });
     const page = Number(/[?&]page=(\d+)/.exec(e)?.[1] ?? 1);
+    if (e.startsWith("repos/example-org/lending/pulls/73/files?")) return ok(200, this.files.slice((page - 1) * 100, page * 100));
     if (e.startsWith("repos/example-org/lending/issues/73/comments?")) return ok(200, this.comments.slice((page - 1) * 100, page * 100));
     if (e.startsWith("repos/example-org/lending/pulls/73/reviews?")) return ok(200, this.reviews.slice((page - 1) * 100, page * 100));
     if (call.method === "POST" && e === "repos/example-org/lending/issues/73/comments") {
@@ -263,6 +265,40 @@ nativeTest("a review pins the head, refuses self-approval and outdated base-side
   const stale = f.value(await f.ask<"save">({ op: "save", key: KEY, revision: REV, kind: "review", expectedVersion: approval.version, body: "Old base.", comments: [{ anchor: anchor("base", sha("a")), body: "Gone?" }] }));
   assert.equal(f.refusal(await f.ask<"prepare">({ op: "prepare", key: KEY, revision: REV, operation: { kind: "review", event: "COMMENT" }, draftVersion: stale.version })), "anchor-outdated");
   assert.equal(f.gh.posts().length, 1);
+});
+
+nativeTest("inline review destinations must be present in complete fresh provider hunks", async t => {
+  for (const problem of ["unknown-path", "outside-hunk", "missing-patch", "truncated-patch", "missing-file"] as const) {
+    const f = fixture(t);
+    const target = anchor("head", sha("c"));
+    if (problem === "unknown-path") target.path = "invented.ts";
+    if (problem === "outside-hunk") { target.start = 90; target.end = 91; }
+    if (problem === "missing-patch") f.gh.files[0]!.patch = undefined;
+    if (problem === "truncated-patch") f.gh.files[0]!.patch = "@@ -1,3 +1,3 @@\n same";
+    if (problem === "missing-file") f.gh.files = [];
+    const saved = await draft(f, "review", "", [{ anchor: target, body: "Check here" }]);
+    const result = await f.ask<"prepare">({ op: "prepare", key: KEY, revision: REV, operation: { kind: "review", event: "COMMENT" }, draftVersion: saved.version });
+    assert.notEqual(f.refusal(result), "ok", problem);
+    assert.equal(f.gh.mutations().length, 0);
+  }
+});
+
+nativeTest("submit rechecks inline patch evidence and maps renamed base paths to GitHub's current filename", async t => {
+  const f = fixture(t);
+  f.gh.files[0]!.previous_filename = "src/holds/move.ts";
+  f.gh.files[0]!.filename = "src/holds/renamed.ts";
+  f.gh.files[0]!.status = "renamed";
+  const saved = await draft(f, "review", "", [{ anchor: anchor("base", sha("a")), body: "Old side note" }]);
+  const prepare = () => f.ask<"prepare">({ op: "prepare", key: KEY, revision: REV, operation: { kind: "review", event: "COMMENT" }, draftVersion: saved.version });
+  const preview = f.value(await prepare());
+  const patch = f.gh.files[0]!.patch;
+  f.gh.files[0]!.patch = undefined;
+  assert.notEqual(f.refusal(await f.ask<"submit">({ op: "submit", key: KEY, intentId: preview.intentId })), "ok");
+  assert.equal(f.gh.mutations().length, 0);
+  f.gh.files[0]!.patch = patch;
+  const retry = f.value(await prepare());
+  f.value(await f.ask<"submit">({ op: "submit", key: KEY, intentId: retry.intentId }));
+  assert.equal((f.gh.posts()[0]!.input!.comments as { path: string }[])[0]!.path, "src/holds/renamed.ts");
 });
 
 nativeTest("a server denial is shown as one, never as success, and the draft survives", async t => {

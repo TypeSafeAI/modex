@@ -860,8 +860,10 @@ handle("code-review:read", async (request) => { await pathReady; return codeRevi
 // Only this Mac's window can write: a preview belongs to the document that asked for it, so a reload needs a new one.
 handle("code-review:write", async (request, event) => {
   if (!event) throw new Error("Code Review writes are available only in this window.");
+  const epoch = documentEpoch;
   await pathReady;
-  return codeReviewWrites.handle(request, `w${event.sender.id}-${documentEpoch}`);
+  return codeReviewWrites.handle(request, `w${event.sender.id}-${epoch}`,
+    () => !shuttingDown && epoch === documentEpoch && isTrustedTerminalSender(event, win));
 }, { localOnly: true });
 handle("local-models:command", (request) => localModels.handle(request), { localOnly: true });
 handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
