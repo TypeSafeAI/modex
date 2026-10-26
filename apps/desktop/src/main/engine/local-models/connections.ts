@@ -262,7 +262,14 @@ export class LocalConnectionStore {
     // A token stays with the address it was saved for unless the person enters it again.
     const clearsToken = secret === null || (moved && secret === undefined && hadToken);
     const targetChanged = rt !== current.runtime || moved || typeof secret === "string" || (clearsToken && hadToken);
-    const kept = typeof secret === "string" ? secret : clearsToken || !current.credential ? null : this.secrets.get(current.credential);
+    const previousToken = current.credential ? this.secrets.get(current.credential) : null;
+    // Clearing or rotating a profile does not revoke its old token at the server.
+    // If it cannot be read, refuse new metadata that cannot be checked for copies.
+    if (current.credential && previousToken === null && (patch.label !== undefined || patch.manualModels !== undefined)) {
+      throw new Error("Saved local connection credential is unavailable. Unlock it before editing its label or model IDs.");
+    }
+    refuseCopies(previousToken, name, manualModels);
+    const kept = typeof secret === "string" ? secret : clearsToken ? null : previousToken;
     refuseCopies(kept, name, manualModels);
     const added = typeof secret === "string" ? this.saveToken(id, secret) : null;
     const credential = added ?? (clearsToken ? null : current.credential);

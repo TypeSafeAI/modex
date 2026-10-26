@@ -15,7 +15,9 @@ function setup() {
   return { home, secrets, store: new LocalConnectionStore(home, secrets) };
 }
 
-const TOKEN = "lm-token-SECRET-4242";
+// Keep the suffix outside UUID, timestamp and base64 alphabets so unrelated
+// serialized metadata cannot accidentally satisfy the leak detector.
+const TOKEN = "lm-token-SECRET-!~QZ";
 
 test("profiles persist without secrets; the renderer view says only whether a token is saved", () => {
   const { home, secrets, store } = setup();
@@ -29,7 +31,7 @@ test("profiles persist without secrets; the renderer view says only whether a to
   const file = path.join(home, "app", "local-connections.json");
   const everything = [fs.readFileSync(file, "utf8"), fs.readFileSync(secrets.file, "utf8"), JSON.stringify(store.list()), JSON.stringify(b)].join("\n");
   assert.equal(everything.includes(TOKEN), false, "no plaintext token on disk or in a view");
-  assert.equal(everything.includes("4242"), false, "not even the last four characters");
+  assert.equal(everything.includes(TOKEN.slice(-4)), false, "not even the last four characters");
   assert.equal(fs.existsSync(path.join(home, "app", "state.json")), false);
 
   const reopened = new LocalConnectionStore(home, secrets);
@@ -177,8 +179,9 @@ test("the saved token is never copied into the profiles file or a view through t
     ["new token already inside the saved label", { token: "LM" }],
   ];
   for (const [name, patch] of patches) assert.throws(() => store.update(c.id, 1, patch), /token/i, name);
-  // An address change drops the token, so nothing saved can repeat it.
-  const moved = store.update(c.id, 1, { url: "http://127.0.0.1:4321", manualModels: ["org/kept-model", `org/${TOKEN}`] });
+  // Changing the local address does not revoke the token at its original server.
+  assert.throws(() => store.update(c.id, 1, { url: "http://127.0.0.1:4321", manualModels: ["org/kept-model", `org/${TOKEN}`] }), /token/i);
+  const moved = store.update(c.id, 1, { url: "http://127.0.0.1:4321", manualModels: ["org/kept-model"] });
   assert.equal(moved.credential.present, false);
   store.update(c.id, moved.revision, { manualModels: ["org/kept-model"] });
   const again = store.update(c.id, moved.revision, { token: TOKEN });
@@ -256,4 +259,27 @@ test("a failed create leaves neither a profile nor its token behind", () => {
   try { assert.throws(() => store.create({ label: "LM", runtime: "lmstudio", url: "http://127.0.0.1:1234", token: TOKEN }), /EIO/); } finally { restore(); }
   assert.deepEqual(store.list(), []);
   assert.equal(fs.existsSync(secrets.file) ? credentialKeys(secrets, "").length : 0, 0);
+});
+
+for (const locked of [false, true]) test(`credential copies are refused across edits and token removal when ${locked ? "locked" : "readable"}`, () => {
+  const home = tmpdir("modex-lm-copies-");
+  let available = true;
+  const secrets = new SecretStore(home, { ...testCipher, available: () => available });
+  const store = new LocalConnectionStore(home, secrets);
+  const c = store.create({ label: "protected", runtime: "responses", url: "http://127.0.0.1:8000", token: TOKEN });
+  const before = fs.readFileSync(store.file, "utf8");
+  available = !locked;
+  const patches: Partial<LocalConnectionInput>[] = [
+    { label: TOKEN }, { manualModels: [TOKEN] },
+    { manualModels: [TOKEN], token: null },
+    { label: TOKEN, url: "http://127.0.0.1:8001" },
+    { manualModels: [TOKEN], token: "replacement-token" },
+  ];
+  for (const patch of patches) {
+    assert.throws(() => store.update(c.id, c.revision, patch), err => /credential|token/i.test(String(err)) && !String(err).includes(TOKEN));
+    assert.equal(fs.readFileSync(store.file, "utf8"), before, "refusal preserves the exact profile bytes");
+    assert.equal(JSON.stringify(store.list()).includes(TOKEN), false);
+  }
+  const cleared = store.update(c.id, c.revision, { token: null });
+  assert.equal(cleared.credential.present, false, "credential-only recovery remains available");
 });
