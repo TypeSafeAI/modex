@@ -68,7 +68,9 @@ export class CodexBackend implements Backend {
    * refused: it belongs to another process, possibly a cloud one.
    */
   constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = cliSpawn,
-    private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string; local?: { model: string; provider: string } }) {}
+    private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string;
+      /** `admit` sees the child's effective configuration and requirements before every thread open, and throws to refuse it (#380). */
+      local?: { model: string; provider: string; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
@@ -315,6 +317,17 @@ export class CodexBackend implements Backend {
     } } : {}) };
     let threadId = opts.resume;
     const local = this.configuration?.local;
+    // The child's effective configuration, as Codex itself resolved it across every layer, is checked before any
+    // thread is opened: confirming the provider's name on open does not say where its requests go (#380).
+    if (local?.admit) {
+      try {
+        const reads = await duringSetup(Promise.all([this.request("config/read", { includeLayers: true, cwd: opts.cwd }), this.request("configRequirements/read", {})])
+          .catch((err: unknown) => { throw new CodexError(`Codex did not report its effective configuration (${(err as Error).message}). Local execution needs codex-cli 0.164.0 or later.`, detailOf(err)); }), signal);
+        local.admit({ config: reads[0], requirements: reads[1] });
+      } catch (err) {
+        return failed(err, { stage: "verify configuration" });
+      }
+    }
     // A pinned local provider is named on every open, with Codex's own fallback to another provider's
     // model off, and its reply must say so back: no turn content goes to a provider it did not confirm.
     const pinned = local ? { modelProvider: local.provider, allowProviderModelFallback: false } : {};
@@ -381,6 +394,8 @@ export class CodexBackend implements Backend {
       let interrupted = false;
       // Set once Codex reports the turn interrupted while ending its background terminals.
       let stopping = false;
+      // Set when Codex reroutes a pinned local model: the turn is interrupted and reported failed, never continued (#380).
+      let rerouted: { message: string; from: string; to: string } | null = null;
       const child = this.child;
       const detail = (extra: Record<string, unknown>): Record<string, unknown> => ({
         codexThreadId: tid, turnId, userAgent: this.userAgent, pid: child?.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
@@ -600,6 +615,15 @@ export class CodexBackend implements Backend {
           case "turn/started":
             turnId = (p.turn as { id: string }).id;
             break;
+          case "model/rerouted": {
+            if (!this.configuration?.local) break;
+            const from = String(p.fromModel ?? "?"), to = String(p.toModel ?? "?");
+            const reason = p.reason && typeof p.reason === "object" ? JSON.stringify(p.reason) : String(p.reason ?? "unknown reason");
+            rerouted = { from, to, message: `Codex rerouted the turn from ${from} to ${to} (${reason}). Local execution runs only the selected model, so the turn was stopped.` };
+            sink.notice("error", rerouted.message);
+            interrupt();
+            break;
+          }
           case "error": {
             const e = p.error as Record<string, unknown> | undefined;
             const message = typeof e?.message === "string" ? e.message : null;
@@ -611,6 +635,14 @@ export class CodexBackend implements Backend {
           case "turn/completed": {
             const turn = p.turn as { status: string; error?: { message?: string } | null };
             if (turn.status === "failed") finish({ status: "failed", error: turn.error?.message ?? (lastError?.message as string | undefined) ?? "turn failed", detail: detail({ turnError: turn.error ?? undefined }) });
+            else if (rerouted) {
+              const failure: TurnResult = { status: "failed", error: rerouted.message, detail: detail({ rerouted: { from: rerouted.from, to: rerouted.to } }) };
+              if (commands.size) {
+                stopping = true;
+                clearTimeout(abortTimer);
+                void this.endTerminals(tid, commands, (id, outcome) => { const t = tools.get(id); sink.observe({ type: "tool.done", native: native(id), outcome, progress: { ...(t?.output ? { output: t.output } : {}), ...(t ? { durationMs: Date.now() - t.started } : {}) } }); }, sink).then(() => finish(failure));
+              } else finish(failure);
+            }
             else {
               // An error the server reported but did not fail the turn on still deserves a line.
               if (lastError) sink.notice("error", String(lastError.message));

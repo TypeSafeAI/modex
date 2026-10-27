@@ -214,6 +214,16 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   superseded; their main-side design is carried here, and #418 landed the inherited LM-2 credential fixes.
   [How it works](local-models.md#lm-3-local-execution-through-codex).
 
+- **LM-5 slice 1: effective destination and managed-policy admission** ([#380](https://github.com/TypeSafeAI/modex/issues/380),
+  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), branch `lm5-reroute-repair`, stacked on `lm3-signed-delivery`). Before a local child opens a thread, main reads the child's own
+  `config/read` and `configRequirements/read` and admits it only when every governed key comes from Modex's
+  session flags, no project layer or managed requirement applies, the private home is empty and the effective
+  destination, model context and tools are the ones Modex passed; otherwise the turn fails naming the layer and
+  key. A model reroute fails the turn. Real-CLI evidence shows codex-cli 0.164.0 follows a 307 from the
+  configured loopback server with the full body and never with the token; this is recorded, not preventable.
+  This is the refusal boundary #417's review asked for; wiring local execution into the product remains Val's
+  decision. [Evidence](reviews/2026-10-27-lm5-destination-policy.md).
+
 - **Companion network acceptance (#109).** The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) ties each of the four #109 requirements to the tests that prove it, adds the last race (the interface list changes while Forget paired phones or Turn off runs, and no listener survives with the old token; both shown red against a mutation, green on `main`), and holds the physical two-subnet procedure. Two gates remain with Val: running that procedure, and deciding whether VPN tunnels and virtual bridges with private addresses get a listener ([question](https://github.com/TypeSafeAI/modex/issues/109#issuecomment-6464762470)). The filter is unchanged until Val answers.
 
 - **Integrated review candidate.** CF-4 keyboard/performance, CR-5 remote diffs, CR-8 acceptance checks and the unwired CR-7 intent foundation are reconciled on signed candidate `e25a554`. Full build, unit and typecheck passed; full E2E passed 450 desktop cases with seven skips and seven site cases. [The integration receipt](reviews/2026-10-24-integrated-review.md) preserves the first failures, their repairs, source ancestry and remaining human, policy and provider gates. Hosted validation and protected delivery are recorded separately. CF-8's missing-artifact matrix row now records the existing #328 unit evidence, reconfirmed in the CR-7 integration repair's full unit run; live and human acceptance remain separate.
