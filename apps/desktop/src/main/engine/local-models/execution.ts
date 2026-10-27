@@ -6,6 +6,7 @@ import type { Backend, TurnOptions, TurnResult, TurnSink } from "../backends/typ
 import type { CliExecutable } from "../cli-path.js";
 import { modelKey, threadTarget, type LocalThreadTarget } from "../../../shared/local-models.js";
 import type { LocalConnectionStore } from "./connections.js";
+import { admitLocalConfiguration, type LocalConfigurationProvenance } from "./run-policy.js";
 
 /**
  * Runs a thread's turns on a local model through the Codex CLI (#379), the same `codex app-server`
@@ -54,7 +55,7 @@ function refuseProjectConfiguration(cwd: string): void {
 
 export class LocalExecution {
   /** The child owning each thread's native conversation, with the key it was started for. */
-  private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string }>();
+  private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance }>();
   private readonly services = new Map<string, { busy: boolean; waiting: Set<() => void> }>();
   private disposed = false;
 
@@ -125,7 +126,9 @@ export class LocalExecution {
       if (owned && owned.key !== key) { await this.forget(thread.id); owned = undefined; }
       if (!owned) {
         const home = this.childHome();
-        owned = { key, home, backend: this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!) };
+        const child: { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance } = { key, home, backend: undefined as unknown as CodexBackend };
+        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, provenance => { child.provenance = provenance; });
+        owned = child;
         this.children.set(thread.id, owned);
       }
       // Effort, fast mode and service tiers are cloud-model settings with no local qualification: none is sent.
@@ -145,7 +148,12 @@ export class LocalExecution {
     return home;
   }
 
-  private start(home: string, origin: string, token: string | null, model: string, contextTokens: number): CodexBackend {
+  /** The configuration the thread's child was admitted on, once it has opened a thread; no secrets. */
+  provenance(threadId: string): LocalConfigurationProvenance | undefined {
+    return this.children.get(threadId)?.provenance;
+  }
+
+  private start(home: string, origin: string, token: string | null, model: string, contextTokens: number, admitted: (provenance: LocalConfigurationProvenance) => void): CodexBackend {
     const env: NodeJS.ProcessEnv = {};
     for (const name of INHERITED_ENV) if (process.env[name]) env[name] = process.env[name];
     Object.assign(env, {
@@ -169,7 +177,9 @@ export class LocalExecution {
     return new CodexBackend(this.executable, this.spawnImpl, {
       args: settings.flatMap(setting => ["-c", setting]), env,
       redact: text => token ? text.split(token).join("[local token]") : text,
-      local: { model, provider: PROVIDER_ID },
+      local: { model, provider: PROVIDER_ID,
+        // Before each thread open the child's effective configuration must be exactly this, from these flags alone (#380).
+        admit: reads => admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null })) },
     });
   }
 
