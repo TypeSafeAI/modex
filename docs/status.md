@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-26._
+_Last updated 2026-10-27._
 
 ## Shipped
 
@@ -199,16 +199,20 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
   [Candidate review](reviews/2026-10-24-v0.4.0-release-review.md).
 
-- **Local execution through Codex, in main only** (LM-3 [#379](https://github.com/TypeSafeAI/modex/issues/379),
-  branch `lm3-codex`). A thread with a `localTarget` runs on its own `codex app-server` child: a private
+- **Local execution through Codex, in main only and not yet admitted** (LM-3 [#379](https://github.com/TypeSafeAI/modex/issues/379),
+  [PR #417](https://github.com/TypeSafeAI/modex/pull/417), branch `lm3-codex`). A thread with a `localTarget` runs on its own `codex app-server` child: a private
   empty home, an environment allowlist, the connection token in one shell-excluded variable, the provider
   and model pinned and confirmed by Codex on every open, no stale-sign-in retry, and a resume handle refused
   unless that child opened it. Local turns bypass cloud accounts, Auto, Jev, titles, follow-ups and the
   credit fallback; Plan, images and Modex's note and knowledge tools are refused. One turn at a time per
-  loopback port; force-stop ends only the thread's child. No UI (LM-4). Fixture and real-CLI evidence are
-  in the [LM-3 review](reviews/2026-10-26-lm3-local-codex.md); the live turn against a real local server
-  (AC1), offline operation and managed-policy precedence are open gates. #401 and the stacked draft #407
-  were closed as superseded; their main-side design is carried here. [How it works](local-models.md#lm-3-local-execution-through-codex).
+  loopback port; force-stop ends only the thread's child. No UI (LM-4). After Val's 2026-10-26 review, main
+  does not construct `LocalExecution`, so a built app refuses every local selection and persisted target
+  until LM-5 qualifies Codex's redirect handling and managed-policy precedence (AC6), and a local child asks
+  for no reasoning summaries. Fixture and real-CLI evidence are in the
+  [LM-3 review](reviews/2026-10-26-lm3-local-codex.md); the live turn against a real local server (AC1),
+  offline operation and the AC6 qualification are open gates. #401 and the stacked draft #407 were closed as
+  superseded; their main-side design is carried here, and #418 landed the inherited LM-2 credential fixes.
+  [How it works](local-models.md#lm-3-local-execution-through-codex).
 
 - **Companion network acceptance (#109).** A new regression covers token revocation while a replacement listener is binding during a DHCP change. Existing production behavior passes; a stale-token negative control fails. [Evidence and physical procedure](reviews/2026-10-24-companion-revoke-race.md) preserve the remaining physical secondary-LAN and VPN-policy gates.
 

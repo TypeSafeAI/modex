@@ -29,7 +29,6 @@ import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { CodeReviewService } from "./engine/code-review/read-service.js";
 import { CodeReviewWrites } from "./engine/code-review-actions/write-service.js";
-import { LocalExecution } from "./engine/local-models/execution.js";
 import { LocalModelsService } from "./engine/local-models/service.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
@@ -218,7 +217,9 @@ const emit = (event: ThreadEvent): void => {
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
 const localModels = new LocalModelsService(home, secrets);
-const localExecution = new LocalExecution(home, localModels.connections, () => resolveCli("codex", store.settings.codex_bin));
+// Local execution (LM-3, engine/local-models/execution.ts) is not wired into the product runner: Codex's redirect
+// handling and managed-policy precedence are unqualified (#379 AC6, LM-5 #380), so without the seam the runner
+// refuses every local selection and persisted target instead of starting a child or routing to a cloud backend.
 // Settings reads ChatGPT status in packaged e2e too; keep its test home off the OS keychain.
 const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
@@ -235,7 +236,7 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
 const usageLedger = new UsageLedger(store.dir);
-const runner = new ThreadRunner({ localExecution, beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const runner = new ThreadRunner({ beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
 let mediaInitializationError: string | undefined;
 try { media = new Media({ home, store, runner: () => runner, window: () => win, pathReady, offline: Boolean(demo || process.env.MODEX_E2E), changed: kind => {
   if (win && !win.isDestroyed()) win.webContents.send("media:event", { kind });

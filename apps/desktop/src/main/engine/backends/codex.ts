@@ -77,7 +77,8 @@ export class CodexBackend implements Backend {
       let bin = "codex";
       try {
         bin = this.bin;
-        child = this.spawnImpl(bin, ["app-server", "-c", 'model_reasoning_summary="detailed"', ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin, this.configuration?.env), detached: true });
+        // Reasoning summaries are asked for on cloud models only: a local model has no qualification for the option.
+        child = this.spawnImpl(bin, ["app-server", ...(this.configuration?.local ? [] : ["-c", 'model_reasoning_summary="detailed"']), ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin, this.configuration?.env), detached: true });
       } catch (err) {
         return reject(new CodexError(`could not start ${bin} app-server: ${(err as Error).message}`, { bin, spawnError: (err as Error).message }));
       }
@@ -305,7 +306,7 @@ export class CodexBackend implements Backend {
     }
     const pol = CodexBackend.policy(opts);
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
-    const config = { ...THREAD_CONFIG, ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
+    const config = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
       tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}), ...(opts.pages ? { "mcp_servers.modex_pages": {
@@ -776,7 +777,7 @@ function detailOf(err: unknown): Record<string, unknown> {
   return err instanceof CodexError ? err.detail : {};
 }
 
-/** Per-thread Codex config overrides: surface reasoning summaries so the Thinking item has something to show. */
+/** Per-thread Codex config overrides for cloud models: surface reasoning summaries so the Thinking item has something to show. A pinned local provider gets none (#379 AC5). */
 const THREAD_CONFIG = { model_reasoning_summary: "detailed" };
 
 const PLAN_PREFIX = "PLAN MODE: Investigate the codebase read-only and reply with a concrete, numbered implementation plan (files to change, order, risks, how to verify). Do not edit files or run commands that modify anything.";

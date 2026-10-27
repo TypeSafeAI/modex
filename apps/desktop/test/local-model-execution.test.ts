@@ -63,10 +63,14 @@ test("a local child gets a private home, an allowlisted environment, the token i
       "model_context_window=32768", "model_auto_compact_token_limit=27852", 'web_search="disabled"', "features.view_image=false", 'shell_environment_policy.exclude=["MODEX_LOCAL_TOKEN"]']) {
       assert.ok(child.args.includes(setting), `expected ${setting} in ${child.args.join(" ")}`);
     }
+    // Reasoning summaries are a cloud-model option with no local qualification: neither the child's
+    // arguments nor the thread configuration ask for them (the cloud backend still does; see codex-backend tests).
+    assert.equal(child.args.some(arg => arg.includes("model_reasoning_summary")), false, `no reasoning-summary override in ${child.args.join(" ")}`);
     const start = child.proc.sent(m => m.method === "thread/start")[0]!;
     assert.equal(start.params.model, MODEL);
     assert.equal(start.params.modelProvider, "modex_local");
     assert.equal(start.params.allowProviderModelFallback, false);
+    assert.deepEqual(start.params.config, {}, "thread configuration carries no reasoning-summary option for a local provider");
     const turn = child.proc.sent(m => m.method === "turn/start")[0]!;
     assert.equal(turn.params.effort, null, "no effort is sent without local qualification");
     assert.equal(turn.params.serviceTierForTurn, null);

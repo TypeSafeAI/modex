@@ -60,9 +60,13 @@ Start a second harmless command long enough to Stop after execution begins. Capt
 
 ## LM-3: local execution through Codex
 
-Status: main-only, no UI (#379). A thread gets a local target through `thread:update` with `localTarget`
-and `localContextTokens`; LM-4 (#381) will offer that in the interface. Nothing in the app sets one today.
-A paired desktop's patch never carries one.
+Status: main-only, no UI, not admitted in the product (#379). A thread gets a local target through
+`thread:update` with `localTarget` and `localContextTokens`; LM-4 (#381) will offer that in the interface.
+Nothing in the app sets one today, and a paired desktop's patch never carries one. `main/index.ts` does not
+construct `LocalExecution`: until LM-5 (#380) qualifies Codex's redirect handling and managed-policy
+precedence (AC6), the runner has no execution seam, so it refuses a selection before writing it and ends a
+persisted target's turn with a notice, without starting a child or routing to a cloud backend. The
+description below is of the module and its fixture-proven behaviour once wired.
 
 **Admission.** `ThreadRunner.updateThread` accepts a target only after `LocalExecution.validate` resolves
 exactly its connection revision, with the token readable, and the context window is 4,096–262,144 tokens.
@@ -93,7 +97,7 @@ removes the child and its private home.
 
 **What a local turn does not get.** Auto routing, Jev for approvals, generated titles, follow-up
 suggestions, the credit fallback, Modex's note and knowledge tools, images, Plan, web search, image viewing
-and Codex's sub-agents. Effort, fast mode and service tiers are not sent. Deterministic approval rules
+and Codex's sub-agents. Effort, fast mode, service tiers and reasoning summaries are not sent. Deterministic approval rules
 and the thread's approval and sandbox policy still apply, as do native approvals, questions, Stop and the
 background-terminal cleanup.
 

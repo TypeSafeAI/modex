@@ -100,6 +100,12 @@ test("a forged, stale or unloadable persisted target never reaches a cloud backe
     assert.ok(h.store.items(h.thread.id).some(i => i.kind === "notice" && /no longer matches its local target/.test(i.text)));
     const runner = new ThreadRunner({ home: tmpdir("lm3-nolocal-"), store: h.store, emit: () => {}, backends: { codex: { id: "codex", listModels: async () => [], dispose: async () => {}, runTurn: async () => { h.counts.cloud++; return { status: "completed" }; } } } });
     try {
+      // Admission is closed without local execution: selecting a target is refused before anything is written,
+      // and a persisted target refuses at the turn rather than routing to a cloud backend.
+      h.store.updateThread(h.thread.id, { localTarget: undefined, localContextTokens: undefined, model: "gpt-6-astra", status: "idle" });
+      assert.throws(() => runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 32768 }), /Local execution is unavailable/);
+      assert.equal(h.store.thread(h.thread.id)!.localTarget, undefined, "a refused selection persists nothing");
+      assert.equal(h.store.thread(h.thread.id)!.model, "gpt-6-astra");
       h.store.updateThread(h.thread.id, { localTarget: h.target, model: MODEL, status: "idle" });
       await runner.send(h.thread.id, "read");
       assert.equal(h.counts.cloud, 0, "a build without local execution refuses rather than routing to cloud");
