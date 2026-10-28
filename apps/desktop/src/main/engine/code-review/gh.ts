@@ -28,8 +28,8 @@ export type GhTransport = (call: GhCall) => Promise<GhAnswer>;
 const MEDIA_TYPES = ["application/vnd.github+json", "application/vnd.github.raw"] as const;
 const SEGMENT = "[A-Za-z0-9%_.~*'()!-]+";
 const QUERY = "[A-Za-z0-9%=&+_.~*'()!-]+";
-/** `user`, the issue search, or a path under `repos/`: no flag, host, placeholder, space or dot segment. */
-const ENDPOINT = new RegExp(`^(?:user|search/issues\\?${QUERY}|repos(?:/${SEGMENT}){2,}(?:\\?${QUERY})?)$`);
+/** `user`, the issue search, a repository by its stable id (CR-6), or a path under `repos/`: no flag, host, placeholder, space or dot segment. */
+const ENDPOINT = new RegExp(`^(?:user|search/issues\\?${QUERY}|repositories/[1-9][0-9]{0,17}|repos(?:/${SEGMENT}){2,}(?:\\?${QUERY})?)$`);
 const ETAG = /^(?:W\/)?"[\x21\x23-\x7e]{1,200}"$/;
 /** What gh prints when it cannot reach the API at all. */
 const NETWORK = /dial tcp|no such host|connection (?:refused|reset)|network is unreachable|i\/o timeout|TLS handshake|proxyconnect|EOF/i;

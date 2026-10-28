@@ -405,8 +405,8 @@ must prove it.
 | C24 | R1, R2, R3, R4 | PR header | Pin | #322 | Local only, never synced (D2) |
 | C25 | R1, R2, R3, R4 | PR header | Copy link | #322 | `canonicalPrUrl` (contract test) |
 | C26 | R1, R2, R3, R4 | PR header | Open in GitHub | #322 | `canonicalPrUrl` through the window-open handler (`index.ts:1032`) |
-| C27 | R1, R2, R3, R4 | PR header | Review with Codex | #325 | Capability `review`, unavailable in Gate A (contract test) |
-| C28 | R1, R2, R3, R4 | PR header | Review settings (gear) | #325 | Opens R3's popover; capability `instructions` |
+| C27 | R1, R2, R3, R4 | PR header | Review with Claude | #325 | Opens the review panel; Start runs the confined CLI (`e2e/code-review-agent.spec.ts`, `test/code-review-agent.test.ts`) |
+| C28 | R1, R2, R3, R4 | PR header | Review settings (gear) | #325 | Opens R3's popover (`e2e/code-review-agent.spec.ts`) |
 | C29 | R1, R2, R3, R4 | PR header | Merge split button and method menu | #326 | Capability `merge`; one button opening a panel with the repository's allowed methods ([CR-7 merge](#cr-7-merge)) |
 | C30 | R1, R4 | Overview | Title | #323 | `overview.title`; long-title wrap check |
 | C31 | R1, R4 | Overview | Edit title (pencil) | #326 | Capability `edit`; "Edit pull request" opens one form for the title and description |
@@ -432,12 +432,12 @@ must prove it.
 | C51 | R2, R3 | Activity | Bot comment card with ⋯ menu and age | #323 | `comment` item; the ⋯ menu offers Copy link only until more is decided |
 | C52 | R2, R3 | Activity | Deployment table, Ready and Preview links inside the comment | #323 | Comment-derived links are labelled as comment content, not a provider deployment; opened only on click |
 | C53 | R2, R3 | Activity | A third-party bot's button inside the comment (a link styled as a button) | #323 | Third-party HTML in a comment renders as inert text and links (D4); not a Modex control |
-| C54 | R2, R3 | Activity | Reaction and Add to chat on a comment | #325 | Add to chat feeds the PR conversation (capability `ask`); reactions are deferred (D3) |
+| C54 | R2, R3 | Activity | Reaction and Add to chat on a comment | #325 | Add to chat quotes the comment into C57 (`e2e/code-review-agent.spec.ts`); reactions are deferred (D3) |
 | C55 | R2, R3 | Activity | Comment composer and Comment button | #326 | Capability `comment`, unavailable in Gate A |
-| C56 | R3 | Popover | Review instructions: title, scope line, text field | #325 | Capability `instructions`; Escape and focus return checked in #327 |
-| C57 | R1, R2, R3, R4 | Composer | "Ask about this pull request" field and send | #325 | Capability `ask`, unavailable in Gate A |
+| C56 | R3 | Popover | Review instructions: title, scope line, text field | #325 | Scope line, versioned save, Escape and focus return (`e2e/code-review-agent.spec.ts`) |
+| C57 | R1, R2, R3, R4 | Composer | "Ask about this pull request" field and send | #325 | A question runs as its own confined turn (`e2e/code-review-agent.spec.ts`) |
 | C58 | R1, R2, R3, R4 | Composer | Attach (+) | #325 | Reuses the thread composer's attachments only if #325 includes them |
-| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | The thread composer's `ModelMenu` (`Composer.tsx:195`) is the equivalent |
+| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | A model select in the review panel; effort is not offered (`AgentPanel.tsx`) |
 | C60 | R1, R2, R3, R4 | Composer | Voice input | deferred | Outside #319's initial scope |
 | C61 | R1, R2, R3, R4 | Composer | Clearance: the composer never covers the last item or focus | #323 | Composer-clearance check (#323 AC5, #324 for R4) |
 | C62 | R4 | Changes header | State, number and header actions repeated in the Changes pane | #322 | Same controls as C21–C29, second pane |
@@ -485,7 +485,8 @@ For Val. Each control stays unavailable until decided:
 5. **C65, the Viewed toggle:** local only, or GitHub's viewed state?
 6. **C07, the new-tab button** on this surface: what does it open?
 7. **C82, the access-mode indicator.** The reference's PR composer shows full access. Review is
-   read-only (#325), so should this composer show an access mode at all, and if so, which?
+   read-only (#325), so should this composer show an access mode at all, and if so, which? The review
+   panel states the confinement in words ([CR-6](#cr-6-agent-review-and-questions)); no indicator is drawn.
 
 ## Fixtures
 
@@ -564,9 +565,10 @@ window when restored and never rewritten by the fit.
 | C62 | The header over Changes repeats C21–C29 | split captures |
 | C74, C75 | Pointer and keyboard dividers, persisted as `codeReviewSplit` and `codeReviewTree` | keyboard alone works… |
 
-C27, C28 (review, instructions) and C07 (new tab) are shown focusable, named and `aria-disabled`, with
-the capability's reason as their description. C29 (Merge) and C21's menu are CR-7's (below). C16's
-avatars and C57–C61's composer are not built (open decisions, #325).
+C07 (new tab) is shown focusable, named and `aria-disabled`, with the capability's reason as its
+description; C27 and C28 (review, instructions) are shown that way until the pull request has loaded and
+then open CR-6's panel and popover (below). C29 (Merge) and C21's menu are CR-7's (below). C16's
+avatars and C58, C60 and C61 of the composer are not built (open decisions, #325).
 
 **Deviations.**
 
@@ -824,3 +826,84 @@ confirmed. This proves the outcome, not who caused it; someone else may have mad
 
 Evidence: [CR-7 PR actions](../reviews/2026-10-25-cr7-pr-actions.md).
 
+## CR-6 agent review and questions
+
+#325's slice: a review of a pull request, or a question about it, run by the Claude Code CLI installed
+on this Mac under the person's own Claude login, confined to a snapshot main builds from its own GitHub
+reads. It replaces the Phase 1 isolation proof's unavailable controls (C27, C28, C54, C56, C57, C59)
+with working ones. Nothing the model says is authority: a finding is a claim about one head, shown as
+such, and reaches GitHub only through CR-7's review draft, preview and submit.
+
+**Channel.** `code-review:agent` (`src/shared/code-review-agent.ts`, local only), four operations:
+`status`, `instructions`, `start`, `stop`. Each names the PR's key; `start` also names the revision on
+screen, the kind (`review` or `ask`), the question and the model. `validateAgent` admits exactly these
+fields, bounded. The service is `src/main/engine/code-review-agent/agent-service.ts`.
+
+**What a run is.**
+- Main confirms the signed-in account is the key's, reads the repository by id, the pull request and
+  every page of its changed files through the read transport (GET only, `gh`'s login), then reads the
+  pull request again: the head and target must be the ones the person is looking at, before and after
+  the files. A moved head or target is `head-changed` / `target-changed`; the pane reloads and the
+  person starts again. Nothing is read from a local checkout.
+- The snapshot (`context.ts`) is a directory of main's own under `review-agent/runs/<id>/snapshot`,
+  mode 0700: `PULL_REQUEST.md` (title, description and metadata, labelled untrusted and fenced),
+  `INDEX.md` (each included patch's name, repository path, status and counts, then every omission by
+  reason) and `changes/NNN-<sanitized>.diff`, one unified diff per included file. File names are
+  main's; a repository path never becomes a path. Bounds: 1 MiB of patches, 192 KiB per file, 200
+  files; binary, provider-omitted, too-large, over-budget and over-cap files are listed, not included.
+  `coverage` carries the same list to the person. The directory is removed when the run ends.
+- The run is recorded (`records.ts`, `review-agent/state.json`, the recovery-file adapter) before the
+  CLI starts: a crash leaves a `running` record that the next start marks `unknown` with the `restart`
+  reason. No record is ever re-run.
+- The CLI is `ClaudeBackend.runTurn` with `confinement`: the snapshot as `cwd`, and the fixed argv
+  `REVIEW_CONFINEMENT_ARGS` (`--safe-mode --restricted --tools Read --strict-mcp-config --mcp-config
+  {"mcpServers":{}} --disable-slash-commands --setting-sources "" --permission-mode dontAsk
+  --permission-prompts none --no-session-persistence`), plus `--max-turns`, `--append-system-prompt`
+  and `--model`. There is no permission tool: a prompt that arrives anyway is answered *no* and
+  counted (`promptsRefused`). `confinedEnvironment` drops every `GH_*`, `GITHUB_*` and `MODEX_*`
+  variable and the Codex and OpenAI keys; the person's own Claude login remains the credential.
+  Resume, extra directories, MCP attachments and fast mode are ignored on a confined turn.
+- The system prompt states the task, the confinement as the CLI will experience it, the untrusted rule,
+  the person's instructions labelled with their version, and the reply shape: Markdown, and for a
+  review a final `json` block of findings with head-side line numbers.
+- Observations are projected with the shared conversation projector: the last assistant text is the
+  reply (its findings block removed), each tool call a trail entry. `findings.ts` reads the block and
+  binds each finding: an anchor (CR-5's `LineAnchor`, head side, the diff commit) only where every
+  named line is in an included patch's head side; otherwise `unverified`, or `none` without a path.
+- Outcomes: `completed`, `stopped` (an explicit Stop), `failed` with `backend-failed`,
+  `could-not-start` or `no-reply` and a bounded detail, `unknown` with `restart`. A start is refused
+  as `busy` while this PR has a run, and at most two runs go at once.
+- Availability: a `status` never starts a process. A `start` probes `claude --version` and
+  `claude auth status` (the backend's health check, no inference); a missing or signed-out CLI is
+  `backend-unavailable`, shown for thirty seconds.
+
+**Instructions (R3).** One text per Mac, versioned (`expectedVersion` compare-and-set, `instructions-
+conflict` on a stale save), stored in the same file. The popover says where it applies: every pull
+request reviewed in Modex, on any repository, saved on this Mac only, and that each run records the
+version it used (`instructionsVersion`). The text is given to the CLI as the person's own instructions,
+apart from the pull request's text; it grants nothing.
+
+**UI.**
+- C27 opens a panel under the header: what runs, where it reads, what it cannot do, the model, Start,
+  and Stop while a run is going. Refusals show main's fixed text; a moved head offers Reload.
+- The overview shows "Claude's review" after the description: each run's kind, state, model,
+  instructions version and time; *Outdated · made for head …* once the PR's head or base differs; the
+  coverage summary with every omission; the reply; the findings with their severity, place and
+  reference label (*In the diff*, *Not found in the diff*, *No location given*); the tool trail; and a
+  notice when a permission prompt was refused. *Add to review draft* exists only for an anchored
+  finding at the current head and adds a line comment to CR-7's review draft.
+- C57 asks a question from the same snapshot; C54's *Add to chat* quotes a comment into it.
+- `capabilities()` lets `review`, `ask` and `instructions` follow the connection; main's status refines
+  them (disabled in demos and E2E, like writes).
+
+**Limits.**
+- The confinement is the CLI's `--restricted` and `--safe-mode`, as the Phase 1 proof and the
+  production-argv native test exercise them against a scripted provider; an OS sandbox is not added.
+- The snapshot holds patches only, never whole files: a finding about unchanged code is unverified.
+- Only Claude Code runs reviews. Codex's read-only sandbox still allows shell and outside reads
+  (Phase 1), so it is not offered.
+- C82 stays open; the panel states the confinement in words instead.
+- No authenticated live run is recorded in the tree.
+
+Evidence: [CR-6 native review](../reviews/2026-10-28-cr6-native-review.md); the Phase 1
+[isolation evidence](../reviews/2026-10-23-cr6-isolation.md).

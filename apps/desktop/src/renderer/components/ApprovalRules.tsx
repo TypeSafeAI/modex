@@ -15,7 +15,7 @@ interface Props {
 
 export function ApprovalRules({ rules, projects, currentProjectId, gateEnabled, routing, onChange }: Props) {
   const [projectId, setProjectId] = useState(currentProjectId ?? projects[0]?.id ?? "");
-  const [backend, setBackend] = useState<"claude" | "codex">("claude");
+  const [backend, setBackend] = useState<"claude" | "codex" | "opencode" | "mimo">("claude");
   const [tool, setTool] = useState("Bash");
   const [title, setTitle] = useState("npm test");
   const [mode, setMode] = useState<Mode>("agent");
@@ -57,7 +57,7 @@ export function ApprovalRules({ rules, projects, currentProjectId, gateEnabled, 
           {rule.project && !projects.some((p) => p.path === rule.project) && <SecretOption value={rule.project}>{rule.project} (project not open)</SecretOption>}
         </select></label>
       </div>
-      <label className="field"><span>Exact match (optional)</span><SecretInput value={rule.match ?? ""} maxLength={500} onChange={(e) => update(rule.id, { match: e.target.value || undefined })} placeholder="Bash: npm test*" spellCheck={false} /><small>Tool name, colon, then a case-sensitive pattern. * matches any text. Claude uses Bash; Codex uses command.</small></label>
+      <label className="field"><span>Exact match (optional)</span><SecretInput value={rule.match ?? ""} maxLength={500} onChange={(e) => update(rule.id, { match: e.target.value || undefined })} placeholder="Bash: npm test*" spellCheck={false} /><small>Tool name, colon, then a case-sensitive pattern. * matches any text. Claude uses Bash; Codex uses command; OpenCode and MiMo Code use shell.</small></label>
       <div className="row"><label className="check"><SecretInput type="checkbox" checked={rule.enabled} onChange={(e) => update(rule.id, { enabled: e.target.checked })} /><span>Enabled</span></label>
         <span className="spacer" />
         {rule.enabled && !rule.match?.trim() && routing && !routing.live && <span className="warn" data-testid="rule-inactive">Inactive without Jev</span>}
@@ -70,7 +70,7 @@ export function ApprovalRules({ rules, projects, currentProjectId, gateEnabled, 
     <p className="hint">Preview the rules above without saving them or running the action. This may ask the configured Jev judge about the sample.</p>
     <div className="grid2">
       <label className="field"><span>Preview project</span><select value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <SecretOption key={p.id} value={p.id}>{p.name}</SecretOption>)}</select></label>
-      <label className="field"><span>Preview backend</span><select value={backend} onChange={(e) => { const b = e.target.value as typeof backend; setBackend(b); setTool(b === "claude" ? "Bash" : "command"); }}><SecretOption value="claude">Claude</SecretOption><SecretOption value="codex">Codex</SecretOption></select></label>
+      <label className="field"><span>Preview backend</span><select value={backend} onChange={(e) => { const b = e.target.value as typeof backend; setBackend(b); setTool(b === "claude" ? "Bash" : b === "codex" ? "command" : "shell"); }}><SecretOption value="claude">Claude</SecretOption><SecretOption value="codex">Codex</SecretOption><SecretOption value="opencode">OpenCode</SecretOption><SecretOption value="mimo">MiMo Code</SecretOption></select></label>
       <label className="field"><span>Tool</span><SecretInput value={tool} onChange={(e) => setTool(e.target.value)} /></label>
       <label className="field"><span>Preview mode</span><select value={mode} onChange={(e) => setMode(e.target.value as Mode)}><SecretOption value="chat">Chat</SecretOption><SecretOption value="agent">Agent</SecretOption><SecretOption value="full-access">Full access</SecretOption></select></label>
     </div>

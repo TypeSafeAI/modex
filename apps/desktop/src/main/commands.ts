@@ -3,6 +3,7 @@ import { cliHealth } from "./engine/cli-path.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { CodeReviewService } from "./engine/code-review/read-service.js";
 import { CodeReviewWrites } from "./engine/code-review-actions/write-service.js";
+import { CodeReviewAgent } from "./engine/code-review-agent/agent-service.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 import type { Store } from "./engine/store.js";
 import type { ThreadRunner } from "./engine/runner.js";
@@ -35,6 +36,7 @@ export function registerCommands(handle: RegisterCommand, {
   const codeReview = new CodeReviewService({ enabled: false });
   // Disabled before it could touch storage: browser development never writes to GitHub.
   const codeReviewWrites = new CodeReviewWrites({ home: "", enabled: false });
+  const codeReviewAgent = new CodeReviewAgent({ home: "", enabled: false });
   function cwdFor(threadId: string): string {
     const thread = store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
@@ -123,6 +125,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("thread:context", ({ threadId }) => threadContexts.read(cwdFor(threadId)));
   handle("code-review:read", (request) => codeReview.read(request));
   handle("code-review:write", (request) => codeReviewWrites.handle(request, "browser"));
+  handle("code-review:agent", (request) => codeReviewAgent.handle(request, "browser"));
   handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));
   handle("changes:status", ({ threadId }) => gitx.status(cwdFor(threadId)));
   handle("changes:diff", ({ threadId, path: rel, original, fullContext }) => gitx.diff(cwdFor(threadId), rel, original, fullContext));
@@ -153,7 +156,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("routing:clearKey", () => runner.router.clearKey());
   handle("routing:test", () => runner.router.test());
   handle("backends:health", async () => {
-    const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
+    const entries = await Promise.all((["claude", "codex", "opencode", "mimo", "mock"] as BackendId[]).map(async (id) => {
       const backend = runner.backend(id);
       const status = backend.health ? await (id === "mock" ? backend.health() : cliHealth(id, sessionCliSettings[`${id}_bin`], () => backend.health!())) : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
       return [id, status] as const;

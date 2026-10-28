@@ -108,7 +108,7 @@ export function RoutinesView({ active, projects, onOpenThread, onOpenPage }: Rou
             <li key={routine.id} className="routine-card" data-testid="routine-row" data-routine-id={routine.id}>
               <div className="routine-card-main">
                 <strong>{redact(routine.name)}</strong>
-                <span>{redact(project(routine.projectId))} · {routine.mode === "plan" ? "Plan" : "Chat"} (read-only) · {routine.backend === "claude" ? "Claude Code" : routine.backend === "codex" ? "Codex" : routine.backend === "mock" ? "Mock" : "Default provider"}{routine.model ? ` · ${redact(routine.model)}` : ""}</span>
+                <span>{redact(project(routine.projectId))} · {routine.mode === "plan" ? "Plan" : "Chat"} (read-only) · {routine.backend === "claude" ? "Claude Code" : routine.backend === "codex" ? "Codex" : routine.backend === "opencode" ? "OpenCode" : routine.backend === "mimo" ? "MiMo Code" : routine.backend === "mock" ? "Mock" : "Default provider"}{routine.model ? ` · ${redact(routine.model)}` : ""}</span>
                 <span>{schedule(routine)}</span>
                 <span data-testid="routine-next">{!routine.enabled ? "Paused" : running ? "Running now" : routine.nextRunAt ? `Next run ${when(routine.nextRunAt)}` : "Ran; no further runs"}</span>
               </div>
@@ -175,6 +175,8 @@ function RoutineEditor({ draft: initial, projects, busy, onSave, onCancel }: { d
             <option value="">Default provider</option>
             <option value="codex">Codex</option>
             <option value="claude">Claude Code</option>
+            <option value="opencode">OpenCode</option>
+            <option value="mimo">MiMo Code</option>
           </select>
         </label>
         <label>Model<input data-testid="routine-model" value={draft.model ?? ""} placeholder="Provider default" maxLength={200} onChange={(e) => set({ model: e.target.value })} /></label>

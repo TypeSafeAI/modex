@@ -64,6 +64,9 @@ MODEX_HOME=/tmp/modex-voiceover/home npx electron .
 ## C. Markdown (CF-4 / #277, part of this same #281 gate)
 
 Use the updated seed and select **Markdown review** in the sidebar. It uses `markdown-fixture.json`, also used by the automated keyboard and reference-capture tests. Use a 900×600 window with Review open to make the table and code overflow. Repeat in Graphite, Jev and OpenCoven. Enable macOS Reduce Motion for C3. Record the actual build; these steps require the CF-4 closeout changes, not just #342/#352.
+Those changes are on `main` from #404 (`e3527f4`, 2026-10-24) onward, so any later `main` build or
+`v0.4.0-rc.2` carries them. The candidate prepared for this review, its seeded home and launch command are in
+[the CF-4 closeout evidence](../2026-10-22-cf4-closeout/checkpoint.md).
 
 | # | Do | Expect / record | Pass? Notes |
 | --- | --- | --- | --- |

@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-27._
+_Last updated 2026-10-28._
 
 ## Shipped
 
@@ -59,8 +59,25 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
+## Review repairs in progress
+
+PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. Hosted checks and protected delivery remain pending. This is not merged or released, and native/live acceptance remains separate.
+
 ## On main, unreleased
 
+- **OpenCode and MiMo Code backends** ([#408](https://github.com/TypeSafeAI/modex/issues/408)).
+  Two new thread backends drive the OpenCode CLI and Xiaomi's MiMo Code fork through their Agent
+  Client Protocol server (`opencode acp --pure`, `mimo acp --pure`), the way Codex runs through
+  `codex app-server`: one shared server per backend, a session per thread as the resume handle,
+  `session/request_permission` answered through Modex's approval cards, rules and policies, Stop as
+  `session/cancel`. Modex's modes are agents injected inline (`OPENCODE_CONFIG_CONTENT`): Chat denies
+  edits, Agent allows them, Full access asks nothing, Plan pins the built-in plan agent; a refused
+  mode fails the turn. Settings gets cards, executable overrides (verified by `--version`) and
+  default models for both; health is `auth list`'s credential count and the model list is
+  `<cli> models`. Not there: confined Code Review turns (refused), Modex's knowledge, Space and
+  image tools, question cards, efforts in the model list. Accepted live on OpenCode 1.19.5 and
+  MiMo Code 0.1.16 (`docs/opencode.md`, [ACP probes](reviews/2026-10-28-opencode-acp.json),
+  [MiMo](reviews/2026-10-28-mimo-acp.json), [backend live run](reviews/2026-10-28-opencode-backend-live.json)); AGENTS.md's CLI-only rule now names all four CLIs.
 - **Local model connections and discovery, in main only** (LM-2 [#378](https://github.com/TypeSafeAI/modex/issues/378),
   [tracker #376](https://github.com/TypeSafeAI/modex/issues/376)). Main keeps loopback-only
   connection profiles for Ollama, LM Studio and Responses-compatible servers in
@@ -73,10 +90,21 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   (Ollama 0.40.10 has none; this Mac's only LM Studio model is an embedding model).
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
+- **CF-8 integrated candidate `b643617`** (#281, 2026-10-28). The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md#integrated-candidate-2026-10-28-b643617)
+  pins `main` at `b643617`, which carries every CF-1 to CF-7 slice (#394 and the CF-4 close-out via #404
+  included). First pass, no reruns: install, build and typecheck passed; unit 2,011 passed and 17 skipped
+  (desktop) with every other suite green; desktop e2e 470 passed and 7 opt-in skips; site 7/7; iPhone UI 23/23
+  and 20/20 on a dedicated iOS 27.0 simulator. Live Claude Code 2.1.312 (Haiku, Chat mode) passed the golden
+  path through the app: one approval, the edit and check, "Claude Code reported no plan for this turn" (the CLI
+  offers Modex no plan tool), Save to Notes, Open, restart, and Stop (interrupted in 0.8 s, the file never
+  written). Live codex-cli 0.164.0 (`gpt-6.1-sol`, ChatGPT account, Chat mode) passed the same path: two approvals, `apply_patch` and the check with exit code 0, a `final` answer, "Codex reported no plan for this turn", Save to Notes, Open, restart, and Stop (interrupted in 0.1 s, the file never written). The 2026-10-22 candidates `0e674e7` and `ec7be57` are kept as history beside it.
+  **Still open, all Val's:** the keyboard/VoiceOver rows A1–A8, B1–B7 and C1–C5 on the seeded build from this
+  candidate, and the CF-3 rows D1–D5, V1–V3 and P1–P6 (#420; the P rows also need Companion 0.4.0 (9) on
+  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral.
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
-  an offline seed scenario. Human acceptance and a final integrated candidate remain open.
+  an offline seed scenario. Human acceptance remains open; the integrated candidate is above.
   The full-log and patch-state E2E fixtures wait for the completed turn before inspecting its
   work, avoiding the initial idle state racing the fixture startup; their content and execution
   count assertions remain unchanged.
@@ -178,6 +206,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## In flight
 
+- **Notes history identity repair.** Repeated history toggles could duplicate revision rows or leave history visible after closing because the history and editor siblings shared a React key. The isolated `notes-history-identity` repair gives them distinct identities; three regression repetitions failed before the fix and passed afterward. Independent review found no blockers. Build and full unit/E2E checks passed (2,191 unit passed, 23 skipped; 470 desktop passed, seven skipped; seven site passed). Hosted checks and protected delivery remain pending; see [repair evidence](reviews/2026-10-28-notes-history-identity.md).
+
 - **LM-2 credential repair, in review.** The later credential-copy and stale-discovery fixes from closed #401 are not in main. The current-main `lm2-credential-repair` branch preserves the reviewed source/tests and prevents fake child PIDs from reaching OS signals. Build, full unit tests, typechecks and the Electron IPC journey passed; hosted checks and protected delivery are pending. [Reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md).
 
 - **Desktop v0.4.0 and Companion 0.4.0 (9) preparation.** The release ships everything under "On
@@ -214,7 +244,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   superseded; their main-side design is carried here, and #418 landed the inherited LM-2 credential fixes.
   [How it works](local-models.md#lm-3-local-execution-through-codex).
 
-- **Companion network acceptance (#109).** A new regression covers token revocation while a replacement listener is binding during a DHCP change. Existing production behavior passes; a stale-token negative control fails. [Evidence and physical procedure](reviews/2026-10-24-companion-revoke-race.md) preserve the remaining physical secondary-LAN and VPN-policy gates.
+- **Companion network acceptance (#109).** The regression for token revocation while a replacement listener is binding during a DHCP change passes, while its stale-token negative control fails ([evidence and physical procedure](reviews/2026-10-24-companion-revoke-race.md)). The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) ties all four #109 requirements to tests and adds the interface-change race during Forget paired phones or Turn off; the old-token mutation fails and `main` passes. The physical two-subnet procedure remains open, as does Val's decision on whether VPN tunnels and virtual bridges with private addresses get a listener ([question](https://github.com/TypeSafeAI/modex/issues/109#issuecomment-6464762470)). The filter is unchanged until Val answers.
 
 - **Integrated review candidate.** CF-4 keyboard/performance, CR-5 remote diffs, CR-8 acceptance checks and the unwired CR-7 intent foundation are reconciled on signed candidate `e25a554`. Full build, unit and typecheck passed; full E2E passed 450 desktop cases with seven skips and seven site cases. [The integration receipt](reviews/2026-10-24-integrated-review.md) preserves the first failures, their repairs, source ancestry and remaining human, policy and provider gates. Hosted validation and protected delivery are recorded separately. CF-8's missing-artifact matrix row now records the existing #328 unit evidence, reconfirmed in the CR-7 integration repair's full unit run; live and human acceptance remain separate.
 
@@ -222,7 +252,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 - **LM-1 local-model contract and native feasibility (#377 / #376).** Val accepted narrow Gate A on 2026-10-24 for the producer at main `bb0e1a4`, including the shared identity/runtime mapping from #400, and the recorded Codex 0.163.0/0.164.0 + Strata 0.1.47 tool/Stop/continuation evidence. The loopback metadata boundary is separately approved; no local execution feature is enabled. LM-2 consumes it through #403. Val explicitly deferred the additional Ollama/LM Studio app-server probe until a local coding model exists: Ollama has no models, and this Mac has only an LM Studio embedding model; linked-device LLMs are outside scope. [Contract/source map](local-models.md), [native feasibility](reviews/2026-10-22-lm1-feasibility.md) and [acceptance/availability](reviews/2026-10-24-lm1-acceptance.md).
 
-- **CF-4 Markdown closeout (#277).** `cf4-closeout` adds named keyboard stops for table/code overflow, reference-viewport captures, and Markdown rows in the shared #281 human checklist. [New evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) separates local measurements from the approved 500 ms median cold-open gate, passing hosted evidence on the original reviewed head, and Val's still-pending VoiceOver result. The [integrated candidate](reviews/2026-10-24-integrated-review.md) passed full build, unit, typecheck and E2E gates, including a 129.5 ms local median; #277 stays open for human acceptance.
+- **CF-4 Markdown closeout (#277).** The `cf4-closeout` candidate (named keyboard stops for table/code overflow, reference-viewport captures, the approved 500 ms median cold-open gate, and Markdown rows C1–C5 in the shared #281 human checklist) landed on `main` through #404 (`e3527f4`, 2026-10-24); #371 was closed as superseded. [The closeout evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) keeps the local, hosted and integrated measurements apart and records the human review candidate prepared on 2026-10-28: `main` at `b643617`, built and seeded in `.worktrees/cf4-voiceover`, with the focused rendering, keyboard and five-launch budget checks 11/11 and a 170 ms median. C1–C5 have no result; #277 stays open until Val records them or defers in writing.
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through
@@ -243,7 +273,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   passed with CR-2 through the real Electron IPC/service path. Overview and diff content, original
   reference comparison and human accessibility remain separate acceptance gates.
 
-- **CR-6 isolation proof** (#325, Phase 1). Native CLI proof tests exercise Codex 0.164.0 and Claude Code 2.1.310 using disposable fixtures and a scripted loopback provider. Codex read-only alone still allows shell/outside reads/inherited fixture credentials; Claude's restricted Read-only tool palette rejects the tested malicious calls, with working hook/MCP controls. These are bounded native-CLI fixture results, not authenticated provider or production launch acceptance. Review, PR questions and instructions remain unavailable; see [the isolation evidence](reviews/2026-10-23-cr6-isolation.md). C82 and Phase 2 integration retain their existing gates.
+- **CR-6 agent review and questions** (#325). Phase 1's native proof ([isolation evidence](reviews/2026-10-23-cr6-isolation.md)) showed Claude Code's restricted Read-only palette rejects injected shell, write, fetch, MCP and outside reads while Codex's read-only sandbox does not. Phase 2 builds on it: main's local `code-review:agent` channel starts the installed Claude Code CLI, under the person's own login, on a snapshot of the PR's diff that main reads itself through `gh`, with the shipped argv `--safe-mode --restricted --tools Read` and no permission tool, and an environment stripped of `gh`, GitHub and Modex variables. Each run is recorded before it starts, bound to the head it read, marked outdated when the head moves, stopped explicitly, and read as unknown after a crash; a finding reaches GitHub only through CR-7's review draft. Review instructions are one versioned text per Mac whose scope the popover states, and each run records the version it used. Unit, native-fixture (opt-in, production argv) and E2E evidence over a synthetic `claude` and `gh` are in [the review evidence](reviews/2026-10-28-cr6-native-review.md); an authenticated live run and C82 remain open gates.
 
 - **CR-7 Code Review writes** (#326). Val decided on 2026-10-25: writes go through the person's `gh` login, and decisions 2–4 are in scope. The foundation stores scoped drafts and revision-bound intents, consumes confirmations once after durable admission, and recovers interrupted dispatches as unknown without resend. The first write increment adds main's separate `code-review:write` channel for top-level comments and submitted reviews (line comments from Changes included). Each is previewed with its exact destination, account and head, re-checked in main before sending, sent at most once, and reconciled by read-back when its outcome is unclear ([evidence](reviews/2026-10-25-cr7-write-submit.md)). Mock and synthetic-`gh` only: the live write waits for a disposable repository Val names. A second increment adds Merge: main reads push permission, the repository's allowed methods, GitHub's merge state and the target branch's rules fresh. It offers only what `mergePreflight` ([preflight evidence](reviews/2026-10-24-cr7-merge-preflight.md)) allows, sends the reviewed head as the merge's `sha`, and reconciles an unclear merge from the PR's own record ([evidence](reviews/2026-10-25-cr7-merge.md)). A third increment adds decisions 2–4 the same way: the state menu (close, reopen, convert to draft, ready for review), title and description edits that are refused if GitHub's text changed, and reviewer requests ([evidence](reviews/2026-10-25-cr7-pr-actions.md)). CR-6 isolation and C82 remain unchanged. See [the preparation evidence](reviews/2026-10-23-cr7-intents.md). A follow-up binds the model to CR-5's shared `LineAnchor`, diff commit included, and records the check of CR-4's action slots ([evidence](reviews/2026-10-24-cr7-anchors.md)). The integration repair fences queued and in-flight submits against document invalidation, verifies inline destinations against fresh complete patch evidence, preserves pending composer edits across navigation, and shows frozen inline details before submission ([repair evidence](reviews/2026-10-26-cr7-write-repair.md)).
 
@@ -312,7 +342,9 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   probe timed out during initialization. Grok 1.0.46 accepted cached auth and session RPCs,
   then its text turn timed out; native plan/sandbox also has documented permission limits.
   Neither provider is enabled. Both decisions include reproducible probes and distinguish
-  observed failures from unverified capabilities; coding execution remains CLI-only.
+  observed failures from unverified capabilities; coding execution remains CLI-only. OpenCode
+  and MiMo Code, probed over ACP on 2026-10-28, passed the same gates and shipped as backends
+  ([#408](https://github.com/TypeSafeAI/modex/issues/408), [opencode.md](opencode.md)).
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2

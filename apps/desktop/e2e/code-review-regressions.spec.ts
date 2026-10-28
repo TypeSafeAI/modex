@@ -190,8 +190,19 @@ for (const delayed of [false, true]) test(`dispatch: unavailable actions start n
   }
   await settle(page);
   const calls = h.calls().length, starts = h.providerStarts().length;
+  // CR-6 (#325): Review and the instructions gear open a panel and a popover (e2e/code-review-agent.spec.ts); only an explicit
+  // Start runs anything, and neither opening asks gh for more than the connection check.
+  await tid(page, "code-review-review").first().click();
+  await expect(tid(page, "cr-agent-panel")).toBeVisible();
+  await expect(tid(page, "cr-agent-panel").getByRole("button", { name: "Start review" })).toBeVisible();
+  await tid(page, "cr-agent-panel").getByRole("button", { name: "Close" }).click();
+  await expect(tid(page, "cr-agent-panel")).toHaveCount(0);
+  await tid(page, "code-review-instructions").first().click();
+  await expect(page.getByRole("dialog", { name: "Review instructions" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Review instructions" })).toHaveCount(0);
   // Merge is CR-7's now (e2e/code-review-actions.spec.ts): opening it reads, and only an explicit preview and confirm writes.
-  for (const id of ["code-review-review", "code-review-instructions", "code-review-new-tab"]) {
+  for (const id of ["code-review-new-tab"]) {
     const control = tid(page, id).first();
     await expect(control, id).toHaveAttribute("aria-disabled", "true");
     // aria-disabled, not disabled: it stays focusable, so force the pointer through to prove it does nothing.

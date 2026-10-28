@@ -4,15 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import type { ApprovalGateConfig, ApprovalRule, AppState, BackendId, EffortLevel, Project, RoutingPolicy, Settings, Thread, ThreadItem } from "../../shared/types.js";
-import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, EFFORT_LEVELS } from "../../shared/types.js";
+import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, EFFORT_LEVELS, isBackendId } from "../../shared/types.js";
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "graphite",
   default_backend: "codex",
   default_mode: "agent",
-  default_model: { codex: "", claude: "", mock: "mock" },
+  default_model: { codex: "", claude: "", opencode: "", mimo: "", mock: "mock" },
   claude_bin: "claude",
   codex_bin: "codex",
+  opencode_bin: "opencode",
+  mimo_bin: "mimo",
   routing: { ...DEFAULT_ROUTING },
   approval_rules: [],
   approval_gate: { ...DEFAULT_APPROVAL_GATE },
@@ -59,7 +61,7 @@ export function migrateApprovalGate(raw: unknown): ApprovalGateConfig {
 export function migrateRouting(raw: unknown): RoutingPolicy {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const d = DEFAULT_ROUTING;
-  const isBackend = (b: unknown): b is BackendId => b === "claude" || b === "codex" || b === "mock";
+  const isBackend = (b: unknown): b is BackendId => isBackendId(b);
   const num = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : fallback);
   return {
     auto_by_default: typeof r.auto_by_default === "boolean" ? r.auto_by_default : d.auto_by_default,
@@ -83,11 +85,13 @@ export function migrateSettings(raw: unknown): Settings {
   return {
     ...DEFAULT_SETTINGS,
     theme: normalizeTheme(r.theme),
-    default_backend: r.default_backend === "claude" || r.default_backend === "codex" || r.default_backend === "mock" ? r.default_backend : DEFAULT_SETTINGS.default_backend,
+    default_backend: isBackendId(r.default_backend) ? r.default_backend : DEFAULT_SETTINGS.default_backend,
     default_mode: r.default_mode === "chat" || r.default_mode === "agent" || r.default_mode === "full-access" ? r.default_mode : DEFAULT_SETTINGS.default_mode,
     default_model: model && typeof model === "object" ? { ...DEFAULT_SETTINGS.default_model, ...(model as Record<string, string>) } : { ...DEFAULT_SETTINGS.default_model },
     claude_bin: typeof r.claude_bin === "string" && r.claude_bin ? r.claude_bin : DEFAULT_SETTINGS.claude_bin,
     codex_bin: typeof r.codex_bin === "string" && r.codex_bin ? r.codex_bin : DEFAULT_SETTINGS.codex_bin,
+    opencode_bin: typeof r.opencode_bin === "string" && r.opencode_bin ? r.opencode_bin : DEFAULT_SETTINGS.opencode_bin,
+    mimo_bin: typeof r.mimo_bin === "string" && r.mimo_bin ? r.mimo_bin : DEFAULT_SETTINGS.mimo_bin,
     ...(typeof r.mock_script === "string" ? { mock_script: r.mock_script } : {}),
     routing: migrateRouting(r.routing),
     approval_rules: migrateApprovalRules(r.approval_rules),

@@ -57,7 +57,8 @@ test("a stale account result cannot replace refresh, and a failed check offers r
     await app.evaluate(() => (globalThis as typeof globalThis & { modexReleaseHealth: () => void }).modexReleaseHealth());
     await expect(page.getByText("Stale account")).toHaveCount(0);
     await page.getByRole("button", { name: "Refresh account status" }).click();
-    await expect(page.getByText("Account check unavailable · retry", { exact: true })).toHaveCount(2);
+    // One per connection card: Codex, Claude Code, OpenCode and MiMo Code.
+    await expect(page.getByText("Account check unavailable · retry", { exact: true })).toHaveCount(4);
   } finally {
     await app.close();
     fs.rmSync(home, { recursive: true, force: true });

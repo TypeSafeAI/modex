@@ -255,3 +255,102 @@ for (const shutdown of ["stop", "dispose"] as const) {
     } finally { await server.stop(); fs.rmSync(home, { recursive: true, force: true }); }
   });
 }
+
+// A VPN or virtual interface (utun, bridge, vmnet) is selected by address range alone. This pins
+// the current policy so that a decision on #109 flips it red first; it does not endorse the policy.
+test("a VPN or virtual interface with a private address currently gets a listener (policy pending on #109)", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-net-vpn-"));
+  const ipv4 = (address: string): os.NetworkInterfaceInfoIPv4 => ({ address, internal: false, family: "IPv4", cidr: null, netmask: "255.255.255.0", mac: "00:00:00:00:00:00" });
+  t.mock.method(os, "networkInterfaces", () => ({
+    utun3: [ipv4("10.8.0.2")], bridge100: [ipv4("10.211.55.2")], en0: [ipv4("192.168.1.20")], utun1: [ipv4("100.108.0.2")],
+  }));
+  try {
+    const server = new CompanionServer(home, source);
+    assert.deepEqual(server.status().addresses, ["192.168.1.20", "10.8.0.2", "10.211.55.2"]);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// The DHCP change is mid-flight (a removed listener is still closing) when the person chooses
+// Forget paired phones or Turn off, and the interface list changes again before it finishes.
+for (const action of ["resetAccess", "stop"] as const) {
+  test(`the interface list changes while ${action} runs: no listener survives with the old token`, { skip: !lan, timeout: 10000 }, async (t) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), `modex-net-${action}-flap-`));
+    let addresses = ["127.0.0.1", lan!];
+    const published = new Set<string>();
+    const server = new CompanionServer(home, source, () => addresses, (ad) => {
+      assert.ok(!JSON.stringify(ad).includes(server.status().pairingUri ? decode(server.status().pairingUri!).token : "none"));
+      published.add(ad.host); return () => { published.delete(ad.host); };
+    });
+    let agent: https.Agent | undefined;
+    let release = () => {};
+    let refreshing: Promise<void> | undefined;
+    try {
+      const original = decode((await server.start()).pairingUri!);
+      const endpoints = server.status().endpoints!.map((endpoint) => decode(endpoint.pairingUri).url);
+      assert.equal(endpoints.length, 2);
+      agent = pinnedAgent(home, original.fingerprint, true);
+      const lanUrl = endpoints.find((url) => new URL(url).hostname === lan)!;
+      const loopbackUrl = endpoints.find((url) => new URL(url).hostname === "127.0.0.1")!;
+      const kept = await request(lanUrl, original.token, agent);
+      assert.equal(kept.code, 200);
+      // Hold every socket close so the removal phase of the DHCP change stays in flight.
+      let closing = 0;
+      let entered!: () => void;
+      const removing = new Promise<void>((resolve) => { entered = resolve; });
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const close = https.Server.prototype.close;
+      t.mock.method(https.Server.prototype, "close", function (this: https.Server, done?: (error?: Error) => void) {
+        closing += 1;
+        entered();
+        void gate.then(() => Reflect.apply(close, this, [done]));
+        return this;
+      });
+      addresses = [lan!];
+      refreshing = server.refreshNetwork();
+      await removing;
+      assert.equal(closing, 1, "only the removed interface's socket closes");
+      const acted = server[action]();
+      // The interface returns while the action runs.
+      addresses = ["127.0.0.1", lan!];
+      release();
+      await Promise.all([refreshing, acted]);
+      if (action === "resetAccess") {
+        const rotated = decode(server.status().pairingUri!);
+        assert.notEqual(rotated.token, original.token);
+        assert.equal(rotated.fingerprint, original.fingerprint);
+        await assert.rejects(request(loopbackUrl, original.token, agent), "the removed listener stays closed until the next reconcile");
+        assert.equal((await request(lanUrl, original.token, agent)).code, 401);
+        const renewed = await request(lanUrl, rotated.token, agent);
+        assert.equal(renewed.code, 200);
+        assert.equal(renewed.socket, kept.socket, "the unaffected interface keeps its connection");
+        // The returned interface comes back on the next tick, already under the new token.
+        await server.refreshNetwork();
+        const restored = server.status().endpoints!;
+        assert.equal(restored.length, 2);
+        assert.equal(published.size, 2);
+        for (const endpoint of restored) {
+          const pairing = decode(endpoint.pairingUri);
+          assert.equal(pairing.token, rotated.token);
+          assert.equal((await request(pairing.url, original.token, agent)).code, 401);
+          assert.equal((await request(pairing.url, rotated.token, agent)).code, 200);
+        }
+      } else {
+        assert.equal(server.status().pairingUri, undefined);
+        assert.equal(server.shouldStart, false);
+        assert.equal(published.size, 0);
+        for (const url of [loopbackUrl, lanUrl]) await assert.rejects(request(url, original.token, agent));
+        // A late monitor tick with the returned interface must not turn the listener back on.
+        await server.refreshNetwork();
+        assert.equal(server.status().pairingUri, undefined);
+        assert.equal(published.size, 0);
+        for (const url of [loopbackUrl, lanUrl]) await assert.rejects(request(url, original.token, agent));
+      }
+    } finally {
+      release();
+      await refreshing?.catch(() => {});
+      agent?.destroy();
+      await server.stop();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+}

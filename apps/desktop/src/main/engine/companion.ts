@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { AddressInfo, Socket } from "node:net";
-import { APPROVAL_POLICIES, type AnswerResult, type AppState, type ApprovalAnswer, type ApprovalPolicy, type BackendId, type PullRequestSummary, type Thread, type ThreadItem } from "../../shared/types.js";
+import { APPROVAL_POLICIES, isBackendId, type AnswerResult, type AppState, type ApprovalAnswer, type ApprovalPolicy, type BackendId, type PullRequestSummary, type Thread, type ThreadItem } from "../../shared/types.js";
 import { publishCompanion, type CompanionPublisher } from "./companion-discovery.js";
 import type { EventJournal } from "./event-journal.js";
 import { discoverMobileCommands } from "./mobile-commands.js";
@@ -287,7 +287,7 @@ export class CompanionServer {
       const project = state.projects.find((candidate) => candidate.id === url.searchParams.get("projectId"));
       const backend = url.searchParams.get("backend");
       if (!project) { this.reply(res, 404, { error: "Project not found." }); return; }
-      if (backend !== "codex" && backend !== "claude" && backend !== "mock") { this.reply(res, 400, { error: "Choose a valid provider." }); return; }
+      if (!isBackendId(backend)) { this.reply(res, 400, { error: "Choose a valid provider." }); return; }
       this.reply(res, 200, { commands: discoverMobileCommands(os.homedir(), project.path, backend) });
       return;
     }
@@ -302,7 +302,7 @@ export class CompanionServer {
       if (typeof value !== "string" || !value.trim() || value.length > 20_000) { this.reply(res, 400, { error: "Enter a message under 20,000 characters." }); return; }
       if (typeof input.worktree !== "boolean") { this.reply(res, 400, { error: "Choose Local or Worktree." }); return; }
       const backend = input.backend;
-      if (backend !== undefined && backend !== "codex" && backend !== "claude" && backend !== "mock") { this.reply(res, 400, { error: "Choose a valid provider." }); return; }
+      if (backend !== undefined && !isBackendId(backend)) { this.reply(res, 400, { error: "Choose a valid provider." }); return; }
       if (typeof input.auto !== "boolean") { this.reply(res, 400, { error: "Choose Auto or a provider." }); return; }
       if (!this.source.create) { this.reply(res, 501, { error: "Thread creation is unavailable." }); return; }
       const thread = await this.source.create(projectId, { worktree: input.worktree, ...(backend ? { backend } : {}), auto: input.auto });

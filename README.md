@@ -9,8 +9,8 @@
 [![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
 
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
-repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
-stream-json and `codex app-server`), using existing CLI logins or app-owned ChatGPT sign-in.
+repositories. It drives **Claude Code**, **Codex**, **OpenCode** and **MiMo Code** through their own CLIs (`claude -p`
+stream-json, `codex app-server`, `opencode acp` and `mimo acp`), using existing CLI logins or app-owned ChatGPT sign-in.
 App-owned sign-in shipped in v0.0.6; see [how it works and its limits](docs/chatgpt-signin.md).
 It never calls a model
 API directly. App-owned ChatGPT credentials use protected OS-encrypted storage; existing
@@ -28,10 +28,11 @@ modex/
 
 ![Modex approval card in the graphite desktop interface](docs/screenshots/04-graphite-approval.png)
 
-- **Two backends, one UI.** Every thread picks **Codex** or **Claude** in the composer. Codex
+- **Four backends, one UI.** Every thread picks **Codex**, **Claude**, **OpenCode** or **MiMo Code** in the composer. Codex
   threads talk to `codex app-server` (the same JSON-RPC protocol the official Codex App uses);
   Claude threads talk to `claude -p --output-format stream-json` with permission prompts routed
-  over stdio. The model picker works like the Codex App's: a popover listing exactly the models
+  over stdio; OpenCode and MiMo Code threads talk to their Agent Client Protocol server
+  (`opencode acp` / `mimo acp`, see [docs/opencode.md](docs/opencode.md)). The model picker works like the Codex App's: a popover listing exactly the models
   the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
   row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
   free-text entry.
@@ -144,12 +145,12 @@ modex/
   size if its display is gone).
 - **Modes**, mirroring Codex, mapped onto each CLI's native policy:
 
-  | Mode                | Codex (`approvalPolicy` / sandbox) | Claude (`--permission-mode`) |
-  | ------------------- | ---------------------------------- | ---------------------------- |
-  | Chat                | `untrusted` / read-only            | `manual`, edits disallowed   |
-  | Agent               | `on-request` / workspace-write     | `acceptEdits`                |
-  | Agent (full access) | `never` / danger-full-access       | `bypassPermissions`          |
-  | **Plan** toggle     | read-only + plan instructions      | `plan`                       |
+  | Mode                | Codex (`approvalPolicy` / sandbox) | Claude (`--permission-mode`) | OpenCode / MiMo Code (agent)        |
+  | ------------------- | ---------------------------------- | ---------------------------- | ----------------------------------- |
+  | Chat                | `untrusted` / read-only            | `manual`, edits disallowed   | `modex-chat`: edits denied, commands ask |
+  | Agent               | `on-request` / workspace-write     | `acceptEdits`                | `modex-agent`: edits allowed, commands ask |
+  | Agent (full access) | `never` / danger-full-access       | `bypassPermissions`          | `modex-full`: nothing asks          |
+  | **Plan** toggle     | read-only + plan instructions      | `plan`                       | built-in `plan`, edits denied       |
 
 - **Shortcuts.** `⌘N` new thread · `⇧⌘N` thread in a worktree · `⌘⏎` (or `⏎`) send ·
   `⇧⌘P` plan · `⌘.` stop · `⌘J` changes panel.

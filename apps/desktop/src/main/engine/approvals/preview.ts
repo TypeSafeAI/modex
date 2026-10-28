@@ -39,7 +39,7 @@ export async function previewApproval(raw: unknown, ctx: Context): Promise<Appro
   const rules = validateRules(req.rules);
   const project = ctx.project(text(req.projectId, "Project", 100));
   if (!project) throw new Error("Choose an existing project for Try it.");
-  if (req.backend !== "claude" && req.backend !== "codex") throw new Error("Choose Claude or Codex.");
+  if (req.backend !== "claude" && req.backend !== "codex" && req.backend !== "opencode" && req.backend !== "mimo") throw new Error("Choose Claude, Codex, OpenCode or MiMo Code.");
   if (req.mode !== "chat" && req.mode !== "agent" && req.mode !== "full-access") throw new Error("Invalid preview mode.");
   if (typeof req.escalation !== "boolean") throw new Error("Invalid escalation flag.");
   const tool = text(req.tool, "Tool", 100);

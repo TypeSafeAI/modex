@@ -134,7 +134,16 @@ export interface TurnOptions {
   account?: string;
   /** Extra directories the agent may write to (worktree threads pass the project root). */
   addDirs?: string[];
+  /**
+   * CR-6 (#325): a read-only run over a snapshot directory, `cwd`. The backend keeps only its Read tool,
+   * confines it to `cwd`, loads no hooks, plugins, skills, MCP servers or settings files, answers no
+   * permission prompt (anything that would ask is refused), and keeps the session off disk. `systemPrompt`
+   * is appended to the CLI's own. Backends without such a mode must refuse the turn rather than run it loosely.
+   */
+  confinement?: ReviewConfinement;
 }
+
+export interface ReviewConfinement { kind: "review-snapshot"; systemPrompt: string; maxTurns: number }
 
 /** Token usage a backend observed during one turn, for Auto routing and its records. */
 export interface TurnUsage {

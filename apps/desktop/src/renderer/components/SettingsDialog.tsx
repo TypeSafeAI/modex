@@ -22,6 +22,15 @@ interface Props {
   onAnalyticsInRail?: (shown: boolean) => void;
 }
 
+/** The coding CLIs Auto may move a thread between; the offline mock is handled apart. */
+const CODING_BACKENDS = ["codex", "claude", "opencode", "mimo"] as const;
+type CodingBackend = (typeof CODING_BACKENDS)[number];
+const CODING_LABELS: Record<CodingBackend, string> = { codex: "Codex", claude: "Claude", opencode: "OpenCode", mimo: "MiMo Code" };
+/** The ACP-driven CLIs: no in-app sign-in, their own `auth login` in a terminal. */
+const ACP_CARDS = [
+  { id: "opencode" as const, label: "OpenCode", blurb: "Use your OpenCode providers and credentials on this computer.", footnote: "OpenCode owns its credentials and model providers (opencode auth login, opencode.json). Its free models answer without a sign-in." },
+  { id: "mimo" as const, label: "MiMo Code", blurb: "Use your MiMo Code (Xiaomi) credentials on this computer.", footnote: "MiMo Code owns its credentials and providers (mimo auth login). Modex drives it the same way as OpenCode." },
+];
 const testIdentity = (test: RoutingTest) => {
   const tested = test.tested!;
   return test.transport === "cli"
@@ -74,7 +83,8 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     };
   }, []);
   const [s, setS] = useState<Settings>(settings);
-  const [health, setHealth] = useState<Record<BackendId, BackendHealth> | null>(null);
+  // A stubbed or older health map may lack the ACP backends; the cards and paths tolerate that.
+  const [health, setHealth] = useState<(Record<"claude" | "codex" | "mock", BackendHealth> & Partial<Record<"opencode" | "mimo", BackendHealth>>) | null>(null);
   const [healthFailed, setHealthFailed] = useState(false);
   const [healthRevision, setHealthRevision] = useState(0);
   const [chatgpt, setChatgpt] = useState<ChatGPTStatus | null>(null);
@@ -150,10 +160,10 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     void bridge.invoke("routing:status", undefined)
       .then((status) => { if (request === routingStatusRequestRef.current) { setRouting(status); setRoutingError(null); } })
       .catch((err) => { if (request === routingStatusRequestRef.current) { setRouting(null); setRoutingError(errorMessage(err, "Could not load judge status.")); } });
-    for (const b of ["claude"] as BackendId[]) void bridge.invoke("models:list", { backend: b }).then((r) => setLists((l) => ({ ...l, [b]: r }))).catch((err) => setLists((l) => ({ ...l, [b]: { models: [], error: (err as Error).message } })));
+    for (const b of ["claude", "opencode", "mimo"] as BackendId[]) void bridge.invoke("models:list", { backend: b }).then((r) => setLists((l) => ({ ...l, [b]: r }))).catch((err) => setLists((l) => ({ ...l, [b]: { models: [], error: (err as Error).message } })));
   }, []);
 
-  const modelSelect = (b: "claude" | "codex") => {
+  const modelSelect = (b: "claude" | "codex" | "opencode" | "mimo") => {
     const r = lists[b];
     const list = r?.models ?? [];
     return (
@@ -277,11 +287,11 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     setSection(next);
     contentRef.current?.scrollTo(0, 0);
   };
-  const toggleBackend = (backend: "codex" | "claude", enabled: boolean) => {
+  const toggleBackend = (backend: CodingBackend, enabled: boolean) => {
     const selected = new Set(r.allow_backends);
     if (enabled) selected.add(backend);
     else selected.delete(backend);
-    const coding = (["codex", "claude"] as const).filter((id) => selected.has(id));
+    const coding = CODING_BACKENDS.filter((id) => selected.has(id));
     const legacyDemo = r.allow_backends.includes("mock") ? ["mock" as const] : [];
     setR("allow_backends", [...coding, ...legacyDemo]);
   };
@@ -395,6 +405,16 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <TerminalLogin backend="claude" path={health?.claude.resolvedPath} disabled={claudeLoginBusy || s.claude_bin !== settings.claude_bin || health?.claude.executable === "missing"} />
             <p className="connection-footnote">Claude Code owns this login and shares it with other CLI clients on your Mac. API or enterprise settings may take precedence.</p>
           </div>
+          {ACP_CARDS.map((card) => <div className="connection-card" data-testid={`${card.id}-account`} role="group" aria-labelledby={`${card.id}-connection-title`} key={card.id}>
+            <header className="connection-heading">
+              <div><h4 id={`${card.id}-connection-title`}>{card.label}</h4><p>{card.blurb}</p></div>
+              <ConnectionStatus health={health?.[card.id]} failed={healthFailed} busy={false} />
+            </header>
+            <p className="connection-health">{backendHealthText(health?.[card.id], healthFailed)}</p>
+            {health?.[card.id]?.executable === "missing" && <p className="connection-feedback">Install {card.label}, then refresh. If you change its executable below, save and restart Modex.</p>}
+            <TerminalLogin backend={card.id} path={health?.[card.id]?.resolvedPath} disabled={s[`${card.id}_bin`] !== settings[`${card.id}_bin`] || health?.[card.id]?.executable === "missing"} />
+            <p className="connection-footnote">{card.footnote}</p>
+          </div>)}
           </div>
           <div className="connection-path-heading"><h4>Executable paths</h4><p>Detected automatically from your login PATH and standard install locations. Leave overrides blank to keep automatic discovery. Overrides are verified before saving and apply after restart.</p></div>
         <div className="grid2">
@@ -410,6 +430,18 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             {s.codex_bin !== settings.codex_bin && <small className="warn">Override changed · verified when you save</small>}
             {health?.codex.resolvedPath && <small className="connection-path">Using: {health.codex.resolvedPath}</small>}
           </label>
+          <label className="field">
+            <span>OpenCode executable</span>
+            <SecretInput value={s.opencode_bin === "opencode" ? "" : s.opencode_bin} placeholder="Automatic discovery" onChange={(e) => set("opencode_bin", e.target.value)} spellCheck={false} />
+            {s.opencode_bin !== settings.opencode_bin && <small className="warn">Override changed · verified when you save</small>}
+            {health?.opencode?.resolvedPath && <small className="connection-path">Using: {health.opencode.resolvedPath}</small>}
+          </label>
+          <label className="field">
+            <span>MiMo Code executable</span>
+            <SecretInput value={s.mimo_bin === "mimo" ? "" : s.mimo_bin} placeholder="Automatic discovery" onChange={(e) => set("mimo_bin", e.target.value)} spellCheck={false} />
+            {s.mimo_bin !== settings.mimo_bin && <small className="warn">Override changed · verified when you save</small>}
+            {health?.mimo?.resolvedPath && <small className="connection-path">Using: {health.mimo.resolvedPath}</small>}
+          </label>
         </div>
         <div className="grid2">
           <label className="field">
@@ -419,6 +451,14 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <label className="field">
             <span>Default Codex model</span>
             {modelSelect("codex")}
+          </label>
+          <label className="field">
+            <span>Default OpenCode model</span>
+            {modelSelect("opencode")}
+          </label>
+          <label className="field">
+            <span>Default MiMo Code model</span>
+            {modelSelect("mimo")}
           </label>
         </div>
         </section>}
@@ -529,11 +569,11 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           </label>
           <fieldset className="settings-backends">
             <legend>Allowed coding backends when Auto can switch</legend>
-            {(["codex", "claude"] as const).map((backend) => <label className="check" key={backend}>
+            {CODING_BACKENDS.map((backend) => <label className="check" key={backend}>
               <SecretInput type="checkbox" checked={r.allow_backends.includes(backend)} onChange={(e) => toggleBackend(backend, e.target.checked)} />
-              <span>{backend === "codex" ? "Codex" : "Claude"}</span>
+              <span>{CODING_LABELS[backend]}</span>
             </label>)}
-            <small>{r.allow_backends.some((backend) => backend === "codex" || backend === "claude")
+            <small>{r.allow_backends.some((backend) => (CODING_BACKENDS as readonly string[]).includes(backend))
               ? "Auto may switch among the selected coding backends when the thread has no CLI session to preserve. This list does not enable switching by itself; the Auto routing switch must also be on."
               : r.allow_backends.includes("mock")
                 ? "No coding CLI is selected. Mock remains an allowed destination for offline routing when the current backend has no suitable model. Switching must also be enabled above."

@@ -234,4 +234,12 @@ Holder, Admin, or App Manager must create the app record if it does not already 
 place signing keys in this tree.
 
 
-The [network-change and revocation evidence](reviews/2026-10-24-companion-revoke-race.md) maps #109 to automated coverage and provides the pending physical two-LAN acceptance procedure. Private-address VPN support remains a policy decision; automated socket tests do not establish physical secondary-LAN acceptance.
+The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) names, for each
+of the four #109 requirements, the test that proves it and what that test does not prove, and
+holds the physical acceptance procedure for a Mac on two subnets with the phone on the secondary
+one. It adds two race tests: the interface list changes while **Forget paired phones** or
+**Turn off** is running, and no listener survives with the old token. The earlier
+[revocation-during-rebind evidence](reviews/2026-10-24-companion-revoke-race.md) remains the
+base for those. Whether VPN tunnels (`utun`) and virtual bridges with private addresses should
+get a listener is Val's open policy question on #109; today they do, because the filter is by
+address range only. Automated socket tests do not establish physical secondary-LAN acceptance.

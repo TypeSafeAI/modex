@@ -14,6 +14,10 @@ use [status](../status.md) for current delivery state and repin before claiming 
 The live Codex and human gates were open at this timestamp. Later Codex evidence is recorded
 in the integration matrix below; human VoiceOver acceptance remains open.
 
+**Integrated candidate, 2026-10-28: `b643617`.** Its first pass, live gates and matrix are in
+[the section at the end](#integrated-candidate-2026-10-28-b643617). The tables between here and there
+are the earlier records and are unchanged.
+
 Run first pass, with no reruns, in a fresh worktree on an Apple M3 Max (48 GiB), macOS 26.7.1,
 Node 24.18.1 and pnpm 10.34.5, from 06:04Z to 06:25Z. Load averages ran from about 4 to 34.
 
@@ -161,3 +165,179 @@ Each one has a failing test first, then the fix, in the PR that added these chec
 ## Missing-artifact matrix correction — 2026-10-26
 
 The missing-artifact row above was stale after #328 landed. Its deleted-attachment test passed again in the CR-7 integration repair's full unit run (2,163 passed, 22 skipped, zero failed); the test and attachment implementation match `main` at `deb373a3e34ddf890e7db9e2597c3e21ec6aa49c`. This corrects the unit-evidence classification only. The historical candidate receipts, unrun live rows and human acceptance decisions remain unchanged.
+
+
+## Integrated candidate, 2026-10-28: `b643617`
+
+**Candidate:** `main` at `b64361750983068160fe95293192ccea03000f88` (#422, 2026-10-28 10:25 UTC), in the
+worktree `cf8-candidate-oct28`, cut from `origin/main` with `scripts/worktree.sh new`. It includes every
+CF-1 to CF-7 slice named on #273 and #276–#280, among them #394 (CF-7: Claude's task tools and Codex's
+proposed plan, merged 2026-10-24 as `70123b9`) and the CF-4 close-out from #371, which landed through #404
+(`e3527f4`, 2026-10-24; #371 itself was closed as superseded). Nothing that affects the matrix was
+excluded: the open PRs at this time (#417, #419, #420, #423–#426) are local-model, Code Review and docs
+work outside this scope, and #420 is the docs record of the CF-3 rows for this gate.
+
+**Earlier candidates as history.** The 2026-10-22 candidates `0e674e7` and `ec7be57` were run in the
+`cf8-integrated-oct22` worktree and never pushed. Their receipts and reports are carried forward unchanged:
+[`0e674e7`](2026-10-22-cf8-integrated-candidate.md) with its [commands](2026-10-22-cf8-command-results.json),
+[live Claude report](2026-10-22-cf8-live-claude.json) and [measurement](2026-10-22-cf8-transcript-measure.json), and
+[`ec7be57`](2026-10-22-cf8-ec7be57-candidate.md) with its [commands](2026-10-22-cf8-ec7be57-command-results.json),
+[live Claude report](2026-10-22-cf8-ec7be57-live-claude.json) and [measurement](2026-10-22-cf8-ec7be57-transcript-measure.json).
+Their 33 candidate captures and raw logs stay outside the tree, in that worktree's staged
+`docs/screenshots/conversation-fidelity/2026-10-22-candidate/` and in
+`~/.codex/attachments/cf8-integrated-oct22-evidence/` and `…/cf8-integrated-ec7be57-evidence/`. Their live Claude
+probe (Claude Code 2.1.309) passed the edit, check, Notes, restart and Stop steps and failed on its own
+expectation of a structured plan, which Claude Code 2.1.308 and later no longer offer Modex; the probe below
+expects what Modex shows instead. Those results are evidence for those SHAs only.
+
+### First pass
+
+Run once, in order, with no reruns, by `apps/desktop/.probes/cf8-first-pass-b643617.py` (git-ignored). Each
+row records its exact command, start and end, exit code and HEAD in
+`~/.claude/task-evidence/cf8-2026-10-28/first-pass/results.jsonl`, with one log per command beside it.
+
+**Machine:** Apple M5 Max, 128 GiB, macOS 27.0.1, Node v24.22.0, pnpm 10.34.5, Xcode 27.1 (27A9275). Disk
+free before the worktree: 6.4 TiB. Other sessions were running: the 1-minute load average was 14 at the
+start and reached 158 during the typecheck.
+
+| Command | Start–end (UTC) | Result |
+| --- | --- | --- |
+| `pnpm install --frozen-lockfile` | 11:50:34–11:50:38 | passed (the worktree helper had already installed; not a cold install) |
+| `pnpm build` | 11:50:38–11:51:43 | passed |
+| `pnpm typecheck` | 11:51:43–11:52:47 | passed |
+| `pnpm test` | 11:52:47–11:57:57 | passed, exit 0: worktree scripts 117/117; core 16/16; **desktop 2,011 passed, 17 skipped, 0 failed, 0 cancelled of 2,028**, second stage 21 passed, 6 skipped of 27; site 10/10; store-desktop 16/16 |
+| `pnpm test:e2e` | 11:57:57–12:21:08 | passed, exit 0: **desktop 470 passed, 7 skipped, 0 failed of 477** (22.7 min); site 7/7 |
+| iPhone UI, as `Scripts/test-e2e.sh` | 12:21:08–12:27:01 | passed, exit 0: `CompanionFlowTests` **23/23** (135.8 s), `DemoWorkspaceTests` **20/20** (162.4 s) |
+
+Skips, all platform or opt-in, none a failure:
+- desktop unit, first stage (17): 16 Windows-only cases (recovery writes, npm and `.bin` shims, CLI job and PTY
+  descendant cleanup, admission) and the pinned Open Knowledge case;
+- desktop unit, second stage (6): the native CLI isolation proofs (`code-review-isolation.native.test.mjs`), opt-in;
+- desktop e2e (7): `claude-live-stop` (1, `MODEX_CLAUDE_LIVE=1`), `live-smoke` (3, `MODEX_LIVE_SMOKE=1`) and
+  `knowledge` (3, `MODEX_TEST_OPEN_KNOWLEDGE=1`).
+
+The iPhone script's default destination (iPhone 16 Pro, iOS 26.5) is not installed on this Mac. As CI does,
+the run named a simulator by UDID: a dedicated `modex-cf8-oct28` (iPhone 17, iOS 27.0,
+`8EDBC0B8-8D29-4A5F-B1DA-7A5EDF561788`), booted before the build, with its own derived data. This is
+simulator evidence; it says nothing about a physical iPhone.
+
+### Live gates on the candidate
+
+Both run through the real app, main process and native adapter with
+`apps/desktop/.probes/live-golden-b643617.spec.ts` (git-ignored, derived from `e2e/live-smoke.spec.ts`), in Chat
+mode so the CLI asks before it edits or runs, in a disposable repository with `greeting.txt` = `hello`. The
+steps: request → plan, when the CLI offers a plan tool → approve each card → a real edit → the check
+`grep -q 'hello, live' greeting.txt` → final answer → Save to Notes → Open → quit and relaunch → the same
+items and note, the file unchanged → then, in a new thread, Stop two seconds into an approved 30-second
+command, and 31 seconds later the file it would have written does not exist.
+
+**Plan expectation.** Claude Code 2.1.308 and later offer Modex no `TodoWrite`, and Modex does not set
+`CLAUDE_CODE_ENABLE_TODO_TOOLS` ([task-context](../task-context.md#plans), Val's option 1). The probe
+therefore accepts a plan item only when the transcript holds confirmed `TaskCreate`/`TaskUpdate` (or
+`TodoWrite`) calls; otherwise it requires the footer and the saved note to read "Claude Code reported no plan
+for this turn". Codex outside plan mode has never sent `turn/plan/updated` live, so the same rule applies
+with Codex's words. The prompt asks for a plan only "if you have a task-list or todo planning tool
+available", and not to search for one.
+
+**Attempts.** The probe's first two starts are kept as history in `~/.claude/task-evidence/cf8-2026-10-28/`:
+`live-claude-20261028T122751Z-probe-script-error` failed in the probe itself before any CLI launched (an ESM
+`__dirname`), and `live-claude-20261028T122947Z-note-path-assertion` completed the Claude turn (one approval, the
+edit and the check succeeded, no plan) and then failed on a probe assertion that the saved note never names the
+project directory: Claude had written the directory in full into its own `sed` command, and the note records the
+command's text. That assertion now records the fact instead. Neither attempt is a Modex failure; the third start is
+the result below. Each start spent one Claude turn.
+
+#### Claude Code 2.1.312 (`claude -p`, Haiku, Chat mode): passed, 2026-10-28 12:31–12:32 UTC
+
+`live-claude-20261028T123121Z/report.claude.json`, exit 0, 1.0 min.
+
+| Step | Observed |
+| --- | --- |
+| Request and approval | Claude read the file, then called `Edit`, which **failed**: "No such tool available: Edit. Edit is disabled for this session". That is Chat mode, which launches the CLI with `--disallowedTools Edit Write NotebookEdit`; Modex recorded the call as `failed`, not as succeeded. Claude then asked to run `sed -i '' 's/hello/hello, live/' …/greeting.txt`; **one approval card**, approved in the window. |
+| Real edit and check | The `sed` command succeeded and the file reads `hello, live`. `$ grep -q 'hello, live' greeting.txt` succeeded. No exit code, as Claude Code reports none. |
+| Final answer | The last assistant item has phase `unspecified` (Claude Code reports no phase). Two reasoning items, outcome `succeeded`. No failure card. |
+| Plan | **No plan tool was offered or called:** zero plan items, zero `TaskCreate`/`TaskUpdate`/`TodoWrite` calls. The footer read "Claude Code reported no plan for this turn", and the saved note's Plan section says the same. This is the expected result on Claude Code 2.1.308 and later. |
+| Save to Notes, Open, restart | Saved as a `Task:` note, revision 1, naming `greeting.txt` and the `grep -q` check; the note did not name the project directory. Open showed "From modex thread …". After quit and relaunch, `thread:items` was identical, the note identical, and `greeting.txt` unchanged. |
+| Stop mid-command | Approved `python3 -c "import time; time.sleep(30); open('live-stop.txt', 'w')"`; Stop two seconds in. The thread was idle **809 ms** after Stop, the call ended `done` with outcome `interrupted`, the notice reads "Stopped.", no failure card. 31 s later `live-stop.txt` did not exist. |
+
+#### codex-cli 0.164.0 (`codex app-server`, ChatGPT account, `gpt-6.1-sol`, Chat mode): passed, 2026-10-28 12:33–12:34 UTC
+
+`live-codex-20261028T123300Z/report.codex.json`, exit 0, 1.3 min, first start. The model is the CLI's configured
+default; Codex's own rollouts for the two threads record `model: gpt-6.1-sol`, collaboration mode `default`,
+approval policy `untrusted` and a read-only sandbox. `default_mode_request_user_input` was off and `unified_exec` on.
+
+| Step | Observed |
+| --- | --- |
+| Request and approvals | A commentary message (`nativePhase: commentary`) and a reasoning item, then `apply_patch` on `greeting.txt` succeeded after **the first approval card**; the check asked a **second card**. Two approvals, both in the window. |
+| Real edit and check | The file reads `hello, live`. `$ grep -q 'hello, live' greeting.txt` succeeded with **exit code 0**, which Codex reports. |
+| Final answer | The last assistant item has phase `final` (`nativePhase: final_answer`). No failure card. |
+| Plan | **No `turn/plan/updated` arrived:** zero plan items, and the rollouts hold no plan rows. The footer read "Codex reported no plan for this turn", and the saved note's Plan section says the same. This matches the live captures on `task-context.md`: outside plan mode, Codex has not offered its plan tool. |
+| Save to Notes, Open, restart | Saved as a `Task:` note, revision 1, naming `greeting.txt` and the check; the note did not name the project directory. Open showed "From modex thread …". After quit and relaunch, `thread:items` was identical, the note identical, and `greeting.txt` unchanged. |
+| Stop mid-command | Approved the 30-second `python3` command; Stop two seconds in. The thread was idle **118 ms** after Stop, the call ended `done` with outcome `interrupted`, the notice reads "Stopped.", no failure card. 31 s later `live-stop.txt` did not exist: the background-terminal fix from the 2026-10-20 live smoke holds on 0.164.0. |
+
+Neither CLI reached a live structured question or a live step plan in these turns, and neither was asked to: the
+CF-3 question rows are Val's (below), and a live `turn/plan/updated` stays on the "Not done yet" list in
+[task-context](../task-context.md#not-done-yet). What both runs do show is the full golden path, approvals included,
+and a Stop that ends the command, on the candidate.
+
+### Matrix on `b643617`
+
+Every row names the kind of evidence it has on this candidate: fixture, unit, live or human. A fixture or
+unit pass is not live-provider or human acceptance. The fixture and unit rows ran inside the first pass above.
+
+| Requirement | Evidence on `b643617` | State |
+| --- | --- | --- |
+| Golden path: request → plan → approval → real edit → check → answer → Save to Notes → Open → restart restores, nothing re-runs | `e2e/conversation-fidelity.spec.ts` "golden path" with the fixture Claude CLI, in the 470 passed; live Claude and Codex above | Verified (fixture); live: see above |
+| A plan or clarifying question answered during the path | "a clarifying question in the path" and `e2e/plan-clarification.spec.ts`, in the 470 passed; `e2e/codex-native-plan.spec.ts` for Codex's plan mode | Verified (fixture) |
+| Paired-client reconnect in the path | "a phone that reconnects after the decision was sent" (fixture, journal on); `test/request-journal.test.ts` and `test/question-replay.test.ts` (unit, real TLS) | Verified (fixture, unit) |
+| Denial: file unchanged, nothing runs | "a denial leaves the file as it was and runs nothing" | Verified (fixture) |
+| Command failure | "a failing check is a failed command" | Verified (fixture) |
+| Unknown outcome | CF-1 and CF-6 unit tests: a dropped stream; work left running at a restart (`test/conversation-migration.test.ts`) | Verified (unit) |
+| Stop while executing | "Stop while a check runs" (fixture); live Claude and Codex Stop above | Verified (fixture); live: see above |
+| Native request withdrawal | "a native withdrawal" | Verified (fixture) |
+| Simultaneous desktop and phone answers | "the desktop and the phone answer at once" | Verified (fixture) |
+| Reconnect after a decision send | "a phone that reconnects after the decision was sent", journal on | Verified (fixture) |
+| Old snapshot migration | `test/conversation-migration.test.ts`, including v0.3.0 history and older paired desktops | Verified (unit) |
+| Journal off | The golden fixture runs with the journal off, the default | Verified (fixture) |
+| Expired cursor | `test/event-journal.test.ts` resume and reload cases; `test/question-replay.test.ts` 8 MB slow-stream drop | Verified (unit) |
+| Stale Note revision | `test/task-context.test.ts`: a note edited since is kept, and a note moved across projects (#363) | Verified (unit) |
+| Missing artifact | `test/attachment-commands.test.ts` "an attachment whose file was deleted cannot be opened, and nothing is revealed" (#328): **passed in this first pass** (log line 240 of `test.log`) | Verified (unit); not live or human |
+| Outcomes, reasoning and provenance match recorded events | CF-1 fixture tests on Claude Code 2.1.302 and codex-cli 0.163.0 captures; CF-5 evidence tests; CF-7 live captures replayed in `test/claude-live-capture.test.ts` (2.1.309 task tools) and `test/codex-live-capture.test.ts` (`gpt-6.1-sol` plan mode) | Verified on captures; live outcomes recorded above |
+| Themes and viewports | `e2e/conversation-fidelity.spec.ts` captures and `e2e/typed-turns.spec.ts`, in the 470 passed; the CF-4 close-out's reference-viewport captures (#404) | Verified (fixture captures); human visual review: Val |
+| Keyboard and reduced motion | `e2e/app.spec.ts` accessibility, `e2e/keyboard-answers.spec.ts` (#342, #352), the CF-4 close-out's named table and code scroll regions and reduced-motion coverage (#404), in the 470 passed | Verified (fixture); human: Val, rows A1–A8, B1–B7, C1–C5 |
+| Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts`, in the 470 passed: no streamed event over the 256 KB preview, no items resent on open; the CF-4 first-open budget passed in the same run: five fresh launches of the 200-turn transcript opened in 246.5, 248.4, 242.5, 257.3 and 240.5 ms, median **246.5 ms ≤ 500 ms** | Verified (fixture, machine-independent bounds); the [named-Mac measurements](#measurements-on-a-named-mac) are the historical comparison |
+| Live Codex and Claude acceptance | This section's live gates | See above |
+| Human keyboard and VoiceOver | [Checklist](2026-10-20-keyboard-voiceover/checklist.md) A1–A8, B1–B7 and C1–C5 on the seeded build from this candidate (below) | **Open: Val.** No row is recorded here until Val reports it |
+| CF-3 native question, human | [Steps](2026-10-22-cf3-question-acceptance.md) D1–D5, V1–V3 and P1–P6; #420 holds the prepared run on `6c9000f`; between `6c9000f` and `b643617` only #421 (Companion tests) and #422 (the Code Review agent) landed, and neither touches the question broker, the cards, the Companion app or an ordinary Claude or Codex turn (#422 adds a separate confined launch path to `claude.ts` that a review run alone uses) | **Open: Val.** P rows also wait on Companion 0.4.0 (9) reaching TestFlight |
+| CF-6 gates beyond the tests | [CF-6 gates](2026-10-22-cf6-gates.md): live Codex and Claude with the journal on passed on 2026-10-22; the 8 MB drop and power-loss proxies are unit tests in this first pass | Verified (live 2026-10-22, unit); **deferred by Val in writing on 2026-10-23:** a real power cut, the Windows and Linux app sessions ("accepted the CI suites") and the physical iPhone ("Defer it, close #279", on #279) |
+| Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [First pass](#first-pass) above, all first pass, all passed | Verified on `b643617` |
+
+### Human review build
+
+The seeded offline scenario from the [checklist](2026-10-20-keyboard-voiceover/checklist.md) was launched from this
+candidate on 2026-10-28 at about 12:40 UTC, for Val:
+
+```sh
+# from .worktrees/cf8-candidate-oct28/apps/desktop, built at b643617
+node ../../docs/reviews/2026-10-20-keyboard-voiceover/seed.mjs /tmp/modex-voiceover-b643617
+MODEX_HOME=/tmp/modex-voiceover-b643617/home npx electron .
+```
+
+It uses the scripted engine, a disposable home and repository, and spends no CLI usage. The build carries #342,
+#352 and the CF-4 close-out (#404), so rows A1–A8, B1–B7 and C1–C5 all apply. The CF-3 rows D1–D5, V1–V3 and
+P1–P6 use the Mac build and disposable project that #420 records (built from `6c9000f`; the question path is
+unchanged on `b643617`, see the matrix), with Plan mode on a Codex thread. Results are added here exactly as Val
+reports them, through a docs-only signed PR. **No human row is recorded as passed here.**
+
+### What is open on this candidate
+
+| Row | Owner | Next action |
+| --- | --- | --- |
+| Keyboard A1–A8 and VoiceOver B1–B7 | Val | Run the seeded build above and post the filled tables on #281 |
+| Markdown C1–C5 | Val | Same build, the **Markdown review** thread, 900×600 with Review open, three themes, Reduce Motion for C3 |
+| CF-3 D1–D5, V1–V3 | Val | The #420 Mac build, Plan mode on a Codex thread; post on #276 and #281 |
+| CF-3 P1–P6 | Val | Upload Companion 0.4.0 (9) to TestFlight first; P6 needs an older Companion at hand |
+
+Everything else in the matrix has fixture, unit or live evidence on `b643617`, or Val's written deferral. #281 closes
+when these rows have Val's result or written deferral. No tag, release, merge-queue entry or policy default
+changes with this receipt.

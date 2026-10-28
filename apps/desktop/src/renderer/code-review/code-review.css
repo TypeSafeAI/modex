@@ -226,3 +226,30 @@ button.cr-state { cursor: pointer; font: inherit; }
 .cr-field { display: flex; flex-direction: column; gap: 4px; }
 .cr-input { font: inherit; padding: 6px 8px; border: 1px solid var(--border-pane); border-radius: 8px; background: transparent; color: inherit; min-width: 0; }
 .cr-reviewers { display: flex; flex-direction: column; gap: 8px; }
+
+/* CR-6 (#325): the agent review panel, the instructions popover and the runs shown in the overview. */
+.cr-instructions { position: relative; display: inline-flex; }
+.cr-instructions-popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: min(440px, 80vw); padding: 14px; border: 1px solid var(--border-pane); border-radius: 10px; background: var(--bg-sidebar); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); display: flex; flex-direction: column; gap: 8px; }
+.cr-instructions-popover h2 { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--text-1); }
+.cr-instructions-popover p { margin: 0; }
+.cr-agent-panel select { font: inherit; padding: 4px 8px; border: 1px solid var(--border-pane); border-radius: 8px; background: transparent; color: inherit; max-width: 280px; }
+.cr-agent-panel .cr-compose-buttons { align-items: center; }
+.cr-agent { margin-top: 24px; display: flex; flex-direction: column; gap: 12px; }
+.cr-agent-run { padding: 14px 16px; border: 1px solid var(--border-pane); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.cr-agent-run-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.cr-agent-state { font-size: var(--text-sm); padding: 1px 8px; border-radius: var(--radius-pill); background: var(--bg-row-hover); color: var(--text-2); }
+.cr-agent-running .cr-agent-state { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.cr-agent-failed .cr-agent-state, .cr-agent-unknown .cr-agent-state { color: var(--danger-text); background: var(--danger-bg); }
+.cr-agent-outdated { font-size: var(--text-sm); color: var(--danger-text); }
+.cr-agent-question { margin: 0; padding: 6px 12px; border-left: 3px solid var(--border-strong); color: var(--text-2); white-space: pre-wrap; }
+.cr-agent-coverage summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-3); }
+.cr-agent-coverage ul, .cr-agent-trail { margin: 6px 0 0; padding-left: 18px; font-size: var(--text-sm); color: var(--text-3); }
+.cr-agent-findings { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.cr-agent-finding { padding: 10px 12px; border: 1px solid var(--border-pane); border-radius: 8px; display: flex; flex-direction: column; gap: 4px; }
+.cr-agent-finding-head { display: flex; align-items: baseline; gap: 8px; }
+.cr-agent-severity { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.cr-severity-blocker .cr-agent-severity, .cr-severity-major .cr-agent-severity { color: var(--danger-text); }
+.cr-agent-finding-detail { margin: 0; white-space: pre-wrap; }
+.cr-agent-finding p { margin: 0; }
+.cr-agent-ask { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--border-pane); border-radius: 10px; }
+.cr-agent-ask p { margin: 0; }

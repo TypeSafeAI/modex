@@ -11,7 +11,7 @@ import type { JudgeSource, Judgments } from "./judge.js";
 export const EFFORTS: EffortLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 /** How long a backend's prompt cache is assumed to survive an idle thread. Claude Code writes 1-hour entries. */
-export const CACHE_LIFETIME_MS: Record<BackendId, number> = { claude: 60 * 60_000, codex: 60 * 60_000, mock: 0 };
+export const CACHE_LIFETIME_MS: Record<BackendId, number> = { claude: 60 * 60_000, codex: 60 * 60_000, opencode: 60 * 60_000, mimo: 60 * 60_000, mock: 0 };
 /** Below this many context tokens a switch re-reads too little to matter. */
 export const SMALL_CONTEXT_TOKENS = 20_000;
 /** A warm thread moves up only to a model at least this many tiers higher... */
@@ -26,8 +26,9 @@ export const PRIOR_TURNS_DEPENDENT = 0.7;
  * Fast mode could not be measured (Claude's fast-mode setting did not apply; Codex's default model
  * has no fast tier), so it stays assumed to clear.
  */
-export const EFFORT_CLEARS_CACHE: Record<BackendId, boolean> = { claude: false, codex: false, mock: false };
-export const FAST_CLEARS_CACHE: Record<BackendId, boolean> = { claude: true, codex: true, mock: false };
+// OpenCode and MiMo Code route to many providers; nothing has been measured there, so both stay assumed to clear.
+export const EFFORT_CLEARS_CACHE: Record<BackendId, boolean> = { claude: false, codex: false, opencode: true, mimo: true, mock: false };
+export const FAST_CLEARS_CACHE: Record<BackendId, boolean> = { claude: true, codex: true, opencode: true, mimo: true, mock: false };
 
 /** How likely a switch is to discard a warm prompt cache on this thread. */
 export type Warmth = "none" | "unknown" | "cold" | "small" | "warm";
