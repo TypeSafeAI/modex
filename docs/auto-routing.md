@@ -274,12 +274,12 @@ Modex has a backend for. Surveyed on 2026-09-25:
 | **Claude Code** (`claude -p`) | stream-json in/out | `control_request` on stdio | `--model`, `--effort low…max`, fast mode via settings | shipped |
 | Gemini CLI | `-p --output-format stream-json` | `--approval-mode default/auto_edit/yolo/plan` (no per-call prompt channel found) | `-m` | good next candidate once its permission prompts can be answered from a host |
 | GitHub Copilot CLI | `-p` | `--allow-all-tools` only | `--model` (incl. `auto`) | possible for chat/plan modes; no interactive approval path yet |
-| opencode (installed build) | `-p -f json` | none | none in headless | not a fit for agent mode |
+| **OpenCode** / **MiMo Code** (`opencode acp`, `mimo acp`) | ACP: JSON-RPC over stdio, streaming updates | `session/request_permission` | `session/set_config_option` model and effort per session; `<cli> models` list without efforts | shipped 2026-10-28 ([docs/opencode.md](opencode.md)); the 2026-09-25 verdict on its `-p -f json` headless mode no longer applies |
 | **Local models** | via **Codex** `--oss --local-provider lmstudio|ollama` (LM Studio has `qwen/qwen3.5-9b` on this machine) | Codex's | Codex's | the right way in: a tier-0 rung on the Codex ladder, no API mode in Modex |
 
-Recommendation: keep Claude and Codex as the routing targets now; add local models as a
-Codex profile (`codex --oss`) rather than a new backend, so `AGENTS.md`'s CLI-only rule
-holds; evaluate Gemini CLI as the third backend when its headless approvals can be driven.
+Recommendation: Claude, Codex, OpenCode and MiMo Code are the routing targets; add local models as a
+Codex profile (`codex --oss`) or an OpenCode provider rather than a new backend, so `AGENTS.md`'s CLI-only rule
+holds; evaluate Gemini CLI as a further backend when its headless approvals can be driven.
 
 ## Verifying
 

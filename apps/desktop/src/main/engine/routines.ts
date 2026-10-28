@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { BackendId, Thread, ThreadItem, ThreadStatus } from "../../shared/types.js";
+import { isBackendId, type BackendId, type Thread, type ThreadItem, type ThreadStatus } from "../../shared/types.js";
 import type { Routine, RoutineDraft, RoutineRun, RoutineRunTrigger, RoutinesState, RoutineTrigger } from "../../shared/routines.js";
 import type { CreateSpacePage, SpaceChangeContext, SpacePage, SpacePageVersion } from "../../shared/space.js";
 
@@ -72,7 +72,7 @@ export function validateRoutine(raw: unknown, projectExists: (id: string) => boo
   const instructions = text(draft.instructions, "Instructions", 20_000);
   if (typeof draft.projectId !== "string" || !projectExists(draft.projectId)) throw new Error("Choose a project for the routine.");
   if (draft.mode !== "chat" && draft.mode !== "plan") throw new Error("Routines run read-only: choose Chat or Plan.");
-  if (draft.backend !== undefined && draft.backend !== "codex" && draft.backend !== "claude" && draft.backend !== "mock") throw new Error("Choose a valid provider.");
+  if (draft.backend !== undefined && !isBackendId(draft.backend)) throw new Error("Choose a valid provider.");
   if (draft.model !== undefined && (typeof draft.model !== "string" || draft.model.length > 200)) throw new Error("Invalid model.");
   if (typeof draft.enabled !== "boolean") throw new Error("Invalid enabled flag.");
   const trigger = draft.trigger as Record<string, unknown> | undefined;

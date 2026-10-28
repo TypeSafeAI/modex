@@ -7,17 +7,17 @@ import type { BackendId, FailureCode, TurnFailure, TurnFix } from "./types.js";
  * the renderer (which formats the report), and unit-tested from test/failures.test.ts.
  */
 
-export const BACKEND_NAMES: Record<BackendId, string> = { codex: "Codex", claude: "Claude Code", mock: "The mock backend" };
+export const BACKEND_NAMES: Record<BackendId, string> = { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", mimo: "MiMo Code", mock: "The mock backend" };
 
 /** The CLI command that signs the backend in. Typed into the thread's terminal by the failure card's fix. */
-export const LOGIN_COMMANDS: Partial<Record<BackendId, string>> = { codex: "codex login", claude: "claude auth login" };
+export const LOGIN_COMMANDS: Partial<Record<BackendId, string>> = { codex: "codex login", claude: "claude auth login", opencode: "opencode auth login", mimo: "mimo auth login" };
 
 /** First match wins, so the more specific families come first. Patterns are the CLIs' own wording. */
 const RULES: { code: FailureCode; test: RegExp }[] = [
   // OpenAI refusing part of a resumed thread's history over a ChatGPT plan token: nothing about
   // the next message changes it, so this comes before the families that suggest a retry.
   { code: "unsupported_history", test: /subscription_sharing_unsupported_capability|subscription sharing currently supports only/i },
-  { code: "not_installed", test: /is (?:the )?(?:codex cli|claude code) installed|could not start |\bENOENT\b|not found on PATH|command not found/i },
+  { code: "not_installed", test: /is (?:the )?(?:codex cli|claude code|opencode cli|mimo code cli) installed|could not start |\bENOENT\b|not found on PATH|command not found/i },
   {
     code: "auth",
     test: /could not be refreshed|sign in again|log ?in again|not logged in|not signed in|please run \/login|login (?:is )?required|logged out|unauthori[sz]ed|\b401\b|invalid api key|incorrect api key|authentication[_ ](?:error|failed|required)|invalid[_ ]token|token (?:has |is )?(?:expired|invalid)|oauth token|refresh token|api key is currently being used|no api key|not authenticated/i,
@@ -27,7 +27,7 @@ const RULES: { code: FailureCode; test: RegExp }[] = [
     code: "network",
     test: /\bE(?:CONNRESET|CONNREFUSED|TIMEDOUT|NOTFOUND|AI_AGAIN|PIPE|HOSTUNREACH|NETUNREACH)\b|socket hang up|fetch failed|network|connection (?:reset|refused|closed|error|lost|failed)|stream disconnected|error sending request|timed out|\b50[234]\b|bad gateway|service unavailable|gateway timeout|\btls\b|certificate/i,
   },
-  { code: "crashed", test: /app-server exited|exited with code|exited \(\d+\)|force-stopped|disposed|is not running|was killed|SIG(?:KILL|TERM|SEGV|ABRT)/i },
+  { code: "crashed", test: /app-server exited|\bacp exited|exited with code|exited \(\d+\)|force-stopped|disposed|is not running|was killed|SIG(?:KILL|TERM|SEGV|ABRT)/i },
 ];
 
 /**

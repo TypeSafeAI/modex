@@ -14,8 +14,13 @@ import type { CodeReviewReply, CodeReviewRequest } from "./code-review.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
-/** Which CLI runs the thread. "mock" is the offline scripted engine used by the demo and tests. */
-export type BackendId = "claude" | "codex" | "mock";
+/**
+ * Which CLI runs the thread. "opencode" is the OpenCode CLI and "mimo" Xiaomi's MiMo Code fork of it, both over
+ * their `acp` server (docs/opencode.md). "mock" is the offline scripted engine used by the demo and tests.
+ */
+export type BackendId = "claude" | "codex" | "opencode" | "mimo" | "mock";
+export const BACKEND_IDS: readonly BackendId[] = ["claude", "codex", "opencode", "mimo", "mock"];
+export function isBackendId(value: unknown): value is BackendId { return typeof value === "string" && (BACKEND_IDS as readonly string[]).includes(value); }
 export type ThreadStatus = "idle" | "running" | "waiting" | "error";
 export type ApprovalAnswer = "yes" | "no" | "always";
 
@@ -193,6 +198,8 @@ export interface Settings {
   /** Executables; plain names resolve on PATH. */
   claude_bin: string;
   codex_bin: string;
+  opencode_bin: string;
+  mimo_bin: string;
   /** Scripted engine for the offline demo/tests. */
   mock_script?: string;
   /** Auto routing (Jev) policy and bounds. */
@@ -261,7 +268,7 @@ export interface ApprovalReceipt {
 export interface ApprovalPreviewRequest {
   projectId: string;
   rules: ApprovalRule[];
-  backend: "claude" | "codex";
+  backend: "claude" | "codex" | "opencode" | "mimo";
   tool: string;
   title: string;
   mode: Mode;
@@ -384,6 +391,8 @@ export interface ModelInfo {
 export const BACKENDS: { id: BackendId; label: string; hint: string }[] = [
   { id: "codex", label: "Codex", hint: "OpenAI Codex CLI (codex app-server) — uses your `codex login`" },
   { id: "claude", label: "Claude", hint: "Claude Code CLI (claude -p) — uses your `claude` login" },
+  { id: "opencode", label: "OpenCode", hint: "OpenCode CLI (opencode acp) — uses your `opencode auth login`" },
+  { id: "mimo", label: "MiMo Code", hint: "MiMo Code CLI (mimo acp) — uses your `mimo auth login`" },
 ];
 
 export interface AppState {
