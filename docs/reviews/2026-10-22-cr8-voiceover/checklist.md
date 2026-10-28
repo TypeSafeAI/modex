@@ -7,11 +7,14 @@ the keyboard alone, then with VoiceOver, and records what they hear. The automat
 rings and Escape. They do not replace this review. The
 [acceptance matrix](../2026-10-22-cr8-acceptance-matrix.md) lists this gate as open until it is filled in.
 
-It covers what CR-3 built: the inbox, the PR and Changes tabs, the header actions, the split and the dividers.
-The overview (#323), the diff and file tree (#324), and the review instructions popover (#325) get sections
-here when they land. Their rows are listed at the end so they aren't forgotten.
+It covers what CR-3 built: the inbox, the PR and Changes tabs, the header actions, the split and the dividers,
+and, since the overview (#323) and the diff and file tree (#324) landed, parts C and D for the populated panes.
+The review panel and instructions popover (#325) and the GitHub writes (#326) have landed too; their rows stay
+listed at the end for their own issues' acceptance and are not part of #322 AC4.
 
-**Build:** `main` at `0e674e7` or later, built with `pnpm build`. Record the SHA you used.
+**Build:** `main` at `7a01df2` or later (the CR-3 acceptance PR's head once it merges), built with `pnpm build`.
+Record the SHA you used. The automated half of this gate at that head is in
+[the CR-3 acceptance record](../2026-10-28-cr3-acceptance.md).
 
 ## Setup (about 3 minutes)
 
@@ -29,7 +32,9 @@ review, all made up), and prints an `env … npx electron .` line. Run that line
 1. Open DevTools (View → Toggle Developer Tools) and run `localStorage.setItem("modex.codeReview", "on")`. Then reload (Command-R). This turns on the unfinished destination in a built app.
 2. Make the window about 1440×900.
 3. Part A runs with VoiceOver off. Part B runs with VoiceOver on (Command-F5; VO = Control-Option).
-   Repeat A1–A6 at about 900×600 and note anything that differs.
+   Parts C and D run with VoiceOver on. Repeat A1–A6, C1–C3 and D1–D4 at about 900×600 and note
+   anything that differs: the split folds to one pane there, and the file tree sits behind the
+   **Show changed files** toggle in the Changes header.
 
 ## A. Keyboard only (no mouse or trackpad)
 
@@ -61,12 +66,37 @@ review, all made up), and prints an `env … npx electron .` line. Run that line
 | B7 | Without moving the cursor, open a PR whose read is slow (or just watch while one loads) | Note what is announced on its own, if anything: the spinner is `role=status`. Record what you hear. | |
 | B8 | Turn on Reduce motion (System Settings → Accessibility → Display), then open a PR | The header spinner stops turning | |
 
-## Not yet testable (add when the slice lands)
+## C. The overview (#323), keyboard and VoiceOver
 
-| Slice | Rows to add |
+Open "Move holds between branches…" first. Its body is long enough to scroll.
+
+| # | Do | Expect | Pass? Notes |
+| --- | --- | --- | --- |
+| C1 | VO-Right from the header into the pane | "Description and activity, main"; the PR title as a heading; the description's own headings and lists read as headings and lists, not as one run of text | |
+| C2 | With VO off, click in the description, then press PageDown and End | Only the description column scrolls (at 1440×900 the sidebar with checks and the stack stays put; at 900×600 they stack under it and scroll together). The inbox list and the window do not move | |
+| C3 | Tab to the activity filter, change it with the arrow keys, then Tab to **Load more activity** and press Return | Focus stays on the filter while the list changes; more cards arrive below without the view jumping; "All activity loaded" is announced when it is | |
+| C4 | VO-Right through the sidebar | Each check reads its name and state in words ("success", "failure", "pending"), never only a colour; the stack says "Inferred from base/head branches · May be incomplete" before its list; a deployment reads its destination as a link you have to activate | |
+| C5 | Scroll the inbox list with the wheel or trackpad while focus is in the description | The focused control keeps focus; the description does not move | |
+
+## D. Changes: the diff and the file tree (#324), keyboard and VoiceOver
+
+Press Right on the PR tab, or activate **Changes**. At 900×600, the tree is behind the **Show changed files**
+toggle in the Changes header (it becomes **Show the diff** while the tree is up); at 1440×900 it sits to the
+right of the diff.
+
+| # | Do | Expect | Pass? Notes |
+| --- | --- | --- | --- |
+| D1 | VO-Right through the diff toolbar and the first file | "Refresh files"; "n of n files loaded"; "Wrap lines, checkbox"; "Highlight changes, checkbox"; then the file's path as a button that reads "Expand" or "Collapse", its additions and deletions in words, and "File options for …" | |
+| D2 | On a file heading press Return, then VO-Right into the patch | The hunk reads line by line with its old and new line numbers; a context line, an added line and a removed line can be told apart by what is read, not by colour | |
+| D3 | With VO off: focus a file heading, then press PageDown; then scroll the inbox with the wheel | Only the diff scrolls on PageDown; the inbox scroll does not move the diff or take the focus from the heading | |
+| D4 | Tab into the tree's filter field ("Filter remote files"), type `move`, then Tab to the file ("View remote diff for src/holds/move.ts") and press Return | The tree narrows to the match; Return moves the diff to that file's section and focuses it; the tree keeps its own scroll position | |
+| D5 | Tab back into the tree and scroll it with PageDown | Only the tree scrolls; the diff stays where D4 left it | |
+| D6 | Switch to the PR tab and back to Changes | The diff, the tree and the inbox are each where you left them; the file you chose is still marked current | |
+
+## Not part of #322 (owned by their own issues)
+
+| Slice | Rows for that issue's human gate |
 | --- | --- |
-| #323 overview | The title as a heading; description headings and lists; activity cards in order; check rows read state in words, not colour; "No comments" only when complete; the composer never hides focus |
-| #324 diff | File headers; the Viewed toggle (if decided); line numbers read old and new; expanding context; selecting a file in the tree moves to its section; filter files |
 | #325 review | R3's instructions popover: its scope line, Escape returns focus to the gear; review start, stop and progress announced |
 | #326 writes | Confirmation dialogs; submit announced once; reconciliation state after an uncertain write |
 

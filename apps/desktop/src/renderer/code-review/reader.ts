@@ -1,4 +1,4 @@
-import { acceptsReply, scopeOf, type CodeReviewOp, type CodeReviewReads, type CodeReviewReply, type CodeReviewRequest, type ReadResult, type ReplyScope } from "../../shared/code-review.js";
+import { acceptsReply, scopeOf, SIGN_IN_CHANGED, type CodeReviewOp, type CodeReviewReads, type CodeReviewReply, type CodeReviewRequest, type ReadResult, type ReplyScope } from "../../shared/code-review.js";
 
 /** One way to ask main: the bridge's `code-review:read` in the app, a fake in tests. */
 export type Send = (request: CodeReviewRequest) => Promise<CodeReviewReply | null>;
@@ -17,10 +17,14 @@ export type Outcome<K extends keyof CodeReviewReads> =
   | { status: "superseded" }
   | { status: "mismatch" };
 
+/** Main refused the read because gh's sign-in moved while it ran: a transient worth exactly one more try. */
+const signInChanged = (result: ReadResult<unknown>): boolean => result.state === "unavailable" && result.reason === "failed" && result.detail === SIGN_IN_CHANGED;
+
 /**
  * Reads by slot ("inbox", "overview:<PR key>"): each slot holds one read at a time. A new read in a
  * slot cancels the one it replaces, and only the latest read's reply is ever applied. Main owns the
- * transport, timeouts and cancellation; this side owns which answer the view may show.
+ * transport, timeouts and cancellation; this side owns which answer the view may show. A read main
+ * refused because gh's sign-in changed under it is asked once more, then its refusal is shown (#349).
  */
 export class Reader {
   private seq = 0;
@@ -30,21 +34,26 @@ export class Reader {
 
   async read<A extends Ask>(slot: string, ask: A, account: string | null): Promise<Outcome<A["op"]>> {
     this.cancel(slot);
-    const request = { ...ask, requestId: `${this.prefix}-${++this.seq}` } as CodeReviewRequest;
-    const asked = { requestId: request.requestId, op: request.op, scope: scopeOf(request, account) };
-    this.live.set(slot, asked);
-    let reply: CodeReviewReply | null;
-    try {
-      reply = await this.send(request);
-    } catch {
-      reply = null;
+    // Keep checking and replacing the live attempt in one continuation. An extra await
+    // between attempts would let an older retry overwrite a newer read or undo cancellation.
+    for (let retry = 0; ; retry++) {
+      const request = { ...ask, requestId: `${this.prefix}-${++this.seq}` } as CodeReviewRequest;
+      const asked = { requestId: request.requestId, op: request.op, scope: scopeOf(request, account) };
+      this.live.set(slot, asked);
+      let reply: CodeReviewReply | null;
+      try {
+        reply = await this.send(request);
+      } catch {
+        reply = null;
+      }
+      if (this.live.get(slot) !== asked) return { status: "superseded" };
+      this.live.delete(slot);
+      // No answer at all (a rejected invoke, no handler yet) is a failed read, never silence.
+      if (!reply) return { status: "applied", result: { state: "unavailable", reason: "failed", fetchedAt: this.now() }, scope: asked.scope };
+      if (!acceptsReply(asked, reply)) return { status: "mismatch" };
+      if (retry === 0 && signInChanged(reply.result)) continue;
+      return { status: "applied", result: reply.result as ReadResult<CodeReviewReads[A["op"]]>, scope: reply.scope };
     }
-    if (this.live.get(slot) !== asked) return { status: "superseded" };
-    this.live.delete(slot);
-    // No answer at all (a rejected invoke, no handler yet) is a failed read, never silence.
-    if (!reply) return { status: "applied", result: { state: "unavailable", reason: "failed", fetchedAt: this.now() }, scope: asked.scope };
-    if (!acceptsReply(asked, reply)) return { status: "mismatch" };
-    return { status: "applied", result: reply.result as ReadResult<CodeReviewReads[A["op"]]>, scope: reply.scope };
   }
 
   pending(slot: string): boolean {

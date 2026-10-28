@@ -70,6 +70,44 @@ test("identity: switching the gh account during a held read refuses its answer a
   await expect(prRow(page, "example-org/field-guide#73")).toHaveCount(0);
 });
 
+test("identity: a read refused because gh's sign-in moved and came back is read again once, then shown refused (#349 re-review)", async () => {
+  const PULL = "repos/example-org/lending/pulls/73";
+  const pulls = () => h.calls().filter((c) => c === PULL).length;
+  const world = baseWorld();
+  world.holds = { [PULL]: "first" };
+  h = await launchWithGh(world);
+  const { page } = h;
+  await tid(page, "rail-code-review").click();
+  await prRow(page, "example-org/lending#73").click();
+  await expect.poll(pulls).toBe(1);
+  // `gh auth switch` away and back while the read is held: gh answers as Ada throughout, but hosts.yml moved
+  // under the read, so main refuses its answer ("sign-in changed") rather than trust it.
+  h.world((w) => { w.holds = { [PULL]: "second" }; });
+  h.switchHosts("grace-fixture");
+  h.switchHosts("ada-fixture");
+  h.release("first");
+  // The renderer asks once more on its own, without showing the refusal.
+  await expect.poll(pulls).toBe(2);
+  await expect(tid(page, "code-review-overview-error")).toHaveCount(0);
+  await expect(tid(page, "code-review-loading").first()).toBeVisible();
+  // The retry is refused the same way: the refusal is shown, and there is no third read until the person asks.
+  h.world((w) => { w.holds = { [PULL]: "third" }; });
+  h.switchHosts("grace-fixture");
+  h.switchHosts("ada-fixture");
+  h.release("second");
+  await expect(tid(page, "code-review-overview-error")).toContainText("sign-in changed");
+  await settle(page);
+  expect(pulls()).toBe(2);
+  await expect(tid(page, "code-review-tab-changes")).not.toContainText("8,912");
+  // Retry by hand reads it again; a steady sign-in answers.
+  h.release("third");
+  await tid(page, "code-review-overview-error").getByRole("button", { name: "Retry" }).click();
+  await expect(tid(page, "code-review-tab-changes")).toContainText("+8,912");
+  await expect(tid(page, "code-review-overview-error")).toHaveCount(0);
+  // The read the person asked for, then the checks and stack reads that a loaded overview starts (#323).
+  expect(pulls()).toBeGreaterThan(2);
+});
+
 test("revision: a head that moves before or during a files page is never served as the current diff", async () => {
   const world = baseWorld();
   h = await launchWithGh(world);
