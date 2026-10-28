@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-24._
+_Last updated 2026-10-27._
 
 ## Shipped
 
@@ -198,6 +198,21 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   - the TestFlight upload of build 9.
 
   [Candidate review](reviews/2026-10-24-v0.4.0-release-review.md).
+
+- **Local execution through Codex, in main only and not yet admitted** (LM-3 [#379](https://github.com/TypeSafeAI/modex/issues/379),
+  [PR #423](https://github.com/TypeSafeAI/modex/pull/423), branch `lm3-signed-delivery`). A thread with a `localTarget` runs on its own `codex app-server` child: a private
+  empty home, an environment allowlist, the connection token in one shell-excluded variable, the provider
+  and model pinned and confirmed by Codex on every open, no stale-sign-in retry, and a resume handle refused
+  unless that child opened it. Local turns bypass cloud accounts, Auto, Jev, titles, follow-ups and the
+  credit fallback; Plan, images and Modex's note and knowledge tools are refused. One turn at a time per
+  loopback port; force-stop ends only the thread's child. No UI (LM-4). After Val's 2026-10-26 review, main
+  does not construct `LocalExecution`, so a built app refuses every local selection and persisted target
+  until LM-5 qualifies Codex's redirect handling and managed-policy precedence (AC6), and a local child asks
+  for no reasoning summaries. Fixture and real-CLI evidence are in the
+  [LM-3 review](reviews/2026-10-26-lm3-local-codex.md); the live turn against a real local server (AC1),
+  offline operation and the AC6 qualification are open gates. #401 and the stacked draft #407 were closed as
+  superseded; their main-side design is carried here, and #418 landed the inherited LM-2 credential fixes.
+  [How it works](local-models.md#lm-3-local-execution-through-codex).
 
 - **Companion network acceptance (#109).** The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) ties each of the four #109 requirements to the tests that prove it, adds the last race (the interface list changes while Forget paired phones or Turn off runs, and no listener survives with the old token; both shown red against a mutation, green on `main`), and holds the physical two-subnet procedure. Two gates remain with Val: running that procedure, and deciding whether VPN tunnels and virtual bridges with private addresses get a listener ([question](https://github.com/TypeSafeAI/modex/issues/109#issuecomment-6464762470)). The filter is unchanged until Val answers.
 

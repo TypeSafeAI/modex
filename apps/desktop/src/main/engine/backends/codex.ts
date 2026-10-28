@@ -61,8 +61,14 @@ export class CodexBackend implements Backend {
 
   private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
+  /**
+   * `configuration.local` pins this server to one local provider and model (#379): every thread is opened
+   * with that provider and no model fallback, Codex's reply must confirm both before any content is sent,
+   * and the turn's model must be the pinned one. A resume handle this server did not itself open is
+   * refused: it belongs to another process, possibly a cloud one.
+   */
   constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = cliSpawn,
-    private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string }) {}
+    private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string; local?: { model: string; provider: string } }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
@@ -71,7 +77,8 @@ export class CodexBackend implements Backend {
       let bin = "codex";
       try {
         bin = this.bin;
-        child = this.spawnImpl(bin, ["app-server", "-c", 'model_reasoning_summary="detailed"', ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin, this.configuration?.env), detached: true });
+        // Reasoning summaries are asked for on cloud models only: a local model has no qualification for the option.
+        child = this.spawnImpl(bin, ["app-server", ...(this.configuration?.local ? [] : ["-c", 'model_reasoning_summary="detailed"']), ...(this.configuration?.args ?? [])], { stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin, this.configuration?.env), detached: true });
       } catch (err) {
         return reject(new CodexError(`could not start ${bin} app-server: ${(err as Error).message}`, { bin, spawnError: (err as Error).message }));
       }
@@ -262,10 +269,14 @@ export class CodexBackend implements Backend {
    * is run again on a server that has read the current sign-in. Other failures return as they are.
    */
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    const local = this.configuration?.local;
+    if (local && opts.model !== local.model) return { status: "failed", error: "This local Codex runs only its selected model. Select the local target again to start a fresh conversation." };
+    if (local && opts.resume && !this.loaded.has(opts.resume)) return { status: "failed", error: "This conversation's native session belongs to another Codex process. Select the local target again to start a fresh conversation." };
     this.activeTurns++;
     try {
       const first = await this.attempt(text, opts, sink, signal);
-      if (first.status !== "failed" || signal.aborted || !STALE_AUTH.test(first.error ?? "")) return first;
+      // A local provider has no sign-in to refresh: its failures are reported once, never retried.
+      if (local || first.status !== "failed" || signal.aborted || !STALE_AUTH.test(first.error ?? "")) return first;
       // A fresh server reads ~/.codex/auth.json again. While other threads are mid-turn on this one,
       // keep it and retry in place instead; never interrupt another thread to refresh auth.
       const shared = this.activeTurns > 1 || this.pending.size > 0;
@@ -295,7 +306,7 @@ export class CodexBackend implements Backend {
     }
     const pol = CodexBackend.policy(opts);
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
-    const config = { ...THREAD_CONFIG, ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
+    const config = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
       tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}), ...(opts.pages ? { "mcp_servers.modex_pages": {
@@ -303,13 +314,22 @@ export class CodexBackend implements Backend {
       tools: Object.fromEntries(PAGES_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}) };
     let threadId = opts.resume;
+    const local = this.configuration?.local;
+    // A pinned local provider is named on every open, with Codex's own fallback to another provider's
+    // model off, and its reply must say so back: no turn content goes to a provider it did not confirm.
+    const pinned = local ? { modelProvider: local.provider, allowProviderModelFallback: false } : {};
+    const confirmed = (r: { model?: unknown; modelProvider?: unknown }) => {
+      if (local && (r.model !== local.model || r.modelProvider !== local.provider)) throw new CodexError("Codex did not confirm the selected local model and provider.", { confirmedModel: r.model, confirmedProvider: r.modelProvider });
+    };
     try {
       if (threadId && !this.loaded.has(threadId)) {
-        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
+        confirmed(r);
         threadId = r.thread.id;
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       } else if (!threadId) {
-        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
+        confirmed(r);
         threadId = r.thread.id;
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       }
@@ -757,7 +777,7 @@ function detailOf(err: unknown): Record<string, unknown> {
   return err instanceof CodexError ? err.detail : {};
 }
 
-/** Per-thread Codex config overrides: surface reasoning summaries so the Thinking item has something to show. */
+/** Per-thread Codex config overrides for cloud models: surface reasoning summaries so the Thinking item has something to show. A pinned local provider gets none (#379 AC5). */
 const THREAD_CONFIG = { model_reasoning_summary: "detailed" };
 
 const PLAN_PREFIX = "PLAN MODE: Investigate the codebase read-only and reply with a concrete, numbered implementation plan (files to change, order, risks, how to verify). Do not edit files or run commands that modify anything.";
