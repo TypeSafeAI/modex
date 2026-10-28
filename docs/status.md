@@ -61,7 +61,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## Review repair in progress
 
-PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. Build, typecheck, 53 focused tests and full unit validation (2,200 passed, 25 skipped) passed; E2E is pending; no product admission, merge or release is claimed.
+PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 still needs hosted checks and protected delivery; local-runtime qualification and product admission remain open.
 
 ## On main, unreleased
 
