@@ -229,7 +229,9 @@ unchanged account costs a free `304`.
 - **After every read, before it replies or keeps anything,** main confirms the account:
   - The fingerprint unchanged since the read began confirms it, for free.
   - A fingerprint that changed during the read refuses the answer (`failed`, "sign-in changed"), even if
-    gh is back on the same account. Part of the read may have run as another one.
+    gh is back on the same account. Part of the read may have run as another one. The detail is the
+    contract's `SIGN_IN_CHANGED`; the renderer's `Reader` asks once more on its own, since gh is usually
+    back on the same account by then, and shows a second refusal with Retry (#349 re-review).
   - Where the file can't be read (`GH_CONFIG_DIR`, `XDG_CONFIG_HOME` and `%AppData%` are honoured), main
     asks `gh api user` again. A check that fails, fails the read. This mode can't see a switch away and
     back within one read.
@@ -291,7 +293,9 @@ non-UTF-8 content answers `failed`.
 - Search pages are offsets, and a row updated between pages can shift to another, so only a single
   page can prove the whole inbox arrived. A later page never says `complete`. The contract's
   `mergePages` joins a group's pages, deduplicated by key, and calls the list complete only when every
-  page was read in full and the distinct rows reach `total`.
+  page was read in full, every page reported the same `total`, and the distinct rows reach it. A PR
+  that closes between pages shifts the offsets so a row is skipped while the count still adds up; the
+  moved total is what tells that from a whole list (#349 re-review).
 - A `200` that gh could not finish reading (it printed the status, then exited non-zero) is `failed`,
   never a short file.
 
@@ -558,7 +562,7 @@ window when restored and never rewritten by the fit.
 | C13, C14 | Two groups through `inboxGroup` and `isEmpty`; unavailable and stale say so | no gh, signed out, offline… |
 | C15, C17, C18 | Two-line title, login and age; stack icon only when `stackHint` is `true`, named "inferred"; selected and hover | rail test, visual check |
 | C19 | Show more through `inbox-page`; a failed page keeps what arrived and retries | no gh, signed out, offline… |
-| C20 | The inbox list is its own scroll region (`overscroll-behavior: contain`) | keyboard alone works… |
+| C20 | The inbox list is its own scroll region (`overscroll-behavior: contain`) | keyboard alone works…; `code-review-scroll.spec.ts` with the overview, diff and tree populated |
 | C23 | Spinner in the header while the PR's overview read is in flight; it stops turning under reduced motion | identical PR numbers… |
 | C24 | Pin: local, per account, validated on load (`pins.ts`) | pin, copy and Open in GitHub… |
 | C25, C26 | Copy link and Open in GitHub from `canonicalPrUrl`, parsed back before use | same test |
@@ -588,7 +592,12 @@ avatars and C58, C60 and C61 of the composer are not built (open decisions, #325
 **Evidence.** Captures of the R1, R4, 900×600 and signed-out states are kept outside the repository
 with the PR's evidence. The authenticated navigation smoke test (#322 AC6) passed through CR-2's
 live read handler; see [the integration evidence](../reviews/2026-10-21-cr3-read-integration.md).
-Original R1–R4 reference comparison and human keyboard/VoiceOver acceptance remain open gates.
+With the overview (#323) and the remote diff (#324) in the panes, `e2e/code-review-scroll.spec.ts`
+proves AC3 and the scroll half of AC4 at 1440×900 and 900×600: the inbox list, the overview (its main
+column, or its body where the pane stacks), the diff and the file tree each scroll alone by wheel and
+by PageDown, nothing else moves, the focused control keeps focus, and each position is restored on
+return ([acceptance record](../reviews/2026-10-28-cr3-acceptance.md)). Original R1–R4 reference
+comparison and human keyboard/VoiceOver acceptance remain open gates.
 
 
 ## Overview implementation (CR-4)

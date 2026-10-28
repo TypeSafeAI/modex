@@ -1,4 +1,4 @@
-import { acceptsReply, scopeOf, type CodeReviewOp, type CodeReviewReads, type CodeReviewReply, type CodeReviewRequest, type ReadResult, type ReplyScope } from "../../shared/code-review.js";
+import { acceptsReply, scopeOf, SIGN_IN_CHANGED, type CodeReviewOp, type CodeReviewReads, type CodeReviewReply, type CodeReviewRequest, type ReadResult, type ReplyScope } from "../../shared/code-review.js";
 
 /** One way to ask main: the bridge's `code-review:read` in the app, a fake in tests. */
 export type Send = (request: CodeReviewRequest) => Promise<CodeReviewReply | null>;
@@ -17,10 +17,14 @@ export type Outcome<K extends keyof CodeReviewReads> =
   | { status: "superseded" }
   | { status: "mismatch" };
 
+/** Main refused the read because gh's sign-in moved while it ran: a transient worth exactly one more try. */
+const signInChanged = (result: ReadResult<unknown>): boolean => result.state === "unavailable" && result.reason === "failed" && result.detail === SIGN_IN_CHANGED;
+
 /**
  * Reads by slot ("inbox", "overview:<PR key>"): each slot holds one read at a time. A new read in a
  * slot cancels the one it replaces, and only the latest read's reply is ever applied. Main owns the
- * transport, timeouts and cancellation; this side owns which answer the view may show.
+ * transport, timeouts and cancellation; this side owns which answer the view may show. A read main
+ * refused because gh's sign-in changed under it is asked once more, then its refusal is shown (#349).
  */
 export class Reader {
   private seq = 0;
@@ -30,6 +34,13 @@ export class Reader {
 
   async read<A extends Ask>(slot: string, ask: A, account: string | null): Promise<Outcome<A["op"]>> {
     this.cancel(slot);
+    const first = await this.attempt(slot, ask, account);
+    if (first.status !== "applied" || !signInChanged(first.result)) return first;
+    // The finished read needs no cancel; the retry takes the slot, so anything newer still supersedes it.
+    return this.attempt(slot, ask, account);
+  }
+
+  private async attempt<A extends Ask>(slot: string, ask: A, account: string | null): Promise<Outcome<A["op"]>> {
     const request = { ...ask, requestId: `${this.prefix}-${++this.seq}` } as CodeReviewRequest;
     const asked = { requestId: request.requestId, op: request.op, scope: scopeOf(request, account) };
     this.live.set(slot, asked);
