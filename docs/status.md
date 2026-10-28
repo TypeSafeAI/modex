@@ -193,6 +193,8 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 ## In flight
 
+- **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery remains pending. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
+
 - **Notes history identity repair.** Repeated history toggles could duplicate revision rows or leave history visible after closing because the history and editor siblings shared a React key. The isolated `notes-history-identity` repair gives them distinct identities; three regression repetitions failed before the fix and passed afterward. Independent review found no blockers. Build and full unit/E2E checks passed (2,191 unit passed, 23 skipped; 470 desktop passed, seven skipped; seven site passed). Hosted checks and protected delivery remain pending; see [repair evidence](reviews/2026-10-28-notes-history-identity.md).
 
 - **LM-2 credential repair, in review.** The later credential-copy and stale-discovery fixes from closed #401 are not in main. The current-main `lm2-credential-repair` branch preserves the reviewed source/tests and prevents fake child PIDs from reaching OS signals. Build, full unit tests, typechecks and the Electron IPC journey passed; hosted checks and protected delivery are pending. [Reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md).

@@ -51,8 +51,19 @@ for (const theme of ["graphite", "jev", "coven"] as const) {
         if (stop === table || stop === code) {
           expect(await stop.evaluate(el => el.scrollWidth - el.clientWidth)).toBeGreaterThan(100);
           const before = await stop.evaluate(el => el.scrollLeft);
-          await page.keyboard.press("ArrowRight");
-          await expect.poll(() => stop.evaluate(el => el.scrollLeft)).toBeGreaterThan(before);
+          // Native keyboard scrolling can still be animating when scrollLeft first changes.
+          // Complete that action before reversing; an opposite key at its completion boundary
+          // can be lost even in a blank Electron window with no application handlers.
+          const rightScroll = await stop.evaluateHandle(el => ({
+            done: new Promise<void>(resolve => el.addEventListener("scrollend", () => {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            }, { once: true })),
+          }));
+          try {
+            await page.keyboard.press("ArrowRight");
+            await expect.poll(() => stop.evaluate(el => el.scrollLeft)).toBeGreaterThan(before);
+            await rightScroll.evaluate(state => state.done);
+          } finally { await rightScroll.dispose(); }
           await page.keyboard.press("ArrowLeft");
           await expect.poll(() => stop.evaluate(el => el.scrollLeft)).toBeLessThanOrEqual(before);
         }
