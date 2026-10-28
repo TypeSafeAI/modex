@@ -1,0 +1,23 @@
+
+Running 11 tests using 1 worker
+
+Downloading Electron binary...
+  ✓   1 e2e/conversation-rendering.spec.ts:58:1 › a reply's tables, quotes, task lists and code render as elements (42ms)
+  ✓   2 e2e/conversation-rendering.spec.ts:74:1 › raw HTML, script links and images in a reply stay inert (13ms)
+  ✓   3 e2e/conversation-rendering.spec.ts:84:1 › Copy on a code block puts exactly its code on the clipboard and starts nothing (41ms)
+  ✓   4 e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code (596ms)
+  ✓   5 e2e/conversation-rendering.spec.ts:138:1 › Markdown stays usable in every theme at minimum size, with keyboard Copy and reduced motion (3.3s)
+  ✓   6 e2e/conversation-rendering.spec.ts:167:1 › long code scrolls inside its block at minimum size without widening the transcript (313ms)
+
+  ✓   7 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite (6.5s)
+
+  ✓   8 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in jev (6.4s)
+
+  ✓   9 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in coven (6.7s)
+[transcript-budget] {"approvedBy":"Val","approvedOn":"2026-10-22","limitMs":500,"samplesMs":[176.19999999925494,182.30000000074506,144.40000000037253,158.09999999962747,170],"medianMs":170,"cpu":"Apple M5 Max","cores":18,"platform":"darwin","arch":"arm64","node":"v24.22.0"}
+  ✓  10 e2e/transcript-measure.spec.ts:221:1 › a 200-turn transcript opens within the agreed median budget across five fresh launches (9.9s)
+
+  ✓  11 e2e/transcript-measure.spec.ts:243:1 › a 3 MiB command log streams to the window bounded, and the turn settles (3.3s)
+
+  11 passed (43.9s)
+exit 0
