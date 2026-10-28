@@ -1,0 +1,23 @@
+{
+  "approvedBy": "Val",
+  "approvedOn": "2026-10-22",
+  "limitMs": 500,
+  "samplesMs": [
+    176.19999999925494,
+    182.30000000074506,
+    144.40000000037253,
+    158.09999999962747,
+    170
+  ],
+  "medianMs": 170,
+  "cpu": "Apple M5 Max",
+  "cores": 18,
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.22.0",
+  "head": "b64361750983068160fe95293192ccea03000f88",
+  "machine": "Mac17,6",
+  "macos": "27.0.1 (26A434)",
+  "spec": "e2e/transcript-measure.spec.ts",
+  "run": "focused, with conversation-rendering and markdown-keyboard specs, 2026-10-28"
+}
