@@ -83,6 +83,7 @@ export class CodeReviewAgent {
   /** PRs whose start is between its checks and its record: a second click waits, then finds it busy. */
   private readonly starting = new Set<string>();
   private disposed = false;
+  private readonly uncertain = new Map<string, AgentRun>();
 
   constructor(options: CodeReviewAgentOptions) {
     this.home = options.home;
@@ -127,13 +128,18 @@ export class CodeReviewAgent {
     const pending = [...this.live.values()];
     for (const live of pending) live.abort.abort();
     await Promise.race([Promise.allSettled(pending.map((l) => l.done)), new Promise((resolve) => setTimeout(resolve, 8_000).unref())]);
+    this.refreshUnconfirmed();
+    if (this.live.size || this.uncertain.size) throw new Error("A review process has not confirmed its exit; its snapshot is preserved.");
   }
 
   // --- Local state ------------------------------------------------------------------------------
 
   private store(): AgentRecords {
     try {
-      this.records ??= new AgentRecords(this.home);
+      if (!this.records) {
+        this.records = new AgentRecords(this.home);
+        for (const run of this.records.unconfirmedStops()) this.uncertain.set(run.id, run);
+      }
       return this.records;
     } catch {
       throw new Refused("storage");
@@ -149,13 +155,30 @@ export class CodeReviewAgent {
     }
   }
 
+  /** Signal zero observes only; a reused PID conservatively retains ownership. */
+  private refreshUnconfirmed(): void {
+    const records = this.store();
+    for (const [id, run] of this.uncertain) {
+      if (!run.stop?.pid) continue;
+      try { process.kill(run.stop.pid, 0); continue; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") continue; }
+      const confirmed: AgentRun = { ...run, state: "unknown", reason: "exit-observed", endedAt: new Date(this.now()).toISOString() };
+      // Keep the original receipt, and release ownership only after the new observation is durable.
+      records.put(confirmed);
+      this.uncertain.delete(id);
+      this.unrecorded.delete(id);
+      try { fs.rmSync(path.join(this.home, "review-agent", "runs", id), { recursive: true, force: true }); } catch { /* retained for cleanup */ }
+    }
+  }
+
   // --- Operations -------------------------------------------------------------------------------
 
   private async status(key: PrKey): Promise<AgentStatus> {
+    this.refreshUnconfirmed();
     const account = await this.account(key, false);
     const backend = await this.availability();
     const runs = this.local((records) => records.list(key)).map((run) => this.live.get(run.id)?.run ?? this.unrecorded.get(run.id) ?? run);
-    const active = runs.find((run) => run.state === "running") ?? null;
+    const active = runs.find((run) => run.state === "running" || this.uncertain.has(run.id)) ?? null;
     return { account, instructions: this.local((records) => records.instructions()), backend, runs, active: active?.id ?? null };
   }
 
@@ -169,8 +192,10 @@ export class CodeReviewAgent {
   private async start(request: Extract<AgentRequest, { op: "start" }>): Promise<AgentRun> {
     const id = prKeyId(request.key);
     if (this.disposed) throw new Refused("disabled");
+    this.refreshUnconfirmed();
+    if ([...this.uncertain.values()].some((run) => sameKey(run.key, request.key))) throw new Refused("busy", "The previous review process has not confirmed its exit.");
     if (this.starting.has(id) || [...this.live.values()].some((l) => sameKey(l.run.key, request.key))) throw new Refused("busy");
-    if (this.live.size + this.starting.size >= this.concurrent) throw new Refused("busy", "Another review run is going. Wait for it to finish.");
+    if (this.live.size + this.starting.size + this.uncertain.size >= this.concurrent) throw new Refused("busy", "Another review run is going. Wait for it to finish.");
     this.starting.add(id);
     try {
       const backend = await this.availability(true);
@@ -267,7 +292,8 @@ export class CodeReviewAgent {
         result = { status: "failed", error: `could not start: ${(error as Error).message}` };
       }
       const projected = this.project(live.conversation, snapshot);
-      const settled = this.settle({ ...live.run, ...projected }, result, files);
+      const settled = this.settle({ ...live.run, ...projected, ...(result.stop ? { stop: result.stop } : {}) }, result, files);
+      if (result.stop?.outcome === "unconfirmed") this.uncertain.set(run.id, settled);
       live.run = settled;
       try {
         this.local((records) => records.put(settled));
@@ -276,7 +302,9 @@ export class CodeReviewAgent {
         this.unrecorded.set(run.id, settled);
       } finally {
         this.live.delete(run.id);
-        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* left for the next cleanup; nothing in it is secret */ }
+        if (!this.uncertain.has(run.id)) {
+          try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* retained for cleanup */ }
+        }
       }
       return settled;
     })();
@@ -293,6 +321,7 @@ export class CodeReviewAgent {
 
   private settle(run: AgentRun, result: TurnResult, files: PrFile[]): AgentRun {
     const endedAt = new Date(this.now()).toISOString();
+    if (result.stop?.outcome === "unconfirmed") return { ...run, state: "unknown", reason: "stop-unconfirmed", endedAt: null };
     if (result.status === "interrupted") return { ...run, state: "stopped", reason: "stopped", endedAt };
     if (result.status === "failed") {
       const couldNotStart = typeof result.error === "string" && result.error.startsWith("could not start");

@@ -115,7 +115,7 @@ function AskComposer({ agent, overview, capability, active }: { agent: Agent; ov
     <label className="cr-field">Ask about this pull request
       <textarea className="cr-textarea" rows={3} maxLength={AGENT_LIMITS.question} value={question} placeholder="What does this change do to the retry path?" onChange={(e) => agent.setQuestion(overview.key, e.target.value)} />
     </label>
-    <p className="cr-evidence">Answered by Claude Code from the same read-only snapshot, under your account. The question and the answer stay on this Mac.</p>
+    <p className="cr-evidence">Answered by Claude Code from the same read-only snapshot, under your account. Claude Code sends your question, the snapshot and your review instructions to its configured inference provider. Modex saves the run record on this Mac.</p>
     <div className="cr-compose-buttons">
       <button className="btn primary" type="button" disabled={busy || blocked || !question.trim()} title={!capability.available ? capability.reason : active ? "A run is already going for this pull request." : undefined} onClick={() => void ask()}>Ask</button>
     </div>
