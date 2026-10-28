@@ -22,8 +22,14 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
   delete env.MODEX_DEMO;
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
-  const app = await electron.launch({ args: [appDir], cwd: appDir, env });
+  const executablePath = process.env.MODEX_PACKAGED_APP;
+  const app = await electron.launch({ executablePath, args: executablePath ? [] : [appDir], cwd: appDir, env });
   try {
+    const identity = await app.evaluate(({ app }) => ({ executable: process.execPath, packaged: app.isPackaged }));
+    expect(identity.packaged).toBe(Boolean(process.env.MODEX_PACKAGED_APP));
+    if (process.env.MODEX_PACKAGED_APP) {
+      expect(fs.realpathSync(identity.executable)).toBe(fs.realpathSync(process.env.MODEX_PACKAGED_APP));
+    }
     const page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");
     const invoke = (request: CodeReviewRequest) => page.evaluate(request => window.modex!.invoke("code-review:read", request), request);
