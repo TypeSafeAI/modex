@@ -38,7 +38,8 @@ test("a managed layer that sets a governed key is refused by name, whatever the 
     [{ type: "enterpriseManaged", id: "l1", name: "Acme" }, "an enterprise-managed configuration (Acme)"], [{ type: "legacyManagedConfigTomlFromFile", file: "/etc/codex/managed_config.toml" }, "the managed configuration at /etc/codex/managed_config.toml"]] as const) {
     const r = read();
     r.origins["model_providers.modex_local.base_url"] = { name: source, version: "sha256:managed" };
-    assert.throws(() => admitLocalConfiguration(r, { requirements: null }, EXPECTED), new RegExp(`${text.replace(/[()./]/g, "\\$&")} sets \`model_providers.modex_local.base_url\``));
+    assert.throws(() => admitLocalConfiguration(r, { requirements: null }, EXPECTED), (error: unknown) =>
+      error instanceof Error && error.message.includes(`${text} sets ` + "`model_providers.modex_local.base_url`"));
   }
   // A managed layer may set keys outside the governed set (an update preference, say); they are Codex's to enforce.
   const r = read();

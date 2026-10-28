@@ -61,7 +61,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## Review repair in progress
 
-PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 still needs hosted checks and protected delivery; local-runtime qualification and product admission remain open.
+PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 merged into the #423 delivery branch at `0956376`; its tree exactly matches the reviewed `e0a03ef` candidate. Delivery to `main`, local-runtime qualification and product admission remain open. The combined branch’s CodeQL alert #28 identified incomplete regex escaping in a test assertion; the repair uses a literal error-message comparison, with five focused tests and the full build/unit command passing (2,219 passed, 26 skipped, zero failures or cancellations). Independent review found no blockers; hosted CodeQL and protected delivery remain pending.
 
 ## On main, unreleased
 
@@ -219,7 +219,7 @@ PR #419's LM-5 review found that a rerouted local turn could still be reported c
   [How it works](local-models.md#lm-3-local-execution-through-codex).
 
 - **LM-5 slice 1: effective destination and managed-policy admission** ([#380](https://github.com/TypeSafeAI/modex/issues/380),
-  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), branch `lm5-reroute-repair`, stacked on `lm3-signed-delivery`). Before a local child opens a thread, main reads the child's own
+  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), merged into `lm3-signed-delivery` for delivery through #423). Before a local child opens a thread, main reads the child's own
   `config/read` and `configRequirements/read` and admits it only when every governed key comes from Modex's
   session flags, no project layer or managed requirement applies, the private home is empty and the effective
   destination, model context and tools are the ones Modex passed; otherwise the turn fails naming the layer and
