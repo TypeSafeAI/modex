@@ -61,6 +61,8 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## Review repairs in progress
 
+PR #432 has two local ACP repairs in `acp-review-repair`: a refused explicit model fails before prompt submission, and a failed initialization releases the server so the next turn can start fresh. All 15 scripted ACP tests pass, including both backend families; `pnpm build && pnpm test` passed with exit 0, including 2,031 desktop primary tests and 17 skips. Independent review found no blockers in these two repairs. The inherited MCP permission finding remains unresolved, and this evidence does not establish release readiness or approval to expand the supported inference backends.
+
 PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. Hosted checks and protected delivery remain pending. This is not merged or released, and native/live acceptance remains separate.
 
 ## On main, unreleased

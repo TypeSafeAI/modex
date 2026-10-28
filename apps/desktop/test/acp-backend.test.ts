@@ -8,7 +8,7 @@ import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
  * A scripted `opencode acp` / `mimo acp` server, from the shapes OpenCode 1.19.5 and MiMo Code 0.1.16 sent live
  * (docs/reviews/2026-10-28-opencode-acp.json): initialize, session/new|resume|load, set_mode, set_config_option, prompt.
  */
-function fakeServer(proc: FakeProcess, opts: { sessionId?: string; resume?: boolean; load?: boolean; refuseMode?: string; unknownSession?: string; hold?: boolean } = {}) {
+function fakeServer(proc: FakeProcess, opts: { sessionId?: string; resume?: boolean; load?: boolean; refuseMode?: string; refuseModel?: boolean; refuseInitialize?: boolean; unknownSession?: string; hold?: boolean } = {}) {
   const sessionId = opts.sessionId ?? "ses_1";
   const seen: { id?: number; method: string; params: Record<string, unknown> }[] = [];
   const prompts: number[] = [];
@@ -20,7 +20,8 @@ function fakeServer(proc: FakeProcess, opts: { sessionId?: string; resume?: bool
       if (msg.method) seen.push({ id: msg.id, method: msg.method, params: msg.params ?? {} });
       else responses.push(msg as Record<string, unknown>);
       const reply = (result: unknown) => proc.emitLine({ jsonrpc: "2.0", id: msg.id, result });
-      if (msg.method === "initialize") reply({ protocolVersion: 1, agentInfo: { name: "OpenCode", version: "1.19.5" }, agentCapabilities: { loadSession: opts.load !== false, promptCapabilities: { image: true }, sessionCapabilities: opts.resume === false ? {} : { resume: {} } } });
+      if (msg.method === "initialize" && opts.refuseInitialize) proc.emitLine({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "initialization failed" } });
+      else if (msg.method === "initialize") reply({ protocolVersion: 1, agentInfo: { name: "OpenCode", version: "1.19.5" }, agentCapabilities: { loadSession: opts.load !== false, promptCapabilities: { image: true }, sessionCapabilities: opts.resume === false ? {} : { resume: {} } } });
       else if (msg.method === "session/new") reply({ sessionId, configOptions: [] });
       else if (msg.method === "session/resume" || msg.method === "session/load") {
         if (opts.unknownSession && msg.params?.sessionId === opts.unknownSession) proc.emitLine({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: "session not found" } });
@@ -32,10 +33,12 @@ function fakeServer(proc: FakeProcess, opts: { sessionId?: string; resume?: bool
         if (opts.refuseMode && msg.params?.modeId === opts.refuseMode) proc.emitLine({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: `unknown mode ${opts.refuseMode}` } });
         else reply({});
       } else if (msg.method === "session/set_config_option") {
-        if (msg.params?.configId === "effort") proc.emitLine({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: "no such option" } });
+        if (opts.refuseModel && msg.params?.configId === "model") proc.emitLine({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: "model unavailable" } });
+        else if (msg.params?.configId === "effort") proc.emitLine({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: "no such option" } });
         else reply({ configOptions: [] });
       } else if (msg.method === "session/prompt") {
         prompts.push(msg.id!);
+        if (opts.refuseModel) reply({ stopReason: "end_turn" });
       } else if (msg.method === "session/cancel") {
         // A notification: the pending prompt answers with the cancelled stop reason.
         const id = prompts.shift();
@@ -313,4 +316,45 @@ test("ACP tool calls become Modex tools by kind, with commands as shell lines", 
   assert.deepEqual(toolCall({ kind: "edit", name: "write", title: "write", rawInput: { filePath: "/r/a", content: "body" }, locations: [{ path: "/r/a" }] }), { name: "write", title: "edit /r/a", args: { filePath: "/r/a", path: "/r/a", paths: ["/r/a"] } });
   assert.deepEqual(toolCall({ kind: "read", name: "read", title: "read", rawInput: { filePath: "/r/a" } }), { name: "read", title: "read", args: { filePath: "/r/a" } });
   assert.deepEqual(toolCall({ kind: "fetch", name: "webfetch", title: "https://x", rawInput: { url: "https://x" } }), { name: "webfetch", title: "https://x", args: { url: "https://x" } });
+});
+
+
+test("a refused explicit ACP model fails before sending the prompt to the previous provider", async () => {
+  for (const family of ["opencode", "mimo"] as const) {
+    const proc = new FakeProcess();
+    const server = fakeServer(proc, { refuseModel: true });
+    const backend = new AcpBackend(family, family, fakeSpawn(proc).spawn);
+    const { sink } = collectSink();
+    try {
+      const result = await backend.runTurn("private prompt for selected provider", { ...opts, model: "selected/provider-model" }, sink, new AbortController().signal);
+      assert.equal(result.status, "failed");
+      assert.equal(server.seen.filter((request) => request.method === "session/prompt").length, 0, "a rejected model must not send prompt contents to the session default");
+      assert.match(result.error ?? "", /model unavailable/);
+    } finally { await backend.dispose(); }
+  }
+});
+
+
+test("a failed ACP initialization releases the server and the next turn starts fresh", async () => {
+  for (const family of ["opencode", "mimo"] as const) {
+    const broken = new FakeProcess();
+    const healthy = new FakeProcess();
+    fakeServer(broken, { refuseInitialize: true });
+    const server = fakeServer(healthy);
+    let starts = 0;
+    const spawnImpl = (() => starts++ === 0 ? broken : healthy) as unknown as typeof spawn;
+    const backend = new AcpBackend(family, family, spawnImpl);
+    const { sink } = collectSink();
+    try {
+      const first = await backend.runTurn("first", opts, sink, new AbortController().signal);
+      assert.equal(first.status, "failed");
+      assert.match(first.error ?? "", /initialization failed/);
+      assert.ok(broken.killed, "the failed initialization must not leave a server running");
+      const retry = backend.runTurn("retry", opts, sink, new AbortController().signal);
+      await healthy.waitFor((line) => line.includes('"session/prompt"'));
+      server.endTurn();
+      assert.equal((await retry).status, "completed");
+      assert.equal(starts, 2);
+    } finally { await backend.dispose(); }
+  }
 });
