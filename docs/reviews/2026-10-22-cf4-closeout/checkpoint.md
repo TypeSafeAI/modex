@@ -106,3 +106,14 @@ These are keyboard and launch checks by a script. They are not a VoiceOver resul
 | C5 | open | |
 
 Val posts the filled rows on #277 (or #281, the shared gate). They are copied here exactly as reported, in a docs-only signed PR, and never ticked on Val's behalf. A failing row gets a red E2E test and a fix in a new worktree. #277 closes only when every row has Val's result or Val's written deferral.
+
+### Hosted CI on the candidate record, PR #427
+
+Added after #427 merged as `8ab2072` on 2026-10-28. The earlier sections are unchanged. #427 changed only
+documentation, so these runs exercised `main` at `b643617` plus this receipt.
+
+- **Attempt 1, [run 40683102316](https://github.com/TypeSafeAI/modex/actions/runs/40683102316/job/122798535618), head `3f80fdf`: `unit + e2e (macOS)` failed.** Desktop E2E 472 passed, 4 skipped, 1 failed in 30.7 min. The failure was `e2e/code-review-agent.spec.ts:195` "Stop ends a running review, and a crash mid-run reads as unknown after a relaunch with nothing replayed": `expect(runs()).toHaveLength(2)` at line 217 received 1 spawn after the second Start review click. That spec arrived with #422 and is outside CF-4; the same job had passed on `main` at `b643617` ([run 40675863660](https://github.com/TypeSafeAI/modex/actions/runs/40675863660/job/122773990064)). In this same attempt the CF-4 gates passed: `markdown-keyboard` and `conversation-rendering` 9/9, five-launch samples 295.5, 300.7, 305.4, 360.8 and 274.2 ms, median 300.7 ms ≤ 500 ms, on Apple M1 (Virtual), 3 cores, Node v24.22.1. The iPhone companion job passed; Upload TypeScript coverage was skipped.
+- **Attempt 2, [same run](https://github.com/TypeSafeAI/modex/actions/runs/40683102316/job/122825356588), same head, no change: passed.** Desktop E2E 473 passed, 4 skipped, 0 failed in 33.6 min, including the `code-review-agent` case. Five-launch samples 344.4, 264.0, 322.9, 305.3 and 509.4 ms, median 322.9 ms ≤ 500 ms. One sample on its own exceeded 500 ms; the approved gate is the median, and the sample is kept here as measured.
+- The queue run for `8ab2072` merged the PR after Val's go-ahead on 2026-10-28.
+
+The attempt 1 failure is a first-pass result and stays recorded; it was not a Markdown or docs defect. It is not tracked as a CF-4 item.
