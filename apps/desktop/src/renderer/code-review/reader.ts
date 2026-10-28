@@ -34,28 +34,26 @@ export class Reader {
 
   async read<A extends Ask>(slot: string, ask: A, account: string | null): Promise<Outcome<A["op"]>> {
     this.cancel(slot);
-    const first = await this.attempt(slot, ask, account);
-    if (first.status !== "applied" || !signInChanged(first.result)) return first;
-    // The finished read needs no cancel; the retry takes the slot, so anything newer still supersedes it.
-    return this.attempt(slot, ask, account);
-  }
-
-  private async attempt<A extends Ask>(slot: string, ask: A, account: string | null): Promise<Outcome<A["op"]>> {
-    const request = { ...ask, requestId: `${this.prefix}-${++this.seq}` } as CodeReviewRequest;
-    const asked = { requestId: request.requestId, op: request.op, scope: scopeOf(request, account) };
-    this.live.set(slot, asked);
-    let reply: CodeReviewReply | null;
-    try {
-      reply = await this.send(request);
-    } catch {
-      reply = null;
+    // Keep checking and replacing the live attempt in one continuation. An extra await
+    // between attempts would let an older retry overwrite a newer read or undo cancellation.
+    for (let retry = 0; ; retry++) {
+      const request = { ...ask, requestId: `${this.prefix}-${++this.seq}` } as CodeReviewRequest;
+      const asked = { requestId: request.requestId, op: request.op, scope: scopeOf(request, account) };
+      this.live.set(slot, asked);
+      let reply: CodeReviewReply | null;
+      try {
+        reply = await this.send(request);
+      } catch {
+        reply = null;
+      }
+      if (this.live.get(slot) !== asked) return { status: "superseded" };
+      this.live.delete(slot);
+      // No answer at all (a rejected invoke, no handler yet) is a failed read, never silence.
+      if (!reply) return { status: "applied", result: { state: "unavailable", reason: "failed", fetchedAt: this.now() }, scope: asked.scope };
+      if (!acceptsReply(asked, reply)) return { status: "mismatch" };
+      if (retry === 0 && signInChanged(reply.result)) continue;
+      return { status: "applied", result: reply.result as ReadResult<CodeReviewReads[A["op"]]>, scope: reply.scope };
     }
-    if (this.live.get(slot) !== asked) return { status: "superseded" };
-    this.live.delete(slot);
-    // No answer at all (a rejected invoke, no handler yet) is a failed read, never silence.
-    if (!reply) return { status: "applied", result: { state: "unavailable", reason: "failed", fetchedAt: this.now() }, scope: asked.scope };
-    if (!acceptsReply(asked, reply)) return { status: "mismatch" };
-    return { status: "applied", result: reply.result as ReadResult<CodeReviewReads[A["op"]]>, scope: reply.scope };
   }
 
   pending(slot: string): boolean {

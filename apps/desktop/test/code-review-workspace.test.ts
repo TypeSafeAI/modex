@@ -138,6 +138,39 @@ test("a read refused because gh's sign-in changed is retried once at most, then 
   assert.deepEqual(main.sent.map(r => r.op), ["inbox"]);
 });
 
+test("a newer read between a sign-in refusal and its retry remains authoritative", async () => {
+  const main = fakeMain();
+  const reader = new Reader(main.send, () => NOW, "gap");
+  const older = reader.read("inbox", { op: "inbox", query: "old" }, ACCOUNT_A.id);
+  main.answer("gap-1", { state: "unavailable", reason: "failed", fetchedAt: NOW, detail: SIGN_IN_CHANGED });
+  // Main's reply has resumed the attempt; a new intent may run before the outer read resumes.
+  let newer!: ReturnType<typeof reader.read>;
+  queueMicrotask(() => { newer = reader.read("inbox", { op: "inbox", query: "new" }, ACCOUNT_A.id); });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  for (const request of main.sent) {
+    if (request.op !== "cancel" && request.requestId !== "gap-1") main.answer(request.requestId, R1.inbox);
+  }
+  assert.equal((await newer).status, "applied", "the newer intent must win even at the retry boundary");
+  assert.deepEqual(await older, { status: "superseded" });
+  assert.equal(reader.pending("inbox"), false);
+});
+
+for (const cancel of ["slot", "all"] as const) {
+  test(`${cancel} cancellation between a sign-in refusal and its retry prevents the old result applying`, async () => {
+    const main = fakeMain();
+    const reader = new Reader(main.send, () => NOW, "gap");
+    const pending = reader.read("inbox", { op: "inbox", query: "old" }, ACCOUNT_A.id);
+    main.answer("gap-1", { state: "unavailable", reason: "failed", fetchedAt: NOW, detail: SIGN_IN_CHANGED });
+    queueMicrotask(() => { if (cancel === "all") reader.cancelAll(); else reader.cancel("inbox"); });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    for (const request of main.sent) {
+      if (request.op !== "cancel" && request.requestId !== "gap-1") main.answer(request.requestId, R1.inbox);
+    }
+    assert.deepEqual(await pending, { status: "superseded" });
+    assert.equal(reader.pending("inbox"), false);
+  });
+}
+
 test("history moves between PRs without duplicating the current entry, and a new visit drops the forward entries", () => {
   let h: History = { entries: [], index: -1 };
   assert.equal(current(h), null);

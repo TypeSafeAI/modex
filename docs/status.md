@@ -257,7 +257,8 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   producer contract helper. The [authenticated integration check](reviews/2026-10-21-cr3-read-integration.md)
   passed with CR-2 through the real Electron IPC/service path. The CR-3 acceptance follow-up closes
   #349's re-review items (inbox pages must agree on their total before the merged list reads
-  complete; a read refused for a moved gh sign-in is retried once, then shown) and proves, with the
+  complete; a read refused for a moved gh sign-in is retried once, then shown, while newer reads and
+  cancellation remain authoritative across attempts) and proves, with the
   overview and remote diff now in the panes, that the list, overview, diff and file tree scroll alone
   and keep focus at 1440×900 and 900×600 ([acceptance record](reviews/2026-10-28-cr3-acceptance.md)).
   Original reference comparison waits for Val's re-captured references; human keyboard/VoiceOver
