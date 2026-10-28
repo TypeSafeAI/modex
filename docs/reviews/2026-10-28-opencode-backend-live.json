@@ -1,0 +1,132 @@
+{
+ "family": "opencode",
+ "bin": "apps/desktop/.probes/opencode-1.19.5/opencode (git-ignored download of the 1.19.5 release)",
+ "model": "opencode/mimo-v2.6-flash-free",
+ "health": {
+  "executable": "available",
+  "authentication": "signed-out",
+  "access": "unverified",
+  "detail": "No credentials \u00b7 run opencode auth login (OpenCode's free models may still answer)",
+  "version": "1.19.5"
+ },
+ "models": 9,
+ "turns": [
+  {
+   "opts": {},
+   "ms": 149403,
+   "status": "completed",
+   "usage": {
+    "first": {
+     "cacheRead": 4096,
+     "cacheWrite": 0,
+     "uncached": 6505
+    },
+    "contextTokens": 10601,
+    "outputTokens": 26,
+    "calls": 1,
+    "totals": {
+     "input": 6505,
+     "cached": 4096,
+     "cacheWrite": 0
+    }
+   },
+   "events": [
+    "session:ses_e7c5",
+    "reasoning.start",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "message.start",
+    "message.done",
+    "reasoning.done"
+   ],
+   "text": "ACP_LIVE_OK"
+  },
+  {
+   "opts": {
+    "mode": "chat"
+   },
+   "ms": 1707,
+   "status": "completed",
+   "usage": {
+    "first": {
+     "cacheRead": 4096,
+     "cacheWrite": 0,
+     "uncached": 6515
+    },
+    "contextTokens": 10611,
+    "outputTokens": 39,
+    "calls": 1,
+    "totals": {
+     "input": 6515,
+     "cached": 4096,
+     "cacheWrite": 0
+    }
+   },
+   "events": [
+    "session:ses_e7c5",
+    "reasoning.start",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "tool:shell:$ bash",
+    "tool.update",
+    "approval:Allow OpenCode to run echo LIVE > live.txt? action={\"backend\":\"opencode\",\"tool\":\"shell\",\"title\":\"$ echo LIVE > live.txt\",\"input\":{\"command\":\"echo LIVE > live.txt\"}}",
+    "tool_done:denied",
+    "reasoning.done"
+   ],
+   "text": ""
+  },
+  {
+   "opts": {
+    "mode": "agent"
+   },
+   "ms": 4904,
+   "status": "completed",
+   "usage": {
+    "first": {
+     "cacheRead": 12160,
+     "cacheWrite": 0,
+     "uncached": 137
+    },
+    "contextTokens": 12297,
+    "outputTokens": 16,
+    "calls": 1,
+    "totals": {
+     "input": 137,
+     "cached": 12160,
+     "cacheWrite": 0
+    }
+   },
+   "events": [
+    "session:ses_e7c5",
+    "reasoning.start",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "reasoning.delta",
+    "tool:edit:edit write",
+    "tool.update",
+    "tool_done:succeeded",
+    "reasoning.start",
+    "reasoning.delta",
+    "reasoning.delta"
+   ],
+   "text": "DONE"
+  },
+  {
+   "opts": "stop",
+   "ms": 2517,
+   "status": "interrupted",
+   "msAfterAbort": 17
+  }
+ ],
+ "liveTxtAfterChatShell": false,
+ "agentTxt": true,
+ "totalMs": 160245,
+ "what": "The Modex AcpBackend (apps/desktop/src/main/engine/backends/acp.ts, compiled) driving the real OpenCode 1.19.5 on macOS arm64, 2026-10-28, on OpenCode's free model with no credentials: health and model list probes, a text turn, a Chat-mode shell command answered 'no' through the approval path (denied, nothing written), an Agent-mode write (no prompt, file written), and Stop (session/cancel) mid-turn. The first turn's latency is the cold server plus the free gateway's queue; the same prompt took about 3 s in the raw probes."
+}

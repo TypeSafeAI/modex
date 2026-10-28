@@ -60,7 +60,9 @@ test("migrateSettings accepts the pre-0.3 API-era settings shape", async () => {
   assert.equal(m.theme, "graphite");
   assert.equal(migrateSettings({ theme: "unknown" }).theme, "graphite");
   assert.equal(m.default_mode, "chat");
-  assert.deepEqual(m.default_model, { codex: "", claude: "", mock: "mock" });
+  assert.deepEqual(m.default_model, { codex: "", claude: "", opencode: "", mimo: "", mock: "mock" });
+  assert.deepEqual([m.opencode_bin, m.mimo_bin], ["opencode", "mimo"]);
+  assert.equal(migrateSettings({ default_backend: "mimo" }).default_backend, "mimo");
   assert.equal("provider" in m, false);
   assert.deepEqual([m.routing.jev_transport, m.routing.jev_bin, m.routing.posture], ["auto", "jev", "balanced"]);
   const r = migrateSettings({ routing: { jev_transport: "cli", jev_bin: " /opt/jev ", posture: "quality", premium_turns_per_day: 3.7, min_confidence: 2 } }).routing;

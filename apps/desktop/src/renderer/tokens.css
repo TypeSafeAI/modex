@@ -55,6 +55,8 @@
   --danger-border: color-mix(in srgb, var(--danger) 40%, transparent);
   --provider-claude: #e8b48a;
   --provider-codex: #9fd4b5;
+  --provider-opencode: #b4b0f0;
+  --provider-mimo: #f0b4d6;
   --diff-add-text: #b6f0c4;
   --diff-del-text: #ffc1bd;
   --syntax-string: #6ed5c5;

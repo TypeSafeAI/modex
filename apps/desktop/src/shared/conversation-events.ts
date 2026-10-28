@@ -70,8 +70,8 @@ export interface ItemOrigin extends TurnRef {
  */
 export type PlanStepStatus = "pending" | "in-progress" | "completed" | "unknown";
 export interface PlanStep { text: string; status: PlanStepStatus }
-/** Where a plan came from: Codex's `turn/plan/updated`, Claude Code's `TodoWrite` tool, or its `TaskCreate`/`TaskUpdate` tools. */
-export type PlanSource = "codex-plan" | "claude-todo" | "claude-tasks";
+/** Where a plan came from: Codex's `turn/plan/updated`, Claude Code's `TodoWrite` tool, its `TaskCreate`/`TaskUpdate` tools, or an ACP agent's `plan` update (OpenCode / MiMo Code `todowrite`). */
+export type PlanSource = "codex-plan" | "claude-todo" | "claude-tasks" | "acp-plan";
 
 export interface ToolCall {
   name: string;
@@ -327,7 +327,7 @@ export function finalAnswerIndex(items: readonly ThreadItem[]): number {
 
 const PHASES: readonly string[] = ["commentary", "final", "unspecified"];
 const SETTLED: readonly string[] = ["succeeded", "failed", "denied", "interrupted", "unknown"];
-const BACKEND_IDS: readonly string[] = ["claude", "codex", "mock"];
+const BACKEND_IDS: readonly string[] = ["claude", "codex", "opencode", "mimo", "mock"];
 const PLAN_STATUSES: readonly string[] = ["pending", "in-progress", "completed", "unknown"];
 
 /** A conversation event read from outside the process (a file, a paired client), or null when malformed. */
@@ -351,7 +351,7 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
         && optional(value.tool.exec, (x) => isRecord(x) && isString(x.command) && optional(x.cwd, isString) && optional(x.actions, Array.isArray));
       case "tool.update": return progress(value.progress);
       case "tool.done": return SETTLED.includes(value.outcome as string) && optional(value.progress, progress);
-      case "plan.update": return (value.from === "codex-plan" || value.from === "claude-todo" || value.from === "claude-tasks") && optional(value.explanation, isString)
+      case "plan.update": return (value.from === "codex-plan" || value.from === "claude-todo" || value.from === "claude-tasks" || value.from === "acp-plan") && optional(value.explanation, isString)
         && Array.isArray(value.steps) && value.steps.every((step) => isRecord(step) && isString(step.text) && PLAN_STATUSES.includes(step.status as string));
       default: return false;
     }

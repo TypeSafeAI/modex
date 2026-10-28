@@ -302,6 +302,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .pill.tone-danger { color: var(--danger); border-color: var(--danger-border); }
 .pill.tone-claude { color: var(--provider-claude); border-color: color-mix(in srgb, var(--provider-claude) 40%, transparent); }
 .pill.tone-codex { color: var(--provider-codex); border-color: color-mix(in srgb, var(--provider-codex) 40%, transparent); }
+.pill.tone-opencode { color: var(--provider-opencode); border-color: color-mix(in srgb, var(--provider-opencode) 40%, transparent); }
+.pill.tone-mimo { color: var(--provider-mimo); border-color: color-mix(in srgb, var(--provider-mimo) 40%, transparent); }
 .pill.tone-auto { color: var(--accent-warn); border-color: color-mix(in srgb, var(--accent-warn) 45%, transparent); }
 
 .tooltip-anchor { display: inline-flex; }
