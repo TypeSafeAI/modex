@@ -83,7 +83,8 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     };
   }, []);
   const [s, setS] = useState<Settings>(settings);
-  const [health, setHealth] = useState<Record<BackendId, BackendHealth> | null>(null);
+  // A stubbed or older health map may lack the ACP backends; the cards and paths tolerate that.
+  const [health, setHealth] = useState<(Record<"claude" | "codex" | "mock", BackendHealth> & Partial<Record<"opencode" | "mimo", BackendHealth>>) | null>(null);
   const [healthFailed, setHealthFailed] = useState(false);
   const [healthRevision, setHealthRevision] = useState(0);
   const [chatgpt, setChatgpt] = useState<ChatGPTStatus | null>(null);
@@ -433,13 +434,13 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <span>OpenCode executable</span>
             <SecretInput value={s.opencode_bin === "opencode" ? "" : s.opencode_bin} placeholder="Automatic discovery" onChange={(e) => set("opencode_bin", e.target.value)} spellCheck={false} />
             {s.opencode_bin !== settings.opencode_bin && <small className="warn">Override changed · verified when you save</small>}
-            {health?.opencode.resolvedPath && <small className="connection-path">Using: {health.opencode.resolvedPath}</small>}
+            {health?.opencode?.resolvedPath && <small className="connection-path">Using: {health.opencode.resolvedPath}</small>}
           </label>
           <label className="field">
             <span>MiMo Code executable</span>
             <SecretInput value={s.mimo_bin === "mimo" ? "" : s.mimo_bin} placeholder="Automatic discovery" onChange={(e) => set("mimo_bin", e.target.value)} spellCheck={false} />
             {s.mimo_bin !== settings.mimo_bin && <small className="warn">Override changed · verified when you save</small>}
-            {health?.mimo.resolvedPath && <small className="connection-path">Using: {health.mimo.resolvedPath}</small>}
+            {health?.mimo?.resolvedPath && <small className="connection-path">Using: {health.mimo.resolvedPath}</small>}
           </label>
         </div>
         <div className="grid2">
