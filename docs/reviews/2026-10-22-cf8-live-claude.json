@@ -1,0 +1,265 @@
+{
+  "candidate_sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+  "product_source_modified": false,
+  "host": {
+    "model": "Mac17,6",
+    "chip": "Apple M5 Max",
+    "memory_gib": 128,
+    "macos": "26.7.1 (25G241)"
+  },
+  "method": "Existing live-smoke Playwright test extended in an untracked probe with plan, Notes, and restart assertions. Attempts retained separately.",
+  "limitations": [
+    "No structured plan observed.",
+    "No live structured clarification or physical companion exercised.",
+    "Native side-effect counts across restart are asserted by fixtures, not this live probe.",
+    "Attempt 3 checks delayed Stop file absence after 31 seconds."
+  ],
+  "attempts": [
+    {
+      "backend": "claude",
+      "bin": "claude",
+      "version": "2.1.308 (Claude Code)",
+      "model": "haiku",
+      "at": "2026-10-22T19:15:59.035Z",
+      "editApprovals": 0,
+      "edit": [],
+      "attempt": 1,
+      "overall": "failed",
+      "report_sha256": "0721aaecd66ac8f2270432c73bd4cc59130944142d685ed1bf6f9fd472cda948",
+      "failure": "Initial idle observed before turn startup; file unchanged, no provider items observed."
+    },
+    {
+      "backend": "claude",
+      "bin": "claude",
+      "version": "2.1.308 (Claude Code)",
+      "model": "haiku",
+      "at": "2026-10-22T19:17:28.238Z",
+      "editApprovals": 0,
+      "edit": [
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "ToolSearch",
+          "title": "ToolSearch",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Read",
+          "title": "read [disposable repo path]",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "assistant",
+          "phase": "unspecified",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Edit",
+          "title": "edit [disposable repo path]",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Bash",
+          "title": "$ grep -q 'hello, live' greeting.txt",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "assistant",
+          "phase": "unspecified",
+          "outcome": "succeeded"
+        }
+      ],
+      "finalPhase": "unspecified",
+      "planItems": 0,
+      "attempt": 2,
+      "overall": "failed",
+      "report_sha256": "42ee0b20167cd0a16549b43428f3587f619f7215f6626dc0d09c59d17ef52440",
+      "failure": "No structured plan item emitted."
+    },
+    {
+      "backend": "claude",
+      "bin": "claude",
+      "version": "2.1.308 (Claude Code)",
+      "model": "haiku",
+      "at": "2026-10-22T19:18:37.532Z",
+      "editApprovals": 1,
+      "edit": [
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "ToolSearch",
+          "title": "ToolSearch",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Read",
+          "title": "read [disposable repo path]",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "assistant",
+          "phase": "unspecified",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Bash",
+          "title": "$ sed -i '' 's/hello/hello, live/' [disposable repo path]",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "approval"
+        },
+        {
+          "kind": "tool",
+          "name": "Bash",
+          "title": "$ grep -q 'hello, live' greeting.txt",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "assistant",
+          "phase": "unspecified",
+          "outcome": "succeeded"
+        }
+      ],
+      "finalPhase": "unspecified",
+      "planItems": 0,
+      "notesRecovery": {
+        "saved": true,
+        "opened": true,
+        "identicalItemsAfterRestart": true,
+        "identicalNoteAfterRestart": true,
+        "revision": 1
+      },
+      "stop": {
+        "ms": 2531,
+        "tool": {
+          "status": "done",
+          "outcome": "interrupted"
+        },
+        "notice": "Stopped. Claude did not end the turn within 1.5 s of the interrupt, so Modex terminated it.",
+        "failures": 0
+      },
+      "attempt": 3,
+      "overall": "failed",
+      "report_sha256": "457a09ae0818b4953357e456a6342153171b2d0d41a09f13cb1ae9758cb629d2",
+      "failure": "No structured plan item emitted."
+    },
+    {
+      "backend": "claude",
+      "bin": "claude",
+      "version": "2.1.308 (Claude Code)",
+      "model": "sonnet",
+      "at": "2026-10-22T20:13:11.932Z",
+      "editApprovals": 1,
+      "edit": [
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "ToolSearch",
+          "title": "ToolSearch",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Read",
+          "title": "read [disposable repo path]",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "assistant",
+          "phase": "unspecified",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "tool",
+          "name": "Bash",
+          "title": "$ sed -i '' 's/hello/hello, live/' greeting.txt",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "approval"
+        },
+        {
+          "kind": "tool",
+          "name": "Bash",
+          "title": "$ grep -q 'hello, live' greeting.txt",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "thinking",
+          "outcome": "succeeded"
+        },
+        {
+          "kind": "assistant",
+          "phase": "unspecified",
+          "outcome": "succeeded"
+        }
+      ],
+      "toolSearchResults": [
+        {
+          "name": "ToolSearch",
+          "output": "No matching deferred tools found"
+        }
+      ],
+      "finalPhase": "unspecified",
+      "planItems": 0,
+      "notesRecovery": {
+        "saved": true,
+        "opened": true,
+        "identicalItemsAfterRestart": true,
+        "identicalNoteAfterRestart": true,
+        "revision": 1
+      },
+      "stop": {
+        "ms": 935,
+        "tool": {
+          "status": "done",
+          "outcome": "interrupted"
+        },
+        "notice": "Stopped.",
+        "failures": 0
+      },
+      "attempt": 4,
+      "overall": "failed",
+      "failure": "No structured plan item emitted; ToolSearch reported no matching deferred tools.",
+      "report_sha256": "15c59ffba9017d6837e0969ac39c276feecfc768105e328c9985c9f2e0e8fd55"
+    }
+  ],
+  "authentication": {
+    "loggedIn": true,
+    "authMethod": "claude.ai",
+    "apiProvider": "firstParty",
+    "exit": 0
+  },
+  "model_identity_note": "haiku and sonnet are the requested CLI aliases; exact resolved model revisions were not captured."
+}
