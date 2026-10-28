@@ -53,8 +53,11 @@ keyboard scrolls, so the spec waits for a region to stop moving before reading t
 ## Step 3: R1–R4 comparison
 
 Not run. The design page records Val's confirmation on 2026-10-22 that the original captures are gone
-from `~/Desktop`, and Spotlight still finds no file by their names on this Mac. No synthetic capture
-was substituted. The journey spec's R1 and R4 captures at the references' CSS sizes, plus 1440×900 and
+from `~/Desktop`. On 2026-10-28 this Mac was searched again by name, by pixel size (1766×1057,
+3536×2102, 3528×2094, 2048×1217), in the Trash and iCloud Drive, and for local Time Machine
+snapshots: every hit at the references' CSS sizes is a Playwright capture, and there are no originals.
+Asked where they are now, **Val decided on 2026-10-28 to leave Step 3 open for now** rather than
+re-capture or substitute. No synthetic capture was substituted. The journey spec's R1 and R4 captures at the references' CSS sizes, plus 1440×900 and
 900×600, were taken on this candidate and kept with the evidence; `pnpm run ui:compare --captures`
 built `compare.html` from them with every row marked "no reference". Once Val names where the
 originals (or re-captures with their own calibration row) live, the comparison is one command:
@@ -92,7 +95,8 @@ manifest and the reference-less `compare.html`.
 
 ## Still open on #322
 
-- The R1–R4 comparison against Val's originals or re-captures (Step 3).
+- The R1–R4 comparison against Val's originals or re-captures (Step 3), deferred by Val's decision on
+  2026-10-28 until references exist.
 - The human keyboard/VoiceOver result (Step 4).
 - An authenticated run of the sign-in retry is not claimed; the refusal path was exercised only with
   the synthetic `gh` and a rewritten `hosts.yml`.
