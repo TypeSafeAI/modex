@@ -59,9 +59,9 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
-## Review repairs in progress
+## Review repair delivery
 
-PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 merged into the #423 delivery branch at `0956376`; its tree exactly matches the reviewed `e0a03ef` candidate. Delivery to `main`, local-runtime qualification and product admission remain open. The combined branch’s CodeQL alert #28 identified incomplete regex escaping in a test assertion; the repair uses a literal error-message comparison, with five focused tests and the full build/unit command passing (2,219 passed, 26 skipped, zero failures or cancellations). Independent review found no blockers, and hosted CodeQL fixed alert #28. The subsequent macOS run at `d3d61ad` failed the Jev-theme Settings click and teardown (472 passed, four skipped, one failed); its trace is preserved. This branch now includes main `7a01df2`, including the merged Notes identity repair, and requires fresh validation before protected delivery.
+PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 merged into the #423 delivery branch at `0956376`; its tree exactly matches the reviewed `e0a03ef` candidate. Delivery to `main` landed through PR #423 at `c23e6be`; local-runtime qualification and product admission remain open. The combined branch’s CodeQL alert #28 identified incomplete regex escaping in a test assertion; the repair uses a literal error-message comparison, with five focused tests and the full build/unit command passing (2,219 passed, 26 skipped, zero failures or cancellations). Independent review found no blockers, and hosted CodeQL fixed alert #28. The subsequent macOS run at `d3d61ad` failed the Jev-theme Settings click and teardown (472 passed, four skipped, one failed); its trace is preserved. After integrating main `7a01df2`, including the merged Notes identity repair, final delivery head `618027e` passed protected queue run `40768112164` (473 desktop passes, four skips and seven site passes) and landed through #423. The landed merge tree was verified before its delivery worktree was archived and removed.
 
 PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. PR #426 subsequently passed its protected queue and merged as `d0482a0`; this repair is on main and unreleased. Native/live acceptance remains separate.
 
@@ -212,7 +212,7 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 - **Notes history identity repair.** Repeated history toggles could duplicate revision rows or leave history visible after closing because the history and editor siblings shared a React key. The isolated `notes-history-identity` repair gives them distinct identities; three regression repetitions failed before the fix and passed afterward. Independent review found no blockers. Build and full unit/E2E checks passed (2,191 unit passed, 23 skipped; 470 desktop passed, seven skipped; seven site passed). Protected delivery landed in #429 (`7a01df2`); its successful merge-queue run passed 473 desktop tests with four skips and seven site tests. See [repair evidence](reviews/2026-10-28-notes-history-identity.md).
 
-- **LM-2 credential repair, in review.** The later credential-copy and stale-discovery fixes from closed #401 are not in main. The current-main `lm2-credential-repair` branch preserves the reviewed source/tests and prevents fake child PIDs from reaching OS signals. Build, full unit tests, typechecks and the Electron IPC journey passed; hosted checks and protected delivery are pending. [Reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md).
+- **LM-2 credential repair, on main and unreleased.** PR #418 delivered the credential-copy and stale-discovery fixes from closed #401, together with isolation that prevents fake child PIDs from reaching OS signals, at `6c9000f`. Build, full unit tests, typechecks and the Electron IPC journey are recorded in the [reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md). This source delivery is separate from local-runtime qualification and product admission.
 
 - **Desktop v0.4.0 and Companion 0.4.0 (9) preparation.** The release ships everything under "On
   main, unreleased":
@@ -222,10 +222,9 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   - the keyboard, Jump to latest and Codex Stop fixes;
   - Markdown overflow keyboard stops.
 
-  The Code Review workspace stays hidden in built apps, and local-model discovery has no UI. Val
-  asked for the next version. No rc rehearsal is needed, because the release workflow and updater
-  are unchanged since v0.3.0. Companion build 9 supersedes the never-uploaded build 8. Remaining:
-  - the signed `v0.4.0` tag, with a key the workflow allows;
+  The Code Review workspace stays hidden in built apps, and local-model discovery has no UI. Val asked for the next version. The protected Release rehearsal at `6c9000f` passed in [run 40673497786](https://github.com/TypeSafeAI/modex/actions/runs/40673497786). That candidate predates the later review repairs; it does not qualify a release of current main. The next release candidate must include the intended delivered repairs and pass its own protected release checks. Companion build 9 supersedes the never-uploaded build 8. Remaining:
+
+  - a current candidate with refreshed release evidence and the signed `v0.4.0` tag using the approved release key;
   - the Release run;
   - independent download checks and publication;
   - the v0.3.0 → v0.4.0 background upgrade on the release Mac;
@@ -249,7 +248,7 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   [How it works](local-models.md#lm-3-local-execution-through-codex).
 
 - **LM-5 slice 1: effective destination and managed-policy admission** ([#380](https://github.com/TypeSafeAI/modex/issues/380),
-  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), merged into `lm3-signed-delivery` for delivery through #423). Before a local child opens a thread, main reads the child's own
+  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), merged into `lm3-signed-delivery` and delivered to main through #423 at `c23e6be`). Before a local child opens a thread, main reads the child's own
   `config/read` and `configRequirements/read` and admits it only when every governed key comes from Modex's
   session flags, no project layer or managed requirement applies, the private home is empty and the effective
   destination, model context and tools are the ones Modex passed; otherwise the turn fails naming the layer and
