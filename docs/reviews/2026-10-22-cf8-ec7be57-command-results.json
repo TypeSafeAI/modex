@@ -1,0 +1,153 @@
+{
+  "candidate_sha": "ec7be578765f9ce54976882853e57ca190252361",
+  "completed_commands": [
+    {
+      "command": "pnpm install --frozen-lockfile",
+      "start": "2026-10-22T21:46:26.391802+00:00",
+      "end": "2026-10-22T21:46:30.720620+00:00",
+      "exit": 0,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "install.log",
+      "log_sha256": "544e9caa060afee1cdb7ceddfb62c651c64f4951a242946ee05d06a0ac43c932"
+    },
+    {
+      "command": "pnpm build",
+      "start": "2026-10-22T21:46:30.748292+00:00",
+      "end": "2026-10-22T21:46:53.088291+00:00",
+      "exit": 0,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "build.log",
+      "log_sha256": "c34c87fadad6a264c849fa15fb5f754bb6c26ae1b1004bd134d8ff45647ab90d"
+    },
+    {
+      "command": "pnpm typecheck",
+      "start": "2026-10-22T21:46:53.105434+00:00",
+      "end": "2026-10-22T21:47:08.443310+00:00",
+      "exit": 0,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "typecheck.log",
+      "log_sha256": "e006a7cc73d97dcbd926e9f5552a60dad21b3a0a6c384b5cf7f27be6ad6b85a0"
+    },
+    {
+      "command": "pnpm test",
+      "start": "2026-10-22T21:47:08.460623+00:00",
+      "end": "2026-10-22T21:52:09.156934+00:00",
+      "exit": 0,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "test.log",
+      "log_sha256": "8f39f0f78c13af2876b2489610d628289731311bff651e8caadd8e42239cc71f"
+    },
+    {
+      "command": "pnpm test:e2e",
+      "start": "2026-10-22T21:52:09.178238+00:00",
+      "end": "2026-10-22T22:13:00.364094+00:00",
+      "exit": 0,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "e2e.log",
+      "log_sha256": "43b47499534a70d555b4ef5bb8ee1ece03f9912d03a7a2e151a49848aacf1432"
+    },
+    {
+      "command": "MODEX_IOS_DERIVED_DATA=/tmp/modex-cf8-ec7be57-ios-derived bash apps/ios/ModexCompanion/Scripts/test-e2e.sh",
+      "start": "2026-10-22T22:13:00.458499+00:00",
+      "end": "2026-10-22T22:14:16.193058+00:00",
+      "exit": 70,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "iphone.log",
+      "log_sha256": "b6deb79852d34dcd9c54ca4383b94f8e72c0be16ba91f317c5d59cef0467252e"
+    },
+    {
+      "command": "MODEX_IOS_DESTINATION=platform=iOS\\ Simulator,id=192B1FDC-0946-43CE-9215-C12305165D36 MODEX_IOS_DERIVED_DATA=/tmp/modex-cf8-ec7be57-ios27-derived bash apps/ios/ModexCompanion/Scripts/test-e2e.sh",
+      "start": "2026-10-22T22:14:16.210627+00:00",
+      "end": "2026-10-22T22:18:59.680589+00:00",
+      "exit": 0,
+      "sha": "ec7be578765f9ce54976882853e57ca190252361",
+      "log": "iphone-ios27.log",
+      "log_sha256": "9d53fb5f21055dd9eaa15b2a2112d051cc54ca8cb68cc8f0b940b5ed00a3e81a"
+    }
+  ],
+  "unit_counts": {
+    "root": 117,
+    "core": 16,
+    "desktop_primary_passed": 1811,
+    "desktop_primary_skipped": 16,
+    "desktop_secondary": 21,
+    "site": 10,
+    "store": 16,
+    "total_passed": 1991,
+    "failures": 0,
+    "cancellations": 0
+  },
+  "pending": [],
+  "e2e_counts": {
+    "desktop_passed": 388,
+    "desktop_skipped": 6,
+    "site_passed": 7,
+    "failed": 0
+  },
+  "iphone_counts": {
+    "CompanionFlowTests": 23,
+    "DemoWorkspaceTests": 20,
+    "total": 43,
+    "failures": 0,
+    "runtime": "iOS 27.0",
+    "simulator": "192B1FDC-0946-43CE-9215-C12305165D36"
+  },
+  "supplemental": {
+    "captures": {
+      "command": [
+        "pnpm",
+        "--dir",
+        "apps/desktop",
+        "exec",
+        "playwright",
+        "test",
+        "e2e/conversation-fidelity.spec.ts",
+        "e2e/typed-turns.spec.ts"
+      ],
+      "environment": {
+        "MODEX_SCREENSHOTS": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22/docs/screenshots/conversation-fidelity/2026-10-22-ec7be57"
+      },
+      "start": "2026-10-22T22:15:35.528254+00:00",
+      "end": "2026-10-22T22:16:08.497278+00:00",
+      "exit": 1,
+      "candidate_sha": "ec7be578765f9ce54976882853e57ca190252361"
+    },
+    "captures-second": {
+      "command": [
+        "pnpm",
+        "--dir",
+        "apps/desktop",
+        "exec",
+        "playwright",
+        "test",
+        "e2e/conversation-fidelity.spec.ts",
+        "e2e/typed-turns.spec.ts"
+      ],
+      "environment": {
+        "MODEX_SCREENSHOTS": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22/docs/screenshots/conversation-fidelity/2026-10-22-ec7be57"
+      },
+      "start": "2026-10-22T22:16:56.960077+00:00",
+      "end": "2026-10-22T22:17:46.212272+00:00",
+      "exit": 0,
+      "candidate_sha": "ec7be578765f9ce54976882853e57ca190252361"
+    },
+    "measure": {
+      "command": [
+        "pnpm",
+        "--dir",
+        "apps/desktop",
+        "exec",
+        "playwright",
+        "test",
+        "e2e/transcript-measure.spec.ts"
+      ],
+      "environment": {
+        "MODEX_MEASURE": "/Users/buns/.codex/attachments/cf8-integrated-ec7be57-evidence/transcript-measure.json"
+      },
+      "start": "2026-10-22T22:16:08.545137+00:00",
+      "end": "2026-10-22T22:16:15.891541+00:00",
+      "exit": 0,
+      "candidate_sha": "ec7be578765f9ce54976882853e57ca190252361"
+    }
+  }
+}

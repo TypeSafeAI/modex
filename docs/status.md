@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-24._
+_Last updated 2026-10-28._
 
 ## Shipped
 
@@ -73,10 +73,21 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   (Ollama 0.40.10 has none; this Mac's only LM Studio model is an embedding model).
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
+- **CF-8 integrated candidate `b643617`** (#281, 2026-10-28). The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md#integrated-candidate-2026-10-28-b643617)
+  pins `main` at `b643617`, which carries every CF-1 to CF-7 slice (#394 and the CF-4 close-out via #404
+  included). First pass, no reruns: install, build and typecheck passed; unit 2,011 passed and 17 skipped
+  (desktop) with every other suite green; desktop e2e 470 passed and 7 opt-in skips; site 7/7; iPhone UI 23/23
+  and 20/20 on a dedicated iOS 27.0 simulator. Live Claude Code 2.1.312 (Haiku, Chat mode) passed the golden
+  path through the app: one approval, the edit and check, "Claude Code reported no plan for this turn" (the CLI
+  offers Modex no plan tool), Save to Notes, Open, restart, and Stop (interrupted in 0.8 s, the file never
+  written). Live codex-cli 0.164.0 (`gpt-6.1-sol`, ChatGPT account, Chat mode) passed the same path: two approvals, `apply_patch` and the check with exit code 0, a `final` answer, "Codex reported no plan for this turn", Save to Notes, Open, restart, and Stop (interrupted in 0.1 s, the file never written). The 2026-10-22 candidates `0e674e7` and `ec7be57` are kept as history beside it.
+  **Still open, all Val's:** the keyboard/VoiceOver rows A1–A8, B1–B7 and C1–C5 on the seeded build from this
+  candidate, and the CF-3 rows D1–D5, V1–V3 and P1–P6 (#420; the P rows also need Companion 0.4.0 (9) on
+  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral.
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
-  an offline seed scenario. Human acceptance and a final integrated candidate remain open.
+  an offline seed scenario. Human acceptance remains open; the integrated candidate is above.
   The full-log and patch-state E2E fixtures wait for the completed turn before inspecting its
   work, avoiding the initial idle state racing the fixture startup; their content and execution
   count assertions remain unchanged.
