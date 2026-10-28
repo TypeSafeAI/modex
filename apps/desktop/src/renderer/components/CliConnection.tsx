@@ -13,11 +13,12 @@ export function ConnectionStatus({ health, failed, busy, busyLabel = "Signing in
 }
 
 /** Copy only; the user decides when to run the saved CLI's login in their terminal. */
-export function TerminalLogin({ backend, path, disabled }: { backend: "claude" | "codex"; path?: string; disabled: boolean }) {
+export function TerminalLogin({ backend, path, disabled }: { backend: "claude" | "codex" | "opencode" | "mimo"; path?: string; disabled: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const executable = path ? `'${path.replaceAll("'", "'\\''")}'` : backend;
-  const command = `${executable} ${backend === "claude" ? "auth login" : "login"}`;
+  // Claude Code, OpenCode and MiMo Code sign in with `auth login`; Codex with `login`.
+  const command = `${executable} ${backend === "codex" ? "login" : "auth login"}`;
   return (
     <details className="connection-details">
       <summary>Use terminal login</summary>

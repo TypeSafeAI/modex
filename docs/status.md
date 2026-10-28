@@ -65,6 +65,19 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 ## On main, unreleased
 
+- **OpenCode and MiMo Code backends** ([#408](https://github.com/TypeSafeAI/modex/issues/408)).
+  Two new thread backends drive the OpenCode CLI and Xiaomi's MiMo Code fork through their Agent
+  Client Protocol server (`opencode acp --pure`, `mimo acp --pure`), the way Codex runs through
+  `codex app-server`: one shared server per backend, a session per thread as the resume handle,
+  `session/request_permission` answered through Modex's approval cards, rules and policies, Stop as
+  `session/cancel`. Modex's modes are agents injected inline (`OPENCODE_CONFIG_CONTENT`): Chat denies
+  edits, Agent allows them, Full access asks nothing, Plan pins the built-in plan agent; a refused
+  mode fails the turn. Settings gets cards, executable overrides (verified by `--version`) and
+  default models for both; health is `auth list`'s credential count and the model list is
+  `<cli> models`. Not there: confined Code Review turns (refused), Modex's knowledge, Space and
+  image tools, question cards, efforts in the model list. Accepted live on OpenCode 1.19.5 and
+  MiMo Code 0.1.16 (`docs/opencode.md`, [ACP probes](reviews/2026-10-28-opencode-acp.json),
+  [MiMo](reviews/2026-10-28-mimo-acp.json), [backend live run](reviews/2026-10-28-opencode-backend-live.json)); AGENTS.md's CLI-only rule now names all four CLIs.
 - **Local model connections and discovery, in main only** (LM-2 [#378](https://github.com/TypeSafeAI/modex/issues/378),
   [tracker #376](https://github.com/TypeSafeAI/modex/issues/376)). Main keeps loopback-only
   connection profiles for Ollama, LM Studio and Responses-compatible servers in
@@ -312,7 +325,9 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   probe timed out during initialization. Grok 1.0.46 accepted cached auth and session RPCs,
   then its text turn timed out; native plan/sandbox also has documented permission limits.
   Neither provider is enabled. Both decisions include reproducible probes and distinguish
-  observed failures from unverified capabilities; coding execution remains CLI-only.
+  observed failures from unverified capabilities; coding execution remains CLI-only. OpenCode
+  and MiMo Code, probed over ACP on 2026-10-28, passed the same gates and shipped as backends
+  ([#408](https://github.com/TypeSafeAI/modex/issues/408), [opencode.md](opencode.md)).
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2

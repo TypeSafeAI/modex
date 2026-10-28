@@ -156,7 +156,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("routing:clearKey", () => runner.router.clearKey());
   handle("routing:test", () => runner.router.test());
   handle("backends:health", async () => {
-    const entries = await Promise.all((["claude", "codex", "mock"] as BackendId[]).map(async (id) => {
+    const entries = await Promise.all((["claude", "codex", "opencode", "mimo", "mock"] as BackendId[]).map(async (id) => {
       const backend = runner.backend(id);
       const status = backend.health ? await (id === "mock" ? backend.health() : cliHealth(id, sessionCliSettings[`${id}_bin`], () => backend.health!())) : { executable: "available" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo · no account" };
       return [id, status] as const;

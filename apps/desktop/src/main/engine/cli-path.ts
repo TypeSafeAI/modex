@@ -4,10 +4,10 @@ import path from "node:path";
 import { probe } from "./backends/health.js";
 import type { BackendHealth } from "../../shared/types.js";
 
-type CodingCli = "claude" | "codex" | "op";
+type CodingCli = "claude" | "codex" | "opencode" | "mimo" | "op";
 export type CliExecutable = string | (() => string);
 interface Options { env?: NodeJS.ProcessEnv; timeoutMs?: number; platform?: NodeJS.Platform }
-const label = (cli: CodingCli) => cli === "claude" ? "Claude Code" : cli === "op" ? "1Password" : "Codex";
+const label = (cli: CodingCli) => cli === "claude" ? "Claude Code" : cli === "op" ? "1Password" : cli === "opencode" ? "OpenCode" : cli === "mimo" ? "MiMo Code" : "Codex";
 
 function executable(file: string): boolean {
   try { return fs.statSync(file).isFile() && (fs.accessSync(file, fs.constants.X_OK), true); }
@@ -89,7 +89,8 @@ export async function verifyCliOverride(cli: CodingCli, value: string, options: 
   if (!value.trim() || value.trim() === cli) return cli;
   const bin = resolveCli(cli, value, options);
   const result = await probe(bin, ["--version"], undefined, options.timeoutMs ?? 5000, options.env);
-  const identity = cli === "claude" ? /\b\d+\.\d+\.\d+[^\r\n]*\(Claude Code\)/i : /\bcodex-cli\s+\d+\.\d+\.\d+/i;
+  // OpenCode 1.19.5 and MiMo Code 0.1.16 print a bare semantic version; `--help` names the CLI (`opencode acp` / `mimo acp`).
+  const identity = cli === "claude" ? /\b\d+\.\d+\.\d+[^\r\n]*\(Claude Code\)/i : cli === "opencode" || cli === "mimo" ? /^\s*v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?\s*$/ : /\bcodex-cli\s+\d+\.\d+\.\d+/i;
   if (result.failure === "timeout") throw new Error(`${label(cli)} executable check timed out. Settings were not saved.`);
   if (result.failure || result.code !== 0 || !identity.test(result.output)) throw new Error(`${label(cli)} executable could not be verified with --version. Choose the correct CLI; settings were not saved.`);
   return bin;

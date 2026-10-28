@@ -254,7 +254,7 @@ function ThreadRow({ thread: t, projectName, compact, selected, unsent, onSelect
     return () => { active = false; clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); reconnect?.(); };
   }, [t.id, t.cwd, t.status, t.retired]);
 
-  const provider = t.backend === "claude" ? "Claude Code" : t.backend === "codex" ? "Codex" : "Mock";
+  const provider = t.backend === "claude" ? "Claude Code" : t.backend === "codex" ? "Codex" : t.backend === "opencode" ? "OpenCode" : t.backend === "mimo" ? "MiMo Code" : "Mock";
   const model = t.model || "Default model";
   const pr = context?.pullRequest;
   const prLabel = t.retired ? `#${t.retired.pr} Merged` : pr ? pullRequestLabel(pr) : failed ? "PR unavailable" : "Loading…";

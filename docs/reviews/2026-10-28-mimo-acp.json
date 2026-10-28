@@ -1,0 +1,253 @@
+{
+ "what": "MiMo Code 0.1.16 (Xiaomi's OpenCode fork, binary `mimo`) driven over `mimo acp --pure` from the same probe on 2026-10-28, with no credentials: the ACP handshake, session, custom Modex agents and set_mode work; a prompt without credentials ends the turn with no text and no tokens.",
+ "probes": {
+  "capabilities": {
+   "provider": "mimo",
+   "version": "0.1.16",
+   "at": "2026-10-28T17:19:22.277Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "MIMOCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "0.1.16"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 12
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "plan",
+     "result": {}
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "available_commands_update"
+   ]
+  },
+  "acp": {
+   "provider": "mimo",
+   "version": "0.1.16",
+   "at": "2026-10-28T17:21:06.142Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "MIMOCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "0.1.16"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 12
+    },
+    {
+     "method": "session/prompt",
+     "ms": 1787,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "totalTokens": 0,
+       "inputTokens": 0,
+       "outputTokens": 0
+      },
+      "_meta": {}
+     },
+     "fileWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "available_commands_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "agents": {
+   "provider": "mimo",
+   "version": "0.1.16",
+   "at": "2026-10-28T17:27:01.247Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "MIMOCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "0.1.16"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "modes": [
+      "build",
+      "plan",
+      "modex-agent",
+      "modex-chat",
+      "modex-full"
+     ],
+     "modelCount": 12,
+     "note": "Modex's agents, injected through MIMOCODE_CONFIG_CONTENT, are listed as session modes."
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "modex-chat",
+     "result": {}
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "available_commands_update"
+   ]
+  }
+ }
+}

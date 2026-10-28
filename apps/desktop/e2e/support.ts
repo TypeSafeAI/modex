@@ -58,7 +58,7 @@ export function seedHome(settings: Record<string, unknown> = {}): { home: string
       threads: [],
       // Chat mode is read-only, so the scripted apply_patch must be approved — that is the card we click.
       // HTTPS transport so a real `jev` on the machine's PATH never changes what the judge reports.
-      settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", mock_script: mockScript, routing: { jev_transport: "http" }, ...settings },
+      settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", opencode: "", mimo: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", opencode_bin: "opencode", mimo_bin: "mimo", mock_script: mockScript, routing: { jev_transport: "http" }, ...settings },
     }),
   );
   return { home, repo };
