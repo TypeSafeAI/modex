@@ -90,7 +90,8 @@ provider are named on every `thread/start` and `thread/resume` with `allowProvid
 and Codex's reply must confirm both before any turn content is sent. A stale sign-in is never retried. A
 resume handle the child did not itself open, including every handle after a restart or target change, is
 refused rather than resumed. A project `.codex` directory in or above the working directory and a
-`localhost` endpoint are refused (precedence and resolver behaviour are unqualified). One turn at a time
+`localhost` endpoint are refused (precedence and resolver behaviour are unqualified); since LM-5 slice 1 the
+child's effective configuration is also read back and must come from Modex's flags alone. One turn at a time
 reaches any one loopback port, so IPv4, IPv6 and mapped aliases share a slot; a Stop while waiting starts
 nothing. Force-stop ends only the thread's own child. Deleting the thread, clearing the target or quitting
 removes the child and its private home.
@@ -109,6 +110,24 @@ gate: `MODEX_LM3_LIVE=1` with `MODEX_LM3_URL` and `MODEX_LM3_MODEL` runs it, and
 downloads nothing. Loopback stays a destination, not verified locality: Codex's HTTP client follows
 redirects, and a server may forward requests. Offline operation, managed-policy precedence, Plan, images,
 other runtimes and resume across restarts are unqualified.
+
+## LM-5 slice 1: effective destination and managed policy
+
+Status: in `lm3-codex`'s successor branch `lm5-policy` (#380); main-only, no UI. Before a local child opens or
+resumes a thread, main reads the child's own `config/read` (effective configuration, the layer that set each
+key, and every layer's contents and hash) and `configRequirements/read`, and admits the child only when every
+governed key (destination, model, context, tools, plugins, hooks, instructions) comes from Modex's session flags,
+no project layer is loaded, the private home is empty, no managed layer touches a governed key, no managed
+requirements apply, and the effective values are exactly the ones Modex passed. Otherwise the turn fails naming
+the layer and key, and nothing is sent or rewritten (`engine/local-models/run-policy.ts`). The admitted
+configuration's provenance is kept with the child (`LocalExecution.provenance`). A `model/rerouted`
+notification on a local turn interrupts it and reports it failed.
+
+What is recorded rather than enforced: codex-cli 0.164.0 follows a 307 from the configured loopback server to
+another server with the full request body, and a 302 as a bodyless GET; the bearer token never follows a
+redirect. No Codex setting constrains this. A loopback server that redirects can send the turn's content
+wherever it points, as it could by forwarding. Evidence and the receipts are in the
+[LM-5 slice 1 review](reviews/2026-10-27-lm5-destination-policy.md).
 
 ## Accepted boundary and follow-up runtime availability
 

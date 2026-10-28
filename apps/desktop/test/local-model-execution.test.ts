@@ -12,8 +12,25 @@ import { tmpdir } from "./helpers.js";
 
 const MODEL = "qwen3.8-flash-next-iq3_s";
 
+/** The effective configuration a scripted app-server reports back: the child's own `-c` flags, from the session-flags layer alone, over an empty private home and an empty system file (the shape codex-cli 0.164.0 returned on 2026-10-27). */
+function effectiveConfiguration(args: string[]): { config: Record<string, any>; origins: Record<string, unknown>; layers: unknown[] } {
+  const flags: Record<string, any> = {};
+  const origins: Record<string, unknown> = {};
+  const origin = { name: { type: "sessionFlags" }, version: "sha256:flags" };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== "-c") continue;
+    const setting = args[++i]!; const eq = setting.indexOf("=");
+    const path = setting.slice(0, eq).split("."); const value = JSON.parse(setting.slice(eq + 1));
+    let node = flags; for (const part of path.slice(0, -1)) node = node[part] ??= {}; node[path.at(-1)!] = value;
+    origins[path.join(".")] = origin;
+  }
+  const config: Record<string, any> = { model: null, model_reasoning_summary: null, openai_base_url: null, mcp_servers: {}, ...structuredClone(flags) };
+  for (const provider of Object.values(config.model_providers ?? {}) as Record<string, unknown>[]) Object.assign(provider, { experimental_bearer_token: null, auth: null, http_headers: null, env_http_headers: null, query_params: null, ...provider });
+  return { config, origins, layers: [{ name: { type: "sessionFlags" }, version: "sha256:flags", config: flags }, { name: { type: "user", file: "/private/home/.codex/config.toml", profile: null }, version: "sha256:empty", config: {} }, { name: { type: "system", file: "/etc/codex/config.toml" }, version: "sha256:empty", config: {} }] };
+}
+
 /** A local execution over a scripted app-server that answers every open with the model and provider it was asked for. */
-function setup(input: { url?: string; token?: string | null } = {}) {
+function setup(input: { url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; requirements?: unknown; rerouted?: boolean } = {}) {
   const home = tmpdir("lm3-exec-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
   const connection = connections.create({ label: "Local", runtime: "responses", url: input.url ?? "http://127.0.0.1:18501/v1", ...(input.token === null ? {} : { token: input.token ?? "LOCAL_TOKEN_SENTINEL" }) });
@@ -26,8 +43,14 @@ function setup(input: { url?: string; token?: string | null } = {}) {
       for (const line of d.toString().trim().split("\n")) {
         const m = JSON.parse(line);
         if (m.method === "initialize") proc.emitLine({ id: m.id, result: { userAgent: "codex/0.164.0" } });
+        if (m.method === "config/read") { const reported = effectiveConfiguration(args); const result = input.configRead ? input.configRead(reported) : reported; proc.emitLine(result instanceof Error ? { id: m.id, error: { code: -32601, message: result.message } } : { id: m.id, result }); }
+        if (m.method === "configRequirements/read") proc.emitLine({ id: m.id, result: { supportsIndependentSpeedModes: true, requirements: input.requirements ?? null } });
         if (m.method === "thread/start") proc.emitLine({ id: m.id, result: { thread: { id: `native-${children.length}` }, model: m.params.model, modelProvider: m.params.modelProvider } });
-        if (m.method === "turn/start") { proc.emitLine({ id: m.id, result: { turn: { id: "turn" } } }); proc.emitLine({ method: "turn/started", params: { threadId: `native-${children.length}`, turn: { id: "turn" } } }); }
+        if (m.method === "turn/start") {
+          proc.emitLine({ id: m.id, result: { turn: { id: "turn" } } }); proc.emitLine({ method: "turn/started", params: { threadId: `native-${children.length}`, turn: { id: "turn" } } });
+          if (input.rerouted) proc.emitLine({ method: "model/rerouted", params: { threadId: `native-${children.length}`, turnId: "turn", fromModel: m.params.model, toModel: "gpt-5.1-codex", reason: { type: "modelUnavailable" } } });
+        }
+        if (m.method === "turn/interrupt") { proc.emitLine({ id: m.id, result: {} }); proc.emitLine({ method: "turn/completed", params: { threadId: `native-${children.length}`, turn: { id: "turn", status: "interrupted" } } }); }
       }
     });
     return fakeSpawn(proc).spawn(bin, args, opts);
@@ -231,5 +254,57 @@ test("force-stop reaches only the thread's own child", async () => {
     assert.equal(second.proc.killed, true);
     assert.equal(first.proc.killed, false, "another thread's child keeps running");
     assert.equal((await b).status, "failed");
+  } finally { await h.execution.dispose(); }
+});
+
+test("the child's effective configuration is read and admitted before any thread opens, and recorded as provenance", async () => {
+  const h = setup();
+  try {
+    const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    const methods = child.proc.sent().map(m => m.method).filter(m => ["config/read", "configRequirements/read", "thread/start", "turn/start"].includes(m));
+    assert.deepEqual(methods, ["config/read", "configRequirements/read", "thread/start", "turn/start"]);
+    const read = child.proc.sent(m => m.method === "config/read")[0]!;
+    assert.deepEqual(read.params, { includeLayers: true, cwd: h.thread.cwd });
+    h.finish();
+    assert.equal((await run).status, "completed");
+    const provenance = h.execution.provenance(h.thread.id)!;
+    assert.equal(provenance.sessionFlags, "sha256:flags");
+    assert.deepEqual(provenance.layers.map(l => l.source), ["sessionFlags", "user", "system"]);
+  } finally { await h.execution.dispose(); }
+});
+
+test("a configuration another layer governs, managed requirements or a Codex without config/read refuse the turn before thread/start", async () => {
+  const cases: [string, Parameters<typeof setup>[0], RegExp][] = [
+    ["managed base_url", { configRead: r => { r.origins["model_providers.modex_local.base_url"] = { name: { type: "system", file: "/etc/codex/config.toml" }, version: "sha256:m" }; return r; } }, /the system configuration at \/etc\/codex\/config.toml sets `model_providers.modex_local.base_url`/],
+    ["effective destination", { configRead: r => { r.config.model_providers.modex_local.base_url = "https://api.openai.com/v1"; return r; } }, /`model_providers.modex_local.base_url` is "https:\/\/api.openai.com\/v1"/],
+    ["requirements", { requirements: { allowedSandboxModes: ["read-only"] } }, /managed requirements/],
+    ["old codex", { configRead: () => new Error("Method not found: config/read") }, /did not report its effective configuration \(Method not found: config\/read\)\. Local execution needs codex-cli 0.164.0 or later/],
+  ];
+  for (const [name, input, pattern] of cases) {
+    const h = setup(input);
+    try {
+      const result = await h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+      assert.equal(result.status, "failed", name);
+      assert.match(result.error!, pattern, name);
+      const child = h.children[0]!;
+      assert.equal(child.proc.sent(m => m.method === "thread/start").length, 0, `${name}: no thread is opened`);
+      assert.equal(child.proc.sent(m => m.method === "turn/start").length, 0, `${name}: no content is sent`);
+      assert.equal(h.execution.provenance(h.thread.id), undefined, `${name}: nothing was admitted`);
+    } finally { await h.execution.dispose(); }
+  }
+});
+
+test("a model reroute on a local turn interrupts it and reports it failed, never continued", async () => {
+  const h = setup({ rerouted: true });
+  try {
+    const { sink, events } = collectSink();
+    const result = await h.execution.backend(h.thread).runTurn("read", h.opts, sink, new AbortController().signal);
+    assert.equal(result.status, "failed");
+    assert.match(result.error!, /rerouted the turn from qwen3.8-flash-next-iq3_s to gpt-5.1-codex \(\{"type":"modelUnavailable"\}\)\. Local execution runs only the selected model, so a stop was requested/);
+    const child = h.children[0]!;
+    assert.equal(child.proc.sent(m => m.method === "turn/interrupt").length, 1, "the turn is interrupted at once");
+    assert.ok(events.some(e => e.startsWith("notice:error:") && /rerouted/.test(e)), "the reroute is reported in the transcript");
   } finally { await h.execution.dispose(); }
 });

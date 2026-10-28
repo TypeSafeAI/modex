@@ -21,8 +21,14 @@ import { tmpdir } from "./helpers.js";
  *   `MODEX_LM3_CONTEXT` as needed): the same turn against a server the person already runs. AC1.
  *   Modex starts, installs and downloads nothing; the server and model are the person's.
  *
+ * - `MODEX_LM3_WIRE=1` also runs the redirect check (#380): the configured loopback server answers with a
+ *   307 to a second loopback server, and the receipt records what Codex's HTTP client did with the
+ *   request body and the bearer token. Codex has no setting that constrains redirects; this records the
+ *   behaviour Modex documents rather than a boundary it enforces.
+ *
  * Each writes a receipt under `MODEX_LM3_REPORT` (a directory) when set: request shapes, offered tool
- * names, whether the token was ever reflected into model input, and the turn's result. Never the token.
+ * names, whether the token was ever reflected into model input, the configuration provenance the child
+ * was admitted on, and the turn's result. Never the token.
  */
 
 const SENTINEL = "LM3-FIXTURE-SENTINEL-7f3a";
@@ -106,7 +112,8 @@ test("the installed Codex runs a shell read through LocalExecution against a scr
     const tools = observations.filter(o => o.type === "tool.start").map(o => (o as Extract<Observation, { type: "tool.start" }>).tool);
     const done = observations.filter(o => o.type === "tool.done").map(o => (o as Extract<Observation, { type: "tool.done" }>).outcome);
     const reply = observations.filter(o => o.type === "message.done").map(o => (o as Extract<Observation, { type: "message.done" }>).text ?? "").join("\n");
-    record("wire", { kind: "scripted Responses fixture with the installed codex CLI and a real shell tool run; not a model test", cli: process.env.MODEX_CODEX_BIN ?? "codex", requests: seen, tools, outcomes: done, reply, notices, result: { status: result.status, error: result.error, usage: result.usage } });
+    const provenance = execution.provenance(thread.id);
+    record("wire", { kind: "scripted Responses fixture with the installed codex CLI and a real shell tool run; not a model test", cli: process.env.MODEX_CODEX_BIN ?? "codex", requests: seen, tools, outcomes: done, reply, notices, provenance, result: { status: result.status, error: result.error, usage: result.usage } });
     assert.equal(result.status, "completed", `turn failed: ${result.error} ${JSON.stringify(result.detail)} notices=${notices.join(" | ")}`);
     assert.ok(seen.length >= 2, `expected two Responses requests, saw ${seen.length}`);
     assert.ok(seen.every(r => r.path === "/v1/responses" && r.model === model && r.authorization === "bearer"), JSON.stringify(seen));
@@ -117,10 +124,68 @@ test("the installed Codex runs a shell read through LocalExecution against a scr
     assert.ok(tools.some(t => t.name === "shell"), `no shell tool observed: ${JSON.stringify(tools)}`);
     assert.ok(done.includes("succeeded"), `tool outcomes: ${done.join(", ")}`);
     assert.match(reply, new RegExp(SENTINEL));
+    assert.ok(provenance, "the child was admitted on its effective configuration");
+    assert.ok(provenance.layers.some(l => l.source === "sessionFlags"), JSON.stringify(provenance));
+    assert.equal(provenance.managedRequirements, false);
   } finally {
     await execution.dispose();
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
+});
+
+interface Hop { server: "A" | "B"; method: string; url: string; host: string; authorization: "bearer" | "none" | "other"; bodyBytes: number; hasPrompt: boolean }
+
+/** Two loopback servers: A, the configured destination, redirects every request to B, which answers with a plain message. */
+function redirecting(hops: Hop[], status: 307 | 302): Promise<{ a: http.Server; b: http.Server }> {
+  const PROMPT = "LM5-REDIRECT-PROMPT-9c1d";
+  const listen = (server: http.Server) => new Promise<http.Server>(resolve => server.listen(0, "127.0.0.1", () => resolve(server)));
+  const observe = (name: "A" | "B", req: http.IncomingMessage, raw: string) => {
+    const auth = req.headers.authorization ?? "";
+    hops.push({ server: name, method: req.method ?? "", url: req.url ?? "", host: req.headers.host ?? "", authorization: auth === `Bearer ${TOKEN}` ? "bearer" : auth ? "other" : "none", bodyBytes: raw.length, hasPrompt: raw.includes(PROMPT) });
+  };
+  const b = http.createServer((req, res) => { const chunks: Buffer[] = []; req.on("data", c => chunks.push(c)); req.on("end", () => {
+    observe("B", req, Buffer.concat(chunks).toString("utf8"));
+    const item = { type: "message", id: "msg_b", role: "assistant", status: "completed", content: [{ type: "output_text", text: "answered by B", annotations: [] }] };
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    for (const event of [{ type: "response.created", response: { id: "resp_b", object: "response", status: "in_progress", output: [] } }, { type: "response.output_item.added", output_index: 0, item }, { type: "response.output_item.done", output_index: 0, item },
+      { type: "response.completed", response: { id: "resp_b", object: "response", status: "completed", output: [item], usage: { input_tokens: 10, input_tokens_details: { cached_tokens: 0 }, output_tokens: 5, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: 15 } } }]) res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    res.end();
+  }); });
+  const a = http.createServer((req, res) => { const chunks: Buffer[] = []; req.on("data", c => chunks.push(c)); req.on("end", () => {
+    observe("A", req, Buffer.concat(chunks).toString("utf8"));
+    res.writeHead(status, { location: `http://127.0.0.1:${(b.address() as AddressInfo).port}${req.url ?? "/"}` }); res.end();
+  }); });
+  return Promise.all([listen(a), listen(b)]).then(([a, b]) => ({ a, b }));
+}
+
+test("redirect: the installed Codex follows a 307 from the configured loopback server, re-sending the body without the token", { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
+  const receipts: Record<string, unknown> = {};
+  for (const status of [307, 302] as const) {
+    const hops: Hop[] = [];
+    const { a, b } = await redirecting(hops, status);
+    const home = tmpdir("lm5-redirect-home-");
+    const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
+    const execution = new LocalExecution(home, connections);
+    const observations: Observation[] = [];
+    const notices: string[] = [];
+    try {
+      const connection = connections.create({ label: "Redirecting fixture", runtime: "responses", url: `http://127.0.0.1:${(a.address() as AddressInfo).port}/v1`, token: TOKEN });
+      const model = "scripted-fixture-model";
+      const thread = { id: `redirect-${status}`, cwd: workspace(), localTarget: { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: connection.id, revision: 1 }, id: model } }, localContextTokens: 32768 };
+      const result = await execution.backend(thread).runTurn("LM5-REDIRECT-PROMPT-9c1d: reply with one word.", { cwd: thread.cwd, mode: "chat", plan: false, model }, sinkFor(observations, notices), AbortSignal.timeout(60_000));
+      const reply = observations.filter(o => o.type === "message.done").map(o => (o as Extract<Observation, { type: "message.done" }>).text ?? "").join("\n");
+      receipts[String(status)] = { status, hops, reply, notices, result: { status: result.status, error: result.error } };
+      const toA = hops.filter(h => h.server === "A"), toB = hops.filter(h => h.server === "B");
+      assert.ok(toA.length >= 1 && toA[0]!.authorization === "bearer" && toA[0]!.hasPrompt, JSON.stringify(hops));
+      // What is proven about the token: it never follows a redirect. What is documented: the body does, on a 307.
+      assert.ok(toB.every(h => h.authorization === "none"), `the bearer token followed the redirect: ${JSON.stringify(hops)}`);
+      if (status === 307) assert.ok(toB.some(h => h.method === "POST" && h.hasPrompt), `expected the 307 to be followed with the body (documented behaviour): ${JSON.stringify(hops)}`);
+    } finally {
+      await execution.dispose();
+      await Promise.all([a, b].map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+    }
+  }
+  record("redirect", { kind: "installed codex CLI against a loopback server that redirects to a second loopback server; no model, no inference", cli: process.env.MODEX_CODEX_BIN ?? "codex", ...receipts });
 });
 
 test("AC1: a person's own local server completes a shell read through the installed Codex", { skip: !process.env.MODEX_LM3_LIVE && "set MODEX_LM3_LIVE=1, MODEX_LM3_URL and MODEX_LM3_MODEL to run against a server you already run", timeout: 600_000 }, async () => {

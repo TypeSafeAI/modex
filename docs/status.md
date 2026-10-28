@@ -59,6 +59,10 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
+## Review repair in progress
+
+PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 still needs hosted checks and protected delivery; local-runtime qualification and product admission remain open.
+
 ## On main, unreleased
 
 - **Local model connections and discovery, in main only** (LM-2 [#378](https://github.com/TypeSafeAI/modex/issues/378),
@@ -213,6 +217,16 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   offline operation and the AC6 qualification are open gates. #401 and the stacked draft #407 were closed as
   superseded; their main-side design is carried here, and #418 landed the inherited LM-2 credential fixes.
   [How it works](local-models.md#lm-3-local-execution-through-codex).
+
+- **LM-5 slice 1: effective destination and managed-policy admission** ([#380](https://github.com/TypeSafeAI/modex/issues/380),
+  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), branch `lm5-reroute-repair`, stacked on `lm3-signed-delivery`). Before a local child opens a thread, main reads the child's own
+  `config/read` and `configRequirements/read` and admits it only when every governed key comes from Modex's
+  session flags, no project layer or managed requirement applies, the private home is empty and the effective
+  destination, model context and tools are the ones Modex passed; otherwise the turn fails naming the layer and
+  key. A model reroute fails the turn. Real-CLI evidence shows codex-cli 0.164.0 follows a 307 from the
+  configured loopback server with the full body and never with the token; this is recorded, not preventable.
+  This is the refusal boundary #417's review asked for; wiring local execution into the product remains Val's
+  decision. [Evidence](reviews/2026-10-27-lm5-destination-policy.md).
 
 - **Companion network acceptance (#109).** The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) ties each of the four #109 requirements to the tests that prove it, adds the last race (the interface list changes while Forget paired phones or Turn off runs, and no listener survives with the old token; both shown red against a mutation, green on `main`), and holds the physical two-subnet procedure. Two gates remain with Val: running that procedure, and deciding whether VPN tunnels and virtual bridges with private addresses get a listener ([question](https://github.com/TypeSafeAI/modex/issues/109#issuecomment-6464762470)). The filter is unchanged until Val answers.
 

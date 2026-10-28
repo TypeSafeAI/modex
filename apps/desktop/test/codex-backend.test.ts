@@ -56,7 +56,7 @@ import { codexCall } from "../src/main/engine/backends/usage.js";
 import { OUTPUT_PREVIEW_BYTES } from "../src/shared/evidence.js";
 
 /** Minimal scripted app-server: answers initialize, thread/start|resume, turn/start, model/list. */
-function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null } = {}) {
+function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null; acknowledgeInterruptOnly?: boolean } = {}) {
   const threadId = opts.threadId ?? "thr-1";
   const turnId = opts.turnId ?? "turn-1";
   const seen: { method: string; params: Record<string, unknown> }[] = [];
@@ -74,7 +74,7 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
         proc.emitLine({ method: "turn/started", params: { threadId, turn: { id: turnId } } });
       } else if (msg.method === "turn/interrupt") {
         proc.emitLine({ id: msg.id, result: {} });
-        proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "interrupted", error: null } } });
+        if (!opts.acknowledgeInterruptOnly) proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "interrupted", error: null } } });
       }
     }
   });
@@ -1020,6 +1020,35 @@ for (const provider of [null, "openai"]) {
       assert.equal(result.status, "failed");
       assert.match(result.error ?? "", /did not confirm/);
       assert.equal(seen.some(item => item.method === "turn/start"), false, "no content may reach an unconfirmed provider");
+    } finally { await backend.dispose(); }
+  });
+}
+
+for (const finalFirst of [false, true]) {
+  test(`a local reroute retains ownership until terminal acknowledgement (final first: ${finalFirst})`, async () => {
+    const proc = new FakeProcess();
+    const { threadId, turnId } = fakeServer(proc, { acknowledgeInterruptOnly: true });
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, {
+      args: [], env: {}, redact: text => text, local: { model: "local", provider: "modex_local" },
+    });
+    backend.quietAfterFinalMs = 20;
+    const { sink, events } = collectSink();
+    let settled = false;
+    try {
+      const run = backend.runTurn("fixture", { cwd: "/fixture", mode: "chat", plan: false, model: "local" }, sink, new AbortController().signal).finally(() => { settled = true; });
+      await proc.waitFor(line => line.includes('"turn/start"'));
+      const answer = () => proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "agentMessage", id: "m", text: "answer", phase: "final_answer" } } });
+      if (finalFirst) answer();
+      proc.emitLine({ method: "model/rerouted", params: { threadId, turnId, fromModel: "local", toModel: "other" } });
+      if (!finalFirst) answer();
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.equal(settled, false, "an interrupt RPC receipt must not release the active turn");
+      assert.equal(events.some(e => e.includes("did not report the turn finished")), false);
+      assert.equal(proc.sent(m => m.method === "turn/interrupt").length, 1);
+      proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "interrupted" } } });
+      const result = await run;
+      assert.equal(result.status, "failed");
+      assert.match(result.error ?? "", /rerouted/);
     } finally { await backend.dispose(); }
   });
 }
