@@ -114,3 +114,11 @@ on Stop, and the turn is never continued on the other model.
 - Product admission of local execution stays closed (`main/index.ts` does not construct `LocalExecution`); with
   this slice the refusal boundary Val asked for exists, and wiring it is Val's decision.
 - AC1's live local-model turn (LM-3) remains Val's.
+
+## Review repair: reroute versus quiet-final completion
+
+Independent review of `065447f99c18a0448f3f90ed3ecfd29ab7ffdb07` reproduced a local model reroute followed by a final answer and an acknowledged interrupt request without a terminal notification. The quiet-final timer incorrectly returned completed. Both event orders (final answer before and after reroute) now have regressions that first failed by observing settlement before terminal acknowledgement.
+
+The repair refuses quiet-success scheduling and completion after a reroute, clears an existing timer when rerouting arrives, and retains the active turn until native termination or disconnect. The immediate notice says a stop was requested rather than claiming it already happened. After terminal acknowledgement the existing reroute failure path remains in force. Ordinary cloud quiet-final behavior is unchanged.
+
+Build and typecheck passed in the owned `lm5-reroute-repair` worktree. Focused backend/execution tests passed 53/53; full unit validation passed 2,200 tests, with 25 skips and no failures. E2E remains pending behind the active CR-6 desktop run; logs are preserved under `~/Documents/Codex/artifacts/modex-land-and-prune/lm5-reroute-*.log`. No complete verification, merge, local-runtime qualification or product-admission claim is made here. Product admission remains closed and the original live acceptance gates remain open.

@@ -302,7 +302,7 @@ test("a model reroute on a local turn interrupts it and reports it failed, never
     const { sink, events } = collectSink();
     const result = await h.execution.backend(h.thread).runTurn("read", h.opts, sink, new AbortController().signal);
     assert.equal(result.status, "failed");
-    assert.match(result.error!, /rerouted the turn from qwen3.8-flash-next-iq3_s to gpt-5.1-codex \(\{"type":"modelUnavailable"\}\)\. Local execution runs only the selected model, so the turn was stopped/);
+    assert.match(result.error!, /rerouted the turn from qwen3.8-flash-next-iq3_s to gpt-5.1-codex \(\{"type":"modelUnavailable"\}\)\. Local execution runs only the selected model, so a stop was requested/);
     const child = h.children[0]!;
     assert.equal(child.proc.sent(m => m.method === "turn/interrupt").length, 1, "the turn is interrupted at once");
     assert.ok(events.some(e => e.startsWith("notice:error:") && /rerouted/.test(e)), "the reroute is reported in the transcript");

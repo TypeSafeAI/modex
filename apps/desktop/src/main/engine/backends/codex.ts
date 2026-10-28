@@ -480,12 +480,12 @@ export class CodexBackend implements Backend {
           if (item.type === "agentMessage") answered = item.phase === "final_answer" && "answer";
           else if (item.type === "plan") answered = "plan";
         }
-        if (answered && !signal.aborted && msg.method !== "turn/completed") {
+        if (answered && !signal.aborted && !rerouted && msg.method !== "turn/completed") {
           quiet = setTimeout(() => {
             // Codex can go quiet after its final answer or proposed plan without ending the turn (live in
             // codex-cli 0.163.0, default and plan mode). Nothing else is open, so
             // Modex ends it and says so; the interrupt lets Codex close its side.
-            if (done || signal.aborted || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
+            if (done || signal.aborted || rerouted || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
             sink.notice("warn", `Codex ${answered === "plan" ? "proposed its plan" : "gave its final answer"} but did not report the turn finished. Modex ended the turn after ${Math.round(this.quietAfterFinalMs / 60_000) || 1} minute${this.quietAfterFinalMs > 60_000 ? "s" : ""} without activity.`);
             interrupt();
             finish({ status: "completed", detail: detail({ endedBy: "modex", quietAfterFinalMs: this.quietAfterFinalMs }) });
@@ -619,7 +619,9 @@ export class CodexBackend implements Backend {
             if (!this.configuration?.local) break;
             const from = String(p.fromModel ?? "?"), to = String(p.toModel ?? "?");
             const reason = p.reason && typeof p.reason === "object" ? JSON.stringify(p.reason) : String(p.reason ?? "unknown reason");
-            rerouted = { from, to, message: `Codex rerouted the turn from ${from} to ${to} (${reason}). Local execution runs only the selected model, so the turn was stopped.` };
+            rerouted = { from, to, message: `Codex rerouted the turn from ${from} to ${to} (${reason}). Local execution runs only the selected model, so a stop was requested.` };
+            clearTimeout(quiet);
+            answered = false;
             sink.notice("error", rerouted.message);
             interrupt();
             break;
