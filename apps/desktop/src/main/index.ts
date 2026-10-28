@@ -29,6 +29,7 @@ import { BrowserTools } from "./browser-tools.js";
 import { ThreadContextReader } from "./engine/thread-context.js";
 import { CodeReviewService } from "./engine/code-review/read-service.js";
 import { CodeReviewWrites } from "./engine/code-review-actions/write-service.js";
+import { CodeReviewAgent } from "./engine/code-review-agent/agent-service.js";
 import { LocalModelsService } from "./engine/local-models/service.js";
 import { cliHealth, resolveCli } from "./engine/cli-path.js";
 import { THEMES } from "../shared/theme.js";
@@ -148,6 +149,8 @@ const threadContexts = new ThreadContextReader({ enabled: !demo && !process.env.
 const codeReview = new CodeReviewService({ enabled: !demo && !process.env.MODEX_E2E });
 // Its writes (#326) are a separate service on a separate channel, through the same gh login and off in the same places.
 const codeReviewWrites = new CodeReviewWrites({ home, enabled: !demo && !process.env.MODEX_E2E });
+// CR-6 (#325): agent review runs the resolved Claude Code executable, confined to a snapshot; off where the other two are.
+const codeReviewAgent = new CodeReviewAgent({ home, enabled: !demo && !process.env.MODEX_E2E, executable: () => resolveCli("claude", sessionCliSettings.claude_bin) });
 const updates = new ReleaseChecker({
   currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
   enabled: app.isPackaged && !demo && !process.env.MODEX_E2E,
@@ -548,7 +551,7 @@ function drainServices(): Promise<void> {
   drainingServices = (async () => {
     // Start every disposer even if another throws before returning its promise.
     const operations = [() => media?.dispose(), () => pagesAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
-      () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose()];
+      () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose(), () => codeReviewAgent.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
     try { clearInterval(journalPruning); journal?.close(); } catch (error) { console.error("[modex] event journal close failed:", error); }
@@ -864,6 +867,12 @@ handle("code-review:write", async (request, event) => {
   await pathReady;
   return codeReviewWrites.handle(request, `w${event.sender.id}-${epoch}`,
     () => !shuttingDown && epoch === documentEpoch && isTrustedTerminalSender(event, win));
+}, { localOnly: true });
+// Only this Mac's window can start a run; the record it leaves is read back, never re-run.
+handle("code-review:agent", async (request, event) => {
+  if (!event) throw new Error("Agent review is available only in this window.");
+  await pathReady;
+  return codeReviewAgent.handle(request, `a${event.sender.id}-${documentEpoch}`);
 }, { localOnly: true });
 handle("local-models:command", (request) => localModels.handle(request), { localOnly: true });
 handle("files:read", ({ threadId, path }) => readWorkspaceFile(cwdFor(threadId), path));

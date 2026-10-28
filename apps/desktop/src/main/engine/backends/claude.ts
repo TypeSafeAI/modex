@@ -30,6 +30,36 @@ export function userContent(text: string, attachments: TurnAttachment[] = []): s
 }
 
 /**
+ * CR-6 (#325): how a review run is confined, as Claude Code 2.1.312 documents each flag (`claude --help`).
+ * `--safe-mode` turns off every customization (CLAUDE.md, skills, installed plugins, hooks, MCP servers,
+ * commands, agents) while auth, model selection and built-in tools work as usual, so a person signed in through
+ * their Claude subscription can run it (`--bare` cannot: it reads no OAuth or keychain credential). `--restricted`
+ * removes the code-running tools and WebFetch, ignores user, project and local settings files, and confines the
+ * file tools to the working directory; `--tools Read` leaves exactly one tool; `--strict-mcp-config` with an
+ * empty config loads no MCP server; `--permission-prompts none` refuses anything that would ask instead of
+ * asking; `--no-session-persistence` keeps the session off disk. The native isolation suite
+ * (test/code-review-isolation.native.test.mjs) exercises this exact list against the installed CLI.
+ */
+export const REVIEW_CONFINEMENT_ARGS: readonly string[] = ["--safe-mode", "--restricted", "--tools", "Read", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+  "--disable-slash-commands", "--setting-sources", "", "--permission-mode", "dontAsk", "--permission-prompts", "none", "--no-session-persistence"];
+
+/**
+ * The environment a confined run gets: the CLI's usual one without GitHub tokens or Modex's own variables, and
+ * with the CLI's optional traffic off. The run has no shell, so this is defence in depth, not the boundary.
+ * Exported for tests.
+ */
+export function confinedEnvironment(bin: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const result = { ...cliEnvironment(bin, env) };
+  // GitHub's and Modex's own variables, the other provider's keys, cloud credentials and anything named like a secret
+  // (the CLI's own ANTHROPIC_* and CLAUDE_* variables stay: they are how the person's login reaches it).
+  for (const name of Object.keys(result)) {
+    if (/^(GH_|GITHUB_|MODEX_|AWS_|OPENAI_|CODEX_|NPM_|HOMEBREW_)/.test(name)) delete result[name];
+    else if (/(TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIALS)$/i.test(name) && !/^(ANTHROPIC_|CLAUDE_)/.test(name)) delete result[name];
+  }
+  return { ...result, DISABLE_AUTOUPDATER: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" };
+}
+
+/**
  * Drives the Claude Code CLI (`claude -p`) over its stream-json protocol:
  * newline-delimited JSON in both directions, token deltas via --include-partial-messages,
  * and permission prompts delivered as `control_request` messages that we answer on stdin.
@@ -83,6 +113,14 @@ export class ClaudeBackend implements Backend {
 
   /** CLI argv for a turn. Exported for tests. */
   static args(opts: TurnOptions): string[] {
+    if (opts.confinement) {
+      // CR-6 (#325): the review snapshot's confinement is the argv, not a prompt. No permission tool: nothing may ask.
+      const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+        ...REVIEW_CONFINEMENT_ARGS, "--max-turns", String(opts.confinement.maxTurns), "--append-system-prompt", opts.confinement.systemPrompt];
+      if (opts.model) args.push("--model", opts.model);
+      if (opts.effort) args.push("--effort", opts.effort);
+      return args;
+    }
     const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio"];
     if (opts.plan) args.push("--permission-mode", "plan");
     else if (opts.mode === "chat") args.push("--permission-mode", "manual", "--disallowedTools", "Edit", "Write", "NotebookEdit");
@@ -116,7 +154,7 @@ export class ClaudeBackend implements Backend {
       const argv = ClaudeBackend.args(opts);
       try {
         bin = this.bin;
-        child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: cliEnvironment(bin) });
+        child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.confinement ? confinedEnvironment(bin) : cliEnvironment(bin) });
       } catch (err) {
         return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv: reportArgv(argv), spawnError: (err as Error).message } });
       }

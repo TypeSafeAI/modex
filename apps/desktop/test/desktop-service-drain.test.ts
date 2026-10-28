@@ -11,7 +11,7 @@ function harness() {
   const calls: string[] = [];
   const service = (name: string) => ({ dispose: async () => { calls.push(name); } });
   const context: any = { media: service("media"), servicesTouched: false, pagesAgents: service("pages"), knowledgeAgents: service("knowledge-agents"), knowledge: service("knowledge"),
-    desktopHost: service("desktop-host"), companion: service("companion"), terminals: service("terminals"), runner: service("runner"),
+    desktopHost: service("desktop-host"), companion: service("companion"), terminals: service("terminals"), runner: service("runner"), codeReviewAgent: service("code-review-agent"),
     modexAccount: { cancel: () => calls.push("cancel-modex"), dispose: () => calls.push("dispose-modex") },
     chatgpt: { cancel: () => calls.push("cancel-chatgpt"), dispose: () => calls.push("dispose-chatgpt") },
     claudeLogin: { cancel: () => calls.push("cancel-claude") }, retirer: { stop: () => calls.push("stop-retirer") } };
@@ -27,7 +27,7 @@ test("main service drain coalesces update and Quit callers and does not repeat c
   await Promise.resolve(); finish(); await first;
   assert.equal(h.context.drained(), true);
   const before = [...h.calls]; await h.context.drain(); assert.deepEqual(h.calls, before);
-  for (const name of ["media", "pages", "knowledge-agents", "knowledge", "desktop-host", "companion", "terminals", "runner"]) assert.equal(h.calls.filter(x => x === name).length, 1);
+  for (const name of ["media", "pages", "knowledge-agents", "knowledge", "desktop-host", "companion", "terminals", "runner", "code-review-agent"]) assert.equal(h.calls.filter(x => x === name).length, 1);
 });
 
 for (const synchronous of [false, true]) test(`main service drain preserves ${synchronous ? "synchronous" : "asynchronous"} failure and permits a shutdown retry`, async () => {

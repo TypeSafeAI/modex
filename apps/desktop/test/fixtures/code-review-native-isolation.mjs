@@ -63,9 +63,16 @@ export async function claudeFixture(t, mode = 'candidate') {
   const version = execFileSync('/usr/bin/sandbox-exec', ['-p', guard, bin, '--version'], { cwd: repo, env, encoding: 'utf8', timeout: 5000, maxBuffer: 4096 }).trim();
   const common = ['--settings', settings, '--setting-sources', '', '--model', 'claude-sonnet-4-6'];
   const candidate = ['--bare', '--restricted', '--tools', 'Read', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--disable-slash-commands', '--permission-mode', 'dontAsk', '--permission-prompts', 'none'];
-  const action = mode === 'hook-control' ? ['--init-only', ...common] : mode === 'mcp-control' ? ['--bare', '--restricted', '--tools', 'Read', '--mcp-config', JSON.stringify(mcp), ...common, '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '3', '--max-budget-usd', '0.01', 'Synthetic fixture only.'] : [...candidate, ...common, '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '3', '--max-budget-usd', '0.01', 'Synthetic fixture only.'];
+  // 'production': the argv Modex ships (src/main/engine/backends/claude.ts), read from the build so the two cannot drift.
+  const production = mode === 'production' ? (await import('../../dist/src/main/engine/backends/claude.js')).REVIEW_CONFINEMENT_ARGS : null;
+  const action = mode === 'hook-control' ? ['--init-only', ...common]
+    : mode === 'mcp-control' ? ['--bare', '--restricted', '--tools', 'Read', '--mcp-config', JSON.stringify(mcp), ...common, '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '3', '--max-budget-usd', '0.01', 'Synthetic fixture only.']
+    : production ? ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', ...production, '--max-turns', '3', '--append-system-prompt', 'Synthetic fixture only.', '--settings', settings, '--model', 'claude-sonnet-4-6', '--max-budget-usd', '0.01']
+    : [...candidate, ...common, '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '3', '--max-budget-usd', '0.01', 'Synthetic fixture only.'];
   const started = Date.now();
-  const child = spawn('/usr/bin/sandbox-exec', ['-p', guard, bin, ...action], { cwd: repo, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn('/usr/bin/sandbox-exec', ['-p', guard, bin, ...action], { cwd: repo, env, detached: true, stdio: [production ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+  // The production argv reads its prompt from stdin as Modex writes it: one stream-json user message.
+  if (production) child.stdin.end(`${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Synthetic fixture only.' } })}\n`);
   let stdout = '', stderr = '', timedOut = false, overflow = false;
   const terminate = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} };
   child.stdout.on('data', bytes => { stdout += bytes; if (stdout.length > 1024 * 1024) { overflow = true; terminate(); } });

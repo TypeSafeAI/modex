@@ -449,27 +449,23 @@ export function diffCoverage(result: ReadResult<PrFiles>): DiffCoverage | null {
   return { files, total, complete: whole(result) && missing === 0, binary, missing };
 }
 
-/** GitHub writes (#326) need the same connection reads do; main then checks each PR's permission itself. */
-const WRITES = new Set<CodeReviewFeature>(["comment", "submit-review", "merge", "edit", "request-reviewers", "state"]);
-
-const OWNERS: Record<Exclude<CodeReviewFeature, "read" | "comment" | "submit-review" | "merge" | "edit" | "request-reviewers" | "state">, { owner: string; reason: string }> = {
-  review: { owner: "#325", reason: "Reviewing with an agent isn't available yet." },
-  ask: { owner: "#325", reason: "Asking about a pull request isn't available yet." },
-  instructions: { owner: "#325", reason: "Review instructions aren't available yet." },
-};
+/**
+ * GitHub writes (#326) and agent review (#325) need the same connection reads do; main then checks each PR's
+ * permission, and the review CLI's availability, itself.
+ */
+const FOLLOW_CONNECTION = new Set<CodeReviewFeature>(["comment", "submit-review", "merge", "edit", "request-reviewers", "state", "review", "ask", "instructions"]);
 
 /**
- * What the workspace may offer. Reads and every GitHub write (#326) follow the connection; whether a given PR
- * accepts them is main's answer for that PR (`code-review:write`). Review with an agent and its questions and
- * instructions stay unavailable until #325 lands.
+ * What the workspace may offer. Reads, every GitHub write (#326) and the agent's review, questions and
+ * instructions (#325) follow the connection; whether a given PR accepts a write is main's answer for that PR
+ * (`code-review:write`), and whether a run can start is main's answer on `code-review:agent`.
  */
 export function capabilities(connection: CodeReviewConnection): Capabilities {
   const read: Capability = connection.state === "connected" ? { available: true }
     : connection.state === "no-cli" ? { available: false, reason: "Install GitHub CLI (gh) to read pull requests.", owner: null }
     : connection.state === "signed-out" ? { available: false, reason: "Sign in to GitHub CLI (gh auth login) to read pull requests.", owner: null }
     : { available: false, reason: connection.detail, owner: null };
-  const rest = Object.fromEntries(Object.entries(OWNERS).map(([feature, { owner, reason }]) => [feature, { available: false, reason, owner }]));
-  return { read, ...Object.fromEntries([...WRITES].map((feature) => [feature, read])), ...rest } as Capabilities;
+  return { read, ...Object.fromEntries([...FOLLOW_CONNECTION].map((feature) => [feature, read])) } as Capabilities;
 }
 
 type Plain = Record<string, unknown>;

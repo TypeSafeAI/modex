@@ -14,6 +14,8 @@ import type { Writes } from "./writes.js";
 import { MergeAction, MergePanel } from "./MergePanel";
 import { StateMenu, StatePanel } from "./PrActions";
 import type { PrStateChange } from "../../shared/code-review-write.js";
+import type { Agent } from "./agent.js";
+import { AgentPanel, InstructionsButton, ReviewButton } from "./AgentPanel";
 
 interface Props {
   pane: Pane;
@@ -33,6 +35,7 @@ interface Props {
   onTreeResize: (width: number) => void;
   onTreeReset: () => void;
   writes?: Writes;
+  agent?: Agent;
 }
 
 /** Where each scroll region was, per PR, for returning to it. Session memory only. */
@@ -53,15 +56,16 @@ function useScrollMemory(ref: RefObject<HTMLElement | null>, id: string, content
  * One pane of a PR: its header (C21–C29, repeated over Changes as C62) and the region below it. The
  * overview renders #323's read-only content; #324 supplies revision-bound remote diffs and the file tree.
  */
-export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onShowChanges, onActivityPage, contextBusy, onTreeResize, onTreeReset, writes }: Props) {
+export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth, busy, pinned, caps, onPin, onRetry, onShowChanges, onActivityPage, contextBusy, onTreeResize, onTreeReset, writes, agent }: Props) {
   const body = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLElement>(null);
   const [filesShown, setFilesShown] = useState(false);
-  // At most one panel under the header: Merge, or a state change picked from the state menu.
-  const [panel, setPanel] = useState<"merge" | PrStateChange | null>(null);
+  // At most one panel under the header: Merge, a state change picked from the state menu, or an agent review.
+  const [panel, setPanel] = useState<"merge" | "agent" | PrStateChange | null>(null);
   const overview = pr.overview;
   const loaded = overview && overview.state !== "unavailable" ? overview.value : null;
   const merge = writes && loaded ? { writes, overview: loaded, open: panel === "merge", onToggle: () => setPanel((v) => v === "merge" ? null : "merge"), onState: (to: PrStateChange) => setPanel(to) } : null;
+  const review = agent && loaded ? { agent, overview: loaded, open: panel === "agent", onToggle: () => setPanel((v) => v === "agent" ? null : "agent") } : null;
   const content = overview && overview.state !== "unavailable" ? `${overview.value.revision.baseSha}/${overview.value.revision.headSha}` : "loading";
   useScrollMemory(body, `${keyId}:${pane}`, content);
   useScrollMemory(tree, `${keyId}:tree`, content);
@@ -71,11 +75,12 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   const status = !overview ? <p className="cr-hint" role="status">{busy ? "Loading the pull request…" : "Not loaded yet."}</p> : notice;
   return (
     <section id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}>
-      <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} merge={merge} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
+      <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} merge={merge} review={review} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
+      {review && panel === "agent" && <AgentPanel key={keyId} agent={review.agent} overview={review.overview} onClose={() => setPanel(null)} onReload={onRetry} />}
       {merge && panel === "merge" && <MergePanel key={keyId} writes={merge.writes} overview={merge.overview} onClose={() => setPanel(null)} onMerged={onRetry} />}
-      {merge && panel && panel !== "merge" && <StatePanel key={`${keyId}:${panel}`} writes={merge.writes} overview={merge.overview} to={panel} onClose={() => setPanel(null)} onDone={onRetry} />}
+      {merge && panel && panel !== "merge" && panel !== "agent" && <StatePanel key={`${keyId}:${panel}`} writes={merge.writes} overview={merge.overview} to={panel} onClose={() => setPanel(null)} onDone={onRetry} />}
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
-        {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} writes={writes} />}
+        {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} writes={writes} agent={agent} />}
       </div>}
       {pane === "changes" && (overview && overview.state !== "unavailable"
         ? <PrChanges views={changesViews} overview={overview.value} stale={overview.state !== "ready"} bodyRef={body} treeRef={tree} treeWidth={treeWidth} changesWidth={changesWidth} filesShown={filesShown} onSelect={() => setFilesShown(false)} onTreeResize={onTreeResize} onTreeReset={onTreeReset} writes={writes} />
@@ -85,8 +90,9 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
 }
 
 type MergeSlot = { writes: Writes; overview: Overview; open: boolean; onToggle: () => void; onState: (to: PrStateChange) => void } | null;
+type ReviewSlot = { agent: Agent; overview: Overview; open: boolean; onToggle: () => void } | null;
 
-function PrHeader({ pr, busy, pinned, caps, onPin, merge, filesToggle }: { pr: OpenPr; busy: boolean; pinned: boolean; caps: Capabilities; onPin: () => void; merge: MergeSlot; filesToggle: { shown: boolean; toggle: () => void } | null }) {
+function PrHeader({ pr, busy, pinned, caps, onPin, merge, review, filesToggle }: { pr: OpenPr; busy: boolean; pinned: boolean; caps: Capabilities; onPin: () => void; merge: MergeSlot; review: ReviewSlot; filesToggle: { shown: boolean; toggle: () => void } | null }) {
   const state = pr.overview && pr.overview.state !== "unavailable" ? pr.overview.value.state : pr.state;
   const { owner, repo, number } = pr.locator;
   const url = prUrl(pr.locator);
@@ -115,14 +121,18 @@ function PrHeader({ pr, busy, pinned, caps, onPin, merge, filesToggle }: { pr: O
         <IconButton icon="link" size="md" label={copied ? "Link copied" : "Copy link"} data-testid="code-review-copy-link" disabled={!url} onClick={copy} />
         {url && <Tooltip label="Open in GitHub"><a className="icon-btn md" href={url} target="_blank" rel="noreferrer" aria-label="Open in GitHub" data-testid="code-review-open-github"><Icon name="external" size={16} /></a></Tooltip>}
       </span>
-      <Unavailable label="Review with Codex" icon="review" iconWhenNarrow capability={caps.review} testId="code-review-review" text />
-      <Unavailable label="Review instructions" icon="gear" capability={caps.instructions} testId="code-review-instructions" />
+      {review ? <ReviewButton agent={review.agent} overview={review.overview} fallback={caps.review} open={review.open} onToggle={review.onToggle} />
+        : <Unavailable label="Review with Claude" icon="review" iconWhenNarrow capability={caps.review.available ? LOADING_REVIEW : caps.review} testId="code-review-review" text />}
+      {review ? <InstructionsButton agent={review.agent} overview={review.overview} fallback={caps.instructions} />
+        : <Unavailable label="Review instructions" icon="gear" capability={caps.instructions.available ? LOADING_REVIEW : caps.instructions} testId="code-review-instructions" />}
       {merge ? <MergeAction writes={merge.writes} overview={merge.overview} fallback={caps.merge} open={merge.open} onToggle={merge.onToggle} />
         : <Unavailable label="Merge" icon="branch" capability={caps.merge.available ? LOADING : caps.merge} testId="code-review-merge" text primary />}
     </header>
   );
 }
 
+/** A review before the PR it would read has loaded: nothing to snapshot yet. */
+const LOADING_REVIEW: Capability = { available: false, reason: "Available once the pull request has loaded.", owner: null };
 /** Merge before the PR it would merge has loaded: nothing to check yet. */
 const LOADING: Capability = { available: false, reason: "Merge is available once the pull request has loaded.", owner: null };
 
