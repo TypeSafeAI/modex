@@ -22,7 +22,8 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
   delete env.MODEX_DEMO;
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
-  const app = await electron.launch({ args: [appDir], cwd: appDir, env });
+  const executablePath = process.env.MODEX_PACKAGED_APP;
+  const app = await electron.launch({ executablePath, args: executablePath ? [] : [appDir], cwd: appDir, env });
   const child = app.process();
   const started = Date.now();
   const events: { ms: number; event: string; detail?: unknown }[] = [];
@@ -36,6 +37,11 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
   child.on("error", error => record("process-error", String(error)));
   app.on("close", () => record("application-close"));
   try {
+    const identity = await app.evaluate(({ app }) => ({ executable: process.execPath, packaged: app.isPackaged }));
+    expect(identity.packaged).toBe(Boolean(process.env.MODEX_PACKAGED_APP));
+    if (process.env.MODEX_PACKAGED_APP) {
+      expect(fs.realpathSync(identity.executable)).toBe(fs.realpathSync(process.env.MODEX_PACKAGED_APP));
+    }
     const page = await app.firstWindow();
     page.on("crash", () => record("page-crash"));
     page.on("close", () => record("page-close"));

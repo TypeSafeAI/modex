@@ -193,13 +193,13 @@ rehearsal that gates the merge.
    MODEX_PACKAGED_APP="$PWD/apps/desktop/release/mac-arm64/Modex.app/Contents/MacOS/Modex" pnpm test:e2e
    ```
 
-   The Store specs launch the client from source with development Electron, and neither
-   `scripts/release-mac.sh` nor the desktop build builds it. Without it they stop at once with
-   "The Store client is not built".
+   The Store specs launch the client from source with development Electron, and neither `scripts/release-mac.sh` nor the desktop build builds it. Without it they stop at once with "The Store client is not built".
+
+   Packaged selection covers the shared desktop launcher, window lifecycle, and Code Review launchers, including Code Review recovery. Standalone desktop-host and Store integration launchers still use development Electron; updater and owner-removal fixture specs intentionally run fixture entrypoints. Report those results separately from signed-bundle execution. The [Code Review harness repair](reviews/2026-10-28-code-review-packaged-harness.md) records executable-identity regression evidence.
 2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
 3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
    `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, and runs
-   the full e2e suite against the packaged app. It also signs a private updater-enabled
+   the full e2e suite with packaged selection and the fixture/source exceptions above. It also signs a private updater-enabled
    `0.0.0` source fixture. Three fresh GitHub-hosted macOS runners use those exact source
    and candidate ZIPs for native upgrade, native download failure, and interrupted-download
    acceptance. The same workflow also runs native Windows and Linux installer checks.
