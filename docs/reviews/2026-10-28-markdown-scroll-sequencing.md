@@ -23,3 +23,9 @@ In one recorded failure, ArrowLeft reached the focused code element at 5452.3 ms
 ## Delivery gates
 
 Fresh `pnpm build && pnpm test` passed with 2,196 passed, 23 skipped, zero failures and exit 0. Independent read-only review found no blockers; it noted that a missing scrollend is bounded by the existing 90-second test timeout and the per-test Electron cleanup. The first actual-test run passed 15/15 on the existing build. The further focused run against the fresh build passed 15/15 in 1.6 minutes, five repetitions per theme. Protected hosted validation remains required. Human accessibility acceptance and broader #277/#327 gates remain open.
+
+## Integration with main at 42e9856
+
+The protected queue removed #435 after main advanced because `docs/status.md` conflicted. The integration preserves the Markdown entry and the newer packaged-harness and landed Notes entries. All tracked source, dependency/build configuration and tests are identical between the resolved #435 and #433 integration trees; only their CF-4 receipt and status documentation differ.
+
+Fresh root `pnpm build && pnpm test` passed on the integrated Markdown worktree: 2,237 passed, 26 skipped, no failures. Full `pnpm test:e2e` passed with 471 desktop cases, seven skips and seven site cases (18.4 minutes desktop, 9.0 seconds site). All three Markdown themes and the Store browser-tools recovery/shutdown case passed. The five-launch transcript median was 206.3 ms on Apple M5 Max, 18 cores, Node v24.22.0, against the unchanged 500 ms limit. Logs and the exact integration-tree comparison are preserved outside the worktrees under `modex-land-and-prune`. These local results do not replace new hosted validation or protected merge-queue delivery.

@@ -16,7 +16,7 @@ export function updateSettings(store: Pick<Store, "settings" | "updateSettings">
 /** Validate every explicit override before any part of the settings patch is persisted. */
 export async function saveSettings(store: Pick<Store, "settings" | "updateSettings">, router: Pick<Router, "reset">, patch: Partial<Settings>): Promise<Settings> {
   const checked = { ...patch };
-  for (const cli of ["claude", "codex"] as const) {
+  for (const cli of ["claude", "codex", "opencode", "mimo"] as const) {
     const key = `${cli}_bin` as const;
     if (checked[key] !== undefined) checked[key] = await verifyCliOverride(cli, checked[key]);
   }

@@ -94,3 +94,40 @@ Turn VoiceOver on (⌘F5) and repeat D1, D2 and D4 by VoiceOver navigation.
 - Turn the Codex feature off again: `codex features disable default_mode_request_user_input`.
 - Attach the record to #281's CF-3 rows and to #276. Leave failed or unrun steps open with the next
   action.
+
+## Run 1: prepared 2026-10-28, awaiting Val
+
+The candidate for Val's run, prepared by the close-out session. Nothing below is a result: every row
+stays open until Val reports it, and a row Val cannot run stays open with its reason or closes on
+Val's written deferral.
+
+| Item | Value |
+| --- | --- |
+| Modex build | `main` at `6c9000f5b6bc7d1733cec9db15ba00d5b9844291` (#418), desktop 0.4.0, ad-hoc `pnpm --filter @modex/desktop dist` from `.worktrees/cf3-closeout` (not a release artifact) |
+| Mac app artifact | `.worktrees/cf3-closeout/apps/desktop/release/Modex-0.4.0-arm64.dmg`, SHA-256 `f0a77403ad477a5779e0c07c0ffeb2b215ba5feaadc39a41184def190e069573`, `Signature=adhoc`, bundle version 0.4.0 |
+| macOS | 27.0.1 (26A434), Apple M3 Max |
+| `codex --version` | codex-cli 0.164.0, signed in with ChatGPT (CLI account) |
+| Codex model | the thread's pick; the CLI's configured default is `gpt-6.1-sol` (reasoning `medium`). Val records what the thread used |
+| Question route | Plan mode on a Codex thread (#385); `default_mode_request_user_input` stays off (`codex features list`: false) |
+| Event journal | `MODEX_EVENT_JOURNAL=1 open -a Modex` for D4; Val notes whether it was on |
+| Disposable project | `.worktrees/cf3-closeout/apps/desktop/.probes/cf3-disposable`, an empty `git init` repository, opened on the Read only sandbox |
+| Companion build | 0.4.0 (9), `CURRENT_PROJECT_VERSION: 9` in `apps/ios/ModexCompanion/project.yml` at candidate `6c9000f5b6bc7d1733cec9db15ba00d5b9844291`. Its source has the native card (`QuestionCard` in `CompanionViews.swift`, from #373, with #389's replay fixes). **Not yet on TestFlight**: Val uploads it with `op run --env-file=.env.release -- apps/ios/ModexCompanion/Scripts/release-testflight.sh` from that pinned candidate. A future release tag may be used only after verifying its Companion version and build number |
+| iPhone model and iOS | Val records at run time |
+| Older Companion for P6 | Val records the installed version and build number and verifies that it predates the native question card before using it for P6. TestFlight upload history alone does not establish the installed build; Val says whether a qualifying older build is at hand |
+
+| Row | Result | Reported by Val |
+| --- | --- | --- |
+| D1 | open | |
+| D2 | open | |
+| D3 | open | |
+| D4 | open | |
+| D5 | open | |
+| V1 | open | |
+| V2 | open | |
+| V3 | open | |
+| P1 | open, needs build 9 on TestFlight | |
+| P2 | open, needs build 9 on TestFlight | |
+| P3 | open, needs build 9 on TestFlight | |
+| P4 | open, needs build 9 on TestFlight | |
+| P5 | open, needs build 9 on TestFlight | |
+| P6 | open, needs an older Companion at hand | |

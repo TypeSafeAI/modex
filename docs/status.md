@@ -61,10 +61,25 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 ## Review repairs in progress
 
-PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. Hosted checks and protected delivery remain pending. This is not merged or released, and native/live acceptance remains separate.
+PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 merged into the #423 delivery branch at `0956376`; its tree exactly matches the reviewed `e0a03ef` candidate. Delivery to `main`, local-runtime qualification and product admission remain open. The combined branch’s CodeQL alert #28 identified incomplete regex escaping in a test assertion; the repair uses a literal error-message comparison, with five focused tests and the full build/unit command passing (2,219 passed, 26 skipped, zero failures or cancellations). Independent review found no blockers, and hosted CodeQL fixed alert #28. The subsequent macOS run at `d3d61ad` failed the Jev-theme Settings click and teardown (472 passed, four skipped, one failed); its trace is preserved. This branch now includes main `7a01df2`, including the merged Notes identity repair, and requires fresh validation before protected delivery.
+
+PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. PR #426 subsequently passed its protected queue and merged as `d0482a0`; this repair is on main and unreleased. Native/live acceptance remains separate.
 
 ## On main, unreleased
 
+- **OpenCode and MiMo Code backends** ([#408](https://github.com/TypeSafeAI/modex/issues/408)).
+  Two new thread backends drive the OpenCode CLI and Xiaomi's MiMo Code fork through their Agent
+  Client Protocol server (`opencode acp --pure`, `mimo acp --pure`), the way Codex runs through
+  `codex app-server`: one shared server per backend, a session per thread as the resume handle,
+  `session/request_permission` answered through Modex's approval cards, rules and policies, Stop as
+  `session/cancel`. Modex's modes are agents injected inline (`OPENCODE_CONFIG_CONTENT`): Chat denies
+  edits, Agent allows them, Full access asks nothing, Plan pins the built-in plan agent; a refused
+  mode fails the turn. Settings gets cards, executable overrides (verified by `--version`) and
+  default models for both; health is `auth list`'s credential count and the model list is
+  `<cli> models`. Not there: confined Code Review turns (refused), Modex's knowledge, Space and
+  image tools, question cards, efforts in the model list. Accepted live on OpenCode 1.19.5 and
+  MiMo Code 0.1.16 (`docs/opencode.md`, [ACP probes](reviews/2026-10-28-opencode-acp.json),
+  [MiMo](reviews/2026-10-28-mimo-acp.json), [backend live run](reviews/2026-10-28-opencode-backend-live.json)); AGENTS.md's CLI-only rule now names all four CLIs.
 - **Local model connections and discovery, in main only** (LM-2 [#378](https://github.com/TypeSafeAI/modex/issues/378),
   [tracker #376](https://github.com/TypeSafeAI/modex/issues/376)). Main keeps loopback-only
   connection profiles for Ollama, LM Studio and Responses-compatible servers in
@@ -195,7 +210,9 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 - **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery remains pending. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
 
-- **Notes history identity repair.** Repeated history toggles could duplicate revision rows or leave history visible after closing because the history and editor siblings shared a React key. The isolated `notes-history-identity` repair gives them distinct identities; three regression repetitions failed before the fix and passed afterward. Independent review found no blockers. Build and full unit/E2E checks passed (2,191 unit passed, 23 skipped; 470 desktop passed, seven skipped; seven site passed). Hosted checks and protected delivery remain pending; see [repair evidence](reviews/2026-10-28-notes-history-identity.md).
+- **Code Review packaged-app harness repair.** The shared harness and standalone IPC test now honor `MODEX_PACKAGED_APP`, including crash recovery. Two executable-identity regressions failed before the repair and passed afterward against a local ad-hoc bundle; development checks also passed. This is scoped harness evidence, not signed-release or human acceptance. [Evidence and remaining coverage limits](reviews/2026-10-28-code-review-packaged-harness.md).
+
+- **Notes history identity repair.** Repeated history toggles could duplicate revision rows or leave history visible after closing because the history and editor siblings shared a React key. The isolated `notes-history-identity` repair gives them distinct identities; three regression repetitions failed before the fix and passed afterward. Independent review found no blockers. Build and full unit/E2E checks passed (2,191 unit passed, 23 skipped; 470 desktop passed, seven skipped; seven site passed). Protected delivery landed in #429 (`7a01df2`); its successful merge-queue run passed 473 desktop tests with four skips and seven site tests. See [repair evidence](reviews/2026-10-28-notes-history-identity.md).
 
 - **LM-2 credential repair, in review.** The later credential-copy and stale-discovery fixes from closed #401 are not in main. The current-main `lm2-credential-repair` branch preserves the reviewed source/tests and prevents fake child PIDs from reaching OS signals. Build, full unit tests, typechecks and the Electron IPC journey passed; hosted checks and protected delivery are pending. [Reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md).
 
@@ -217,6 +234,31 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   - the TestFlight upload of build 9.
 
   [Candidate review](reviews/2026-10-24-v0.4.0-release-review.md).
+
+- **Local execution through Codex, in main only and not yet admitted** (LM-3 [#379](https://github.com/TypeSafeAI/modex/issues/379),
+  [PR #423](https://github.com/TypeSafeAI/modex/pull/423), branch `lm3-signed-delivery`). A thread with a `localTarget` runs on its own `codex app-server` child: a private
+  empty home, an environment allowlist, the connection token in one shell-excluded variable, the provider
+  and model pinned and confirmed by Codex on every open, no stale-sign-in retry, and a resume handle refused
+  unless that child opened it. Local turns bypass cloud accounts, Auto, Jev, titles, follow-ups and the
+  credit fallback; Plan, images and Modex's note and knowledge tools are refused. One turn at a time per
+  loopback port; force-stop ends only the thread's child. No UI (LM-4). After Val's 2026-10-26 review, main
+  does not construct `LocalExecution`, so a built app refuses every local selection and persisted target
+  until LM-5 qualifies Codex's redirect handling and managed-policy precedence (AC6), and a local child asks
+  for no reasoning summaries. Fixture and real-CLI evidence are in the
+  [LM-3 review](reviews/2026-10-26-lm3-local-codex.md); the live turn against a real local server (AC1),
+  offline operation and the AC6 qualification are open gates. #401 and the stacked draft #407 were closed as
+  superseded; their main-side design is carried here, and #418 landed the inherited LM-2 credential fixes.
+  [How it works](local-models.md#lm-3-local-execution-through-codex).
+
+- **LM-5 slice 1: effective destination and managed-policy admission** ([#380](https://github.com/TypeSafeAI/modex/issues/380),
+  [PR #424](https://github.com/TypeSafeAI/modex/pull/424), merged into `lm3-signed-delivery` for delivery through #423). Before a local child opens a thread, main reads the child's own
+  `config/read` and `configRequirements/read` and admits it only when every governed key comes from Modex's
+  session flags, no project layer or managed requirement applies, the private home is empty and the effective
+  destination, model context and tools are the ones Modex passed; otherwise the turn fails naming the layer and
+  key. A model reroute fails the turn. Real-CLI evidence shows codex-cli 0.164.0 follows a 307 from the
+  configured loopback server with the full body and never with the token; this is recorded, not preventable.
+  This is the refusal boundary #417's review asked for; wiring local execution into the product remains Val's
+  decision. [Evidence](reviews/2026-10-27-lm5-destination-policy.md).
 
 - **Companion network acceptance (#109).** The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) ties each of the four #109 requirements to the tests that prove it, adds the last race (the interface list changes while Forget paired phones or Turn off runs, and no listener survives with the old token; both shown red against a mutation, green on `main`), and holds the physical two-subnet procedure. Two gates remain with Val: running that procedure, and deciding whether VPN tunnels and virtual bridges with private addresses get a listener ([question](https://github.com/TypeSafeAI/modex/issues/109#issuecomment-6464762470)). The filter is unchanged until Val answers.
 
@@ -316,7 +358,9 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   probe timed out during initialization. Grok 1.0.46 accepted cached auth and session RPCs,
   then its text turn timed out; native plan/sandbox also has documented permission limits.
   Neither provider is enabled. Both decisions include reproducible probes and distinguish
-  observed failures from unverified capabilities; coding execution remains CLI-only.
+  observed failures from unverified capabilities; coding execution remains CLI-only. OpenCode
+  and MiMo Code, probed over ACP on 2026-10-28, passed the same gates and shipped as backends
+  ([#408](https://github.com/TypeSafeAI/modex/issues/408), [opencode.md](opencode.md)).
 - **Approval rules (Jev-gated).** Part 1 (#54) merged with the gate off and no UI: every
   backend's approval request carries an action, `engine/approvals/digest.ts` builds the
   scrubbed state Jev sees, and `engine/approvals/gate.ts` decides allow, ask or never. Part 2

@@ -1,0 +1,99 @@
+{
+  "kind": "scripted Responses fixture with the installed codex CLI and a real shell tool run; not a model test",
+  "cli": "codex",
+  "requests": [
+    {
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "toolNames": [
+        "exec_command",
+        "write_stdin",
+        "request_user_input",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ],
+      "hasSentinel": false,
+      "credentialReflected": false,
+      "authorization": "bearer"
+    },
+    {
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "toolNames": [
+        "exec_command",
+        "write_stdin",
+        "request_user_input",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ],
+      "hasSentinel": true,
+      "credentialReflected": false,
+      "authorization": "bearer"
+    }
+  ],
+  "tools": [
+    {
+      "name": "shell",
+      "title": "$ cat fixture.txt",
+      "args": {
+        "command": "/bin/zsh -lc 'cat fixture.txt'",
+        "cwd": "/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/lm3-native-cwd-2TMvBK"
+      },
+      "exec": {
+        "command": "/bin/zsh -lc 'cat fixture.txt'",
+        "cwd": "/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/lm3-native-cwd-2TMvBK",
+        "actions": [
+          {
+            "kind": "read",
+            "path": "/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/lm3-native-cwd-2TMvBK/fixture.txt"
+          }
+        ]
+      }
+    }
+  ],
+  "outcomes": [
+    "succeeded"
+  ],
+  "reply": "The file contains LM3-FIXTURE-SENTINEL-7f3a.",
+  "notices": [],
+  "provenance": {
+    "sessionFlags": "sha256:d7a296398b2154339a8880525034c216df4581fe569daab646b61227fee36a8f",
+    "layers": [
+      {
+        "source": "sessionFlags",
+        "version": "sha256:d7a296398b2154339a8880525034c216df4581fe569daab646b61227fee36a8f"
+      },
+      {
+        "source": "user",
+        "version": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "file": "/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/lm3-wire-home-dmd5K1/app/local-codex/process-oZTrdl/.codex/config.toml"
+      },
+      {
+        "source": "system",
+        "version": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "file": "/etc/codex/config.toml"
+      }
+    ],
+    "managedRequirements": false
+  },
+  "result": {
+    "status": "completed",
+    "usage": {
+      "first": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "uncached": 100
+      },
+      "contextTokens": 100,
+      "outputTokens": 60,
+      "calls": 2,
+      "totals": {
+        "input": 200,
+        "cached": 0,
+        "cacheWrite": 0
+      }
+    }
+  }
+}

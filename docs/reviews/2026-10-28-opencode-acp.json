@@ -1,0 +1,1218 @@
+{
+ "what": "OpenCode 1.19.5 driven over `opencode acp --pure` from a Node probe (apps/desktop/.probes, 2026-10-28). Prompts ran on OpenCode's free `opencode/mimo-v2.6-flash-free` model with no credentials. Temp paths are elided; no secrets were present. Text that appears twice in a probe's `text` is the `session/load` replay the probe requested after its prompt: load replays the whole history as updates, which is why Modex prefers `session/resume`.",
+ "probes": {
+  "capabilities": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:19:19.415Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "effort",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 9
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "plan",
+     "result": {}
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "available_commands_update"
+   ]
+  },
+  "acp": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:20:09.578Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 9
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    },
+    {
+     "method": "session/prompt",
+     "ms": 3100,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 12153,
+       "outputTokens": 6,
+       "totalTokens": 12178,
+       "thoughtTokens": 19
+      },
+      "_meta": {}
+     },
+     "fileWritten": false
+    },
+    {
+     "method": "session/prompt(cancelled)",
+     "msAfterCancel": 16,
+     "result": {
+      "stopReason": "cancelled",
+      "usage": {
+       "inputTokens": 0,
+       "outputTokens": 0,
+       "totalTokens": 0
+      },
+      "_meta": {}
+     }
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "ACP_PROBE_OK1\n2\n3\n4\n5\n6\n7ACP_PROBE_OK1\n2\n3\n4\n5\n6\n7",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "acp-ids": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:24:13.626Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 9
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    },
+    {
+     "method": "session/prompt",
+     "ms": 6614,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 5877,
+       "outputTokens": 6,
+       "totalTokens": 12049,
+       "thoughtTokens": 22,
+       "cachedReadTokens": 6144
+      },
+      "_meta": {}
+     },
+     "fileWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "ACP_PROBE_OKACP_PROBE_OK",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "plan-write": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:20:16.353Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 9
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "plan",
+     "result": {}
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    },
+    {
+     "method": "session/prompt",
+     "ms": 6533,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 12581,
+       "outputTokens": 5,
+       "totalTokens": 12630,
+       "thoughtTokens": 44
+      },
+      "_meta": {}
+     },
+     "fileWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "WRITE_BLOCKEDWRITE_BLOCKED",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "build-ask": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:21:00.737Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_PERMISSION",
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": true,
+     "configOptionIds": [
+      "model",
+      "mode"
+     ],
+     "modes": [
+      "build",
+      "plan"
+     ],
+     "modelCount": 9
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "build",
+     "result": {}
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    },
+    {
+     "method": "session/prompt",
+     "ms": 3955,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 6073,
+       "outputTokens": 64,
+       "totalTokens": 12305,
+       "thoughtTokens": 24,
+       "cachedReadTokens": 6144
+      },
+      "_meta": {}
+     },
+     "fileWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     }
+    }
+   ],
+   "clientRequests": [
+    {
+     "method": "session/request_permission",
+     "kind": "edit",
+     "title": "<tmp>",
+     "rawInputKeys": [
+      "filepath",
+      "diff"
+     ],
+     "options": [
+      "once:allow_once",
+      "always:allow_always",
+      "reject:reject_once"
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "id": "call_1c77b6b\u2026",
+     "status": "pending",
+     "kind": "edit",
+     "title": "write",
+     "error": null
+    },
+    {
+     "id": "call_1c77b6b\u2026",
+     "status": "in_progress",
+     "kind": "edit",
+     "title": "write",
+     "error": null
+    },
+    {
+     "id": "call_1c77b6b\u2026",
+     "status": "failed",
+     "kind": "edit",
+     "title": "write",
+     "error": "The user rejected permission to use this specific tool call."
+    }
+   ],
+   "text": "",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "chat-write": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:26:20.277Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": false,
+     "configOptionIds": [],
+     "modes": [],
+     "modelCount": null
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "modex-chat",
+     "result": {}
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "currentValue": "opencode/mimo-v2.6-flash-free"
+    },
+    {
+     "method": "session/prompt",
+     "ms": 5018,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 9574,
+       "outputTokens": 5,
+       "totalTokens": 10740,
+       "thoughtTokens": 137,
+       "cachedReadTokens": 1024
+      },
+      "_meta": {}
+     },
+     "fileWritten": false,
+     "shellWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     },
+     "replayedUpdates": 3
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "WRITE_BLOCKEDWRITE_BLOCKED",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "chat-shell": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:26:27.023Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": false,
+     "configOptionIds": [],
+     "modes": [],
+     "modelCount": null
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "modex-chat",
+     "result": {}
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "currentValue": "opencode/mimo-v2.6-flash-free"
+    },
+    {
+     "method": "session/prompt",
+     "ms": 3320,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 10576,
+       "outputTokens": 29,
+       "totalTokens": 10616,
+       "thoughtTokens": 11
+      },
+      "_meta": {}
+     },
+     "fileWritten": false,
+     "shellWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     },
+     "replayedUpdates": 4
+    }
+   ],
+   "clientRequests": [
+    {
+     "method": "session/request_permission",
+     "kind": "execute",
+     "title": "echo BASH_PROBE_RAN > probe-shell.txt",
+     "rawInputKeys": [
+      "command"
+     ],
+     "options": [
+      "once:allow_once",
+      "always:allow_always",
+      "reject:reject_once"
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "id": "call_f07f5d6\u2026",
+     "status": "pending",
+     "kind": "execute",
+     "title": "bash",
+     "error": null
+    },
+    {
+     "id": "call_f07f5d6\u2026",
+     "status": "in_progress",
+     "kind": "execute",
+     "title": "echo BASH_PROBE_RAN > probe-shell.txt",
+     "error": null
+    },
+    {
+     "id": "call_f07f5d6\u2026",
+     "status": "failed",
+     "kind": "execute",
+     "title": "echo BASH_PROBE_RAN > probe-shell.txt",
+     "error": "The user rejected permission to use this specific tool call."
+    }
+   ],
+   "text": "",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "agent-write": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:26:31.674Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": false,
+     "configOptionIds": [],
+     "modes": [],
+     "modelCount": null
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "modex-agent",
+     "result": {}
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "currentValue": "opencode/mimo-v2.6-flash-free"
+    },
+    {
+     "method": "session/prompt",
+     "ms": 6899,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 156,
+       "outputTokens": 8,
+       "totalTokens": 12394,
+       "thoughtTokens": 70,
+       "cachedReadTokens": 12160
+      },
+      "_meta": {}
+     },
+     "fileWritten": true,
+     "shellWritten": false
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     },
+     "replayedUpdates": 6
+    }
+   ],
+   "clientRequests": [],
+   "tools": [
+    {
+     "id": "call_2cdc5b9\u2026",
+     "status": "pending",
+     "kind": "edit",
+     "title": "write",
+     "error": null
+    },
+    {
+     "id": "call_2cdc5b9\u2026",
+     "status": "in_progress",
+     "kind": "edit",
+     "title": "write",
+     "error": null
+    },
+    {
+     "id": "call_2cdc5b9\u2026",
+     "status": "completed",
+     "kind": null,
+     "title": "private<tmp>",
+     "error": null
+    }
+   ],
+   "text": "File created: probe-write.txtFile created: probe-write.txt",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "full-shell": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:26:39.649Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": false,
+     "configOptionIds": [],
+     "modes": [],
+     "modelCount": null
+    },
+    {
+     "method": "session/set_mode",
+     "modeId": "modex-full",
+     "result": {}
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "currentValue": "opencode/mimo-v2.6-flash-free"
+    },
+    {
+     "method": "session/prompt",
+     "ms": 57102,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 94,
+       "outputTokens": 6,
+       "totalTokens": 12470,
+       "thoughtTokens": 82,
+       "cachedReadTokens": 12288
+      },
+      "_meta": {}
+     },
+     "fileWritten": false,
+     "shellWritten": true
+    },
+    {
+     "method": "session/load",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     },
+     "replayedUpdates": 6
+    }
+   ],
+   "clientRequests": [],
+   "tools": [
+    {
+     "id": "call_8936809\u2026",
+     "status": "pending",
+     "kind": "execute",
+     "title": "bash",
+     "error": null
+    },
+    {
+     "id": "call_8936809\u2026",
+     "status": "in_progress",
+     "kind": "execute",
+     "title": "echo BASH_PROBE_RAN > probe-shell.txt",
+     "error": null
+    },
+    {
+     "id": "call_8936809\u2026",
+     "status": "completed",
+     "kind": null,
+     "title": "echo BASH_PROBE_RAN > probe-shell.txt",
+     "error": null
+    }
+   ],
+   "text": "Command ran successfully.Command ran successfully.",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+   ]
+  },
+  "resume": {
+   "provider": "opencode",
+   "version": "1.19.5",
+   "at": "2026-10-28T17:26:55.778Z",
+   "platform": "darwin arm64",
+   "args": [
+    "acp",
+    "--pure",
+    "--cwd",
+    "<tmp>"
+   ],
+   "env": [
+    "OPENCODE_CONFIG_CONTENT"
+   ],
+   "steps": [
+    {
+     "method": "initialize",
+     "agentInfo": {
+      "name": "OpenCode",
+      "version": "1.19.5"
+     },
+     "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": {
+       "http": true,
+       "sse": true
+      },
+      "promptCapabilities": {
+       "embeddedContext": true,
+       "image": true
+      },
+      "sessionCapabilities": {
+       "close": {},
+       "fork": {},
+       "list": {},
+       "resume": {}
+      }
+     },
+     "authMethods": [
+      {
+       "description": "Run `opencode auth login` in the terminal",
+       "name": "Login with opencode",
+       "id": "opencode-login"
+      }
+     ]
+    },
+    {
+     "method": "session/new",
+     "sessionId": false,
+     "configOptionIds": [],
+     "modes": [],
+     "modelCount": null
+    },
+    {
+     "method": "session/set_config_option",
+     "configId": "model",
+     "value": "opencode/mimo-v2.6-flash-free",
+     "currentValue": "opencode/mimo-v2.6-flash-free"
+    },
+    {
+     "method": "session/prompt",
+     "ms": 3676,
+     "result": {
+      "stopReason": "end_turn",
+      "usage": {
+       "inputTokens": 8701,
+       "outputTokens": 6,
+       "totalTokens": 12306,
+       "thoughtTokens": 15,
+       "cachedReadTokens": 3584
+      },
+      "_meta": {}
+     },
+     "fileWritten": false,
+     "shellWritten": false
+    },
+    {
+     "method": "session/resume",
+     "result": {
+      "configOptionIds": [
+       "model",
+       "mode"
+      ]
+     },
+     "updatesBefore": 7
+    }
+   ],
+   "clientRequests": [],
+   "tools": [],
+   "text": "ACP_PROBE_OK",
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "graceful": true
+   },
+   "updateKinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "config_option_update",
+    "usage_update"
+   ]
+  }
+ }
+}

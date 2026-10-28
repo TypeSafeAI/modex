@@ -1,4 +1,5 @@
 import { resolveCli } from "./cli-path.js";
+import type { LocalExecution } from "./local-models/execution.js";
 import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,6 +10,7 @@ import * as gitx from "./git.js";
 import type { ApprovalRequest, Backend, NativeRequest, QuestionReply, TurnResult, TurnSink } from "./backends/types.js";
 import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
+import { AcpBackend } from "./backends/acp.js";
 import { MockBackend } from "./backends/mock.js";
 import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
@@ -58,6 +60,8 @@ interface Live {
   run: Promise<void> | null;
   /** Backend executing the current turn, so a force-stop reaches the right one. */
   backend: BackendId | null;
+  /** The thread-owned local Codex running the current turn: a force-stop reaches only it, never the shared servers. */
+  localBackend?: Backend;
   flushTimer?: ReturnType<typeof setTimeout>;
   /** Requests waiting on a person, by card id: an approval settles with an answer, a question with answers or a withdrawal. */
   pending: Map<string, PendingRequest>;
@@ -82,6 +86,8 @@ interface Live {
 }
 
 export interface RunnerOptions {
+  /** Runs threads with a local target through their own Codex children (#379). Without it, such threads refuse to run. */
+  localExecution?: LocalExecution;
   beforeSend?(thread: Thread): void;
   imageBackend?: Backend;
   imageOutcome?(jobId: string, status: string): void;
@@ -144,6 +150,8 @@ export class ThreadRunner {
     this.backends = {
       claude: o.backends?.claude ?? new ClaudeBackend(() => resolveCli("claude", cliSettings.claude_bin)),
       codex: o.backends?.codex ?? new CodexBackend(() => resolveCli("codex", cliSettings.codex_bin)),
+      opencode: o.backends?.opencode ?? new AcpBackend("opencode", () => resolveCli("opencode", cliSettings.opencode_bin)),
+      mimo: o.backends?.mimo ?? new AcpBackend("mimo", () => resolveCli("mimo", cliSettings.mimo_bin)),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
     this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
@@ -169,7 +177,7 @@ export class ThreadRunner {
     this.naming.clear();
     const runs = [...this.live.values()].flatMap((l) => l.run ? [l.run] : []);
     for (const t of this.live.keys()) this.stop(t);
-    await Promise.all(Object.values(this.backends).map((b) => b.dispose()));
+    await Promise.all([...Object.values(this.backends).map((b) => b.dispose()), this.o.localExecution?.dispose()]);
     await Promise.allSettled([...runs, ...this.titleRuns]);
   }
 
@@ -273,7 +281,8 @@ export class ThreadRunner {
     const thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     const l = this.slot(threadId);
-    if (l.status !== "idle") return null;
+    // A local thread asks nothing of Jev or the heuristic: no follow-up is suggested.
+    if (thread.localTarget !== undefined || l.status !== "idle") return null;
     const user = [...l.items].reverse().find((item) => item.kind === "user");
     if (!user || user.kind !== "user") return null;
     const key = JSON.stringify([l.items.at(-1)?.id, thread.plan, thread.mode, thread.auto]);
@@ -548,6 +557,7 @@ export class ThreadRunner {
       refuseWhileAlive();
       this.stop(threadId);
       await this.o.beforeDeleteThread?.(threadId);
+      await this.o.localExecution?.forget(threadId);
       await l?.run;
       refuseWhileAlive();
       if (thread?.worktree && !thread.retired && removeWorktree) {
@@ -592,6 +602,7 @@ export class ThreadRunner {
     this.deleting.add(threadId);
     try {
       await this.o.beforeDeleteThread?.(threadId);
+      await this.o.localExecution?.forget(threadId);
       const state = await gitx.worktreeState(wt.path);
       const branch = await gitx.currentBranch(wt.path);
       if (!state.clean || state.head !== pr.headSha || branch !== wt.branch) return;
@@ -730,7 +741,17 @@ export class ThreadRunner {
     let fast = false;
     let routeId: string | undefined;
     let routingBlocked: string | undefined;
-    const auto = Boolean(thread.auto);
+    // A local thread runs only on its exact target: never Auto, never a cloud backend, never a cloud account.
+    const local = thread.localTarget !== undefined;
+    const auto = !local && Boolean(thread.auto);
+    if (local) {
+      try {
+        if (!this.o.localExecution) throw new Error("Local execution is unavailable in this build.");
+        this.o.localExecution.validate(thread);
+        if (thread.backend !== "codex" || thread.model !== thread.localTarget?.model.id) throw new Error("The thread's backend or model no longer matches its local target. Select the local target again.");
+        if (thread.plan || thread.imageJobId || files.some(file => file.kind === "image")) throw new Error("This local target runs text and tools only. Turn off Plan and remove images.");
+      } catch (err) { routingBlocked = (err as Error).message; }
+    }
     if (auto && !retry) {
       // Auto: judge the request, then re-read the thread — the pick is applied as a thread update
       // so the composer, header, and persisted state all show what this turn runs on.
@@ -763,12 +784,13 @@ export class ThreadRunner {
       return;
     }
     if (routingBlocked) {
-      this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Auto routing stopped: ${routingBlocked}`, at: new Date().toISOString() });
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `${local ? "Local execution" : "Auto routing"} stopped: ${routingBlocked}`, at: new Date().toISOString() });
       this.setStatus(threadId, "error");
       l.abort = null;
       return;
     }
-    const backend = thread.imageJobId && this.o.imageBackend ? this.o.imageBackend : this.backends[thread.backend];
+    const backend = local ? this.o.localExecution!.backend(thread) : thread.imageJobId && this.o.imageBackend ? this.o.imageBackend : this.backends[thread.backend];
+    l.localBackend = local ? backend : undefined;
     l.backend = thread.backend;
     const turnStart = l.items.length;
     let knowledge: KnowledgeLease | undefined;
@@ -785,20 +807,21 @@ export class ThreadRunner {
       if (thread.imageJobId && this.o.images) images = await this.o.images.prepare(thread, abort.signal);
       // Prepare Pages first: snapshot the turn's read-only ceiling before knowledge setup awaits.
       // Always attach its stable route, including when the project's setting currently disables it.
-      if (thread.backend !== "mock" && this.o.pages) {
+      // Modex's note and knowledge tools are not offered to a local model until they are qualified for it.
+      if (!local && thread.backend !== "mock" && this.o.pages) {
         pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
           id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
         }), abort.signal);
         if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
       }
-      if (thread.backend !== "mock" && this.o.knowledge) {
+      if (!local && thread.backend !== "mock" && this.o.knowledge) {
         knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
           id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
         }), abort.signal);
         if (knowledge.warning) sink.notice("warn", knowledge.warning);
         if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
       }
-      const account = thread.backend === "codex" && backend.identity
+      const account = !local && thread.backend === "codex" && backend.identity
         ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
       if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
       const turnFiles: TurnAttachment[] = files.map((f) => {
@@ -829,11 +852,12 @@ export class ThreadRunner {
         }
       };
       // A model refused for usage credits recently is refused again: start on its fallback instead.
-      const skip = this.recentCreditFallback(thread);
+      const skip = local ? undefined : this.recentCreditFallback(thread);
       if (skip) thread = this.fallBack(threadId, thread, skip, routeId, false);
       let replyStart = l.items.length;
       let result = await runOn(thread);
-      const fallback = result.status === "failed" && !abort.signal.aborted ? this.creditFallback(thread, result.error, l.items.slice(turnStart)) : undefined;
+      // A failed local turn never moves to a cloud model.
+      const fallback = !local && result.status === "failed" && !abort.signal.aborted ? this.creditFallback(thread, result.error, l.items.slice(turnStart)) : undefined;
       if (fallback) {
         const from = thread.model;
         this.outOfCredits.set(`${thread.backend}:${from}`, Date.now());
@@ -847,7 +871,8 @@ export class ThreadRunner {
       const ranFast = result.fastMode ? result.fastMode.on : fast;
       if (fast && !ranFast && routeId) this.noteFastOff(threadId, routeId, result.fastMode?.why);
       this.noteLastTurn(threadId, thread, ranFast, result);
-      if (result.status === "completed" && shouldName && !abort.signal.aborted) {
+      // Naming is a separate model conversation; a local thread keeps its opening-message title.
+      if (!local && result.status === "completed" && shouldName && !abort.signal.aborted) {
         const reply = l.items.slice(turnStart).reverse().find((item) => item.kind === "assistant" && item.text.trim());
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
@@ -896,6 +921,7 @@ export class ThreadRunner {
       this.persistItems(threadId, l);
       l.abort = null;
       l.backend = null;
+      l.localBackend = undefined;
       l.attempt = null;
     }
   }
@@ -915,7 +941,7 @@ export class ThreadRunner {
         electron: process.versions.electron,
         node: process.versions.node,
         backend: thread.backend,
-        bin: thread.backend === "claude" ? settings.claude_bin : thread.backend === "codex" ? settings.codex_bin : undefined,
+        bin: thread.backend === "claude" ? settings.claude_bin : thread.backend === "codex" ? settings.codex_bin : thread.backend === "opencode" ? settings.opencode_bin : thread.backend === "mimo" ? settings.mimo_bin : undefined,
         model: thread.model,
         effort: thread.effort,
         mode: thread.mode,
@@ -966,11 +992,19 @@ export class ThreadRunner {
   }
 
   private forceStop(threadId: string, l: Live): void {
+    if (l.localBackend) {
+      // The thread's own Codex child: no other thread runs on it, and the shared servers are untouched.
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: "Force-stopping this thread's local Codex.", at: new Date().toISOString() });
+      l.localBackend.forceStop?.().catch((err: Error) => {
+        if (this.live.get(threadId) === l) this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: `Force-stop failed: ${err.message}`, at: new Date().toISOString() });
+      });
+      return;
+    }
     const id = l.backend;
     const backend = id ? this.backends[id] : undefined;
     if (!id || !backend?.forceStop) return;
     const account = id === "codex" ? this.o.store.thread(threadId)?.codexAccount ?? "cli" : undefined;
-    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && o.run &&
+    const others = [...this.live].filter(([other, o]) => other !== threadId && o.backend === id && !o.localBackend && o.run &&
       (account === undefined || (this.o.store.thread(other)?.codexAccount ?? "cli") === account)).length;
     const name = id === "codex" ? "Codex" : id;
     const text = others ? `Force-stopping ${name}. ${others} other ${name} ${others === 1 ? "thread" : "threads"} will stop too.` : `Force-stopping ${name}.`;
@@ -1119,8 +1153,10 @@ export class ThreadRunner {
     // External edits remain fenced until the renderer adopts the canonical state.
     if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
+    // A local target is chosen on this Mac: a paired desktop's patch never carries one.
+    const localKeys = opts.by === "paired-desktop" ? [] : ["localTarget", "localContextTokens"];
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
-      ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals"].includes(key))) as ThreadPatch;
+      ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals", ...localKeys].includes(key))) as ThreadPatch;
     if (patch.approvals !== undefined && !APPROVAL_POLICIES.includes(patch.approvals)) delete patch.approvals;
     if (patch.title !== undefined) {
       this.naming.get(threadId)?.abort();
@@ -1129,17 +1165,38 @@ export class ThreadRunner {
     // The store hands back its live object, so snapshot it before the write below mutates it.
     const live = this.o.store.thread(threadId);
     const current = live ? { ...live } : undefined;
+    const switchingLocal = Object.hasOwn(patch, "localTarget");
+    if (current?.localTarget !== undefined || switchingLocal) {
+      // The local target is the whole selection: the child is keyed by it, so it changes only between turns and only explicitly.
+      const slot = this.slot(threadId);
+      if ((switchingLocal || ["model", "backend", "effort", "auto", "plan", "localContextTokens"].some(key => Object.hasOwn(patch, key))) && (slot.run || slot.abort)) throw new Error("Wait for the local turn to finish before changing its settings.");
+      if (!switchingLocal && (patch.auto || patch.plan || patch.model !== undefined || patch.backend !== undefined || patch.effort !== undefined || patch.localContextTokens !== undefined)) throw new Error("Select a different local target, or return to cloud models, to change this thread's model. Local threads run without Auto and Plan.");
+      if (switchingLocal && patch.localTarget !== null) {
+        if (!this.o.localExecution || !current) throw new Error("Local execution is unavailable.");
+        const target = this.o.localExecution.validate({ ...current, localTarget: patch.localTarget ?? undefined, localContextTokens: patch.localContextTokens ?? current.localContextTokens });
+        patch = { ...patch, localTarget: target, localContextTokens: patch.localContextTokens ?? current.localContextTokens, backend: "codex", model: target.model.id, auto: false, plan: false, effort: undefined };
+      }
+    }
     // Switching backend starts a fresh backend conversation; the transcript stays.
     const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, lastTurn: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
+    // So does any local target change: the old child's handle is dropped, and clearing the target returns to the default cloud model.
+    const localReset: Partial<Thread> = switchingLocal ? { sessionHandle: undefined, codexAccount: undefined, lastTurn: undefined,
+      ...(patch.localTarget === null ? { localTarget: undefined, localContextTokens: undefined, model: this.o.store.settings.default_model.codex ?? "", effort: undefined } : {}) } : {};
+    if (switchingLocal) {
+      this.naming.get(threadId)?.abort(); this.naming.delete(threadId);
+      const slot = this.slot(threadId); slot.followUp?.abort.abort(); slot.followUp = undefined;
+      void this.o.localExecution?.forget(threadId);
+    }
     const titleSource = patch.title === undefined ? {} : { titleSource: opts.automaticTitle ? "auto" as const : "manual" as const };
-    const t = this.o.store.updateThread(threadId, { ...extra, ...patch, ...titleSource });
+    const { localTarget, ...otherPatch } = patch;
+    const t = this.o.store.updateThread(threadId, { ...extra, ...otherPatch, ...(localTarget ? { localTarget } : {}), ...localReset, ...titleSource });
     this.o.emit({ threadId, type: "thread", thread: t });
     // Switching to YOLO also clears what is already waiting; Always allow leaves it, since it cannot tell which of those are escalations.
     if (patch.approvals === "yolo") for (const [id, pending] of [...this.slot(threadId).pending]) if (pending.kind === "approval") this.answer(threadId, id, "yes", opts.by);
     // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
     // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
     const lastRoute = [...this.slot(threadId).items].reverse().find((i) => i.kind === "route");
-    if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && lastRoute && !lastRoute.blocked) {
+    if (!switchingLocal && current?.localTarget === undefined && !opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && lastRoute && !lastRoute.blocked) {
       void this.background.run(async () => {
         const learned = await this.router.noteOverride(current, patch.model!);
         if (learned) this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Noted — for ${learned.task.replace(/_/g, " ")} you chose tier ${learned.to} over Auto's tier ${learned.from}. Auto will lean that way next time.`, at: new Date().toISOString() });
@@ -1432,7 +1489,8 @@ export class ThreadRunner {
   ): Promise<{ ask: true; decidedBy?: ApprovalReceipt } | { ask: false; answer: "yes" | "no"; decidedBy?: ApprovalReceipt }> {
     if (!c.active() || c.signal?.aborted) return { ask: false, answer: "no" };
     try {
-      const jev = await this.router.decisions.connect("approval", { threadId: c.thread.id }).catch(() => ({ transport: null, model: "" }));
+      // A local thread's approvals use exact rules or a person, never Jev.
+      const jev = c.thread.localTarget !== undefined ? { transport: null, model: "" } : await this.router.decisions.connect("approval", { threadId: c.thread.id }).catch(() => ({ transport: null, model: "" }));
       const d = await decideApproval(req.action, {
         rules: c.settings.approval_rules,
         config: c.settings.approval_gate,

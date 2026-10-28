@@ -14,8 +14,13 @@ import type { CodeReviewReply, CodeReviewRequest } from "./code-review.js";
 /** Types shared between the Electron main process and the React renderer. */
 
 export type Mode = "chat" | "agent" | "full-access";
-/** Which CLI runs the thread. "mock" is the offline scripted engine used by the demo and tests. */
-export type BackendId = "claude" | "codex" | "mock";
+/**
+ * Which CLI runs the thread. "opencode" is the OpenCode CLI and "mimo" Xiaomi's MiMo Code fork of it, both over
+ * their `acp` server (docs/opencode.md). "mock" is the offline scripted engine used by the demo and tests.
+ */
+export type BackendId = "claude" | "codex" | "opencode" | "mimo" | "mock";
+export const BACKEND_IDS: readonly BackendId[] = ["claude", "codex", "opencode", "mimo", "mock"];
+export function isBackendId(value: unknown): value is BackendId { return typeof value === "string" && (BACKEND_IDS as readonly string[]).includes(value); }
 export type ThreadStatus = "idle" | "running" | "waiting" | "error";
 export type ApprovalAnswer = "yes" | "no" | "always";
 
@@ -53,6 +58,14 @@ export interface LastTurn {
 }
 
 export interface Thread {
+  /**
+   * An explicit local native target (shared/local-models.ts, #379). Absent means the thread runs on its
+   * cloud backend as before; present, main runs it through an isolated Codex child bound to this exact
+   * connection revision and model, and never through a cloud account.
+   */
+  localTarget?: import("./local-models.js").LocalThreadTarget;
+  /** The context window Modex tells Codex to assume for the local model, in tokens. Set with `localTarget`. */
+  localContextTokens?: number;
   pluginRevision?: number;
   imageJobId?: string;
   id: string;
@@ -193,6 +206,8 @@ export interface Settings {
   /** Executables; plain names resolve on PATH. */
   claude_bin: string;
   codex_bin: string;
+  opencode_bin: string;
+  mimo_bin: string;
   /** Scripted engine for the offline demo/tests. */
   mock_script?: string;
   /** Auto routing (Jev) policy and bounds. */
@@ -261,7 +276,7 @@ export interface ApprovalReceipt {
 export interface ApprovalPreviewRequest {
   projectId: string;
   rules: ApprovalRule[];
-  backend: "claude" | "codex";
+  backend: "claude" | "codex" | "opencode" | "mimo";
   tool: string;
   title: string;
   mode: Mode;
@@ -361,7 +376,8 @@ export interface RoutingStatus {
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
 }
 
-export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals">>;
+/** `localTarget: null` clears a local target; the thread returns to its cloud backend with a fresh native conversation. */
+export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto" | "approvals" | "localContextTokens">> & { localTarget?: import("./local-models.js").LocalThreadTarget | null };
 
 /** A suggested next message for an idle thread, chosen by Jev or the built-in heuristic from typed facts about the last turn. */
 export interface FollowUp {
@@ -384,6 +400,8 @@ export interface ModelInfo {
 export const BACKENDS: { id: BackendId; label: string; hint: string }[] = [
   { id: "codex", label: "Codex", hint: "OpenAI Codex CLI (codex app-server) — uses your `codex login`" },
   { id: "claude", label: "Claude", hint: "Claude Code CLI (claude -p) — uses your `claude` login" },
+  { id: "opencode", label: "OpenCode", hint: "OpenCode CLI (opencode acp) — uses your `opencode auth login`" },
+  { id: "mimo", label: "MiMo Code", hint: "MiMo Code CLI (mimo acp) — uses your `mimo auth login`" },
 ];
 
 export interface AppState {

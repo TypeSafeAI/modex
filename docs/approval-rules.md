@@ -21,7 +21,7 @@ scope when you edit this project's rules.
 
 Language rules use the same saved Jev transport and credentials as Auto routing. Without
 Jev, they stay visible with **Inactive without Jev**. An optional exact match works without
-Jev: `Bash: npm test` for Claude, or `command: npm test` for Codex. Tool names and patterns
+Jev: `Bash: npm test` for Claude, `command: npm test` for Codex, or `shell: npm test` for OpenCode and MiMo Code. Tool names and patterns
 are case-sensitive; `*` matches any text. A leading `$ ` in the command title may be omitted.
 Exact matches are mechanical patterns, so keep allow patterns narrow. For example,
 `Bash: npm test*` also matches `npm testify` and `npm test; rm -rf ./src`. The glob does not
