@@ -1,0 +1,274 @@
+{
+  "candidate_sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+  "first_sequence": [
+    {
+      "command": "pnpm install --frozen-lockfile",
+      "start": "2026-10-22T19:12:28.043572+00:00",
+      "end": "2026-10-22T19:12:29.202160+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "command": "pnpm build",
+      "start": "2026-10-22T19:12:29.239781+00:00",
+      "end": "2026-10-22T19:13:05.638288+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "command": "pnpm typecheck",
+      "start": "2026-10-22T19:13:05.662960+00:00",
+      "end": "2026-10-22T19:13:26.895057+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "command": "pnpm test",
+      "start": "2026-10-22T19:13:26.923964+00:00",
+      "end": "2026-10-22T19:29:35.785363+00:00",
+      "exit": 1,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "command": "pnpm test:e2e",
+      "start": "2026-10-22T19:29:35.818039+00:00",
+      "end": "2026-10-22T20:03:04.320381+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "command": "MODEX_IOS_DERIVED_DATA=/tmp/modex-cf8-oct22-ios-derived bash apps/ios/ModexCompanion/Scripts/test-e2e.sh",
+      "start": "2026-10-22T20:03:04.695727+00:00",
+      "end": "2026-10-22T20:04:53.140160+00:00",
+      "exit": 70,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    }
+  ],
+  "followups": [
+    {
+      "name": "targeted-timeouts",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern=unconfirmed stop keeps|demo waits for a slow",
+        "dist/test/claude-lifecycle.test.js",
+        "dist/test/demo.test.js"
+      ],
+      "cwd": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22/apps/desktop",
+      "start": "2026-10-22T19:29:59.254322+00:00",
+      "end": "2026-10-22T19:30:04.343945+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "name": "desktop-second-stage",
+      "command": [
+        "node",
+        "--test",
+        "test/browser-dev.test.mjs",
+        "test/native-packages.test.mjs",
+        "test/native-update-acceptance.test.mjs",
+        "test/native-update-fault.test.mjs",
+        "test/update-acceptance-artifacts.test.mjs"
+      ],
+      "cwd": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22/apps/desktop",
+      "start": "2026-10-22T19:30:04.410774+00:00",
+      "end": "2026-10-22T19:30:20.777739+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "name": "site-unit",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@modex/site",
+        "test"
+      ],
+      "cwd": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22",
+      "start": "2026-10-22T19:30:20.799047+00:00",
+      "end": "2026-10-22T19:30:21.305960+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    },
+    {
+      "name": "store-unit",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@modex/store-desktop",
+        "test"
+      ],
+      "cwd": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22",
+      "start": "2026-10-22T19:30:21.334006+00:00",
+      "end": "2026-10-22T19:30:26.373652+00:00",
+      "exit": 0,
+      "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+    }
+  ],
+  "log_sha256": {
+    "install": "6aa6bcbddd9b658fe175aabdc84698f254baa6c0c1f29b8ef5d0be872b8b4fda",
+    "build": "295c785f185b1df8fd64fb3276be0ee88785cb3d50df65e94a66e54c7ac9795d",
+    "typecheck": "e006a7cc73d97dcbd926e9f5552a60dad21b3a0a6c384b5cf7f27be6ad6b85a0",
+    "test": "df8b4270023f8c2e9aaae2079503ebc907c7c33f69b85b6fc49df4e5bcd9996b",
+    "targeted-timeouts": "c10ab97fc61f8575dc3fdf1b6ef06835ed99a3cf58521ebc5eed05b38f4eaa3a",
+    "desktop-second-stage": "faaf92005fc8f18e5d7e95fb58927fb2ea7e21de7f0cc34c1c1e5283db0bb4d7",
+    "site-unit": "f54ac9fab777d802d19c2d0b15004d58caac4c63fcbd1dd7c71bc4e0ce954a35",
+    "store-unit": "ed7389883e4e152e89ad8ae2a26a3e27b72ee116ed0775fcf24fa4249e7dca02",
+    "test-second-full": "90283ea5b3dbc7a8bd1bf51f34fb1bc1290cc8303b32c14dd13ae5eb112772af",
+    "e2e": "e1397e4fab1813b59e537c472fd1f7f4ca1957d76dc8ad3affc510c71d05c2bd",
+    "iphone": "7207bd46477b60ed76255690db56095dacf4cc942666181950722b907992fb1b",
+    "candidate-transcript-measure": "6f7a84742286a77c1d5ee76cd750883cd1bcf3f2861d4b788a33b22cf2bde278",
+    "iphone-ios27": "21b79c175abe57e62331eb9691e4562d4ca28a8483f7ee8024e4a0aa78092e07"
+  },
+  "unit_results": {
+    "root": {
+      "passed": 117
+    },
+    "core": {
+      "passed": 16
+    },
+    "desktop_primary": {
+      "total": 1821,
+      "passed": 1803,
+      "cancelled": 2,
+      "skipped": 16,
+      "assertion_failures": 0,
+      "skipped_names": [
+        "Windows refuses strong recovery writes without claiming durability",
+        "native Windows npm shim preserves arguments and resolves the selected CLI",
+        "native Windows node_modules/.bin shim preserves arguments and resolves the selected CLI",
+        "native Windows npm executable shim preserves exact argv",
+        "native Windows CLI job removes detached descendants on natural",
+        "native Windows CLI job removes detached descendants on cancel",
+        "native Windows CLI job removes detached descendants on owner-exit",
+        "pinned OpenKnowledge persists agent edits, preserves other writers, returns history and preview",
+        "Windows keeps ordinary sends and refuses a strong native admission",
+        "Windows ordinary persistence works while strong native admission explicitly refuses",
+        "native Windows PTY removes detached descendants on natural",
+        "native Windows PTY removes detached descendants on close",
+        "native Windows PTY removes detached descendants on owner-exit",
+        "native Windows PTY removes detached descendants on supervisor-failure",
+        "native Windows PTY preserves input, resize and shell Ctrl-C behavior",
+        "native Windows PTY repeated cleanup releases resources and lets its owner exit"
+      ]
+    },
+    "targeted_unchanged": {
+      "passed": 2
+    },
+    "desktop_second_stage": {
+      "passed": 21
+    },
+    "site": {
+      "passed": 10
+    },
+    "store": {
+      "passed": 16
+    }
+  },
+  "pending": [
+    "human review",
+    "live Codex after October 25",
+    "live Claude structured plan",
+    "remaining child integration"
+  ],
+  "second_full_unit_run": {
+    "command": "pnpm test",
+    "attempt": 2,
+    "start": "2026-10-22T19:46:25.825128+00:00",
+    "end": "2026-10-22T19:57:09.105987+00:00",
+    "exit": 0,
+    "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4"
+  },
+  "second_full_unit_counts": {
+    "root": 117,
+    "core": 16,
+    "desktop_primary": {
+      "passed": 1805,
+      "skipped": 16,
+      "cancelled": 0,
+      "failed": 0
+    },
+    "desktop_second_stage": 21,
+    "site": 10,
+    "store": 16
+  },
+  "e2e_results": {
+    "desktop": {
+      "passed": 388,
+      "skipped": 6,
+      "failed": 0,
+      "skipped_cases": [
+        "-   96 e2e/claude-live-stop.spec.ts:37:1 \u203a live Claude: Stop with a waiting card, Stop mid-command, resume after Stop, Stop mid-stream",
+        "-  170 e2e/knowledge.spec.ts:151:1 \u203a a CLI agent updates real knowledge outside its project and exposes a persistent editor link",
+        "-  171 e2e/knowledge.spec.ts:236:1 \u203a Space connects to an existing Open Knowledge editor and leaves it running on disconnect and quit",
+        "-  174 e2e/knowledge.spec.ts:331:1 \u203a real Open Knowledge installs, edits local files, hides for privacy, and stops with Modex",
+        "-  190 e2e/live-smoke.spec.ts:79:3 \u203a live claude: a real edit and check, the final answer, and Stop mid-command",
+        "-  191 e2e/live-smoke.spec.ts:79:3 \u203a live codex: a real edit and check, the final answer, and Stop mid-command"
+      ]
+    },
+    "site": {
+      "passed": 7,
+      "failed": 0
+    }
+  },
+  "candidate_capture_run": {
+    "command": [
+      "pnpm",
+      "--dir",
+      "apps/desktop",
+      "exec",
+      "playwright",
+      "test",
+      "e2e/conversation-fidelity.spec.ts",
+      "e2e/typed-turns.spec.ts"
+    ],
+    "environment": {
+      "MODEX_SCREENSHOTS": "/Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf8-integrated-oct22/docs/screenshots/conversation-fidelity/2026-10-22-candidate"
+    },
+    "start": "2026-10-22T20:04:08.552535+00:00",
+    "end": "2026-10-22T20:05:08.571580+00:00",
+    "exit": 0,
+    "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+    "passed": 14,
+    "images": 33
+  },
+  "transcript_measure_run": {
+    "command": [
+      "pnpm",
+      "--dir",
+      "apps/desktop",
+      "exec",
+      "playwright",
+      "test",
+      "e2e/transcript-measure.spec.ts"
+    ],
+    "environment": {
+      "MODEX_MEASURE": "/Users/buns/.codex/attachments/cf8-integrated-oct22-evidence/candidate-transcript-measure.json"
+    },
+    "start": "2026-10-22T20:08:57.058902+00:00",
+    "end": "2026-10-22T20:09:05.482851+00:00",
+    "exit": 0,
+    "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+    "passed": 2
+  },
+  "iphone_ios27_run": {
+    "command": [
+      "bash",
+      "apps/ios/ModexCompanion/Scripts/test-e2e.sh"
+    ],
+    "environment": {
+      "MODEX_IOS_DESTINATION": "platform=iOS Simulator,id=192B1FDC-0946-43CE-9215-C12305165D36",
+      "MODEX_IOS_DERIVED_DATA": "/tmp/modex-cf8-oct22-ios27-derived"
+    },
+    "start": "2026-10-22T20:05:20.570866+00:00",
+    "end": "2026-10-22T20:11:21.440372+00:00",
+    "exit": 0,
+    "sha": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+    "classes": {
+      "CompanionFlowTests": 23,
+      "DemoWorkspaceTests": 20
+    },
+    "failures": 0
+  }
+}

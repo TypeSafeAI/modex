@@ -8,7 +8,7 @@ import type { CodeReviewRequest, Inbox, PrOverview } from "../src/shared/code-re
 
 // #321 AC1: keep production preload, IPC registration, service and subprocess transport.
 // Only the gh executable is synthetic; no ipcMain handler replacement or direct service calls.
-test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound files without changing the checkout", async () => {
+test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound files without changing the checkout", async ({}, testInfo) => {
   const { home, repo } = seedHome();
   const bin = path.join(home, "bin");
   fs.mkdirSync(bin);
@@ -24,6 +24,18 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
   delete env.GITHUB_TOKEN;
   const executablePath = process.env.MODEX_PACKAGED_APP;
   const app = await electron.launch({ executablePath, args: executablePath ? [] : [appDir], cwd: appDir, env });
+  const child = app.process();
+  const started = Date.now();
+  const events: { ms: number; event: string; detail?: unknown }[] = [];
+  const record = (event: string, detail?: unknown) => {
+    if (events.length < 64) events.push({ ms: Date.now() - started, event, detail });
+  };
+  let stderr = "";
+  const onStderr = (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-8192); };
+  child.stderr?.on("data", onStderr);
+  child.on("exit", (code, signal) => record("process-exit", { code, signal }));
+  child.on("error", error => record("process-error", String(error)));
+  app.on("close", () => record("application-close"));
   try {
     const identity = await app.evaluate(({ app }) => ({ executable: process.execPath, packaged: app.isPackaged }));
     expect(identity.packaged).toBe(Boolean(process.env.MODEX_PACKAGED_APP));
@@ -31,6 +43,8 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
       expect(fs.realpathSync(identity.executable)).toBe(fs.realpathSync(process.env.MODEX_PACKAGED_APP));
     }
     const page = await app.firstWindow();
+    page.on("crash", () => record("page-crash"));
+    page.on("close", () => record("page-close"));
     await page.waitForLoadState("domcontentloaded");
     const invoke = (request: CodeReviewRequest) => page.evaluate(request => window.modex!.invoke("code-review:read", request), request);
     const connection = await invoke({ op: "connection", requestId: "connection" });
@@ -83,6 +97,15 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
     expect(endpoints.filter(endpoint => !overviewReads.has(endpoint) && !/^repos\/example-org\/lending\/compare\/b{40}\.\.\.c{40}\?per_page=1&page=1$/.test(endpoint) && !/^(user|search\/issues\?.+|repos\/example-org\/(lending|field-guide)(\/pulls\/73(\/files\?per_page=100&page=1)?|\/contents\/src\/holds\/move\.ts\?ref=c{40})?)$/.test(endpoint))).toEqual([]);
     expect({ head: git("rev-parse", "HEAD"), branch: git("symbolic-ref", "HEAD"), status: git("status", "--porcelain=v1", "--untracked-files=all") }).toEqual(before);
   } finally {
-    await app.close();
+    record("cleanup-start");
+    try {
+      await testInfo.attach("electron-lifecycle-before-cleanup", {
+        body: Buffer.from(JSON.stringify({ pid: child.pid, exitCode: child.exitCode, signalCode: child.signalCode, events, stderr }, null, 2)),
+        contentType: "application/json",
+      });
+    } finally {
+      await app.close();
+      child.stderr?.removeListener("data", onStderr);
+    }
   }
 });

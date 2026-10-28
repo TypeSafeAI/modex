@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-24._
+_Last updated 2026-10-28._
 
 ## Shipped
 
@@ -59,6 +59,10 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
+## Review repairs in progress
+
+PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. Hosted checks and protected delivery remain pending. This is not merged or released, and native/live acceptance remains separate.
+
 ## On main, unreleased
 
 - **Local model connections and discovery, in main only** (LM-2 [#378](https://github.com/TypeSafeAI/modex/issues/378),
@@ -73,10 +77,21 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
   (Ollama 0.40.10 has none; this Mac's only LM Studio model is an embedding model).
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
+- **CF-8 integrated candidate `b643617`** (#281, 2026-10-28). The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md#integrated-candidate-2026-10-28-b643617)
+  pins `main` at `b643617`, which carries every CF-1 to CF-7 slice (#394 and the CF-4 close-out via #404
+  included). First pass, no reruns: install, build and typecheck passed; unit 2,011 passed and 17 skipped
+  (desktop) with every other suite green; desktop e2e 470 passed and 7 opt-in skips; site 7/7; iPhone UI 23/23
+  and 20/20 on a dedicated iOS 27.0 simulator. Live Claude Code 2.1.312 (Haiku, Chat mode) passed the golden
+  path through the app: one approval, the edit and check, "Claude Code reported no plan for this turn" (the CLI
+  offers Modex no plan tool), Save to Notes, Open, restart, and Stop (interrupted in 0.8 s, the file never
+  written). Live codex-cli 0.164.0 (`gpt-6.1-sol`, ChatGPT account, Chat mode) passed the same path: two approvals, `apply_patch` and the check with exit code 0, a `final` answer, "Codex reported no plan for this turn", Save to Notes, Open, restart, and Stop (interrupted in 0.1 s, the file never written). The 2026-10-22 candidates `0e674e7` and `ec7be57` are kept as history beside it.
+  **Still open, all Val's:** the keyboard/VoiceOver rows A1–A8, B1–B7 and C1–C5 on the seeded build from this
+  candidate, and the CF-3 rows D1–D5, V1–V3 and P1–P6 (#420; the P rows also need Companion 0.4.0 (9) on
+  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral.
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
-  an offline seed scenario. Human acceptance and a final integrated candidate remain open.
+  an offline seed scenario. Human acceptance remains open; the integrated candidate is above.
   The full-log and patch-state E2E fixtures wait for the completed turn before inspecting its
   work, avoiding the initial idle state racing the fixture startup; their content and execution
   count assertions remain unchanged.
@@ -209,7 +224,7 @@ and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
 - **LM-1 local-model contract and native feasibility (#377 / #376).** Val accepted narrow Gate A on 2026-10-24 for the producer at main `bb0e1a4`, including the shared identity/runtime mapping from #400, and the recorded Codex 0.163.0/0.164.0 + Strata 0.1.47 tool/Stop/continuation evidence. The loopback metadata boundary is separately approved; no local execution feature is enabled. LM-2 consumes it through #403. Val explicitly deferred the additional Ollama/LM Studio app-server probe until a local coding model exists: Ollama has no models, and this Mac has only an LM Studio embedding model; linked-device LLMs are outside scope. [Contract/source map](local-models.md), [native feasibility](reviews/2026-10-22-lm1-feasibility.md) and [acceptance/availability](reviews/2026-10-24-lm1-acceptance.md).
 
-- **CF-4 Markdown closeout (#277).** `cf4-closeout` adds named keyboard stops for table/code overflow, reference-viewport captures, and Markdown rows in the shared #281 human checklist. [New evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) separates local measurements from the approved 500 ms median cold-open gate, passing hosted evidence on the original reviewed head, and Val's still-pending VoiceOver result. The [integrated candidate](reviews/2026-10-24-integrated-review.md) passed full build, unit, typecheck and E2E gates, including a 129.5 ms local median; #277 stays open for human acceptance.
+- **CF-4 Markdown closeout (#277).** The `cf4-closeout` candidate (named keyboard stops for table/code overflow, reference-viewport captures, the approved 500 ms median cold-open gate, and Markdown rows C1–C5 in the shared #281 human checklist) landed on `main` through #404 (`e3527f4`, 2026-10-24); #371 was closed as superseded. [The closeout evidence](reviews/2026-10-22-cf4-closeout/checkpoint.md) keeps the local, hosted and integrated measurements apart and records the human review candidate prepared on 2026-10-28: `main` at `b643617`, built and seeded in `.worktrees/cf4-voiceover`, with the focused rendering, keyboard and five-launch budget checks 11/11 and a 170 ms median. C1–C5 have no result; #277 stays open until Val records them or defers in writing.
 
 - **v0.3.0 after publication.** v0.3.0 was published on 2026-10-20 from the signed tag on
   `30ee279`. Two release gates need Val at the Mac: upgrading the release Mac from v0.2.0 through

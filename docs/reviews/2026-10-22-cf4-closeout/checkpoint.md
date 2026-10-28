@@ -65,3 +65,44 @@ Markdown rows C1–C5 extend the existing `../2026-10-20-keyboard-voiceover/chec
 Final reference captures passed 16/16 and were visually inspected in all three themes. `pnpm build` and `pnpm typecheck` passed. The targeted parser unit run initially failed three exact-markup expectations because the new attributes were not allowed; those expectations now preserve their code-content checks while permitting accessibility attributes, and all 16 parser tests pass. Full workspace unit tests passed on the first pass: worktree 117/117, core 16/16, desktop 1,805 passed / 16 skipped plus 21/21 script tests, site 10/10, store-desktop 16/16 (1,985 passed total, 16 skipped, zero failures). See `full-test.log`. The first full E2E command finished with desktop 390 passed, 6 skipped and 2 failures in `usage.spec.ts`: Chromium crashed while creating the first page, and the next launch reported the shared cache executable for Chromium 1243 missing. Site E2E was not reached because the command chain stopped. See `full-e2e.log`; first-pass traces are preserved in `apps/desktop/.probes/cf4-full-e2e-first-pass/`. After installing Chromium 1243 into the worktree-local `apps/desktop/.probes/cf4-browsers` cache, the focused usage rerun passed 2/2 and site E2E passed 7/7 with `MODEX_SITE_TEST_PORT=5297`. Both commands used `PLAYWRIGHT_BROWSERS_PATH` pointing to that cache. See `usage-recovery.log` and `site-e2e.log`. No source changes were needed for recovery. This is complete local coverage with a documented infrastructure recovery, not a fully green first pass. All three new Markdown keyboard cases and the reference captures passed in the full run. Its five-launch budget samples were 152.6, 149.0, 165.9, 155.3 and 182.4 ms, median 155.3 ms. Production source remained unchanged from `93cfde3`; test and evidence refinements were committed while the full command chain was running. Hosted CI must provide a check tied to a single final commit. Delivery receipts remain pending. The approved budget is implemented; CI stability evidence and human VoiceOver acceptance remain open.
 
 Committed logs preserve command output with trailing spaces removed for patch hygiene; raw copies remain in `apps/desktop/.probes/cf4-raw-logs/`.
+
+## Delivery and the human review candidate, 2026-10-28
+
+Added by the close-out session on 2026-10-28. Everything above is unchanged.
+
+### How the candidate landed
+
+- PR #371 (head `f3f158233b7e900c494ea0babb2528d4c468236f`) was never merged. Its reviewed changes reached protected `main` through #404, merge commit `e3527f457842c6eff9c793f8efe7883013954d93` on 2026-10-24, with [the integration receipt](../2026-10-24-integrated-review.md). #371 was then closed as superseded, so the rebase it once needed never happened and nothing from it was rebuilt.
+- The `cf4-closeout` branch and worktree still hold #371's seven commits, which are not ancestors of `main`; they were left untouched.
+- `main` at `b64361750983068160fe95293192ccea03000f88` (#422) carries those changes, as does every later `main` build and the `v0.4.0-rc.2` tag.
+
+### Candidate for Val's C1–C5 run
+
+Nothing below is a result. Every row stays open until Val reports it; a row Val cannot run stays open with its reason, or closes on Val's written deferral.
+
+| Item | Value |
+| --- | --- |
+| Modex build | `main` at `b64361750983068160fe95293192ccea03000f88` (#422), desktop 0.4.0, `pnpm build` in `.worktrees/cf4-voiceover` on 2026-10-28, run from source with `npx electron .` as the checklist prescribes (not a release artifact) |
+| Launch | From `.worktrees/cf4-voiceover/apps/desktop`: `MODEX_HOME=$PWD/.probes/cf4-voiceover/home npx electron .` |
+| Seeded home | `.worktrees/cf4-voiceover/apps/desktop/.probes/cf4-voiceover/home`, written by `docs/reviews/2026-10-20-keyboard-voiceover/seed.mjs` on 2026-10-28. The sidebar thread **Markdown review** holds `markdown-fixture.json` (SHA-256 `cbb42e222e3dca2fbe5c8ec3fe046caf6ede48634b33bd45e57324a110b674e8`), the fixture the automated keyboard tests and the reference captures use. `~/.modex` is never touched |
+| Window and themes | 900×600 with Review open, so the table and the `ts` code block overflow. Repeat in Graphite, Jev and OpenCoven. macOS Reduce Motion on for C3 |
+| Machine | Mac17,6, Apple M5 Max (18 cores), macOS 27.0.1 (26A434), Node v24.22.0, pnpm 10.34.5 |
+| VoiceOver voice, macOS version at run time | Val records |
+
+Automated checks on this exact head, run focused on 2026-10-28 before the candidate was handed over (`human-candidate-2026-10-28-e2e.log`):
+
+- `e2e/conversation-rendering.spec.ts` 6/6, `e2e/markdown-keyboard.spec.ts` 3/3 (Graphite, Jev, OpenCoven), `e2e/transcript-measure.spec.ts` 2/2: 11 passed, 0 failed, 43.9 s.
+- Five-launch cold-open samples 176.2, 182.3, 144.4, 158.1 and 170.0 ms, median **170 ms ≤ 500 ms**, no retries (`human-candidate-2026-10-28-measure.json`).
+- Launch smoke with exactly the command above, no `MODEX_E2E` flag: the seeded thread opened; the regions named **Markdown table** and **ts code** were present and both overflowed at 900×600; the links were Review link, Evidence link and End link; **Copy ts code** was present. Screenshot `screenshots/human-candidate-2026-10-28-900x600.png` (900×600 px, SHA-256 `353f623f052fb31634bec21171b325d33bf912efe9eb0955c233be1f8c15f4ff`). The probe lives in the git-ignored `apps/desktop/.probes/cf4-voiceover-smoke.mjs`.
+
+These are keyboard and launch checks by a script. They are not a VoiceOver result and fill no human cell.
+
+| Row | Result | Reported by Val |
+| --- | --- | --- |
+| C1 | open | |
+| C2 | open | |
+| C3 | open | |
+| C4 | open | |
+| C5 | open | |
+
+Val posts the filled rows on #277 (or #281, the shared gate). They are copied here exactly as reported, in a docs-only signed PR, and never ticked on Val's behalf. A failing row gets a red E2E test and a fix in a new worktree. #277 closes only when every row has Val's result or Val's written deferral.

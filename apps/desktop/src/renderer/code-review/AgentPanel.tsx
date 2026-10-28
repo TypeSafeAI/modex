@@ -33,8 +33,8 @@ const short = (sha: string) => sha.slice(0, 8);
 export function ReviewButton({ agent, overview, fallback, open, onToggle }: { agent: Agent; overview: PrOverview; fallback: Capability; open: boolean; onToggle: () => void }) {
   const entry = useAgent(agent, overview);
   const capability = agentCapability(entry, fallback);
-  const running = !!entry?.status?.active;
-  const label = running ? "Review running" : "Review with Claude";
+  const active = entry?.status?.runs.find((run) => run.id === entry.status?.active);
+  const label = active?.state === "running" ? "Review running" : active ? "Review exit unconfirmed" : "Review with Claude";
   return <Tooltip label={capability.available ? label : capability.reason}>
     <button type="button" className="cr-action" aria-label={label} aria-expanded={open} aria-disabled={capability.available ? undefined : "true"} data-testid="code-review-review"
       onClick={(event) => { if (!capability.available) event.preventDefault(); else onToggle(); }}>
@@ -120,7 +120,7 @@ export function AgentPanel({ agent, overview, onClose, onReload }: { agent: Agen
   return <section className="cr-merge cr-agent-panel" role="region" aria-label="Review with Claude" data-testid="cr-agent-panel">
     <div className="cr-merge-head"><strong>Review with Claude</strong><span className="spacer" /><button className="btn" type="button" onClick={onClose}>Close</button></div>
     <p data-testid="cr-agent-scope">Runs the Claude Code CLI installed on this Mac, under your Claude account, on a snapshot of this pull request's diff at head <code>{short(overview.revision.headSha)}</code>{status?.backend.version ? ` (Claude Code ${status.backend.version})` : ""}.</p>
-    <p className="cr-evidence">It can only read that snapshot: no shell, no network, no checkout, no other files, no questions back. Nothing it says is posted to GitHub, counted as a check or used to merge. {status ? status.instructions.text.trim() ? `Your instructions, version ${status.instructions.version}, apply.` : "You have no review instructions." : ""}</p>
+    <p className="cr-evidence">It can only read that snapshot: no shell or network tools, no checkout, no other files, no questions back. Claude Code sends the snapshot and your review instructions to its configured inference provider under your account. Nothing it says is posted to GitHub, counted as a check or used to merge. {status ? status.instructions.text.trim() ? `Your instructions, version ${status.instructions.version}, apply.` : "You have no review instructions." : ""}</p>
     {status && <label className="cr-field cr-agent-model">Model
       <select aria-label="Model" value={model ?? ""} disabled={!!active || !status.backend.models.length} onChange={(e) => agent.setModel(overview.key, e.target.value)}>
         {status.backend.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -129,7 +129,9 @@ export function AgentPanel({ agent, overview, onClose, onReload }: { agent: Agen
     {!status && <p className="cr-evidence" role="status">{entry?.error ?? CHECKING_TEXT}</p>}
     {status && !status.backend.available && <p className="cr-error" role="alert">{status.backend.reason}</p>}
     <div className="cr-compose-buttons">
-      {active
+      {active?.state === "unknown"
+        ? <span className="cr-error" role="status">Claude Code has not confirmed its exit. Another run cannot start yet.</span>
+        : active
         ? <><span className="cr-evidence" role="status">Running since {new Date(active.startedAt).toLocaleTimeString()} · {active.toolCalls} tool {active.toolCalls === 1 ? "call" : "calls"}</span>
           <button className="btn" type="button" disabled={busy} data-testid="cr-agent-stop" onClick={() => void stop()}>Stop</button></>
         : <button className="btn primary" type="button" disabled={busy || !status?.backend.available || !model} data-testid="cr-agent-start" onClick={() => void start()}>Start review</button>}
