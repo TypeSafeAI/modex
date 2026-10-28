@@ -171,6 +171,7 @@ export class StoreDemo {
       "thread:context": ({ threadId }) => { this.thread(threadId); return { isRepo: true, branch: "demo/review", pullRequest: { state: "disabled", detail: "Demo workspace: no remote repository or pull request." } }; },
       "code-review:read": unavailable,
       "code-review:write": unavailable,
+      "code-review:agent": unavailable,
       "local-models:command": unavailable,
       "changes:status": ({ threadId }) => this.changes(threadId),
       "changes:diff": ({ threadId, path }) => {

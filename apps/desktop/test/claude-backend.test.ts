@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ClaudeBackend, denyMessage, fastModeOf, toolTitle, userContent } from "../src/main/engine/backends/claude.js";
+import { ClaudeBackend, REVIEW_CONFINEMENT_ARGS, confinedEnvironment, denyMessage, fastModeOf, toolTitle, userContent } from "../src/main/engine/backends/claude.js";
 import type { ApprovalRequest } from "../src/main/engine/backends/types.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 import { PNG_B64, tmpdir } from "./helpers.js";
@@ -74,6 +74,27 @@ test("ClaudeBackend.args maps modes and plan onto claude -p flags", () => {
   for (const f of ["-p", "--input-format", "stream-json", "--output-format", "--include-partial-messages", "--permission-prompt-tool", "stdio"]) assert.ok(a.includes(f), f);
   assert.equal(toolTitle("Bash", { command: "npm test" }), "$ npm test");
   assert.equal(toolTitle("Edit", { file_path: "src/a.ts" }), "edit src/a.ts");
+});
+
+test("CR-6: a confined review turn is the fixed argv with no permission tool, no session, Read only; its environment carries no GitHub, Modex or provider credential", () => {
+  const confinement = { kind: "review-snapshot" as const, systemPrompt: "Review the snapshot.", maxTurns: 12 };
+  const args = ClaudeBackend.args({ cwd: "/snapshot", mode: "chat", plan: false, model: "fable", confinement });
+  assert.deepEqual(args, ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", ...REVIEW_CONFINEMENT_ARGS, "--max-turns", "12", "--append-system-prompt", "Review the snapshot.", "--model", "fable"]);
+  for (const flag of ["--safe-mode", "--restricted", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"]) assert.ok(REVIEW_CONFINEMENT_ARGS.includes(flag), flag);
+  assert.equal(REVIEW_CONFINEMENT_ARGS[REVIEW_CONFINEMENT_ARGS.indexOf("--tools") + 1], "Read");
+  assert.equal(REVIEW_CONFINEMENT_ARGS[REVIEW_CONFINEMENT_ARGS.indexOf("--permission-prompts") + 1], "none");
+  assert.equal(REVIEW_CONFINEMENT_ARGS[REVIEW_CONFINEMENT_ARGS.indexOf("--setting-sources") + 1], "");
+  assert.deepEqual(JSON.parse(REVIEW_CONFINEMENT_ARGS[REVIEW_CONFINEMENT_ARGS.indexOf("--mcp-config") + 1]!), { mcpServers: {} });
+  for (const flag of ["--permission-prompt-tool", "--resume", "--add-dir", "--allowedTools", "--bare", "--dangerously-skip-permissions"]) assert.ok(!args.includes(flag), flag);
+  // Resume, extra directories, MCP attachments and fast mode are not honoured on a confined turn.
+  const extra = ClaudeBackend.args({ cwd: "/snapshot", mode: "agent", plan: true, model: "fable", confinement, resume: "s1", addDirs: ["/elsewhere"], fast: true, knowledge: { url: "http://127.0.0.1:1/mcp", instructions: "x" } });
+  assert.deepEqual(extra, args);
+  const env = confinedEnvironment("/usr/local/bin/claude", { PATH: "/usr/bin", HOME: "/Users/someone", GH_TOKEN: "gh-secret", GITHUB_TOKEN: "gh-secret-2", GH_ENTERPRISE_TOKEN: "e", MODEX_HOME: "/Users/someone/.modex", MODEX_E2E: "1", CODEX_API_KEY: "codex-secret", OPENAI_API_KEY: "openai-secret", ANTHROPIC_API_KEY: "keep" });
+  for (const name of ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "MODEX_HOME", "MODEX_E2E", "CODEX_API_KEY", "OPENAI_API_KEY"]) assert.equal(env[name], undefined, name);
+  assert.equal(env.HOME, "/Users/someone", "the person's own Claude login is the credential");
+  assert.equal(env.ANTHROPIC_API_KEY, "keep");
+  assert.equal(env.DISABLE_AUTOUPDATER, "1");
+  assert.equal(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
 });
 
 test("ClaudeBackend: streams deltas, tools, answers a permission request, resumes by session id", async () => {

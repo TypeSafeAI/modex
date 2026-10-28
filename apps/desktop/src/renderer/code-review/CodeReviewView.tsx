@@ -17,6 +17,7 @@ import { rowsOf, titleOf, type GroupPages, type OpenPr } from "./model.js";
 import type { ChangesViews } from "./PrChanges";
 import { PrPane } from "./PrPane";
 import { Writes } from "./writes.js";
+import { Agent } from "./agent.js";
 import "./code-review.css";
 
 /** The title bar's back and forward while Code Review is the surface. */
@@ -46,6 +47,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
   useEffect(() => () => reader.cancelAll(), [reader]);
   // Comments and reviews (#326) go through main's separate write channel.
   const writes = useMemo(() => new Writes((request) => bridge.invoke("code-review:write", request)), []);
+  const agent = useMemo(() => new Agent((request) => bridge.invoke("code-review:agent", request)), []);
   const [connection, setConnection] = useState<ReadResult<CodeReviewConnection> | null>(null);
   const account = connected(connection);
   const accountRef = useRef<CodeReviewAccount | null>(null);
@@ -83,6 +85,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
     // Another account, or none: nothing asked under the old one may land, and none of its PRs stay open.
     reader.cancelAll();
     writes.clear();
+    agent.clear();
     changesViews.current.clear();
     accountRef.current = next;
     setBusy(new Set());
@@ -323,7 +326,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
         </div>}
         {selected && panes.map((pane) => <PrPane key={pane} pane={pane} changesViews={changesViews.current} pr={selected} keyId={selectedId!} changesWidth={changesWidth} treeWidth={treeWidth}
           busy={busy.has(`overview:${selectedId}`)} pinned={pinned} caps={caps} onPin={pin} onRetry={() => void readOverview(selected)}
-          onShowChanges={() => { setView(v => showTab(v, "changes")); focusTab("changes"); }} onActivityPage={(cursor) => void readActivity(selected, cursor)} contextBusy={busy} onTreeResize={(w) => setLayout({ codeReviewTree: w })} onTreeReset={() => setLayout({ codeReviewTree: undefined })} writes={writes} />)}
+          onShowChanges={() => { setView(v => showTab(v, "changes")); focusTab("changes"); }} onActivityPage={(cursor) => void readActivity(selected, cursor)} contextBusy={busy} onTreeResize={(w) => setLayout({ codeReviewTree: w })} onTreeReset={() => setLayout({ codeReviewTree: undefined })} writes={writes} agent={agent} />)}
         {split && <PanelResizeHandle side="sidebar" className="cr-split-resizer" label="Resize the pull request pane" width={splitWidth} min={SPLIT.overviewMin} max={Math.max(SPLIT.overviewMin, width - 1 - SPLIT.changesMin)}
           onResize={(w) => setLayout({ codeReviewSplit: w })} onReset={() => setLayout({ codeReviewSplit: undefined })} />}
       </div>

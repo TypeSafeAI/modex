@@ -638,6 +638,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "code-review:read": { req: CodeReviewRequest; res: CodeReviewReply | null };
   /** A Code Review comment or review (#326), on its own channel. Main checks account, permission and head itself. */
   "code-review:write": { req: import("./code-review-write.js").WriteRequest; res: import("./code-review-write.js").WriteReply };
+  /** CR-6 (#325): a read-only agent review or question, and the person's review instructions. Local only. */
+  "code-review:agent": { req: import("./code-review-agent.js").AgentRequest; res: import("./code-review-agent.js").AgentReply };
   "local-models:command": { req: import("./local-connections.js").LocalModelsRequest; res: import("./local-connections.js").LocalModelsReply };
   /** Opens (or reattaches to) the thread's shell; cols/rows are the panel's current size. */
   "terminal:open": { req: { threadId: string; cols: number; rows: number }; res: TerminalSnapshot };

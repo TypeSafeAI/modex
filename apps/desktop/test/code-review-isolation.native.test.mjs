@@ -118,6 +118,24 @@ test('native Claude candidate denies injected shell/write/fetch/MCP/outside read
   assert(!result.requests.some(r => r.path.includes('unexpected-write')));
 });
 
+// The shipped confinement (CR-6, #325): --safe-mode in place of --bare, so the person's own Claude login works, with the same tool palette.
+test('native Claude production confinement denies injected shell/write/fetch/MCP/outside reads while selected evidence is readable', { skip: !native }, async t => {
+  const result = await claudeFixture(t, 'production');
+  t.diagnostic(JSON.stringify({ ...result, stdout: undefined, results: result.results.map(r => ({ id: r.tool_use_id, error: r.is_error === true, content: r.content })) }));
+  assert.equal(result.timedOut, false); assert.equal(result.overflow, false); assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.turns, 2);
+  assert.equal(result.selected, 'synthetic-selected-evidence');
+  const byId = new Map(result.results.map(r => [r.tool_use_id, r]));
+  assert.match(byId.get('read-good')?.content ?? '', /synthetic-selected-evidence/);
+  assert.notEqual(byId.get('read-good')?.is_error, true);
+  for (const id of ['read-secret', 'read-symlink', 'run-shell', 'write-file', 'external-write', 'mcp-write']) assert.equal(byId.get(id)?.is_error, true, id);
+  for (const [id, tool] of [['run-shell', 'Bash'], ['write-file', 'Write'], ['external-write', 'WebFetch'], ['mcp-write', 'mcp__sentinel__write']]) assert(byId.get(id).content.includes(`No such tool available: ${tool}`), id);
+  assert(!JSON.stringify(result.results).includes('synthetic-outside-secret'));
+  assert.deepEqual(result.markers, { write: false, hook: false, mcp: false });
+  assert.deepEqual(result.advertised, ['Read']);
+  assert(!result.requests.some(r => r.path.includes('unexpected-write')));
+});
+
 test('native Claude hook and MCP controls have working startup markers before candidate suppression is claimed', { skip: !native }, async t => {
   const hook = await claudeFixture(t, 'hook-control');
   t.diagnostic(JSON.stringify({ mode: 'hook-control', version: hook.version, code: hook.code, timedOut: hook.timedOut, markers: hook.markers, requests: hook.requests, stderr: hook.stderr }));
