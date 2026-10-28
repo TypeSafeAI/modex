@@ -59,6 +59,10 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
+## Review repairs in progress
+
+PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. Regression failures are preserved; full verification and independent review are pending. This is not merged or released, and native/live acceptance remains separate.
+
 ## On main, unreleased
 
 - **Local model connections and discovery, in main only** (LM-2 [#378](https://github.com/TypeSafeAI/modex/issues/378),

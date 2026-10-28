@@ -15,7 +15,7 @@ import { AttachmentRecoveryFile, recoveryJSON, type RecoveryFileSnapshot } from 
 interface StoredRun {
   id: string; kind: AgentRun["kind"]; key: AgentRun["key"]; revision: AgentRun["revision"]; question: string | null; instructionsVersion: number; backend: AgentRun["backend"];
   time: { startedAt: string; endedAt: string | null };
-  outcome: { state: AgentRun["state"]; reason: AgentRun["reason"]; detail: string | null; promptsRefused: number };
+  outcome: { state: AgentRun["state"]; reason: AgentRun["reason"]; detail: string | null; promptsRefused: number; stop?: AgentRun["stop"] };
   coverage: AgentRun["coverage"];
   output: { reply: string; replyTruncated: boolean; findings: AgentFinding[]; findingsMalformed: boolean; trail: AgentRun["trail"]; toolCalls: number };
 }
@@ -23,7 +23,7 @@ interface Document { schema: 1; instructions: AgentInstructions; runs: StoredRun
 
 function toStored(run: AgentRun): StoredRun {
   const { id, kind, key, revision, question, instructionsVersion, backend, startedAt, endedAt, state, reason, detail, promptsRefused, coverage, reply, replyTruncated, findings, findingsMalformed, trail, toolCalls } = run;
-  return { id, kind, key, revision, question, instructionsVersion, backend, time: { startedAt, endedAt }, outcome: { state, reason, detail, promptsRefused }, coverage, output: { reply, replyTruncated, findings, findingsMalformed, trail, toolCalls } };
+  return { id, kind, key, revision, question, instructionsVersion, backend, time: { startedAt, endedAt }, outcome: { state, reason, detail, promptsRefused, ...(run.stop ? { stop: run.stop } : {}) }, coverage, output: { reply, replyTruncated, findings, findingsMalformed, trail, toolCalls } };
 }
 function toRun(v: unknown): AgentRun | null {
   if (!isObject(v) || !isObject(v.time) || !isObject(v.outcome) || !isObject(v.output)) return null;
@@ -35,7 +35,7 @@ function toRun(v: unknown): AgentRun | null {
 const BYTES = 4 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const STATES = new Set(["running", "completed", "failed", "stopped", "unknown"]);
-const REASONS = new Set(["stopped", "restart", "backend-failed", "could-not-start", "no-reply"]);
+const REASONS = new Set(["stopped", "stop-unconfirmed", "exit-observed", "restart", "backend-failed", "could-not-start", "no-reply"]);
 const OMISSIONS = new Set(["binary", "too-large", "provider", "budget", "file-cap"]);
 const REFERENCES = new Set(["anchored", "unverified", "none"]);
 const failure = () => new Error("Review agent data is invalid; existing records were preserved.");
@@ -60,6 +60,14 @@ function validRun(v: unknown): v is AgentRun {
   if (!isObject(v) || !UUID.test(String(v.id)) || (v.kind !== "review" && v.kind !== "ask")) return false;
   if (validateRequest({ op: "checks", requestId: "record", key: v.key, revision: v.revision }) === null) return false;
   if (!(v.question === null || isText(v.question, AGENT_LIMITS.question)) || !isCount(v.instructionsVersion)) return false;
+  if (v.stop !== undefined) {
+    const stop = v.stop;
+    if (!isObject(stop) || !["exited", "terminated", "killed", "unconfirmed"].includes(String(stop.outcome)) || !isCount(stop.ms)) return false;
+    if (stop.pid !== undefined && (!isCount(stop.pid) || stop.pid < 1)) return false;
+    if (stop.graceMs !== undefined && !isCount(stop.graceMs)) return false;
+    if (stop.exitCode !== undefined && stop.exitCode !== null && !Number.isSafeInteger(stop.exitCode)) return false;
+    if (stop.signal !== undefined && stop.signal !== null && !isText(stop.signal, 64)) return false;
+  }
   const backend = v.backend;
   if (!isObject(backend) || backend.id !== "claude" || !(backend.version === null || isText(backend.version, 64)) || !isText(backend.model, AGENT_LIMITS.model)) return false;
   if (!isTime(v.startedAt) || !(v.endedAt === null || isTime(v.endedAt)) || !STATES.has(String(v.state)) || !(v.reason === null || REASONS.has(String(v.reason)))) return false;
@@ -76,7 +84,7 @@ function validate(value: unknown): void {
   if (!isObject(value) || value.schema !== 1 || !validInstructions(value.instructions) || !Array.isArray(value.runs) || !value.runs.every((r) => toRun(r) !== null)) throw failure();
 }
 
-const settled = (run: StoredRun) => run.outcome.state !== "running";
+const settled = (run: StoredRun) => run.outcome.state !== "running" && run.outcome.reason !== "stop-unconfirmed" && run.outcome.reason !== "restart";
 const runs = (data: Document): AgentRun[] => data.runs.map((r) => toRun(r)!);
 
 export class AgentRecords {
@@ -89,7 +97,7 @@ export class AgentRecords {
     this.snapshot = this.file.read();
     const data = this.data();
     let changed = false;
-    // A run that was running when main last stopped is unknown: its CLI is gone and nothing restarts it.
+    // Main stopped before recording an exit. Its child may survive; retain ownership without replaying it.
     for (const run of data.runs) if (run.outcome.state === "running") { run.outcome.state = "unknown"; run.outcome.reason = "restart"; run.time.endedAt ??= new Date().toISOString(); changed = true; }
     if (changed) this.commit(data);
   }
@@ -121,6 +129,10 @@ export class AgentRecords {
     data.instructions = next;
     this.commit(data);
     return copy(next);
+  }
+
+  unconfirmedStops(): AgentRun[] {
+    return runs(this.data()).filter((run) => run.reason === "stop-unconfirmed" || run.reason === "restart");
   }
 
   get(id: string): AgentRun | null {

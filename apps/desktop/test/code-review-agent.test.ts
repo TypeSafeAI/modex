@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -76,7 +78,7 @@ class FakeBackend implements Backend {
     }
     if (script.approval) await sink.approval({ id: "ap-1", tool: "Bash", title: "$ id", args: {}, options: ["once"] } as never);
     if (script.hang) await new Promise<void>((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener("abort", () => resolve(), { once: true }); });
-    if (signal.aborted) return { status: "interrupted" };
+    if (signal.aborted) return script.result ?? { status: "interrupted" };
     if (script.reply !== undefined) sink.observe({ type: "message.done", native: native("msg-1"), text: script.reply, phase: "final" });
     return script.result ?? { status: "completed" };
   }
@@ -433,7 +435,8 @@ test("a run left running by a crash reads as unknown after a restart and is neve
   // The process dies here: no settle, no record update. A new service over the same home is the next start.
   const again = service(github, new FakeBackend(), dir);
   const status = await again.value<"status">({ op: "status", key: KEY });
-  assert.equal(status.active, null);
+  assert.equal(status.active, run.id);
+  assert.equal((await again.refused<"start">(start())).reason, "busy");
   assert.equal(status.runs[0]!.id, run.id);
   assert.equal(status.runs[0]!.state, "unknown");
   assert.equal(status.runs[0]!.reason, "restart");
@@ -454,4 +457,83 @@ test("the service refuses every operation when disabled, hides storage failures 
   assert.doesNotMatch(refusal.detail, /ENOTDIR|EEXIST|\//);
   await assert.rejects(broken.agent.handle({ op: "status", requestId: "r", key: KEY, extra: true }, "w1-0"), /Invalid Code Review agent request/);
   await assert.rejects(broken.agent.handle({ op: "status", requestId: "r", key: KEY }, "../bad"), /Invalid Code Review session/);
+});
+
+// A backend can finish its stop attempt without proving the child exited.
+// Dropping that receipt must not turn an uncertain process into a free run slot.
+test("an unconfirmed child exit stays unknown, keeps its snapshot and refuses another run", async () => {
+  const github = new FakeGitHub(), backend = new FakeBackend();
+  const s = service(github, backend);
+  backend.scripts.push({ result: { status: "interrupted", stop: { outcome: "unconfirmed", pid: process.pid, ms: 8000 } } });
+  const started = await s.value<"start">(start());
+  const ended = await s.settled(started.id);
+  assert.equal(ended.state, "unknown");
+  assert.equal(ended.reason, "stop-unconfirmed");
+  assert.equal(fs.existsSync(path.join(s.dir, "review-agent", "runs", started.id, "snapshot")), true);
+  assert.equal((await s.refused<"start">(start())).reason, "busy");
+  assert.equal(backend.runs.length, 1);
+  const persisted = new AgentRecords(s.dir).get(started.id)!;
+  assert.equal(persisted.state, "unknown");
+  assert.equal(persisted.reason, "stop-unconfirmed");
+});
+
+for (const status of ["interrupted", "failed"] as const) {
+  test(`${status} with unconfirmed stop survives restart and prevents disposal and replacement`, async () => {
+    const github = new FakeGitHub(), backend = new FakeBackend();
+    const s = service(github, backend);
+    backend.scripts.push({ result: { status, stop: { outcome: "unconfirmed", ms: 8000 } } });
+    const run = await s.settled((await s.value<"start">(start())).id);
+    assert.equal(run.state, "unknown");
+    const restarted = service(github, new FakeBackend(), s.dir);
+    assert.equal((await restarted.refused<"start">(start())).reason, "busy");
+    assert.equal((await restarted.value<"status">({ op: "status", key: KEY })).active, run.id);
+    await assert.rejects(restarted.agent.dispose(), /has not confirmed its exit/);
+    assert.equal(fs.existsSync(path.join(s.dir, "review-agent", "runs", run.id, "snapshot")), true);
+  });
+}
+
+test("observing a retained child's exit releases ownership but leaves its review outcome unknown", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  await once(child, "spawn");
+  const exited = once(child, "exit");
+  try {
+    const github = new FakeGitHub(), backend = new FakeBackend();
+    const s = service(github, backend);
+    const receipt = { outcome: "unconfirmed" as const, pid: child.pid!, ms: 8000 };
+    backend.scripts.push({ result: { status: "interrupted", stop: receipt } });
+    const run = await s.settled((await s.value<"start">(start())).id);
+    assert.equal((await s.refused<"start">(start())).reason, "busy");
+    child.kill("SIGTERM");
+    await exited;
+    const status = await s.value<"status">({ op: "status", key: KEY });
+    assert.equal(status.active, null);
+    assert.equal(status.runs[0]!.state, "unknown");
+    assert.equal(status.runs[0]!.reason, "exit-observed");
+    assert.deepEqual(status.runs[0]!.stop, receipt);
+    assert.equal(fs.existsSync(path.join(s.dir, "review-agent", "runs", run.id, "snapshot")), false);
+    await s.value<"start">(start());
+    assert.equal(backend.runs.length, 2);
+  } finally { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await exited; }
+});
+
+test("a failed stop-receipt write cannot free ownership after restart", async (t) => {
+  const github = new FakeGitHub(), backend = new FakeBackend();
+  const s = service(github, backend);
+  backend.scripts.push({ hang: true, result: { status: "interrupted", stop: { outcome: "unconfirmed", pid: process.pid, ms: 8000 } } });
+  const run = await s.value<"start">(start());
+  const put = AgentRecords.prototype.put;
+  const failure = t.mock.method(AgentRecords.prototype, "put", function (this: AgentRecords, value: AgentRun) {
+    if (value.reason === "stop-unconfirmed") throw new Error("disk full");
+    return put.call(this, value);
+  });
+  const stopped = await s.value<"stop">({ op: "stop", key: KEY, runId: run.id });
+  assert.equal(stopped.state, "unknown");
+  failure.mock.restore();
+  const again = service(github, new FakeBackend(), s.dir);
+  assert.equal((await again.refused<"start">(start())).reason, "busy");
+  const status = await again.value<"status">({ op: "status", key: KEY });
+  assert.equal(status.active, run.id);
+  assert.equal(status.runs[0]!.state, "unknown");
+  await assert.rejects(again.agent.dispose(), /has not confirmed its exit/);
+  assert.equal(fs.existsSync(path.join(s.dir, "review-agent", "runs", run.id, "snapshot")), true);
 });

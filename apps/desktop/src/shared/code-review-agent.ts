@@ -21,7 +21,7 @@ export interface AgentInstructions { version: number; text: string; updatedAt: s
 
 export type AgentRunState = "running" | "completed" | "failed" | "stopped" | "unknown";
 /** Why a run is not `completed`: fixed reasons, each shown with its own text (`RUN_REASONS`). */
-export type AgentRunReason = "stopped" | "restart" | "backend-failed" | "could-not-start" | "no-reply";
+export type AgentRunReason = "stopped" | "stop-unconfirmed" | "exit-observed" | "restart" | "backend-failed" | "could-not-start" | "no-reply";
 
 /** Why a changed file's patch is not in the snapshot. `binary` and `provider` come from GitHub; the rest are main's bounds. */
 export type OmissionReason = "binary" | "too-large" | "provider" | "budget" | "file-cap";
@@ -57,7 +57,18 @@ export interface AgentTrailEntry { name: string; title: string; outcome: Settled
 
 export interface AgentBackend { id: "claude"; version: string | null; model: string }
 
+export interface AgentStopReceipt {
+  outcome: "exited" | "terminated" | "killed" | "unconfirmed";
+  pid?: number;
+  exitCode?: number | null;
+  signal?: string | null;
+  ms: number;
+  graceMs?: number;
+}
+
 export interface AgentRun {
+  /** The backend stop receipt; absence means it supplied none. */
+  stop?: AgentStopReceipt;
   id: string;
   kind: AgentKind;
   key: PrKey;
@@ -157,7 +168,9 @@ export const AGENT_REFUSALS: Record<AgentRefusal, string> = {
 
 export const RUN_REASONS: Record<AgentRunReason, string> = {
   stopped: "Stopped before it finished.",
-  restart: "Modex restarted while it was running; its outcome is unknown.",
+  "stop-unconfirmed": "Stop was requested, but Claude Code has not confirmed its exit. This run still reserves its slot and snapshot.",
+  "exit-observed": "Claude Code is no longer running. The review outcome remains unknown.",
+  restart: "Modex restarted before confirming the process exit. Its outcome is unknown; its run slot and snapshot remain reserved.",
   "backend-failed": "Claude Code ended with an error.",
   "could-not-start": "Claude Code couldn't be started.",
   "no-reply": "Claude Code finished without a reply.",

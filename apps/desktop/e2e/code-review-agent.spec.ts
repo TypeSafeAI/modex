@@ -12,7 +12,17 @@ import { baseWorld, fitWindow, launchWithGh, prRow, type Harness } from "./code-
  * scripted stream-json reply. No model, no network, no real repository: every account, PR and finding is made up.
  */
 let h: Harness;
-test.afterEach(async () => { await h?.close(); });
+let crashedChildPid: number | null = null;
+let forceFixtureClose = false;
+test.afterEach(async () => {
+  // The crash test deliberately leaves unproven ownership, so production Quit must refuse.
+  // End only the synthetic child captured for that test and its fixture Electron process.
+  if (crashedChildPid) { try { process.kill(crashedChildPid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; } }
+  if (forceFixtureClose && h?.app.process().pid) { try { process.kill(h.app.process().pid!, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; } }
+  crashedChildPid = null;
+  forceFixtureClose = false;
+  await h?.close();
+});
 
 const HEAD = "c".repeat(40);
 const REPLY = "The new branch `c` is never covered.\n\n```json\n{\"findings\":[{\"title\":\"Untested branch\",\"detail\":\"Line 2 adds a path with no test.\",\"severity\":\"minor\",\"path\":\"src/holds/move.ts\",\"line\":2},{\"title\":\"Elsewhere\",\"detail\":\"Not in this diff.\",\"severity\":\"note\",\"path\":\"src/missing.ts\",\"line\":9}]}\n```";
@@ -30,6 +40,7 @@ case "$1" in
 esac
 # One line per run: the argv (newlines folded) and whether the credentials Modex strips reached this process.
 { printf '%s %s' "$(basename "$0")" "$*" | tr '\\n' ' '; printf ' env:MODEX_HOME=%s,GH_CONFIG_DIR=%s,GH_TOKEN=%s cwd=%s\\n' "\${MODEX_HOME-unset}" "\${GH_CONFIG_DIR-unset}" "\${GH_TOKEN-unset}" "$PWD"; } >> '${starts}'
+printf '%s\\n' "$$" >> "$dir/claude-pids"
 mode="$(cat "$dir/claude-mode" 2>/dev/null || printf fail)"
 case "$mode" in
   hang) read -r line; exec sleep 120 ;;
@@ -214,12 +225,31 @@ test("Stop ends a running review, and a crash mid-run reads as unknown after a r
   // Start again, then lose the process mid-run: the record says unknown, and the next start re-runs nothing.
   await panel(page).getByRole("button", { name: "Start review" }).click();
   await expect(tid(page, "cr-agent-run").first()).toHaveAttribute("data-run-state", "running");
-  expect(runs()).toHaveLength(2);
+  await expect.poll(runs).toHaveLength(2);
+  const childPids = () => {
+    const file = path.join(h.home, "bin", "claude-pids");
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n").map(Number).filter(pid => Number.isSafeInteger(pid) && pid > 1) : [];
+  };
+  await expect.poll(childPids).toHaveLength(2);
+  crashedChildPid = childPids().at(-1)!;
+  expect(Number.isSafeInteger(crashedChildPid) && crashedChildPid > 1).toBe(true);
+  forceFixtureClose = true;
   await h.relaunch();
   page = await openLending();
   const latest = tid(page, "cr-agent-run").first();
   await expect(latest).toHaveAttribute("data-run-state", "unknown");
-  await expect(tid(latest, "cr-agent-run-reason")).toHaveText("Modex restarted while it was running; its outcome is unknown.");
+  await expect(tid(latest, "cr-agent-run-reason")).toContainText("before confirming the process exit");
+  await expect(tid(page, "code-review-review").first()).toHaveAttribute("aria-label", "Review exit unconfirmed");
+  await tid(page, "code-review-review").first().click();
+  await expect(panel(page).getByRole("button", { name: "Start review" })).toHaveCount(0);
+  await expect(tid(page, "cr-agent-stop")).toHaveCount(0);
+  await expect(tid(page, "cr-agent-ask").getByRole("button", { name: "Ask", exact: true })).toBeDisabled();
+  const blocked = await page.evaluate(async () => {
+    const reply = await window.modex!.invoke("code-review:agent", { op: "start", requestId: "probe-after-crash", key: { account: "1001", host: "github.com", repoId: "7301", number: 73 },
+      revision: { baseRef: "main", baseSha: "b".repeat(40), headSha: "c".repeat(40) }, kind: "review", question: null, model: "fable" });
+    return reply.result.state === "refused" ? reply.result.reason : "started";
+  });
+  expect(blocked).toBe("busy");
   await expect(tid(page, "cr-agent-run")).toHaveCount(2);
   expect(runs()).toHaveLength(2);
 });
