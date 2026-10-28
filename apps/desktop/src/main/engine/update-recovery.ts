@@ -5,6 +5,7 @@ import { LIMITS, kindFor } from "../../shared/attachments.js";
 import type { Attachment, AttachmentDraftOwner } from "../../shared/attachments.js";
 import type { ComposerRecovery, DraftSaveReceipt, UpdateRecoveryRecord } from "../../shared/update-recovery.js";
 import { AttachmentRecoveryFile, RecoveryFileWriteError, type RecoveryFileSnapshot } from "./attachment-recovery-file.js";
+import { isBackendId } from "../../shared/types.js";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 // Legacy reads add empty attachment arrays (at most 500 threads), one empty
@@ -46,7 +47,7 @@ function validateLegacyDrafts(value: unknown): asserts value is LegacyDrafts {
     if (typeof draft.worktree !== "boolean") throw failure();
     const settings = draft.settings;
     object(settings, ["backend", "mode", "plan", "auto", "model", "effort"]);
-    if (!["claude", "codex", "mock"].includes(settings.backend as string)
+    if (!isBackendId(settings.backend)
       || !["chat", "agent", "full-access"].includes(settings.mode as string)
       || typeof settings.plan !== "boolean" || typeof settings.auto !== "boolean") throw failure();
     string(settings.model, 256);

@@ -192,7 +192,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
 
 export const PROPOSED_WORDS = "Codex proposed this plan in plan mode. Its steps have no statuses.";
 const STEP_WORDS: Record<PlanStep["status"], string> = { pending: "not started", "in-progress": "in progress", completed: "reported done", unknown: "status unknown" };
-const FROM_WORDS: Record<PlanSource, string> = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list" };
+const FROM_WORDS: Record<PlanSource, string> = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list", "acp-plan": "The agent's plan" };
 
 /** The record as portable Markdown for a note. */
 export function taskMarkdown(record: TaskRecord): string {

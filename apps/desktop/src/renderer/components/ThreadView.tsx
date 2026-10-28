@@ -516,7 +516,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
 /** One Auto decision: what runs this turn, and — expanded — the judge's reasons. */
 function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
   const [open, setOpen] = useState(false);
-  const backend = item.backend === "claude" ? "Claude" : item.backend === "codex" ? "Codex" : "Mock";
+  const backend = item.backend === "claude" ? "Claude" : item.backend === "codex" ? "Codex" : item.backend === "opencode" ? "OpenCode" : item.backend === "mimo" ? "MiMo Code" : "Mock";
   const extras = [item.effort, item.fast ? "fast" : null].filter(Boolean).join(" · ");
   return (
     <div className={`route ${item.source} ${open ? "open" : ""}`} data-testid="item" data-item-kind="route" data-source={item.source}>

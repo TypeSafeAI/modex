@@ -9,6 +9,7 @@ import * as gitx from "./git.js";
 import type { ApprovalRequest, Backend, NativeRequest, QuestionReply, TurnResult, TurnSink } from "./backends/types.js";
 import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
+import { AcpBackend } from "./backends/acp.js";
 import { MockBackend } from "./backends/mock.js";
 import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
@@ -144,6 +145,8 @@ export class ThreadRunner {
     this.backends = {
       claude: o.backends?.claude ?? new ClaudeBackend(() => resolveCli("claude", cliSettings.claude_bin)),
       codex: o.backends?.codex ?? new CodexBackend(() => resolveCli("codex", cliSettings.codex_bin)),
+      opencode: o.backends?.opencode ?? new AcpBackend("opencode", () => resolveCli("opencode", cliSettings.opencode_bin)),
+      mimo: o.backends?.mimo ?? new AcpBackend("mimo", () => resolveCli("mimo", cliSettings.mimo_bin)),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
     this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
@@ -915,7 +918,7 @@ export class ThreadRunner {
         electron: process.versions.electron,
         node: process.versions.node,
         backend: thread.backend,
-        bin: thread.backend === "claude" ? settings.claude_bin : thread.backend === "codex" ? settings.codex_bin : undefined,
+        bin: thread.backend === "claude" ? settings.claude_bin : thread.backend === "codex" ? settings.codex_bin : thread.backend === "opencode" ? settings.opencode_bin : thread.backend === "mimo" ? settings.mimo_bin : undefined,
         model: thread.model,
         effort: thread.effort,
         mode: thread.mode,

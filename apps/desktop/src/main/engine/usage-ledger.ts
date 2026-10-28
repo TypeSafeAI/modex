@@ -5,7 +5,7 @@ import type { UsageEvent } from "../../shared/usage.js";
 import type { TurnUsage } from "./backends/types.js";
 
 /** The dashboard's tool ids: its names and colors are keyed by these, not by Modex backend ids. */
-const TOOLS: Record<string, string> = { claude: "claude-code", codex: "codex" };
+const TOOLS: Record<string, string> = { claude: "claude-code", codex: "codex", opencode: "opencode", mimo: "mimo-code" };
 /** The most rows one read returns, newest kept. About a year of steady use. */
 export const USAGE_READ_LIMIT = 50_000;
 

@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-export type PillTone = "neutral" | "accent" | "warn" | "danger" | "claude" | "codex" | "auto";
+export type PillTone = "neutral" | "accent" | "warn" | "danger" | "claude" | "codex" | "opencode" | "mimo" | "auto";
 
 interface Props extends Omit<HTMLAttributes<HTMLSpanElement>, "className"> {
   tone?: PillTone;
