@@ -307,8 +307,8 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
             if (body) space.edit(page.id, { markdown: page.markdown.trim() ? `${body}\n\n${page.markdown}` : body });
           }} />
           {task && taskOpen && <TaskNoteView key={`task:${page.id}`} view={task} onOpenThread={onOpenThread} onClose={() => setTaskOpen(false)} />}
-          {history && <PageHistory key={page.id} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
-          <BlockEditor key={page.id} pageId={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
+          {history && <PageHistory key={`history:${page.id}`} page={page} flush={space.flush} refresh={space.refresh} onClose={() => setHistory(false)} />}
+          <BlockEditor key={`editor:${page.id}`} pageId={page.id} markdown={page.markdown} insertRequest={insertRequest} generation={generation && <section className={`space-generation space-generation-${generation}`} aria-label={generation === "write" ? "Generate page content" : "Visualize page content"}>
             <IconButton icon="close" label="Cancel generation" onClick={() => clearGeneration()} />
             {generation === "visualize" ? <Icon name="shapes" size={18} /> : <div className="space-generation-lines" aria-hidden="true"><i /><i /><i /></div>}
             <form onSubmit={event => { event.preventDefault(); if (!generationPrompt.trim()) return; ask(`${generation === "visualize" ? "Create an interactive visualization for this page" : "Write content for this page"}: ${generationPrompt}`); clearGeneration(); }}>

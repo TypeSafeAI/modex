@@ -23,6 +23,19 @@ test("existing Space pages move into the notes folder once, with their history, 
     await session.page.getByRole("button", { name: "Page actions" }).click();
     await session.page.getByRole("menuitem", { name: "Version history" }).click();
     await expect(session.page.getByText("Revision 1 · You · Created page", { exact: true })).toBeVisible();
+    const history = session.page.getByRole("region", { name: "Version history", exact: true });
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await expect(history).toHaveCount(1);
+      await expect(history.locator("summary")).toHaveCount(1);
+      await expect(history.locator("summary")).toHaveText("Revision 1 · You · Created page");
+      await session.page.getByRole("button", { name: "Close history", exact: true }).click();
+      await expect(history).toHaveCount(0);
+      await expect(session.page.getByRole("textbox", { name: "Page title" })).toHaveValue("Child");
+      await expect(session.page.getByText("Inside the plan", { exact: true })).toBeVisible();
+      await session.page.getByRole("button", { name: "Version history", exact: true }).click();
+    }
+    await expect(history).toHaveCount(1);
+    await expect(history.locator("summary")).toHaveCount(1);
     expect(savedNotes(home).map(note => [note.rel, note.id])).toEqual([["Personal/Notes/Plan/Child.md", "child-1"], ["Personal/Notes/Plan/Plan.md", "plan-1"]]);
   } finally { await session.app.close(); }
   session = await launch(home);
