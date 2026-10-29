@@ -253,3 +253,84 @@ test("Stop ends a running review, and a crash mid-run reads as unknown after a r
   await expect(tid(page, "cr-agent-run")).toHaveCount(2);
   expect(runs()).toHaveLength(2);
 });
+
+
+test("integrated review: populated diff → native fixture finding → confirmed review → crash recovery never replays the provider or write", async () => {
+  const world = baseWorld();
+  Object.assign(world.routes["repos/example-org/lending/pulls/73"] as object, { changed_files: 2, additions: 3, deletions: 1 });
+  const reviews = "repos/example-org/lending/pulls/73/reviews";
+  world.routes["repos/example-org/lending/issues/73/timeline"] = [{ event: "commented", id: 900,
+    user: { id: 1002, login: "grace-fixture", type: "User" },
+    body: "Keep the hold in its queue position.", created_at: "2026-10-18T21:00:00Z" }];
+  world.routes["repos/example-org/lending/deployments"] = [];
+  world.postHolds = { [reviews]: "integrated-review-answer" };
+  h = await launchWithGh(world);
+  installClaude("reply");
+  let page = await openLending();
+  const activity = tid(page, "cr-activity");
+  await expect(activity).toContainText("All activity loaded");
+  const comment = activity.getByText("Keep the hold in its queue position.", { exact: true });
+  await comment.scrollIntoViewIfNeeded();
+  await expect(comment).toBeVisible();
+  await fitWindow(h, 1766, 1057);
+  await tid(page, "code-review-split-toggle").click();
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", "overview changes");
+  await page.getByRole("button", { name: "View remote diff for src/holds/move.ts" }).click();
+  await expect(page.getByRole("button", { name: "New line 2", exact: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("populated-split.png"), animations: "disabled" });
+  expect(runs()).toEqual([]);
+  expect(h.posts()).toEqual([]);
+
+  await tid(page, "code-review-review").first().click();
+  await panel(page).getByRole("button", { name: "Start review" }).click();
+  const run = tid(page, "cr-agent-run").first();
+  await expect(run).toHaveAttribute("data-run-state", "completed", { timeout: 20_000 });
+  const finding = tid(run, "cr-agent-finding").first();
+  await expect(finding).toHaveAttribute("data-reference", "anchored");
+  await finding.getByRole("button", { name: "Add to review draft" }).click();
+  await expect(finding.getByRole("status")).toContainText("Added to the review draft");
+  const composer = page.getByRole("region", { name: "Review this pull request" });
+  if (await composer.getByRole("textbox", { name: "Review summary" }).count() === 0) await composer.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(composer.getByRole("list", { name: "Line comments" })).toContainText("src/holds/move.ts · head 2");
+  await composer.getByRole("textbox", { name: "Review summary" }).fill("Review the untested branch before merging.");
+  expect(runs()).toHaveLength(1);
+  expect(h.posts()).toEqual([]);
+
+  await composer.getByRole("button", { name: "Preview review" }).click();
+  const preview = page.getByRole("region", { name: "Preview review" });
+  await expect(preview.getByTestId("cr-preview-destination")).toHaveText("As ada-fixture on example-org/lending #73");
+  await expect(preview.getByTestId("cr-preview-revision")).toContainText("Head cccccccc into main");
+  await expect(preview.getByRole("list", { name: "Line comments to submit" })).toContainText("src/holds/move.ts · head 2");
+  expect(h.posts()).toEqual([]);
+  await page.screenshot({ path: test.info().outputPath("review-preview.png"), animations: "disabled" });
+  await preview.getByRole("button", { name: "Submit review" }).click();
+  await expect.poll(() => h.posts().length).toBe(1);
+  expect(h.posts()[0]).toMatchObject({ endpoint: reviews, body: { commit_id: HEAD, event: "COMMENT",
+    comments: [{ path: "src/holds/move.ts", side: "RIGHT", line: 2, body: "Untested branch\n\nLine 2 adds a path with no test." }] } });
+
+  // The synthetic server accepted the review but withholds the response. Restart the whole app,
+  // then reconcile by read-back; neither the native review nor its external action may replay.
+  await h.relaunch();
+  h.release("integrated-review-answer");
+  page = await openLending();
+  const doubt = tid(page, "cr-doubt");
+  await expect(doubt).toBeVisible();
+  await expect(doubt).toContainText("review");
+  await doubt.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath("restart-unknown-outcome.png"), animations: "disabled" });
+  expect(runs()).toHaveLength(1);
+  expect(h.posts()).toHaveLength(1);
+  await doubt.getByRole("button", { name: "Check GitHub" }).click();
+  await expect(doubt).toHaveCount(0);
+  expect(h.calls().filter(c => c.startsWith("POST "))).toEqual([`POST ${reviews}`]);
+  expect(h.posts()).toHaveLength(1);
+  expect(runs()).toHaveLength(1);
+
+  // A later revision makes the recovered finding stale without starting another review or write.
+  h.world((w) => { (w.routes["repos/example-org/lending/pulls/73"] as { head: { sha: string } }).head.sha = "d".repeat(40); });
+  page = await reopen();
+  await expect(tid(page, "cr-agent-outdated").first()).toHaveText(`Outdated · made for head ${HEAD.slice(0, 8)}`);
+  await expect(tid(page, "cr-agent-finding").first().getByRole("button", { name: "Add to review draft" })).toBeDisabled();
+  expect(runs()).toHaveLength(1);
+  expect(h.posts()).toHaveLength(1);
+});
