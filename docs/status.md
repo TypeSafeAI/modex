@@ -69,6 +69,8 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 ## On main, unreleased
 
+- **v0.4.0 publication preparation.** The release branch has advanced to main `469c612`, preserving the earlier rehearsal and failure records. The approved-key rc.2 rehearsal passed at older source `6c9000f`; it does not qualify current main. CR-8 journey #440 and integrated review/recovery #441 have landed. ACP repair #436 has also landed after protected queue validation. This is the selected application source; the release evidence update and final tag source remain pending. The latest public release remains v0.3.0. A fresh protected release and independent downloaded-asset checks remain required; see the [current release preparation](reviews/2026-10-24-v0.4.0-release-review.md#current-candidate-preparation--2026-10-29).
+
 - **OpenCode and MiMo Code backends** ([#408](https://github.com/TypeSafeAI/modex/issues/408)).
   Two new thread backends drive the OpenCode CLI and Xiaomi's MiMo Code fork through their Agent
   Client Protocol server (`opencode acp --pure`, `mimo acp --pure`), the way Codex runs through
