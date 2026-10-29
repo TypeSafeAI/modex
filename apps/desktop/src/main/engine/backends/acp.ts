@@ -129,7 +129,15 @@ export class AcpBackend implements Backend {
           const session = r?.agentCapabilities?.sessionCapabilities ?? {};
           resolve({ loadSession: r?.agentCapabilities?.loadSession === true, resume: typeof session.resume === "object" && session.resume !== null, image: r?.agentCapabilities?.promptCapabilities?.image === true });
         })
-        .catch(reject);
+        .catch((err: Error) => {
+          // A live server with a rejected handshake cannot serve later turns.
+          // Only detach this generation: its late rejection must not stop a replacement.
+          if (this.child === child) {
+            this.disconnect(err);
+            killGroup(child);
+          }
+          reject(err);
+        });
     });
     return this.ready;
   }
@@ -286,7 +294,7 @@ export class AcpBackend implements Backend {
         await duringSetup(this.request("session/set_config_option", { sessionId: sid, configId: "model", value: opts.model }, 30_000), signal, this.family.label);
       } catch (err) {
         if (signal.aborted) return { status: "interrupted" };
-        sink.notice("warn", `${this.family.label} did not accept the model ${opts.model} (${(err as Error).message}); the turn runs on the session's current model.`);
+        return failed(err, { stage: "set model", sessionId: sid, model: opts.model });
       }
     }
     if (opts.effort) {

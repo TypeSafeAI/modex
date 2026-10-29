@@ -17,20 +17,12 @@ a prompt, and Stop confirmed 17 ms after the cancel.
 
 ## How a turn runs
 
-1. **One server per backend.** The first turn starts `<cli> acp --pure` once, detached in its own
-   process group. `--pure` keeps the CLI's plugins and hooks out of the server. Modex's
-   configuration travels inline in `OPENCODE_CONFIG_CONTENT` / `MIMOCODE_CONFIG_CONTENT`, which the
-   CLI merges on top of the person's own `opencode.json`; nothing is written to disk and the person's
-   providers, models, MCP servers and agents stay. It disables the CLI's self-update and its
-   transcript sharing. `initialize` offers no `fs` or `terminal` capability, so the CLI reads and
-   runs through its own tools and never asks Modex to.
+1. **One server per backend.** The first turn starts `<cli> acp --pure` once, detached in its own process group. `--pure` keeps the CLI's plugins and hooks out of the server. Modex's configuration travels inline in `OPENCODE_CONFIG_CONTENT` / `MIMOCODE_CONFIG_CONTENT`, which the CLI merges on top of the person's own `opencode.json`; nothing is written to disk and the person's providers, models, MCP servers and agents stay. It disables the CLI's self-update and its transcript sharing. `initialize` offers no `fs` or `terminal` capability, so the CLI reads and runs through its own tools and never asks Modex to. A failed initialization closes that server and clears its cached handshake, so the next turn can start a fresh server.
 2. **A session per thread.** `session/new` in the thread's cwd; the session id is the thread's
    resume handle. A later turn reopens it with `session/resume` (no replay) when the CLI offers it,
    else `session/load` with the replayed history discarded. A session the server no longer knows
    starts afresh with a notice.
-3. **Mode first.** `session/set_mode` picks the agent below; a refused mode fails the turn, so a
-   turn never runs looser than asked. Then `session/set_config_option` sets the thread's model
-   (a refusal is a warning; the session's current model runs) and effort (informational).
+3. **Mode first.** `session/set_mode` picks the agent below; a refused mode fails the turn, so a turn never runs looser than asked. Then `session/set_config_option` sets the thread's model (a refusal fails the turn before submitting the prompt) and effort (informational).
 4. **The prompt.** `session/prompt` with the text and any image attachments inline
    (`promptCapabilities.image`). Updates stream as `agent_message_chunk`, `agent_thought_chunk`,
    `tool_call`, `tool_call_update` and `plan`; the result's `stopReason` and `usage` end the turn.
