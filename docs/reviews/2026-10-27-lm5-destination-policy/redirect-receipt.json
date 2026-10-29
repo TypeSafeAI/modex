@@ -1,0 +1,60 @@
+{
+  "302": {
+    "status": 302,
+    "hops": [
+      {
+        "server": "A",
+        "method": "POST",
+        "url": "/v1/responses",
+        "host": "127.0.0.1:60034",
+        "authorization": "bearer",
+        "bodyBytes": 29124,
+        "hasPrompt": true
+      },
+      {
+        "server": "B",
+        "method": "GET",
+        "url": "/v1/responses",
+        "host": "127.0.0.1:60035",
+        "authorization": "none",
+        "bodyBytes": 0,
+        "hasPrompt": false
+      }
+    ],
+    "reply": "answered by B",
+    "notices": [],
+    "result": {
+      "status": "completed"
+    }
+  },
+  "307": {
+    "status": 307,
+    "hops": [
+      {
+        "server": "A",
+        "method": "POST",
+        "url": "/v1/responses",
+        "host": "127.0.0.1:60028",
+        "authorization": "bearer",
+        "bodyBytes": 29124,
+        "hasPrompt": true
+      },
+      {
+        "server": "B",
+        "method": "POST",
+        "url": "/v1/responses",
+        "host": "127.0.0.1:60029",
+        "authorization": "none",
+        "bodyBytes": 29124,
+        "hasPrompt": true
+      }
+    ],
+    "reply": "answered by B",
+    "notices": [],
+    "result": {
+      "status": "completed"
+    }
+  },
+  "kind": "installed codex CLI against a loopback server that redirects to a second loopback server; no model, no inference",
+  "cli": "codex"
+}

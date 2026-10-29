@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { prKeyId, scopeOf, type CodeReviewReply, type CodeReviewRequest, type PrKey } from "../src/shared/code-review.js";
+import { prKeyId, scopeOf, SIGN_IN_CHANGED, type CodeReviewReply, type CodeReviewRequest, type PrKey } from "../src/shared/code-review.js";
 import { Reader } from "../src/renderer/code-review/reader.js";
 import { back, canBack, canForward, closeChanges, current, DEFAULT_VIEW, fitSplit, fitTree, forward, panesFor, showTab, SPLIT, toggleSplit, visit, type History } from "../src/renderer/code-review/navigation.js";
 import { isPinned, loadPins, PINS_KEY, togglePin } from "../src/renderer/code-review/pins.js";
@@ -92,6 +92,84 @@ test("a rejected invoke is an unavailable read, and connection is matched by req
   main.waiting.get("t-3")!.resolve(null);
   assert.equal((await empty).status, "applied", "a null reply to a read is a failed read, not silence");
 });
+
+test("a read refused because gh's sign-in changed is retried once at most, then the refusal is shown (#349 re-review)", async () => {
+  const refusal = { state: "unavailable", reason: "failed", fetchedAt: NOW, detail: SIGN_IN_CHANGED };
+  // Refused once, then answered: the answer is applied, after exactly one retry.
+  let main = fakeMain();
+  let reader = new Reader(main.send, () => NOW, "t");
+  const recovered = reader.read("inbox", { op: "inbox", query: "" }, ACCOUNT_A.id);
+  main.answer("t-1", refusal);
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(main.sent.map(r => [r.op, r.requestId]), [["inbox", "t-1"], ["inbox", "t-2"]], "one retry, with a new request id and no cancel of the finished read");
+  assert.equal(reader.pending("inbox"), true, "the slot stays busy across the retry");
+  main.answer("t-2", R1.inbox);
+  const applied = await recovered;
+  assert.equal(applied.status === "applied" && applied.result.state, "ready");
+  // Refused twice: the second refusal is shown, and no third read is made.
+  main = fakeMain();
+  reader = new Reader(main.send, () => NOW, "t");
+  const refused = reader.read("inbox", { op: "inbox", query: "" }, ACCOUNT_A.id);
+  main.answer("t-1", refusal);
+  await new Promise(r => setTimeout(r, 0));
+  main.answer("t-2", refusal);
+  const shown = await refused;
+  assert.equal(shown.status, "applied");
+  assert.deepEqual(shown.status === "applied" && shown.result, refusal);
+  assert.deepEqual(main.sent.map(r => r.op), ["inbox", "inbox"], "no third attempt");
+  // Superseded while the retry is in flight: the newer read wins, and the retry's answer is dropped unseen.
+  main = fakeMain();
+  reader = new Reader(main.send, () => NOW, "t");
+  const older = reader.read("inbox", { op: "inbox", query: "a" }, ACCOUNT_A.id);
+  main.answer("t-1", refusal);
+  await new Promise(r => setTimeout(r, 0));
+  const newer = reader.read("inbox", { op: "inbox", query: "ab" }, ACCOUNT_A.id);
+  assert.deepEqual(main.sent.map(r => [r.op, r.requestId]), [["inbox", "t-1"], ["inbox", "t-2"], ["cancel", "t-2"], ["inbox", "t-3"]]);
+  main.answer("t-2", R1.inbox);
+  main.answer("t-3", R1.inbox);
+  assert.deepEqual(await older, { status: "superseded" });
+  assert.equal((await newer).status, "applied");
+  // Any other failure is shown at once: nothing else is retried on its own.
+  main = fakeMain();
+  reader = new Reader(main.send, () => NOW, "t");
+  const offline = reader.read("inbox", { op: "inbox", query: "" }, ACCOUNT_A.id);
+  main.answer("t-1", { state: "unavailable", reason: "offline", fetchedAt: NOW });
+  assert.equal((await offline).status, "applied");
+  assert.deepEqual(main.sent.map(r => r.op), ["inbox"]);
+});
+
+test("a newer read between a sign-in refusal and its retry remains authoritative", async () => {
+  const main = fakeMain();
+  const reader = new Reader(main.send, () => NOW, "gap");
+  const older = reader.read("inbox", { op: "inbox", query: "old" }, ACCOUNT_A.id);
+  main.answer("gap-1", { state: "unavailable", reason: "failed", fetchedAt: NOW, detail: SIGN_IN_CHANGED });
+  // Main's reply has resumed the attempt; a new intent may run before the outer read resumes.
+  let newer!: ReturnType<typeof reader.read>;
+  queueMicrotask(() => { newer = reader.read("inbox", { op: "inbox", query: "new" }, ACCOUNT_A.id); });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  for (const request of main.sent) {
+    if (request.op !== "cancel" && request.requestId !== "gap-1") main.answer(request.requestId, R1.inbox);
+  }
+  assert.equal((await newer).status, "applied", "the newer intent must win even at the retry boundary");
+  assert.deepEqual(await older, { status: "superseded" });
+  assert.equal(reader.pending("inbox"), false);
+});
+
+for (const cancel of ["slot", "all"] as const) {
+  test(`${cancel} cancellation between a sign-in refusal and its retry prevents the old result applying`, async () => {
+    const main = fakeMain();
+    const reader = new Reader(main.send, () => NOW, "gap");
+    const pending = reader.read("inbox", { op: "inbox", query: "old" }, ACCOUNT_A.id);
+    main.answer("gap-1", { state: "unavailable", reason: "failed", fetchedAt: NOW, detail: SIGN_IN_CHANGED });
+    queueMicrotask(() => { if (cancel === "all") reader.cancelAll(); else reader.cancel("inbox"); });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    for (const request of main.sent) {
+      if (request.op !== "cancel" && request.requestId !== "gap-1") main.answer(request.requestId, R1.inbox);
+    }
+    assert.deepEqual(await pending, { status: "superseded" });
+    assert.equal(reader.pending("inbox"), false);
+  });
+}
 
 test("history moves between PRs without duplicating the current entry, and a new visit drops the forward entries", () => {
   let h: History = { entries: [], index: -1 };

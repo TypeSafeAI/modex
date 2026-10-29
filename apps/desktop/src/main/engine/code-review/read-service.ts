@@ -1,5 +1,5 @@
 import {
-  parsePrLocator, sameRevision, scopeOf, validateRequest,
+  parsePrLocator, sameRevision, scopeOf, SIGN_IN_CHANGED, validateRequest,
   type CodeReviewAccount, type CodeReviewConnection, type CodeReviewReply, type CodeReviewRequest, type Coverage, type Inbox, type InboxGroup,
   type PrStack, type PrActivity, type PrCheck, type PrContext, type PrFiles, type PrKey, type PrOverview, type PrRevision, type PrSummary, type ReadResult, type ResolvedPr, type Unavailable,
 } from "../../../shared/code-review.js";
@@ -58,7 +58,7 @@ const DETAIL = {
   page: "That page is past what GitHub serves.",
   unknownRevision: "That revision isn't one this pull request has had.",
   headChanged: "The pull request has a newer head. Read it again to see the current changes.",
-  signInChanged: "GitHub CLI's sign-in changed while this was read. Read it again.",
+  signInChanged: SIGN_IN_CHANGED,
   tooLarge: "The answer is too large to show.",
   binary: "This file isn't text.",
   notFile: "That path isn't a file at this revision.",

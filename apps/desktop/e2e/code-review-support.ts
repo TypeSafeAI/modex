@@ -58,7 +58,8 @@ export async function launchWithGh(initial: GhWorld): Promise<Harness> {
     FAKE_GH_WORLD: worldFile, FAKE_GH_LOG: log, FAKE_GH_HOLDS: holds, FAKE_GH_POSTS: posts, GH_CONFIG_DIR: config, JEV_API_KEY: "", TYPESAFE_API_KEY: "", JEV_CONFIG: path.join(home, "no-jev.json") };
   for (const name of ["MODEX_E2E", "MODEX_DEMO", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]) delete env[name];
   const start = async () => {
-    const app = await electron.launch({ args: [appDir], cwd: appDir, env: env as Record<string, string> });
+    const executablePath = process.env.MODEX_PACKAGED_APP;
+    const app = await electron.launch({ executablePath, args: executablePath ? [] : [appDir], cwd: appDir, env: env as Record<string, string> });
     const page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");
     // waitForWindowReady needs MODEX_E2E's paint hooks; without them, wait for a visible window whose sizes agree.

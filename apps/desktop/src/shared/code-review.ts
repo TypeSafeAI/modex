@@ -40,6 +40,12 @@ export type CodeReviewConnection =
  */
 export interface Coverage { loaded: number; total: number | null; complete: boolean; next: string | null; cap?: number }
 
+/**
+ * Main's detail on a read it refused because gh's sign-in moved while the read ran (`failed`). The renderer
+ * reads it again once on its own, since gh is usually back on the same account; a second refusal is shown.
+ */
+export const SIGN_IN_CHANGED = "GitHub CLI's sign-in changed while this was read. Read it again.";
+
 /** Why nothing could be read. `head-changed`: the PR moved past the revision asked about, and no earlier read of it is kept. */
 export type Unavailable = "signed-out" | "no-cli" | "denied" | "not-found" | "offline" | "rate-limited" | "timeout" | "invalid" | "head-changed" | "failed";
 
@@ -339,13 +345,17 @@ export function knownCount(result: ReadResult<readonly unknown[]>): { count: num
 /**
  * An inbox group's pages as one list, deduplicated by key in arrival order. Search pages are offsets, so
  * a row updated between pages can repeat or be skipped: the list is complete only when every page was
- * read in full, the last has no next page, and the distinct rows reach the provider's total.
+ * read in full, the last has no next page, every page reported the same total, and the distinct rows
+ * reach it. A PR that closed or opened between pages moves the total, which is how a skipped row that
+ * the shift would otherwise hide (#349 re-review) is told from a complete list.
  */
 export function mergePages(pages: readonly ReadResult<PrSummary[]>[]): { rows: PrSummary[]; total: number | null; complete: boolean } {
   const seen = new Set<string>();
   const rows: PrSummary[] = [];
+  const totals = new Set<number>();
   for (const page of pages) {
     if (page.state === "unavailable") continue;
+    if (typeof page.coverage?.total === "number") totals.add(page.coverage.total);
     for (const row of page.value) {
       const id = prKeyId(row.key);
       if (!seen.has(id)) { seen.add(id); rows.push(row); }
@@ -355,7 +365,8 @@ export function mergePages(pages: readonly ReadResult<PrSummary[]>[]): { rows: P
   const total = last && last.state !== "unavailable" && typeof last.coverage?.total === "number" ? last.coverage.total : null;
   const read = pages.length > 0 && pages.every((page) => page.state === "ready");
   const ended = last?.state === "ready" && (last.coverage?.next ?? null) === null && last.coverage?.cap === undefined;
-  return { rows, total, complete: read && ended && total !== null && rows.length >= total };
+  const steady = totals.size === 1;
+  return { rows, total, complete: read && ended && steady && total !== null && rows.length >= total };
 }
 
 export type CheckVerdict = "passing" | "failing" | "pending" | "incomplete" | "none" | "unknown";

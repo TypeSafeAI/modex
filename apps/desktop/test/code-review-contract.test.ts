@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  CODE_REVIEW_FEATURES, acceptsReply, canonicalPrUrl, capabilities, diffCoverage, inboxGroup, isEmpty, knownCount, parsePrLocator, prKeyId,
+  CODE_REVIEW_FEATURES, acceptsReply, canonicalPrUrl, capabilities, diffCoverage, inboxGroup, isEmpty, knownCount, mergePages, parsePrLocator, prKeyId,
   sameRevision, scopeOf, summarizeChecks, validateRequest,
-  type Inbox, type PrCheck, type ReadResult,
+  type Inbox, type PrCheck, type PrSummary, type ReadResult,
 } from "../src/shared/code-review.js";
 import * as fx from "./fixtures/code-review.js";
 
@@ -111,6 +111,28 @@ test("an unavailable, stale or partly read list is not an empty one", () => {
   assert.equal(group.state, "stale", "a partial group of a stale inbox is stale too");
   assert.equal(group.state === "stale" && group.coverage?.complete, false, "and keeps its coverage");
   assert.deepEqual([fx.FAULTS.denied.state, fx.FAULTS.denied.state === "unavailable" && fx.FAULTS.denied.reason], ["unavailable", "denied"], "a PR the account can't see is unavailable, not missing");
+});
+
+test("inbox pages that disagree on the total, or hide a skipped row behind a closed PR, never merge as complete (#349 re-review)", () => {
+  const row = (number: number): PrSummary => ({ key: fx.key(fx.ACCOUNT_A, fx.LENDING, number), locator: fx.locator(fx.LENDING, number), title: `PR ${number}`, state: "open", author: { login: "ada-fixture", id: "1001", bot: false }, updatedAt: fx.NOW, stackHint: null });
+  const page = (numbers: number[], total: number, next: string | null): ReadResult<PrSummary[]> =>
+    ({ state: "ready", value: numbers.map(row), fetchedAt: fx.NOW, coverage: { loaded: numbers.length, total, complete: next === null && numbers.length >= total, next } });
+  const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  // 31 open PRs; #100 closes after the first page. GitHub's offsets shift: #130 is never served, and the
+  // second page (now past the end) reports 30. Distinct rows reach that total, but #130 is missing.
+  const closedBetween = mergePages([page(range(100, 129), 31, "p2"), page([], 30, null)]);
+  assert.equal(closedBetween.rows.length, 30);
+  assert.equal(closedBetween.complete, false, "a page that reports a different total than the first proves the list moved");
+  // Two PRs open after the first page: the second page reports 33 and serves #130–#132. The distinct rows
+  // reach the last total, but the pages disagree, so the list may have skipped or repeated a row.
+  const openedBetween = mergePages([page(range(100, 129), 31, "p2"), page(range(130, 132), 33, null)]);
+  assert.equal(openedBetween.rows.length, 33);
+  assert.equal(openedBetween.complete, false, "pages must report the same total to be read as one list");
+  // The same pages with a steady total are complete.
+  assert.equal(mergePages([page(range(100, 129), 31, "p2"), page([130], 31, null)]).complete, true);
+  // A page kept from a failed retry contributes rows but no agreement.
+  const stale: ReadResult<PrSummary[]> = { state: "stale", value: [row(130)], fetchedAt: fx.NOW, reason: "offline", coverage: { loaded: 1, total: 31, complete: true, next: null } };
+  assert.equal(mergePages([page(range(100, 129), 31, "p2"), stale]).complete, false);
 });
 
 test("pending, cancelled, unknown, superseded and other-head checks never read as passing", () => {
