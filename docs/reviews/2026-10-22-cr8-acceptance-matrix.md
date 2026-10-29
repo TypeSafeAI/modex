@@ -1,5 +1,7 @@
 # Code Review acceptance matrix (CR-8), 2026-10-22
 
+**Later fixture refresh:** The [2026-10-28 journey receipt](2026-10-28-cr8-journey-refresh.md) adds real Electron R2 activity and R3 instructions interactions through the production read service with synthetic GitHub responses. It supersedes this historical snapshot's claim that those journey states are waiting for unbuilt producers. Original-reference comparison, human accessibility and the remaining integrated/live gates stay open.
+
 **Historical baseline:** This matrix records the CR-8 candidate based on product `0e674e7`. Its “not started” entries describe that snapshot. Later overview, remote-diff and unwired action-foundation implementations have separate receipts; the integration candidate must reconcile their automated evidence without claiming missing original-reference or human acceptance.
 
 CR-8 ([#327](https://github.com/TypeSafeAI/modex/issues/327)) runs the integration and acceptance pass for the
