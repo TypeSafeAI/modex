@@ -121,14 +121,24 @@ as the CLI reported them. Nothing is indexed, searched for or inferred: no depen
 
 - **What counts.** A denied or failed tool touched nothing. A command the CLI did not parse (a `cat`
   through Claude's Bash, an `unknown` Codex action) is not counted as a read.
+- **Commands that may have changed files no CLI named.** A shell redirect through Claude's Bash or a
+  Codex `perl -pi` edit can write a file that neither CLI reports. Such a command is listed as a
+  command, once, under "These commands may have changed files that neither the CLI nor Modex named".
+  Modex does not guess which files it wrote. The rule is the one that makes a check stale: a command
+  that is neither a check nor known to be read-only, and was not denied or failed. Records saved before
+  this list existed reopen without it. Added after the CF-7 close-out's live runs, where a redirect left
+  a rewritten file listed only as `read` and a `perl -pi` edit left the note with no files at all.
 - **Paths.** They are relative to the thread's working directory. Paths outside it are counted,
   never named.
 - **Order.** Changed files come first, then read, then searched, each in the order the turn first
   touched them. A file lists each relation once.
 
-A finished turn's footer has **Files touched · N** when there is anything to show. Opening it lists at
-most 20, then "and N more", then how many were outside the project. The note gets a **Files the turn
-touched** section with the same limit. The record keeps every file.
+A finished turn's footer has **Files touched · N** when there is anything to show. It reads
+**N, maybe more** when a command may have changed other files, and **not listed** when only such
+commands ran. Opening it lists at most 20 files, then "and N more", then how many were outside the
+project, then those commands, shown as the script their shell ran with the exact command on hover.
+The note and the read-only Task view get the same sections with the same limit. The record keeps
+every file and command.
 
 ## Clarifications
 

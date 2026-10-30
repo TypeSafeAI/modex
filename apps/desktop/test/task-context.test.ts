@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONVERSATION_SCHEMA, projectConversation, type ConversationEvent, type Observation, type AttemptMark, type TurnRef } from "../src/shared/conversation-events.js";
-import { CONTEXT_SHOWN, displayCommand, isCheckCommand, noPlan, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
+import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, isCheckCommand, isTaskSnapshot, noPlan, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { ThreadItem } from "../src/shared/types.js";
@@ -556,6 +556,66 @@ test("the note lists at most the first files the turn touched, says how many mor
   assert.doesNotMatch(none, /Files the turn touched/);
 });
 
+
+// CF-7 close-out observations 1 and 2 (docs/reviews/2026-10-29-cf7-closeout): a file a shell command wrote
+// without any CLI naming it must not leave the map looking complete.
+const bash = (command: string, extra: Record<string, unknown> = {}): ThreadItem =>
+  ({ id: `t${++seqId}`, kind: "tool", name: "Bash", title: `$ ${command}`, args: { command }, status: "done", outcome: "succeeded", ok: true, exec: { command }, at: at(seqId), ...extra }) as ThreadItem;
+
+test("a Claude shell redirect that rewrote a file read earlier is listed as a command that may have changed files", () => {
+  const redirect = "printf 'hello, live\\n' > greeting.txt && cat greeting.txt";
+  const items = [user, bash("npm test", { outcome: "failed", ok: false }), tool("Read", { file_path: "/repo/greeting.txt" }), bash(redirect), bash("npm test")];
+  const context = taskContext(items, "/repo");
+  assert.deepEqual(context.files, [{ path: "greeting.txt", relations: ["read"] }], "Claude reported only the Read; Modex does not guess the redirect's file");
+  assert.deepEqual(context.unlisted, [redirect]);
+  assert.equal(contextCount(context), "1, maybe more");
+  const note = taskMarkdown(taskRecord(items, { threadId: "T", title: "Say hello, live", cwd: "/repo" }));
+  assert.ok(note.includes(`- \`greeting.txt\` — read\n\n${UNLISTED_WORDS}\n\n- \`${redirect}\`\n`), note);
+});
+
+test("a Codex in-place edit it parsed as unknown still gives the note a files section, listing the command once", () => {
+  const perl = "/bin/zsh -lc 'perl -pi -e '\"'\"'s/\\bhello\\b/hello, live/g'\"'\"' greeting.txt'";
+  const items = [user, codexRun("/bin/zsh -lc 'npm test'", []), codexRun(perl, []), codexRun(perl, []), codexRun("/bin/zsh -lc 'npm test'", [])];
+  const context = taskContext(items, "/repo");
+  assert.deepEqual(context.files, []);
+  assert.deepEqual(context.unlisted, [perl], "the same command run twice is listed once");
+  assert.equal(contextCount(context), "not listed");
+  const note = taskMarkdown(taskRecord(items, { threadId: "T", title: "Say hello, live", cwd: "/repo" }));
+  assert.match(note, /## Files the turn touched\n\nAs the CLI reported them\. Modex did not index the project\.\n\nThese commands may have changed files/);
+  assert.ok(note.includes(`- \`${perl.replace(/`/g, "'")}\`\n`));
+});
+
+test("checks, read-only commands, and denied or failed commands are not listed as possible writers", () => {
+  const context = taskContext([
+    user,
+    bash("pnpm test"),
+    bash("cat a.txt && sed -n 1,5p b.txt | wc -l"),
+    bash("git status --short"),
+    bash("rm -rf build", { outcome: "denied", ok: false }),
+    bash("touch x", { outcome: "failed", ok: false }),
+    tool("Edit", { file_path: "/repo/a.ts", old_string: "a", new_string: "b" }),
+  ], "/repo");
+  assert.equal(context.unlisted, undefined);
+  assert.equal(contextCount(context), "1");
+  // An interrupted or unreported command may still have written something.
+  assert.deepEqual(taskContext([bash("git checkout -- a.ts", { outcome: "interrupted" }), bash("echo x > out.txt", { outcome: "unknown", ok: undefined })], "/repo").unlisted,
+    ["git checkout -- a.ts", "echo x > out.txt"]);
+});
+
+test("the note lists at most the first possible-writer commands and says how many more", () => {
+  const items = [user, ...Array.from({ length: CONTEXT_SHOWN + 2 }, (_, i) => bash(`touch f${i}`))];
+  const note = taskMarkdown(taskRecord(items, { threadId: "T", title: "Touch", cwd: "/repo" }));
+  assert.equal((note.match(/^- `touch f\d+`$/gm) ?? []).length, CONTEXT_SHOWN);
+  assert.match(note, /- and 2 more\n/);
+});
+
+test("a saved record from before possible writers were listed still reopens; a damaged list does not", () => {
+  const record = taskRecord([user, tool("Read", { file_path: "/repo/a.ts" })], { threadId: "T", title: "Read", cwd: "/repo" });
+  const snapshot = (context: unknown) => ({ version: 1, pageId: "P", revision: 1, projectId: "p", threadId: "T", turnId: "U", savedAt: at(1), record: { ...record, context } });
+  assert.equal(isTaskSnapshot(snapshot({ files: [{ path: "a.ts", relations: ["read"] }], outside: 0 })), true);
+  assert.equal(isTaskSnapshot(snapshot({ files: [], outside: 0, unlisted: ["make"] })), true);
+  assert.equal(isTaskSnapshot(snapshot({ files: [], outside: 0, unlisted: [42] })), false);
+});
 
 test("Codex context actions resolve from the command cwd before project containment", () => {
   const run = (cwd: string, path: string): ThreadItem => {

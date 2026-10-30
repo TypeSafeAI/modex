@@ -33,6 +33,7 @@ import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
 import { boundOutput } from "../../shared/evidence.js";
 import { taskMarkdown, taskRecord, type TaskNoteView } from "../../shared/task-context.js";
+import { openingTitle } from "./titles.js";
 import { actionDigest, emptyRequests, publicAnswers, register as registerRequest, resolve as resolveRequest, settle as settleRequest, validateAnswers, withdraw as withdrawRequests, type Question, type RequestBinding, type RequestsState, type Resolution } from "../../shared/human-requests.js";
 import { CONVERSATION_SCHEMA, applyConversationEvent, initialConversation, okFor, toolItemId, type AttemptMark, type ConversationEvent, type ConversationState, type Observation, type SettledOutcome, type TurnRef } from "../../shared/conversation-events.js";
 
@@ -711,10 +712,13 @@ export class ThreadRunner {
     let files: Attachment[];
     try { files = this.attachments.claim(threadId, attachments, draft ? { draft } : {}); }
     finally { if (draft) this.attachments.revokeDraft(draft); }
-    const derivedTitle = (text.replace(/\s+/g, " ").trim() || files.map((f) => f.name).join(", ")).slice(0, 60) || "New thread";
-    // Name the thread after its first completed turn, including a retried first turn that still carries the opening-message title.
+    const opening = text.replace(/\s+/g, " ").trim() || files.map((f) => f.name).join(", ");
+    const derivedTitle = openingTitle(opening) || "New thread";
+    // Name the thread after its first completed turn, including a retried first turn that still carries the opening-message title
+    // (or the plain 60-character cut it had before titles were cut at a word break).
     const firstTurn = !l.items.some((item) => item.kind === "user" && item.id !== reuse);
-    const shouldName = firstTurn && thread.titleSource !== "manual" && (thread.title === "New thread" || (retry && thread.title === derivedTitle));
+    const openingTitled = thread.title === derivedTitle || thread.title === opening.slice(0, 60);
+    const shouldName = firstTurn && thread.titleSource !== "manual" && (thread.title === "New thread" || (retry && openingTitled));
     l.followUp?.abort.abort();
     l.followUp = undefined;
     // The Modex turn is the user message it answers: Retry runs the same turn again as a new attempt.

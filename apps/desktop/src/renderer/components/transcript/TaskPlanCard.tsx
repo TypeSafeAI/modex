@@ -3,7 +3,7 @@ import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
-import { CONTEXT_SHOWN, displayCommand, noPlan, noPlanText, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
+import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, noPlan, noPlanText, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
 
 export const PLAN_STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
 export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list", "acp-plan": "The agent's plan" } as const;
@@ -99,17 +99,20 @@ export function VerificationText({ v }: { v: TaskVerification }) {
 /**
  * The project files a finished turn touched (docs/task-context.md#context-map), shown when asked: what
  * its tools changed, read and searched, as the CLI reported them. Nothing is indexed or inferred.
- * At most 20 are listed, then how many more; paths outside the project are only counted.
+ * At most 20 are listed, then how many more; paths outside the project are only counted. Commands that
+ * may have changed files no CLI named are listed after them, so the list never reads as complete when it
+ * might not be.
  */
 export function TaskContextLine({ items, cwd }: { items: readonly ThreadItem[]; cwd: string }) {
   const context = useMemo(() => taskContext(items, cwd), [items, cwd]);
   const [open, setOpen] = useState(false);
   const listId = useId();
-  if (!context.files.length && !context.outside) return null;
+  const unlisted = context.unlisted ?? [];
+  if (!context.files.length && !context.outside && !unlisted.length) return null;
   return (
     <div className="task-context" data-testid="task-context">
       <button type="button" className="task-context-toggle" data-testid="task-context-toggle" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((v) => !v)}>
-        Files touched · {context.files.length}
+        Files touched · {contextCount(context)}
       </button>
       {open && <div id={listId}>
         <p className="task-context-note">As the CLI reported them. Modex did not index the project.</p>
@@ -120,7 +123,19 @@ export function TaskContextLine({ items, cwd }: { items: readonly ThreadItem[]; 
           {context.files.length > CONTEXT_SHOWN && <li data-testid="task-context-more">and {context.files.length - CONTEXT_SHOWN} more</li>}
           {context.outside > 0 && <li data-testid="task-context-outside">{context.outside} outside the project, not named</li>}
         </ul>
+        {unlisted.length > 0 && <UnlistedCommands commands={unlisted} testId="task-context-unlisted" />}
       </div>}
     </div>
   );
+}
+
+/** Commands that may have changed files no CLI named, shown as their scripts with the exact command on hover. */
+export function UnlistedCommands({ commands, testId }: { commands: readonly string[]; testId: string }) {
+  return <>
+    <p className="task-context-note">{UNLISTED_WORDS}</p>
+    <ul className="task-context-files">
+      {commands.slice(0, CONTEXT_SHOWN).map((command) => <li key={command} data-testid={testId}><code title={command}>{displayCommand(command)}</code></li>)}
+      {commands.length > CONTEXT_SHOWN && <li>and {commands.length - CONTEXT_SHOWN} more</li>}
+    </ul>
+  </>;
 }

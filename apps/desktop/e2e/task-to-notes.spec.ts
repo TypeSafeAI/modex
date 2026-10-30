@@ -131,6 +131,44 @@ test("a turn's footer lists the files it touched, on demand, as the CLI reported
   await expect(context).toContainText("As the CLI reported them");
 });
 
+test("a footer whose files a shell command may have changed says so and lists the command, never a guessed file", async () => {
+  // CF-7 close-out observations 1 and 2: Claude rewrote a file it had read through a redirect, and Codex
+  // edited one with `perl -pi`, which it parsed as an unknown action. Neither CLI named the file written.
+  const cwd = repo;
+  const origin = (turn: string, item: string, backend: string) => ({ thread: threadId, turn, attempt: `${turn}:A1`, backend, native: { runtime: "R", item } });
+  const tool = (turn: string, backend: string, id: string, extra: Record<string, unknown>) => ({ type: "item", threadId, item: { id, kind: "tool", args: {}, status: "done", outcome: "succeeded", ok: true, origin: origin(turn, id, backend), at: at(), ...extra } });
+  const redirect = "printf 'hello, live\\n' > greeting.txt && cat greeting.txt";
+  const perl = "/bin/zsh -lc 'perl -pi -e s/hello/hi/ greeting.txt'";
+  const before = await tid(page, "task-context-toggle").count();
+  await app.evaluate(({ BrowserWindow }, list) => {
+    for (const event of list) BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", event);
+  }, [
+    { type: "item", threadId, item: { id: "u-redirect", kind: "user", text: "Say hello, live", at: at() } },
+    tool("u-redirect", "claude", "rr1", { name: "Read", title: "read greeting.txt", args: { file_path: `${cwd}/greeting.txt` } }),
+    tool("u-redirect", "claude", "rb1", { name: "Bash", title: `$ ${redirect}`, args: { command: redirect }, exec: { command: redirect } }),
+    { type: "item", threadId, item: { id: "a-redirect", kind: "assistant", text: "Done.", phase: "final", outcome: "succeeded", origin: origin("u-redirect", "a-redirect", "claude"), at: at() } },
+    { type: "item", threadId, item: { id: "u-perl", kind: "user", text: "Say hi", at: at() } },
+    tool("u-perl", "codex", "pp1", { name: "shell", title: `$ ${perl}`, exec: { command: perl, actions: [] }, exitCode: 0 }),
+    tool("u-perl", "codex", "pp2", { name: "shell", title: `$ ${perl}`, exec: { command: perl, actions: [] }, exitCode: 0 }),
+    { type: "item", threadId, item: { id: "a-perl", kind: "assistant", text: "Done.", phase: "final", outcome: "succeeded", origin: origin("u-perl", "a-perl", "codex"), at: at() } },
+    { type: "status", threadId, status: "idle" },
+  ]);
+  await expect(tid(page, "task-context-toggle")).toHaveCount(before + 2);
+  const claude = tid(page, "task-context").filter({ hasText: "Files touched · 1, maybe more" });
+  await expect(claude).toHaveCount(1);
+  await tid(claude, "task-context-toggle").click();
+  await expect(tid(claude, "task-context-file")).toHaveText(["greeting.txt read"]);
+  await expect(claude).toContainText("These commands may have changed files that neither the CLI nor Modex named:");
+  await expect(tid(claude, "task-context-unlisted")).toHaveText([redirect]);
+  const codex = tid(page, "task-context").filter({ hasText: "Files touched · not listed" });
+  await expect(codex).toHaveCount(1);
+  await tid(codex, "task-context-toggle").click();
+  await expect(tid(codex, "task-context-file")).toHaveCount(0);
+  // Shown as the script its shell ran, with the exact command on hover, and once although it ran twice.
+  await expect(tid(codex, "task-context-unlisted")).toHaveText(["perl -pi -e s/hello/hi/ greeting.txt"]);
+  await expect(tid(codex, "task-context-unlisted").locator("code")).toHaveAttribute("title", perl);
+});
+
 test("a successful shell receipt cannot verify masked failures or writes after a check", async () => {
   const commands = ["pnpm test || true", "pnpm test && printf broken > app.ts", "pnpm test | cat", "pnpm build && pnpm test"];
   const before = await tid(page, "task-verification").count();
