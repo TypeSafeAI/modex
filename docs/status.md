@@ -212,6 +212,8 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 ## In flight
 
+- **Canvas Escape harness readiness.** Repeated hosted failures showed the main pane still hidden after guest Escape. A controlled delayed-IPC diagnostic proved that renderer full-view state can precede native readiness. The test-only candidate waits for the native guest to become visible at the expanded preview bounds before sending one Escape, retaining all security and lifecycle assertions. Five candidate repetitions passed; full validation and protected delivery remain pending. [Evidence](reviews/2026-10-30-canvas-native-readiness.md).
+
 - **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery remains pending. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
 
 - **Code Review packaged-app harness repair.** The shared harness and standalone IPC test now honor `MODEX_PACKAGED_APP`, including crash recovery. Two executable-identity regressions failed before the repair and passed afterward against a local ad-hoc bundle; development checks also passed. This is scoped harness evidence, not signed-release or human acceptance. [Evidence and remaining coverage limits](reviews/2026-10-28-code-review-packaged-harness.md).
