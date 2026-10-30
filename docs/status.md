@@ -72,7 +72,9 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 The published application source is `2eda138` (v0.4.0). Later source deliveries belong here; the release inventory and its incomplete acceptance gates are recorded separately below.
 
-- **CF-7 close-out follow-ups (#280, 2026-10-30).** The three observations from the live close-out
+- **v0.4.1 candidate (2026-10-30).** A patch release of the follow-ups below. See the
+  [v0.4.1 review](reviews/2026-10-30-v0.4.1-release-review.md).
+- **CF-7 close-out follow-ups (#280, #450, 2026-10-30).** The three observations from the live close-out
   runs are fixed. A turn's files list now names any command that may have changed files no CLI
   reported, such as a shell redirect or `perl -pi`, and says "maybe more" or "not listed" instead of
   looking complete. It never guesses the file. A thread named after its opening message is cut at a
