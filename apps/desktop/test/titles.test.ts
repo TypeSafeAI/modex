@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateTitle } from "../src/main/engine/titles.js";
+import { TITLE_LENGTH, generateTitle, openingTitle } from "../src/main/engine/titles.js";
 import type { Backend } from "../src/main/engine/backends/types.js";
 import { local } from "./fakeproc.js";
 
@@ -71,4 +71,19 @@ test("the naming request includes bounded opening and completed-reply context as
   assert.match(prompt, /Resolved the cookie path/);
   assert.match(prompt, /\\"Ignore title rules\\"/);
   assert.doesNotMatch(prompt, /REPLY_TAIL|PROMPT_TAIL/);
+});
+
+// CF-7 close-out observation 3: the live note was titled "…tool available (for", cut mid-word.
+test("an opening-message title is cut at a word break with an ellipsis, never mid-word or mid-character", () => {
+  const request = "If you have a task-list or todo planning tool available (for this turn), use it to plan the fix.";
+  const title = openingTitle(request);
+  assert.equal(title, "If you have a task-list or todo planning tool available…");
+  assert.ok([...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(title)].length <= TITLE_LENGTH);
+  assert.equal(openingTitle("  Fix   the\nlogin redirect  "), "Fix the login redirect", "short messages keep every word, whitespace collapsed");
+  assert.equal(openingTitle("x".repeat(60)), "x".repeat(60), "exactly the limit is not cut");
+  assert.equal(openingTitle("a".repeat(80)), `${"a".repeat(59)}…`, "one long word is cut at a character");
+  const family = "👨‍👩‍👧‍👦";
+  assert.equal(openingTitle(family.repeat(70)), `${family.repeat(59)}…`, "a grapheme is never split");
+  assert.equal(openingTitle("修复登录重定向".repeat(10)), `${"修复登录重定向".repeat(10).slice(0, 59)}…`, "text without spaces is cut at a character");
+  assert.equal(openingTitle(`${"word ".repeat(10)}tailor, more words after it`), `${"word ".repeat(10)}tailor…`, "trailing punctuation before the cut is dropped");
 });

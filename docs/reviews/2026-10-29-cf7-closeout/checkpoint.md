@@ -132,6 +132,14 @@ default collaboration mode, medium reasoning).
 3. **The note title cuts the request mid-word** ("…tool available (for"). The note is named after the
    thread, and a thread is named after the first 60 characters of its request until it gets a better
    name, so a long request makes an unhelpful title. A human can rename the note; a later save keeps it.
+   **Follow-up, 2026-10-30 (`cf7-observations`).** Observations 1–3 are addressed in code; Val's
+   verdict below is still open. For 1 and 2, the context map now lists any command that may have
+   changed files no CLI named, by the rule that already makes a check stale, without guessing the
+   file. The Claude turn reads "Files touched · 1, maybe more" and lists the `printf … > greeting.txt`
+   command. The Codex turn reads "Files touched · not listed", lists the `perl -pi` command once, and
+   its note gains the files section. For 3, an opening-message title is cut at a word break with "…"
+   ("If you have a task-list or todo planning tool available…"). Notes saved earlier keep their titles
+   and records; they reopen unchanged.
 4. **No live `turn/plan/updated` step plan, still.** Six default-mode Codex turns on this machine
    (0.163.0 and 0.164.0, `gpt-6.1-sol` and `gpt-6-astra`) have not been offered the plan tool. The
    path stays tested with schema-shaped fixtures, as `task-context.md#not-done-yet` says.

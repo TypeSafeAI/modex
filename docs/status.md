@@ -72,6 +72,13 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 The published application source is `2eda138` (v0.4.0). Later source deliveries belong here; the release inventory and its incomplete acceptance gates are recorded separately below.
 
+- **CF-7 close-out follow-ups (#280, 2026-10-30).** The three observations from the live close-out
+  runs are fixed. A turn's files list now names any command that may have changed files no CLI
+  reported, such as a shell redirect or `perl -pi`, and says "maybe more" or "not listed" instead of
+  looking complete. It never guesses the file. A thread named after its opening message is cut at a
+  word break with "…" rather than mid-word. Val's human review of the saved Notes is still open on
+  #280. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md).
+
 ## v0.4.0 source delivery and remaining acceptance
 
 - **v0.4.0 published.** Signed tag `v0.4.0` at `2eda138` is public and confirmed by GitHub's latest-release endpoint. Protected Release run `40985927886`, independent downloaded-asset checks and downloaded-app E2E passed. The source deliveries below are included in this release; feature exposure and acceptance limits remain as stated. See the [publication record](reviews/2026-10-24-v0.4.0-release-review.md#published--2026-10-30-utc).

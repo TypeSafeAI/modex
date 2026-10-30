@@ -105,7 +105,8 @@ export function isTaskSnapshot(value: unknown): value is TaskSnapshot {
     && Array.isArray(r.clarifications) && r.clarifications.every((c) => typeof c?.question === "string" && (c.answer === null || strings(c.answer)))
     && (r.plan === undefined || (Array.isArray(r.plan.steps) && r.plan.steps.every((s) => typeof s?.text === "string" && typeof s.status === "string")))
     && (r.verification === undefined || (typeof r.verification.state === "string" && Array.isArray(r.verification.checks) && r.verification.checks.every((c) => typeof c?.command === "string")))
-    && (r.context === undefined || (Array.isArray(r.context.files) && r.context.files.every((f) => typeof f?.path === "string" && strings(f.relations)) && Number.isInteger(r.context.outside)))
+    && (r.context === undefined || (Array.isArray(r.context.files) && r.context.files.every((f) => typeof f?.path === "string" && strings(f.relations)) && Number.isInteger(r.context.outside)
+      && (r.context.unlisted === undefined || strings(r.context.unlisted))))
     && (r.answer === undefined || typeof r.answer === "string");
 }
 
@@ -214,12 +215,19 @@ export function taskMarkdown(record: TaskRecord): string {
     lines.push("");
   }
   const context = record.context;
-  if (context && (context.files.length || context.outside)) {
+  const unlisted = context?.unlisted ?? [];
+  if (context && (context.files.length || context.outside || unlisted.length)) {
     lines.push("## Files the turn touched", "", "As the CLI reported them. Modex did not index the project.", "");
     for (const file of context.files.slice(0, CONTEXT_SHOWN)) lines.push(`- \`${file.path}\` — ${file.relations.join(", ")}`);
     if (context.files.length > CONTEXT_SHOWN) lines.push(`- and ${context.files.length - CONTEXT_SHOWN} more`);
     if (context.outside) lines.push(`- ${context.outside} outside the project (not named)`);
-    lines.push("");
+    if (context.files.length || context.outside) lines.push("");
+    if (unlisted.length) {
+      lines.push(UNLISTED_WORDS, "");
+      for (const command of unlisted.slice(0, CONTEXT_SHOWN)) lines.push(`- \`${command.replace(/`/g, "'")}\``);
+      if (unlisted.length > CONTEXT_SHOWN) lines.push(`- and ${unlisted.length - CONTEXT_SHOWN} more`);
+      lines.push("");
+    }
   }
   if (record.commands.length) {
     lines.push("## Commands", "");
@@ -348,7 +356,7 @@ export function verification(items: readonly ThreadItem[]): TaskVerification {
     if (isCheckCommand(command)) {
       const passed = outcome === "succeeded" && (item.exitCode === 0 || item.exitCode === undefined);
       checks.push({ command, outcome, ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}), passed, stale: false });
-    } else if (outcome !== "denied" && !isReadOnlyCommand(command)) {
+    } else if (outcome !== "denied" && mayWrite(command)) {
       staleAll();
     }
   }
@@ -497,8 +505,13 @@ function segments(command: string, options: { noWrites?: boolean; checks?: boole
 export const CONTEXT_SHOWN = 20;
 /** A project file the turn touched, and how, as the CLI reported it. */
 export interface ContextFile { path: string; relations: ("read" | "changed" | "searched")[] }
-/** The files a turn touched inside the project, and how many outside it (counted, never named). */
-export interface TaskContext { files: ContextFile[]; outside: number }
+/**
+ * The files a turn touched inside the project, and how many outside it (counted, never named).
+ * `unlisted`: commands that may have changed files no CLI named (a shell redirect, `perl -pi`, `sed -i`),
+ * by the rule that makes a check stale. They are listed as commands; Modex does not guess their files.
+ * Absent in records saved before it existed.
+ */
+export interface TaskContext { files: ContextFile[]; outside: number; unlisted?: string[] }
 
 /** Tools that read one file, and the argument that names it. */
 const READ_ARGS: Record<string, string> = { Read: "file_path", read_file: "path", NotebookRead: "notebook_path" };
@@ -510,11 +523,14 @@ const SEARCH_ARGS: Record<string, string> = { Grep: "path", Glob: "path", LS: "p
  * its patch tools changed, files it read (Claude's Read, Codex's own parse of a command), and paths it
  * searched or listed. A denied or failed tool touched nothing. Nothing is inferred: a `cat` through a
  * shell that the CLI did not parse is not counted, and no dependency is guessed. Changed files come
- * first, then read, then searched, each in the order the turn first touched them.
+ * first, then read, then searched, each in the order the turn first touched them. A command that may
+ * have written files without naming them is listed in `unlisted`, once, so the map never reads as complete
+ * when it might not be.
  */
 export function taskContext(items: readonly ThreadItem[], cwd: string): TaskContext {
   const files = new Map<string, ContextFile>();
   const outsidePaths = new Set<string>();
+  const unlisted: string[] = [];
   const add = (raw: unknown, relation: ContextFile["relations"][number], commandCwd = cwd) => {
     if (typeof raw !== "string" || !raw.trim()) return;
     const path = relative(raw.trim(), cwd, commandCwd);
@@ -539,8 +555,25 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
     if (READ_ARGS[item.name]) add(item.args[READ_ARGS[item.name]!], "read");
     if (SEARCH_ARGS[item.name]) add(item.args[SEARCH_ARGS[item.name]!], "searched");
     for (const action of item.exec?.actions ?? []) add(action.path, action.kind === "read" ? "read" : "searched", item.exec?.cwd ?? cwd);
+    const command = item.exec?.command;
+    if (command && !EDIT_TOOLS.has(item.name) && mayWrite(command) && !unlisted.includes(command)) unlisted.push(command);
   }
   const rank = (file: ContextFile) => (file.relations.includes("changed") ? 0 : file.relations.includes("read") ? 1 : 2);
   const ordered = [...files.values()].map((file, i) => ({ file, i })).sort((a, b) => rank(a.file) - rank(b.file) || a.i - b.i).map(({ file }) => file);
-  return { files: ordered, outside: outsidePaths.size };
+  return { files: ordered, outside: outsidePaths.size, ...(unlisted.length ? { unlisted } : {}) };
 }
+
+/** Whether a command may have written files: neither a check nor known to be read-only (the rule that makes a check stale). */
+function mayWrite(command: string): boolean {
+  return !isCheckCommand(command) && !isReadOnlyCommand(command);
+}
+
+/** How a context map's files read in a label: "3", "3, maybe more" when a command may have changed others, "not listed". */
+export function contextCount(context: TaskContext): string {
+  const more = (context.unlisted?.length ?? 0) > 0;
+  if (!context.files.length && more) return "not listed";
+  return `${context.files.length}${more ? ", maybe more" : ""}`;
+}
+
+/** The words before the commands a context map could not resolve to files. */
+export const UNLISTED_WORDS = "These commands may have changed files that neither the CLI nor Modex named:";

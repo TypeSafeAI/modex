@@ -1085,6 +1085,31 @@ test("autonaming uses the successful attempt's last assistant reply, excluding e
   } finally { await runner.dispose(); }
 });
 
+test("a long opening message names the thread at a word break, and a Retry still renames a thread with the older 60-character cut", async () => {
+  // CF-7 close-out observation 3: the saved note was titled "…tool available (for".
+  const request = "If you have a task-list or todo planning tool available (for this turn), use it to plan the fix.";
+  const h = harness();
+  let titles = 0;
+  const backend: Backend = {
+    id: "mock", listModels: async () => [], dispose: async () => {},
+    runTurn: async () => ({ status: "failed", error: "try again" }),
+    generateTitle: async () => { titles++; return "Plan the fix"; },
+  };
+  const runner = new ThreadRunner({ ...h, backends: { mock: backend } });
+  const thread = await runner.createThread(h.store.addProject(gitRepo()).id);
+  try {
+    await runner.send(thread.id, request);
+    assert.equal(h.store.thread(thread.id)?.title, "If you have a task-list or todo planning tool available…");
+    // A thread named before this change carries the plain cut; its retried first turn is still named.
+    runner.updateThread(thread.id, { title: request.slice(0, 60) }, { automaticTitle: true });
+    backend.runTurn = async () => ({ status: "completed" });
+    await runner.retry(thread.id);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(titles, 1);
+    assert.equal(h.store.thread(thread.id)?.title, "Plan the fix");
+  } finally { await runner.dispose(); }
+});
+
 test("manual ownership survives relaunch and a retry even when its text matches the fallback", async () => {
   const h = harness();
   let titles = 0;
