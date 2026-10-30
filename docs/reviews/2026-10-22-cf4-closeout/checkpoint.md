@@ -117,3 +117,19 @@ documentation, so these runs exercised `main` at `b643617` plus this receipt.
 - The queue run for `8ab2072` merged the PR after Val's go-ahead on 2026-10-28.
 
 The attempt 1 failure is a first-pass result and stays recorded; it was not a Markdown or docs defect. It is not tracked as a CF-4 item.
+
+### Val's decision on C1–C5, 2026-10-30
+
+Added on 2026-10-30. The earlier sections, including the open C1–C5 table above, are unchanged.
+
+On 2026-10-30 Val chose **“Defer C1–C5 for now”** in the close-out session. The option they selected read: *Recorded word for word as your written deferral ("Val deferred C1–C5 on 2026-10-30") in a docs-only signed PR. #277 closes after it lands, and the rows stay unpassed.*
+
+| Row | Result | Reported by Val |
+| --- | --- | --- |
+| C1 | deferred, not run | Val deferred C1–C5 on 2026-10-30 |
+| C2 | deferred, not run | Val deferred C1–C5 on 2026-10-30 |
+| C3 | deferred, not run | Val deferred C1–C5 on 2026-10-30 |
+| C4 | deferred, not run | Val deferred C1–C5 on 2026-10-30 |
+| C5 | deferred, not run | Val deferred C1–C5 on 2026-10-30 |
+
+No row passed and none failed: no human VoiceOver run of C1–C5 happened. The deferral satisfies #277's closing condition but is not acceptance. The rows remain in the shared checklist (`../2026-10-20-keyboard-voiceover/checklist.md`) and can still be run on a later build. The `.worktrees/cf4-voiceover` worktree was removed after release of its ownership on 2026-10-30. Its committed source at `3f80fdfa8f1630d826d43752cb47eb3554dcf487` is recoverable from the verified maintenance bundle `2026-10-30T02-11-37-438Z-4d508ddf-2e8f-44ce-a49d-2c30e1a5fbbe`; that Git bundle does not establish preservation of the ignored seeded home or built app. The historical launch command above requires a restored checkout, a fresh build and reseeding before use. Its other rows (A1–A8, B1–B7) and #281 are not affected by this decision.
