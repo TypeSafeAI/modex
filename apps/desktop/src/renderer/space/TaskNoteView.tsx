@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { SpacePage } from "../../shared/space";
-import { CONTEXT_SHOWN, PROPOSED_WORDS, clarificationLine, type TaskNoteView as View } from "../../shared/task-context";
+import { CONTEXT_SHOWN, PROPOSED_WORDS, clarificationLine, contextCount, type TaskNoteView as View } from "../../shared/task-context";
 import { bridge } from "../bridge";
-import { PLAN_FROM, PLAN_STATUS, VerificationText } from "../components/transcript/TaskPlanCard";
+import { PLAN_FROM, PLAN_STATUS, UnlistedCommands, VerificationText } from "../components/transcript/TaskPlanCard";
 
 const EDITED_BY: Record<NonNullable<View["edited"]>["by"], string> = { you: "You", outside: "Outside Modex", agent: "an agent", other: "an unknown change" };
 
@@ -63,13 +63,14 @@ export function TaskNoteView({ view, onOpenThread, onClose }: { view: View; onOp
     {!record.plan && record.proposedPlan && <><h3>Plan</h3>
       <p className="task-view-note">{PROPOSED_WORDS}</p>
       <pre className="task-view-proposed" data-testid="task-view-proposed-plan">{record.proposedPlan}</pre></>}
-    {context && (context.files.length > 0 || context.outside > 0) && <><h3>Files touched · {context.files.length}</h3>
+    {context && (context.files.length > 0 || context.outside > 0 || (context.unlisted?.length ?? 0) > 0) && <><h3>Files touched · {contextCount(context)}</h3>
       <p className="task-view-note">As the CLI reported them. Modex did not index the project.</p>
       <ul className="task-context-files">
         {context.files.slice(0, CONTEXT_SHOWN).map((file) => <li key={file.path} data-testid="task-view-file"><code>{file.path}</code> {file.relations.join(", ")}</li>)}
         {context.files.length > CONTEXT_SHOWN && <li>and {context.files.length - CONTEXT_SHOWN} more</li>}
         {context.outside > 0 && <li>{context.outside} outside the project, not named</li>}
-      </ul></>}
+      </ul>
+      {context.unlisted?.length ? <UnlistedCommands commands={context.unlisted} testId="task-view-unlisted" /> : null}</>}
     {verification && (verification.checks.length > 0 || verification.edits > 0) && <><h3>Verification</h3>
       <div className="task-verification" data-testid="task-view-verification" data-state={verification.state}><VerificationText v={verification} /></div></>}
     {record.answer && <><h3>Answer</h3><p className="task-view-answer">{record.answer}</p></>}

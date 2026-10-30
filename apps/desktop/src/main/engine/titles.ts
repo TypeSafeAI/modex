@@ -18,6 +18,24 @@ function normalizeTitle(output: string): string | null {
   return /[\p{L}\p{N}]/u.test(title) && [...characters.segment(title)].length <= 60 ? title : null;
 }
 
+/** The most characters (graphemes) a thread title shows. */
+export const TITLE_LENGTH = 60;
+
+/**
+ * A thread's first name, from its opening message, until a better one arrives. Whitespace collapses. A
+ * longer message is cut at the last word break that keeps at least half the length, else at a grapheme,
+ * and ends in "…", so neither a word nor a character is cut in two.
+ */
+export function openingTitle(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const graphemes = [...characters.segment(flat)].map((part) => part.segment);
+  if (graphemes.length <= TITLE_LENGTH) return flat;
+  const head = graphemes.slice(0, TITLE_LENGTH - 1);
+  const space = head.lastIndexOf(" ");
+  const kept = (graphemes[TITLE_LENGTH - 1] === " " ? head : space >= TITLE_LENGTH / 2 ? head.slice(0, space) : head).join("").trimEnd();
+  return `${kept.replace(/[\s,;:.\-–—(\[{]+$/u, "")}…`;
+}
+
 /** A separate, non-resumed CLI conversation; its output never enters the coding transcript. */
 export async function generateTitle(backend: Backend, opts: TitleOptions, text: string, signal: AbortSignal): Promise<string | null> {
   if (signal.aborted) return null;
