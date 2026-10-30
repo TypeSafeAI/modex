@@ -248,7 +248,8 @@ the turn touched and its verification, as the save recorded them. It is read-onl
   unless the CLI is started with `CLAUDE_CODE_ENABLE_TODO_TOOLS`, which Modex does not set
   ([decision](reviews/2026-10-22-cf7-claude-plans-decision.md)).
 - A Codex `turn/plan/updated` step plan from a real turn: no default-mode turn in the
-  [live captures](#live-codex-captures) offered the plan tool.
+  [live captures](#live-codex-captures) offered the plan tool, nor did the codex-cli 0.164.0
+  (`gpt-6.1-sol`) turn in the [CF-7 close-out](reviews/2026-10-29-cf7-closeout/checkpoint.md).
 - Model-proposed or user-confirmed context relations. Every relation Modex shows is one the CLI
   reported; none is suggested.
 
