@@ -110,6 +110,8 @@ export function admitLocalConfiguration(read: ConfigRead, requirements: Requirem
   want("model_reasoning_summary", config.model_reasoning_summary ?? null, null);
   const features = record(config.features);
   want("features.view_image", features?.view_image ?? null, false);
+  want("features.multi_agent", features?.multi_agent ?? null, false);
+  want("features.multi_agent_v2", features?.multi_agent_v2 ?? null, false);
   const servers = record(config.mcp_servers);
   if (servers && Object.keys(servers).length) refuse(`MCP servers are configured (${Object.keys(servers).join(", ")}).`);
   return { sessionFlags, layers: summary, managedRequirements: false };

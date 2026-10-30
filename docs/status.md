@@ -227,6 +227,8 @@ The published application source is `2eda138` (v0.4.0). Later source deliveries 
 
 ## In flight
 
+- **LM-5 effective subagent admission.** A reproduced policy gap accepted enabled native subagent flags despite disabled launch settings. The repair requires both effective values to be false; ten regressions failed before the fix, and 26 focused policy/execution tests now pass, including refusal before a native thread opens. A configuration-only CLI 0.166.0 probe confirms the explicit false report shape. Build and full unit validation passed (2,254 passes, 26 skips); independent review found no blocking findings. Protected delivery remains pending; native qualification stays separate. [Evidence](reviews/2026-10-30-lm5-subagent-policy.md).
+
 - **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery landed through #435 and is included in v0.4.0. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
 
 - **Code Review packaged-app harness repair.** The shared harness and standalone IPC test now honor `MODEX_PACKAGED_APP`, including crash recovery. Two executable-identity regressions failed before the repair and passed afterward against a local ad-hoc bundle; development checks also passed. This is scoped harness evidence, not signed-release or human acceptance. [Evidence and remaining coverage limits](reviews/2026-10-28-code-review-packaged-harness.md).

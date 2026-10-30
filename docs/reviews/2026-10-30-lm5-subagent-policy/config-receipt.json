@@ -1,0 +1,50 @@
+{
+  "cli": "0.166.0",
+  "scope": "configuration-only in temporary empty home; no thread or inference",
+  "features": {
+    "multi_agent_v2": false,
+    "network_proxy": null,
+    "multi_agent": false,
+    "api_key_cyber_access_programs": true,
+    "api_key_model_discovery": true,
+    "auth_elicitation": true,
+    "background_paginated_rollout_migration": false,
+    "codex_apps_mcp_2026_07_28": false,
+    "mcp_2026_07_28": false,
+    "mcp_connection_sharing": false,
+    "memories": false,
+    "mentions_v2": true,
+    "remote_control": false,
+    "remote_plugin": true,
+    "tool_suggest": true,
+    "windows_sandbox_service": false
+  },
+  "origins": {
+    "features.multi_agent": {
+      "name": {
+        "type": "sessionFlags"
+      },
+      "version": "sha256:a9409150a66a83ac8ffe500daa6eba5fe887b9beb82608cc9a59f0f8ddf58548"
+    },
+    "features.multi_agent_v2.enabled": {
+      "name": {
+        "type": "sessionFlags"
+      },
+      "version": "sha256:a9409150a66a83ac8ffe500daa6eba5fe887b9beb82608cc9a59f0f8ddf58548"
+    }
+  },
+  "session_flags": [
+    {
+      "name": {
+        "type": "sessionFlags"
+      },
+      "version": "sha256:a9409150a66a83ac8ffe500daa6eba5fe887b9beb82608cc9a59f0f8ddf58548",
+      "config": {
+        "features": {
+          "multi_agent": false,
+          "multi_agent_v2": false
+        }
+      }
+    }
+  ]
+}
