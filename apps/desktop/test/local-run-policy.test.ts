@@ -6,20 +6,20 @@ const EXPECTED = { provider: "modex_local", origin: "http://127.0.0.1:18501", co
 const FLAGS = "sha256:b3932b4abe963781145150a5f8db02bf0afb5fe03385d52c15122db85463fce3";
 const EMPTY = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
 
-/** The shape codex-cli 0.164.0 returned for an LM-3 child on 2026-10-27 (docs/reviews/2026-10-27-lm5-destination-policy.md), trimmed to what the policy reads. */
+/** The shape codex-cli 0.164.0 returned for an LM-3 child on 2026-10-27 (docs/reviews/2026-10-27-lm5-destination-policy.md), trimmed to what the policy reads, with subagent flags verified by the 2026-10-30 codex-cli 0.166.0 configuration-only probe. */
 function read(): ConfigRead {
   const flags = {
     model_provider: "modex_local",
     model_providers: { modex_local: { name: "Modex local", base_url: "http://127.0.0.1:18501/v1", wire_api: "responses", requires_openai_auth: false, env_key: "MODEX_LOCAL_TOKEN", request_max_retries: 0 } },
-    model_context_window: 32768, web_search: "disabled", features: { view_image: false }, shell_environment_policy: { exclude: ["MODEX_LOCAL_TOKEN"] },
+    model_context_window: 32768, web_search: "disabled", features: { view_image: false, multi_agent: false, multi_agent_v2: false }, shell_environment_policy: { exclude: ["MODEX_LOCAL_TOKEN"] },
   };
   const origin = { name: { type: "sessionFlags" }, version: FLAGS };
   return {
     config: { model: null, model_provider: "modex_local", model_context_window: 32768, web_search: "disabled", model_reasoning_summary: null, openai_base_url: null, mcp_servers: {},
       model_providers: { modex_local: { ...flags.model_providers.modex_local, experimental_bearer_token: null, auth: null, http_headers: null, env_http_headers: null, query_params: null } },
-      features: { view_image: false, mentions_v2: true, remote_control: false }, file_opener: "vscode" },
+      features: { view_image: false, multi_agent: false, multi_agent_v2: false, mentions_v2: true, remote_control: false }, file_opener: "vscode" },
     origins: Object.fromEntries(["model_provider", "model_providers.modex_local.name", "model_providers.modex_local.base_url", "model_providers.modex_local.wire_api", "model_providers.modex_local.requires_openai_auth",
-      "model_providers.modex_local.env_key", "model_providers.modex_local.request_max_retries", "model_context_window", "web_search", "features.view_image", "shell_environment_policy.exclude.0"].map(k => [k, origin])),
+      "model_providers.modex_local.env_key", "model_providers.modex_local.request_max_retries", "model_context_window", "web_search", "features.view_image", "features.multi_agent", "features.multi_agent_v2.enabled", "shell_environment_policy.exclude.0"].map(k => [k, origin])),
     layers: [{ name: { type: "sessionFlags" }, version: FLAGS, config: flags }, { name: { type: "user", file: "/tmp/process-x/.codex/config.toml", profile: null }, version: EMPTY, config: {} }, { name: { type: "system", file: "/etc/codex/config.toml" }, version: EMPTY, config: {} }],
   };
 }
@@ -94,3 +94,17 @@ test("governed keys and layer descriptions", () => {
   assert.equal(describeLayer({ type: "sessionFlags" }), "Modex's session settings");
   assert.equal(describeLayer({ type: "something_new" }), "a something_new configuration layer");
 });
+
+for (const flag of ["multi_agent", "multi_agent_v2"] as const) {
+  for (const value of [true, undefined, null, "false", { enabled: true }]) {
+    test(`local admission refuses ${flag}=${JSON.stringify(value) ?? "missing"}`, () => {
+      const reported = read();
+      const features = reported.config.features as Record<string, unknown>;
+      if (value === undefined) delete features[flag];
+      else features[flag] = value;
+      assert.throws(() => admitLocalConfiguration(reported, { requirements: null }, EXPECTED),
+        error => error instanceof Error && error.message.includes(`features.${flag}`),
+        "unqualified native subagents must be refused before any thread opens");
+    });
+  }
+}

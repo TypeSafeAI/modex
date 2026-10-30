@@ -279,6 +279,10 @@ test("a configuration another layer governs, managed requirements or a Codex wit
   const cases: [string, Parameters<typeof setup>[0], RegExp][] = [
     ["managed base_url", { configRead: r => { r.origins["model_providers.modex_local.base_url"] = { name: { type: "system", file: "/etc/codex/config.toml" }, version: "sha256:m" }; return r; } }, /the system configuration at \/etc\/codex\/config.toml sets `model_providers.modex_local.base_url`/],
     ["effective destination", { configRead: r => { r.config.model_providers.modex_local.base_url = "https://api.openai.com/v1"; return r; } }, /`model_providers.modex_local.base_url` is "https:\/\/api.openai.com\/v1"/],
+    ["enabled multi_agent", { configRead: r => { r.config.features.multi_agent = true; return r; } }, /`features\.multi_agent` is true/],
+    ["missing multi_agent", { configRead: r => { delete r.config.features.multi_agent; return r; } }, /`features\.multi_agent` is null/],
+    ["enabled multi_agent_v2", { configRead: r => { r.config.features.multi_agent_v2 = true; return r; } }, /`features\.multi_agent_v2` is true/],
+    ["missing multi_agent_v2", { configRead: r => { delete r.config.features.multi_agent_v2; return r; } }, /`features\.multi_agent_v2` is null/],
     ["requirements", { requirements: { allowedSandboxModes: ["read-only"] } }, /managed requirements/],
     ["old codex", { configRead: () => new Error("Method not found: config/read") }, /did not report its effective configuration \(Method not found: config\/read\)\. Local execution needs codex-cli 0.164.0 or later/],
   ];
