@@ -1,0 +1,992 @@
+
+> modex-monorepo@0.3.0 test:e2e /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite
+> pnpm --filter @modex/desktop test:e2e && pnpm --filter @modex/site test:e2e
+
+
+> @modex/desktop@0.4.0 test:e2e /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/desktop
+> pnpm run build && playwright test
+
+
+> @modex/desktop@0.4.0 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/desktop
+> pnpm run build:main && pnpm run build:renderer && pnpm run build:usage
+
+
+> @modex/desktop@0.4.0 build:main /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/desktop
+> node scripts/prepare-terminal.mjs && tsc -p tsconfig.main.json && node scripts/copy-main-assets.mjs
+
+
+> @modex/desktop@0.4.0 build:renderer /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/desktop
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 321 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/renderer/index.html                            0.69 kB │ gzip:   0.39 kB
+dist/renderer/assets/modex-mark-DNmRLW2u.png      128.36 kB
+dist/renderer/assets/TerminalPanel-BmfB5bmM.css     3.52 kB │ gzip:   0.96 kB
+dist/renderer/assets/RoutinesView-DHaCvtkN.css      3.83 kB │ gzip:   1.18 kB
+dist/renderer/assets/ImagesView-BKu_xtPa.css        4.59 kB │ gzip:   1.32 kB
+dist/renderer/assets/PluginSurface-Y6Oy41MY.css     4.98 kB │ gzip:   1.44 kB
+dist/renderer/assets/CodeReviewView-s2RQWv2X.css   19.00 kB │ gzip:   4.19 kB
+dist/renderer/assets/SpaceView-C6Vuw0MJ.css        37.15 kB │ gzip:   7.27 kB
+dist/renderer/assets/index-BmxFp0c_.css            90.13 kB │ gzip:  18.27 kB
+dist/renderer/assets/RoutinesView-BmsGEa1o.js      11.22 kB │ gzip:   3.39 kB
+dist/renderer/assets/PluginSurface-CCXLT_vM.js     14.77 kB │ gzip:   4.33 kB
+dist/renderer/assets/ErrorNotice-C7VNUtG0.js       16.65 kB │ gzip:   6.71 kB
+dist/renderer/assets/ImagesView-BnWlt8y_.js        17.27 kB │ gzip:   5.24 kB
+dist/renderer/assets/SpaceView-BBNnzrTe.js         94.78 kB │ gzip:  27.34 kB
+dist/renderer/assets/CodeReviewView-DbMmS66u.js   117.86 kB │ gzip:  34.52 kB
+dist/renderer/assets/TerminalPanel-CxAaY5ZX.js    336.04 kB │ gzip:  84.71 kB
+dist/renderer/assets/index-DLYRG7HH.js            561.44 kB │ gzip: 166.39 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 190ms
+
+> @modex/desktop@0.4.0 build:usage /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/desktop
+> vite build --config vite.usage.config.ts
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 21 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/usage-preview/index.html                   0.45 kB │ gzip:  0.29 kB
+dist/usage-preview/assets/index-DiGtM6QH.css   36.29 kB │ gzip:  8.33 kB
+dist/usage-preview/assets/index-Con1OYAD.js   262.96 kB │ gzip: 81.24 kB
+
+✓ built in 93ms
+
+Running 482 tests using 1 worker
+
+Downloading Electron binary...
+{"fixture":"agents","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-jtUVoj","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-heyYYH","pid":93656}
+  ✓    1 e2e/agents.spec.ts:6:39 › jev: live agents remain visible across threads and reload; tools stay compact (5.8s)
+{"fixture":"agents","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-XCmVNZ","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-X7TfC8","pid":94817}
+  ✓    2 e2e/agents.spec.ts:6:39 › coven: live agents remain visible across threads and reload; tools stay compact (3.0s)
+
+  ✓    3 e2e/analytics.spec.ts:11:1 › Analytics opens from the rail with the usage recorded on this Mac, and Settings can hide it (2.0s)
+
+  ✓    4 e2e/analytics.spec.ts:50:1 › Analytics CSV export completes a native download containing recorded rows (2.5s)
+{"fixture":"app","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-G48AS1","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-y6u1j4","pid":96670}
+  ✓    5 e2e/app.spec.ts:31:1 › ⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI shows every step (4.2s)
+  ✓    6 e2e/app.spec.ts:185:1 › the transcript scrolls vertically inside its pane; the page itself never overflows (83ms)
+  ✓    7 e2e/app.spec.ts:206:1 › ⇧⌘N creates a worktree thread and the header shows its branch and path (2.0s)
+{"fixture":"app","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-G48AS1","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-y6u1j4","pid":98247}
+  ✓    8 e2e/app.spec.ts:234:1 › state survives a relaunch: the thread and its transcript are restored (1.4s)
+  ✓    9 e2e/app.spec.ts:245:1 › ⚡ Auto: the judge picks a model before the turn and leaves an expandable receipt (2.2s)
+  ✓   10 e2e/app.spec.ts:303:1 › a key typed into Settings is kept encrypted outside state.json, reported masked, and can be cleared (221ms)
+  ✓   11 e2e/app.spec.ts:337:1 › primitives: the model Menu is keyboard-driven, and icon buttons are named, revealed on focus, and tooltipped (497ms)
+{"fixture":"app","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-G48AS1","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-y6u1j4","pid":2087}
+  ✓   12 e2e/app.spec.ts:420:1 › shell: back/forward, rename, search, show more, row menus, and a sidebar that stays hidden across a relaunch (7.2s)
+  ✓   13 e2e/app.spec.ts:509:1 › composer: context strip, access menu, plan via + and its chip, send enabled only with text (2.3s)
+  ✓   14 e2e/app.spec.ts:566:1 › drafts: a new chat is nothing until its first send; leaving it creates no thread; ⇧⌘N drafts a worktree (3.6s)
+  ✓   15 e2e/app.spec.ts:639:1 › transcript: follows new output while the reader is at the bottom, and stays put once they scroll up (5.1s)
+  ✓   16 e2e/app.spec.ts:676:1 › title bar: ⋯ menu (rename, open, copy, archive, delete), Changes icon with a count, and no leftover header chrome (1.8s)
+  ✓   17 e2e/app.spec.ts:714:1 › a 1380×880 window with Changes open keeps the whole composer, send button included, on screen (1.9s)
+  ✓   18 e2e/app.spec.ts:729:1 › accessibility: information text meets AA contrast, keyboard focus is visible, hit areas ≥ 28 px, motion respects the OS (3.8s)
+{"fixture":"approval-policy","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-X02KB4","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-EHywTt","pid":7795}
+  ✓   19 e2e/approval-policy.spec.ts:22:1 › Always allow in thread answers the waiting card, shows a chip that turns it off, and YOLO is selectable from the access menu (3.3s)
+{"fixture":"approval-policy","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-X02KB4","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-EHywTt","pid":8600}
+  ✓   20 e2e/approval-policy.spec.ts:52:1 › finished tasks are searchable read-only transcripts (1.3s)
+
+  ✓   21 e2e/approvals.spec.ts:37:1 › Settings scopes new rules, previews without saving, keeps inactive rules visible, and preserves drafts on error (734ms)
+  ✓   22 e2e/approvals.spec.ts:104:1 › automatic allow and never persist compact receipts; ask and project isolation keep human cards (2.5s)
+  ✓   23 e2e/approvals.spec.ts:155:1 › a safety-downgraded receipt explains why a human must answer (21ms)
+  ✓   24 e2e/approvals.spec.ts:172:1 › an allow rule covers one command: a chained shell command asks and says why (455ms)
+
+  ✓   25 e2e/archive.spec.ts:6:1 › archived threads leave the working list, survive relaunch, stay searchable and come back from the title bar or the notice (3.6s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-YIOMKg","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-gSXqwc","electronPid":12390}
+  ✓   26 e2e/attachment-lifecycle.spec.ts:64:1 › drop waits for startup state and stages its file exactly once (1.7s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-wP9lSZ","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-8NKEb7","electronPid":12523}
+  ✓   27 e2e/attachment-lifecycle.spec.ts:111:1 › Space visualization appends to the active project's attachment draft (2.8s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-aQwyJw","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-47oWOT","electronPid":12773}
+  ✓   28 e2e/attachment-lifecycle.spec.ts:139:1 › Streamer masks attachment labels while sending original metadata and bytes (3.8s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-RR9XEn","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-V3bjZq","electronPid":13146}
+  ✓   29 e2e/attachment-lifecycle.spec.ts:169:38 › project switch keeps B input isolated from A's held successful creation (3.8s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-f0EcqD","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-ycapdU","electronPid":13785}
+  ✓   30 e2e/attachment-lifecycle.spec.ts:169:38 › project switch keeps B input isolated from A's held failed creation (2.2s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-B4bbsp","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-3tlYc2","electronPid":14051}
+  ✓   31 e2e/attachment-lifecycle.spec.ts:218:1 › project switch-back keeps pending staging and ordinary unsent drafts on their own project (2.6s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-PKVxHY","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-dgevrl","electronPid":14428}
+  ✓   32 e2e/attachment-lifecycle.spec.ts:257:39 › draft: pending stage blocks button and keyboard send; rejection releases it (1.3s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-pxV5Ik","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-MV7VgD","electronPid":14528}
+  ✓   33 e2e/attachment-lifecycle.spec.ts:257:39 › thread: pending stage blocks button and keyboard send; rejection releases it (3.0s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-lAx9O9","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-P2rG0g","electronPid":15072}
+  ✓   34 e2e/attachment-lifecycle.spec.ts:277:96 › draft: pending picker blocks click and keyboard until rejection (1.5s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-70C7TE","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-RsWpcv","electronPid":15533}
+  ✓   35 e2e/attachment-lifecycle.spec.ts:277:96 › thread: pending picker blocks click and keyboard until rejection (3.0s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-nVzo7o","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-DDyMoi","electronPid":16065}
+  ✓   36 e2e/attachment-lifecycle.spec.ts:277:96 › draft: pending encoding blocks click and keyboard until rejection (1.5s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-zvo0fY","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-67GXb0","electronPid":16484}
+  ✓   37 e2e/attachment-lifecycle.spec.ts:277:96 › thread: pending encoding blocks click and keyboard until rejection (3.1s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-XVQ9qU","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-pocDq9","electronPid":17087}
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-XVQ9qU","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-pocDq9","electronPid":17339}
+  ✓   38 e2e/attachment-lifecycle.spec.ts:305:1 › failed creation restores files while keeping newer text and other drafts usable (5.3s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-eLUQQB","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-yLCkt5","electronPid":17683}
+  ✓   39 e2e/attachment-lifecycle.spec.ts:390:1 › late staging survives switch/remount without replacing removals or newer chips (4.1s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-LBxf3W","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-91lqs8","electronPid":18804}
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-LBxf3W","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-91lqs8","electronPid":19830}
+  ✓   40 e2e/attachment-lifecycle.spec.ts:426:1 › failed early send keeps its 19-file reservation across remount and restores alongside newer input (7.8s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-4T84mg","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-xbGRwr","electronPid":20317}
+  ✓   41 e2e/attachment-lifecycle.spec.ts:491:1 › overlapping file arrivals reserve at most 20 slots before their IPC calls finish (2.2s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-Wz7efw","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-whZq8N","electronPid":20517}
+  ✓   42 e2e/attachment-lifecycle.spec.ts:512:1 › native picker limits 21 files and nearly-full drafts; Plus menu works with keyboard (3.3s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-fE0jHP","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-UZVdRs","electronPid":21226}
+  ✓   43 e2e/attachment-lifecycle.spec.ts:548:1 › composer is 960 by 109 wide and stays contained at 900 (2.1s)
+{"fixture":"attachments","home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-bxW3Ao","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-DAFsub","pid":21711}
+  ✓   44 e2e/attachments.spec.ts:59:1 › a pasted image becomes a chip with a live thumbnail, enables Send on its own, and goes out with the message (1.8s)
+  ✓   45 e2e/attachments.spec.ts:117:1 › dragging files over the window shows the drop target; dropping attaches them; × removes the draft attachment (154ms)
+  ✓   46 e2e/attachments.spec.ts:160:1 › the paperclip's picker attaches files by path, reports an over-limit file, and the rest are sent together (2.2s)
+  ✓   47 e2e/attachments.spec.ts:211:1 › attachments are disabled while the thread works, and the chips survive switching threads (124ms)
+  ✓   48 e2e/attachments.spec.ts:232:1 › a forged image script chip is revealed and never executed (1.5s)
+
+  ✓   49 e2e/backend-health.spec.ts:6:1 › static models never make a missing Claude executable ready (1.6s)
+
+  ✓   50 e2e/backend-health.spec.ts:33:1 › a stale account result cannot replace refresh, and a failed check offers retry (2.0s)
+
+  ✓   51 e2e/backend-health.spec.ts:69:1 › CLI overrides are verified before persistence and can return to automatic discovery (2.3s)
+
+  ✓   52 e2e/backend-health.spec.ts:95:1 › existing system sign-ins are detected without login and refresh when returning from Terminal (3.4s)
+
+  ✓   53 e2e/backend-health.spec.ts:134:60 › graphite: connection cards guide sign-in, cancellation and terminal recovery (2.1s)
+
+  ✓   54 e2e/backend-health.spec.ts:134:60 › jev: connection cards guide sign-in, cancellation and terminal recovery (2.3s)
+
+  ✓   55 e2e/backend-health.spec.ts:134:60 › coven: connection cards guide sign-in, cancellation and terminal recovery (2.1s)
+
+  ✓   56 e2e/browser-attachments.spec.ts:38:1 › development browser attachments: actual picker, paste, drop, remove, authenticated thumbnails and attachment-only send (1.4s)
+  ✓   57 e2e/browser-attachments.spec.ts:82:1 › development browser picker cancellation releases the composer reservation (224ms)
+
+  ✓   58 e2e/browser-document.spec.ts:79:1 › loading /first refuses preparation before fake op reads; /second receives no credentials (1.7s)
+
+  ✓   59 e2e/browser-document.spec.ts:90:1 › a fill queued behind a held /first resource cannot write into same-origin /second (1.5s)
+
+  ✓   60 e2e/browser-document.spec.ts:112:97 › prepared credential request cancels on reload (1.3s)
+
+  ✓   61 e2e/browser-document.spec.ts:112:97 › prepared credential request cancels on cross-origin (1.4s)
+
+  ✓   62 e2e/browser-document.spec.ts:112:97 › prepared credential request cancels on same-document (2.1s)
+
+  ✓   63 e2e/browser-document.spec.ts:112:97 › prepared credential request cancels on close (2.0s)
+
+  ✓   64 e2e/browser-document.spec.ts:112:97 › prepared credential request cancels on renderer-loss (1.4s)
+
+  ✓   65 e2e/browser-document.spec.ts:126:1 › navigation during nonce initialization cancels before fake op reads (1.8s)
+
+  ✓   66 e2e/browser-document.spec.ts:139:1 › matching document nonce succeeds once; wrong, missing, revoked and old cleanup never write (1.9s)
+
+  ✓   67 e2e/browser-document.spec.ts:158:1 › deferred native chooser cancels initiating and ancestor navigation, close and destruction exactly once; siblings stay valid (2.0s)
+
+  ✓   68 e2e/browser-document.spec.ts:187:1 › navigation to a held page cancels the chooser and releases the 1Password busy gate (2.0s)
+
+  ✓   69 e2e/browser-document.spec.ts:242:38 › native browser metadata is unchanged while operational values stay raw (1.6s)
+
+  ✓   70 e2e/browser-document.spec.ts:242:38 › native browser metadata is masked while operational values stay raw (1.6s)
+
+  ✓   71 e2e/browser-document.spec.ts:274:47 › native login labels use Streamer toggle during pending CLI listing from false (2.2s)
+
+  ✓   72 e2e/browser-document.spec.ts:274:47 › native login labels use Streamer toggle during pending CLI listing from true (1.8s)
+
+  ✓   73 e2e/browser-document.spec.ts:286:1 › early failure releases and settles the held CLI before Electron closes (1.6s)
+
+  ✓   74 e2e/browser-document.spec.ts:314:1 › held CLI cleanup stays bounded when its pending operation cannot settle (7.8s)
+
+  ✓   75 e2e/browser-document.spec.ts:330:1 › persisted Streamer startup masks unsolicited passkeys before app state arrives (1.6s)
+
+  ✓   76 e2e/browser-tools.spec.ts:24:1 › browser tools dialog supports keyboard dismissal and explains credential setup (3.3s)
+
+  ✓   77 e2e/browser-tools.spec.ts:35:1 › approved content scripts run in the persistent browser session and disable on reload (4.6s)
+
+  ✓   78 e2e/browser-tools.spec.ts:63:1 › 1Password fills only the selected guest and never submits or exposes credentials to app IPC (4.6s)
+
+  ✓   79 e2e/browser.spec.ts:7:1 › browser without preload: add folder, approve a turn, inspect changes, terminal, and reload (6.7s)
+
+  ✓   80 e2e/canvas.spec.ts:68:1 › Canvas runs local HTML, refreshes document and assets, and preserves browser isolation and full view (5.0s)
+
+  ✓   81 e2e/canvas.spec.ts:102:1 › Canvas renders SVG and Markdown and recovers after the selected file is deleted (6.1s)
+
+  ✓   82 e2e/canvas.spec.ts:120:1 › Canvas observations settle when a loading guest is replaced (3.6s)
+
+  ✓   83 e2e/canvas.spec.ts:163:1 › Canvas observations reject when an executing guest is destroyed (3.3s)
+
+  ✓   84 e2e/canvas.spec.ts:179:1 › Canvas imperative scripts fail visibly when they never settle (4.9s)
+
+  ✓   85 e2e/canvas.spec.ts:201:1 › Canvas refuses external requests, privileged navigation and popups; closing destroys its guest (3.3s)
+
+  ✓   86 e2e/canvas.spec.ts:230:1 › Canvas retries an initially invalid file when it becomes previewable (4.2s)
+
+  ✓   87 e2e/canvas.spec.ts:239:1 › Canvas clears a transient file listing error without losing the running preview (7.4s)
+
+  ✓   88 e2e/canvas.spec.ts:255:1 › Streamer Mode covers only Canvas and preserves its live guest and selection (3.3s)
+
+  ✓   89 e2e/canvas.spec.ts:278:1 › Canvas masks secret filename labels while opening their original paths (5.1s)
+
+  ✓   90 e2e/canvas.spec.ts:301:1 › an explicit Canvas reload is honored while a refresh poll is pending (4.4s)
+
+  ✓   91 e2e/canvas.spec.ts:326:1 › a late Canvas reload response cannot restore a cleared selection (3.4s)
+
+  ✓   92 e2e/chats-spaces-reference.spec.ts:7:1 › reference chat rows stay still while their details open (3.4s)
+
+  ✓   93 e2e/chats-spaces-reference.spec.ts:59:1 › Space toolbar, comments and floating chat preserve the open page (4.2s)
+
+  ✓   94 e2e/chats-spaces-reference.spec.ts:114:1 › chat page links clear the previous selection without losing that page's comment draft (2.7s)
+
+  ✓   95 e2e/claude-lifecycle.spec.ts:85:1 › Claude Stop and withdrawn prompts: cards close inert, Stop ends the CLI, late answers do nothing (4.9s)
+  -   96 e2e/claude-live-stop.spec.ts:37:1 › live Claude: Stop with a waiting card, Stop mid-command, resume after Stop, Stop mid-stream
+
+  ✓   97 e2e/code-review-a11y.spec.ts:43:3 › information text meets AA contrast in the Graphite theme (2.4s)
+
+  ✓   98 e2e/code-review-a11y.spec.ts:43:3 › information text meets AA contrast in the Jev theme (3.0s)
+
+  ✓   99 e2e/code-review-a11y.spec.ts:43:3 › information text meets AA contrast in the OpenCoven theme (3.0s)
+
+  ✓  100 e2e/code-review-a11y.spec.ts:59:3 › Tab reaches every Code Review control with a visible focus ring at 1440×900 (3.9s)
+
+  ✓  101 e2e/code-review-a11y.spec.ts:59:3 › Tab reaches every Code Review control with a visible focus ring at 900×600 (3.8s)
+
+  ✓  102 e2e/code-review-actions.spec.ts:33:1 › a comment stays a local draft across a reload, previews its exact destination and posts once despite a double click (5.2s)
+
+  ✓  103 e2e/code-review-actions.spec.ts:67:1 › navigating before the draft debounce preserves the latest text (6.5s)
+
+  ✓  104 e2e/code-review-actions.spec.ts:84:1 › a review with a line comment from Changes pins the head; self-approval is offered nowhere (5.3s)
+
+  ✓  105 e2e/code-review-actions.spec.ts:119:1 › a denial and a moved head are shown as such, send nothing extra and keep the draft (4.4s)
+
+  ✓  106 e2e/code-review-actions.spec.ts:141:1 › a crash mid-send restarts in doubt, sends nothing, and Check GitHub confirms it from a read-back (8.0s)
+
+  ✓  107 e2e/code-review-actions.spec.ts:163:1 › a send GitHub may or may not have received is never resent; stopping tracking is the person's decision (5.3s)
+
+  ✓  108 e2e/code-review-actions.spec.ts:197:1 › Merge offers only the repository's methods, previews the reviewed head and merges once despite a double click (4.7s)
+
+  ✓  109 e2e/code-review-actions.spec.ts:221:1 › Merge stays with GitHub when the rules block it, and needs push permission, read by main (3.9s)
+
+  ✓  110 e2e/code-review-actions.spec.ts:237:1 › a head that moves between preview and merge is refused before anything is sent (4.4s)
+
+  ✓  111 e2e/code-review-actions.spec.ts:251:1 › a crash during a merge restarts in doubt, merges nothing again, and Check GitHub confirms it from the PR (8.1s)
+
+  ✓  112 e2e/code-review-actions.spec.ts:280:1 › the state menu closes and reopens a PR, and converts it to draft, each previewed and sent once (5.5s)
+
+  ✓  113 e2e/code-review-actions.spec.ts:308:1 › an edit saves only the changed field, and never overwrites a change made on GitHub meanwhile (3.3s)
+
+  ✓  114 e2e/code-review-actions.spec.ts:336:1 › reviewer requests go to others, need triage, and show on the PR once GitHub has them (4.4s)
+
+  ✓  115 e2e/code-review-actions.spec.ts:359:1 › a state change GitHub may have made stays in doubt, blocks the PR and is confirmed from the PR itself (3.6s)
+
+  ✓  116 e2e/code-review-agent.spec.ts:82:1 › the instructions popover states its scope, saves a version on this Mac only, survives a reload, and starts nothing (3.0s)
+
+  ✓  117 e2e/code-review-agent.spec.ts:115:1 › a review starts only on Start, runs the confined argv once without Modex's or gh's environment, fails visibly, and a reload shows the record without a second start (4.5s)
+
+  ✓  118 e2e/code-review-agent.spec.ts:150:1 › a scripted reply shows its findings bound to the head, an anchored finding joins the review draft, and a moved head refuses a start and marks the run outdated (4.6s)
+
+  ✓  119 e2e/code-review-agent.spec.ts:187:1 › a question is answered by a run of its own, with 'Add to chat' quoting a comment into it (4.9s)
+
+  ✓  120 e2e/code-review-agent.spec.ts:206:1 › Stop ends a running review, and a crash mid-run reads as unknown after a relaunch with nothing replayed (9.1s)
+
+  ✓  121 e2e/code-review-agent.spec.ts:258:1 › integrated review: populated diff → native fixture finding → confirmed review → crash recovery never replays the provider or write (11.3s)
+
+  ✓  122 e2e/code-review-diff.spec.ts:55:1 › grouped diffs, both gutters, hierarchy, filter and keyboard selection use remote data only (2.6s)
+
+  ✓  123 e2e/code-review-diff.spec.ts:76:1 › expanding context asks the exact remote revision and never a local file (2.0s)
+
+  ✓  124 e2e/code-review-diff.spec.ts:88:1 › binary, omitted, oversized and truncated patches disclose missing coverage and provider counts (2.7s)
+
+  ✓  125 e2e/code-review-diff.spec.ts:108:1 › narrow tree selection returns to the diff and retains keyboard access (2.2s)
+
+  ✓  126 e2e/code-review-diff.spec.ts:127:1 › head change cancels delayed context, keeps the old anchor outdated and drops old code (2.6s)
+
+  ✓  127 e2e/code-review-diff.spec.ts:142:1 › a new head cannot be overwritten by a delayed file page (2.0s)
+
+  ✓  128 e2e/code-review-diff.spec.ts:156:1 › cancelled first-page reads can be retried through Refresh files (2.4s)
+
+  ✓  129 e2e/code-review-diff.spec.ts:165:1 › 1,000 files keep requests and mounted patch bodies bounded (4.2s)
+
+  ✓  130 e2e/code-review-diff.spec.ts:196:1 › failed pagination keeps loaded files and retries the exact failed cursor (1.8s)
+
+  ✓  131 e2e/code-review-diff.spec.ts:211:1 › payload mismatch is rejected even when the context reply scope matches (1.6s)
+
+  ✓  132 e2e/code-review-diff.spec.ts:222:1 › sign-out during a delayed patch page clears the view and drops its response (1.5s)
+
+  ✓  133 e2e/code-review-diff.spec.ts:231:1 › returning from Overview preserves loaded pages, selected file and overall scroll position (1.7s)
+
+  ✓  134 e2e/code-review-diff.spec.ts:248:1 › line anchors have one keyboard entry per file and arrow navigation through its gutters (1.6s)
+
+  ✓  135 e2e/code-review-diff.spec.ts:260:1 › a 3 MiB textual patch is disclosed without mounting code (1.8s)
+
+  ✓  136 e2e/code-review-diff.spec.ts:276:1 › captures populated R4 diff geometry and narrow keyboard file selection (2.7s)
+
+  ✓  137 e2e/code-review-diff.spec.ts:298:1 › review: closed omitted and oversized fifth files disclose known incomplete patch coverage (1.7s)
+
+  ✓  138 e2e/code-review-diff.spec.ts:309:1 › review: context expands adjacent to both ends of a distant gap and preserves both gutters (1.8s)
+
+  ✓  139 e2e/code-review-diff.spec.ts:322:1 › review: repeated cursor with no new files stops pagination without growing retained pages (1.6s)
+
+  ✓  140 e2e/code-review-diff.spec.ts:332:1 › review: aggregate patch retention omits later text while preserving all filenames and counts (2.2s)
+
+  ✓  141 e2e/code-review-diff.spec.ts:344:1 › review: context cancellation refunds its reservation for retry and collapse (1.9s)
+
+  ✓  142 e2e/code-review-diff.spec.ts:360:1 › review: deleted ranges and renamed paths retain base anchors after context expansion (2.3s)
+
+  ✓  143 e2e/code-review-diff.spec.ts:371:1 › review: mismatched file payload revision is rejected despite a matching reply scope (1.5s)
+
+  ✓  144 e2e/code-review-diff.spec.ts:382:1 › review: changing PR during a delayed patch request drops the previous PR response (1.7s)
+
+  ✓  145 e2e/code-review-diff.spec.ts:396:1 › accepted token-dense patches keep remote rendering bounded (1.9s)
+
+  ✓  146 e2e/code-review-diff.spec.ts:409:1 › oversized context lines are explicitly omitted before mounting (2.4s)
+
+  ✓  147 e2e/code-review-diff.spec.ts:417:1 › context text budget is shared between folds and refunded on collapse (1.6s)
+
+  ✓  148 e2e/code-review-diff.spec.ts:433:1 › old-line anchors name the merge base when the target tip differs (1.7s)
+
+  ✓  149 e2e/code-review-diff.spec.ts:448:1 › context from a different commit is refused even when revision and path match (1.6s)
+
+  ✓  150 e2e/code-review-ipc.spec.ts:11:1 › real Electron IPC reads synthetic inbox, distinct PRs and revision-bound files without changing the checkout (3.0s)
+
+  ✓  151 e2e/code-review-journey.spec.ts:40:1 › inbox → R1 → R2 → R3 → R4 through the production read service, with captures for ui:compare and nothing written (8.1s)
+
+  ✓  152 e2e/code-review-launch.spec.ts:5:1 › Code Review runs the selected app on initial launch and recovery (4.2s)
+
+  ✓  153 e2e/code-review-measure.spec.ts:42:1 › a 300-row inbox pages in with one search per page and bounded DOM (3.7s)
+
+  ✓  154 e2e/code-review-measure.spec.ts:83:1 › a 1,000-file PR and a 3 MiB patch read over IPC in bounded requests (5.3s)
+
+  ✓  155 e2e/code-review-navigation.spec.ts:137:1 › the rail opens the inbox, and a row opens its PR with the PR and Changes tabs (R1) (1.4s)
+
+  ✓  156 e2e/code-review-navigation.spec.ts:157:1 › captures the R1 and R4 arrangements at the references' CSS sizes (3.1s)
+
+  ✓  157 e2e/code-review-navigation.spec.ts:180:1 › identical PR numbers in two repositories never show each other's answer, however late it arrives (AC2) (1.7s)
+
+  ✓  158 e2e/code-review-navigation.spec.ts:205:1 › a slow search answer never replaces a newer one, and typing reads only where it pauses (AC2) (3.2s)
+
+  ✓  159 e2e/code-review-navigation.spec.ts:228:1 › switching the gh account during a slow read drops its answer and every PR of the old account (AC2) (1.9s)
+
+  ✓  160 e2e/code-review-navigation.spec.ts:257:1 › back and forward return to each PR as it was left without reading it again; closing tabs keeps focus (AC2, C80) (2.5s)
+
+  ✓  161 e2e/code-review-navigation.spec.ts:299:1 › no gh, signed out, offline, empty, denied and failed reads each say what happened, never an empty inbox (#322 item 2) (2.1s)
+
+  ✓  162 e2e/code-review-navigation.spec.ts:342:1 › pin, copy and Open in GitHub use the canonical link, a pasted link opens its PR, and nothing reaches local Discard (C24–C26, AC5) (3.2s)
+
+  ✓  163 e2e/code-review-navigation.spec.ts:402:1 › keyboard alone works at 1440×900 and 900×600; the split folds and resized panes persist within the window (AC3, AC4) (4.6s)
+
+  ✓  164 e2e/code-review-navigation.spec.ts:465:1 › independently stale inbox groups show their read time and retry (2.8s)
+
+  ✓  165 e2e/code-review-navigation.spec.ts:486:1 › pagination deduplicates the first-page boundary and retains earlier stale page evidence (2.4s)
+
+  ✓  166 e2e/code-review-navigation.spec.ts:511:1 › an earlier failed page retry stays visible after a later page succeeds (3.0s)
+
+  ✓  167 e2e/code-review-overview.spec.ts:49:1 › R1 metadata and R2 pagination stay truthful, deduplicated and keyboard accessible (3.7s)
+
+  ✓  168 e2e/code-review-overview.spec.ts:71:1 › failed pages retain previous activity and expose a retry (3.2s)
+
+  ✓  169 e2e/code-review-overview.spec.ts:82:1 › hostile Markdown is inert and narrow content remains reachable (2.7s)
+
+  ✓  170 e2e/code-review-overview.spec.ts:102:1 › refresh does not mix fresh and pending cached pages or lose scroll and focus (3.4s)
+
+  ✓  171 e2e/code-review-overview.spec.ts:130:1 › stale checks and unavailable collections do not become empty or current evidence (2.6s)
+
+  ✓  172 e2e/code-review-overview.spec.ts:141:1 › a delayed activity response cannot bleed into a different selected PR (2.4s)
+
+  ✓  173 e2e/code-review-overview.spec.ts:152:1 › a failed refresh retains the terminal page and retries that page's own cursor (2.8s)
+
+  ✓  174 e2e/code-review-overview.spec.ts:166:1 › refresh follows later loaded pages when the first page is partial (2.7s)
+
+  ✓  175 e2e/code-review-overview.spec.ts:176:1 › retrying a partial first page refreshes cached later pages before claiming completeness (3.1s)
+
+  ✓  176 e2e/code-review-regressions.spec.ts:30:1 › identity: a held answer for #73 in one repository never shows under #73 in the other (4.2s)
+
+  ✓  177 e2e/code-review-regressions.spec.ts:49:1 › identity: switching the gh account during a held read refuses its answer and closes every PR of the old account (4.4s)
+
+  ✓  178 e2e/code-review-regressions.spec.ts:73:1 › identity: a read refused because gh's sign-in moved and came back is read again once, then shown refused (#349 re-review) (4.1s)
+
+  ✓  179 e2e/code-review-regressions.spec.ts:111:1 › revision: a head that moves before or during a files page is never served as the current diff (5.1s)
+
+  ✓  180 e2e/code-review-regressions.spec.ts:141:1 › incomplete data: a timed-out search, a hidden repository, a short files list and missing patches are never shown as whole (4.9s)
+
+  ✓  181 e2e/code-review-regressions.spec.ts:168:1 › hostile content: PR text renders inert, and unsafe or look-alike links never resolve, open or navigate (5.2s)
+
+  ✓  182 e2e/code-review-regressions.spec.ts:206:38 › dispatch: unavailable actions start nothing after ordinary overview reads (2.7s)
+
+  ✓  183 e2e/code-review-regressions.spec.ts:206:38 › dispatch: unavailable actions start nothing after held overview reads (2.4s)
+
+  ✓  184 e2e/code-review-regressions.spec.ts:261:1 › local Changes stay local: a remote PR touching the same path never reaches Discard or the checkout (3.4s)
+
+  ✓  185 e2e/code-review-scroll.spec.ts:84:3 › list, overview, diff and file tree scroll independently and keep focus at 1440×900 (8.1s)
+
+  ✓  186 e2e/code-review-scroll.spec.ts:84:3 › list, overview, diff and file tree scroll independently and keep focus at 900×600 (8.1s)
+
+  ✓  187 e2e/codex-native-plan.spec.ts:81:1 › Plan mode on Codex: native plan mode asks its question, and Codex's plan item is the answer (3.6s)
+
+  ✓  188 e2e/companion.spec.ts:5:1 › the Mac pairs an iPhone with a QR code and can revoke access (2.9s)
+
+  ✓  189 e2e/companion.spec.ts:44:1 › pairing network selection keeps each QR and copied link together across revocation and address removal (5.1s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-1mKweU","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-37R0IT","electronPid":21280}
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-1mKweU","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-37R0IT","electronPid":22304}
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-1mKweU","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-37R0IT","electronPid":22629}
+  ✓  190 e2e/composer-recovery.spec.ts:10:1 › independent unsent thread and worktree drafts survive a full relaunch and clearing remains saved (7.6s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-TNZoAI","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-6OGGB0","electronPid":22959}
+  ✓  191 e2e/composer-recovery.spec.ts:38:1 › failed ordinary draft persistence vetoes native window close until retry saves newer text (2.6s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-3hfFy2","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-wtk3nN","electronPid":23546}
+  ✓  192 e2e/composer-send-failure.spec.ts:6:1 › a failed send restores its draft without replacing newer typing (3.8s)
+
+  ✓  193 e2e/conversation-continuity.spec.ts:42:1 › reading position, expansion and drafts survive sustained updates and switching threads (1.3s)
+  ✓  194 e2e/conversation-continuity.spec.ts:78:1 › live, waiting, failed, completed and reloaded states keep actionable rows visible (1.6s)
+
+  ✓  195 e2e/conversation-evidence.spec.ts:88:1 › a command shows what actually ran, where, and how it ended, apart from its title (2.9s)
+
+  ✓  196 e2e/conversation-evidence.spec.ts:103:1 › output past the preview says how much is shown (2.8s)
+
+  ✓  197 e2e/conversation-evidence.spec.ts:110:1 › a patch is labelled as this turn's, apart from the working tree now (2.5s)
+
+  ✓  198 e2e/conversation-evidence.spec.ts:116:1 › a native memory citation is shown as one; links the model wrote are labelled as its own (2.4s)
+
+  ✓  199 e2e/conversation-evidence.spec.ts:128:1 › a memory citation's lines can be shown and copied, read from Codex's memories folder and nothing else (2.6s)
+
+  ✓  200 e2e/conversation-evidence.spec.ts:145:1 › a citation that points outside Codex's memories folder is refused and shows nothing from it (2.4s)
+
+  ✓  201 e2e/conversation-evidence.spec.ts:154:1 › a Codex web search shows its query and the results Codex reported, labelled as unchecked; an older one shows no empty output (2.6s)
+
+  ✓  202 e2e/conversation-fidelity.spec.ts:170:1 › golden path: plan, approval, a real edit and check, the answer, Save to Notes, Open, and a restart that restores without re-running (15.1s)
+
+  ✓  203 e2e/conversation-fidelity.spec.ts:223:1 › a denial leaves the file as it was and runs nothing (2.7s)
+
+  ✓  204 e2e/conversation-fidelity.spec.ts:235:1 › a failing check is a failed command, whatever the reply says (5.7s)
+
+  ✓  205 e2e/conversation-fidelity.spec.ts:248:1 › Stop while a check runs ends it as stopped; the check never reports, and nothing is retried (6.2s)
+
+  ✓  206 e2e/conversation-fidelity.spec.ts:267:1 › a native withdrawal closes the card, sends no answer, and leaves the file as it was (4.6s)
+
+  ✓  207 e2e/conversation-fidelity.spec.ts:283:1 › the desktop and the phone answer at once: exactly one decision reaches the CLI, and the card names who gave it (3.2s)
+
+  ✓  208 e2e/conversation-fidelity.spec.ts:311:1 › with the journal on, a phone that reconnects after the decision was sent sees it answered, and its late answer is refused (2.8s)
+
+  ✓  209 e2e/conversation-fidelity.spec.ts:393:1 › a clarifying question in the path: answered on its card, heard once, saved to Notes, and inert after a restart (4.6s)
+
+  ✓  210 e2e/conversation-rendering.spec.ts:58:1 › a reply's tables, quotes, task lists and code render as elements (64ms)
+  ✓  211 e2e/conversation-rendering.spec.ts:74:1 › raw HTML, script links and images in a reply stay inert (31ms)
+  ✓  212 e2e/conversation-rendering.spec.ts:84:1 › Copy on a code block puts exactly its code on the clipboard and starts nothing (60ms)
+  ✓  213 e2e/conversation-rendering.spec.ts:104:1 › streaming and settling preserve the reader's focused Copy control and selected code (730ms)
+  ✓  214 e2e/conversation-rendering.spec.ts:138:1 › Markdown stays usable in every theme at minimum size, with keyboard Copy and reduced motion (2.4s)
+  ✓  215 e2e/conversation-rendering.spec.ts:167:1 › long code scrolls inside its block at minimum size without widening the transcript (370ms)
+
+  ✓  216 e2e/desktop-host-launch.spec.ts:6:1 › an unflagged host accepts only the desktop activation URL and starts without granting access (2.2s)
+
+  ✓  217 e2e/errors.spec.ts:28:1 › a failed turn becomes a card with the CLI's words, Copy details, and a Retry that reuses the message (2.1s)
+  ✓  218 e2e/errors.spec.ts:65:1 › the fix on a sign-in failure opens the thread's terminal and types the login command (378ms)
+  ✓  219 e2e/errors.spec.ts:103:1 › a usage outage offers a direct model-picker action (73ms)
+  ✓  220 e2e/errors.spec.ts:129:1 › a ChatGPT plan refusing the thread's history offers a new thread instead of Retry (57ms)
+  ✓  221 e2e/errors.spec.ts:157:1 › early send and retry rejections return errors without adding transcript cards (206ms)
+  ✓  222 e2e/errors.spec.ts:183:1 › the model-list Retry requests the catalogue again and clears the error (214ms)
+
+  ✓  223 e2e/event-journal.spec.ts:11:1 › the opt-in event journal replays a real app session to its saved transcript (3.4s)
+
+  ✓  224 e2e/event-journal.spec.ts:43:1 › without the flag the app writes no journal (3.5s)
+
+  ✓  225 e2e/event-journal.spec.ts:60:1 › the app's journal keeps its identity across a clean relaunch and takes a new one after a kill (6.9s)
+[cf6-g6] journal rows replayed 2 items; assistant journaled 375 chars, saved at kill 417, after relaunch 417 (outcome unknown)
+  ✓  226 e2e/event-journal.spec.ts:105:1 › killed mid-batch during a streaming reply: the relaunch takes a new journal identity, keeps the saved transcript and runs nothing again (6.8s)
+
+  ✓  227 e2e/human-requests.spec.ts:90:1 › Codex questions: the card answers by its schema, the CLI hears once, the secret stays out, Stop withdraws (3.4s)
+
+  ✓  228 e2e/human-requests.spec.ts:161:1 › with the journal on, a restart shows answered and stopped cards inert, says when an answer was never confirmed, and re-sends nothing (4.1s)
+
+  ✓  229 e2e/human-requests.spec.ts:229:1 › uncertain question delivery stays inert after restart and never reads as answered (1.8s)
+
+  ✓  230 e2e/images-plugins.spec.ts:9:1 › Images imports, displays, inserts into Space, attaches to chat and survives relaunch (4.7s)
+
+  ✓  231 e2e/images-plugins.spec.ts:91:1 › Plugins binds an offline image skill; approvals produce a saved revision and persist prompt drafts (4.4s)
+
+  ✓  232 e2e/images-plugins.spec.ts:176:1 › a job that reaches approval before Images reads its submit reply still offers Approve (3.3s)
+
+  ✓  233 e2e/images-plugins.spec.ts:221:1 › corrupt image metadata preserves Chat and displays a recoverable library error (2.4s)
+
+  ✓  234 e2e/images-plugins.spec.ts:236:1 › plugin changes are blocked during generation; disabling a skill refuses new jobs (2.7s)
+
+  ✓  235 e2e/images-plugins.spec.ts:255:54 › ordinary close preserves delayed image draft saves (2.7s)
+
+  ✓  236 e2e/images-plugins.spec.ts:255:54 › ordinary close preserves rejected image draft saves (1.7s)
+
+  ✓  237 e2e/keyboard-answers.spec.ts:47:1 › Approve from the keyboard moves focus to the card's answer, then to the turn's toggle when its work folds (4.3s)
+  ✓  238 e2e/keyboard-answers.spec.ts:57:1 › Deny from the keyboard does the same: the card's answer, then the turn's toggle once the denied card folds (4.1s)
+  ✓  239 e2e/keyboard-answers.spec.ts:66:1 › a turn that finishes while the reader is in the composer leaves focus there (4.2s)
+  ✓  240 e2e/keyboard-answers.spec.ts:76:1 › Stop from the keyboard hands focus to the composer once the turn ends (1.1s)
+  ✓  241 e2e/keyboard-answers.spec.ts:88:1 › Jump to latest from the keyboard hands focus to the message box at the bottom (11.4s)
+  ✓  242 e2e/keyboard-answers.spec.ts:136:1 › after Jump to latest, the transcript stays at the bottom when the composer grows before the scroll event (906ms)
+  ✓  243 e2e/keyboard-answers.spec.ts:153:1 › a Page Up still animating when Jump to latest is pressed does not carry the view back up (715ms)
+  ✓  244 e2e/keyboard-answers.spec.ts:168:1 › after Jump to latest, the reader scrolling up again is followed at once (456ms)
+
+  ✓  245 e2e/knowledge.spec.ts:11:1 › running Knowledge shares the titlebar and fills its content frame (4.6s)
+
+  ✓  246 e2e/knowledge.spec.ts:75:1 › Knowledge automatic maintenance is opt-in per project and persists across launches (4.1s)
+
+  ✓  247 e2e/knowledge.spec.ts:99:1 › Knowledge maintenance shows a pending toggle and rolls back a failed save (2.2s)
+
+  ✓  248 e2e/knowledge.spec.ts:119:1 › Open in knowledge base opens a just-renamed page at its new file (2.5s)
+  -  249 e2e/knowledge.spec.ts:151:1 › a CLI agent updates real knowledge outside its project and exposes a persistent editor link
+  -  250 e2e/knowledge.spec.ts:236:1 › Space connects to an existing Open Knowledge editor and leaves it running on disconnect and quit
+
+  ✓  251 e2e/knowledge.spec.ts:298:1 › Knowledge is reachable below Home and keeps the chat draft (2.4s)
+
+  ✓  252 e2e/knowledge.spec.ts:317:1 › Knowledge remembers the selected folder and reports a missing runtime (2.2s)
+  -  253 e2e/knowledge.spec.ts:331:1 › real Open Knowledge installs, edits local files, hides for privacy, and stops with Modex
+[ui:capture] viewport 1786×1049 (reference 1786×1049)
+  ✓  254 e2e/layout.spec.ts:59:1 › captures every named chat state at the reference size (7.6s)
+  ✓  255 e2e/layout.spec.ts:117:3 › Design tokens › tokens resolve to the chosen values (2ms)
+  ✓  256 e2e/layout.spec.ts:125:3 › Design tokens › surface and text colors use the Modex palette (23ms)
+  ✓  257 e2e/layout.spec.ts:131:3 › Design tokens › shared typography keeps UI and tool summaries legible (3ms)
+  ✓  258 e2e/layout.spec.ts:160:3 › Phase 3 · shell › titlebar 42px, rail 48px, sheet with a 1px edge and 12px corners (46ms)
+  ✓  259 e2e/layout.spec.ts:172:3 › Phase 3 · shell › sidebar x 49–288, divider at 289, main from 290 (23ms)
+  ✓  260 e2e/layout.spec.ts:179:3 › Phase 3 · shell › titlebar nav buttons centred at x 99 / 133 / 167, y 20 (41ms)
+  ✓  261 e2e/layout.spec.ts:190:3 › Phase 3 · shell › sidebar header, New chat, Projects label and rows sit on the reference rhythm (72ms)
+  ✓  262 e2e/layout.spec.ts:214:3 › Phase 4 · composer › box is 960×109, centred in the main pane, 16 px off the bottom (326ms)
+  ✓  263 e2e/layout.spec.ts:226:3 › Phase 4 · composer › context strip sits on the box: 38 px, inset 13 px, 13 px text (34ms)
+  ✓  264 e2e/layout.spec.ts:234:3 › Phase 4 · composer › control row: + and access keep their insets, round send in the corner (54ms)
+  ✓  265 e2e/layout.spec.ts:253:3 › Phase 6 · transcript › column, bubble, turn header and prose match the reference (377ms)
+  ✓  266 e2e/layout.spec.ts:284:3 › Phase 7 · title bar actions › title bar actions stay at the window edge with or without the panel (556ms)
+  ✓  267 e2e/layout.spec.ts:304:3 › Terminal · title bar and panel › the terminal occupies a right workspace tab and leaves the composer usable (1.5s)
+  ✓  268 e2e/layout.spec.ts:335:3 › Phase 5 · draft › draft heading is 28 px regular text-1, centred in the main pane at the reference height (63ms)
+  ✓  269 e2e/layout.spec.ts:352:1 › captures Markdown elements in every theme at the reference size (5.9s)
+  -  270 e2e/live-smoke.spec.ts:81:3 › live claude: a real edit and check, the final answer, and Stop mid-command
+  -  271 e2e/live-smoke.spec.ts:81:3 › live codex: a real edit and check, the final answer, and Stop mid-command
+  -  272 e2e/live-smoke.spec.ts:173:1 › live claude, journal on: an approved command's card replays from the journal as saved, and the CLI ran it once
+
+  ✓  273 e2e/local-models-ipc.spec.ts:12:1 › real Electron IPC saves a local connection, discovers its models and keeps the token out of the renderer (1.4s)
+
+  ✓  274 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in graphite (6.8s)
+
+  ✓  275 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in jev (7.0s)
+
+  ✓  276 e2e/markdown-keyboard.spec.ts:9:3 › Markdown keyboard traversal and reduced motion in coven (7.7s)
+
+  ✓  277 e2e/markdown-narrow.spec.ts:39:1 › a reply's tables and code stay readable in every theme at the 900×600 minimum (5.0s)
+
+  ✓  278 e2e/message-asks.spec.ts:58:1 › a question Codex asks in its reply offers its options; one sends itself as the next message, and older replies' options are off (3.2s)
+
+  ✓  279 e2e/minimal-rail.spec.ts:22:1 › compact review gives the diff full width and retains context across tools (4.2s)
+
+  ✓  280 e2e/minimal-rail.spec.ts:58:1 › keyboard resizing adapts the file tree without overflowing the rail (4.0s)
+
+  ✓  281 e2e/minimal-rail.spec.ts:75:1 › large changesets stay bounded and keyboard tab closure restores focus (4.4s)
+
+  ✓  282 e2e/minimal-rail.spec.ts:148:1 › browser and Canvas adapt to rail widths while Review keeps its place (5.9s)
+
+  ✓  283 e2e/modex-account.spec.ts:5:1 › Modex identity has a separate account card and preserves CLI account selection (2.0s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-74gKPe","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-bfuOIm","electronPid":22251}
+  ✓  284 e2e/native-drafts.spec.ts:19:1 › native composer restores exact raw draft text and selected project after document reload (2.0s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-CXAvhe","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-e2BFS2","electronPid":22501}
+  ✓  285 e2e/native-drafts.spec.ts:36:1 › autosave reaches disk while unrelated background events keep rendering (2.4s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-6FMote","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-coj4DV","electronPid":22719}
+  ✓  286 e2e/native-drafts.spec.ts:71:1 › native first send persists exact raw text and attachment identity (4.3s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-kYFRbL","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-LLFsiy","electronPid":23118}
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-kYFRbL","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-LLFsiy","electronPid":23748,"relaunched":true}
+  ✓  287 e2e/native-drafts.spec.ts:86:40 › failed user write after transfer survives restart and offers one explicit original retry (5.6s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-JozrLu","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-BX12zv","electronPid":24305}
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-JozrLu","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-BX12zv","electronPid":24593,"relaunched":true}
+  ✓  288 e2e/native-drafts.spec.ts:86:40 › failed pending cleanup after durable user survives restart and offers one explicit original retry (4.9s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-LmLABc","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-1K3oDS","electronPid":25063}
+  ✓  289 e2e/native-drafts.spec.ts:142:1 › retiring a project draft rejects a late native picker without copying its selection (2.6s)
+
+  ✓  290 e2e/notes-files.spec.ts:9:1 › files imported into a project are copied into its folder and preview in Space (3.8s)
+
+  ✓  291 e2e/notes-tree.spec.ts:6:1 › workspaces, projects and folders made in Space are folders on disk, and persist (5.8s)
+
+  ✓  292 e2e/notes-tree.spec.ts:65:1 › a search does not reopen New workspace after one was made (2.6s)
+
+  ✓  293 e2e/notes.spec.ts:11:1 › existing Space pages move into the notes folder once, with their history, and space.json stays as it was (4.0s)
+
+  ✓  294 e2e/notes.spec.ts:54:1 › an edit made outside Modex shows in Space and in the page's history (4.0s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-a17GYB","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-oPXJ2E","electronPid":27670}
+  ✓  295 e2e/owner-removal.spec.ts:36:1 › owner removal refuses raw whitespace typed before the debounce reaches disk (2.0s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-FlbNRi","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-hftd2R","electronPid":27823}
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-FlbNRi","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-hftd2R","electronPid":28043}
+  ✓  296 e2e/owner-removal.spec.ts:52:1 › owner removal retains another project's raw draft, attachments and configuration through a full relaunch (3.7s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-oLPl07","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-ID0ozu","electronPid":28135}
+  ✓  297 e2e/owner-removal.spec.ts:75:1 › automatic owner retirement adopts the actual retired-thread event without false draft drift (2.3s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-U4UB0B","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-kelfA8","electronPid":28666}
+  ✓  298 e2e/owner-removal.spec.ts:98:1 › uncertain owner pruning shows fresh read-only recovery and exits through ordinary Quit (2.8s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-jkrgEu","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-sNtXvs","electronPid":29319}
+  ✓  299 e2e/owner-removal.spec.ts:122:1 › owner removal keeps unrelated thread updates delivered after canonical adoption (1.9s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-JZnFje","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-bEBgG7","electronPid":29955}
+  ✓  300 e2e/owner-removal.spec.ts:146:1 › thread deletion drains its active target while an unrelated turn stays active and drafts remain usable (2.7s)
+
+  ✓  301 e2e/pages-agents.spec.ts:7:1 › Pages notes access persists; open notes refresh and recover historical revisions (7.5s)
+
+  ✓  302 e2e/pages-agents.spec.ts:47:1 › a CLI turn manages Pages through MCP and its persisted receipt opens the native note (6.7s)
+
+  ✓  303 e2e/pages-agents.spec.ts:101:1 › draft recovery locks editing and saves a copy without overwriting a concurrent change (2.2s)
+
+  ✓  304 e2e/panel-layout.spec.ts:63:3 › draft stays centered through repeated sidebar toggles at 1366px (3.3s)
+
+  ✓  305 e2e/panel-layout.spec.ts:86:3 › thread fills remaining width for every panel combination and relaunch at 1366px (6.4s)
+
+  ✓  306 e2e/panel-layout.spec.ts:63:3 › draft stays centered through repeated sidebar toggles at 960px (3.0s)
+
+  ✓  307 e2e/panel-layout.spec.ts:86:3 › thread fills remaining width for every panel combination and relaunch at 960px (6.6s)
+
+  ✓  308 e2e/panel-resize.spec.ts:56:1 › both panels resize by dragging and keyboard, retain widths, and keep chat usable (7.1s)
+
+  ✓  309 e2e/panel-resize.spec.ts:98:1 › Space shares the draggable sidebar and Knowledge uses a single slim toolbar (5.1s)
+
+  ✓  310 e2e/persist.spec.ts:23:1 › closed panels and the window's size and position survive a relaunch (5.3s)
+  ✓  311 e2e/persist.spec.ts:55:1 › a maximized window reopens maximized, and un-maximizes to its saved size (2.3s)
+
+  ✓  312 e2e/plan-clarification.spec.ts:85:1 › a plan clarification is answered on its card, reaches the CLI once, and is saved to Notes with the secret hidden; an unanswered one says so (4.8s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-Q7rzrm","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-b8xK1r","fixtureSecondRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo2-pPRrco","electronPid":40528}
+  ✓  313 e2e/project-remove.spec.ts:41:1 › removing a project protects its unsent draft, then replaces a cleared draft and clears the last project (1.0s)
+
+  ✓  314 e2e/reference-shell.spec.ts:5:1 › reference shell keeps title actions reachable and matches the compact neutral layout (5.6s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-oE6Vjf","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-q0Ydpx","pid":41980}
+  ✓  315 e2e/release.spec.ts:28:1 › reasoning effort can be selected with the keyboard and returns focus to the picker (2.8s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-1TDb75","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-EgdKIv","pid":42530}
+  ✓  316 e2e/release.spec.ts:58:1 › minimum window keeps composer controls inside the main pane with Changes open (5.2s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-So3mTh","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-hD5LmQ","pid":43121}
+  ✓  317 e2e/release.spec.ts:78:1 › switching projects does not carry another thread's unsent instructions (3.0s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-aQiWnW","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-jDSICA","pid":43680}
+  ✓  318 e2e/release.spec.ts:95:1 › New chat resets an existing draft while settings changes preserve its text (1.5s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-C6bwlE","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-uBdG03","pid":43803}
+  ✓  319 e2e/release.spec.ts:103:1 › unsent text waits on its own thread: switching threads keeps it, the sidebar marks it, sending clears it (5.0s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-xsupqa","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-gelenT","pid":45384}
+  ✓  320 e2e/release.spec.ts:151:1 › quitting waits for the CLI to stop and flushes the final transcript (5.8s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-etcNrd","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-pwZMqo","pid":46088}
+  ✓  321 e2e/release.spec.ts:181:1 › the bundled terminal engine starts a real PTY in the thread directory (1.5s)
+release fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-XVlIZF","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-YRHSl4","pid":46244}
+  ✓  322 e2e/release.spec.ts:209:1 › closing terminals releases every PTY the app opened (2.0s)
+
+  ✓  323 e2e/review.spec.ts:26:1 › background completion cannot replace selected changes (1.5s)
+
+  ✓  324 e2e/review.spec.ts:40:1 › an older refresh cannot replace a newer snapshot (2.2s)
+
+  ✓  325 e2e/review.spec.ts:60:1 › changed files can be selected with the keyboard (2.7s)
+
+  ✓  326 e2e/review.spec.ts:70:1 › Enter during IME composition keeps the unsent message (1.8s)
+
+  ✓  327 e2e/review.spec.ts:78:1 › Settings owns focus, traps Tab, blocks app shortcuts, and restores focus on Escape (1.9s)
+
+  ✓  328 e2e/review.spec.ts:97:1 › Settings sections navigate by keyboard and advanced Jev policy saves and reopens (2.1s)
+
+  ✓  329 e2e/review.spec.ts:152:1 › editing coding backends preserves a legacy Mock routing entry (3.1s)
+
+  ✓  330 e2e/review.spec.ts:180:1 › Settings keeps Save and Cancel visible in a short zoomed window (1.9s)
+
+  ✓  331 e2e/review.spec.ts:202:1 › Jev test health identifies the tested setup, stays explicit, and HTTP-only does not claim the CLI is missing (3.4s)
+
+  ✓  332 e2e/review.spec.ts:244:1 › settings save stays pending through dismissal attempts and preserves drafts for retry (2.4s)
+
+  ✓  333 e2e/review.spec.ts:283:1 › blocked Auto receipts identify the stop while pinned and held receipts show Auto kept (2.4s)
+
+  ✓  334 e2e/review.spec.ts:301:1 › streaming does not reparse completed Markdown (2.4s)
+
+  ✓  335 e2e/review.spec.ts:323:1 › loading a transcript preserves events received while the snapshot is in flight (2.1s)
+
+  ✓  336 e2e/review.spec.ts:338:1 › closing the macOS window during streaming allows the turn to finish and reopen (5.9s)
+
+  ✓  337 e2e/review.spec.ts:356:1 › selecting a file never shows the previous file's diff while loading (2.7s)
+
+  ✓  338 e2e/review.spec.ts:368:1 › local Discard still confirms and targets only the selected working-tree file (3.1s)
+
+  ✓  339 e2e/routines.spec.ts:26:1 › with the window closed, a routine still runs, and reopening shows it in Activity (7.7s)
+
+  ✓  340 e2e/routines.spec.ts:56:1 › killing Modex mid-run leaves the run interrupted on restart, with no page revision (8.2s)
+
+  ✓  341 e2e/routines.spec.ts:96:1 › a routine made in the editor runs read-only: its edit is refused with a receipt and the checkout is untouched (4.2s)
+
+  ✓  342 e2e/settings-layout.spec.ts:21:1 › Settings sections and persistent actions stay reachable in a narrow, short zoomed window (3.5s)
+
+  ✓  343 e2e/settings-transactions.spec.ts:22:1 › saving freezes the draft until persistence resolves and keeps it available after failure (2.4s)
+
+  ✓  344 e2e/settings-transactions.spec.ts:67:1 › a failed learning reset stays in the dialog and explains how to check the result (4.1s)
+
+  ✓  345 e2e/settings-transactions.spec.ts:86:1 › a test locks settings while running and marks its result stale after a relevant draft change (3.6s)
+
+  ✓  346 e2e/settings-transactions.spec.ts:121:1 › a delayed opening status cannot overwrite a completed immediate key action (2.6s)
+
+  ✓  347 e2e/settings-transactions.spec.ts:148:1 › test stays pending through status refresh and cannot be dismissed mid-operation (2.0s)
+
+  ✓  348 e2e/settings-transactions.spec.ts:178:1 › a saved setting remains visible on reopen when the full-state refresh fails (2.5s)
+
+  ✓  349 e2e/settings-transactions.spec.ts:200:1 › unsaved Auto and CLI drafts never claim a transport was checked (2.5s)
+
+  ✓  350 e2e/settings-transactions.spec.ts:219:1 › an IPC test rejection explains the failure without claiming settings changed (2.4s)
+
+  ✓  351 e2e/settings-transactions.spec.ts:235:1 › testing before opening status resolves handles a failed refresh and permits a fresh retry (2.7s)
+
+  ✓  352 e2e/settings-transactions.spec.ts:267:1 › failed immediate key and reset actions show unavailable status and permit recovery (5.2s)
+
+  ✓  353 e2e/settings-transactions.spec.ts:308:1 › an empty save failure message keeps one plain retry instruction (4.1s)
+
+  ✓  354 e2e/sidebar-details.spec.ts:25:1 › long thread titles cannot overlap unsent, running and worktree indicators (4.4s)
+
+  ✓  355 e2e/sidebar-details.spec.ts:40:1 › sidebar shows provider, model, and the current checkout branch without inventing a PR (3.4s)
+
+  ✓  356 e2e/sidebar-details.spec.ts:51:1 › PR metadata is legible in both themes and remains keyboard accessible (3.2s)
+
+  ✓  357 e2e/sidebar-workspaces.spec.ts:6:1 › each project has notes, and a second workspace groups the sidebar's projects (4.0s)
+
+  ✓  358 e2e/sidebar-workspaces.spec.ts:54:1 › Move to new workspace makes the workspace and moves the project in one step; Escape makes nothing (2.6s)
+
+  ✓  359 e2e/sidebar-workspaces.spec.ts:90:1 › Open notes consumes its focus across polls and remounts, and accepts a fresh request (5.2s)
+
+  ✓  360 e2e/sources.spec.ts:48:1 › links in an answer are links, and its Sources list becomes numbered cards (32ms)
+  ✓  361 e2e/sources.spec.ts:68:1 › a link opens in the system browser and the app stays where it is (51ms)
+  ✓  362 e2e/sources.spec.ts:84:1 › a web search shows its results and summary, not the CLI's raw output (572ms)
+  ✓  363 e2e/sources.spec.ts:138:1 › annotations and multiple citations remain visible in the answer (30ms)
+
+  ✓  364 e2e/space-fit.spec.ts:6:1 › embedded knowledge bounds follow shell zoom (1.9s)
+
+  ✓  365 e2e/space-fit.spec.ts:28:1 › Backspace and Delete remove the selected rendered text and preserve the editing caret (5.2s)
+
+  ✓  366 e2e/space-fit.spec.ts:70:1 › page comments reserve document space and keep compact entry and chat visible (3.6s)
+
+  ✓  367 e2e/space-fit.spec.ts:94:1 › rendered page selection has contextual actions without exposing Markdown (2.9s)
+
+  ✓  368 e2e/space-fit.spec.ts:133:1 › page generation takes an inline instruction before opening chat (2.5s)
+
+  ✓  369 e2e/space-fit.spec.ts:152:1 › rendered escaped and code text cannot be formatted as plain Markdown (2.5s)
+
+  ✓  370 e2e/space-fit.spec.ts:170:1 › generation draft stays reachable when its anchor block is deleted (2.7s)
+
+  ✓  371 e2e/space-fit.spec.ts:187:1 › page request and generation drafts survive navigation and stage the right page (4.2s)
+
+  ✓  372 e2e/space-fit.spec.ts:214:1 › selection link entry validates URLs and preserves the rendered label (2.5s)
+
+  ✓  373 e2e/space-fit.spec.ts:237:1 › completed work folds while errors, pending approvals and the final answer remain visible (1.9s)
+
+  ✓  374 e2e/space-fit.spec.ts:273:1 › overview layouts and favorites keep their page actions functional (3.0s)
+
+  ✓  375 e2e/space-fit.spec.ts:295:1 › page menus and comments stay within narrow panes (2.7s)
+
+  ✓  376 e2e/space-fit.spec.ts:337:1 › page insertion and generation follow the last active block (2.7s)
+
+  ✓  377 e2e/space-fit.spec.ts:353:1 › rendered formatting supports keyboard commands and Escape (2.4s)
+
+  ✓  378 e2e/space-fit.spec.ts:379:1 › overview sorts pages and retains the chosen grid layout (3.0s)
+
+  ✓  379 e2e/space-fit.spec.ts:400:1 › contextual comments bound long quotes and replace only empty drafts (3.2s)
+
+  ✓  380 e2e/space.spec.ts:23:1 › importing a page heading preserves indented code and lists through relaunch (4.1s)
+
+  ✓  381 e2e/space.spec.ts:39:1 › adding a block to imported Markdown keeps separate blocks after relaunch (5.5s)
+
+  ✓  382 e2e/space.spec.ts:66:1 › Space formatting restores the selection before the next user edit (2.9s)
+
+  ✓  383 e2e/space.spec.ts:86:1 › Space toolbar inserts code with the caret inside the fence (2.3s)
+
+  ✓  384 e2e/space.spec.ts:109:1 › Space preserves dedented imported tasks and checks only the selected task (2.0s)
+
+  ✓  385 e2e/space.spec.ts:124:1 › Space creates and edits pages, survives navigation and relaunch, and restores trash (6.0s)
+
+  ✓  386 e2e/space.spec.ts:159:1 › Space imports Markdown, nests pages, finds content, and exports the current draft (3.9s)
+
+  ✓  387 e2e/space.spec.ts:212:1 › Space reports save failures and retains text for retry; imported links stay inert (2.8s)
+
+  ✓  388 e2e/space.spec.ts:247:1 › editing imported Markdown preserves nested content and Enter keeps text after a list marker (2.8s)
+
+  ✓  389 e2e/space.spec.ts:271:1 › new-page autofocus preserves typing that has already started (2.0s)
+
+  ✓  390 e2e/space.spec.ts:298:1 › Space continues numbered lists and renders URL images (4.0s)
+
+  ✓  391 e2e/space.spec.ts:320:1 › pasting a chat report into the title splits off the body and drops citation markers (2.5s)
+  ✓  392 e2e/store-demo.spec.ts:7:1 › Store demo works without a host and resets without saving access (2.0s)
+  ✓  393 e2e/store-demo.spec.ts:50:1 › Store demo preserves unreadable saved host access (865ms)
+
+  ✓  394 e2e/store-desktop.spec.ts:26:1 › Store client uses real host commands, approvals and terminal; reconnect preserves drafts and revocation blocks access (10.5s)
+
+  ✓  395 e2e/store-desktop.spec.ts:77:1 › Store preview discovers this Mac, confirms access once and restores saved access without another link (5.4s)
+
+  ✓  396 e2e/store-desktop.spec.ts:116:1 › Store connected account commands stay local and explain unavailable sign-in (4.4s)
+
+  ✓  397 e2e/store-desktop.spec.ts:152:84 › Store protocol recovery preserves the mounted draft and settings with keyboard access (7.2s)
+
+  ✓  398 e2e/store-desktop.spec.ts:152:84 › Store protocol recovery preserves the mounted draft and companion with keyboard access (5.9s)
+
+  ✓  399 e2e/store-desktop.spec.ts:152:84 › Store protocol recovery preserves the mounted draft and menu with keyboard access (6.0s)
+
+  ✓  400 e2e/store-desktop.spec.ts:152:84 › Store protocol recovery preserves the mounted draft and browser-tools with keyboard access (6.1s)
+
+  ✓  401 e2e/streamer-mode.spec.ts:29:1 › Streamer Mode keeps editing, clipboard and submitted originals intact through relaunch (5.7s)
+
+  ✓  402 e2e/streamer-mode.spec.ts:76:1 › paint redaction handles inline markup, streaming text and tooltips without changing links or copied text (1.7s)
+
+  ✓  403 e2e/streamer-mode.spec.ts:117:1 › native select labels are redacted while their option values stay original (3.2s)
+
+  ✓  404 e2e/streamer-mode.spec.ts:133:1 › Space edits and formats the original Markdown while streaming (3.9s)
+
+  ✓  405 e2e/streamer-mode.spec.ts:169:1 › quote highlight observations ignore ranges from a detached tree without accepting partial coverage (1.5s)
+
+  ✓  406 e2e/streamer-mode.spec.ts:192:1 › Space comment quotes mask selected fragments while keeping original text (2.9s)
+
+  ✓  407 e2e/streamer-mode.spec.ts:248:1 › terminal keeps parser replies, bracketed paste and application cursor mode while masking wrapped output (5.1s)
+
+  ✓  408 e2e/streamer-mode.spec.ts:292:1 › saved Streamer Mode masks startup errors before state loads (1.6s)
+
+  ✓  409 e2e/task-to-notes.spec.ts:40:1 › a plan shows each step as the CLI reported it, never as verified (22ms)
+  ✓  410 e2e/task-to-notes.spec.ts:56:1 › Save to Notes writes the turn's record into the project's notes, and saving again updates the same note (184ms)
+  ✓  411 e2e/task-to-notes.spec.ts:73:1 › a turn's footer says whether a check verified its last change, and a plain answer says nothing (49ms)
+  ✓  412 e2e/task-to-notes.spec.ts:104:1 › a turn's footer lists the files it touched, on demand, as the CLI reported them (68ms)
+  ✓  413 e2e/task-to-notes.spec.ts:134:1 › a successful shell receipt cannot verify masked failures or writes after a check (42ms)
+
+  ✓  414 e2e/task-to-notes.spec.ts:212:1 › a saved task note reopens read-only as the task it saved, asks the CLI nothing, writes nothing, and says when it was edited or moved (5.9s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-SIfM5a","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-jYILGP","electronPid":85760}
+  ✓  415 e2e/terminal-lifecycle.spec.ts:18:1 › terminal fills its workspace after a window resize (2.3s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-9M1CEU","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-16nkMI","electronPid":87383}
+  ✓  416 e2e/terminal-lifecycle.spec.ts:44:3 › close waits for terminal commands before removing their context (2.6s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-sSau0e","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-ueQNIB","electronPid":88711}
+  ✓  417 e2e/terminal-lifecycle.spec.ts:44:3 › thread deletion waits for terminal commands before removing their context (2.3s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-bUOOJK","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-f0Yg29","electronPid":90089}
+  ✓  418 e2e/terminal-lifecycle.spec.ts:44:3 › project removal waits for terminal commands before removing their context (2.0s)
+{"fixtureHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-lpQD7t","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-Excmrv","electronPid":91208}
+  ✓  419 e2e/terminal-lifecycle.spec.ts:44:3 › quit waits for terminal commands before removing their context (1.9s)
+
+  ✓  420 e2e/terminal.spec.ts:51:1 › the title-bar button and ⌃` open a real shell in the thread's folder; hiding keeps it running (3.5s)
+  ✓  421 e2e/terminal.spec.ts:90:1 › inside the shell, ⌃C and ⌃J are the shell's, not the app's shortcuts (383ms)
+  ✓  422 e2e/terminal.spec.ts:113:1 › each thread has its own shell, and switching threads shows that thread's terminal (1.9s)
+  ✓  423 e2e/terminal.spec.ts:128:1 › making the panel taller gives the shell more rows (1.5s)
+  ✓  424 e2e/terminal.spec.ts:142:1 › exit shows the code, Restart starts a fresh shell, and Close ends it (526ms)
+  ✓  425 e2e/terminal.spec.ts:159:1 › deleting a worktree thread with its terminal open ends the shell and removes the worktree (4.1s)
+
+  ✓  426 e2e/theme.spec.ts:24:1 › theme is a saved Settings draft; switching preserves the terminal and survives relaunch (5.5s)
+
+  ✓  427 e2e/titles.spec.ts:46:3 › claude chat titles › a completed reply produces a clean sidebar title that survives relaunch without polluting the transcript (3.7s)
+
+  ✓  428 e2e/titles.spec.ts:73:3 › claude chat titles › a manual rename cancels pending naming and survives relaunch (4.3s)
+
+  ✓  429 e2e/titles.spec.ts:87:37 › claude chat titles › malformed provider output keeps the fallback (5.0s)
+
+  ✓  430 e2e/titles.spec.ts:87:37 › claude chat titles › provider failure keeps the fallback (3.3s)
+
+  ✓  431 e2e/titles.spec.ts:46:3 › codex chat titles › a completed reply produces a clean sidebar title that survives relaunch without polluting the transcript (3.8s)
+
+  ✓  432 e2e/titles.spec.ts:73:3 › codex chat titles › a manual rename cancels pending naming and survives relaunch (3.4s)
+
+  ✓  433 e2e/titles.spec.ts:87:37 › codex chat titles › malformed provider output keeps the fallback (4.6s)
+
+  ✓  434 e2e/titles.spec.ts:87:37 › codex chat titles › provider failure keeps the fallback (3.6s)
+
+  ✓  435 e2e/tool-full-log.spec.ts:117:1 › the preview shows the end; Show full log starts at the first line and pages through, running nothing (203ms)
+  ✓  436 e2e/tool-full-log.spec.ts:133:1 › the full log is still there after a restart (1.8s)
+[transcript-budget] {"approvedBy":"Val","approvedOn":"2026-10-22","limitMs":500,"samplesMs":[239,250.5,261.2999999821186,233.09999999403954,227.19999998807907],"medianMs":239,"cpu":"Apple M5 Max","cores":18,"platform":"darwin","arch":"arm64","node":"v24.22.0"}
+  ✓  437 e2e/transcript-measure.spec.ts:221:1 › a 200-turn transcript opens within the agreed median budget across five fresh launches (13.6s)
+
+  ✓  438 e2e/transcript-measure.spec.ts:243:1 › a 3 MiB command log streams to the window bounded, and the turn settles (3.0s)
+
+  ✓  439 e2e/turn-patch-state.spec.ts:97:1 › opening a patch row reads nothing until Compare is pressed (16ms)
+  ✓  440 e2e/turn-patch-state.spec.ts:103:1 › each file says whether it is as the turn left it, and a file outside the project is not read (91ms)
+  ✓  441 e2e/turn-patch-state.spec.ts:119:1 › after later changes on disk, Check again says what changed and what is gone, and nothing runs (117ms)
+
+  ✓  442 e2e/typed-turns.spec.ts:71:1 › a typed turn answers with its final message, folds only work that succeeded, and labels reasoning honestly (164ms)
+  ✓  443 e2e/typed-turns.spec.ts:105:1 › every running item is live at once, and a stopped message says it stopped (272ms)
+  ✓  444 e2e/typed-turns.spec.ts:125:1 › a retried turn shows its new attempt, and only that attempt answers (24ms)
+  ✓  445 e2e/typed-turns.spec.ts:139:1 › scrolling up while output streams shows Jump to latest; it returns to the bottom and resumes following (155ms)
+  ✓  446 e2e/typed-turns.spec.ts:156:1 › typed turns stay readable in every theme at the 900×600 minimum (1.3s)
+  ✓  447 e2e/typed-turns.spec.ts:188:1 › failed and denied assistant replies name their outcome without relying on a separate notice (29ms)
+
+  ✓  448 e2e/update-archive-electron.spec.ts:12:1 › update staging inside Electron extracts the candidate's app.asar as a regular file (1.6s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-CJNxBl","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-T2S31f","electronPid":42230}
+  ✓  449 e2e/update-controls.spec.ts:26:1 › update progress supports cancellation and preserves drafts when restart is refused (1.7s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-bwsHCb","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-343qLm","electronPid":43041}
+  ✓  450 e2e/update-controls.spec.ts:45:1 › recovery controls stay usable outside the frozen workspace and show Quit refusal (1.6s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-xyxSPz","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-tjdSB0","electronPid":44047}
+  ✓  451 e2e/update-installation.spec.ts:54:1 › installation downloads by itself, cancels and retries, refuses restart with open Settings, then installs on quit (2.7s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-RPyZhJ","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-5439yT","electronPid":45678}
+  ✓  452 e2e/update-installation.spec.ts:101:1 › failed publisher verification offers retry and never exposes an install action (1.2s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-mRRYcX","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-T5DATy","electronPid":46390}
+  ✓  453 e2e/update-main.spec.ts:7:1 › renderer reload after an updater partial drain opens read-only and ordinary Quit preserves saved bytes (1.3s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-cUkkbI","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-OEylDG","electronPid":47014}
+  ✓  454 e2e/update-main.spec.ts:57:1 › actual main restart retains drafts after partial drain and retries fresh recovery Quit after a close veto (3.3s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-Pyk01l","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-cDnkdD","electronPid":49056}
+  ✓  455 e2e/update-preflight.spec.ts:26:1 › restart preparation saves drafts and fences pointer and keyboard edits until main releases it (1.8s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-1i5Nyn","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-fJM2hV","electronPid":50294}
+  ✓  456 e2e/update-preflight.spec.ts:49:1 › open Settings and failed Space saves refuse preparation without discarding drafts (3.1s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-HmRNN2","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-8SVJRQ","electronPid":52665}
+  ✓  457 e2e/update-preflight.spec.ts:81:1 › a Markdown import finishes after a refused restart releases editing (2.9s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-rdy2IV","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-runMrj","electronPid":54393}
+  ✓  458 e2e/update-recovery-screen.spec.ts:7:57 › interrupted uncertain update preserves raw drafts read-only and permits recovery Quit (1.6s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-RVVwyk","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-RcUjeQ","electronPid":55479}
+  ✓  459 e2e/update-recovery-screen.spec.ts:7:57 › interrupted staged update preserves raw drafts read-only and permits recovery Quit (1.4s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-XfbE4D","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-qege04","electronPid":56169}
+  ✓  460 e2e/update-recovery-screen.spec.ts:44:1 › unreadable recovery preserves the original file and permits recovery Quit (1.5s)
+{"fixtureHome":"/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-G7gRSh","fixtureRepo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-lVihzb","electronPid":56999}
+  ✓  461 e2e/update-recovery-screen.spec.ts:63:1 › a failed ordinary Quit reopens read-only after partial service disposal and can retry Quit (2.2s)
+
+  ✓  462 e2e/updates.spec.ts:28:48 › jev: update banner opens the release page, remembers dismissal and notices a rollout (3.5s)
+
+  ✓  463 e2e/updates.spec.ts:28:48 › coven: update banner opens the release page, remembers dismissal and notices a rollout (3.9s)
+4:11:39 AM [vite] (client) Re-optimizing dependencies because vite config has changed
+  ✓  464 e2e/usage.spec.ts:24:1 › collapsed navigation reopens for a destination and stays accessible on mobile (1.9s)
+  ✓  465 e2e/usage.spec.ts:60:1 › Copilot demo rows stay unpriced across overview, activity, accounts and CSV (939ms)
+
+  ✓  466 e2e/window-lifecycle.spec.ts:6:1 › paint is captured before attachment and supports an inactive window without claiming a show event (2.0s)
+  ✓  467 e2e/window-lifecycle.spec.ts:35:1 › readiness stability restarts when matching native and renderer dimensions change together (464ms)
+
+  ✓  468 e2e/window-lifecycle.spec.ts:46:1 › layout sizing survives a delayed native restoration of launch bounds (1.5s)
+
+  ✓  469 e2e/window-lifecycle.spec.ts:73:1 › layout sizing rejects a permanently clamped native window (17.7s)
+
+  ✓  470 e2e/window-lifecycle.spec.ts:115:1 › layout sizing resynchronizes a stale renderer once at the minimum size (5.6s)
+
+  ✓  471 e2e/window-lifecycle.spec.ts:131:1 › layout sizing leaves an independently settling renderer alone (4.7s)
+
+  ✓  472 e2e/window-lifecycle.spec.ts:159:1 › layout sizing rejects a permanent renderer mismatch and restores native bounds (19.3s)
+
+  ✓  473 e2e/window-lifecycle.spec.ts:176:1 › closed windows ignore late native visibility notifications (4.1s)
+Store browser fixture {"home":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-home-UPWvgW","repo":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-e2e-repo-kksBJl","clientHome":"/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/modex-store-browser-Wp15Jk"}
+  ✓  474 e2e/workspace-store.spec.ts:8:1 › Store browser guests belong to the client and hide while its host is disconnected (12.3s)
+
+  ✓  475 e2e/workspace.spec.ts:33:1 › reference review has a numbered diff and a filterable tree on its right (8.4s)
+
+  ✓  476 e2e/workspace.spec.ts:69:1 › new-tab menu, launcher, full view and Files replace the old panel (8.9s)
+
+  ✓  477 e2e/workspace.spec.ts:106:1 › browser tabs load a real local page, navigate history and stay isolated from the app (9.9s)
+
+  ✓  478 e2e/workspace.spec.ts:136:1 › no-final-newline metadata does not shift the changed line numbers (6.5s)
+
+  ✓  479 e2e/workspace.spec.ts:149:1 › Review errors remain visible in full view (5.8s)
+
+  ✓  480 e2e/workspace.spec.ts:161:1 › a delayed browser snapshot cannot replace an address being edited (5.6s)
+
+  ✓  481 e2e/workspace.spec.ts:185:1 › a new tab's late focus never takes the caret from where you started typing (5.4s)
+
+  ✓  482 e2e/workspace.spec.ts:206:1 › superseded navigation, overlays, guest shortcuts and window destruction preserve browser lifecycle (6.8s)
+
+  7 skipped
+  475 passed (26.6m)
+
+> @modex/site@0.0.1 test:e2e /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/site
+> pnpm run build && playwright test
+
+
+> @modex/site@0.0.1 build /Users/buns/Documents/GitHub/TypeSafeAI/modex/.worktrees/cf4-full-suite/apps/site
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 10 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/manrope-vietnamese-wght-normal-usUDDRr7.woff2   8.52 kB
+dist/assets/manrope-greek-wght-normal-DL7QRZyv.woff2        9.44 kB
+dist/assets/manrope-cyrillic-wght-normal-Dvxsihut.woff2    14.50 kB
+dist/assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2   15.12 kB
+dist/index.html                                            22.22 kB │ gzip: 5.53 kB
+dist/assets/manrope-latin-wght-normal-DHIcAJRg.woff2       24.83 kB
+dist/assets/index-CMxcTpr5.css                             22.45 kB │ gzip: 7.78 kB
+dist/assets/index-CZIZHXbm.js                               6.00 kB │ gzip: 2.68 kB
+
+✓ built in 549ms
+
+Running 7 tests using 1 worker
+
+  ✓  1 e2e/release.spec.ts:28:1 › finds a new release while the page stays open, with accurate counts and public TestFlight actions (1.4s)
+  ✓  2 e2e/release.spec.ts:69:1 › offline, partial and hostile responses keep all verified fallback links usable (1.5s)
+  ✓  3 e2e/release.spec.ts:98:1 › cached counts are labeled and zero remains a real count (399ms)
+  ✓  4 e2e/release.spec.ts:120:1 › the full product story remains readable and scrollable across desktop and mobile (14.8s)
+  ✓  5 e2e/release.spec.ts:216:1 › workflow selection is deliberate and supports keyboard input without autoplay (566ms)
+  ✓  6 e2e/release.spec.ts:257:1 › screenshots enlarge and close with Escape or the close button, restoring focus (2.4s)
+  ✓  7 e2e/release.spec.ts:296:1 › downloads, setup, FAQ and original screenshots work without JavaScript (1.3s)
+
+  7 passed (28.4s)
