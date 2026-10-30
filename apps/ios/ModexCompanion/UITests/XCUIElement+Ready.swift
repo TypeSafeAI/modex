@@ -165,23 +165,31 @@ extension XCUIElement {
     func typeTextWhenReady(_ text: String, in app: XCUIApplication, timeout: TimeInterval = UITestBudget.seconds(30),
                            file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date(timeIntervalSinceNow: timeout)
-        var taps = 0
-        repeat {
-            taps += 1
-            guard waitUntilReady(timeout: max(1, deadline.timeIntervalSinceNow), file: file, line: line) else { return }
-            tap()
-            if waitUntil(timeout: min(UITestBudget.seconds(8), max(1, deadline.timeIntervalSinceNow)), { hasKeyboardFocus(in: app) }) { break }
-            guard taps < 3, Date() < deadline else {
-                XCTFail("\(self) did not take keyboard focus after \(taps) taps.", file: file, line: line)
-                return
-            }
-        } while true
+        guard focusWhenReady(in: app, timeout: timeout, file: file, line: line) else { return }
         typeText(text)
         let observation = observeTypedText(text, timeout: max(1, deadline.timeIntervalSinceNow)) { value as? String }
         guard observation.matches else {
             XCTFail("The field did not finish receiving the typed text; it holds \(observation.value.map { "\"\($0)\"" } ?? "nothing").", file: file, line: line)
             return
         }
+    }
+
+    /// Waits for this field's keyboard focus before a caller sends keystrokes. Secure fields use
+    /// the same focus boundary while keeping their masked-value and exact-delivery assertions.
+    func focusWhenReady(in app: XCUIApplication, timeout: TimeInterval = UITestBudget.seconds(30),
+                        file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        var taps = 0
+        repeat {
+            taps += 1
+            guard waitUntilReady(timeout: max(1, deadline.timeIntervalSinceNow), file: file, line: line) else { return false }
+            tap()
+            if waitUntil(timeout: min(UITestBudget.seconds(8), max(1, deadline.timeIntervalSinceNow)), { hasKeyboardFocus(in: app) }) { return true }
+            guard taps < 3, Date() < deadline else {
+                XCTFail("\(self) did not take keyboard focus after \(taps) taps.", file: file, line: line)
+                return false
+            }
+        } while true
     }
 
     /// The element's frame when it exists, is enabled and has a finite, non-empty frame; nil otherwise.
