@@ -7,6 +7,9 @@ import { spawnSync } from 'node:child_process';
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const fullSha = (value) => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value ?? '');
+const validPulls = (pulls) => Array.isArray(pulls) && pulls.every((pr) => ['open', 'closed'].includes(pr?.state) && typeof pr.head?.ref === 'string' && fullSha(pr.head?.sha) && (pr.head.repo === null || typeof pr.head.repo?.full_name === 'string'));
+// How many stacked branches a merge proof follows before giving up and preserving the work.
+const STACK_DEPTH = 3;
 const slug = (value) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value ?? '');
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -243,18 +246,53 @@ export class WorktreeMaintenance {
     return result.status === 0;
   }
 
-  proof(info, row, pulls) {
-    if (this.ancestor(row.head, info.defaultHead)) return { kind: 'ancestor', defaultHead: info.defaultHead };
+  async proof(info, row, pulls) {
+    return this.landed(info, row, pulls, { branch: info.defaultBranch, head: info.defaultHead })
+      ?? this.stacked(info, row, pulls, STACK_DEPTH);
+  }
+
+  // A PR stacked on another branch landed if it landed in that branch's merged head, and that
+  // head landed in the default branch, each hop held to the same proof as a direct merge.
+  async stacked(info, row, pulls, depth) {
+    if (depth < 1) return null;
     for (const pr of pulls) {
-      if (pr.state !== 'closed' || !pr.merged_at || pr.head?.ref !== row.branch || pr.head?.sha !== row.head || pr.head?.repo?.full_name?.toLowerCase() !== info.repo.toLowerCase() || pr.base?.ref !== info.defaultBranch || pr.base?.repo?.full_name?.toLowerCase() !== info.repo.toLowerCase() || !fullSha(pr.merge_commit_sha)) continue;
+      if (!this.mergedPull(info, row, pr) || pr.base?.ref === info.defaultBranch || !this.directBranch(pr.base?.ref ?? '')) continue;
+      const basePulls = await this.github({ repo: info.repo, kind: 'pulls', branch: pr.base.ref });
+      if (!validPulls(basePulls)) throw new Error('invalid pull request response');
+      for (const next of basePulls) {
+        if (next.state !== 'closed' || !next.merged_at || next.head.ref !== pr.base.ref || !this.present(next.head.sha)) continue;
+        const target = { branch: pr.base.ref, head: next.head.sha };
+        const hop = this.landed(info, row, [pr], target);
+        if (!hop) continue;
+        const onward = this.landed(info, target, basePulls, { branch: info.defaultBranch, head: info.defaultHead })
+          ?? await this.stacked(info, target, basePulls, depth - 1);
+        if (onward) return { kind: 'stacked', pull: pr.number, via: target, hop, onward, defaultHead: info.defaultHead };
+      }
+    }
+    return null;
+  }
+
+  present(sha) {
+    return fullSha(sha) && this.git(['cat-file', '-e', `${sha}^{commit}`], this.cwd, true).status === 0;
+  }
+
+  mergedPull(info, row, pr) {
+    return pr.state === 'closed' && pr.merged_at && pr.head?.ref === row.branch && pr.head?.sha === row.head && pr.head?.repo?.full_name?.toLowerCase() === info.repo.toLowerCase() && pr.base?.repo?.full_name?.toLowerCase() === info.repo.toLowerCase() && fullSha(pr.merge_commit_sha) && this.present(pr.merge_commit_sha);
+  }
+
+  // Proves the exact tip landed in target.head, through target.branch's merged PR history.
+  landed(info, row, pulls, target) {
+    if (this.ancestor(row.head, target.head)) return { kind: 'ancestor', defaultHead: target.head };
+    for (const pr of pulls) {
+      if (!this.mergedPull(info, row, pr) || pr.base?.ref !== target.branch) continue;
       const merge = pr.merge_commit_sha;
-      if (!this.ancestor(merge, info.defaultHead)) continue;
+      if (!this.ancestor(merge, target.head)) continue;
       const parents = this.text(['rev-list', '--parents', '-n', '1', merge]).split(' ').slice(1);
       if (parents.length !== 1) continue; // Only unambiguous single-parent squash commits.
       // An identical tree (every path, mode, blob and gitlink) means the tip is exactly the snapshot
       // that landed, so merge commits on the branch cannot hold anything the default branch lacks.
       const tree = this.text(['rev-parse', '--verify', `${row.head}^{tree}`]);
-      if (fullSha(tree) && tree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'squash-tree', pull: pr.number, mergeCommit: merge, tree, defaultHead: info.defaultHead };
+      if (fullSha(tree) && tree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'squash-tree', pull: pr.number, mergeCommit: merge, tree, defaultHead: target.head };
       // A merge queue squashes the tip onto the default branch as it stands at the PR's turn. If the
       // tip merges cleanly onto the squash's parent and gives exactly the landed tree, every change on
       // the branch landed, merge commits included. A configured merge driver may resolve a path
@@ -262,7 +300,7 @@ export class WorktreeMaintenance {
       if (this.git(['config', '--get-regexp', '^merge\\..+\\.driver$'], this.cwd, true).status === 1) {
         const merged = this.git(['merge-tree', '--write-tree', '--no-messages', parents[0], row.head], this.cwd, true);
         const mergedTree = merged.status === 0 ? merged.stdout.trim() : '';
-        if (fullSha(mergedTree) && mergedTree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'merge-tree', pull: pr.number, mergeCommit: merge, base: parents[0], tree: mergedTree, defaultHead: info.defaultHead };
+        if (fullSha(mergedTree) && mergedTree === this.text(['rev-parse', '--verify', `${merge}^{tree}`])) return { kind: 'merge-tree', pull: pr.number, mergeCommit: merge, base: parents[0], tree: mergedTree, defaultHead: target.head };
       }
       const bases =this.text(['merge-base', '--all', row.head, parents[0]]).split('\n');
       if (bases.length !== 1 || !bases[0]) continue;
@@ -270,14 +308,14 @@ export class WorktreeMaintenance {
       const flags = ['diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color', '--ignore-submodules=none', '--submodule=short', '--no-relative'];
       const aggregate = this.git([...flags, bases[0], row.head, '--']).stdout;
       const landed = this.git([...flags, parents[0], merge, '--']).stdout;
-      if (aggregate && aggregate === landed) return { kind: 'squash', pull: pr.number, mergeCommit: merge, base: bases[0], defaultHead: info.defaultHead, diffSha256: sha256(aggregate) };
+      if (aggregate && aggregate === landed) return { kind: 'squash', pull: pr.number, mergeCommit: merge, base: bases[0], defaultHead: target.head, diffSha256: sha256(aggregate) };
     }
     return null;
   }
 
   async pullEvidence(info, row) {
     const pulls = await this.github({ repo: info.repo, kind: 'pulls', branch: row.branch });
-    if (!Array.isArray(pulls) || pulls.some((pr) => !['open', 'closed'].includes(pr?.state) || typeof pr.head?.ref !== 'string' || !fullSha(pr.head?.sha) || (pr.head.repo !== null && typeof pr.head.repo?.full_name !== 'string'))) throw new Error('invalid pull request response');
+    if (!validPulls(pulls)) throw new Error('invalid pull request response');
     if (pulls.some((pr) => pr.state === 'open' && pr.head.ref === row.branch && (!pr.head.repo || pr.head.repo.full_name.toLowerCase() === info.repo.toLowerCase()))) throw new Error('open-pr');
     return pulls;
   }
@@ -306,7 +344,7 @@ export class WorktreeMaintenance {
         if (typeof active !== 'boolean') throw new Error('unknown process activity');
         if (active) reasons.push('active-process');
       }
-      if (!reasons.length) row.proof = this.proof(info, row, pulls);
+      if (!reasons.length) row.proof = await this.proof(info, row, pulls);
       if (!row.proof && !reasons.length) reasons.push('not-proven-merged');
     } catch (error) { reasons.push(`observation-failed: ${error.message}`); }
     return { ...row, eligible: reasons.length === 0, reasons };
@@ -407,7 +445,7 @@ export class WorktreeMaintenance {
           // A newly opened PR or claim between them must keep the surviving ref.
           const finalInfo = await this.discover();
           const finalPulls = await this.pullEvidence(finalInfo, candidate);
-          if (!this.proof(finalInfo, candidate, finalPulls)) throw new Error('merge proof changed before ref deletion');
+          if (!(await this.proof(finalInfo, candidate, finalPulls))) throw new Error('merge proof changed before ref deletion');
           const finalRecord = await this.getRecord(candidate.branch);
           if (finalRecord?.status !== 'released' || finalRecord.head !== candidate.head || finalRecord.path !== candidate.path) throw new Error('release changed before ref deletion');
           if (!this.directBranch(candidate.branch)) throw new Error('branch became symbolic before deletion');

@@ -73,6 +73,11 @@ Each run fetches the GitHub default branch without pruning refs and reads PRs th
   - **Identical complete binary diff.**
 
   Without a match, ambiguous merge histories stay preserved.
+- A PR stacked on another branch counts only through that branch's own merged PR. The tip
+  must pass the checks above against the merged head of the branch it targeted, and that
+  head must in turn pass them against the default branch. The chain follows at most three
+  branches. If any branch in it never merged, or merged a head without the stacked work,
+  the tip is preserved.
 - Archive refs and a self-contained bundle have been created, restored into an empty
   bare repository, checked for exact tip equality, and passed `git fsck --full`.
 
