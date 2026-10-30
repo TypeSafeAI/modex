@@ -209,6 +209,16 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
   counted once the CLI confirms each call. Codex's plan-mode `plan` item is kept as the turn's
   proposed plan, so that turn does not say "no plan", and a plan-mode turn Codex never ends is ended
   like one after a final answer. [Plans](task-context.md#plans).
+- **CF-7 close-out and human-review candidate** (#280, 2026-10-29). The
+  [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md) maps each acceptance criterion
+  to the PR and tests behind it on `main` at `eca2bd9`, where the CF-7 unit tests (46) and e2e specs
+  (8) pass. One real task ran per CLI through the app in Chat mode: Claude Code 2.1.312 (Haiku) and
+  codex-cli 0.164.0 (`gpt-6.1-sol`) each ran the failing `npm test`, edited `greeting.txt` after
+  approval, passed the check, read "Verified: `npm test` passed after the last change", saved a Task
+  Note and reopened it read-only. Neither was offered a plan tool, and both said so. The seeded homes
+  are kept for Val's review. **Still open, Val's:** the human review of the two saved Notes, and
+  three observations in the receipt (a shell-written file listed as read, a `perl -pi` edit listing
+  no file, a title cut mid-word). #280 stays open until Val records a result or a written deferral.
 
 ## In flight
 

@@ -1,0 +1,7 @@
+
+Running 1 test using 1 worker
+
+
+  ✓  1 .probes/cf7-live-note.spec.ts:85:3 › live codex task: plan or "no plan", failing check, approval, real edit, passing check, Save to Notes, Open, read-only Task view; home kept for review (24.8s)
+
+  1 passed (25.4s)
