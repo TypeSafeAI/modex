@@ -119,13 +119,13 @@ as the CLI reported them. Nothing is indexed, searched for or inferred: no depen
 | read | `Read` (`file_path`) | Codex's own parse of a command: `commandActions` `read` (`path`) | `read_file` (`path`) |
 | searched | `Grep`, `Glob`, `LS` (`path`) | `commandActions` `search` and `listFiles` (`path`) | `list_dir` (`path`) |
 
-- **What counts.** A denied or failed tool touched nothing. A command the CLI did not parse (a `cat`
+- **What counts.** A denied tool is excluded. A failed tool does not establish named file relations; a failed shell command may still have written before failing. A command the CLI did not parse (a `cat`
   through Claude's Bash, an `unknown` Codex action) is not counted as a read.
 - **Commands that may have changed files no CLI named.** A shell redirect through Claude's Bash or a
   Codex `perl -pi` edit can write a file that neither CLI reports. Such a command is listed as a
   command, once, under "These commands may have changed files that neither the CLI nor Modex named".
   Modex does not guess which files it wrote. The rule is the one that makes a check stale: a command
-  that is neither a check nor known to be read-only, and was not denied or failed. Records saved before
+  that is neither a check nor known to be read-only, and was not denied. Failed commands remain possible writers because a nonzero exit does not undo earlier writes. Records saved before
   this list existed reopen without it. Added after the CF-7 close-out's live runs, where a redirect left
   a rewritten file listed only as `read` and a `perl -pi` edit left the note with no files at all.
 - **Paths.** They are relative to the thread's working directory. Paths outside it are counted,

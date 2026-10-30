@@ -150,6 +150,7 @@ test("a footer whose files a shell command may have changed says so and lists th
     { type: "item", threadId, item: { id: "u-perl", kind: "user", text: "Say hi", at: at() } },
     tool("u-perl", "codex", "pp1", { name: "shell", title: `$ ${perl}`, exec: { command: perl, actions: [] }, exitCode: 0 }),
     tool("u-perl", "codex", "pp2", { name: "shell", title: `$ ${perl}`, exec: { command: perl, actions: [] }, exitCode: 0 }),
+    tool("u-perl", "codex", "pp3", { name: "shell", title: "$ printf changed > partial.txt; exit 1", exec: { command: "printf changed > partial.txt; exit 1", actions: [] }, outcome: "failed", ok: false, exitCode: 1 }),
     { type: "item", threadId, item: { id: "a-perl", kind: "assistant", text: "Done.", phase: "final", outcome: "succeeded", origin: origin("u-perl", "a-perl", "codex"), at: at() } },
     { type: "status", threadId, status: "idle" },
   ]);
@@ -165,8 +166,8 @@ test("a footer whose files a shell command may have changed says so and lists th
   await tid(codex, "task-context-toggle").click();
   await expect(tid(codex, "task-context-file")).toHaveCount(0);
   // Shown as the script its shell ran, with the exact command on hover, and once although it ran twice.
-  await expect(tid(codex, "task-context-unlisted")).toHaveText(["perl -pi -e s/hello/hi/ greeting.txt"]);
-  await expect(tid(codex, "task-context-unlisted").locator("code")).toHaveAttribute("title", perl);
+  await expect(tid(codex, "task-context-unlisted")).toHaveText(["perl -pi -e s/hello/hi/ greeting.txt", "printf changed > partial.txt; exit 1"]);
+  await expect(tid(codex, "task-context-unlisted").first().locator("code")).toHaveAttribute("title", perl);
 });
 
 test("a successful shell receipt cannot verify masked failures or writes after a check", async () => {
