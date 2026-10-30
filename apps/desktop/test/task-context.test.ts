@@ -585,14 +585,25 @@ test("a Codex in-place edit it parsed as unknown still gives the note a files se
   assert.ok(note.includes(`- \`${perl.replace(/`/g, "'")}\`\n`));
 });
 
-test("checks, read-only commands, and denied or failed commands are not listed as possible writers", () => {
+test("a command that fails after a possible write remains in the context map and saved note", () => {
+  const command = "printf changed > partial.txt; exit 1";
+  const items = [user, bash(command, { outcome: "failed", ok: false, exitCode: 1 })];
+  const context = taskContext(items, "/repo");
+  assert.deepEqual(context.files, [], "a nonzero exit does not identify which files changed");
+  assert.deepEqual(context.unlisted, [command], "failure does not roll back earlier writes");
+  assert.equal(contextCount(context), "not listed");
+  const note = taskMarkdown(taskRecord(items, { threadId: "T", title: "Partial write", cwd: "/repo" }));
+  assert.ok(note.includes(UNLISTED_WORDS));
+  assert.ok(note.includes(command));
+});
+
+test("checks, read-only commands, and denied commands are not listed as possible writers", () => {
   const context = taskContext([
     user,
     bash("pnpm test"),
     bash("cat a.txt && sed -n 1,5p b.txt | wc -l"),
     bash("git status --short"),
     bash("rm -rf build", { outcome: "denied", ok: false }),
-    bash("touch x", { outcome: "failed", ok: false }),
     tool("Edit", { file_path: "/repo/a.ts", old_string: "a", new_string: "b" }),
   ], "/repo");
   assert.equal(context.unlisted, undefined);

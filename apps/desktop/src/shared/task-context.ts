@@ -521,7 +521,8 @@ const SEARCH_ARGS: Record<string, string> = { Grep: "path", Glob: "path", LS: "p
 /**
  * The project files a turn touched, by what the CLI reported (docs/task-context.md#context-map): files
  * its patch tools changed, files it read (Claude's Read, Codex's own parse of a command), and paths it
- * searched or listed. A denied or failed tool touched nothing. Nothing is inferred: a `cat` through a
+ * searched or listed. Denied tools are excluded; failed tools do not establish named file relations. A
+ * failed command can still have written before failing. Nothing is inferred: a `cat` through a
  * shell that the CLI did not parse is not counted, and no dependency is guessed. Changed files come
  * first, then read, then searched, each in the order the turn first touched them. A command that may
  * have written files without naming them is listed in `unlisted`, once, so the map never reads as complete
@@ -547,7 +548,11 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
   for (const item of items) {
     if (item.kind !== "tool") continue;
     const outcome = item.outcome ?? (item.ok === true ? "succeeded" : "unknown");
-    if (outcome === "denied" || outcome === "failed") continue;
+    if (outcome === "denied") continue;
+    const command = item.exec?.command;
+    // A failed command can have written before failing; keep that uncertainty without guessing paths.
+    if (command && !EDIT_TOOLS.has(item.name) && mayWrite(command) && !unlisted.includes(command)) unlisted.push(command);
+    if (outcome === "failed") continue;
     if (EDIT_TOOLS.has(item.name)) {
       for (const file of patchFiles(item)) add(file, "changed");
       if (item.name === "write_file") add(item.args.path, "changed");
@@ -555,8 +560,6 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
     if (READ_ARGS[item.name]) add(item.args[READ_ARGS[item.name]!], "read");
     if (SEARCH_ARGS[item.name]) add(item.args[SEARCH_ARGS[item.name]!], "searched");
     for (const action of item.exec?.actions ?? []) add(action.path, action.kind === "read" ? "read" : "searched", item.exec?.cwd ?? cwd);
-    const command = item.exec?.command;
-    if (command && !EDIT_TOOLS.has(item.name) && mayWrite(command) && !unlisted.includes(command)) unlisted.push(command);
   }
   const rank = (file: ContextFile) => (file.relations.includes("changed") ? 0 : file.relations.includes("read") ? 1 : 2);
   const ordered = [...files.values()].map((file, i) => ({ file, i })).sort((a, b) => rank(a.file) - rank(b.file) || a.i - b.i).map(({ file }) => file);
