@@ -215,8 +215,19 @@ test("Canvas refuses external requests, privileged navigation and popups; closin
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
     expect(requests).toBe(0);
     await tid(page, "workspace-full").click();
-    // Escape can only leave full view once it is entered; sent earlier, the click wins the race.
+    // Renderer visibility changes before canvas:show reaches the native view.
     await expect(tid(page, "main")).toBeHidden();
+    await expect.poll(async () => {
+      const rect = await tid(page, "canvas-preview").boundingBox();
+      return app.evaluate(({ BrowserWindow }, rect) => {
+        if (!rect) return false;
+        const window = BrowserWindow.getAllWindows()[0]!;
+        const view = window.contentView.children.find(v => 'webContents' in v && (v as import('electron').WebContentsView).webContents.getURL().startsWith('modex-canvas:'));
+        if (!view?.getVisible()) return false;
+        const bounds = view.getBounds(), zoom = window.webContents.getZoomFactor();
+        return (['x', 'y', 'width', 'height'] as const).every(key => Math.abs(bounds[key] - Math.round(rect[key] * zoom)) <= 1);
+      }, rect);
+    }, { message: "native Canvas view must reach the expanded preview before Escape" }).toBe(true);
     await app.evaluate(({ webContents }) => {
       const contents = webContents.getAllWebContents().find(w => w.getURL().startsWith("modex-canvas:"))!;
       contents.focus(); contents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
