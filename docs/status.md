@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-28._
+_Last updated 2026-10-30 UTC._
 
 ## Shipped
 
@@ -27,6 +27,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.1.0 | 2026-10-15 | #208, #219, #222, #226, #227, #236, #243, #246 | Notes as Markdown files in workspaces and projects, with per-project agent scope and files; Images and native Plugins; Analytics; thread archiving; first Windows and Linux installers. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.1.0). [Review](reviews/2026-10-15-v0.1.0-release-review.md). |
 | v0.2.0 | 2026-10-18 | #253, #257, #266, #267, #269, #248, #272 | Read-only routines on a timer, on one decision service for Jev; the notes fixes from v0.1.0's review (#241); Copy details and Retry on every inline error; Analytics restyled; new image jobs no longer stuck at "queued". [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
 | v0.3.0 | 2026-10-20 | #282, #284, #286, #293, #317, #333, #335, #337 | Native conversation fidelity: typed items and honest outcomes, evidence, plans and task records, approvals and questions answered once, a truthful Claude Stop; macOS updates over the air with install on quit; full Markdown in replies. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.3.0). [Review](reviews/2026-10-20-v0.3.0-release-review.md). |
+| v0.4.0 | 2026-10-30 UTC | #409, #442 | Saved task context, native plans, question/replay continuity, OpenCode and MiMo Code backends, and delivered reliability repairs. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.4.0). [Review](reviews/2026-10-24-v0.4.0-release-review.md#published--2026-10-30-utc). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -65,11 +66,15 @@ PR #436 repairs two ACP failures after #432 landed: a refused explicit model fai
 
 PR #419's LM-5 review found that a rerouted local turn could still be reported completed by the quiet-final timer before interruption was confirmed. The isolated `lm5-reroute-repair` worktree blocks that false success and retains active ownership until native termination. Both event-order regressions failed before the repair. The earlier repair checkpoint passed 53 focused tests and 2,200 unit tests with 25 skips. After the signed delivery rebase, `6ca43ed` passed build, typecheck, full unit validation (2,219 passed, 26 skipped), and root E2E (470 desktop passed, seven skipped; seven site passed). Independent integration review found no blocking findings. PR #424 merged into the #423 delivery branch at `0956376`; its tree exactly matches the reviewed `e0a03ef` candidate. Delivery to `main` landed through PR #423 at `c23e6be`; local-runtime qualification and product admission remain open. The combined branch’s CodeQL alert #28 identified incomplete regex escaping in a test assertion; the repair uses a literal error-message comparison, with five focused tests and the full build/unit command passing (2,219 passed, 26 skipped, zero failures or cancellations). Independent review found no blockers, and hosted CodeQL fixed alert #28. The subsequent macOS run at `d3d61ad` failed the Jev-theme Settings click and teardown (472 passed, four skipped, one failed); its trace is preserved. After integrating main `7a01df2`, including the merged Notes identity repair, final delivery head `618027e` passed protected queue run `40768112164` (473 desktop passes, four skips and seven site passes) and landed through #423. The landed merge tree was verified before its delivery worktree was archived and removed.
 
-PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. PR #426 subsequently passed its protected queue and merged as `d0482a0`; this repair is on main and unreleased. Native/live acceptance remains separate.
+PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as stopped and released ownership, and provider-bound questions were described as staying on the Mac. The isolated `cr6-review-repair` worktree preserves unknown exit ownership and corrects that disclosure. PR #426 has passed independent repair review, build, unit tests (2,196 passed, 23 skipped), typecheck and full root E2E on diagnostic source `4c5eaee` (470 desktop passed, seven skipped; seven site passed). Earlier failures remain recorded, including unexplained Canvas and IPC failures that passed on later runs. PR #426 subsequently passed its protected queue and merged as `d0482a0`; this repair is included in v0.4.0. Native/live acceptance remains separate.
 
 ## On main, unreleased
 
-- **v0.4.0 publication preparation.** The release branch has advanced to main `469c612`, preserving the earlier rehearsal and failure records. The approved-key rc.2 rehearsal passed at older source `6c9000f`; it does not qualify current main. CR-8 journey #440 and integrated review/recovery #441 have landed. ACP repair #436 has also landed after protected queue validation. This is the selected application source; the release evidence update and final tag source remain pending. The latest public release remains v0.3.0. A fresh protected release and independent downloaded-asset checks remain required; see the [current release preparation](reviews/2026-10-24-v0.4.0-release-review.md#current-candidate-preparation--2026-10-29).
+The published application source is `2eda138` (v0.4.0). Later source deliveries belong here; the release inventory and its incomplete acceptance gates are recorded separately below.
+
+## v0.4.0 source delivery and remaining acceptance
+
+- **v0.4.0 published.** Signed tag `v0.4.0` at `2eda138` is public and confirmed by GitHub's latest-release endpoint. Protected Release run `40985927886`, independent downloaded-asset checks and downloaded-app E2E passed. The source deliveries below are included in this release; feature exposure and acceptance limits remain as stated. See the [publication record](reviews/2026-10-24-v0.4.0-release-review.md#published--2026-10-30-utc).
 
 - **OpenCode and MiMo Code backends** ([#408](https://github.com/TypeSafeAI/modex/issues/408)).
   Two new thread backends drive the OpenCode CLI and Xiaomi's MiMo Code fork through their Agent
@@ -212,31 +217,15 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 ## In flight
 
-- **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery remains pending. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
+- **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery landed through #435 and is included in v0.4.0. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
 
 - **Code Review packaged-app harness repair.** The shared harness and standalone IPC test now honor `MODEX_PACKAGED_APP`, including crash recovery. Two executable-identity regressions failed before the repair and passed afterward against a local ad-hoc bundle; development checks also passed. This is scoped harness evidence, not signed-release or human acceptance. [Evidence and remaining coverage limits](reviews/2026-10-28-code-review-packaged-harness.md).
 
 - **Notes history identity repair.** Repeated history toggles could duplicate revision rows or leave history visible after closing because the history and editor siblings shared a React key. The isolated `notes-history-identity` repair gives them distinct identities; three regression repetitions failed before the fix and passed afterward. Independent review found no blockers. Build and full unit/E2E checks passed (2,191 unit passed, 23 skipped; 470 desktop passed, seven skipped; seven site passed). Protected delivery landed in #429 (`7a01df2`); its successful merge-queue run passed 473 desktop tests with four skips and seven site tests. See [repair evidence](reviews/2026-10-28-notes-history-identity.md).
 
-- **LM-2 credential repair, on main and unreleased.** PR #418 delivered the credential-copy and stale-discovery fixes from closed #401, together with isolation that prevents fake child PIDs from reaching OS signals, at `6c9000f`. Build, full unit tests, typechecks and the Electron IPC journey are recorded in the [reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md). This source delivery is separate from local-runtime qualification and product admission.
+- **LM-2 credential repair, included in v0.4.0.** PR #418 delivered the credential-copy and stale-discovery fixes from closed #401, together with isolation that prevents fake child PIDs from reaching OS signals, at `6c9000f`. Build, full unit tests, typechecks and the Electron IPC journey are recorded in the [reconciliation evidence](reviews/2026-10-26-lm2-credential-repair.md). This source delivery is separate from local-runtime qualification and product admission.
 
-- **Desktop v0.4.0 and Companion 0.4.0 (9) preparation.** The release ships everything under "On
-  main, unreleased":
-  - task context: the task view, files touched and verification, and Claude's and Codex's plans;
-  - answering an agent's questions from the iPhone, and across replay and reconnect;
-  - Codex's own Plan mode;
-  - the keyboard, Jump to latest and Codex Stop fixes;
-  - Markdown overflow keyboard stops.
-
-  The Code Review workspace stays hidden in built apps, and local-model discovery has no UI. Val asked for the next version. The protected Release rehearsal at `6c9000f` passed in [run 40673497786](https://github.com/TypeSafeAI/modex/actions/runs/40673497786). That candidate predates the later review repairs; it does not qualify a release of current main. The next release candidate must include the intended delivered repairs and pass its own protected release checks. Companion build 9 supersedes the never-uploaded build 8. Remaining:
-
-  - a current candidate with refreshed release evidence and the signed `v0.4.0` tag using the approved release key;
-  - the Release run;
-  - independent download checks and publication;
-  - the v0.3.0 → v0.4.0 background upgrade on the release Mac;
-  - the TestFlight upload of build 9.
-
-  [Candidate review](reviews/2026-10-24-v0.4.0-release-review.md).
+- **v0.4.0 post-publication acceptance and Companion 0.4.0 (9).** Desktop publication is complete. The v0.3.0-to-v0.4.0 background upgrade remains unverified: the installed Mac already reports signed 0.4.0 and was left unchanged. Companion build 9 has not been delivered by this release session; its TestFlight upload and physical-device checks remain separate. Human accessibility, real-provider and native-platform account/session checks retain their existing gates. [Publication evidence and limits](reviews/2026-10-24-v0.4.0-release-review.md#published--2026-10-30-utc).
 
 - **Local execution through Codex, in main only and not yet admitted** (LM-3 [#379](https://github.com/TypeSafeAI/modex/issues/379),
   [PR #423](https://github.com/TypeSafeAI/modex/pull/423), branch `lm3-signed-delivery`). A thread with a `localTarget` runs on its own `codex app-server` child: a private
