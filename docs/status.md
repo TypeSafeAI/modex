@@ -410,6 +410,8 @@ The published application source is `2eda138` (v0.4.0). Later source deliveries 
 
 ## Known rough edges
 
+- **iPhone secure-answer focus readiness.** Hosted #453 failed when typing into a secure field that did not have keyboard focus, despite a keyboard being visible. A separate test-harness candidate reuses the existing field-focus wait while retaining masked-value and exact secret-delivery assertions. The dedicated iOS 27 simulator passed all 43 native UI and 60 native unit tests, and independent review found no actionable findings. Repository build/unit validation passed (2,268 passed, 26 skipped); protected delivery remains pending and the original iOS 26.4.1 failure stays preserved. [Evidence](reviews/2026-10-30-iphone-secret-focus.md).
+
 Fixed ones move to [resolved rough edges](reviews/2026-10-18-resolved-rough-edges.md), with the PR
 that fixed each.
 
