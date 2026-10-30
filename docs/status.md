@@ -462,9 +462,7 @@ that fixed each.
 
 Roughly in the order they earn their place; none is scheduled.
 
-1. **Windows and Linux acceptance.** Their installers shipped with v0.1.0. Provider-account
-   acceptance, KWallet6 and full graphical sessions, and historical schema migration remain
-   unproven; see [native-platforms.md](native-platforms.md).
+1. **Windows and Linux acceptance.** Their installers shipped with v0.1.0. Provider-account acceptance, KWallet6 and full graphical sessions, and historical schema migration remain unproven; see [native-platforms.md](native-platforms.md). A candidate pins the KWallet5 acceptance harness to its qualified Ubuntu 24.04 baseline after the moving runner label selected Ubuntu 26/KWallet6 without the expected daemon. Existing assertions remain required; local build/unit passed (2,268 passed, 26 skipped), and independent review found no actionable findings. Hosted Linux validation and protected delivery remain pending. [Evidence](reviews/2026-10-30-linux-wallet-baseline.md).
 2. **Routines that change code** (Routines Phase 2). Read-only routines shipped in v0.2.0. Agent-mode
    routines in a claimed worktree wait for the approval gate decision. See the
    [routines specification](specs/2026-10-11-modex-routines-spec.md).
