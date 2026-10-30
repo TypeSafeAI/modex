@@ -6,12 +6,14 @@ import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
 import { LocalConnectionStore } from "../src/main/engine/local-models/connections.js";
 import { LocalExecution } from "../src/main/engine/local-models/execution.js";
 import type { Backend, TurnOptions, TurnSink } from "../src/main/engine/backends/types.js";
+import { Router } from "../src/main/engine/routing/router.js";
+import type { JevRequest } from "../src/main/engine/routing/jev.js";
 import { gitRepo, tmpdir } from "./helpers.js";
 
 const MODEL = "qwen3.8-flash-next-iq3_s";
 
 /** A runner whose cloud Codex and local execution are both counters: the test asserts which one a turn reached. */
-async function setup(localResult: () => Promise<{ status: "completed" | "failed"; error?: string }> = async () => ({ status: "completed" })) {
+async function setup(localResult: (sink: TurnSink) => Promise<{ status: "completed" | "failed"; error?: string }> = async () => ({ status: "completed" }), cloudResult?: (sink: TurnSink) => Promise<{ status: "completed" }>) {
   const home = tmpdir("lm3-runner-");
   const store = new Store(home);
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
@@ -21,24 +23,28 @@ async function setup(localResult: () => Promise<{ status: "completed" | "failed"
   const turns: TurnOptions[] = [];
   let release: (() => void) | undefined;
   const cloud: Backend = { id: "codex", identity: () => "chatgpt-1", listModels: async () => [], dispose: async () => {}, forceStop: async () => { counts.cloudForceStops++; },
-    runTurn: async () => { counts.cloud++; return { status: "completed" }; }, generateTitle: async () => { counts.titles++; return "cloud title"; } };
+    runTurn: async (_text, _opts, sink) => { counts.cloud++; return cloudResult ? cloudResult(sink) : { status: "completed" }; }, generateTitle: async () => { counts.titles++; return "cloud title"; } };
   mock.method(local, "backend", () => ({ ...cloud, identity: undefined, generateTitle: undefined, forceStop: async () => { counts.localForceStops++; },
     runTurn: async (_text: string, opts: TurnOptions, sink: TurnSink) => {
       counts.local++; turns.push(opts); sink.session("native-1"); sink.observe({ type: "message.done", native: { runtime: "r", thread: "native-1", item: "m1" }, text: "local reply", phase: "final" });
       if (release) await new Promise<void>(resolve => { release = resolve; });
-      return localResult();
+      return localResult(sink);
     } }));
   mock.method(local, "forget", async () => { counts.forgotten++; });
-  const options = { home, store, emit: () => {}, backends: { codex: cloud }, localExecution: local,
-    knowledge: { prepare: async () => { counts.adapters++; throw new Error("must not prepare external tools"); } },
-    pages: { prepare: async () => { counts.adapters++; throw new Error("must not prepare external tools"); } },
+  const jevRequests: JevRequest[] = [];
+  const router = new Router({ home, policy: () => store.settings.routing, listModels: async () => ({ models: [] }),
+    transport: async request => { jevRequests.push(request); return { answers: {} }; },
+  });
+  const options = { home, store, router, emit: () => {}, backends: { codex: cloud }, localExecution: local,
+    knowledge: cloudResult ? undefined : { prepare: async () => { counts.adapters++; throw new Error("must not prepare external tools"); } },
+    pages: cloudResult ? undefined : { prepare: async () => { counts.adapters++; throw new Error("must not prepare external tools"); } },
   };
   const runner = new ThreadRunner(options as unknown as RunnerOptions);
   const thread = await runner.createThread(store.addProject(gitRepo()).id, { backend: "codex", model: "gpt-6-astra", auto: true });
   const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: connection.id, revision: 1 }, id: MODEL } };
   const select = () => runner.updateThread(thread.id, { localTarget: target, localContextTokens: 32768 });
   const hold = () => { release = () => {}; };
-  return { store, connections, connection, runner, thread, target, select, turns, counts, hold, release: () => release?.() };
+  return { jevRequests, store, connections, connection, runner, thread, target, select, turns, counts, hold, release: () => release?.() };
 }
 
 test("selecting a local target pins the thread and its turns run on local execution without any cloud call", async () => {
@@ -161,4 +167,86 @@ test("deleting a local thread ends its child, and disposing the runner disposes 
     await h.runner.deleteThread(h.thread.id, false);
     assert.equal(h.counts.forgotten, 2);
   } finally { await h.runner.dispose(); }
+});
+
+// Removing Runner's local approval guard must disclose a request to this transport and fail these assertions.
+for (const destination of ["local", "cloud"] as const) {
+  test(`${destination} exact-rule approval observes the Jev dispatch boundary`, async () => {
+    const answers: string[] = [];
+    const ask = async (sink: TurnSink) => {
+      answers.push(await sink.approval({ question: "Read status?", canAlways: true,
+        action: { backend: "codex", tool: "command", title: "git status" } }));
+      return { status: "completed" as const };
+    };
+    const h = await setup(ask, ask);
+    try {
+      h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 },
+        approval_rules: [{ id: "status", when: "inspect status", decision: "allow", match: "command: git status", enabled: true }] });
+      if (destination === "local") h.select();
+      else h.runner.updateThread(h.thread.id, { auto: false, title: "Cloud positive control" });
+      await h.runner.send(h.thread.id, "inspect status");
+      assert.deepEqual(answers, ["yes"]);
+      const card = h.runner.items(h.thread.id).find(item => item.kind === "approval");
+      assert.equal(card?.kind, "approval");
+      if (card?.kind !== "approval") throw new Error("Missing approval receipt");
+      assert.equal(card.decidedBy?.via, "match");
+      assert.equal(card.answer, "yes");
+      assert.equal(h.jevRequests.length, destination === "local" ? 0 : 1,
+        "local approval stays deterministic; the cloud control proves this transport is reachable");
+      assert.equal(h.counts.cloud, destination === "local" ? 0 : 1);
+    } finally { await h.runner.dispose(); }
+  });
+}
+
+for (const failure of ["Insufficient usage credits", "Out of memory", "Context window exceeded", "Service disconnected"] as const) {
+  test(`local failure (${failure}) dispatches no auxiliary or cloud work`, async () => {
+    const h = await setup(async () => {
+      if (failure === "Service disconnected") throw new Error(failure);
+      return { status: "failed", error: failure };
+    });
+    try {
+      h.select();
+      await h.runner.send(h.thread.id, "private local task");
+      assert.equal(h.store.thread(h.thread.id)?.status, "error");
+      assert.deepEqual(h.store.thread(h.thread.id)?.localTarget, h.target);
+      assert.equal(await h.runner.followUp(h.thread.id), null);
+      assert.deepEqual({ cloud: h.counts.cloud, local: h.counts.local, titles: h.counts.titles, adapters: h.counts.adapters, jev: h.jevRequests.length },
+        { cloud: 0, local: 1, titles: 0, adapters: 0, jev: 0 });
+    } finally { await h.runner.dispose(); }
+  });
+}
+
+
+test("a local natural-language rule waits for a human without asking Jev", { timeout: 10_000 }, async () => {
+  const answers: string[] = [];
+  const h = await setup(async sink => {
+    answers.push(await sink.approval({ question: "Read status?", canAlways: true,
+      action: { backend: "codex", tool: "command", title: "git status" } }));
+    return { status: "completed" };
+  });
+  let turn: Promise<void> | undefined;
+  try {
+    h.store.updateSettings({ approval_gate: { enabled: true, threshold: 0.8, timeout_ms: 1000 },
+      approval_rules: [{ id: "semantic", when: "inspect the working tree", decision: "allow", enabled: true }] });
+    h.select();
+    turn = h.runner.send(h.thread.id, "inspect status");
+    const deadline = Date.now() + 5000;
+    while (h.runner.status(h.thread.id) === "running" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(h.runner.status(h.thread.id), "waiting");
+    const card = h.runner.items(h.thread.id).find(item => item.kind === "approval");
+    assert.equal(card?.kind, "approval");
+    if (card?.kind !== "approval") throw new Error("Missing human approval");
+    assert.equal(card.answer, undefined);
+    assert.deepEqual(answers, []);
+    assert.equal(h.jevRequests.length, 0);
+    h.runner.answer(h.thread.id, card.id, "no");
+    await turn;
+    assert.deepEqual(answers, ["no"]);
+    assert.equal(h.counts.cloud, 0);
+    assert.equal(h.jevRequests.length, 0);
+  } finally {
+    h.runner.stop(h.thread.id);
+    await turn;
+    await h.runner.dispose();
+  }
 });
