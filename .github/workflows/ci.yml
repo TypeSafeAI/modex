@@ -100,6 +100,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Sample desktop runner memory
+        # Reuse the paired-test sampler; retain resource evidence even when E2E fails.
+        run: nohup apps/ios/ModexCompanion/Scripts/sample-memory.sh "$RUNNER_TEMP/modex-desktop-memory.log" > /dev/null 2>&1 &
+
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -138,6 +142,19 @@ jobs:
 
       - name: Landing page release and responsive tests
         run: pnpm --filter @modex/site test:e2e
+
+      - name: Desktop runner memory low point
+        if: always()
+        run: apps/ios/ModexCompanion/Scripts/sample-memory.sh --summary "$RUNNER_TEMP/modex-desktop-memory.log"
+
+      - name: Upload desktop runner memory
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-runner-memory
+          path: ${{ runner.temp }}/modex-desktop-memory.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload e2e artifacts
         if: always()

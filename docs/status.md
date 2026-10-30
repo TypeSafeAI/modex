@@ -234,6 +234,8 @@ The published application source is `2eda138` (v0.4.0). Later source deliveries 
 
 ## In flight
 
+Desktop CI memory diagnostics are in preparation after #456’s cold transcript budget failure. The proposed change reuses the existing resource sampler and retains its log as a separate CI artifact; it does not resolve the failure or change the 500 ms gate. See [the diagnostic review](reviews/2026-10-30-desktop-ci-memory.md).
+
 - **LM-5 auxiliary dispatch regressions.** Candidate tests exercise deterministic local approvals, human approval fallback and four local failure outcomes with a recording Jev transport and cloud positive control. Thirteen focused cases passed; removing the local approval guard made both local approval cases fail on unexpected dispatch. Build and full unit validation passed (2,251 passes, 26 skips); independent review found no actionable findings. Protected delivery remains pending; native offline acceptance and the remaining #380 criteria stay open. [Evidence](reviews/2026-10-30-lm5-auxiliary-dispatch.md).
 
 - **Canvas Escape harness readiness.** Repeated hosted failures showed the main pane still hidden after guest Escape. A controlled delayed-IPC diagnostic proved that renderer full-view state can precede native readiness. The test-only candidate waits for the native guest to become visible at the expanded preview bounds before sending one Escape, retaining all security and lifecycle assertions. Five candidate repetitions and full local validation passed; the implementation also passed hosted macOS validation. The Windows first failure, passing retry and original CodeQL upload failure remain recorded. Protected delivery remains pending. [Evidence](reviews/2026-10-30-canvas-native-readiness.md).
