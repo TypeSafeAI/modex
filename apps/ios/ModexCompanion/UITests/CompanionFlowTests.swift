@@ -441,8 +441,7 @@ final class CompanionFlowTests: XCTestCase {
         let secret = "  phone-secret-42 "
         let token = app.secureTextFields.matching(NSPredicate(format: "identifier == %@", "answer-\(card)-token")).firstMatch
         XCTAssertTrue(token.waitForExistence(timeout: UITestBudget.seconds(10)), "A secret question takes a secure field.")
-        token.tapWhenReady()
-        XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(8)) { app.keyboards.firstMatch.exists })
+        guard token.focusWhenReady(in: app) else { return }
         token.typeText(secret)
         // A secure field reads back as one bullet per character; wait for the last keystroke.
         XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(10)) { (token.value as? String)?.count == secret.count }, "The secure field received every character.")

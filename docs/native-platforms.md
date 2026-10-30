@@ -129,6 +129,8 @@ checks the daemon PID, and flushes the wallet before shutdown. The downloaded ev
 archive's SHA-256 and the tested merge tree were independently verified. This does not
 represent a full graphical/PAM login session, KWallet6, or real account acceptance.
 
+The native CLI/installer workflow pins its Linux host to Ubuntu 24.04 for the KWallet5 acceptance contract. Hosted run 41049616159 moved `ubuntu-latest` to Ubuntu 26.04, whose `libkf5wallet-bin` package installed KWallet6 without `kwalletd5`; the owned-daemon check failed before any KWallet app launch. The earlier passing run 41043591787 used Ubuntu 24.04. This pin retains every existing CLI, package, encryption, restart and daemon-ownership assertion. Ubuntu 26/KWallet6 and full graphical-login acceptance remain unverified, and this baseline does not claim coverage of those configurations. See the [preserved failure and repair evidence](reviews/2026-10-30-linux-wallet-baseline.md).
+
 ## Integration after Canvas and worktree hygiene
 
 The latest isolated candidate, `8352566`, passed both platforms in

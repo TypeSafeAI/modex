@@ -28,9 +28,9 @@ function fixture(t) {
   git(primary, 'config', `url.${origin}.insteadOf`, 'https://github.com/example/modex.git');
   git(primary, 'push', '-u', 'origin', 'main');
   const f = { dir, primary, origin, pulls: [], active: false, activityCalls: 0 };
-  f.github = async ({ kind }) => {
+  f.github = async ({ kind, branch }) => {
     if (f.apiError) throw new Error('API unavailable');
-    return kind === 'repo' ? { full_name: 'example/modex', default_branch: 'main' } : f.pulls;
+    return kind === 'repo' ? { full_name: 'example/modex', default_branch: 'main' } : (f.pullsFor?.[branch] ?? f.pulls);
   };
   f.activity = async (location) => { f.activityCalls++; await f.onActivity?.(location); return f.active; };
   f.core = new module.WorktreeMaintenance({ cwd: primary, github: f.github, activity: f.activity });
@@ -226,6 +226,46 @@ for (const kind of ['wrong-head', 'wrong-base', 'tree-mismatch', 'conflict', 'me
     await f.release(w);
     assert.deepEqual((await f.row(w.name)).reasons, ['not-proven-merged']);
     await f.core.prune({ apply: true }); assert.equal(f.exists(w), true);
+  });
+}
+
+// base <- top: top squashes into base, then base's merged head squashes into main.
+function stack(f, { landBase = true, staleBase = false } = {}) {
+  const base = f.create('base');
+  const top = { name: 'top', location: path.join(f.primary, '.worktrees', 'top') };
+  git(f.primary, 'worktree', 'add', '-b', 'top', top.location, 'base');
+  fs.writeFileSync(path.join(top.location, 'stacked.txt'), 'stacked work\n');
+  git(top.location, 'add', '.'); git(top.location, 'commit', '-m', 'top');
+  top.head = git(top.location, 'rev-parse', 'HEAD');
+  const before = git(base.location, 'rev-parse', 'HEAD');
+  git(base.location, 'merge', '--squash', 'top'); git(base.location, 'commit', '-m', 'squash top');
+  const stackMerge = git(base.location, 'rev-parse', 'HEAD');
+  const baseHead = staleBase ? before : stackMerge;
+  const repo = { full_name: 'example/modex' };
+  const pull = (number, ref, sha, baseRef, merge) => ({ number, state: 'closed', merged_at: '2026-10-11T00:00:00Z', head: { ref, sha, repo }, base: { ref: baseRef, repo }, merge_commit_sha: merge });
+  f.pullsFor = { top: [pull(2, 'top', top.head, 'base', stackMerge)], base: [] };
+  if (landBase) {
+    git(f.primary, 'merge', '--squash', baseHead); git(f.primary, 'commit', '-m', 'squash base'); git(f.primary, 'push', 'origin', 'main');
+    f.pullsFor.base = [pull(1, 'base', baseHead, 'main', git(f.primary, 'rev-parse', 'HEAD'))];
+  } else f.pullsFor.base = [{ number: 1, state: 'open', head: { ref: 'base', sha: baseHead, repo }, base: { ref: 'main', repo } }];
+  return top;
+}
+
+test('a PR stacked on a branch that later squashed into main is proven through both hops', async (t) => {
+  const f = fixture(t); const top = stack(f); await f.release(top);
+  const row = await f.row('top');
+  assert.equal(row.eligible, true, row.reasons.join(', '));
+  assert.equal(row.proof.kind, 'stacked'); assert.equal(row.proof.via.branch, 'base');
+  await f.core.prune({ apply: true });
+  assert.equal(fs.existsSync(top.location), false);
+});
+
+for (const [kind, options] of [['an unmerged base branch', { landBase: false }], ['a base that landed before the stacked merge', { staleBase: true }]]) {
+  test(`stacked proof preserves work on ${kind}`, async (t) => {
+    const f = fixture(t); const top = stack(f, options); await f.release(top);
+    assert.ok((await f.row('top')).reasons.includes('not-proven-merged'));
+    await f.core.prune({ apply: true });
+    assert.equal(f.exists(top), true);
   });
 }
 

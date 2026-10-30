@@ -133,3 +133,14 @@ On 2026-10-30 Val chose **“Defer C1–C5 for now”** in the close-out session
 | C5 | deferred, not run | Val deferred C1–C5 on 2026-10-30 |
 
 No row passed and none failed: no human VoiceOver run of C1–C5 happened. The deferral satisfies #277's closing condition but is not acceptance. The rows remain in the shared checklist (`../2026-10-20-keyboard-voiceover/checklist.md`) and can still be run on a later build. The `.worktrees/cf4-voiceover` worktree was removed after release of its ownership on 2026-10-30. Its committed source at `3f80fdfa8f1630d826d43752cb47eb3554dcf487` is recoverable from the verified maintenance bundle `2026-10-30T02-11-37-438Z-4d508ddf-2e8f-44ce-a49d-2c30e1a5fbbe`; that Git bundle does not establish preservation of the ignored seeded home or built app. The historical launch command above requires a restored checkout, a fresh build and reseeding before use. Its other rows (A1–A8, B1–B7) and #281 are not affected by this decision.
+
+### Full suite on main after the deferral, 2026-10-30
+
+Added on 2026-10-30. Earlier sections are unchanged. This is a first pass of the goal's `pnpm build && pnpm test && pnpm test:e2e` on protected `main` at `907ba08aa3b449e706ce49b4aa2706a861c58cc5` (#444), which contains #404's CF-4 changes. It ran in a fresh `.worktrees/cf4-full-suite` after `pnpm install --frozen-lockfile`, on Apple M5 Max (18 cores), macOS 27.0.1, Node v24.22.0, pnpm 10.34.5. Nothing was retried or rerun.
+
+- `pnpm build`: exit 0 (`full-suite-2026-10-30-build.log`).
+- `pnpm test`: exit 0. 2,244 passed, 26 skipped, 0 failed, 0 cancelled: worktree 117/117, core 16/16, desktop 2,064 passed / 20 skipped, desktop scripts 21 passed / 6 skipped, site 10/10, store-desktop 16/16 (`full-suite-2026-10-30-test.log`).
+- `pnpm test:e2e`: exit 0. Desktop 475 passed, 7 skipped, 0 failed in 26.6 min, including the `markdown-keyboard` and `conversation-rendering` cases; site 7 passed (`full-suite-2026-10-30-e2e.log`).
+- Five-launch first-open budget: samples 239.0, 250.5, 261.3, 233.1 and 227.2 ms, median 239.0 ms ≤ 500 ms (approved by Val, 2026-10-22).
+
+This local result does not address the hosted budget variance recorded in `docs/status.md`. It is not human acceptance: C1–C5 remain deferred and unrun.

@@ -32,7 +32,8 @@ jobs:
           - os: windows-latest
             platform: win32
             package: dist:windows
-          - os: ubuntu-latest
+          # This harness qualifies KWallet5; Ubuntu 26 replaces its daemon with KWallet6.
+          - os: ubuntu-24.04
             platform: linux
             package: dist:linux
     runs-on: ${{ matrix.os }}
