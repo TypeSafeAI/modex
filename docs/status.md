@@ -227,6 +227,8 @@ The published application source is `2eda138` (v0.4.0). Later source deliveries 
 
 ## In flight
 
+- **LM-5 auxiliary dispatch regressions.** Candidate tests exercise deterministic local approvals, human approval fallback and four local failure outcomes with a recording Jev transport and cloud positive control. Thirteen focused cases passed; removing the local approval guard made both local approval cases fail on unexpected dispatch. Build and full unit validation passed (2,251 passes, 26 skips); independent review found no actionable findings. Protected delivery remains pending; native offline acceptance and the remaining #380 criteria stay open. [Evidence](reviews/2026-10-30-lm5-auxiliary-dispatch.md).
+
 - **Markdown keyboard E2E sequencing repair.** A native scroll completion race reproduced in a blank Electron window. The proposed test waits for the rightward scroll to finish before reversing, preserving the original movement and accessibility assertions. Fresh build and unit validation passed (2,196 passed, 23 skipped), the focused E2E passed 15/15 across three themes, and independent review found no blockers. Protected delivery landed through #435 and is included in v0.4.0. [Evidence](reviews/2026-10-28-markdown-scroll-sequencing.md).
 
 - **Code Review packaged-app harness repair.** The shared harness and standalone IPC test now honor `MODEX_PACKAGED_APP`, including crash recovery. Two executable-identity regressions failed before the repair and passed afterward against a local ad-hoc bundle; development checks also passed. This is scoped harness evidence, not signed-release or human acceptance. [Evidence and remaining coverage limits](reviews/2026-10-28-code-review-packaged-harness.md).
