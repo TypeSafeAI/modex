@@ -16,6 +16,15 @@
  * server could forward it; see docs/reviews/2026-10-27-lm5-destination-policy.md.
  */
 
+/**
+ * Whether a thread is local-only (#380): it carries a local target, valid or not. Main keeps every
+ * auxiliary model call and cloud fallback off for such a thread at the point that would make it (Jev,
+ * credit fallback, naming, unattended runs), not only at the caller, so a new caller cannot leak it.
+ */
+export function localOnly(thread: { localTarget?: unknown } | undefined): boolean {
+  return thread !== undefined && thread.localTarget !== undefined;
+}
+
 export interface ConfigLayerSource { type: string; file?: string; domain?: string; key?: string; id?: string; name?: string; dotCodexFolder?: string; profile?: string | null }
 export interface ConfigLayer { name: ConfigLayerSource; version: string; config: unknown; disabledReason?: string | null }
 export interface ConfigRead { config: Record<string, unknown>; origins: Record<string, { name: ConfigLayerSource; version: string }>; layers?: ConfigLayer[] | null }

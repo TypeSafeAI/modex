@@ -128,10 +128,17 @@ export class Decisions {
   private jevDisabled: string | null = null;
   /** The last explicit Settings test. Status reads this without making a provider request. */
   private lastTest: RoutingStatus["lastTest"];
+  /** Main's local-only rule (#380): threads no question may be asked about. */
+  private localOnly: (threadId: string) => boolean = () => false;
 
   constructor(private readonly o: DecisionsOptions) {
     this.secrets = o.secrets ?? new SecretStore(o.home, noCipher);
     this.receipts = new ReceiptLog(path.join(o.home, "app", "decisions.jsonl"));
+  }
+
+  /** A question about a thread this names gets no connection: no key is resolved and nothing is sent. */
+  guardThreads(localOnly: (threadId: string) => boolean): void {
+    this.localOnly = localOnly;
   }
 
   /** Forget the resolved key/transport and any session-level rejection (after a key or policy change). */
@@ -184,6 +191,7 @@ export class Decisions {
   async connect(set: QuestionSet, context: { threadId?: string; preview?: boolean } = {}): Promise<Connection> {
     const generation = this.setupGeneration;
     const model = this.model();
+    if (context.threadId && this.localOnly(context.threadId)) return { transport: null, model, unavailable: "Jev is never asked about a local thread." };
     const s = await this.setup();
     if (this.jevDisabled) return { transport: null, model, disabled: this.jevDisabled };
     if (!s.transport) return { transport: null, model, unavailable: (s.unavailableReason ?? s.key.problem ?? "No Jev transport available") };

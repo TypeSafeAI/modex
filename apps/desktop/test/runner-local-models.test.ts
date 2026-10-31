@@ -92,6 +92,49 @@ test("a failed local turn stays failed: no credit fallback, no cloud retry", asy
   } finally { await h.runner.dispose(); }
 });
 
+test("main's local-only rule holds where each auxiliary call is made, whichever caller reaches it", async () => {
+  const h = await setup();
+  try {
+    h.select();
+    const cloudThread = await h.runner.createThread(h.thread.projectId, { backend: "codex", model: "gpt-6-astra", auto: true });
+    const decisions = h.runner.router.decisions;
+    // Control: a cloud thread's question gets the injected Jev transport.
+    assert.ok((await decisions.connect("routing", { threadId: cloudThread.id })).transport);
+    for (const set of ["routing", "follow_up", "approval"] as const) {
+      const connection = await decisions.connect(set, { threadId: h.thread.id });
+      assert.equal(connection.transport, null, set);
+      assert.match((connection as { unavailable?: string }).unavailable ?? "", /never asked about a local thread/);
+    }
+    // The router itself, called directly rather than through the runner's own guard, sends nothing to Jev.
+    const local = h.store.thread(h.thread.id)!;
+    await h.runner.router.route({ thread: local, text: "read", items: [], project: { name: "p", branch: null } });
+    await h.runner.router.followUp({ thread: local, text: "read", items: [], project: { name: "p" } });
+    assert.equal(h.jevRequests.length, 0);
+
+    // Credit fallback: a cloud Fable thread falls back to Opus; the same thread carrying a local target never does.
+    const internals = h.runner as unknown as { creditFallback(t: unknown, e: string, i: unknown[]): string | undefined; recentCreditFallback(t: unknown): string | undefined;
+      outOfCredits: Map<string, number>; nameThread(id: string, text: string, fallback: string, backend: unknown, model: string): void; titleRuns: Set<Promise<void>> };
+    const fable = { ...local, backend: "claude", model: "fable", localTarget: undefined };
+    assert.equal(internals.creditFallback(fable, "This model requires usage credits", []), "opus");
+    assert.equal(internals.creditFallback({ ...fable, localTarget: h.target }, "This model requires usage credits", []), undefined);
+    internals.outOfCredits.set("claude:fable", Date.now());
+    assert.equal(internals.recentCreditFallback(fable), "opus");
+    assert.equal(internals.recentCreditFallback({ ...fable, localTarget: h.target }), undefined);
+
+    // Naming: a backend that can name is still never asked to name a local thread.
+    const titled = h.store.thread(h.thread.id)!;
+    internals.nameThread(h.thread.id, "read", titled.title, { generateTitle: async () => { h.counts.titles++; return "model title"; } }, MODEL);
+    await Promise.all([...internals.titleRuns]);
+    assert.equal(h.counts.titles, 0);
+    assert.equal(h.store.thread(h.thread.id)!.title, titled.title);
+
+    // A routine's unattended turn never runs on a local target, and is not rerouted to a cloud one.
+    h.runner.updateThread(h.thread.id, { mode: "chat" });
+    await assert.rejects(h.runner.sendUnattended(h.thread.id, "read"), /routine can't run on a local model/);
+    assert.deepEqual({ cloud: h.counts.cloud, local: h.counts.local, jev: h.jevRequests.length }, { cloud: 0, local: 0, jev: 0 });
+  } finally { await h.runner.dispose(); }
+});
+
 test("a forged, stale or unloadable persisted target never reaches a cloud backend", async () => {
   const h = await setup();
   try {

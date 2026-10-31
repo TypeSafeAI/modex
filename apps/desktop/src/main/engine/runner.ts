@@ -1,5 +1,6 @@
 import { resolveCli } from "./cli-path.js";
 import type { LocalExecution } from "./local-models/execution.js";
+import { localOnly } from "./local-models/run-policy.js";
 import { RestartAdmission } from "./restart-admission.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -156,6 +157,8 @@ export class ThreadRunner {
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
     this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
+    // Jev is never asked about a local thread, whichever caller asks (#380).
+    this.router.decisions.guardThreads(id => localOnly(o.store.thread(id)));
   }
 
   backend(id: BackendId): Backend {
@@ -329,6 +332,8 @@ export class ThreadRunner {
   async sendUnattended(threadId: string, text: string): Promise<{ completed: boolean }> {
     const thread = this.o.store.thread(threadId);
     if (!thread || thread.mode !== "chat") throw new Error("An unattended turn must run in Chat, which is read-only.");
+    // Nobody is there to see a local failure or stop a local child: unattended local work stays unavailable, never rerouted.
+    if (localOnly(thread)) throw new Error("A routine can't run on a local model. Local turns need someone watching.");
     this.unattended.add(threadId);
     try {
       await this.send(threadId, text);
@@ -965,6 +970,8 @@ export class ThreadRunner {
 
   private nameThread(threadId: string, text: string, fallback: string, backend: Backend, model: string, reply?: string): void {
     const current = this.o.store.thread(threadId);
+    // Naming is a separate model conversation: a local thread keeps its opening-message title.
+    if (localOnly(current)) return;
     if (!backend.generateTitle || this.disposing || this.deleting.has(threadId) || current?.title !== fallback || current.titleSource === "manual") return;
     const abort = new AbortController();
     this.naming.set(threadId, abort);
@@ -1215,6 +1222,8 @@ export class ThreadRunner {
    * and a second run could repeat it, so that turn keeps its failure card.
    */
   private creditFallback(thread: Thread, error: string | undefined, turnItems: ThreadItem[]): string | undefined {
+    // A local turn never moves to a cloud model.
+    if (localOnly(thread)) return undefined;
     if (!this.o.store.settings.model_fallback || !error || !isModelOutOfCredits(error)) return undefined;
     if (turnItems.some((item) => item.kind === "assistant" || item.kind === "tool" || item.kind === "thinking")) return undefined;
     const to = creditFallbackModel(thread.backend, thread.model);
@@ -1223,7 +1232,7 @@ export class ThreadRunner {
 
   /** The fallback for a model that was refused for usage credits within CREDIT_SKIP_MS, or undefined. */
   private recentCreditFallback(thread: Thread): string | undefined {
-    if (!this.o.store.settings.model_fallback) return undefined;
+    if (localOnly(thread) || !this.o.store.settings.model_fallback) return undefined;
     const key = `${thread.backend}:${thread.model}`;
     const at = this.outOfCredits.get(key);
     if (at === undefined) return undefined;

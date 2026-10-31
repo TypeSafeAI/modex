@@ -129,6 +129,23 @@ redirect. No Codex setting constrains this. A loopback server that redirects can
 wherever it points, as it could by forwarding. Evidence and the receipts are in the
 [LM-5 slice 1 review](reviews/2026-10-27-lm5-destination-policy.md).
 
+## LM-5 slice 2: the local-only rule at each auxiliary chokepoint
+
+Status: on `main`, no UI, local execution still unadmitted (#380). Before this slice each caller checked
+`thread.localTarget` itself: the runner skipped Auto, follow-ups, naming and credit fallback, and the approval
+gate skipped Jev. A new caller could forget. Now `localOnly(thread)` in `engine/local-models/run-policy.ts`
+(true for any persisted local target, valid or not) is also enforced where each call is made:
+
+- **Jev.** `Decisions.connect` returns no connection for a question naming a local thread, before any key is
+  resolved or CLI probed, so routing, follow-up and approval questions all stop there. Settings' Try it names
+  no thread and is unaffected.
+- **Credit fallback.** Both the after-failure fallback and the recent-refusal skip return nothing for a local
+  thread, whatever its backend and model claim.
+- **Naming.** A local thread is never sent to a title model, even through a backend that can name.
+- **Unattended turns.** `sendUnattended`, the routine path, refuses a local thread: nobody is there to see a
+  local failure or stop its child, and the turn is not rerouted to a cloud target.
+
+The callers' own checks stay in place. Evidence: [LM-5 local-only chokepoints](reviews/2026-10-30-lm5-local-only-chokepoints.md).
 ## LM-5: context-window evidence
 
 Status: on `main`, no UI, local execution still unadmitted (#380 AC6). The context window a local child
