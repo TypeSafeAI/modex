@@ -101,8 +101,10 @@ async function lmStudioListing(c: ResolvedConnection, get: (path: string) => Pro
   return collect(list(raw, "data"), i => i.id, lmStudioFacts);
 }
 
+/** Ollama names the models it forwards to ollama.com `…-cloud`/`…:cloud`. */
+export const OLLAMA_CLOUD_NAME = /[:-]cloud$/;
 /** Ollama marks models it forwards to ollama.com with remote_host, and names them `…-cloud`/`…:cloud`. */
-const ollamaCloud = (i: Record<string, unknown>, id: string) => typeof i.remote_host === "string" || typeof i.remote_model === "string" || /[:-]cloud$/.test(id);
+const ollamaCloud = (i: Record<string, unknown>, id: string) => typeof i.remote_host === "string" || typeof i.remote_model === "string" || OLLAMA_CLOUD_NAME.test(id);
 
 async function ollamaListing(get: (path: string) => Promise<unknown>, show: (model: string, signal: AbortSignal) => Promise<unknown>, signal: AbortSignal, deadline: number): Promise<Listing> {
   const tags = list(await get("/api/tags"), "models");
@@ -150,8 +152,12 @@ function descriptor(connection: ConnectionRef, id: string, source: LocalModelDes
   return { model: localModelRef(connection, id), source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
 }
 
-/** What a runtime's listing last said about one model's context window; `tokens` is null when it advertised none. */
-export interface AdvertisedContext { tokens: number | null; checkedAt: string }
+/**
+ * What a runtime's listing last said about one model: its context window (`tokens` is null when it
+ * advertised none) and, when the runtime marks it cloud-routed, embedding-only or not generative, why it
+ * can't be a local coding target.
+ */
+export interface AdvertisedContext { tokens: number | null; checkedAt: string; unselectable?: NonNullable<LocalModelDescriptor["unselectableReason"]> }
 
 export class LocalModelDiscovery {
   private readonly inflight = new Map<string, { controller: AbortController; requestId: string }>();
@@ -174,7 +180,7 @@ export class LocalModelDiscovery {
   /** The runtime's advertised context for a model, from the last ready listing of its connection revision; undefined when never listed. */
   advertisedContext(model: LocalModelRef): AdvertisedContext | undefined {
     const context = this.contexts.get(modelKey(model));
-    return context && { tokens: context.tokens, checkedAt: context.checkedAt };
+    return context && { tokens: context.tokens, checkedAt: context.checkedAt, ...(context.unselectable ? { unselectable: context.unselectable } : {}) };
   }
 
   cancel(connectionId: string): void {
@@ -227,7 +233,7 @@ export class LocalModelDiscovery {
     const checkedAt = this.now().toISOString();
     if (failure) return { state: "unavailable", connection: { ...ref }, requestId, reason: failure.reason, detail: failure.message, models, checkedAt };
     // Only the runtime's own listing counts: a manually typed model has advertised nothing.
-    for (const model of discovered) this.contexts.set(modelKey(model.model), { tokens: model.advertisedContext, checkedAt, connection: ref.id });
+    for (const model of discovered) this.contexts.set(modelKey(model.model), { tokens: model.advertisedContext, checkedAt, connection: ref.id, ...(model.unselectableReason ? { unselectable: model.unselectableReason } : {}) });
     return { state: "ready", connection: { ...ref }, requestId, models, truncated: listing!.truncated, checkedAt };
   }
 }

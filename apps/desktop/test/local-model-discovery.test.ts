@@ -128,6 +128,10 @@ test("Ollama: installed, loaded, kind, advertised capabilities, cloud models and
     assert.deepEqual([embed.kind, embed.loaded, embed.selectable, embed.unselectableReason], ["embedding", "no", false, "embedding"]);
     const cloud = m["gpt-oss:120b-cloud"]!;
     assert.deepEqual([cloud.locality, cloud.selectable, cloud.unselectableReason, cloud.installed], ["cloud", false, "cloud", "unknown"]);
+    // Main keeps why a listed model can't be a local target, for execution to refuse it (#380).
+    assert.equal(discovery.advertisedContext(cloud.model)?.unselectable, "cloud");
+    assert.equal(discovery.advertisedContext(embed.model)?.unselectable, "embedding");
+    assert.equal(discovery.advertisedContext(coder.model)?.unselectable, undefined);
     const spaced = m["hf.co/Org/My Model:Q4_K_M"]!;
     assert.deepEqual([spaced.kind, spaced.advertised.images, spaced.advertised.reasoning, spaced.advertised.tools, spaced.advertisedContext], ["generative", "advertised", "advertised", "not-advertised", null]);
     const manual = m["custom:tag"]!;

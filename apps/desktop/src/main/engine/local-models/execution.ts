@@ -7,7 +7,7 @@ import type { CliExecutable } from "../cli-path.js";
 import { modelKey, threadTarget, type LocalModelRef, type LocalThreadTarget } from "../../../shared/local-models.js";
 import type { LocalConnectionStore } from "./connections.js";
 import { admitLocalConfiguration, type LocalConfigurationProvenance } from "./run-policy.js";
-import type { AdvertisedContext } from "./discovery.js";
+import { OLLAMA_CLOUD_NAME, type AdvertisedContext } from "./discovery.js";
 
 /**
  * Runs a thread's turns on a local model through the Codex CLI (#379), the same `codex app-server`
@@ -77,8 +77,12 @@ export class LocalExecution {
     // Codex resolves names itself, outside LM-2's loopback-checked socket: execution takes IP literals only.
     if (connection.endpoint.host === "localhost") throw new Error("Use a loopback IP address (127.0.0.1 or ::1) for local execution.");
     if (connection.token && target.target.model.id.includes(connection.token)) throw new Error("A model ID can't contain the connection's token.");
+    // A model the runtime itself says is served elsewhere is never a local target, listed or not (#380).
+    const listed = this.advertisedContext(target.target.model);
+    if (listed?.unselectable === "cloud" || (connection.runtime === "ollama" && OLLAMA_CLOUD_NAME.test(target.target.model.id))) throw new Error("The local server forwards this model to a cloud service, so it can't run as a local model. Choose a model the server runs itself.");
+    if (listed?.unselectable) throw new Error(`The local server lists this model as ${listed.unselectable === "embedding" ? "an embedding model" : "a model that doesn't generate text"}, so it can't run coding turns.`);
     // A window above what the runtime itself advertised would overflow there, not here: refuse it rather than find out mid-turn.
-    const advertised = this.advertisedContext(target.target.model)?.tokens;
+    const advertised = listed?.tokens;
     if (typeof advertised === "number" && context! > advertised) throw new Error(`The local context window (${context} tokens) is larger than the ${advertised} tokens the server advertised for this model. Lower it, or raise the server's own setting and check its models again.`);
     return target.target;
   }
