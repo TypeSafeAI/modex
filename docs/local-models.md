@@ -129,6 +129,26 @@ redirect. No Codex setting constrains this. A loopback server that redirects can
 wherever it points, as it could by forwarding. Evidence and the receipts are in the
 [LM-5 slice 1 review](reviews/2026-10-27-lm5-destination-policy.md).
 
+## LM-5: context-window evidence
+
+Status: on `main`, no UI, local execution still unadmitted (#380 AC6). The context window a local child
+runs with is never a cloud model's default. It is the person's explicit `localContextTokens`, which
+`LocalExecution.validate` already requires (4,096–262,144 tokens). Each source is now kept apart:
+
+- **Advertised maximum.** `LocalModelDiscovery` keeps what the runtime's last ready listing advertised for
+  each model, by connection revision. Ollama's `context_length`, LM Studio's `max_context_length` and a
+  `/v1/models` `max_model_len` count. A typed model, a failed listing or an edited connection records
+  nothing.
+- **Refusal.** A window larger than the advertised maximum is refused before any process starts. It would
+  overflow in the runtime, not in Modex.
+- **Provenance.** The admitted child's provenance (`LocalExecution.provenance(threadId).context`) records:
+  - `configured` and `source: "person"`;
+  - `effective`, from the child's `config/read`, which admission requires to match;
+  - `advertised`, the tokens and when they were checked, or `"not-checked"`;
+  - `loaded: "unknown"`, because no supported runtime reports the size it actually loaded.
+
+Evidence: [LM-5 context-window evidence](reviews/2026-10-30-lm5-context-evidence.md).
+
 ## Accepted boundary and follow-up runtime availability
 
 Val accepted narrow Gate A and separately approved the AGENTS metadata boundary in this task on 2026-10-24. The [acceptance and runtime-availability receipt](reviews/2026-10-24-lm1-acceptance.md) records the exact producer SHA, approval scope and authorized installed-model inventory. The accepted producer and Strata evidence may be consumed by LM-2/LM-3; acceptance does not qualify Plan, fresh-process resume, other runtimes, offline operation or UI.
