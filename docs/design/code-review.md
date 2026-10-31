@@ -596,7 +596,11 @@ With the overview (#323) and the remote diff (#324) in the panes, `e2e/code-revi
 proves AC3 and the scroll half of AC4 at 1440×900 and 900×600: the inbox list, the overview (its main
 column, or its body where the pane stacks), the diff and the file tree each scroll alone by wheel and
 by PageDown, nothing else moves, the focused control keeps focus, and each position is restored on
-return ([acceptance record](../reviews/2026-10-28-cr3-acceptance.md)). Original R1–R4 reference
+return ([acceptance record](../reviews/2026-10-28-cr3-acceptance.md)). On 2026-10-30 the automated half
+and the authenticated probe were re-run on `main` at `f51ef7e`, and the journey spec's world was given
+files for field-guide #91 and checks for lending #73's head, so its R1 and R4 captures show a populated
+diff, file tree and checks sidebar rather than empty panes
+([resume record](../reviews/2026-10-30-cr3-acceptance-resume.md)). Original R1–R4 reference
 comparison and human keyboard/VoiceOver acceptance remain open gates.
 
 

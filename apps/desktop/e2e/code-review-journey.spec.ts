@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { appDir, tid } from "./support.js";
 import { baseWorld, fitWindow, launchWithGh, prRow, READ_ENDPOINT, type Harness } from "./code-review-support.js";
+import { ghFile } from "../test/fixtures/code-review-gh-world.js";
 
 /**
  * CR-8 (#327): the integrated Code Review journey in real Electron, through main's production read service
@@ -48,6 +49,22 @@ test("inbox → R1 → R2 → R3 → R4 through the production read service, wit
     body: `Journey activity ${i + 1}: keep the hold's place when moving between branches.`,
   }));
   world.routes["repos/example-org/lending/deployments"] = [];
+  // R1's sidebar shows checks for the head, and R4's Changes pane shows grouped diffs and a file tree: give the
+  // world lending #73's check runs and a commit status, and field-guide #91's four files (+11 −4, as its PR says),
+  // so the captures hold populated content for the reference comparison (#322 Step 3). All made up.
+  const head = `repos/example-org/lending/commits/${"c".repeat(40)}`;
+  const checkRun = (id: number, name: string, conclusion: string | null, minutes: number) => ({
+    id, name, head_sha: "c".repeat(40), status: conclusion ? "completed" : "in_progress", conclusion, app: { slug: "github-actions" },
+    started_at: "2026-10-18T20:31:00Z", completed_at: conclusion ? `2026-10-18T20:${31 + minutes}:00Z` : null, html_url: `https://github.com/example-org/lending/runs/${id}`,
+  });
+  world.routes[`${head}/check-runs`] = { total_count: 4, check_runs: [checkRun(8101, "unit + e2e (macOS)", "success", 6), checkRun(8102, "typecheck", "success", 2), checkRun(8103, "lint", "failure", 1), checkRun(8104, "package", null, 0)] };
+  world.routes[`${head}/status`] = { total_count: 1, statuses: [{ id: 8201, context: "preview/deploy", state: "pending", creator: { id: 1003, login: "deploy-bot", type: "User" }, created_at: "2026-10-18T20:32:00Z", updated_at: "2026-10-18T20:32:00Z", target_url: "https://example.test/preview/73" }] };
+  world.routes["repos/example-org/field-guide/pulls/91/files"] = [
+    ghFile("src/branches/regions.ts", "@@ -1,4 +1,7 @@\n import { Branch } from \"./branch\";\n-export const regions = [\"north\", \"south\"];\n-export function groupByRegion(branches: Branch[]) { return branches; }\n+export const regions = [\"north\", \"south\", \"east\", \"west\"] as const;\n+export type Region = (typeof regions)[number];\n+export function groupByRegion(branches: Branch[]): Map<Region, Branch[]> {\n+  return new Map(regions.map((region) => [region, branches.filter((b) => b.region === region)]));\n+}\n export const DEFAULT_REGION = \"north\";", 5, 2),
+    ghFile("src/branches/index.ts", "@@ -2,3 +2,5 @@\n export { Branch } from \"./branch\";\n-export { regions } from \"./regions\";\n+export { regions, groupByRegion } from \"./regions\";\n+export type { Region } from \"./regions\";\n+export { BranchList } from \"../pages/branch-list\";\n export { openingHours } from \"./hours\";", 3, 1),
+    ghFile("src/pages/branch-list.tsx", "@@ -8,4 +8,5 @@ export function BranchList({ branches }: Props) {\n   return (\n-    <ul>{branches.map((b) => <li key={b.id}>{b.name}</li>)}</ul>\n+    <>{[...groupByRegion(branches)].map(([region, list]) => <section key={region}><h2>{region}</h2>\n+      <ul>{list.map((b) => <li key={b.id}>{b.name}</li>)}</ul></section>)}</>\n   );\n }", 2, 1),
+    ghFile("docs/branches.md", "@@ -1,2 +1,3 @@\n # Branches\n+Branch pages are grouped by region: north, south, east and west.\n Each branch page lists its opening hours.", 1, 0),
+  ];
   const deploymentRead = `repos/example-org/lending/deployments?sha=${"c".repeat(40)}&per_page=20&page=1`;
   h = await launchWithGh(world);
   const { page, repo } = h;

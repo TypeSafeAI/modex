@@ -12,9 +12,10 @@ and, since the overview (#323) and the diff and file tree (#324) landed, parts C
 The review panel and instructions popover (#325) and the GitHub writes (#326) have landed too; their rows stay
 listed at the end for their own issues' acceptance and are not part of #322 AC4.
 
-**Build:** `main` at `7a01df2` or later (the CR-3 acceptance PR's head once it merges), built with `pnpm build`.
-Record the SHA you used. The automated half of this gate at that head is in
-[the CR-3 acceptance record](../2026-10-28-cr3-acceptance.md).
+**Build:** `main` at `afec85b` (#438, the CR-3 acceptance follow-up) or later, built with `pnpm build`. On
+2026-10-30 `main` was `f51ef7e`; the automated half of this gate was re-run there
+([resume record](../2026-10-30-cr3-acceptance-resume.md)). Record the SHA you used. The automated half's first run
+is in [the CR-3 acceptance record](../2026-10-28-cr3-acceptance.md).
 
 ## Setup (about 3 minutes)
 
