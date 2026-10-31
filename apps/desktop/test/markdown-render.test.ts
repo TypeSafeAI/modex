@@ -143,7 +143,7 @@ test("rendering a reply piece by piece shows the same text as rendering it whole
 
 test("the settled cache keeps recent renders, drops the oldest past its limit, and never holds very long text", async () => {
   await render("");
-  const { RenderCache } = await server!.ssrLoadModule("/src/renderer/components/Markdown.tsx") as { RenderCache: new (entries: number, maxChars: number) => { get<T>(text: string, make: () => T): T; size: number } };
+  const { RenderCache } = await server!.ssrLoadModule("/src/renderer/components/Markdown.tsx") as { RenderCache: new (entries: number, maxChars: number) => { get<T>(text: string, make: () => T): T; has(text: string): boolean; size: number } };
   const cache = new RenderCache(2, 10);
   let made = 0;
   const make = () => ++made;
@@ -153,12 +153,26 @@ test("the settled cache keeps recent renders, drops the oldest past its limit, a
   cache.get("a", make); // "a" is now the most recent
   cache.get("c", make); // past the limit: "b", the least recent, goes
   assert.equal(cache.size, 2);
+  assert.equal(cache.has("b"), false, "a dropped text is not reported as kept");
+  assert.equal(cache.has("c"), true);
   assert.equal(cache.get("a", make), 1);
   assert.equal(cache.get("b", make), 4, "b was rendered again");
   const long = "x".repeat(11);
   assert.equal(cache.get(long, make), 5);
   assert.equal(cache.get(long, make), 6, "text past the size limit is rendered each time, never kept");
   assert.equal(cache.size, 2);
+});
+
+test("deferred Markdown shows its text as written until it nears the view, and text parsed before renders at once", async () => {
+  await render("");
+  const { DeferMarkdown } = await server!.ssrLoadModule("/src/renderer/components/Markdown.tsx") as { DeferMarkdown: import("react").Context<unknown> };
+  const deferred = (text: string) => renderToStaticMarkup(createElement(DeferMarkdown.Provider, { value: { current: null } }, createElement(Markdown, { text })));
+  const fresh = "Not parsed **yet** <b>raw</b>";
+  assert.equal(deferred(fresh), '<div class="md md-deferred" data-markdown-deferred="">Not parsed **yet** &lt;b&gt;raw&lt;/b&gt;</div>');
+  // Rendered (and kept) once outside a deferred turn, the same text parses at once inside one.
+  const seen = "Already **parsed**";
+  await render(seen);
+  assert.match(deferred(seen), /^<div class="md"><p>Already <strong>parsed<\/strong><\/p><\/div>$/);
 });
 
 test("a code block names its language and offers Copy", async () => {

@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, memo, useEffect, useState, type ReactNode } from "react";
+import { cloneElement, createContext, isValidElement, memo, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Definition, ListItem, Nodes, Parents, PhrasingContent, RootContent, TableRow } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
@@ -22,6 +22,20 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
     const timer = setTimeout(() => setSettled(text), STREAM_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [text, settled]);
+  // Far from the newest turns, text shows as written until it nears the transcript's view, then
+  // parses once and stays parsed. Text parsed earlier in this session renders at once.
+  const root = useContext(DeferMarkdown);
+  const [near, setNear] = useState(() => !root || settledRenders.has(text));
+  const deferred = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = deferred.current;
+    if (near || !root || !el) return;
+    const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) setNear(true); },
+      { root: root.current, rootMargin: DEFER_MARGIN });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [near, root]);
+  if (!near) return <div className="md md-deferred" ref={deferred} data-markdown-deferred="">{text}</div>;
   if (text === settled) return <div className="md">{settledBlocks(text)}</div>;
   // Keep the same top-level React structure during streaming and settling. Wrapping chunks
   // in component boundaries remounted every code block on the first delta and at settlement,
@@ -33,6 +47,14 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
 
 /** How long text must stop changing before it is parsed whole again. */
 const STREAM_SETTLE_MS = 300;
+
+/**
+ * Provided around transcript turns far from the newest, with the transcript's scroller: Markdown
+ * inside parses only once it comes within `DEFER_MARGIN` of that view. Opening a long thread then
+ * parses what is on screen, not every answer above it.
+ */
+export const DeferMarkdown = createContext<RefObject<HTMLElement | null> | null>(null);
+const DEFER_MARGIN = "1500px 0px";
 
 function render(text: string): ReactNode[] {
   const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
@@ -46,6 +68,7 @@ export class RenderCache {
   private readonly kept = new Map<string, unknown>();
   constructor(private readonly entries: number, private readonly maxChars: number) {}
   get size(): number { return this.kept.size; }
+  has(text: string): boolean { return this.kept.has(text); }
   get<T>(text: string, make: () => T): T {
     if (text.length > this.maxChars) return make();
     if (this.kept.has(text)) {

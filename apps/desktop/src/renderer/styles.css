@@ -533,6 +533,8 @@ a.thread-pr:hover { text-decoration: underline; }
 .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
 .msg.user .bubble { max-width: 70%; padding: 8px 16px; border: 1px solid var(--bubble-border); border-radius: 12px; background: var(--bg-user-bubble); white-space: pre-wrap; overflow-wrap: anywhere; }
 .md p { margin: 0 0 12px; }
+/* Text as written until it nears the view and parses (Markdown.tsx, DeferMarkdown). */
+.md-deferred { white-space: pre-wrap; overflow-wrap: anywhere; }
 .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 18px 0 8px; font-weight: var(--weight-semibold); }
 .md h5, .md h6 { font-size: var(--text-md); }
 .md ul, .md ol { margin: 0 0 12px; padding-left: 28px; }
