@@ -113,6 +113,7 @@ test("a blocked router decision cannot switch backends or discard a saved CLI se
     runTurn: async () => { runs++; return { status: "completed" }; },
   };
   const router = {
+    decisions: { guardThreads: () => {} },
     route: async () => ({
       item: {
         id: "blocked-route", kind: "route", backend: "claude", model: "opus", effort: "high", fast: false,
