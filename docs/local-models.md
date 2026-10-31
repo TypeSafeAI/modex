@@ -146,6 +146,25 @@ gate skipped Jev. A new caller could forget. Now `localOnly(thread)` in `engine/
   local failure or stop its child, and the turn is not rerouted to a cloud target.
 
 The callers' own checks stay in place. Evidence: [LM-5 local-only chokepoints](reviews/2026-10-30-lm5-local-only-chokepoints.md).
+## LM-5: context-window evidence
+
+Status: on `main`, no UI, local execution still unadmitted (#380 AC6). The context window a local child
+runs with is never a cloud model's default. It is the person's explicit `localContextTokens`, which
+`LocalExecution.validate` already requires (4,096–262,144 tokens). Each source is now kept apart:
+
+- **Advertised maximum.** `LocalModelDiscovery` keeps what the runtime's last ready listing advertised for
+  each model, by connection revision. Ollama's `context_length`, LM Studio's `max_context_length` and a
+  `/v1/models` `max_model_len` count. A typed model, a failed listing or an edited connection records
+  nothing.
+- **Refusal.** A window larger than the advertised maximum is refused before any process starts. It would
+  overflow in the runtime, not in Modex.
+- **Provenance.** The admitted child's provenance (`LocalExecution.provenance(threadId).context`) records:
+  - `configured` and `source: "person"`;
+  - `effective`, from the child's `config/read`, which admission requires to match;
+  - `advertised`, the tokens and when they were checked, or `"not-checked"`;
+  - `loaded: "unknown"`, because no supported runtime reports the size it actually loaded.
+
+Evidence: [LM-5 context-window evidence](reviews/2026-10-30-lm5-context-evidence.md).
 
 ## Accepted boundary and follow-up runtime availability
 

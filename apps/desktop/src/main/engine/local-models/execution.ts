@@ -4,9 +4,10 @@ import { CodexBackend } from "../backends/codex.js";
 import { cliSpawn } from "../backends/health.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../backends/types.js";
 import type { CliExecutable } from "../cli-path.js";
-import { modelKey, threadTarget, type LocalThreadTarget } from "../../../shared/local-models.js";
+import { modelKey, threadTarget, type LocalModelRef, type LocalThreadTarget } from "../../../shared/local-models.js";
 import type { LocalConnectionStore } from "./connections.js";
 import { admitLocalConfiguration, type LocalConfigurationProvenance } from "./run-policy.js";
+import type { AdvertisedContext } from "./discovery.js";
 
 /**
  * Runs a thread's turns on a local model through the Codex CLI (#379), the same `codex app-server`
@@ -59,8 +60,10 @@ export class LocalExecution {
   private readonly services = new Map<string, { busy: boolean; waiting: Set<() => void> }>();
   private disposed = false;
 
+  /** `advertisedContext` reads main's record of the runtime's own listing (LocalModelDiscovery); without it, nothing was checked. */
   constructor(private readonly home: string, private readonly connections: LocalConnectionStore,
-    private readonly executable: CliExecutable = "codex", private readonly spawnImpl = cliSpawn) {}
+    private readonly executable: CliExecutable = "codex", private readonly spawnImpl = cliSpawn,
+    private readonly advertisedContext: (model: LocalModelRef) => AdvertisedContext | undefined = () => undefined) {}
 
   /** The thread's target, checked against the live profile: exactly its revision, with its token readable. */
   validate(thread: LocalExecutionThread): LocalThreadTarget {
@@ -74,6 +77,9 @@ export class LocalExecution {
     // Codex resolves names itself, outside LM-2's loopback-checked socket: execution takes IP literals only.
     if (connection.endpoint.host === "localhost") throw new Error("Use a loopback IP address (127.0.0.1 or ::1) for local execution.");
     if (connection.token && target.target.model.id.includes(connection.token)) throw new Error("A model ID can't contain the connection's token.");
+    // A window above what the runtime itself advertised would overflow there, not here: refuse it rather than find out mid-turn.
+    const advertised = this.advertisedContext(target.target.model)?.tokens;
+    if (typeof advertised === "number" && context! > advertised) throw new Error(`The local context window (${context} tokens) is larger than the ${advertised} tokens the server advertised for this model. Lower it, or raise the server's own setting and check its models again.`);
     return target.target;
   }
 
@@ -127,7 +133,11 @@ export class LocalExecution {
       if (!owned) {
         const home = this.childHome();
         const child: { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance } = { key, home, backend: undefined as unknown as CodexBackend };
-        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, provenance => { child.provenance = provenance; });
+        const advertised = this.advertisedContext(target.model);
+        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, provenance => {
+          child.provenance = { ...provenance, context: { configured: thread.localContextTokens!, source: "person", effective: thread.localContextTokens!,
+            advertised: advertised ? { ...advertised } : "not-checked", loaded: "unknown" } };
+        });
         owned = child;
         this.children.set(thread.id, owned);
       }
