@@ -159,3 +159,12 @@ for 38 s, in a run that passed only because no wait was open then. The job now b
 simulator before `pnpm install`, so that burst lands during the build. In both runs since
 (39097082261, attempts 1 and 2) it came about 3 minutes after boot, before the paired test
 started. The paired test then had no stall longer than 2.2 s and took 7–9 min instead of 10–14.
+
+## iPhone secure-answer field focus in CI, handled 2026-10-30
+
+Hosted #453 failed when the Companion UI test typed into a secure answer field that did not yet
+have keyboard focus, although a keyboard was visible. #455 (`9f85d61`) makes the test reuse the
+existing field-focus wait before typing and keeps the masked-value and exact secret-delivery
+assertions. The dedicated iOS 27 simulator passed all 43 native UI and 60 native unit tests; the
+original iOS 26.4.1 failure stays preserved. App behaviour is unchanged.
+[Evidence](2026-10-30-iphone-secret-focus.md).

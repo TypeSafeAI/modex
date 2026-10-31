@@ -1,5 +1,7 @@
 # CF-7 context map implementation plan
 
+**Status (2026-10-30): delivered.** The files list landed in #355 (`3e416ab`) and shipped in v0.4.0; the close-out follow-ups #450 and #453 name commands that may have changed unlisted files. The boxes below were not ticked during execution and are historical. Behaviour: [task-context.md](../../task-context.md#context-map).
+
 > **For agentic workers:** this plan is executed inline in the #273 tracker session (TDD, red first).
 > Steps use checkbox (`- [ ]`) syntax for tracking.
 
