@@ -1,5 +1,7 @@
 # CR-4 overview implementation
 
+**Status (2026-10-30): delivered** in #393 (`6c40547`), integrated through #404 and shipped in v0.4.0. Evidence: [CR-4 review](../../reviews/2026-10-23-cr4-overview.md). Original-reference comparison and human accessibility remain open on #323.
+
 Implement the accepted #320/#323 design in the existing Code Review host. Use its account-scoped Reader, read models, Markdown renderer, tokens and unavailable capabilities. No GitHub writes or foreign-code execution.
 
 1. Add red model tests for stable, deterministic activity pagination, failed-page completeness, strict external preview destinations and ambiguous/cyclic stack data. Implement pure presentation helpers.

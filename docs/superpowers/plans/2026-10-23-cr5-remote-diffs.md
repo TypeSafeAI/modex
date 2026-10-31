@@ -1,5 +1,7 @@
 # CR-5 remote diffs implementation plan
 
+**Status (2026-10-30): superseded** by [2026-10-23-cr5-integration.md](2026-10-23-cr5-integration.md), which integrated this plan's candidate commits and landed through #404 (`e3527f4`). The boxes below were not ticked during execution and are historical.
+
 **Goal:** Complete #324 against the existing CR-1/2/3 read contracts, ending with a signed reviewable PR without merging.
 
 **Architecture:** Keep a pure bounded patch and anchor model beside the remote view. Use the existing Reader for every remote read and cancellation. Reuse pure Changes presentation only; no local filesystem or mutation handler enters the remote view.

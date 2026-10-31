@@ -1,5 +1,7 @@
 # CR-5 integration and delivery plan
 
+**Status (2026-10-30): delivered.** The integrated CR-5 remote diffs landed through #404 (`e3527f4`) and shipped in v0.4.0; the merge-base repair is in [cr5-merge-base](../../reviews/2026-10-24-cr5-merge-base.md). Original R4 comparison, human acceptance and the Viewed decision remain open on #324.
+
 **Goal:** Deliver the specified CR-5 remote diff behavior in a signed, review-ready PR, coordinated with #393, without merging or releasing.
 
 **Spec:** #324 and the user's explicit CR-5 goal; `docs/design/code-review.md`, controls C63–C79. The existing CR-5 implementation and its evidence are input artifacts, not fresh acceptance proof.
