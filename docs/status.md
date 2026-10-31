@@ -72,8 +72,7 @@ PR #422's CR-6 review found two blockers: unconfirmed child exit was reported as
 
 The published application source is `2eda138` (v0.4.0). Later source deliveries belong here; the release inventory and its incomplete acceptance gates are recorded separately below.
 
-- **v0.4.1 candidate (2026-10-30).** A patch release of the follow-ups below. See the
-  [v0.4.1 review](reviews/2026-10-30-v0.4.1-release-review.md).
+- **v0.4.1 candidate (2026-10-30).** The combined candidate passed the signed RC workflow (packaged desktop 479 passed, 4 skipped; website 7 passed; native updater, Windows and Linux jobs passed) and independent downloaded-asset verification. The local ad-hoc failures remain recorded. Protected release-preparation merge, the final signed tag workflow and final artifact verification/publication remain pending. See the [v0.4.1 review](reviews/2026-10-30-v0.4.1-release-review.md).
 - **CF-7 close-out follow-ups (#280, #450, 2026-10-30).** The three observations from the live close-out
   runs are fixed. A turn's files list now names any command that may have changed files no CLI
   reported, such as a shell redirect or `perl -pi`, and says "maybe more" or "not listed" instead of
