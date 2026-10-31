@@ -201,6 +201,32 @@ test("Responses-compatible servers: IDs only, unknown states, with or without th
   } finally { await rt.close(); }
 });
 
+test("main keeps each listed model's advertised context by connection revision; manual, failed and edited ones have none", async () => {
+  let up = true;
+  const rt = await runtime(req => (!up ? { status: 500, json: {} } : req.url === "/v1/models" ? { json: { object: "list", data: [{ id: "coder", max_model_len: 65536 }, { id: "plain" }] } } : undefined));
+  const { store, discovery } = setup();
+  try {
+    const c = store.create({ label: "vLLM", runtime: "responses", url: rt.url, manualModels: ["typed"] });
+    const ref = (id: string, revision = 1) => ({ schema: 1 as const, connection: { id: c.id, revision }, id });
+    assert.equal(discovery.advertisedContext(ref("coder")), undefined, "never listed");
+    const result = await discovery.discover({ id: c.id, revision: 1 }, "r");
+    assert.equal(result.state, "ready");
+    const checkedAt = result.state === "ready" ? result.checkedAt : "";
+    assert.deepEqual(discovery.advertisedContext(ref("coder")), { tokens: 65536, checkedAt });
+    assert.deepEqual(discovery.advertisedContext(ref("plain")), { tokens: null, checkedAt });
+    assert.equal(discovery.advertisedContext(ref("typed")), undefined, "a typed model advertised nothing");
+    // A failed listing neither adds nor erases what a ready one said.
+    up = false;
+    assert.equal((await discovery.discover({ id: c.id, revision: 1 }, "r2")).state, "unavailable");
+    assert.deepEqual(discovery.advertisedContext(ref("coder")), { tokens: 65536, checkedAt });
+    // An edit moves the revision and invalidates the record; the old revision's record is gone too.
+    store.update(c.id, 1, { label: "renamed" });
+    discovery.invalidate(c.id);
+    assert.equal(discovery.advertisedContext(ref("coder")), undefined);
+    assert.equal(discovery.advertisedContext(ref("coder", 2)), undefined);
+  } finally { await rt.close(); }
+});
+
 test("empty, malformed and unavailable runtimes are typed results; manual IDs stay available", async () => {
   const empty = await runtime(req => (req.url === "/api/tags" ? { json: { models: [] } } : req.url === "/api/ps" ? { json: { models: [] } } : undefined));
   const malformed = await runtime(() => ({ raw: "<html>" }));

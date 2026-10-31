@@ -1,4 +1,4 @@
-import { localModelRef } from "../../../shared/local-models.js";
+import { localModelRef, modelKey, type LocalModelRef } from "../../../shared/local-models.js";
 import type { Advertised, ConnectionRef, DiscoveryResult, LocalModelDescriptor, ModelKind } from "../../../shared/local-connections.js";
 import type { LocalConnectionStore, ResolvedConnection } from "./connections.js";
 import { LocalGetFailure, localGet, localPost, type LocalGetOptions } from "./endpoint-policy.js";
@@ -150,8 +150,13 @@ function descriptor(connection: ConnectionRef, id: string, source: LocalModelDes
   return { model: localModelRef(connection, id), source, ...facts, advertised: { ...facts.advertised }, selectable: !reason, ...(reason ? { unselectableReason: reason } : {}) };
 }
 
+/** What a runtime's listing last said about one model's context window; `tokens` is null when it advertised none. */
+export interface AdvertisedContext { tokens: number | null; checkedAt: string }
+
 export class LocalModelDiscovery {
   private readonly inflight = new Map<string, { controller: AbortController; requestId: string }>();
+  /** The last ready listing's advertised context per model key, kept by main for local-run evidence (#380). */
+  private readonly contexts = new Map<string, AdvertisedContext & { connection: string }>();
   private readonly timeoutMs: number;
   private readonly now: () => Date;
 
@@ -163,6 +168,13 @@ export class LocalModelDiscovery {
   /** Drops any read in flight for a connection; call on edit and delete. Its caller sees `stale`. */
   invalidate(connectionId: string): void {
     this.inflight.get(connectionId)?.controller.abort();
+    for (const [key, context] of this.contexts) if (context.connection === connectionId) this.contexts.delete(key);
+  }
+
+  /** The runtime's advertised context for a model, from the last ready listing of its connection revision; undefined when never listed. */
+  advertisedContext(model: LocalModelRef): AdvertisedContext | undefined {
+    const context = this.contexts.get(modelKey(model));
+    return context && { tokens: context.tokens, checkedAt: context.checkedAt };
   }
 
   cancel(connectionId: string): void {
@@ -214,6 +226,8 @@ export class LocalModelDiscovery {
     const models = [...discovered, ...manual];
     const checkedAt = this.now().toISOString();
     if (failure) return { state: "unavailable", connection: { ...ref }, requestId, reason: failure.reason, detail: failure.message, models, checkedAt };
+    // Only the runtime's own listing counts: a manually typed model has advertised nothing.
+    for (const model of discovered) this.contexts.set(modelKey(model.model), { tokens: model.advertisedContext, checkedAt, connection: ref.id });
     return { state: "ready", connection: { ...ref }, requestId, models, truncated: listing!.truncated, checkedAt };
   }
 }

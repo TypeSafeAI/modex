@@ -30,6 +30,25 @@ export interface LocalConfigurationProvenance {
   sessionFlags: string;
   layers: { source: string; version: string; file?: string }[];
   managedRequirements: false;
+  /** Set by the caller that knows where the window came from (execution.ts). */
+  context?: LocalContextEvidence;
+}
+
+/**
+ * The context window a local child runs with, each source kept apart (#380 AC6). Modex never inherits a
+ * cloud model's default: the window is the person's explicit choice, checked against what the runtime
+ * advertised when that is known. What the runtime actually loaded the model with is not reported to
+ * Modex by any supported runtime, so it stays unknown rather than assumed equal.
+ */
+export interface LocalContextEvidence {
+  /** The window Modex passed to Codex: the person's explicit setting. */
+  configured: number;
+  source: "person";
+  /** What the child's `config/read` reported in effect; admission requires it to equal `configured`. */
+  effective: number;
+  /** The runtime's advertised maximum from the last ready listing (`tokens: null` when it advertised none), or not checked. */
+  advertised: { tokens: number | null; checkedAt: string } | "not-checked";
+  loaded: "unknown";
 }
 
 /** Keys a layer other than Modex's session flags may not set: the inference destination, the model, its context and the tools reaching it. */

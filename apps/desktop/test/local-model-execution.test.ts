@@ -30,7 +30,7 @@ function effectiveConfiguration(args: string[]): { config: Record<string, any>; 
 }
 
 /** A local execution over a scripted app-server that answers every open with the model and provider it was asked for. */
-function setup(input: { url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; requirements?: unknown; rerouted?: boolean } = {}) {
+function setup(input: { url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4] } = {}) {
   const home = tmpdir("lm3-exec-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
   const connection = connections.create({ label: "Local", runtime: "responses", url: input.url ?? "http://127.0.0.1:18501/v1", ...(input.token === null ? {} : { token: input.token ?? "LOCAL_TOKEN_SENTINEL" }) });
@@ -55,7 +55,7 @@ function setup(input: { url?: string; token?: string | null; configRead?: (repor
     });
     return fakeSpawn(proc).spawn(bin, args, opts);
   }) as ConstructorParameters<typeof LocalExecution>[3];
-  const execution = new LocalExecution(home, connections, "codex", spawnImpl);
+  const execution = new LocalExecution(home, connections, "codex", spawnImpl, input.advertised);
   const thread = { id: "modex-1", localTarget: target, localContextTokens: 32768, cwd: tmpdir("lm3-cwd-") };
   const opts = { cwd: thread.cwd, mode: "agent" as const, plan: false, model: MODEL };
   const finish = (n = 0) => children[n]!.proc.emitLine({ method: "turn/completed", params: { threadId: `native-${n + 1}`, turn: { id: "turn", status: "completed" } } });
@@ -273,6 +273,35 @@ test("the child's effective configuration is read and admitted before any thread
     assert.equal(provenance.sessionFlags, "sha256:flags");
     assert.deepEqual(provenance.layers.map(l => l.source), ["sessionFlags", "user", "system"]);
   } finally { await h.execution.dispose(); }
+});
+
+test("the context window's sources stay apart: the person's setting, the effective value, the runtime's advertised maximum and an unknown loaded size", async () => {
+  const checkedAt = "2026-10-30T12:00:00.000Z";
+  // A window above the runtime's advertised maximum is refused before any process starts.
+  const over = setup({ advertised: () => ({ tokens: 16384, checkedAt }) });
+  try {
+    assert.throws(() => over.execution.validate(over.thread), /larger than the 16384 tokens/);
+    const result = await over.execution.backend(over.thread).runTurn("read", over.opts, collectSink().sink, new AbortController().signal);
+    assert.equal(result.status, "failed");
+    assert.match(result.error!, /local context window \(32768 tokens\) is larger than the 16384 tokens the server advertised/);
+    assert.equal(over.children.length, 0, "nothing is spawned");
+  } finally { await over.execution.dispose(); }
+  const cases: [string, ConstructorParameters<typeof LocalExecution>[4], unknown][] = [
+    ["advertised", () => ({ tokens: 65536, checkedAt }), { tokens: 65536, checkedAt }],
+    ["advertised none", () => ({ tokens: null, checkedAt }), { tokens: null, checkedAt }],
+    ["never listed", undefined, "not-checked"],
+  ];
+  for (const [name, advertised, recorded] of cases) {
+    const h = setup({ advertised });
+    try {
+      const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+      const child = await h.spawned();
+      await child.proc.waitFor(line => line.includes('"turn/start"'));
+      h.finish();
+      assert.equal((await run).status, "completed", name);
+      assert.deepEqual(h.execution.provenance(h.thread.id)!.context, { configured: 32768, source: "person", effective: 32768, advertised: recorded, loaded: "unknown" }, name);
+    } finally { await h.execution.dispose(); }
+  }
 });
 
 test("a configuration another layer governs, managed requirements or a Codex without config/read refuse the turn before thread/start", async () => {
