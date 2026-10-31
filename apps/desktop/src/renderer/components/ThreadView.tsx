@@ -11,7 +11,7 @@ import type { Attachment } from "../../shared/attachments";
 import { bridge } from "../bridge";
 import { AttachmentChips } from "./Attachments";
 import { Composer } from "./Composer";
-import { Markdown } from "./Markdown";
+import { DeferMarkdown, Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
@@ -25,6 +25,9 @@ import { ToolLog } from "./transcript/ToolLog";
 import { PatchCompare, TranscriptThread } from "./transcript/PatchCompare";
 
 export { formatElapsed } from "./transcript/TurnContent";
+
+/** The newest turns parse their Markdown at once; older ones when they near the view (`DeferMarkdown`). */
+const EAGER_TURNS = 8;
 
 interface Props {
   thread: Thread;
@@ -219,9 +222,11 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
           </div>
         )}
         {turns.map((turn, i) => (
+          <DeferMarkdown.Provider key={turn.user?.id ?? `pre-${i}`} value={i < turns.length - EAGER_TURNS ? scroller : null}>
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
             footer={(t) => <><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.rest} /><TaskContextLine items={t.rest} cwd={thread.cwd} /><SaveTaskNote threadId={thread.id} turnId={t.user!.id} saved={Boolean(thread.taskNotes?.[t.user!.id])} /></>}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} onReply={!thread.retired && !busy && item.id === askId ? (text) => void onSend(text) : undefined} />} />
+          </DeferMarkdown.Provider>
         ))}
       </div>
       </TranscriptThread.Provider>

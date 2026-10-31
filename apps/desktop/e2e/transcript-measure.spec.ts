@@ -183,7 +183,8 @@ async function measureTranscript(testInfo: TestInfo, launchNumber: number): Prom
         // Item markup both this build and the pre-#273 baseline share, so the same probe measures either.
         const answers = transcript ? [...transcript.querySelectorAll<HTMLElement>('[data-testid="item"][data-item-kind="assistant"]')] : [];
         const last = answers.at(-1);
-        if (last?.textContent?.includes(marker)) {
+        // Its Markdown must be parsed, not shown as written while deferred (DeferMarkdown).
+        if (last?.textContent?.includes(marker) && !last.querySelector("[data-markdown-deferred]")) {
           const box = last.getBoundingClientRect(), view = transcript!.getBoundingClientRect();
           if (box.top < view.bottom && box.bottom > view.top) return performance.now() - start;
         }
