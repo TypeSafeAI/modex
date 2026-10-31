@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-30 UTC._
+_Last updated 2026-10-31 UTC._
 
 ## Shipped
 
@@ -28,6 +28,7 @@ Each release's review holds its details and evidence; the table links it.
 | v0.2.0 | 2026-10-18 | #253, #257, #266, #267, #269, #248, #272 | Read-only routines on a timer, on one decision service for Jev; the notes fixes from v0.1.0's review (#241); Copy details and Retry on every inline error; Analytics restyled; new image jobs no longer stuck at "queued". [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.2.0). [Review](reviews/2026-10-18-v0.2.0-release-review.md). |
 | v0.3.0 | 2026-10-20 | #282, #284, #286, #293, #317, #333, #335, #337 | Native conversation fidelity: typed items and honest outcomes, evidence, plans and task records, approvals and questions answered once, a truthful Claude Stop; macOS updates over the air with install on quit; full Markdown in replies. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.3.0). [Review](reviews/2026-10-20-v0.3.0-release-review.md). |
 | v0.4.0 | 2026-10-30 UTC | #409, #442 | Saved task context, native plans, question/replay continuity, OpenCode and MiMo Code backends, and delivered reliability repairs. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.4.0). [Review](reviews/2026-10-24-v0.4.0-release-review.md#published--2026-10-30-utc). |
+| v0.4.1 | 2026-10-31 UTC | #452 | Commands that may have changed unlisted files retain uncertainty, including failed writes; new thread titles end at a word boundary. [Release](https://github.com/TypeSafeAI/modex/releases/tag/v0.4.1). [Review](reviews/2026-10-30-v0.4.1-release-review.md#published--2026-10-31-utc). |
 
 Releases through v0.0.12 are macOS Apple Silicon only; v0.1.0 adds unsigned Windows x64 and
 Linux x64 installers, which update manually. v0.0.1–v0.0.4 were ad-hoc signed; from v0.0.5
@@ -70,15 +71,12 @@ Three review-found repairs landed before v0.4.0 and shipped in it; their evidenc
 
 ## On main, unreleased
 
-The published application source is `2eda138` (v0.4.0). Later source deliveries belong here; the release inventory and its incomplete acceptance gates are recorded separately below.
+The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (v0.4.1). Later source deliveries remain unreleased: #462 records local-model context provenance; #461 enforces local-only auxiliary dispatch; #465 refuses known cloud-routed and non-generative models. Main still does not construct `LocalExecution`; native qualification and product admission remain separate gates. #459 and #460 are evidence/documentation deliveries after the release source.
 
-- **v0.4.1 candidate (2026-10-30).** The combined candidate passed the signed RC workflow (packaged desktop 479 passed, 4 skipped; website 7 passed; native updater, Windows and Linux jobs passed) and independent downloaded-asset verification. The local ad-hoc failures remain recorded. Release preparation #452 merged as `6a97d23`; evidence follow-up #459, the final signed tag workflow and final artifact verification/publication remain pending. See the [v0.4.1 review](reviews/2026-10-30-v0.4.1-release-review.md).
-- **CF-7 close-out follow-ups (#280, #450, 2026-10-30).** The three observations from the live close-out
-  runs are fixed. A turn's files list now names any command that may have changed files no CLI
-  reported, such as a shell redirect or `perl -pi`, and says "maybe more" or "not listed" instead of
-  looking complete. It never guesses the file. A thread named after its opening message is cut at a
-  word break with "…" rather than mid-word. Val's human review of the saved Notes is still open on
-  #280. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md).
+## v0.4.1 publication and remaining acceptance
+
+- **v0.4.1 published (2026-10-31).** Signed tag `v0.4.1` names protected merge `6a97d23`. Release run `41163487821` passed signed packaged E2E (479 desktop passed, 4 skipped; 7 site passed), three native updater scenarios, Windows/Linux checks and artifact attachment. All five downloaded installers match the release manifest; macOS signature, Gatekeeper and stapler checks passed. The initial download-failure job stopped before updater execution because its fixture manifest was missing; one retry passed on the unchanged candidate. Original failures and acceptance limits remain in the [publication review](reviews/2026-10-30-v0.4.1-release-review.md#published--2026-10-31-utc).
+- **CF-7 close-out follow-ups (#280, #450, #453).** The file-evidence and title fixes shipped in v0.4.1. Val's human review of the saved Notes remains open on #280; publication does not complete that acceptance. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md).
 
 ## v0.4.0 source delivery and remaining acceptance
 
@@ -237,7 +235,7 @@ The published application source is `2eda138` (v0.4.0). Later source deliveries 
 
 Desktop CI memory diagnostics landed through #458 after #456’s cold transcript budget failure. The workflow reuses the existing resource sampler and retains its log as a separate CI artifact; it does not establish the cause of the earlier failure or change the 500 ms gate. The #458 queue passed desktop and site E2E and retained its memory log. See [the diagnostic review](reviews/2026-10-30-desktop-ci-memory.md).
 
-- **CF-7 failed-command follow-up (#280, 2026-10-30).** A separate correction to #450 preserves possible-writer commands even when they exit unsuccessfully: earlier writes are not rolled back by a failure. The new regression first failed on the proposed source; all 39 task-context tests now pass. Full build and unit validation passed (2,252 passed, 26 skipped); full E2E passed (476 desktop, 7 skipped, and 7 site). Independent review found no blocking issues. It landed through #453 (`f51ef7e`) and is in the v0.4.1 candidate. No additional native or human acceptance is claimed.
+- **CF-7 failed-command follow-up (#280, 2026-10-30).** A separate correction to #450 preserves possible-writer commands even when they exit unsuccessfully: earlier writes are not rolled back by a failure. The new regression first failed on the proposed source; all 39 task-context tests now pass. Full build and unit validation passed (2,252 passed, 26 skipped); full E2E passed (476 desktop, 7 skipped, and 7 site). Independent review found no blocking issues. It landed through #453 (`f51ef7e`) and shipped in v0.4.1. No additional native or human acceptance is claimed.
 
 - **LM-5 auxiliary dispatch regressions.** Candidate tests exercise deterministic local approvals, human approval fallback and four local failure outcomes with a recording Jev transport and cloud positive control. Thirteen focused cases passed; removing the local approval guard made both local approval cases fail on unexpected dispatch. Build and full unit validation passed (2,251 passes, 26 skips); independent review found no actionable findings. Protected delivery landed through #447; native offline acceptance and the remaining #380 criteria stay open. [Evidence](reviews/2026-10-30-lm5-auxiliary-dispatch.md).
 - **LM-5 context-window evidence (#380 AC6).** A local child's context window keeps its sources apart: the person's explicit setting, the effective value Codex reports, the runtime's last advertised maximum (or "not checked") and an unknown loaded size. A window above the advertised maximum is refused before any process starts. Disabling each of the four new guards made its regression fail. Product admission, the native offline canary and real-runtime overflow handling stay open. [Evidence](reviews/2026-10-30-lm5-context-evidence.md).
@@ -247,7 +245,7 @@ Desktop CI memory diagnostics landed through #458 after #456’s cold transcript
 
 - **Notes history identity repair.** History toggles could duplicate revision rows because the history and editor siblings shared a React key; the repair landed through #429 (`7a01df2`) and shipped in v0.4.0. [Repair evidence](reviews/2026-10-28-notes-history-identity.md).
 
-- **LM-5 effective subagent admission.** A reproduced policy gap accepted enabled native subagent flags despite disabled launch settings. The repair requires both effective values to be false; ten regressions failed before the fix, and 26 focused policy/execution tests now pass, including refusal before a native thread opens. A configuration-only CLI 0.166.0 probe confirms the explicit false report shape. Build and full unit validation passed (2,254 passes, 26 skips); independent review found no blocking findings. It landed through #448 (`ba8f289`) on 2026-10-30, after v0.4.0, and is in the v0.4.1 candidate; native qualification stays separate. [Evidence](reviews/2026-10-30-lm5-subagent-policy.md).
+- **LM-5 effective subagent admission.** A reproduced policy gap accepted enabled native subagent flags despite disabled launch settings. The repair requires both effective values to be false; ten regressions failed before the fix, and 26 focused policy/execution tests now pass, including refusal before a native thread opens. A configuration-only CLI 0.166.0 probe confirms the explicit false report shape. Build and full unit validation passed (2,254 passes, 26 skips); independent review found no blocking findings. It landed through #448 (`ba8f289`) on 2026-10-30, after v0.4.0, and shipped in v0.4.1; native qualification stays separate. [Evidence](reviews/2026-10-30-lm5-subagent-policy.md).
 
 - **LM-5 local-only rule at each auxiliary chokepoint (#380).** `localOnly(thread)` is now enforced where each auxiliary call is made, not only by its callers. A Jev question naming a local thread gets no connection before any key is resolved; credit fallback, thread naming and unattended (routine) turns refuse a local thread, and the routine turn is not rerouted. One regression calls each chokepoint directly, with cloud controls; disabling each of the five guards made it fail. Product admission of `LocalExecution`, the native offline canary, runtime context evidence and real-runtime failure handling stay open. Delivered through #461. [Evidence](reviews/2026-10-30-lm5-local-only-chokepoints.md).
 
