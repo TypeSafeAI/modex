@@ -45,6 +45,9 @@ New coverage:
 
 ## Not covered
 
-- Hosted CI on this change has not run yet.
 - Assistive technology reaching a deferred answer without scrolling near it would read the Markdown as written. VoiceOver moves the view as it navigates, which should parse the answer first. This is untested by a person, and rows C1–C5 remain deferred.
 - Copying a deferred answer's text copies it as written. That is the source Markdown, not the rendered text.
+
+## Hosted CI on the PR, 2026-10-31
+
+[Run 41163979727](https://github.com/TypeSafeAI/modex/actions/runs/41163979727/job/124427436348) on `#463`, Apple M1 (Virtual), 3 cores, Node v24.22.1, passed on its first attempt. Desktop E2E had 481 passed and 4 skipped in 28.4 min, and site E2E had 7 passed. The five-launch samples were 129.9, 126.2, 129.4, 136.1 and 181.1 ms, a median of 129.9 ms. Hosted runs on the same runner type before the change had a median of 377.7 ms over 33 runs. One run is not a variance study; later queue runs add to it.
