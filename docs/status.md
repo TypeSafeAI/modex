@@ -301,8 +301,13 @@ Desktop CI memory diagnostics landed through #458 after #456’s cold transcript
   cancellation remain authoritative across attempts) and proves, with the
   overview and remote diff now in the panes, that the list, overview, diff and file tree scroll alone
   and keep focus at 1440×900 and 900×600 ([acceptance record](reviews/2026-10-28-cr3-acceptance.md)).
-  Original reference comparison waits for Val's re-captured references; human keyboard/VoiceOver
-  acceptance waits for Val's pass with the [checklist](reviews/2026-10-22-cr8-voiceover/checklist.md).
+  On 2026-10-30 the automated half was re-run on `main` at `f51ef7e` and the read-only authenticated
+  navigation probe passed six of six there again ([resume record](reviews/2026-10-30-cr3-acceptance-resume.md));
+  the journey spec's R1 and R4 captures, which had shown an empty Changes pane and no checks, now carry
+  populated content for the comparison.
+  Original reference comparison waits for Val to name the references (deferred on 2026-10-28); human
+  keyboard/VoiceOver acceptance waits for Val's pass with the
+  [checklist](reviews/2026-10-22-cr8-voiceover/checklist.md).
 
 - **CR-6 agent review and questions** (#325). Phase 1's native proof ([isolation evidence](reviews/2026-10-23-cr6-isolation.md)) showed Claude Code's restricted Read-only palette rejects injected shell, write, fetch, MCP and outside reads while Codex's read-only sandbox does not. Phase 2 builds on it: main's local `code-review:agent` channel starts the installed Claude Code CLI, under the person's own login, on a snapshot of the PR's diff that main reads itself through `gh`, with the shipped argv `--safe-mode --restricted --tools Read` and no permission tool, and an environment stripped of `gh`, GitHub and Modex variables. Each run is recorded before it starts, bound to the head it read, marked outdated when the head moves, stopped explicitly, and read as unknown after a crash; a finding reaches GitHub only through CR-7's review draft. Review instructions are one versioned text per Mac whose scope the popover states, and each run records the version it used. Unit, native-fixture (opt-in, production argv) and E2E evidence over a synthetic `claude` and `gh` are in [the review evidence](reviews/2026-10-28-cr6-native-review.md); an authenticated live run and C82 remain open gates.
 
