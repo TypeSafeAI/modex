@@ -30,11 +30,11 @@ function effectiveConfiguration(args: string[]): { config: Record<string, any>; 
 }
 
 /** A local execution over a scripted app-server that answers every open with the model and provider it was asked for. */
-function setup(input: { url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4] } = {}) {
+function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4] } = {}) {
   const home = tmpdir("lm3-exec-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
-  const connection = connections.create({ label: "Local", runtime: "responses", url: input.url ?? "http://127.0.0.1:18501/v1", ...(input.token === null ? {} : { token: input.token ?? "LOCAL_TOKEN_SENTINEL" }) });
-  const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: connection.id, revision: 1 }, id: MODEL } };
+  const connection = connections.create({ label: "Local", runtime: input.runtime ?? "responses", url: input.url ?? "http://127.0.0.1:18501/v1", ...(input.token === null ? {} : { token: input.token ?? "LOCAL_TOKEN_SENTINEL" }) });
+  const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: connection.id, revision: 1 }, id: input.model ?? MODEL } };
   const children: { proc: FakeProcess; args: string[]; opts: SpawnOptions }[] = [];
   const spawnImpl = ((bin: string, args: string[], opts: SpawnOptions) => {
     const proc = new FakeProcess();
@@ -300,6 +300,27 @@ test("the context window's sources stay apart: the person's setting, the effecti
       h.finish();
       assert.equal((await run).status, "completed", name);
       assert.deepEqual(h.execution.provenance(h.thread.id)!.context, { configured: 32768, source: "person", effective: 32768, advertised: recorded, loaded: "unknown" }, name);
+    } finally { await h.execution.dispose(); }
+  }
+});
+
+test("a model the server forwards to a cloud service, or lists as not generating text, is refused before any process starts", async () => {
+  const checkedAt = "2026-10-30T12:00:00.000Z";
+  const cases: [string, Parameters<typeof setup>[0], RegExp][] = [
+    ["listed cloud", { advertised: () => ({ tokens: null, checkedAt, unselectable: "cloud" }) }, /forwards this model to a cloud service/],
+    ["Ollama cloud name, never listed", { runtime: "ollama", url: "http://127.0.0.1:11434", model: "gpt-oss:120b-cloud" }, /forwards this model to a cloud service/],
+    ["Ollama -cloud name, never listed", { runtime: "ollama", url: "http://127.0.0.1:11434", model: "deepseek-v4-cloud" }, /forwards this model to a cloud service/],
+    ["listed embedding", { advertised: () => ({ tokens: 8192, checkedAt, unselectable: "embedding" }) }, /lists this model as an embedding model/],
+    ["listed other", { advertised: () => ({ tokens: null, checkedAt, unselectable: "other" }) }, /a model that doesn't generate text/],
+  ];
+  for (const [name, input, pattern] of cases) {
+    const h = setup(input);
+    try {
+      assert.throws(() => h.execution.validate(h.thread), pattern, name);
+      const result = await h.execution.backend(h.thread).runTurn("read", { ...h.opts, model: h.target.model.id }, collectSink().sink, new AbortController().signal);
+      assert.equal(result.status, "failed", name);
+      assert.match(result.error!, pattern, name);
+      assert.equal(h.children.length, 0, `${name}: nothing is spawned`);
     } finally { await h.execution.dispose(); }
   }
 });

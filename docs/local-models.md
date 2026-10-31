@@ -149,6 +149,21 @@ runs with is never a cloud model's default. It is the person's explicit `localCo
 
 Evidence: [LM-5 context-window evidence](reviews/2026-10-30-lm5-context-evidence.md).
 
+## LM-5: known cloud-routed and non-generative models
+
+Status: on `main`, no UI, local execution still unadmitted (#380, step 3). A loopback server can forward a model
+elsewhere: Ollama serves `…:cloud`/`…-cloud` models from ollama.com. Discovery already marked these
+unselectable, but that was the renderer's list. Main now refuses them itself, in `LocalExecution.validate`,
+before any process starts:
+
+- **Cloud-routed.** The connection's last ready listing marked the model cloud-routed (Ollama's
+  `remote_host`/`remote_model`, or its cloud name). On an Ollama connection, a cloud-suffixed name is also
+  refused without any listing.
+- **Not generative.** The listing marked the model embedding-only or not generating text.
+
+A model that isn't marked stays *unverified*, not local: loopback alone doesn't prove where inference runs, and
+an unknown downstream route is still unknown. Evidence: [LM-5 cloud-routed models](reviews/2026-10-30-lm5-cloud-routed-models.md).
+
 ## Accepted boundary and follow-up runtime availability
 
 Val accepted narrow Gate A and separately approved the AGENTS metadata boundary in this task on 2026-10-24. The [acceptance and runtime-availability receipt](reviews/2026-10-24-lm1-acceptance.md) records the exact producer SHA, approval scope and authorized installed-model inventory. The accepted producer and Strata evidence may be consumed by LM-2/LM-3; acceptance does not qualify Plan, fresh-process resume, other runtimes, offline operation or UI.
