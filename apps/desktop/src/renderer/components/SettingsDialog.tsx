@@ -1,5 +1,6 @@
 import { SecretOption, SecretInput } from "../streamer";
 import { ModexAccount } from "./ModexAccount";
+import { ClaudeAccounts } from "./ClaudeAccounts";
 import { ThemePicker } from "./ThemePicker";
 import { useEffect, useRef, useState } from "react";
 import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, Project, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
@@ -402,8 +403,9 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             {s.claude_bin !== settings.claude_bin && <p className="connection-feedback">Save and restart Modex to use the new executable, or revert your path change to sign in now.</p>}
             {health?.claude.executable === "missing" && <p className="connection-feedback">Install Claude Code, then refresh. If you change its executable below, save and restart Modex.</p>}
             <p className="connection-feedback" role="status">{claudeLoginDetail}</p>
+            <ClaudeAccounts disabled={claudeLoginBusy || health?.claude.executable === "missing"} onChanged={() => setHealthRevision((revision) => revision + 1)} />
             <TerminalLogin backend="claude" path={health?.claude.resolvedPath} disabled={claudeLoginBusy || s.claude_bin !== settings.claude_bin || health?.claude.executable === "missing"} />
-            <p className="connection-footnote">Claude Code owns this login and shares it with other CLI clients on your Mac. API or enterprise settings may take precedence.</p>
+            <p className="connection-footnote">Claude Code owns each login, in its own profile folder for added accounts. Gateway keys stay in OS storage. API or enterprise settings may take precedence.</p>
           </div>
           {ACP_CARDS.map((card) => <div className="connection-card" data-testid={`${card.id}-account`} role="group" aria-labelledby={`${card.id}-connection-title`} key={card.id}>
             <header className="connection-heading">
