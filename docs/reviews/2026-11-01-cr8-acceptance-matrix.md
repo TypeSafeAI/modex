@@ -143,7 +143,7 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 | #321 AC3 | Revoked, denied, malformed, timeout, rate limit, partial, omitted patch, no secret leakage | `U`; `F-prod` "incomplete data" (gh stderr sentinel never reaches the renderer or a reply) | `A-349` | — | met |
 | #321 AC4 | Head changes invalidate or label old diff/check data | `U`; `F-prod` "revision" (before the page: `head-changed`, files list never requested; during the page: `stale head-changed`) | — | — | met. The UI labelling landed with #324 (#404 `e3527f4`; `code-review-diff.spec.ts` "a new head cannot be overwritten by a delayed file page") |
 | #321 AC5 | Authenticated read-only smoke, kept separate | — | `A-321`, `A-349`, `A-main` | — | met, and re-run on main |
-| #321 AC6 | Existing Changes, connection and login tests green; no new permissions or writes | full suites (see Repository suites) | — | — | met at merge. Re-checked in this branch's full run |
+| #321 AC6 | Existing Changes, connection and login tests green; no new permissions or writes | full suites (see Repository suites) | — | — | met at merge. The current local full-suite re-check failed in E2E; the isolated retry and earlier hosted pass are recorded separately (`S-1101`) |
 | #322 AC1 | R1 and R4 through real controls; PR and tab identity correct | `F-nav`; `F-prod` journey (rail → row → split, with captures at the references' CSS sizes and geometry within 2 px of CR-3's table) | `A-322`, `A-main`, `A-main-2` | — | met for the host; R1 checks and R4 diff populated since #464 (`3d72c6e`). **Original-reference comparison is open** (see Visual comparison) |
 | #322 AC2 | Rapid switching shows no stale reply; back/forward don't replay | `F-nav` ×3; `F-prod` "identity" ×2, journey (no re-read) | `A-322` (back/forward) | — | met |
 | #322 AC3 | Scroll regions independent; resize and reopen keep controls in the window | `F-nav` keyboard test; `code-review-scroll.spec.ts` ×2 (#438 `afec85b`) | — | — | met at fixture: list, overview, diff and tree scroll alone and keep focus at 1440×900 and 900×600 (#438) |
@@ -181,7 +181,7 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 | AC | Where it stands on `0a8c513` |
 | --- | --- |
 | AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). **Open (Val):** comparison with the original references, which are gone; needs re-captured references or Val's decision to accept re-captures. |
-| AC2 every visible control has behaviour or an explicit unavailable state | Met at fixture: every control is built, a recorded deviation, or a named open decision (table above). Seven built controls have no asserting spec (follow-ups below). |
+| AC2 every visible control has behaviour or an explicit unavailable state | Partial: C58 attachment and C59 reasoning effort remain omitted without an approved deviation or numbered decision. The other controls are mapped above; seven built controls also lack an asserting spec (follow-ups below). |
 | AC3 isolation, injection, incomplete data, at-most-once | Met at fixture: read regressions, native denial on 2.1.316 (`N`), agent stop/unknown/restart, write at-most-once and reconciliation (`F-1101`). **Open:** the live smoke (#325) and live canary (#326). |
 | AC4 local Changes, navigation, conversation and approvals intact | `S-1101`: unit green; the local E2E had one non-Code-Review failure that passed alone, so it is not counted as green. The hosted required check passed on `c1f74c7`. |
 | AC5 performance, keyboard/contrast; human screen-reader gate | Baseline measurements and contrast stand for `0e674e7`; `F-1101` re-ran measure and a11y green. **Open (Val):** the [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md), Result row empty. |
@@ -197,7 +197,7 @@ it, and main's channels answer regardless of whether the destination is visible.
 - **Stage 0, now:** hidden in packaged builds. Val (or a tester) turns it on per home from DevTools.
 - **Stage 1, after the live smoke and canary pass on repositories Val names:** still hidden by default; testers
   use it on their own repositories. Writes stay preview-bound and at-most-once.
-- **Stage 2, after VoiceOver and Val's call on the references and decisions 1, 5, 6, 7:** remove the switch (or
+- **Stage 2, after VoiceOver and Val's call on the references, decisions 1, 5, 6, 7, and the C58/C59 omissions:** remove the switch (or
   invert it) in a product PR that Val approves. That PR updates `docs/status.md` and this matrix.
 
 **Rollback:** setting the value to anything but `"on"` (or clearing site data for that home) hides the
@@ -220,7 +220,8 @@ the destination is visible. A product rollback (removing a capability) is a code
 4. **CR-7 live canary (#326 AC6):** name a disposable repository on #326 and say go;
    [procedure](2026-11-01-cr7-live-canary.md).
 5. **Decisions 1 (avatars C16/C81), 5 (Viewed C65), 6 (new tab C07), 7 (access mode C82).**
-6. **The `modex.codeReview` packaged-build switch:** when it goes (stages above).
+6. **C58 attachment and C59 reasoning effort:** decide whether to implement each omission or record an approved deviation; neither currently has a numbered decision.
+7. **The `modex.codeReview` packaged-build switch:** when it goes (stages above).
 
 ## Follow-ups found in this refresh (agent work, not gates)
 
@@ -230,7 +231,6 @@ the destination is visible. A product rollback (removing a capability) is a code
   controls are not in its required Tab set (C76).
 - No asserting spec for C50's text, C51's Copy comment link, C63's toggles, C66's menu items, C69's text, C71's
   horizontal scroll or C75's resize.
-- C58 (Attach) and C59's effort are left out with no numbered decision; Val may want them recorded as D-rows.
 - C61's clearance was planned for a floating composer; CR-6 built Ask inline and clearance was not re-measured.
 - CR-4's and CR-5's authenticated evidence is service-level on pre-merge candidates (`A-323`, `A-324`); an
   authenticated Electron read of the overview and diff on `main` needs Val's authorization (GET only).

@@ -89,12 +89,14 @@ proved. A step that fails is recorded as failed with its screenshot; the canary 
 
 ## Closing checks
 
+Run from the same `apps/desktop` directory. The token check prints only a status: exit 0 means the token was absent from all required evidence, exit 1 means it was found, and exit 2 means the check was incomplete. Failed authentication, missing or unreadable evidence, and symlinks never count as a clean scan. Resolve an incomplete check before recording acceptance.
+
 ```sh
 gh api user --jq .login | diff - "$CANARY/login-before.txt" && echo login-unchanged
 grep -E -- '--method (POST|PUT|PATCH|DELETE)' "$CANARY/gh-argv.log"   # main's argv form; expect 9 lines (8 if step 8 was skipped), each matching the table above
 grep -cE -- '--method DELETE' "$CANARY/gh-argv.log"                     # must be 0
-# The token must appear nowhere Modex wrote (prints file names only, never the token):
-gh auth token | grep -rlF -f - "$CANARY/home" "$CANARY/electron-stderr.log" "$CANARY/steps.md" && echo TOKEN-FOUND || echo token-absent
+# The token must appear nowhere Modex wrote (prints status only, never the token):
+python3 ../../docs/reviews/code-review-token-check.py "$CANARY/home" "$CANARY/electron-stderr.log" "$CANARY/steps.md"
 ```
 
 Then copy `$CANARY/steps.md`, the screenshots and the argv log (they contain only the disposable repository's

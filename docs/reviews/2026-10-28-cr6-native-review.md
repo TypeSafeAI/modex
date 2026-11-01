@@ -195,10 +195,17 @@ Code Review → paste the PR link Val named → **Review with Claude** → read 
 
 **Closing checks:**
 
+Run from the same `apps/desktop` directory. The token check prints only a status: exit 0 means the token was absent from all required evidence, exit 1 means it was found, and exit 2 means the check was incomplete. Failed authentication, missing or unreadable evidence, and symlinks never count as a clean scan. Resolve an incomplete check before recording acceptance.
+
 ```sh
-grep -E -- '--method (POST|PUT|PATCH|DELETE)' "$SMOKE/gh-argv.log" && echo WRITE-FOUND || echo no-github-write
+if grep -qE -- '--method (POST|PUT|PATCH|DELETE)' "$SMOKE/gh-argv.log"; then
+  echo WRITE-FOUND
+else
+  scan_status=$?
+  if [ "$scan_status" -eq 1 ]; then echo no-github-write; else echo write-check-incomplete; fi
+fi
 gh api user --jq .login | diff - "$SMOKE/login-before.txt" && echo login-unchanged
-gh auth token | grep -rlF -f - "$SMOKE/home" "$SMOKE/claude-argv.log" "$SMOKE/electron-stderr.log" && echo TOKEN-FOUND || echo token-absent
+python3 ../../docs/reviews/code-review-token-check.py "$SMOKE/home" "$SMOKE/claude-argv.log" "$SMOKE/electron-stderr.log"
 ```
 
 Do not press **Add to review draft** → submit: findings reach GitHub only through CR-7's previewed draft, and
