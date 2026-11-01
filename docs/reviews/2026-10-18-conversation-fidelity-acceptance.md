@@ -304,10 +304,10 @@ unit pass is not live-provider or human acceptance. The fixture and unit rows ra
 | Missing artifact | `test/attachment-commands.test.ts` "an attachment whose file was deleted cannot be opened, and nothing is revealed" (#328): **passed in this first pass** (log line 240 of `test.log`) | Verified (unit); not live or human |
 | Outcomes, reasoning and provenance match recorded events | CF-1 fixture tests on Claude Code 2.1.302 and codex-cli 0.163.0 captures; CF-5 evidence tests; CF-7 live captures replayed in `test/claude-live-capture.test.ts` (2.1.309 task tools) and `test/codex-live-capture.test.ts` (`gpt-6.1-sol` plan mode) | Verified on captures; live outcomes recorded above |
 | Themes and viewports | `e2e/conversation-fidelity.spec.ts` captures and `e2e/typed-turns.spec.ts`, in the 470 passed; the CF-4 close-out's reference-viewport captures (#404) | Verified (fixture captures); human visual review: Val |
-| Keyboard and reduced motion | `e2e/app.spec.ts` accessibility, `e2e/keyboard-answers.spec.ts` (#342, #352), the CF-4 close-out's named table and code scroll regions and reduced-motion coverage (#404), in the 470 passed | Verified (fixture); human: Val, rows A1–A8, B1–B7, C1–C5 |
+| Keyboard and reduced motion | `e2e/app.spec.ts` accessibility, `e2e/keyboard-answers.spec.ts` (#342, #352), the CF-4 close-out's named table and code scroll regions and reduced-motion coverage (#404), in the 470 passed | Verified (fixture); human: Val, rows A1–A8 and B1–B7; C1–C5 deferred by Val in writing on 2026-10-30, not run |
 | Long transcript and streaming measurement | `e2e/transcript-measure.spec.ts`, in the 470 passed: no streamed event over the 256 KB preview, no items resent on open; the CF-4 first-open budget passed in the same run: five fresh launches of the 200-turn transcript opened in 246.5, 248.4, 242.5, 257.3 and 240.5 ms, median **246.5 ms ≤ 500 ms** | Verified (fixture, machine-independent bounds); the [named-Mac measurements](#measurements-on-a-named-mac) are the historical comparison |
 | Live Codex and Claude acceptance | This section's live gates | See above |
-| Human keyboard and VoiceOver | [Checklist](2026-10-20-keyboard-voiceover/checklist.md) A1–A8, B1–B7 and C1–C5 on the seeded build from this candidate (below) | **Open: Val.** No row is recorded here until Val reports it |
+| Human keyboard and VoiceOver | [Checklist](2026-10-20-keyboard-voiceover/checklist.md) A1–A8 and B1–B7 on the seeded build from this candidate (below); C1–C5 likewise, until deferred | A1–A8, B1–B7: **open, Val.** No row is recorded here until Val reports it. C1–C5: **deferred by Val in writing on 2026-10-30, not run** (#444, #449) |
 | CF-3 native question, human | [Steps](2026-10-22-cf3-question-acceptance.md) D1–D5, V1–V3 and P1–P6; #420 holds the prepared run on `6c9000f`; between `6c9000f` and `b643617` only #421 (Companion tests) and #422 (the Code Review agent) landed, and neither touches the question broker, the cards, the Companion app or an ordinary Claude or Codex turn (#422 adds a separate confined launch path to `claude.ts` that a review run alone uses) | **Open: Val.** P rows also wait on Companion 0.4.0 (9) reaching TestFlight |
 | CF-6 gates beyond the tests | [CF-6 gates](2026-10-22-cf6-gates.md): live Codex and Claude with the journal on passed on 2026-10-22; the 8 MB drop and power-loss proxies are unit tests in this first pass | Verified (live 2026-10-22, unit); **deferred by Val in writing on 2026-10-23:** a real power cut, the Windows and Linux app sessions ("accepted the CI suites") and the physical iPhone ("Defer it, close #279", on #279) |
 | Fresh `pnpm build`, `typecheck`, `test`, `test:e2e` on a pinned candidate | [First pass](#first-pass) above, all first pass, all passed | Verified on `b643617` |
@@ -334,10 +334,41 @@ reports them, through a docs-only signed PR. **No human row is recorded as passe
 | Row | Owner | Next action |
 | --- | --- | --- |
 | Keyboard A1–A8 and VoiceOver B1–B7 | Val | Run the seeded build above and post the filled tables on #281 |
-| Markdown C1–C5 | Val | Same build, the **Markdown review** thread, 900×600 with Review open, three themes, Reduce Motion for C3 |
+| Markdown C1–C5 | Val | **Deferred by Val in writing on 2026-10-30, not run** (#444, #449). The rows stay in the checklist for a later build |
 | CF-3 D1–D5, V1–V3 | Val | The #420 Mac build, Plan mode on a Codex thread; post on #276 and #281 |
 | CF-3 P1–P6 | Val | Upload Companion 0.4.0 (9) to TestFlight first; P6 needs an older Companion at hand |
 
 Everything else in the matrix has fixture, unit or live evidence on `b643617`, or Val's written deferral. #281 closes
 when these rows have Val's result or written deferral. No tag, release, merge-queue entry or policy default
 changes with this receipt.
+
+### Reconciliation, 2026-11-01
+
+Recorded on `main` at `0a8c513`. No row changed state except as Val wrote it.
+
+- **C1–C5 are deferred.** On 2026-10-30 Val deferred the Markdown rows C1–C5 in writing. They were not run and
+  nothing passed. #277 closed on that deferral (#444, `907ba08`; #449, `8259c4d`). The rows stay in the
+  checklist for a later build. The tables above now say so. They had still listed C1–C5 as rows to run.
+- **Changes after `b643617`.** #450 (`108b814`, CF-7 file evidence and titles) and #453 (`f51ef7e`, writes
+  from failed commands) landed after the candidate and shipped in v0.4.1. #463 (`32f1cb4`, merged
+  2026-10-31 23:32 UTC) defers Markdown parsing for turns far from the view. It changes `Markdown.tsx` and
+  `ThreadView.tsx`, which the keyboard and VoiceOver rows exercise, and it is unreleased. None of the three
+  is in `b643617`. Only a candidate cut from current `main` exercises the transcript that will ship next.
+  Val chooses which build A1–A8 and B1–B7 run on.
+- **The 2026-10-28 seeded build is gone.** `/tmp/modex-voiceover-b643617` no longer exists. The
+  `cf8-candidate-oct28` worktree was removed by `scripts/worktree.sh prune` after its ignored files were
+  saved under `~/.claude/task-evidence/worktree-prune-2026-10-29/cf8-candidate-oct28/`. The launch commands
+  under [Human review build](#human-review-build) are history. A fresh seed on `b643617` was made on
+  2026-11-01, using the committed `seed.mjs` (unchanged since `b643617`):
+
+  ```sh
+  # from .worktrees/cf8-voiceover-b643617/apps/desktop, built at b643617 (pnpm install --frozen-lockfile && pnpm build)
+  MODEX_HOME=$PWD/.probes/voiceover-b643617/home npx electron .
+  ```
+
+  A copy of that home opened on this build with the **Markdown review** thread and its seeded Markdown, the
+  scripted engine and the Review tab. This is a smoke check, not a human row. If Val picks a current-`main`
+  candidate instead, the home is seeded again on that build.
+- **Installed CLIs moved.** Claude Code 2.1.316 and codex-cli 0.166.0 are now installed. The live golden path
+  above ran on 2.1.312 and 0.164.0. A new candidate would record new versions.
+

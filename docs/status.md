@@ -76,7 +76,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
 ## v0.4.1 publication and remaining acceptance
 
 - **v0.4.1 published (2026-10-31).** Signed tag `v0.4.1` names protected merge `6a97d23`. Release run `41163487821` passed signed packaged E2E (479 desktop passed, 4 skipped; 7 site passed), three native updater scenarios, Windows/Linux checks and artifact attachment. All five downloaded installers match the release manifest; macOS signature, Gatekeeper and stapler checks passed. The initial download-failure job stopped before updater execution because its fixture manifest was missing; one retry passed on the unchanged candidate. Original failures and acceptance limits remain in the [publication review](reviews/2026-10-30-v0.4.1-release-review.md#published--2026-10-31-utc).
-- **CF-7 close-out follow-ups (#280, #450, #453).** The file-evidence and title fixes shipped in v0.4.1. Val's human review of the saved Notes remains open on #280; publication does not complete that acceptance. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md).
+- **CF-7 close-out follow-ups (#280, #450, #453).** The file-evidence and title fixes shipped in v0.4.1. Val's human review of the saved Notes remains open on #280; publication does not complete that acceptance. The review homes moved to the `cf7-review-kit` worktree on 2026-11-01, after the original worktree was pruned. Both saved Notes still reopen read-only on a build of `0a8c513`. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md#the-real-task-and-its-saved-note-human-review-candidate) for the launch commands.
 
 ## v0.4.0 source delivery and remaining acceptance
 
@@ -117,7 +117,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
   written). Live codex-cli 0.164.0 (`gpt-6.1-sol`, ChatGPT account, Chat mode) passed the same path: two approvals, `apply_patch` and the check with exit code 0, a `final` answer, "Codex reported no plan for this turn", Save to Notes, Open, restart, and Stop (interrupted in 0.1 s, the file never written). The 2026-10-22 candidates `0e674e7` and `ec7be57` are kept as history beside it.
   **Still open, all Val's:** the keyboard/VoiceOver rows A1–A8, B1–B7 and C1–C5 (C1–C5 deferred by Val on 2026-10-30, not run) on the seeded build from this
   candidate, and the CF-3 rows D1–D5, V1–V3 and P1–P6 (#420; the P rows also need Companion 0.4.0 (9) on
-  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral.
+  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral. On 2026-11-01 the receipt recorded the C1–C5 deferral, and that #450, #453 and #463 landed after `b643617`. The 2026-10-28 seeded build is gone, so the home was seeded again on `b643617` in `.worktrees/cf8-voiceover-b643617`. Val chooses whether A1–A8 and B1–B7 run on `b643617` or on a new candidate from current `main`.
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
@@ -232,6 +232,8 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
   no file, a title cut mid-word). #280 stays open until Val records a result or a written deferral.
 
 ## In flight
+
+- **Current Code Review repository identity.** A reproduced C22 gap kept the inbox's repository name in the PR header and links after the overview returned a new name. The candidate adopts the overview locator after the existing PR-key check and retains it across an unavailable refresh. The Electron regression failed before the fix and passed afterward; independent review found no blockers, and the full unit retry passed (2,277 passes, 26 skips). Full E2E passed (479 desktop tests, 7 skips; 7 site tests). [Evidence](reviews/2026-11-01-cr4-current-locator.md).
 
 - **Deferred Markdown for long threads (hosted cold-open budget).** Hosted CI's approved 500 ms cold-open gate failed on runner variance alone: 33 hosted runs on 2026-10-30 had a 377.7 ms median and a 781.9 ms failure on application code identical to a 436.1 ms pass. Val chose on 2026-10-30 to defer offscreen answers. Turns before the newest eight show their Markdown as written until it nears the view, then parse once; scroll anchoring keeps the reader's place. Locally the five-launch median fell from about 190 to 88 ms, and 3× CPU throttling cut it from 806–870 to 312–340 ms. The gate is unchanged. The first hosted run had a 129.9 ms median (481 desktop E2E passes). It landed through #463 (`32f1cb4`) on 2026-10-31 UTC and is unreleased. [Evidence](reviews/2026-10-30-deferred-markdown.md).
 
