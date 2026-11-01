@@ -233,7 +233,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
 
 ## In flight
 
-- **Deferred Markdown for long threads (hosted cold-open budget).** Hosted CI's approved 500 ms cold-open gate failed on runner variance alone: 33 hosted runs on 2026-10-30 had a 377.7 ms median and a 781.9 ms failure on application code identical to a 436.1 ms pass. Val chose on 2026-10-30 to defer offscreen answers. Turns before the newest eight show their Markdown as written until it nears the view, then parse once; scroll anchoring keeps the reader's place. Locally the five-launch median fell from about 190 to 88 ms, and 3× CPU throttling cut it from 806–870 to 312–340 ms. The gate is unchanged. The first hosted run had a 129.9 ms median (481 desktop E2E passes). It landed through #463 (`32f1cb4`) on 2026-11-01 and is unreleased. [Evidence](reviews/2026-10-30-deferred-markdown.md).
+- **Deferred Markdown for long threads (hosted cold-open budget).** Hosted CI's approved 500 ms cold-open gate failed on runner variance alone: 33 hosted runs on 2026-10-30 had a 377.7 ms median and a 781.9 ms failure on application code identical to a 436.1 ms pass. Val chose on 2026-10-30 to defer offscreen answers. Turns before the newest eight show their Markdown as written until it nears the view, then parse once; scroll anchoring keeps the reader's place. Locally the five-launch median fell from about 190 to 88 ms, and 3× CPU throttling cut it from 806–870 to 312–340 ms. The gate is unchanged. The first hosted run had a 129.9 ms median (481 desktop E2E passes). It landed through #463 (`32f1cb4`) on 2026-10-31 UTC and is unreleased. [Evidence](reviews/2026-10-30-deferred-markdown.md).
 
 Desktop CI memory diagnostics landed through #458 after #456’s cold transcript budget failure. The workflow reuses the existing resource sampler and retains its log as a separate CI artifact; it does not establish the cause of the earlier failure or change the 500 ms gate. The #458 queue passed desktop and site E2E and retained its memory log. See [the diagnostic review](reviews/2026-10-30-desktop-ci-memory.md).
 
@@ -304,7 +304,7 @@ Desktop CI memory diagnostics landed through #458 after #456’s cold transcript
   overview and remote diff now in the panes, that the list, overview, diff and file tree scroll alone
   and keep focus at 1440×900 and 900×600 ([acceptance record](reviews/2026-10-28-cr3-acceptance.md)).
   On 2026-10-30 the automated half was re-run on `main` at `f51ef7e` and the read-only authenticated
-  navigation probe passed six of six there again ([resume record](reviews/2026-10-30-cr3-acceptance-resume.md), landed through #464, `3d72c6e`, on 2026-11-01);
+  navigation probe passed six of six there again ([resume record](reviews/2026-10-30-cr3-acceptance-resume.md), landed through #464, `3d72c6e`, on 2026-10-31 UTC);
   the journey spec's R1 and R4 captures, which had shown an empty Changes pane and no checks, now carry
   populated content for the comparison.
   Original reference comparison waits for Val to name the references (deferred on 2026-10-28); human
