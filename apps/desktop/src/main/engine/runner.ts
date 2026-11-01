@@ -17,7 +17,8 @@ import { Router } from "./routing/router.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import { policyAnswer, policyReceipt } from "./approvals/policy.js";
 import type { SecretStore } from "./secrets.js";
-import { creditFallbackModel, describeFailure, isModelOutOfCredits, modelFamilyName } from "../../shared/failures.js";
+import { classifyFailure, creditFallbackModel, describeFailure, isModelOutOfCredits, modelFamilyName } from "../../shared/failures.js";
+import { limitResetAt, type ClaudeAccounts } from "./claude-accounts.js";
 
 /** After a model is refused for usage credits, how long Modex starts its turns on the fallback instead. */
 export const CREDIT_SKIP_MS = 60 * 60_000;
@@ -115,6 +116,18 @@ export interface RunnerOptions {
   attachments?: AttachmentStore;
   /** Whether a process still exists; tests replace the signal-0 probe. */
   isProcessAlive?: (pid: number) => boolean;
+  /** Modex's Claude account pool: usage-limit cooldowns and rotation (engine/claude-accounts.ts). */
+  claudeAccounts?: Pick<ClaudeAccounts, "noteLimit" | "clearLimit" | "pick" | "account">;
+}
+
+/** The thread's account binding for its current backend: Codex and Claude Code keep separate ones. */
+export function threadAccount(thread: Pick<Thread, "backend" | "codexAccount" | "claudeAccount"> | undefined): string | undefined {
+  return thread?.backend === "codex" ? thread.codexAccount : thread?.backend === "claude" ? thread.claudeAccount : undefined;
+}
+
+/** A Claude account whose sessions live in Claude Code's own configuration directory (its login and gateways), not a profile's. */
+function sharesClaudeHome(accounts: Pick<ClaudeAccounts, "account">, id: string): boolean {
+  return id === "cli" || accounts.account(id)?.kind === "gateway";
 }
 
 /**
@@ -163,6 +176,11 @@ export class ThreadRunner {
 
   backend(id: BackendId): Backend {
     return this.backends[id];
+  }
+
+  /** Whether a running turn is bound to this backend account (so it must not be removed or re-signed underneath it). */
+  accountInUse(backend: BackendId, account: string): boolean {
+    return [...this.live].some(([threadId, l]) => Boolean(l.abort) && l.backend === backend && threadAccount(this.o.store.thread(threadId)) === account);
   }
 
   async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
@@ -830,9 +848,14 @@ export class ThreadRunner {
         if (knowledge.warning) sink.notice("warn", knowledge.warning);
         if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
       }
-      const account = !local && thread.backend === "codex" && backend.identity
-        ? thread.codexAccount ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
-      if (account && !thread.codexAccount) this.o.store.updateThread(threadId, { codexAccount: account });
+      // Codex and Claude Code bind a thread to the account its first turn ran on; older handles belong to the CLI's own login.
+      const bound = threadAccount(thread);
+      const account = !local && (thread.backend === "codex" || thread.backend === "claude") && backend.identity
+        ? bound ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
+      if (account && !bound) this.o.store.updateThread(threadId, thread.backend === "codex" ? { codexAccount: account } : { claudeAccount: account });
+      const accountFor = (ran: Thread) => threadAccount(ran) ?? account;
+      // Read before the turn: the store's thread object takes the session id the moment the CLI reports one.
+      const freshConversation = !thread.sessionHandle;
       const turnFiles: TurnAttachment[] = files.map((f) => {
         const file = this.attachments.resolve(f.rel);
         if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
@@ -840,12 +863,12 @@ export class ThreadRunner {
       });
       // Each run of the backend is one attempt with its own sink; ending it settles whatever it left open.
       const runOn = async (ran: Thread): Promise<TurnResult> => {
-        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...((ran.codexAccount ?? account) ? { account: ran.codexAccount ?? account } : {}) });
+        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) });
         try {
           const result = await backend.runTurn(
             describeAttachments(text, turnFiles),
             {
-              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account,
+              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account: accountFor(ran),
               // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
               ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
@@ -875,6 +898,26 @@ export class ThreadRunner {
         result = await runOn(thread);
         if (result.status === "failed") result = { ...result, recovery: [`${modelFamilyName(from)} was out of usage credits; retried on ${modelFamilyName(fallback)}.`, ...(result.recovery ?? [])] };
       }
+      // A Claude account that reports a usage limit cools down; with rotation on, a turn that had not started work moves on.
+      const pool = this.o.claudeAccounts;
+      const limited = accountFor(thread);
+      if (!local && pool && thread.backend === "claude" && limited && result.status === "failed" && !abort.signal.aborted && classifyFailure(result.error ?? "") === "rate_limited") {
+        const { until } = pool.noteLimit(limited, limitResetAt(result.error ?? ""));
+        const next = pool.pick(limited);
+        const name = (id: string) => id === "cli" ? "Claude Code's own login" : `"${pool.account(id)?.label ?? "removed account"}"`;
+        const started = l.items.slice(replyStart).some((item) => item.kind === "assistant" || item.kind === "tool" || item.kind === "thinking");
+        const movable = next !== limited && !started && (freshConversation || (sharesClaudeHome(pool, limited) && sharesClaudeHome(pool, next)));
+        this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Claude account ${name(limited)} hit its usage limit; Modex holds it out of rotation until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${movable ? ` Retrying on ${name(next)}.` : next !== limited ? ` New Claude conversations start on ${name(next)}.` : ""}`, at: new Date().toISOString() });
+        if (movable) {
+          // A conversation that had no session before this turn starts fresh: the failed attempt's session may live in the old profile.
+          this.o.store.updateThread(threadId, { claudeAccount: next, ...(freshConversation ? { sessionHandle: undefined } : {}) });
+          thread = this.o.store.thread(threadId) ?? thread;
+          replyStart = l.items.length;
+          result = await runOn(thread);
+          if (result.status === "failed") result = { ...result, recovery: [`Claude account ${name(limited)} hit its usage limit; retried on ${name(next)}.`, ...(result.recovery ?? [])] };
+        }
+      }
+      if (pool && thread.backend === "claude" && result.status === "completed" && accountFor(thread)) pool.clearLimit(accountFor(thread)!);
       if (thread.imageJobId) this.o.imageOutcome?.(thread.imageJobId, result.status);
       // Record what ran, not what was asked for: the CLI can refuse fast mode (no usage credits, for one).
       const ranFast = result.fastMode ? result.fastMode.on : fast;
@@ -886,7 +929,7 @@ export class ThreadRunner {
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
       if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
-      this.recordUsage(thread, account, result);
+      this.recordUsage(thread, accountFor(thread), result);
       // A failure can precede Stop; its outcome does not establish process exit.
       if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
       if (result.status === "failed") {
@@ -976,7 +1019,7 @@ export class ThreadRunner {
     const abort = new AbortController();
     this.naming.set(threadId, abort);
     const timer = setTimeout(() => abort.abort(), 30_000);
-    const account = this.o.store.thread(threadId)?.codexAccount;
+    const account = threadAccount(this.o.store.thread(threadId));
     const run = Promise.resolve().then(() => backend.generateTitle!(text, { model, account, reply }, abort.signal)).then((title) => {
       if (title && !abort.signal.aborted && !this.disposing && this.o.store.thread(threadId)?.title === fallback) {
         this.updateThread(threadId, { title }, { automaticTitle: true });
@@ -1088,7 +1131,7 @@ export class ThreadRunner {
     if (record.state === "pending") {
       const binding = record.request.binding;
       const current = this.o.store.thread(binding.thread);
-      if (!current || current.backend !== binding.backend || (current.codexAccount ?? null) !== (binding.account ?? null) ||
+      if (!current || current.backend !== binding.backend || (threadAccount(current) ?? null) !== (binding.account ?? null) ||
           (binding.attempt && l.attempt !== binding.attempt)) {
         this.withdraw(binding.thread, l, itemId, "ended");
         return { ok: false, reason: "wrong-identity" };
@@ -1189,9 +1232,9 @@ export class ThreadRunner {
       }
     }
     // Switching backend starts a fresh backend conversation; the transcript stays.
-    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, lastTurn: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
+    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, claudeAccount: undefined, lastTurn: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
     // So does any local target change: the old child's handle is dropped, and clearing the target returns to the default cloud model.
-    const localReset: Partial<Thread> = switchingLocal ? { sessionHandle: undefined, codexAccount: undefined, lastTurn: undefined,
+    const localReset: Partial<Thread> = switchingLocal ? { sessionHandle: undefined, codexAccount: undefined, claudeAccount: undefined, lastTurn: undefined,
       ...(patch.localTarget === null ? { localTarget: undefined, localContextTokens: undefined, model: this.o.store.settings.default_model.codex ?? "", effort: undefined } : {}) } : {};
     if (switchingLocal) {
       this.naming.get(threadId)?.abort(); this.naming.delete(threadId);
@@ -1343,7 +1386,7 @@ export class ThreadRunner {
     const authority = () => {
       const current = this.o.store.thread(threadId);
       return active() && !abort?.signal.aborted && Boolean(current) && current!.backend === (turn?.backend ?? l.backend) &&
-        (current!.codexAccount ?? null) === (turn?.account ?? null);
+        (threadAccount(current) ?? null) === (turn?.account ?? null);
     };
     const deliveries = new Set<string>();
     // Who asked: this turn and attempt, and the CLI's own request id when it gives one (else the card's id).
@@ -1469,7 +1512,7 @@ export class ThreadRunner {
         const current = this.o.store.thread(threadId);
         const claim = l.pending.get(id)?.claim?.();
         if (l.pending.get(id)?.policyCurrent?.() === false || (claim && (claim.digest !== record.request.digest || actionDigest(claim.binding) !== actionDigest(record.request.binding))) || !active() || abort?.signal.aborted || !current || current.backend !== record.request.binding.backend ||
-            (current.codexAccount ?? null) !== (record.request.binding.account ?? null)) {
+            (threadAccount(current) ?? null) !== (record.request.binding.account ?? null)) {
           this.withdraw(threadId, l, id, "ended");
           return;
         }

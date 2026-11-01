@@ -11,14 +11,16 @@ export class ClaudeLogin {
 
   cancel(): void { this.cancelCurrent?.(); }
 
-  async run(bin: string): Promise<ClaudeLoginResult> {
+  /** `env` adds to the CLI's environment: a Modex Claude profile passes its CLAUDE_CONFIG_DIR here. */
+  async run(bin: string, env: NodeJS.ProcessEnv = {}): Promise<ClaudeLoginResult> {
+    const childEnv = { ...process.env, ...env };
     if (this.running) return { status: "busy", detail: "A Claude sign-in is already running." };
     this.running = true;
     let cancelled = false;
     this.cancelCurrent = () => { cancelled = true; this.child?.kill(); };
     try {
       // Older CLIs may interpret unknown subcommands as prompts: require structured status first.
-      const check = await probe(bin, ["auth", "status"], this.spawnImpl);
+      const check = await probe(bin, ["auth", "status"], this.spawnImpl, 5000, childEnv);
       if (cancelled) return { status: "cancelled", detail: "Sign-in cancelled. CLI credentials may already have changed; refresh status." };
       let account: { loggedIn?: unknown };
       try { account = JSON.parse(check.output); } catch { return { status: "unsupported", detail: "Account commands unavailable. Update Claude Code or sign in from its terminal." }; }
@@ -35,7 +37,7 @@ export class ClaudeLogin {
           resolve(result);
         };
         try {
-          const child = this.spawnImpl(bin, ["auth", "login"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: cliEnvironment(bin) });
+          const child = this.spawnImpl(bin, ["auth", "login"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: cliEnvironment(bin, childEnv) });
           this.child = child;
           child.stdout?.resume();
           child.stderr?.resume();
@@ -46,7 +48,7 @@ export class ClaudeLogin {
         } catch { finish("failed"); }
       });
       if (exit !== "completed") return { status: exit, detail: exit === "cancelled" ? "Sign-in cancelled. Refresh account status before retrying." : exit === "timeout" ? "Sign-in timed out. Use claude auth login in a terminal if browser login needs manual input." : "Sign-in failed. Use claude auth login in a terminal for interactive recovery." };
-      const confirmed = await probe(bin, ["auth", "status"], this.spawnImpl);
+      const confirmed = await probe(bin, ["auth", "status"], this.spawnImpl, 5000, childEnv);
       try {
         if (!confirmed.failure && confirmed.code === 0 && JSON.parse(confirmed.output).loggedIn === true) return { status: "authenticated", detail: "Claude sign-in confirmed. Model access remains unverified." };
       } catch { /* Never report success from opening a browser or an exit code alone. */ }

@@ -94,6 +94,8 @@ export interface Thread {
   lastTurn?: LastTurn;
   /** Opaque identity binding; never credentials. Older Codex handles belong to CLI auth. */
   codexAccount?: string;
+  /** Opaque Modex Claude account binding (engine/claude-accounts.ts), "cli" for Claude Code's own login; never credentials. */
+  claudeAccount?: string;
   status: ThreadStatus;
   /** Absent = ask. */
   approvals?: ApprovalPolicy;
@@ -515,6 +517,17 @@ export interface ChatGPTStatus {
   detail: string;
 }
 
+/** Modex's Claude account pool. Gateway keys and profile credentials never cross IPC. */
+export interface ClaudeAccountsStatus {
+  available: boolean;
+  /** The account new Claude conversations start on; null is Claude Code's own login. */
+  active: string | null;
+  /** Move new conversations to the next account when one reports a usage limit. */
+  rotate: boolean;
+  accounts: { id: string; kind: "profile" | "gateway"; label: string; provider?: "orcarouter"; model?: string; signedIn: boolean; detail: string; cooldownUntil?: string }[];
+  detail: string;
+}
+
 export interface ClaudeLoginResult {
   status: "authenticated" | "busy" | "unsupported" | "failed" | "timeout" | "cancelled";
   detail: string;
@@ -644,6 +657,15 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "chatgpt:signOut": { req: { accountId: string }; res: { status: ChatGPTStatus; detail: string } };
   "claude:login": { req: undefined; res: ClaudeLoginResult };
   "claude:cancelLogin": { req: undefined; res: void };
+  "claudeAccounts:status": { req: undefined; res: ClaudeAccountsStatus };
+  "claudeAccounts:addProfile": { req: { label: string }; res: ClaudeAccountsStatus };
+  /** The key goes to OS-encrypted storage in main; it is never returned. */
+  "claudeAccounts:addGateway": { req: { label: string; key: string; model?: string }; res: ClaudeAccountsStatus };
+  "claudeAccounts:select": { req: { accountId: string | null }; res: ClaudeAccountsStatus };
+  "claudeAccounts:rotate": { req: { rotate: boolean }; res: ClaudeAccountsStatus };
+  "claudeAccounts:remove": { req: { accountId: string }; res: ClaudeAccountsStatus };
+  /** Claude Code's own browser login, run in the profile's configuration directory. */
+  "claudeAccounts:login": { req: { accountId: string }; res: { status: ClaudeAccountsStatus; result: ClaudeLoginResult } };
   "companion:status": { req: undefined; res: CompanionStatus };
   "companion:start": { req: undefined; res: CompanionStatus };
   "companion:stop": { req: undefined; res: CompanionStatus };

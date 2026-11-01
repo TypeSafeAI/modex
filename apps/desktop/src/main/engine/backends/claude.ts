@@ -67,11 +67,11 @@ export function confinedEnvironment(bin: string, env: NodeJS.ProcessEnv = proces
  */
 export class ClaudeBackend implements Backend {
   readonly id = "claude" as const;
-  private get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
+  protected get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
   constructor(
-    private readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
-    private readonly spawnImpl = cliSpawn,
+    protected readonly executable: CliExecutable = process.env.MODEX_CLAUDE_BIN ?? "claude",
+    protected readonly spawnImpl = cliSpawn,
     /** How long a turn waits on background work; tests shorten these. */
     private readonly timing: { backgroundIdleMs?: number; backgroundCapMs?: number; interruptGraceMs?: number; killGraceMs?: number; exitConfirmMs?: number; drainMs?: number } = {},
   ) {}
@@ -110,6 +110,11 @@ export class ClaudeBackend implements Backend {
   }
 
   async dispose(): Promise<void> {}
+
+  /** The environment an ordinary turn's child starts with. AccountClaudeBackend adds the turn's account. */
+  protected turnEnvironment(bin: string, _opts: TurnOptions): NodeJS.ProcessEnv {
+    return cliEnvironment(bin);
+  }
 
   /** CLI argv for a turn. Exported for tests. */
   static args(opts: TurnOptions): string[] {
@@ -154,7 +159,7 @@ export class ClaudeBackend implements Backend {
       const argv = ClaudeBackend.args(opts);
       try {
         bin = this.bin;
-        child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.confinement ? confinedEnvironment(bin) : cliEnvironment(bin) });
+        child = this.spawnImpl(bin, argv, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.confinement ? confinedEnvironment(bin) : this.turnEnvironment(bin, opts) });
       } catch (err) {
         return resolve({ status: "failed", error: `could not start ${bin}: ${(err as Error).message}`, detail: { bin, argv: reportArgv(argv), spawnError: (err as Error).message } });
       }

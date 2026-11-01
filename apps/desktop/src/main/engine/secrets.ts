@@ -19,7 +19,8 @@ export interface Cipher {
 }
 
 /** `local_connection:<id>` holds an optional token for one local-model server profile (#378). */
-export type SecretName = "typesafe_api_key" | `local_connection:${string}`;
+/** `claude_account:<id>` holds one Claude gateway account's key (engine/claude-accounts.ts). */
+export type SecretName = "typesafe_api_key" | `local_connection:${string}` | `claude_account:${string}`;
 
 interface SecretsFile {
   version: 1;
