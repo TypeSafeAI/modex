@@ -18,11 +18,13 @@ async function open(hostile = false, mode = "normal") {
       const ready = (value: unknown) => ({ state: "ready", value, fetchedAt: NOW });
       const failed = { state: "unavailable", reason: "offline", fetchedAt: NOW };
       const overview = structuredClone(req.key?.number === 91 ? R4.overview : R1.overview);
+      if (g.__overviewMode === "renamed") overview.locator = { ...overview.locator, owner: "current-org", repo: "lending-renamed" };
       if (hostile) overview.body = '# Hostile fixture\n\n<script>window.__pwned=true</script>\n\n[bad](javascript:alert(1))\n\n![remote](https://invalid.example/tracker.svg)\n\n[Safe](https://example.com/path)';
       let result: unknown = failed;
       if (req.op === "connection") result = R1.connection;
       if (req.op === "inbox") result = R1.inbox;
       if (req.op === "overview") result = ready(overview);
+      if (req.op === "overview" && g.__overviewMode === "overview-unavailable") result = failed;
       if (req.op === "checks") result = g.__overviewMode === "stale" && R1.checks.state !== "unavailable" ? { ...R1.checks, state: "stale", reason: "offline" } : R1.checks;
       if (req.op === "stack") result = R1.stack;
       if (req.op === "activity" && R2.activity.state !== "unavailable") {
@@ -46,6 +48,25 @@ async function open(hostile = false, mode = "normal") {
   await page.locator('[data-testid="code-review-row"][data-pr="example-org/lending#73"]').first().click();
 }
 test.afterEach(async () => { await app?.close(); });
+test("the loaded repository identity updates header and links and survives an unavailable refresh", async () => {
+  await open(false, "renamed");
+  const id = page.getByTestId("code-review-pr-id");
+  await expect(id).toHaveText("lending-renamed #73");
+  await expect(id).toHaveAttribute("title", "current-org/lending-renamed #73");
+  const url = "https://github.com/current-org/lending-renamed/pull/73";
+  await expect(page.getByTestId("code-review-open-github")).toHaveAttribute("href", url);
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler("clipboard:write");
+    ipcMain.handle("clipboard:write", (_event, request) => { (globalThis as any).__copiedPrLink = request.text; });
+  });
+  await page.getByTestId("code-review-copy-link").click();
+  await expect.poll(() => app.evaluate(() => (globalThis as any).__copiedPrLink)).toBe(url);
+  await app.evaluate(() => { (globalThis as any).__overviewMode = "overview-unavailable"; });
+  await refresh();
+  await expect(page.getByTestId("code-review-overview-error")).toBeVisible();
+  await expect(id).toHaveText("lending-renamed #73");
+  await expect(page.getByTestId("code-review-open-github")).toHaveAttribute("href", url);
+});
 test("R1 metadata and R2 pagination stay truthful, deduplicated and keyboard accessible", async () => {
   await open();
   await expect(page.getByRole("heading", { name: R1.overview.title, exact: true })).toBeVisible();
