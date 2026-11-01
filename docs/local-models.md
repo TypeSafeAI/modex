@@ -113,7 +113,7 @@ other runtimes and resume across restarts are unqualified.
 
 ## LM-5 slice 1: effective destination and managed policy
 
-Status: in `lm3-codex`'s successor branch `lm5-policy` (#380); main-only, no UI. Before a local child opens or
+Status: on `main` through #423 (`c23e6be`, which carried #424; #380), no UI, local execution still unadmitted. Before a local child opens or
 resumes a thread, main reads the child's own `config/read` (effective configuration, the layer that set each
 key, and every layer's contents and hash) and `configRequirements/read`, and admits the child only when every
 governed key (destination, model, context, tools, plugins, hooks, instructions) comes from Modex's session flags,
@@ -180,6 +180,24 @@ before any process starts:
 
 A model that isn't marked stays *unverified*, not local: loopback alone doesn't prove where inference runs, and
 an unknown downstream route is still unknown. Evidence: [LM-5 cloud-routed models](reviews/2026-10-30-lm5-cloud-routed-models.md).
+
+## LM-5: failures, compaction and entry points (fixture and wire level)
+
+Status: in review (#380), local execution still unadmitted. Against the installed codex-cli 0.166.0 and a scripted
+loopback Responses server:
+
+- **Compaction (AC1).** Native auto-compaction runs inline. It goes to the configured server's `/v1/responses` for
+  the selected model with the connection's token. The keys that change what it sends or when it runs
+  (`compact_prompt` and the compaction thresholds) are governed: only Modex's session flags may set them.
+- **Failures (AC4).** Overflow, OOM 500, 503, a dropped stream, a killed child and Stop each end failed or
+  interrupted. Nothing is retried (`request_max_retries` and `stream_max_retries` must both be 0), the model never
+  changes, and a tool that ran is never run again. A local 500 is reported as the local server's error, not as
+  Codex's cloud "high demand" text.
+- **Capacity (AC3).** Profiles for one host and port share one slot; a stopped wait opens nothing and sends nothing.
+- **Entry points (AC5).** Only this Mac's own window may select, change or clear a local target. A paired desktop,
+  the phone or a caller that names no client cannot.
+
+Evidence: [LM-5 fixtures](reviews/2026-11-01-lm5-fixtures.md).
 
 ## Accepted boundary and follow-up runtime availability
 

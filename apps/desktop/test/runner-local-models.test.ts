@@ -42,7 +42,7 @@ async function setup(localResult: (sink: TurnSink) => Promise<{ status: "complet
   const runner = new ThreadRunner(options as unknown as RunnerOptions);
   const thread = await runner.createThread(store.addProject(gitRepo()).id, { backend: "codex", model: "gpt-6-astra", auto: true });
   const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: connection.id, revision: 1 }, id: MODEL } };
-  const select = () => runner.updateThread(thread.id, { localTarget: target, localContextTokens: 32768 });
+  const select = () => runner.updateThread(thread.id, { localTarget: target, localContextTokens: 32768 }, { by: "desktop" });
   const hold = () => { release = () => {}; };
   return { jevRequests, store, connections, connection, runner, thread, target, select, turns, counts, hold, release: () => release?.() };
 }
@@ -152,7 +152,7 @@ test("a forged, stale or unloadable persisted target never reaches a cloud backe
       // Admission is closed without local execution: selecting a target is refused before anything is written,
       // and a persisted target refuses at the turn rather than routing to a cloud backend.
       h.store.updateThread(h.thread.id, { localTarget: undefined, localContextTokens: undefined, model: "gpt-6-astra", status: "idle" });
-      assert.throws(() => runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 32768 }), /Local execution is unavailable/);
+      assert.throws(() => runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 32768 }, { by: "desktop" }), /Local execution is unavailable/);
       assert.equal(h.store.thread(h.thread.id)!.localTarget, undefined, "a refused selection persists nothing");
       assert.equal(h.store.thread(h.thread.id)!.model, "gpt-6-astra");
       h.store.updateThread(h.thread.id, { localTarget: h.target, model: MODEL, status: "idle" });
@@ -168,7 +168,7 @@ test("clearing the target drops the native handle and returns to the default clo
   try {
     h.select();
     h.store.updateThread(h.thread.id, { sessionHandle: "native-1", codexAccount: "old-account" });
-    const cleared = h.runner.updateThread(h.thread.id, { localTarget: null });
+    const cleared = h.runner.updateThread(h.thread.id, { localTarget: null }, { by: "desktop" });
     assert.equal(cleared.localTarget, undefined);
     assert.equal(cleared.localContextTokens, undefined);
     assert.equal(cleared.sessionHandle, undefined);
@@ -178,8 +178,8 @@ test("clearing the target drops the native handle and returns to the default clo
     const ignored = h.runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 32768, title: "from phone" }, { by: "paired-desktop" });
     assert.equal(ignored.localTarget, undefined);
     assert.equal(ignored.title, "from phone");
-    assert.throws(() => h.runner.updateThread(h.thread.id, { localTarget: { ...h.target, model: { ...h.target.model, id: "" } } }), /Invalid local target/);
-    assert.throws(() => h.runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 10 }), /context window/);
+    assert.throws(() => h.runner.updateThread(h.thread.id, { localTarget: { ...h.target, model: { ...h.target.model, id: "" } } }, { by: "desktop" }), /Invalid local target/);
+    assert.throws(() => h.runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 10 }, { by: "desktop" }), /context window/);
     assert.equal(h.store.thread(h.thread.id)!.localTarget, undefined, "a refused selection changes nothing");
   } finally { await h.runner.dispose(); }
 });
@@ -191,8 +191,8 @@ test("while a local turn runs its settings are locked, and a second Stop force-s
     h.hold();
     const turn = h.runner.send(h.thread.id, "long");
     while (h.counts.local < 1) await new Promise(r => setTimeout(r, 5));
-    assert.throws(() => h.runner.updateThread(h.thread.id, { localTarget: null }), /Wait for the local turn/);
-    assert.throws(() => h.runner.updateThread(h.thread.id, { localContextTokens: 8192 }), /Wait for the local turn/);
+    assert.throws(() => h.runner.updateThread(h.thread.id, { localTarget: null }, { by: "desktop" }), /Wait for the local turn/);
+    assert.throws(() => h.runner.updateThread(h.thread.id, { localContextTokens: 8192 }, { by: "desktop" }), /Wait for the local turn/);
     h.runner.stop(h.thread.id);
     h.runner.stop(h.thread.id);
     assert.equal(h.counts.localForceStops, 1);
@@ -292,4 +292,35 @@ test("a local natural-language rule waits for a human without asking Jev", { tim
     await turn;
     await h.runner.dispose();
   }
+});
+
+test("AC5: only this Mac's own window selects or clears a local target; a paired desktop, the phone or a caller naming no client cannot set, clear or relax one", async () => {
+  const h = await setup();
+  try {
+    // On a cloud thread, nobody but this Mac's window may select a target.
+    for (const by of [undefined, "paired-desktop", "phone", "browser"]) {
+      const ignored = h.runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 32768, title: `from ${by}` }, { by });
+      assert.equal(ignored.localTarget, undefined, `a patch from ${by ?? "no client"} selected a local target`);
+      assert.equal(ignored.title, `from ${by}`, "the rest of the patch still applies");
+    }
+    h.runner.updateThread(h.thread.id, { localTarget: h.target, localContextTokens: 32768 }, { by: "desktop" });
+    // On a local thread, nobody else may clear it to cloud, change its window, or relax its pins.
+    for (const by of [undefined, "paired-desktop", "phone", "browser"]) {
+      h.runner.updateThread(h.thread.id, { localTarget: null }, { by });
+      h.runner.updateThread(h.thread.id, { localContextTokens: 4096 }, { by });
+      const after = h.store.thread(h.thread.id)!;
+      assert.deepEqual(after.localTarget, h.target, `a patch from ${by ?? "no client"} cleared the local target`);
+      assert.equal(after.localContextTokens, 32768, `a patch from ${by ?? "no client"} changed the context window`);
+      for (const patch of [{ auto: true }, { plan: true }, { model: "gpt-6-astra" }, { backend: "claude" as const }, { effort: "high" as const }]) {
+        assert.throws(() => h.runner.updateThread(h.thread.id, patch, { by }), /different local target|Local threads run without Auto/, `${JSON.stringify(patch)} from ${by ?? "no client"}`);
+      }
+    }
+    assert.equal(h.store.thread(h.thread.id)!.model, MODEL);
+    // A retry of a thread whose persisted target went stale is checked again, like a send.
+    await h.runner.send(h.thread.id, "first");
+    h.store.updateThread(h.thread.id, { localTarget: { ...h.target, model: { ...h.target.model, connection: { id: h.connection.id, revision: 99 } } } });
+    await h.runner.retry(h.thread.id);
+    assert.deepEqual({ cloud: h.counts.cloud, local: h.counts.local }, { cloud: 0, local: 1 }, "the stale retry reached neither backend");
+    assert.ok(h.store.items(h.thread.id).some(i => i.kind === "notice" && /Local execution stopped: .*changed or was deleted/.test(i.text)));
+  } finally { await h.runner.dispose(); }
 });
