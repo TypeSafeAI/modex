@@ -140,7 +140,7 @@ The evidence above was taken on Claude Code 2.1.312. On `main` at `0a8c513` (Mac
   controls still fire without the candidate flags. Codex's read-only profile still permits shell, outside reads
   and the inherited synthetic token, so Codex stays out of reviews.
 - `e2e/code-review-agent.spec.ts`: 6 of 6 passed, inside a focused 51 of 51 Code Review run; see the
-  [2026-11-01 matrix refresh](2026-11-01-cr8-acceptance-matrix.md#environments).
+  [2026-11-01 matrix refresh](2026-11-01-cr8-acceptance-matrix.md#environments-added-since-the-baseline).
 
 This is still fixture evidence: a scripted local provider, a synthetic key, a disposable home. It says what the
 2.1.316 CLI enforces for these argv; it is not a live run. Logs: `~/.claude/task-evidence/lane-c-2026-11-01/`

@@ -256,5 +256,5 @@ Playwright wipes it.
 - **SHA:** `main` `0a8c513`. This page changes docs only.
 - **VoiceOver seed on `0a8c513`:** `seed.mjs` ran, and its printed launch line opened the app against the seeded
   home (user data under `<seed>/home/electron`). The app's provider probe reached only the recorder
-  (`provider-calls.log`: `claude --version`), and `gh-calls.log` stayed empty until Code Review was opened.
+  (`provider-calls.log`: `claude --version`), and `gh-calls.log` stayed empty (Code Review was not opened in this launch check).
 - **Next action:** Val names the two repositories (#325, #326) and answers decisions 1, 5, 6 and 7 on #319.
