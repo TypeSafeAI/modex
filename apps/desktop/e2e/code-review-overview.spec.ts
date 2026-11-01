@@ -46,6 +46,35 @@ async function open(hostile = false, mode = "normal") {
   await page.locator('[data-testid="code-review-row"][data-pr="example-org/lending#73"]').first().click();
 }
 test.afterEach(async () => { await app?.close(); });
+test("activity opening and comment link preserve their identity and keyboard focus", async () => {
+  await open();
+  await app.evaluate(({ ipcMain }) => {
+    (globalThis as any).__copiedCommentLinks = [];
+    ipcMain.removeHandler("clipboard:write");
+    ipcMain.handle("clipboard:write", (_event, request) => {
+      (globalThis as any).__copiedCommentLinks.push(request.text);
+    });
+  });
+  const opening = page.locator('[data-activity-id="opened:opened-73"]');
+  await expect(opening.locator("strong")).toHaveText("ada-fixture");
+  await expect(opening).toContainText("opened this pull request");
+  await expect(opening.locator("time")).toHaveAttribute("datetime", "2026-10-18T15:44:00Z");
+  const card = page.locator('[data-activity-id="comment:comment-9001"]');
+  await expect(card.locator("header strong")).toHaveText("preview-bot[bot]");
+  await expect(card).toContainText("Comment content");
+  const actions = card.getByRole("button", { name: "Comment actions", exact: true });
+  await actions.focus();
+  await page.keyboard.press("Enter");
+  const copy = page.getByRole("menuitem", { name: "Copy comment link", exact: true });
+  await copy.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => app.evaluate(() => (globalThis as any).__copiedCommentLinks)).toEqual([
+    "https://github.com/example-org/lending/pull/73#issuecomment-9001",
+  ]);
+  await expect(card.getByRole("status")).toHaveText("Comment link copied");
+  await expect(actions).toBeFocused();
+  await expect(page.getByRole("menu", { name: "Comment actions", exact: true })).toHaveCount(0);
+});
 test("R1 metadata and R2 pagination stay truthful, deduplicated and keyboard accessible", async () => {
   await open();
   await expect(page.getByRole("heading", { name: R1.overview.title, exact: true })).toBeVisible();
