@@ -48,6 +48,9 @@ import { ThreadRunner } from "./engine/runner.js";
 import { WorkOSAuth, workosConfig } from "./engine/workos-auth.js";
 import { ChatGPTAuth } from "./engine/chatgpt-auth.js";
 import { AccountCodexBackend } from "./engine/backends/account-codex.js";
+import { AccountClaudeBackend, accountHealth } from "./engine/backends/account-claude.js";
+import { ClaudeAccounts } from "./engine/claude-accounts.js";
+import { cliSpawn } from "./engine/backends/health.js";
 import { ClaudeLogin } from "./engine/claude-login.js";
 import * as gitx from "./engine/git.js";
 import { listWorkspaceFiles, readWorkspaceFile } from "./engine/workspace-files.js";
@@ -230,6 +233,9 @@ const modexAccount = new WorkOSAuth({ home, cipher: chatgptCipher, config: worko
 const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
 const sessionCliSettings = store.settings;
 const accountCodex = new AccountCodexBackend(chatgpt, () => resolveCli("codex", sessionCliSettings.codex_bin));
+// Modex's own Claude account pool: separate Claude Code profiles and OrcaRouter gateway keys, with usage-limit rotation.
+const claudeAccounts = new ClaudeAccounts(home, secrets);
+const accountClaude = new AccountClaudeBackend(claudeAccounts, () => resolveCli("claude", sessionCliSettings.claude_bin));
 process.env.MODEX_VERSION = app.getVersion();
 const attachments = new AttachmentStore(path.join(home, "attachments"), {
   authorizeDraft: owner => owner.kind === "project" ? !!store.project(owner.projectId) : !!store.thread(owner.threadId) && !store.thread(owner.threadId)!.retired,
@@ -239,7 +245,7 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
 const usageLedger = new UsageLedger(store.dir);
-const runner = new ThreadRunner({ beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex }, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const runner = new ThreadRunner({ beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex, claude: accountClaude }, claudeAccounts, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
 let mediaInitializationError: string | undefined;
 try { media = new Media({ home, store, runner: () => runner, window: () => win, pathReady, offline: Boolean(demo || process.env.MODEX_E2E), changed: kind => {
   if (win && !win.isDestroyed()) win.webContents.send("media:event", { kind });
@@ -926,6 +932,30 @@ const claudeLogin = new ClaudeLogin();
 SPAWNS.add("claude:login");
 handle("claude:login", () => claudeLogin.run(resolveCli("claude", sessionCliSettings.claude_bin)));
 handle("claude:cancelLogin", () => claudeLogin.cancel());
+// Claude account pool: local desktop authority only. Keys go in and never come back out.
+const claudeAccountsStatus = async () => {
+  const bin = resolveCli("claude", sessionCliSettings.claude_bin);
+  const checks = await Promise.all(claudeAccounts.status().accounts.map(async (account) => {
+    const h = await accountHealth(bin, cliSpawn, claudeAccounts, account.id);
+    return [account.id, { signedIn: h.authentication === "authenticated", detail: h.detail }] as const;
+  }));
+  return claudeAccounts.status(Object.fromEntries(checks));
+};
+const claudeAccountIdle = (accountId: string) => { if (runner.accountInUse("claude", accountId)) throw new Error("Wait for this account's running Claude turns to finish."); };
+handle("claudeAccounts:status", claudeAccountsStatus, { localOnly: true });
+handle("claudeAccounts:addProfile", ({ label }) => { claudeAccounts.addProfile(String(label ?? "")); return claudeAccountsStatus(); }, { localOnly: true });
+handle("claudeAccounts:addGateway", ({ label, key, model }) => { claudeAccounts.addGateway(String(label ?? ""), String(key ?? ""), typeof model === "string" ? model : undefined); return claudeAccountsStatus(); }, { localOnly: true });
+handle("claudeAccounts:select", ({ accountId }) => { claudeAccounts.select(typeof accountId === "string" ? accountId : null); return claudeAccountsStatus(); }, { localOnly: true });
+handle("claudeAccounts:rotate", ({ rotate }) => { claudeAccounts.setRotation(rotate === true); return claudeAccountsStatus(); }, { localOnly: true });
+handle("claudeAccounts:remove", ({ accountId }) => { claudeAccountIdle(String(accountId)); claudeAccounts.remove(String(accountId)); return claudeAccountsStatus(); }, { localOnly: true });
+for (const channel of ["claudeAccounts:status", "claudeAccounts:addProfile", "claudeAccounts:addGateway", "claudeAccounts:select", "claudeAccounts:rotate", "claudeAccounts:remove", "claudeAccounts:login"] as const) SPAWNS.add(channel);
+handle("claudeAccounts:login", async ({ accountId }) => {
+  const account = claudeAccounts.account(String(accountId));
+  if (account?.kind !== "profile") throw new Error("Only a Claude profile signs in through Claude Code. Gateway accounts use their key.");
+  claudeAccountIdle(account.id);
+  const result = await claudeLogin.run(resolveCli("claude", sessionCliSettings.claude_bin), claudeAccounts.environment(account.id).env);
+  return { status: await claudeAccountsStatus(), result };
+}, { localOnly: true });
 handle("usage:list", (req) => usageLedger.list(req ?? {}), { localOnly: true });
 handle("analytics:show", ({ bounds }) => workspaceAnalytics?.show(bounds) ?? null, { localOnly: true });
 handle("routing:status", () => runner.router.status());

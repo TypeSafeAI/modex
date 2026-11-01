@@ -171,6 +171,11 @@ export function registerCommands(handle: RegisterCommand, {
   handle("chatgpt:signOut", () => ({ status: unavailable(), detail: "Manage ChatGPT accounts in the Modex desktop app." }));
   handle("claude:login", () => ({ status: "unsupported", detail: "Sign in to Claude from a terminal on this Mac." }));
   handle("claude:cancelLogin", () => {});
+  const claudeAccountsUnavailable = () => ({ available: false, active: null, rotate: false, accounts: [], detail: "Manage Claude accounts in the Modex desktop app." });
+  handle("claudeAccounts:status", claudeAccountsUnavailable);
+  for (const channel of ["claudeAccounts:addProfile", "claudeAccounts:addGateway", "claudeAccounts:select", "claudeAccounts:rotate", "claudeAccounts:remove", "claudeAccounts:login"] as const) {
+    handle(channel, () => { throw new Error("Manage Claude accounts in the Modex desktop app."); });
+  }
   handle("shell:openPath", ({ path: p }) => openPath(p));
   handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
   handle("terminal:open", ({ threadId, cols, rows }) => terminals.open(threadId, cols, rows));
