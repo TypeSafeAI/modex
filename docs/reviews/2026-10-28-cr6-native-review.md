@@ -122,3 +122,86 @@ The second full desktop E2E run finished with 468 passed, seven skipped and two 
 On main-based repair `ba23f5c195e41ab91b345e43df775af9de82ae9c`, build, unit tests (2,196 passed, 23 skipped) and typecheck passed. Full desktop E2E finished with 469 passed, seven skipped and one failed (21.0 minutes); the site stage did not run. Both the repaired crash case and unchanged Canvas case passed. The IPC case lost its page during the inbox request after a successful connection; the trace proves cleanup began afterward, but contains no process-exit or renderer-crash evidence. Its trace is preserved in `cr6-main-e2e-failure/`. The fixture now attaches bounded lifecycle events and stderr before cleanup without changing assertions or timeouts. Independent review found no blocking issue in that diagnostic change; three isolated repetitions passed (14.5 seconds). These passes do not establish the cause of the original closure or clear the failed full-suite result. Raw diagnostic stderr must be inspected before any public sharing.
 
 On diagnostic source `4c5eaee2472e1192c8030ead32b920ab276ad12f`, the fresh root `pnpm test:e2e` run exited zero: 470 desktop tests passed, seven skipped (23.6 minutes), followed by all seven site tests passing (12.8 seconds). The crash, Canvas and IPC cases passed. The complete log is preserved as `cr6-diagnostics-full-e2e.log` outside the worktree. This is passing full-suite evidence for that source; it does not establish the causes of the earlier Canvas and IPC failures or replace their preserved evidence. Production source is unchanged from the build, unit and typecheck checkpoint above. Hosted checks, protected merge and live-provider/human acceptance remain separate gates.
+
+## Re-run on Claude Code 2.1.316 (2026-11-01)
+
+The evidence above was taken on Claude Code 2.1.312. On `main` at `0a8c513` (Mac with macOS 27.2, Darwin
+27.2.0, Node v24.22.0, gh 2.102.0), with the installed **Claude Code 2.1.316** and **codex-cli 0.166.0**:
+
+- `pnpm -s run build:main`, then `node --test --test-force-exit dist/test/code-review-*.test.js
+  dist/test/claude-backend.test.js dist/test/desktop-service-drain.test.js`: 224 tests, 223 passed, 0 failed,
+  1 skipped (a Windows-only admission case).
+- `MODEX_CR6_NATIVE=1 node --test --test-force-exit test/code-review-isolation.native.test.mjs`: **6 of 6
+  passed, 0 skipped**, every case on `2.1.316 (Claude Code)` and `codex-cli 0.166.0`. The production-argv case
+  (`REVIEW_CONFINEMENT_ARGS` from the build) again advertised exactly `["Read"]`; the injected `Bash`, `Write`
+  and `WebFetch` answered "No such tool available … disabled for this session" and `mcp__sentinel__write` "No
+  such tool available"; the outside file and the symlink were refused by `--restricted`; the selected file
+  read; no write, hook or MCP marker; two provider turns on the loopback fixture. The hook and MCP positive
+  controls still fire without the candidate flags. Codex's read-only profile still permits shell, outside reads
+  and the inherited synthetic token, so Codex stays out of reviews.
+- `e2e/code-review-agent.spec.ts` with the other Code Review specs: see the
+  [2026-11-01 matrix refresh](2026-11-01-cr8-acceptance-matrix.md#environments).
+
+This is still fixture evidence: a scripted local provider, a synthetic key, a disposable home. It says what the
+2.1.316 CLI enforces for these argv; it is not a live run. Logs: `~/.claude/task-evidence/lane-c-2026-11-01/`
+(`cr-unit.log`, `cr6-native-2.1.316.log`, `versions.txt`).
+
+## Live smoke procedure (#325 AC6; not run)
+
+Runs only after Val names a repository and a pull request on #325 and says go. It uses Val's own `claude`
+login and Val's own `gh` login read-only; it makes no GitHub write and runs no Codex. Pick a small PR (a few
+files) so the provider cost stays small.
+
+**Setup**, from `apps/desktop` in a worktree at the SHA under test, after `pnpm build`:
+
+```sh
+SMOKE=~/.claude/task-evidence/cr6-live-smoke-$(date -u +%Y-%m-%d); mkdir -p "$SMOKE/bin" "$SMOKE/home"
+REAL_GH=$(command -v gh); REAL_CLAUDE=$(command -v claude)
+# Pass-through wrappers. They log argv only (never the environment) and the snapshot's file list, then run the
+# real CLI. Paths are written in, because the confined environment strips MODEX_* variables.
+cat > "$SMOKE/bin/gh" <<SH
+#!/bin/sh
+printf '%s\t%s\n' "\$(date -u +%FT%TZ)" "\$*" >> "$SMOKE/gh-argv.log"
+exec "$REAL_GH" "\$@"
+SH
+cat > "$SMOKE/bin/claude" <<SH
+#!/bin/sh
+printf '%s\tcwd=%s\t%s\n' "\$(date -u +%FT%TZ)" "\$PWD" "\$*" >> "$SMOKE/claude-argv.log"
+case "\$1" in -p) find . -type f | sort > "$SMOKE/snapshot-files-\$\$.txt" ;; esac
+exec "$REAL_CLAUDE" "\$@"
+SH
+chmod 755 "$SMOKE/bin/gh" "$SMOKE/bin/claude"
+gh api user --jq .login > "$SMOKE/login-before.txt"; claude --version > "$SMOKE/claude-version.txt"
+env -u MODEX_E2E -u MODEX_DEMO MODEX_HOME="$SMOKE/home" MODEX_NO_LOGIN_PATH=1 \
+  PATH="$SMOKE/bin:$PATH" npx electron . 2> "$SMOKE/electron-stderr.log"
+```
+
+In the app: DevTools → `localStorage.setItem("modex.codeReview", "on")` → reload (this throwaway home only);
+Code Review → paste the PR link Val named → **Review with Claude** → read the panel's provider disclosure →
+**Start** once. Wait for the reply. Then open the instructions gear and note the version shown.
+
+**Capture** into `$SMOKE/receipt.md`:
+
+1. The argv the app used: the `-p` line in `claude-argv.log`. It must contain `--safe-mode --restricted --tools
+   Read --strict-mcp-config --mcp-config {"mcpServers":{}} --disable-slash-commands --setting-sources
+   --permission-mode dontAsk --permission-prompts none --no-session-persistence --max-turns 60` and
+   `--append-system-prompt`, its `cwd` must be under `$SMOKE/home/review-agent/runs/<id>/snapshot`, and there
+   must be no `--permission-prompt-tool`, `--resume`, `--add-dir` or MCP server.
+2. The snapshot's file list (`snapshot-files-*.txt`), compared with the PR's changed files
+   (`gh api repos/<o>/<r>/pulls/<n>/files --paginate --jq '.[].filename'`), and the omissions the panel lists.
+3. The reply as shown, the findings with their anchors ("In the diff" or unverified), and the run record from
+   `$SMOKE/home/review-agent/state.json`: head SHA, instruction version, outcome.
+4. That the snapshot directory is gone after the run (`ls "$SMOKE/home/review-agent/runs"`).
+
+**Closing checks:**
+
+```sh
+grep -E -- '--method (POST|PUT|PATCH|DELETE)' "$SMOKE/gh-argv.log" && echo WRITE-FOUND || echo no-github-write
+gh api user --jq .login | diff - "$SMOKE/login-before.txt" && echo login-unchanged
+gh auth token | grep -rlF -f - "$SMOKE/home" "$SMOKE/claude-argv.log" "$SMOKE/electron-stderr.log" && echo TOKEN-FOUND || echo token-absent
+```
+
+Do not press **Add to review draft** → submit: findings reach GitHub only through CR-7's previewed draft, and
+that belongs to the [CR-7 canary](2026-11-01-cr7-live-canary.md) on a disposable repository, never here. The
+receipt (argv, file list, reply, findings, record, checks) goes into a dated `docs/reviews/` page; strip the
+PR's private content first if the repository is private.

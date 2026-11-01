@@ -87,7 +87,10 @@ repository authorized by Val yet, and no real PR, comment or review was created.
 
 ## Open
 
-- A live write against a disposable repository Val names.
-- Merge (increment 2) and decisions 2–4 (increment 3).
+- A live write against a disposable repository Val names. The procedure is
+  [2026-11-01-cr7-live-canary.md](2026-11-01-cr7-live-canary.md); it has not run.
+- ~~Merge (increment 2) and decisions 2–4 (increment 3).~~ Both landed with this increment through #416
+  (`b3aad0d`, 2026-10-27): see [2026-10-25-cr7-merge.md](2026-10-25-cr7-merge.md) and
+  [2026-10-25-cr7-pr-actions.md](2026-10-25-cr7-pr-actions.md). (Corrected 2026-11-01.)
 - The intent marker is visible in the Markdown source of the posted text.
 - A read-back matches a review's body, author and head, not each of its line comments.
