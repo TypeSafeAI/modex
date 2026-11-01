@@ -362,3 +362,60 @@ test("a model reroute on a local turn interrupts it and reports it failed, never
     assert.ok(events.some(e => e.startsWith("notice:error:") && /rerouted/.test(e)), "the reroute is reported in the transcript");
   } finally { await h.execution.dispose(); }
 });
+
+test("a local server's internal error is reported as the local server's, not as a cloud service under high demand, and is never retried", async () => {
+  const h = setup();
+  try {
+    const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    // codex-cli 0.166.0's own words for any HTTP 500, observed against a loopback fixture on 2026-11-01.
+    const error = { message: "We’re currently experiencing high demand, which may cause temporary errors.", codexErrorInfo: "internalServerError", additionalDetails: null };
+    child.proc.emitLine({ method: "error", params: { threadId: "native-1", turnId: "turn", error, willRetry: false } });
+    child.proc.emitLine({ method: "turn/completed", params: { threadId: "native-1", turn: { id: "turn", status: "failed", error } } });
+    const result = await run;
+    assert.equal(result.status, "failed");
+    assert.doesNotMatch(result.error!, /high demand/i);
+    assert.match(result.error!, /The local server returned an internal error \(HTTP 500\)/);
+    assert.match(result.error!, /didn't retry the turn or switch models/);
+    assert.equal(h.children.length, 1, "no second child");
+    assert.equal(child.proc.sent(m => m.method === "turn/start").length, 1, "no second turn");
+  } finally { await h.execution.dispose(); }
+});
+
+test("AC3: two connection profiles addressing the same service share one slot, and a queued turn cancelled there opens nothing and sends nothing", async () => {
+  const h = setup({ runtime: "ollama", url: "http://127.0.0.1:18501" });
+  try {
+    // A second profile for the same server: another label, runtime, path and token, the same host and port.
+    const second = h.connections.create({ label: "Same server, other profile", runtime: "responses", url: "http://127.0.0.1:18501/v1", token: "OTHER_TOKEN" });
+    const other = { ...h.thread, id: "modex-2", cwd: tmpdir("lm3-cwd-"), localTarget: { ...h.target, model: { ...h.target.model, connection: { id: second.id, revision: 1 } } } };
+    const first = h.execution.backend(h.thread).runTurn("first", h.opts, collectSink().sink, new AbortController().signal);
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    const abort = new AbortController();
+    const queued = h.execution.backend(other).runTurn("queued", { ...h.opts, cwd: other.cwd }, collectSink().sink, abort.signal);
+    await new Promise(r => setTimeout(r, 30));
+    assert.equal(h.children.length, 1, "the second profile waits for the first profile's turn");
+    abort.abort();
+    assert.equal((await queued).status, "interrupted");
+    h.finish();
+    assert.equal((await first).status, "completed");
+    await new Promise(r => setTimeout(r, 30));
+    assert.equal(h.children.length, 1, "the cancelled wait never started a child");
+    const turns = h.children.flatMap(c => c.proc.sent(m => m.method === "turn/start"));
+    assert.equal(turns.length, 1, "one turn/start in all, the first profile's");
+    assert.equal(turns.some(t => JSON.stringify(t.params.input).includes("queued")), false, "the queued prompt was never sent");
+    // A different port is a different service and does not wait.
+    const elsewhere = h.connections.create({ label: "Other port", runtime: "responses", url: "http://127.0.0.1:18502/v1" });
+    const third = { ...h.thread, id: "modex-3", cwd: tmpdir("lm3-cwd-"), localTarget: { ...h.target, model: { ...h.target.model, connection: { id: elsewhere.id, revision: 1 } } } };
+    const held = h.execution.backend(h.thread).runTurn("held", { ...h.opts, resume: undefined }, collectSink().sink, new AbortController().signal);
+    await child.proc.waitFor(line => line.includes('"turn/start"') && line.includes('"text":"held"'));
+    const parallel = h.execution.backend(third).runTurn("parallel", { ...h.opts, cwd: third.cwd }, collectSink().sink, new AbortController().signal);
+    const next = await h.spawned(2);
+    await next.proc.waitFor(line => line.includes('"turn/start"'));
+    h.finish(1);
+    assert.equal((await parallel).status, "completed");
+    h.finish();
+    assert.equal((await held).status, "completed");
+  } finally { await h.execution.dispose(); }
+});

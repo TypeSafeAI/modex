@@ -110,6 +110,9 @@ test("invalid or unsupported drafts fail without overwriting the last recoverabl
     { ...drafts(), draft: { ...drafts().draft, attachments: ["unhandled attachment"] } },
     { ...drafts(), threads: [{ threadId: "thread-1", text: "a".repeat(2 * 1024 * 1024) }] },
     { ...drafts(), draft: { ...drafts().draft, settings: { ...drafts().draft.settings, mode: "unsupported" } } },
+    // A saved new-chat draft never carries a local target: one is chosen on the thread, on this Mac (#380 AC5).
+    { ...drafts(), draft: { ...drafts().draft, settings: { ...drafts().draft.settings, localTarget: { schema: 1, harness: "codex", model: { schema: 1, connection: { id: "c", revision: 1 }, id: "m" } } } } },
+    { ...drafts(), draft: { ...drafts().draft, settings: { ...drafts().draft.settings, localContextTokens: 32768 } } },
   ];
   for (const input of bad) assert.throws(() => h.store.saveDrafts(input), /draft|recovery/i);
   assert.deepEqual(fs.readFileSync(h.file), before);

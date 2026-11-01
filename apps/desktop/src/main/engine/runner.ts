@@ -1209,8 +1209,9 @@ export class ThreadRunner {
     // External edits remain fenced until the renderer adopts the canonical state.
     if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
-    // A local target is chosen on this Mac: a paired desktop's patch never carries one.
-    const localKeys = opts.by === "paired-desktop" ? [] : ["localTarget", "localContextTokens"];
+    // A local target is chosen, changed and cleared on this Mac's own window only (#380 AC5): a paired desktop's,
+    // the phone's or an unnamed caller's patch never carries one.
+    const localKeys = opts.by === "desktop" ? ["localTarget", "localContextTokens"] : [];
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals", ...localKeys].includes(key))) as ThreadPatch;
     if (patch.approvals !== undefined && !APPROVAL_POLICIES.includes(patch.approvals)) delete patch.approvals;
