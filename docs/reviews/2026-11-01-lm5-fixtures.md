@@ -49,10 +49,7 @@ Kinds of evidence are kept apart:
 | 2 | `POST /v1/responses`, bearer, `scripted-fixture-model` | **compaction**: the history including the tool output, then Codex's "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary…" as the last user input |
 | 3 | `POST /v1/responses`, bearer, `scripted-fixture-model` | the turn continues on the compacted history ("Another language model started to solve…" plus the server's summary) and completes |
 
-Compaction on 0.166.0 for a custom Responses provider runs inline. It goes to the configured server, on the same
-path, for the selected model, with the connection's token. No `/responses/compact` or other endpoint was asked
-for. The test fails if any request, compaction included, reaches any other path or model, or if no compaction
-happens.
+The recording loopback server observed inline compaction on 0.166.0 for a custom Responses provider, on the same path and selected model with the connection's token. It saw no `/responses/compact` request or other path. The test fails if a request observed by this server uses another path or model, or if it observes no compaction. It does not monitor other destinations and does not establish the absence of cloud traffic.
 
 Codex clamps the auto-compact limit to the window. With `model_auto_compact_token_limit` set to 8× the window,
 it still compacted at the same point. So a too-high limit can't defer compaction past the window.
@@ -94,9 +91,7 @@ The test waits 1.5 s after the turn ends to catch a late retry. Receipts are in 
 | child-exit | stream held; the test SIGKILLs the codex child | failed | "codex app-server exited (null)" |
 | stop | stream held; the person stops | interrupted | none |
 
-No mode produced a cloud request or a second model: the only server the child knows is the loopback fixture. The
-runner tests already cover the runner side: a failed local turn gets no credit fallback and no cloud retry
-("a failed local turn stays failed…").
+For every mode, the recording loopback server observed only the selected model and no retry during the observation window. These fixtures do not monitor other destinations and cannot establish that the child made no cloud requests. Separate runner tests cover the runner's refusal to apply credit fallback or cloud retry to a failed local turn ("a failed local turn stays failed…").
 
 ## AC5: entry points
 
@@ -166,3 +161,9 @@ All logs are in `~/.claude/task-evidence/lane-d-2026-11-01/`.
 - **AC1 live:** a real local server.
 - **AC6 managed-policy precedence:** no managed Mac has run it.
 - **Product admission** of `LocalExecution` in `main/index.ts`: Val's decision. Its brief is on #380.
+
+## Review repair: early AC3 termination
+
+The AC3 server-arrival wait races the first turn result, and the first turn receives the test cancellation signal as well as its 90-second deadline. An early admission, startup or cancellation result therefore fails the fixture with that result and enters cleanup. Before the repair, replacing the first turn signal with an already-aborted signal left the fixture pending until an external 12-second deadline terminated it. After the repair, the same negative control failed promptly with `status: interrupted` (about 15 ms) and the process exited normally with test failure. The unmodified installed-Codex wire fixture passed in about 2 seconds. These checks establish fixture termination and its normal queued-cancel path, not live-model or offline acceptance.
+
+Repair validation: `pnpm build && pnpm test` exited 0, with 2,281 passes and 35 skips across the full unit suite. Independent review found no blocking findings; its minor overbroad AC1 test title was corrected. No UI code changed and no additional E2E suite was run for this fixture/documentation repair. The integration also retains main’s CF-7 checkpoint restoration and corrected October 31 UTC landing dates. Main merge, product admission and native runtime acceptance remain separate gates.

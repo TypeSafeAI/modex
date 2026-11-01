@@ -303,7 +303,7 @@ for (const mode of ["overflow-http", "overflow-stream", "oom-500", "unavailable-
 
 interface CompactionHop { n: number; method: string; path: string; model: unknown; authorization: "bearer" | "none" | "other"; inputItems: number; hasToolOutput: boolean; summaryRequest: boolean; hasSummary: boolean; hasPrompt: boolean; lastInputHead: string }
 
-test("AC1 compaction: a local child that passes its auto-compact limit compacts through the configured loopback server, and nowhere else", { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
+test("AC1 compaction: the configured loopback server observes inline compaction after the local child passes its auto-compact limit", { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
   const PROMPT = "LM5-AC1-COMPACTION-PROMPT-31e2", SUMMARY = "LM5-AC1-SUMMARY-77b0";
   const hops: CompactionHop[] = [];
   const usage = (total: number) => ({ input_tokens: total - 10, input_tokens_details: { cached_tokens: 0 }, output_tokens: 10, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: total });
@@ -371,7 +371,7 @@ test("AC1 compaction: a local child that passes its auto-compact limit compacts 
   }
 });
 
-test("AC3: a turn queued behind another profile of the same server and then stopped sends that server nothing", { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
+test("AC3: a turn queued behind another profile of the same server and then stopped sends that server nothing", { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async t => {
   const FIRST = "LM5-AC3-FIRST-1a9e", QUEUED = "LM5-AC3-QUEUED-5c0d";
   const requests: { path: string; first: boolean; queued: boolean }[] = [];
   let release!: () => void;
@@ -405,8 +405,13 @@ test("AC3: a turn queued behind another profile of the same server and then stop
     const target = (id: string) => ({ schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id, revision: 1 }, id: model } });
     const a = { id: "ac3-a", cwd: workspace(), localTarget: target(one.id), localContextTokens: 32768 };
     const b = { id: "ac3-b", cwd: workspace(), localTarget: target(two.id), localContextTokens: 32768 };
-    const first = execution.backend(a).runTurn(`${FIRST}: reply with one word.`, { cwd: a.cwd, mode: "chat", plan: false, model }, sinkFor([], []), AbortSignal.timeout(90_000));
-    await holding;
+    const first = execution.backend(a).runTurn(`${FIRST}: reply with one word.`, { cwd: a.cwd, mode: "chat", plan: false, model }, sinkFor([], []), AbortSignal.any([t.signal, AbortSignal.timeout(90_000)]));
+    // A failed admission or child startup can finish without ever reaching the server.
+    // Surface that result and enter cleanup instead of waiting for an impossible request.
+    await Promise.race([
+      holding,
+      first.then(result => { throw new Error(`first turn ended before reaching the fixture: ${JSON.stringify(result)}`); }),
+    ]);
     const stop = new AbortController();
     const queued = execution.backend(b).runTurn(`${QUEUED}: reply with one word.`, { cwd: b.cwd, mode: "chat", plan: false, model }, sinkFor([], []), stop.signal);
     await new Promise(r => setTimeout(r, 500));
