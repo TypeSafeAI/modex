@@ -107,6 +107,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
   (Ollama 0.40.10 has none; this Mac's only LM Studio model is an embedding model).
   [Review](reviews/2026-10-22-lm2-connections-discovery.md).
 
+- **CF-3 temporary VoiceOver deferral (2026-11-01).** Val said “skip voiceover for now and just proceed”. V1–V3 and P5 are deferred for now, not run or passed; D1–D5, P1–P4 and P6 remain open. Continue the non-VoiceOver acceptance run. #276 stays open. [Decision and current row status](reviews/2026-10-22-cf3-question-acceptance.md#vals-temporary-voiceover-deferral-2026-11-01).
 - **CF-8 integrated candidate `b643617`** (#281, 2026-10-28). The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md#integrated-candidate-2026-10-28-b643617)
   pins `main` at `b643617`, which carries every CF-1 to CF-7 slice (#394 and the CF-4 close-out via #404
   included). First pass, no reruns: install, build and typecheck passed; unit 2,011 passed and 17 skipped
@@ -115,9 +116,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
   path through the app: one approval, the edit and check, "Claude Code reported no plan for this turn" (the CLI
   offers Modex no plan tool), Save to Notes, Open, restart, and Stop (interrupted in 0.8 s, the file never
   written). Live codex-cli 0.164.0 (`gpt-6.1-sol`, ChatGPT account, Chat mode) passed the same path: two approvals, `apply_patch` and the check with exit code 0, a `final` answer, "Codex reported no plan for this turn", Save to Notes, Open, restart, and Stop (interrupted in 0.1 s, the file never written). The 2026-10-22 candidates `0e674e7` and `ec7be57` are kept as history beside it.
-  **Still open, all Val's:** the keyboard/VoiceOver rows A1–A8, B1–B7 and C1–C5 (C1–C5 deferred by Val on 2026-10-30, not run) on the seeded build from this
-  candidate, and the CF-3 rows D1–D5, V1–V3 and P1–P6 (#420; the P rows also need Companion 0.4.0 (9) on
-  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral. On 2026-11-01 the receipt recorded the C1–C5 deferral, and that #450, #453 and #463 landed after `b643617`. The 2026-10-28 seeded build is gone, so the home was seeded again on `b643617` in `.worktrees/cf8-voiceover-b643617`. Val chooses whether A1–A8 and B1–B7 run on `b643617` or on a new candidate from current `main`.
+  **Human gates:** A1–A8 and B1–B7 await Val; C1–C5 were deferred by Val on 2026-10-30, not run. For CF-3, D1–D5, P1–P4 and P6 remain open; Val deferred V1–V3 and P5 for now on 2026-11-01. Phone rows still require the appropriate Companion build and physical-device evidence. No row is marked passed on Val's behalf; #281 stays open until each has Val's result or written deferral. On 2026-11-01 the receipt recorded the C1–C5 deferral, and that #450, #453 and #463 landed after `b643617`. The 2026-10-28 seeded build is gone, so the home was seeded again on `b643617` in `.worktrees/cf8-voiceover-b643617`. Val chooses whether A1–A8 and B1–B7 run on `b643617` or on a new candidate from current `main`.
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
