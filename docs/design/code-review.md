@@ -6,9 +6,14 @@ screenshots (R1–R4). The work is tracked in [#319](https://github.com/TypeSafe
 This page is CR-1's contract ([#320](https://github.com/TypeSafeAI/modex/issues/320)). Every later
 slice works against it.
 
-**Nothing here has shipped.** CR-1 adds a pure read contract, synthetic fixtures and this page. It
-registers no IPC channel, draws no UI and makes no GitHub request. The rest of Gate A follows in
-order:
+**Where it stands (2026-11-01).** CR-1 through CR-7 are on `main` and in v0.4.0, but built apps hide
+Code Review unless the local switch `modex.codeReview` is `on`, because Gate A (#319) is not accepted
+([v0.4.0 review](../reviews/2026-10-24-v0.4.0-release-review.md)). What remains is acceptance: the original
+reference comparisons, human keyboard/VoiceOver, and the live CR-6 smoke and CR-7 canary. Each issue's
+ticked boxes and next action are in [status.md](../status.md#open-issue-checklists).
+
+CR-1 itself added a pure read contract, synthetic fixtures and this page, with no IPC channel, UI or
+GitHub request. Gate A then followed in order:
 
 - [#321](https://github.com/TypeSafeAI/modex/issues/321): the read service.
 - [#322](https://github.com/TypeSafeAI/modex/issues/322): the inbox and the workspace.

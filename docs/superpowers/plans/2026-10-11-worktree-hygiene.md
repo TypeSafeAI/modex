@@ -68,7 +68,7 @@ paths independently before enabling the local schedule.
 - [x] Finish configured desktop/site E2E: 163 desktop passes, 3 opt-in Knowledge skips,
   and 7 site passes. Required hosted CI enables the three integration cases.
 - [x] Sign and verify the implementation commit after local checks and independent review.
-- [ ] Land through the coordinated protected PR queue after required CI. Preserve the
+- [x] Land through the coordinated protected PR queue after required CI. Preserve the
   unrelated approval/provider branch.
 
 ## Progress

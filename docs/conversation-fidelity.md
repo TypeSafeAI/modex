@@ -5,7 +5,8 @@ the user-facing summary of tracker [#273](https://github.com/TypeSafeAI/modex/is
 contracts behind it are [conversation events](conversation-events.md),
 [evidence](conversation-evidence.md), [task plans and records](task-context.md) and the
 [event journal](event-journal.md). The acceptance matrix and its open gates are in
-[the acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md).
+[the acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md). Each CF issue's ticked
+boxes and next action are in [status.md](status.md#open-issue-checklists).
 
 Coding still runs only through `codex app-server` and `claude -p`. Nothing described here executes,
 replays or re-sends anything by being shown, reloaded or reconnected.

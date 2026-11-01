@@ -1,5 +1,7 @@
 # Local models: LM-1 contract and feasibility
 
+Each LM issue's ticked boxes and next action are in [status.md](status.md#open-issue-checklists).
+
 Status: narrow Gate A accepted by Val on 2026-10-24 under #377 / #376 for the producer at main `bb0e1a42ac7bb3e11ccfee05a40d8a02f1dc10c4` and the recorded Codex/Strata combination. No local execution option is enabled by this change. Existing `BackendId`, thread persistence, account policy, native execution, approval handling and companion messages are unchanged.
 
 ## Identity and migration
@@ -113,7 +115,7 @@ other runtimes and resume across restarts are unqualified.
 
 ## LM-5 slice 1: effective destination and managed policy
 
-Status: in `lm3-codex`'s successor branch `lm5-policy` (#380); main-only, no UI. Before a local child opens or
+Status: on `main` through #423 (`c23e6be`), from #424 (#380); main-only, no UI. Before a local child opens or
 resumes a thread, main reads the child's own `config/read` (effective configuration, the layer that set each
 key, and every layer's contents and hash) and `configRequirements/read`, and admits the child only when every
 governed key (destination, model, context, tools, plugins, hooks, instructions) comes from Modex's session flags,

@@ -5,7 +5,8 @@
 
 **Status, 2026-10-20:** done in #351 (`d1902d2`). The full e2e suite passed in CI, on the PR and in
 the merge queue (run 39508701952). The local run stopped when the disk filled. Linking a check to the
-plan step it verifies stays open on #280, because neither CLI reports that link.
+plan step it verifies was retired by Val on 2026-10-23, because neither CLI reports that link
+([task-context.md](../../task-context.md#retired)); #280 keeps that step unticked as retired, not passed.
 
 **Goal:** a turn's task record says whether the turn's latest change is verified by a check that ran
 after it, and never calls a step verified on the CLI's word, an unrelated command, or a check that a
