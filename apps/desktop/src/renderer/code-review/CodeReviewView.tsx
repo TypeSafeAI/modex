@@ -114,7 +114,7 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
     if (outcome.status === "mismatch") return void readConnectionRef.current();
     const result = outcome.result;
     if (result.state !== "unavailable" && !sameKey(result.value.key, pr.key)) return;
-    setPrs((p) => p[id] ? { ...p, [id]: { ...p[id]!, overview: result } } : p);
+    setPrs((p) => p[id] ? { ...p, [id]: { ...p[id]!, locator: result.state === "unavailable" ? p[id]!.locator : result.value.locator, overview: result } } : p);
     if (result.state !== "unavailable") void readContext(pr, result.value.revision);
     // A key for another account than gh's: the account changed under us.
     if (result.state === "unavailable" && result.reason === "signed-out") void readConnectionRef.current();
