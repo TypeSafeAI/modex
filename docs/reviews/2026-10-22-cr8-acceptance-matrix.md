@@ -1,5 +1,7 @@
 # Code Review acceptance matrix (CR-8), 2026-10-22
 
+**Superseded for current `main`:** the [2026-11-01 matrix refresh](2026-11-01-cr8-acceptance-matrix.md) maps every control and AC to evidence on `main` `0a8c513`. This page stays as the 2026-10-22 baseline; its "not started" and "Gate A is not complete" lines describe product `0e674e7` only.
+
 **Later fixture refresh:** The [2026-10-28 journey receipt](2026-10-28-cr8-journey-refresh.md) adds real Electron R2 activity and R3 instructions interactions through the production read service with synthetic GitHub responses. It supersedes this historical snapshot's claim that those journey states are waiting for unbuilt producers. Original-reference comparison, human accessibility and the remaining integrated/live gates stay open.
 
 **Historical baseline:** This matrix records the CR-8 candidate based on product `0e674e7`. Its “not started” entries describe that snapshot. Later overview, remote-diff and unwired action-foundation implementations have separate receipts; the integration candidate must reconcile their automated evidence without claiming missing original-reference or human acceptance.
