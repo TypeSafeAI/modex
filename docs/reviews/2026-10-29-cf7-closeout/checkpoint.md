@@ -78,13 +78,35 @@ replace `hello` with `hello, live`, run `npm test` again, and say in one sentenc
 Unlike the CF-8 probe, this one **keeps** the seeded home and repository, so the saved Note can be
 opened in the app:
 
-| Backend | Launch for review (from `.worktrees/cf7-closeout/apps/desktop`) |
+| Backend | Launch for review (from `.worktrees/cf7-review-kit/apps/desktop`, after `pnpm build` there) |
 | --- | --- |
 | Claude | `MODEX_HOME=$PWD/.probes/cf7-human/claude/home npx electron .` |
 | Codex | `MODEX_HOME=$PWD/.probes/cf7-human/codex/home npx electron .` |
 
 In each, open **Space → Personal → cf7-review-repo → Task: If you have a task-list…**, then **Task view**.
 The thread is in the sidebar. `~/.modex` is never touched.
+
+**Review kit moved, 2026-11-01.** The original `.worktrees/cf7-closeout` was removed by
+`scripts/worktree.sh prune` on 2026-10-31 after #443 merged, so the launch commands first written here
+pointed at nothing. The git-ignored homes, repositories and probe had been saved beforehand to
+`~/.claude/task-evidence/worktree-prune-2026-10-29/cf7-closeout/apps/desktop/.probes/`. That copy stays
+untouched. A second copy now sits in the `cf7-review-kit` worktree (cut from `main` at `0a8c513`), and
+the table above points there. That worktree stays checked out until Val has reviewed.
+
+Checked on a build of `0a8c513`, which includes #450, #453 and #463. A probe copied each home to a
+temporary directory and opened it through **Space**. Both saved Task Notes opened as a read-only Task view:
+"Read-only: nothing here runs again", no editable control, no edited or moved warning, and the thread's
+items unchanged afterwards. The Claude view lists `greeting.txt read`. The Codex view lists no files. Both
+read "Verified: `npm test` passed after the last change". The kit's files hashed the same before and after.
+The probe and its screenshots are outside the tree, under `~/.claude/task-evidence/lane-b-2026-11-01/`.
+
+Two things a reviewer will notice:
+
+- The notes reopen as they were saved on 2026-10-29, before #450. They show the old files list and the
+  title cut mid-word, not the "maybe more" footer or the word-break title. Seeing those needs a new live turn.
+- Each home records its project at the old `.worktrees/cf7-closeout/…/repo` path. The thread and the note
+  open, but the side panel's Review tab reads "Not a git repository". The repositories are copied beside the
+  homes. The Note and Task view do not depend on them.
 
 ### Claude Code 2.1.312 (`claude -p`, Haiku, Chat mode): passed, 2026-10-29 22:54 UTC
 

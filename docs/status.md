@@ -76,7 +76,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
 ## v0.4.1 publication and remaining acceptance
 
 - **v0.4.1 published (2026-10-31).** Signed tag `v0.4.1` names protected merge `6a97d23`. Release run `41163487821` passed signed packaged E2E (479 desktop passed, 4 skipped; 7 site passed), three native updater scenarios, Windows/Linux checks and artifact attachment. All five downloaded installers match the release manifest; macOS signature, Gatekeeper and stapler checks passed. The initial download-failure job stopped before updater execution because its fixture manifest was missing; one retry passed on the unchanged candidate. Original failures and acceptance limits remain in the [publication review](reviews/2026-10-30-v0.4.1-release-review.md#published--2026-10-31-utc).
-- **CF-7 close-out follow-ups (#280, #450, #453).** The file-evidence and title fixes shipped in v0.4.1. Val's human review of the saved Notes remains open on #280; publication does not complete that acceptance. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md).
+- **CF-7 close-out follow-ups (#280, #450, #453).** The file-evidence and title fixes shipped in v0.4.1. Val's human review of the saved Notes remains open on #280; publication does not complete that acceptance. The review homes moved to the `cf7-review-kit` worktree on 2026-11-01, after the original worktree was pruned. Both saved Notes still reopen read-only on a build of `0a8c513`. See the [close-out receipt](reviews/2026-10-29-cf7-closeout/checkpoint.md#the-real-task-and-its-saved-note-human-review-candidate) for the launch commands.
 
 ## v0.4.0 source delivery and remaining acceptance
 
