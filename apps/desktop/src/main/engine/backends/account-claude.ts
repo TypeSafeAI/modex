@@ -1,9 +1,10 @@
+import { claudeSecretSink } from "./claude-secret-sink.js";
 import type { CliExecutable } from "../cli-path.js";
 import type { BackendHealth } from "../../../shared/types.js";
 import type { Backend, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
 import { ClaudeBackend } from "./claude.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
-import type { ClaudeAccounts } from "../claude-accounts.js";
+import { claudeAccountEnvironment, type ClaudeAccounts } from "../claude-accounts.js";
 import { generateTitle } from "../titles.js";
 
 /**
@@ -21,11 +22,7 @@ export class AccountClaudeBackend extends ClaudeBackend {
   /** The base environment plus the account's additions; an empty value removes an inherited variable. */
   private overlay(base: NodeJS.ProcessEnv, account: string | undefined): NodeJS.ProcessEnv {
     if (!account || account === "cli") return base;
-    const result = { ...base };
-    for (const [name, value] of Object.entries(this.accounts.environment(account).env)) {
-      if (value === "" || value === undefined) delete result[name]; else result[name] = value;
-    }
-    return result;
+    return claudeAccountEnvironment(base, this.accounts.environment(account).env);
   }
 
   protected override turnEnvironment(bin: string, opts: TurnOptions): NodeJS.ProcessEnv {
@@ -39,9 +36,11 @@ export class AccountClaudeBackend extends ClaudeBackend {
       try { secret = this.accounts.environment(opts.account).secret; }
       catch (error) { return { status: "failed", error: (error as Error).message }; }
     }
-    const result = await super.runTurn(text, opts, sink, signal);
-    // The gateway key never appears in argv; redact it from anything the CLI may have echoed.
-    return secret ? JSON.parse(JSON.stringify(result).split(secret).join("[redacted]")) as TurnResult : result;
+    if (!secret) return super.runTurn(text, opts, sink, signal);
+    const protectedSink = claudeSecretSink(sink, secret);
+    try { return protectedSink.redact(await super.runTurn(text, opts, protectedSink.sink, signal)); }
+    catch (error) { throw new Error(protectedSink.redact(error instanceof Error ? error.message : String(error))); }
+    finally { protectedSink.finish(); }
   }
 
   override generateTitle(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null> {
@@ -67,7 +66,7 @@ export async function accountHealth(bin: string, spawnImpl: typeof cliSpawn, acc
   let env: NodeJS.ProcessEnv;
   try { env = accounts.environment(id).env; } catch (error) { return health("signed-out", (error as Error).message, "available", installed.version); }
   if (account.kind === "gateway") return health("authenticated", `OrcaRouter gateway key saved · ${account.model ?? "gateway default model"} · model access unverified`, "available", installed.version);
-  const result = await probe(bin, ["auth", "status"], spawnImpl, 5000, { ...process.env, ...env });
+  const result = await probe(bin, ["auth", "status"], spawnImpl, 5000, claudeAccountEnvironment(process.env, env));
   if (result.failure) return health("failed", result.failure === "timeout" ? "Account check timed out" : "Account check failed", "available", installed.version);
   try {
     const status = JSON.parse(result.output) as { loggedIn?: unknown; email?: unknown };

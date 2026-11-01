@@ -914,6 +914,8 @@ export class ThreadRunner {
           thread = this.o.store.thread(threadId) ?? thread;
           replyStart = l.items.length;
           result = await runOn(thread);
+          // A second limit still updates selection for the next conversation; never retry a third time.
+          if (result.status === "failed" && !abort.signal.aborted && classifyFailure(result.error ?? "") === "rate_limited") pool.noteLimit(next, limitResetAt(result.error ?? ""));
           if (result.status === "failed") result = { ...result, recovery: [`Claude account ${name(limited)} hit its usage limit; retried on ${name(next)}.`, ...(result.recovery ?? [])] };
         }
       }
