@@ -1,3 +1,4 @@
+import { claudeAccountEnvironment } from "./claude-accounts.js";
 import type { ChildProcess } from "node:child_process";
 import { cliEnvironment, cliSpawn, probe } from "./backends/health.js";
 import type { ClaudeLoginResult } from "../../shared/types.js";
@@ -13,7 +14,7 @@ export class ClaudeLogin {
 
   /** `env` adds to the CLI's environment: a Modex Claude profile passes its CLAUDE_CONFIG_DIR here. */
   async run(bin: string, env: NodeJS.ProcessEnv = {}): Promise<ClaudeLoginResult> {
-    const childEnv = { ...process.env, ...env };
+    const childEnv = claudeAccountEnvironment(process.env, env);
     if (this.running) return { status: "busy", detail: "A Claude sign-in is already running." };
     this.running = true;
     let cancelled = false;

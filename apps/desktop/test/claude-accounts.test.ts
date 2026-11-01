@@ -1,10 +1,12 @@
+import { projectConversation, type ConversationEvent } from "../src/shared/conversation-events.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type { spawn, SpawnOptions } from "node:child_process";
 import { ClaudeAccounts, DEFAULT_COOLDOWN_MS, ORCAROUTER_BASE_URL, limitResetAt } from "../src/main/engine/claude-accounts.js";
-import { AccountClaudeBackend } from "../src/main/engine/backends/account-claude.js";
+import { ClaudeLogin } from "../src/main/engine/claude-login.js";
+import { accountHealth, AccountClaudeBackend } from "../src/main/engine/backends/account-claude.js";
 import { Router } from "../src/main/engine/routing/router.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
@@ -229,4 +231,123 @@ test("a dated reset is read on its day", () => {
   const now = Date.parse("2026-11-01T10:00:00");
   assert.equal(limitResetAt("Weekly limit reached ∙ resets Nov 3 at 7pm (UTC)", now), Date.parse("2026-11-03T19:00:00"));
   assert.equal(limitResetAt("Claude AI usage limit reached|resets at 11pm", now), Date.parse("2026-11-01T23:00:00"));
+});
+
+for (const operation of ["turn", "health", "login"] as const) {
+  test(`profile ${operation} removes inherited authentication and endpoint overrides`, async () => {
+    const { accounts } = pool();
+    const profile = accounts.addProfile("Isolated");
+    const names = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL"];
+    const previous = names.map((name) => process.env[name]);
+    const captured: NodeJS.ProcessEnv[] = [];
+    let checks = 0;
+    const spawnImpl = ((_bin: string, args: string[], options: SpawnOptions) => {
+      const child = new FakeProcess();
+      if (args[0] !== "--version") captured.push(options.env ?? {});
+      if (args[0] === "--version" || args[0] === "auth") setImmediate(() => {
+        const loggedIn = operation !== "login" || args[1] !== "status" || checks++ > 0;
+        child.emitLine(args[0] === "--version" ? "2.1.316" : { loggedIn }); child.close(loggedIn ? 0 : 1);
+      });
+      else child.stdin.once("data", () => { child.emitLine({ type: "result", subtype: "success", result: "done" }); child.close(0); });
+      return child;
+    }) as unknown as typeof spawn;
+    try {
+      names.forEach((name) => { process.env[name] = "synthetic-inherited-value"; });
+      if (operation === "turn") await new AccountClaudeBackend(accounts, "claude", spawnImpl).runTurn("hi", { cwd: "/repo", mode: "chat", plan: false, model: "", account: profile.id }, collectSink().sink, new AbortController().signal);
+      else if (operation === "health") await accountHealth("claude", spawnImpl, accounts, profile.id);
+      else await new ClaudeLogin(spawnImpl).run("claude", accounts.environment(profile.id).env);
+      assert.equal(captured.length, operation === "login" ? 3 : 1);
+      for (const env of captured) {
+        assert.equal(env.CLAUDE_CONFIG_DIR, path.join(accounts.profilesDir, profile.id));
+        for (const name of names) assert.equal(env[name], undefined, `${operation} inherited ${name}`);
+      }
+    } finally { names.forEach((name, i) => { if (previous[i] === undefined) delete process.env[name]; else process.env[name] = previous[i]; }); }
+  });
+}
+
+test("a second usage-limited account cools down without a third retry", async () => {
+  let first = "", second = "", third = "";
+  const h = await runnerHarness([limited, limited], (accounts) => {
+    first = accounts.addProfile("A").id; second = accounts.addProfile("B").id; third = accounts.addProfile("C").id;
+    accounts.select(first); accounts.setRotation(true);
+  });
+  try {
+    await h.runner.send(h.thread.id, "hello");
+    assert.deepEqual(h.seen.map((o) => o.account), [first, second]);
+    assert.equal(h.accounts.coolingDown(second), true);
+    assert.equal(h.accounts.identity(), third);
+    assert.equal(h.store.thread(h.thread.id)!.status, "error");
+  } finally { await h.runner.dispose(); }
+});
+
+for (const streamed of [false, true]) {
+  test(`gateway key is redacted before ${streamed ? "split streaming" : "snapshot"} observations reach the transcript`, async () => {
+    const { accounts } = pool(); const gateway = accounts.addGateway("G", KEY);
+    const observed: unknown[] = [];
+    const collected = collectSink();
+    const spawnImpl = ((_bin: string, _args: string[], _options: SpawnOptions) => {
+      const child = new FakeProcess();
+      child.stdin.once("data", () => {
+        if (streamed) {
+          child.emitLine({ type: "stream_event", event: { type: "message_start", message: { id: "m" } } });
+          child.emitLine({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } });
+          for (const text of ["before " + KEY.slice(0, 12), KEY.slice(12) + " after"]) child.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } } });
+          child.emitLine({ type: "stream_event", event: { type: "content_block_stop", index: 0 } });
+        } else child.emitLine({ type: "assistant", message: { id: "m", content: [{ type: "text", text: `before ${KEY} after` }] } });
+        child.emitLine({ type: "result", subtype: "success", result: "done" }); child.close(0);
+      }); return child;
+    }) as unknown as typeof spawn;
+    await new AccountClaudeBackend(accounts, "claude", spawnImpl).runTurn("hi", { cwd: "/repo", mode: "chat", plan: false, model: "", account: gateway.id }, { ...collected.sink, observe(o) { observed.push(o); collected.sink.observe(o); } }, new AbortController().signal);
+    assert.equal(JSON.stringify(observed).includes(KEY), false);
+    const stamp = { schema: 1 as const, at: "2026-11-01T00:00:00Z", turn: { thread: "t", turn: "u", attempt: "a", backend: "claude" as const } };
+    const events: ConversationEvent[] = [{ ...stamp, type: "attempt.start", id: "start", seq: 1 }, ...collected.observations.map((o, i) => ({ ...stamp, ...o, id: String(i), seq: i + 2 }))];
+    const text = projectConversation(events).items.filter((i) => i.kind === "assistant").map((i) => i.text).join("");
+    assert.equal(text, "before [redacted] after");
+  });
+}
+
+test("a tool request containing the gateway key is denied without exposing or rewriting the action", async () => {
+  const { accounts } = pool(); const gateway = accounts.addGateway("G", KEY);
+  const proc = new FakeProcess(); const captured = collectSink(["yes"]);
+  let deliveries = 0;
+  const backend = new AccountClaudeBackend(accounts, "claude", (() => proc) as unknown as typeof spawn);
+  const pending = backend.runTurn("hi", { cwd: "/repo", mode: "chat", plan: false, model: "", account: gateway.id }, {
+    ...captured.sink, deliverRequest: async (_native, write) => { deliveries++; await write(); },
+  }, new AbortController().signal);
+  await proc.waitFor((line) => line.includes('"type":"user"'));
+  proc.emitLine({ type: "control_request", request_id: "secret-action", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: `echo ${KEY}` } } });
+  await proc.waitFor((line) => line.includes('"request_id":"secret-action"'));
+  const response = proc.sent((msg) => msg.type === "control_response")[0]!;
+  proc.emitLine({ type: "result", subtype: "success", result: "done" }); proc.close(0);
+  await pending;
+  assert.equal(response.response.response.behavior, "deny");
+  assert.equal(captured.requests.length, 0, "the raw action must never reach approval storage or IPC");
+  assert.equal(deliveries, 0, "a hidden denial has no human-request receipt to revalidate");
+  assert.equal(JSON.stringify(captured.events).includes(KEY), false);
+});
+
+test("gateway redaction preserves an ordinary trailing key-prefix character", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(); const protectedSink = claudeSecretSink(collected.sink, KEY);
+  const native = { runtime: "r", item: "m" };
+  protectedSink.sink.observe({ type: "message.delta", native, text: "ordinary words" });
+  protectedSink.sink.observe({ type: "message.done", native });
+  protectedSink.finish();
+  const text = collected.observations.filter((o) => o.type === "message.delta").map((o) => o.text).join("");
+  assert.equal(text, "ordinary words");
+});
+
+test("gateway redaction handles every key split independently for message and reasoning streams", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  for (let split = 1; split < KEY.length; split++) {
+    const collected = collectSink(); const protectedSink = claudeSecretSink(collected.sink, KEY);
+    const message = { runtime: "r", item: "message" }, thinking = { runtime: "r", item: "reasoning" };
+    protectedSink.sink.observe({ type: "message.delta", native: message, text: "hello " + KEY.slice(0, split) });
+    protectedSink.sink.observe({ type: "reasoning.delta", native: thinking, representation: "provider-text", index: 0, text: "reason " + KEY.slice(0, split) });
+    protectedSink.sink.observe({ type: "message.delta", native: message, text: KEY.slice(split) + " world" });
+    protectedSink.sink.observe({ type: "reasoning.delta", native: thinking, representation: "provider-text", index: 0, text: KEY.slice(split) + " end" });
+    protectedSink.finish();
+    assert.equal(collected.observations.filter((o) => o.type === "message.delta").map((o) => o.text).join(""), "hello [redacted] world");
+    assert.equal(collected.observations.filter((o) => o.type === "reasoning.delta").map((o) => o.text).join(""), "reason [redacted] end");
+  }
 });

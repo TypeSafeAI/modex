@@ -59,3 +59,11 @@ refused while a turn on that account is running.
   before pooling subscriptions.
 - OmniRouter (omnilabs-ai/OmniRouter) was evaluated and not integrated. It is a pre-alpha model-swap
   evidence layer that compiles routing policies for an existing gateway. It has no account switching.
+
+## Review repairs
+
+Managed profile turns, authentication checks and login all remove inherited `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_BASE_URL` before selecting the profile's configuration directory. The ordinary CLI account retains the person's environment.
+
+Gateway observations are redacted before entering the transcript or IPC, including a key split across message or reasoning deltas. A possible key prefix is retained only until it resolves or its stream ends; ordinary trailing text is preserved. If a tool approval contains the gateway credential, Modex denies that exact action without displaying it or approving a redacted substitute. Final errors and diagnostics remain redacted. These are synthetic-process guarantees; live provider acceptance and the destination decision remain separate.
+
+If the one permitted retry also reports a usage limit, its account receives the reported cooldown too. No third attempt is made; the next new conversation can select another available account.

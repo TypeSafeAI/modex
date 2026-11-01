@@ -93,7 +93,7 @@ export class ClaudeAccounts {
   environment(id: string): { env: NodeJS.ProcessEnv; secret?: string } {
     const account = this.account(id);
     if (!account) return { env: {} };
-    if (account.kind === "profile") return { env: { CLAUDE_CONFIG_DIR: this.profileDir(account.id) } };
+    if (account.kind === "profile") return { env: { CLAUDE_CONFIG_DIR: this.profileDir(account.id), ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN: "", ANTHROPIC_BASE_URL: "" } };
     const key = this.secrets.get(`claude_account:${account.id}`);
     if (!key) throw new Error(`The gateway key for "${account.label}" is missing. Add it again in Settings → Coding CLIs.`);
     // Claude Code reads ANTHROPIC_AUTH_TOKEN as a bearer token for a non-Anthropic endpoint; the
@@ -245,4 +245,13 @@ export function limitResetAt(message: string, now = Date.now()): number | undefi
     return at.getTime();
   }
   return undefined;
+}
+
+/** Apply account overrides consistently for turns, status and login; empty entries remove inheritance. */
+export function claudeAccountEnvironment(base: NodeJS.ProcessEnv, overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === "" || value === undefined) delete env[name]; else env[name] = value;
+  }
+  return env;
 }
