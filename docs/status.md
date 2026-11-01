@@ -4,7 +4,7 @@ The living map of what has shipped, what is on `main` but unreleased, what is in
 what is next. Update it in the same PR that changes any of those; a reader should be able to
 plan the next session from this page alone. Release evidence lives in [`reviews/`](reviews/).
 
-_Last updated 2026-10-31 UTC._
+_Last updated 2026-11-01 UTC._
 
 ## Shipped
 
@@ -230,6 +230,37 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
   are kept for Val's review. **Still open, Val's:** the human review of the two saved Notes, and
   three observations in the receipt (a shell-written file listed as read, a `perl -pi` edit listing
   no file, a title cut mid-word). #280 stays open until Val records a result or a written deferral.
+
+## Open issue checklists
+
+The checkboxes in every open tracked issue were reconciled against `main` at `9ecccc9` on
+2026-11-01. A box is ticked only when on-main evidence meets its full text. Open PRs, deferrals
+and unrun human, live or native rows stay unticked. The row-by-row evidence is in the
+[reconciliation record](reviews/2026-11-01-issue-checkbox-reconciliation.md). A checkmark
+summarizes a receipt; it does not replace one. When code or receipts change, re-check the rows
+before relying on a tick.
+
+| Issue | Ticked | What is left | Next action |
+| --- | --- | --- | --- |
+| [#273](https://github.com/TypeSafeAI/modex/issues/273) CF tracker | 9/15 | CF-3, CF-7 and CF-8 are open; their code is on `main`. Fresh full checks name candidate `b643617`, which predates #450, #453 and #463 | Val decides whether to keep `b643617` or pin a new candidate |
+| [#276](https://github.com/TypeSafeAI/modex/issues/276) CF-3 | 11/13 | No test that the draft and attachments survive a question card; YOLO's never-answer rule is in source only. Human D/P rows live on #281 | Add the two regressions; Val runs D1–D5 |
+| [#280](https://github.com/TypeSafeAI/modex/issues/280) CF-7 | 11/14 | Steps 1, 2 and 4: model-proposed relations, file hashes and selection/notes context are not built; step-level linking was retired | Val reviews the two saved Notes and records steps 1, 2 and 4 as deferred or retired |
+| [#281](https://github.com/TypeSafeAI/modex/issues/281) CF-8 | 8/27 | Keyboard A1–A8, VoiceOver B1–B7, CF-3 D1–D5, P1–P4 and P6; memory measurement; ChatGPT multi-agent restriction check; staged release recommendation; list of remaining visual differences. C1–C5, V1–V3 and P5 are deferred | Val chooses the candidate, then runs A1–A8 and D1–D5 |
+| [#319](https://github.com/TypeSafeAI/modex/issues/319) CR tracker | 2/10 | CR-3 to CR-8 acceptance; R1–R4 reconstruction comparison | Land #472 (current CR-8 matrix) |
+| [#322](https://github.com/TypeSafeAI/modex/issues/322) CR-3 | 10/14 | Original-reference comparison (AC1), keyboard/VoiceOver (AC4), composer clearance with CR-6's composer | Val runs the [CR-8 VoiceOver checklist](reviews/2026-10-22-cr8-voiceover/checklist.md) |
+| [#323](https://github.com/TypeSafeAI/modex/issues/323) CR-4 | 10/14 | Original R1/R2 comparison, VoiceOver, composer clearance; avatars wait on decision 1 | Re-check composer clearance; Val decides on references |
+| [#324](https://github.com/TypeSafeAI/modex/issues/324) CR-5 | 12/14 | Original R4 comparison (AC1); the Viewed toggle waits on decision 5 | Val decides on R4 references or re-captures |
+| [#325](https://github.com/TypeSafeAI/modex/issues/325) CR-6 | 13/14 | Authorized live native smoke (AC6) | Val names `owner/repo#n` for the smoke |
+| [#326](https://github.com/TypeSafeAI/modex/issues/326) CR-7 | 12/14 | No on-main test of draft visibility after sign-out; live canary on a disposable repository (AC6) | Add the sign-out test; Val names a disposable repository |
+| [#327](https://github.com/TypeSafeAI/modex/issues/327) CR-8 | 2/17 | Current matrix, staged enablement/rollback and live procedures are only in open #472; a11y coverage of CR-4 to CR-7 controls (C76); performance budgets; reference comparison | Land #472, then the C76 a11y fold-in |
+| [#376](https://github.com/TypeSafeAI/modex/issues/376) LM tracker | 1/14 | LM-2 to LM-8 acceptance; `LocalExecution` is not constructed, so the product refuses local turns | Val reviews #475 and answers the [LM-5 admission brief](https://github.com/TypeSafeAI/modex/issues/380#issuecomment-6558687340) |
+| [#378](https://github.com/TypeSafeAI/modex/issues/378) LM-2 | 11/13 | Cold-load explanation text (step 6); no regression for tokens in diagnostics or exports (AC3) | Decide on an AC3 regression; listing-only discovery once a local generative model exists |
+| [#379](https://github.com/TypeSafeAI/modex/issues/379) LM-3 | 10/13 | Live turn against a real local server (AC1); global Codex config byte check (AC4); managed-Mac policy run (AC6) | Add the `~/.codex/config.toml` before/after byte check |
+| [#380](https://github.com/TypeSafeAI/modex/issues/380) LM-5 | 3/13 | Fixture work for AC1, AC3, AC4 and AC5 is in open #475 (with #480); offline canary (AC2) and real-runtime AC4 are native gates | Review and land #475, then re-reconcile #380 |
+| [#381](https://github.com/TypeSafeAI/modex/issues/381) LM-4 | 0/13 | Not started | Start Settings → Local models after the #380 admission decision |
+| [#382](https://github.com/TypeSafeAI/modex/issues/382) LM-6 | 0/11 | Not started; needs LM-5 and real runtimes | None until LM-5 lands |
+| [#383](https://github.com/TypeSafeAI/modex/issues/383) LM-7 | 0/15 | Not started | Draft the criterion-to-evidence map from existing receipts |
+| [#384](https://github.com/TypeSafeAI/modex/issues/384) LM-8 | 0/11 | Optional; an outside contributor's scope question is unanswered | A maintainer answers the [scope question](https://github.com/TypeSafeAI/modex/issues/384#issuecomment-6390714922) |
 
 ## In flight
 
