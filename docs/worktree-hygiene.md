@@ -93,6 +93,35 @@ The generated-data allowlist covers root `node_modules/` and `node_modules/`, `d
 Ignored `.env`, `.codex`, `.probes`, logs, release artifacts, and other unknown files
 preserve the checkout. Move evidence you want to keep to durable storage yourself.
 
+## Retire unmerged work
+
+Work that will never merge (a closed PR, an abandoned experiment, a superseded stack) has no
+merge proof, so `prune` keeps it forever. Its owner retires it explicitly instead:
+
+```sh
+scripts/worktree.sh retire lm2-land --expect-head "$(git rev-parse lm2-land)"          # report only
+scripts/worktree.sh retire lm2-land --expect-head "$(git rev-parse lm2-land)" --apply --by val
+```
+
+Retirement swaps merge proof for a verified snapshot. It does not relax anything else:
+
+- Dirty tracked and untracked files go into a snapshot commit on top of the tip. The commit is
+  built in a temporary index, so the worktree's own index is untouched. Unknown ignored data
+  (`.env`, `.probes`, logs) goes into `ignored.tar` (mode 0600) next to the bundle. Secrets in that
+  tar stay local, inside `modex-maintenance/archives/`.
+- The snapshot goes through the same bundle, empty-repository restore and `git fsck --full` as
+  pruning. The manifest records the original `tip`, the `snapshot`, who retired it, and a
+  `restoreIgnored` command when a tar exists.
+- Retirement still refuses: the primary checkout and default branch, an open PR, an active process,
+  a Git operation in progress or a stale operation marker, Git locks, hidden index entries,
+  a locked or unmanaged worktree, and a tip that differs from `--expect-head`.
+- Only after the archive is verified and every observation is repeated does it reset the checkout,
+  remove the archived ignored paths, and run Git's non-forced `worktree remove`. It then deletes the
+  branch by expected SHA and leaves a `retired` ownership record.
+
+Retire only work you own, or work whose owner has handed it to you. It never touches remote
+branches. Delete those separately, once their tips are in an archive.
+
 ## Daily automation
 
 On macOS, install the user LaunchAgent from reviewed code:

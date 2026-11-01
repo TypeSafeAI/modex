@@ -463,4 +463,111 @@ export class WorktreeMaintenance {
       return report;
     });
   }
+
+  // Reasons retire accepts: it snapshots dirty files and tars unknown ignored data first.
+  static RETIRABLE = new Set(['dirty', 'unknown-ignored-data']);
+
+  /** Inspect a branch for retirement. Never mutates anything. */
+  async retireCheck(info, branch, expectedHead) {
+    this.git(['check-ref-format', `refs/heads/${branch}`]);
+    const reasons = [];
+    if (!this.directBranch(branch)) reasons.push('symbolic-branch');
+    if (branch === 'main' || branch === info.defaultBranch) reasons.push('default-branch');
+    const head = this.git(['rev-parse', '--verify', '-q', `refs/heads/${branch}^{commit}`], this.cwd, true).stdout.trim();
+    if (!head) return { branch, reasons: [...reasons, 'missing-branch'] };
+    if (!fullSha(expectedHead) || head !== expectedHead) reasons.push('head-mismatch');
+    const trees = this.worktrees().filter((tree) => tree.branch === `refs/heads/${branch}`);
+    if (trees.length > 1) reasons.push('multiple-worktrees');
+    const tree = trees[0];
+    const accepted = [];
+    if (tree) {
+      if (tree.path === info.primary) reasons.push('primary');
+      for (const reason of this.treeReasons(info, tree)) (WorktreeMaintenance.RETIRABLE.has(reason) ? accepted : reasons).push(reason);
+    }
+    if (!reasons.length) {
+      try {
+        await this.pullEvidence(info, { branch, head });
+        if (tree) {
+          const active = await this.activity(tree.path);
+          if (typeof active !== 'boolean') throw new Error('unknown process activity');
+          if (active) reasons.push('active-process');
+        }
+      } catch (error) { reasons.push(error.message === 'open-pr' ? 'open-pr' : `observation-failed: ${error.message}`); }
+    }
+    const ignored = tree && accepted.includes('unknown-ignored-data')
+      ? this.git(['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], tree.path).stdout.split('\0').filter((file) => file && !regenerable(file))
+      : [];
+    return { branch, head, path: tree?.path ?? null, dirty: accepted.includes('dirty'), ignored, reasons, eligible: reasons.length === 0 };
+  }
+
+  /**
+   * Archive and remove unmerged work the owner explicitly gives up. Replaces merge proof with a
+   * verified snapshot: dirty tracked and untracked files become a commit on top of the tip, and
+   * unknown ignored data becomes ignored.tar beside the bundle. Open PRs, active processes, Git
+   * operations in progress, locks and hidden index entries still preserve the work.
+   */
+  async retire(branch, { expectedHead, apply = false, by = null } = {}) {
+    return this.withLock(async () => {
+      const info = await this.discover();
+      const check = await this.retireCheck(info, branch, expectedHead);
+      if (!apply || !check.eligible) return { ...check, status: check.eligible ? 'eligible' : 'preserved' };
+      let snapshot = check.head;
+      if (check.dirty) {
+        const index = assertStatePath(info, path.join(info.stateDir, `retire-index-${randomUUID()}`));
+        fs.mkdirSync(info.stateDir, { recursive: true, mode: 0o700 });
+        const env = { ...gitEnvironment(), GIT_INDEX_FILE: index };
+        const git = (args) => command(this.executables.git ?? 'git', ['--no-replace-objects', '-C', check.path, ...args], undefined, false, env).stdout.trim();
+        try {
+          git(['read-tree', check.head]);
+          git(['add', '-A', '--', '.']);
+          const tree = git(['write-tree']);
+          snapshot = git(['-c', 'user.name=Modex worktree retire', '-c', 'user.email=retire@modex.invalid', 'commit-tree', tree, '-p', check.head, '-m', `Retire snapshot of ${branch} at ${check.head}`]);
+        } finally { fs.rmSync(index, { force: true }); }
+      }
+      const proof = { kind: 'retired', by, tip: check.head, snapshot, dirty: check.dirty, ignored: check.ignored };
+      const run = this.archive(info, [{ branch, head: snapshot, path: check.path, proof }]);
+      const entry = run.entries[0];
+      entry.tip = check.head;
+      if (check.ignored.length) {
+        const tar = path.join(path.dirname(run.manifest), 'ignored.tar');
+        command('tar', ['-cf', tar, '-C', check.path, '--', ...check.ignored]);
+        fs.chmodSync(tar, 0o600);
+        const listed = command('tar', ['-tf', tar]).stdout.split('\n').filter(Boolean);
+        for (const file of check.ignored) if (!listed.some((name) => name === file || name === file.replace(/\/$/, '') || name.startsWith(file))) throw new Error(`ignored archive is missing ${file}`);
+        entry.ignoredTar = tar;
+        entry.ignoredTarSha256 = sha256(fs.readFileSync(tar));
+        entry.restoreIgnored = `tar -xf ${quote(tar)} -C <restored checkout>`;
+      }
+      const result = { branch, head: check.head, snapshot, status: 'preserved', reasons: [] };
+      try {
+        // Everything is archived. Re-observe before the first destructive step.
+        const again = await this.retireCheck(await this.discover(), branch, expectedHead);
+        if (!again.eligible || again.path !== check.path) throw new Error(`revalidation: ${again.reasons.join(', ') || 'path changed'}`);
+        this.verifyArchive(run, entry);
+        if (check.path) {
+          if (check.dirty) {
+            this.git(['reset', '-q', '--hard', check.head], check.path);
+            this.git(['clean', '-q', '-f', '-d'], check.path);
+          }
+          for (const file of check.ignored) fs.rmSync(path.join(check.path, file), { recursive: true, force: true });
+          const reasons = this.treeReasons(info, this.worktrees().find((tree) => tree.path === check.path) ?? { path: check.path });
+          if (reasons.length) throw new Error(`not clean after archive: ${reasons.join(', ')}`);
+          this.git(['worktree', 'remove', check.path], info.primary);
+          result.worktreeRemoved = true;
+          if (fs.existsSync(check.path)) throw new Error('worktree removal not confirmed');
+        }
+        if (this.worktrees().some((tree) => tree.branch === `refs/heads/${branch}`)) throw new Error('branch still checked out');
+        if (!this.directBranch(branch) || branch === 'main' || branch === info.defaultBranch) throw new Error('default or symbolic branch protected');
+        this.verifyArchive(run, entry);
+        this.git(['update-ref', '--no-deref', '-d', `refs/heads/${branch}`, check.head]);
+        if (this.git(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], this.cwd, true).status !== 1) throw new Error('branch removal not confirmed');
+        const old = await this.getRecord(branch).catch(() => null);
+        this.writeRecord(info, { version: 1, status: 'retired', branch, head: check.head, snapshot, path: check.path, owner: old?.owner ?? null, by, archive: run.manifest, updatedAt: new Date().toISOString() });
+        result.status = 'retired';
+      } catch (error) { result.reasons.push(error.message); }
+      run.results.push(result);
+      this.persistManifest(run);
+      return { ...result, run };
+    });
+  }
 }
