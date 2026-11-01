@@ -131,3 +131,40 @@ Val's written deferral.
 | P4 | open, needs build 9 on TestFlight | |
 | P5 | open, needs build 9 on TestFlight | |
 | P6 | open, needs an older Companion at hand | |
+
+## Val's temporary VoiceOver deferral, 2026-11-01
+
+Val instructed this session: “skip voiceover for now and just proceed”. For CF-3, this defers V1–V3 (desktop VoiceOver) and P5 (iPhone VoiceOver) for now. None of these rows was run or passed. The historical Run 1 table above is preserved; this later decision supersedes its open status for those four rows. This records a temporary deferral, not completed accessibility acceptance.
+
+| Rows | Current status | Authority |
+| --- | --- | --- |
+| V1, V2, V3, P5 | Deferred for now; not run | Val's instruction in this session, quoted above |
+| D1–D5 | Open; awaiting Val's keyboard-only results | No result reported |
+| P1–P4 | Open; awaiting Companion TestFlight confirmation and physical-phone results | No result reported |
+| P6 | Open; requires an older Companion at hand or Val's written deferral | No result reported |
+
+Totals: 0 passed, 0 failed, 4 deferred for now, 10 open. Proceed with the non-VoiceOver rows. #276 remains open while those rows lack results or written deferrals; no simulator or e2e result substitutes for Val's report.
+
+## Run 2: non-VoiceOver candidate prepared 2026-11-01
+
+Prepared after Val's instruction to proceed. These are setup facts, not human acceptance results. The Run 1 artifact and evidence remain unchanged.
+
+| Item | Value |
+| --- | --- |
+| Source | `85d2c001a73395d5e6e2a1ee388b58253d4bce83`, freshly fetched main when this worktree was created; subsequent tracked changes are docs only |
+| Mac build | Desktop 0.4.1, ad-hoc `pnpm --filter @modex/desktop dist`, `Signature=adhoc`; not a release artifact |
+| DMG | `.worktrees/cf3-vo-deferral/apps/desktop/release/Modex-0.4.1-arm64.dmg` |
+| DMG SHA-256 | `05ef468da1e50b0e9fa4a43809499043c928f46dd1e5dde101e5bffb895dc36d` |
+| Built app | `.worktrees/cf3-vo-deferral/apps/desktop/release/mac-arm64/Modex.app` |
+| Environment | macOS 27.2 (26B123), arm64; pnpm 10.34.5; codex-cli 0.166.0 |
+| Model | CLI configured default `gpt-6.1-sol`, reasoning `low`; Val must record the actual thread selection |
+| Disposable project | `.worktrees/cf3-vo-deferral/apps/desktop/.probes/cf3-disposable`, empty git repository |
+| Question route | Codex thread, Plan mode, Read only sandbox; no feature flag required |
+| Journal | Start this candidate with `MODEX_EVENT_JOURNAL=1` for D4; confirm the run's Modex home before checking for the synthetic token |
+| Companion | Source still declares 0.4.0 (9) and contains the native `QuestionCard`; TestFlight upload/processing/installation remains unconfirmed |
+| iPhone model, iOS, installed Companion build | Val records at run time |
+| Rows | D1–D5, P1–P4 and P6 open; V1–V3 and P5 deferred for now by Val |
+
+Next action for Val: open this candidate and the disposable project, then run D1–D5 from the keyboard and report each result. Use a synthetic token for D4. The phone rows retain their TestFlight and physical-device prerequisites.
+
+Preparation validation on this source: `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm test` and `pnpm --filter @modex/desktop dist` all exited 0 on their first runs; `git diff --check` passed. No e2e or iPhone suite was run for this docs-only update. These checks do not change the human-row results.
