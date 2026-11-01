@@ -156,7 +156,7 @@ All logs are in `~/.claude/task-evidence/lane-d-2026-11-01/`.
     a 302 as a bodyless `GET`. Recorded, not prevented.
 - **Load.** Other lanes ran Playwright at the same time (load average 27–134). Some wire runs failed at Codex's
   5-second `initialize` before any request; they were re-run, not counted.
-- **Full suite:** `pnpm build && pnpm test`. The results are in the PR.
+- **Full suite:** `pnpm build && pnpm test` exited 0. The desktop suite ran 2,127 tests: 2,098 passed, 29 skipped, 0 failed.
 
 ## Still open
 
