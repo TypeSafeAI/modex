@@ -447,3 +447,7 @@ Ask/Always/YOLO, and permission-profile validation keep their existing decisions
 - Clarifying a task plan through a question card (the second half of CF-7).
 - Human acceptance of a native question (keyboard, VoiceOver, iPhone): [steps](reviews/2026-10-22-cf3-question-acceptance.md),
   tracked in #281.
+
+## CF-3 human acceptance update, 2026-11-01
+
+Val said “skip voiceover for now and just proceed”. V1–V3 and P5 are deferred for now and were not run or passed; D1–D5, P1–P4 and P6 remain open. See the [acceptance record](reviews/2026-10-22-cf3-question-acceptance.md#vals-temporary-voiceover-deferral-2026-11-01). This changes the human acceptance schedule only.
