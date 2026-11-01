@@ -139,7 +139,7 @@ The evidence above was taken on Claude Code 2.1.312. On `main` at `0a8c513` (Mac
   read; no write, hook or MCP marker; two provider turns on the loopback fixture. The hook and MCP positive
   controls still fire without the candidate flags. Codex's read-only profile still permits shell, outside reads
   and the inherited synthetic token, so Codex stays out of reviews.
-- `e2e/code-review-agent.spec.ts` with the other Code Review specs: see the
+- `e2e/code-review-agent.spec.ts`: 6 of 6 passed, inside a focused 51 of 51 Code Review run; see the
   [2026-11-01 matrix refresh](2026-11-01-cr8-acceptance-matrix.md#environments).
 
 This is still fixture evidence: a scripted local provider, a synthetic key, a disposable home. It says what the

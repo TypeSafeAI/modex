@@ -27,7 +27,7 @@ Columns as in the baseline: **Fixture** (Node tests, or real Electron with synth
 | `U-1101` | `node --test --test-force-exit dist/test/code-review-*.test.js dist/test/claude-backend.test.js dist/test/desktop-service-drain.test.js` after `pnpm -s run build:main` | `main` `0a8c513` | 224 tests: 223 passed, 0 failed, 1 skipped (Windows-only) |
 | `N` | `MODEX_CR6_NATIVE=1 node --test --test-force-exit test/code-review-isolation.native.test.mjs`: installed CLIs in a disposable home under `sandbox-exec`, scripted loopback provider, synthetic key; no account, no real inference | `main` `0a8c513`; **Claude Code 2.1.316**, **codex-cli 0.166.0** | 6 of 6 passed, 0 skipped. Production argv advertises only `Read`; Bash, Write, WebFetch and MCP calls refused; outside and symlink reads refused by `--restricted`. Codex read-only still allows shell and outside reads (why it is not offered). [Record](2026-10-28-cr6-native-review.md#re-run-on-claude-code-21316-2026-11-01) |
 | `F-1101` | `pnpm exec playwright test` on the journey, regressions, a11y, measure, agent, actions, navigation and scroll specs: real Electron, production preload/IPC/services, synthetic `gh` and `claude` | `main` `0a8c513` | 51 of 51 passed in 6.2 min (journey 1, regressions 9, a11y 5, measure 2, agent 6, actions 14, navigation 12, scroll 2). Journey captures R1–R4, split-1440 and narrow-900 with populated R1 checks and R4 diff |
-| `S-1101` | `pnpm build && pnpm test && pnpm test:e2e` | `main` `0a8c513` + this page's docs | FULLSUITE |
+| `S-1101` | `pnpm build && pnpm test && pnpm test:e2e` | `main` `0a8c513` + this page's docs | `pnpm build` passed. `pnpm test` exit 0: 2,277 passed, 26 skipped, 0 failed (worktree 120, core 16, desktop 2,094 + 20 skipped, desktop scripts 21 + 6 skipped, site 10, Store 16). `pnpm test:e2e` **exit 1**: desktop 477 passed, 7 skipped, **1 failed**: `app.spec.ts:729` accessibility hit a strict-mode violation (two "Chat details" dialogs) while the load average was near 100. It passed 1 of 1 alone. The chain stopped before the site stage, which then passed 7 of 7 on its own. This is **not** a green full run. The hosted required `unit + e2e (macOS)` check passed on this page's commit `c1f74c7` (run `41308827432`) |
 
 **E2** (2026-11-01): Mac17,6 (Apple M5 Max), macOS 27.2 (Darwin 27.2.0), Node v24.22.0, Electron 44.4.5,
 Playwright 1.63.0, gh 2.102.0. Other sessions were running: load average about 37–43, so no timing here is a
@@ -183,7 +183,7 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 | AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). **Open (Val):** comparison with the original references, which are gone; needs re-captured references or Val's decision to accept re-captures. |
 | AC2 every visible control has behaviour or an explicit unavailable state | Met at fixture: every control is built, a recorded deviation, or a named open decision (table above). Seven built controls have no asserting spec (follow-ups below). |
 | AC3 isolation, injection, incomplete data, at-most-once | Met at fixture: read regressions, native denial on 2.1.316 (`N`), agent stop/unknown/restart, write at-most-once and reconciliation (`F-1101`). **Open:** the live smoke (#325) and live canary (#326). |
-| AC4 local Changes, navigation, conversation and approvals intact | `S-1101` below, and the hosted required check on every landing PR. |
+| AC4 local Changes, navigation, conversation and approvals intact | `S-1101`: unit green; the local E2E had one non-Code-Review failure that passed alone, so it is not counted as green. The hosted required check passed on `c1f74c7`. |
 | AC5 performance, keyboard/contrast; human screen-reader gate | Baseline measurements and contrast stand for `0e674e7`; `F-1101` re-ran measure and a11y green. **Open (Val):** the [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md), Result row empty. |
 | AC6 columns kept separate, tied to SHA and environment | This page. |
 | AC7 reproducible, readiness stated, no merge by this task | Commands below. **Readiness:** the whole workspace (inbox, overview, remote diff, Claude review and questions, writes and merge) is built and fixture-proven; packaged builds still hide it behind `modex.codeReview`. Not ready to show by default until the live and human gates are run or Val accepts them as open. |
@@ -254,4 +254,7 @@ Playwright wipes it.
 ## Checkpoint
 
 - **SHA:** `main` `0a8c513`. This page changes docs only.
+- **VoiceOver seed on `0a8c513`:** `seed.mjs` ran, and its printed launch line opened the app against the seeded
+  home (user data under `<seed>/home/electron`). The app's provider probe reached only the recorder
+  (`provider-calls.log`: `claude --version`), and `gh-calls.log` stayed empty until Code Review was opened.
 - **Next action:** Val names the two repositories (#325, #326) and answers decisions 1, 5, 6 and 7 on #319.
