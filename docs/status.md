@@ -117,7 +117,7 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
   written). Live codex-cli 0.164.0 (`gpt-6.1-sol`, ChatGPT account, Chat mode) passed the same path: two approvals, `apply_patch` and the check with exit code 0, a `final` answer, "Codex reported no plan for this turn", Save to Notes, Open, restart, and Stop (interrupted in 0.1 s, the file never written). The 2026-10-22 candidates `0e674e7` and `ec7be57` are kept as history beside it.
   **Still open, all Val's:** the keyboard/VoiceOver rows A1–A8, B1–B7 and C1–C5 (C1–C5 deferred by Val on 2026-10-30, not run) on the seeded build from this
   candidate, and the CF-3 rows D1–D5, V1–V3 and P1–P6 (#420; the P rows also need Companion 0.4.0 (9) on
-  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral.
+  TestFlight). No row is marked on Val's behalf; #281 stays open until each has Val's result or written deferral. On 2026-11-01 the receipt recorded the C1–C5 deferral, and that #450, #453 and #463 landed after `b643617`. The 2026-10-28 seeded build is gone, so the home was seeded again on `b643617` in `.worktrees/cf8-voiceover-b643617`. Val chooses whether A1–A8 and B1–B7 run on `b643617` or on a new candidate from current `main`.
 - **Conversation acceptance history and human review kit.** The [acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md)
   preserves the October 20 early candidate results separately from later live-provider evidence.
   The [keyboard/VoiceOver checklist](reviews/2026-10-20-keyboard-voiceover/checklist.md) includes
