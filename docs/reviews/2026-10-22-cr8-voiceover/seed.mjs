@@ -1,6 +1,8 @@
 // Seeds a disposable Modex home for the Code Review keyboard and VoiceOver review: the CR-8 journeys' synthetic
 // GitHub world (apps/desktop/test/fixtures/code-review-gh-world.ts, built to dist/test), a synthetic `gh` first on
 // PATH, and a throwaway gh configuration. No token is set and the person's own gh login is never read.
+// `claude` and `codex` on PATH are recorders that log their argv and exit 1, so pressing Start in Review with
+// Claude (#325) shows a failure and never reaches the person's own login or a provider.
 // Prints the command that launches the app against it.
 // Usage, from apps/desktop after `pnpm build`: node ../../docs/reviews/2026-10-22-cr8-voiceover/seed.mjs <empty directory>
 import { execFileSync } from "node:child_process";
@@ -29,6 +31,9 @@ fs.writeFileSync(path.join(home, "app", "state.json"), JSON.stringify({
   settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", mock: "mock" }, routing: { jev_transport: "http" } },
 }));
 fs.writeFileSync(path.join(bin, "gh"), WORLD_GH, { mode: 0o755 });
+const recorder = `#!/bin/sh\nprintf '%s %s\\n' "$(basename "$0")" "$*" >> '${path.join(root, "provider-calls.log").replace(/'/g, "'\\''")}'\nexit 1\n`;
+for (const cli of ["claude", "codex"]) fs.writeFileSync(path.join(bin, cli), recorder, { mode: 0o755 });
+fs.writeFileSync(path.join(root, "provider-calls.log"), "");
 fs.writeFileSync(path.join(root, "gh-world.json"), JSON.stringify(baseWorld()));
 fs.writeFileSync(path.join(root, "gh-calls.log"), "");
 fs.writeFileSync(path.join(config, "hosts.yml"), "github.com:\n    user: ada-fixture\n    git_protocol: https\n");

@@ -72,7 +72,8 @@ Everything below is mock or synthetic `gh`. **No live action was run** on any re
 
 ## Open
 
-- A live run against a disposable repository Val names.
+- A live run against a disposable repository Val names (steps 3–8 of the
+  [canary procedure](2026-11-01-cr7-live-canary.md); not run).
 - GitHub has no precondition on a PATCH, so an edit made on GitHub in the moment between main's check and
   its PATCH would still be overwritten.
 - Reviewer requests can't be withdrawn, and team reviewers aren't offered.

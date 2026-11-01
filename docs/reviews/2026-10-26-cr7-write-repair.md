@@ -31,3 +31,15 @@ The follow-up build, renderer typecheck and full unit command passed (2,165 pass
 Complete first-failure results are preserved externally in `cr7-graphql-first-e2e-results`, with extracted `cr7-panel-pointer-events.json`. The passive trace records off-script zero-button pointer moves interleaved with the scripted held-button drags; the sidebar never establishes capture, and the workspace loses capture on a zero-button move before its drag completes. The resize component and test are unchanged from the earlier published candidate. This supports investigating input interference without identifying its source or proving absence of a source defect. A single unchanged focused diagnostic passed 1/1 in 8.2 seconds with retries disabled; its trace is preserved separately in `cr7-panel-diagnostic-results`. Independent review confirmed the conflicting delivered input without identifying its origin or establishing a source defect. No timeout, assertion or product behavior was altered. The full E2E command remains failed; the site stage and fresh hosted candidate checks are separate evidence.
 
 The separately executed site E2E stage passed 7/7 in 14.0 seconds. The follow-up is published for fresh hosted validation with the failed aggregate result, narrow diagnostic pass and independent review all retained. No green aggregate local E2E claim or protected-merge readiness is made from these results.
+
+## Delivery (recorded 2026-11-01)
+
+The signed candidate and protected delivery that this page said "remain to be recorded" have landed: PR #416
+merged through the merge queue on 2026-10-27 as `b3aad0d85b91f479d5415abdec15d9f74a5dd61c`, carrying #412's
+preflight and the stacked #413, #414 and #415 (all four closed unmerged; #416 superseded them) together with
+this repair and the GraphQL follow-up. The required `unit + e2e (macOS)` check passed on the PR head `fffd07e`
+(run `40415729228`) and in the merge queue on top of `main` (`merge_group` run `40420085521`, job `121912060965`).
+The local `panel-resize.spec.ts:65` failure above was not reproduced there and stays recorded as diagnosed input
+interference, not a fix. The post-merge push run on `main` (`40423890925`) failed its unit step (job
+`121924751474`) and the run was then cancelled; that failure is not diagnosed here and is not counted as a pass. It shipped in v0.4.0 and v0.4.1. No authenticated live write has been
+performed; the [live canary procedure](2026-11-01-cr7-live-canary.md) waits for a disposable repository Val names.

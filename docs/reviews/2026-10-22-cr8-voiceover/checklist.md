@@ -14,7 +14,8 @@ listed at the end for their own issues' acceptance and are not part of #322 AC4.
 
 **Build:** `main` at `afec85b` (#438, the CR-3 acceptance follow-up) or later, built with `pnpm build`. On
 2026-10-30 `main` was `f51ef7e`; the automated half of this gate was re-run there
-([resume record](../2026-10-30-cr3-acceptance-resume.md)). Record the SHA you used. The automated half's first run
+([resume record](../2026-10-30-cr3-acceptance-resume.md)). On 2026-11-01 it was re-run on `0a8c513`, the seed was
+rebuilt there and its launch line opened the app ([matrix refresh](../2026-11-01-cr8-acceptance-matrix.md)). Record the SHA you used. The automated half's first run
 is in [the CR-3 acceptance record](../2026-10-28-cr3-acceptance.md).
 
 ## Setup (about 3 minutes)
@@ -28,7 +29,9 @@ node ../../docs/reviews/2026-10-22-cr8-voiceover/seed.mjs /tmp/modex-cr8-voiceov
 ```
 
 The script writes the home, the synthetic `gh` and its world (the journey's three authored PRs and one to
-review, all made up), and prints an `env … npx electron .` line. Run that line, then:
+review, all made up), and prints an `env … npx electron .` line. Since 2026-11-01 it also puts recorder `claude`
+and `codex` executables first on PATH: they log to `provider-calls.log` and exit 1, so nothing in this home reaches
+your own Claude login or a provider. Run that line, then:
 
 1. Open DevTools (View → Toggle Developer Tools) and run `localStorage.setItem("modex.codeReview", "on")`. Then reload (Command-R). This turns on the unfinished destination in a built app.
 2. Make the window about 1440×900.
@@ -44,8 +47,8 @@ review, all made up), and prints an `env … npx electron .` line. Run that line
 | A1 | Tab to the rail's **Code Review** button and press Return | The inbox opens: "Code Review", **Inbox actions**, the search field, then "Authored by me" and "Needs my review" | |
 | A2 | Tab into the list, then use Down, Up, Home and End | One Tab stop for the whole list; the arrow keys move between rows; each row shows a focus ring | |
 | A3 | Press Return on "Move holds between branches…" | The PR opens: the PR tab and the **Changes +8,912 −47** tab appear in the title bar; the header reads "Open", "lending #73" | |
-| A4 | Keep pressing Tab | Pin, Copy link, Open in GitHub, Review with Codex, Review instructions and Merge, then the title bar's PR tab, its close, Changes and its close, New tab, and the split button. **Note:** the title-bar tabs come after the header, though they are drawn above it. Record whether that order is acceptable. | |
-| A5 | On **Review with Codex**, **Review instructions**, **Merge** and **New tab**, press Return and Space | Nothing happens; each one says why it isn't available (tooltip). Focus stays put. | |
+| A4 | Keep pressing Tab | Pin, Copy link, Open in GitHub, Review with Claude, Review instructions and Merge, then the title bar's PR tab, its close, Changes and its close, New tab, and the split button. **Note:** the title-bar tabs come after the header, though they are drawn above it. Record whether that order is acceptable. | |
+| A5 | On **New tab**, press Return and Space. Then on **Review with Claude**, **Review instructions** and **Merge**, press Return | New tab does nothing and says why it isn't available (tooltip); focus stays put. The other three open their panel or popover (they have landed, #325 and #326), and Close or Escape returns focus to the button. Don't press Start or confirm anything here; those rows belong to #325 and #326 below | |
 | A6 | Tab to the split button and press Return; then Tab to the divider between the panes and press Left/Right (Shift for larger steps) | Changes opens beside the PR. The divider moves and its value changes. It stops at each pane's minimum. | |
 | A7 | Inbox actions → Return → Escape | The menu opens with **Refresh** focused; Escape closes it and returns focus to **Inbox actions** | |
 | A8 | Open the second PR, then use the title bar's Back and Forward | Each PR returns as you left it (split or not), without a loading spinner | |
@@ -60,7 +63,7 @@ review, all made up), and prints an `env … npx electron .` line. Run that line
 | --- | --- | --- | --- |
 | B1 | VO-Right from the rail into the inbox | "Pull request inbox, complementary"; "Code Review, heading level 1"; "Inbox actions, menu pop-up button"; "Search or paste a PR link, search text field"; "Authored by me, group" | |
 | B2 | VO-Right over a row | The title, then "example-org/lending #73, ada-fixture ·" and its age. A selected row adds "current". A row that may be part of a stack adds "May be part of a stack (inferred from its base branch)". | |
-| B3 | Open a PR and VO-Right through the header | "Open"; "lending #73"; while it loads, "Loading the pull request"; "Pin, toggle button"; "Copy link"; "Open in GitHub, link"; "Review with Codex, dimmed" with the reason as its description; the same for Review instructions and Merge | |
+| B3 | Open a PR and VO-Right through the header | "Open"; "lending #73"; while it loads, "Loading the pull request"; "Pin, toggle button"; "Copy link"; "Open in GitHub, link"; "Review with Claude, button"; "Review instructions"; "Merge" (record what each one says while the PR loads and after) | |
 | B4 | Activate **Copy link** | "Link copied" is announced (a polite live region) | |
 | B5 | VO-Right through the title bar's tabs | "…, tab, selected, 1 of 2" for the PR tab; "Changes, plus 8,912 minus 47, tab" (note how the totals are read); "Close Changes, button" | |
 | B6 | Move to a divider | "Resize the pull request pane, splitter" or similar, with its value; VO-Shift-Arrow or Left/Right changes it | |
