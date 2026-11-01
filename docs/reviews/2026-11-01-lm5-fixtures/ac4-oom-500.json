@@ -1,0 +1,52 @@
+{
+  "kind": "installed codex CLI against a scripted loopback Responses server that fails after one tool ran; no model, no inference",
+  "cli": "codex",
+  "mode": "oom-500",
+  "hops": [
+    {
+      "n": 1,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": false,
+      "hasCompactPrompt": false,
+      "bytes": 33763
+    },
+    {
+      "n": 2,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": true,
+      "hasCompactPrompt": false,
+      "bytes": 34135
+    }
+  ],
+  "toolRuns": 1,
+  "toolStarts": 1,
+  "outcomes": [
+    "succeeded"
+  ],
+  "notices": [],
+  "result": {
+    "status": "failed",
+    "error": "The local server returned an internal error (HTTP 500). Check its log: it may have run out of memory or crashed while loading the model. Modex didn't retry the turn or switch models.",
+    "detail": {
+      "codexThreadId": "01a1971d-ba12-71e3-9c55-a4f95766ee97",
+      "turnId": "01a1971d-bad5-7ee3-808a-e28f98d8b037",
+      "userAgent": "modex/0.166.0 (Mac OS 27.2.0; arm64) unknown (modex; 0.0.1)",
+      "pid": 17731,
+      "errorNotification": {
+        "message": "We’re currently experiencing high demand, which may cause temporary errors.",
+        "codexErrorInfo": "internalServerError",
+        "additionalDetails": null,
+        "misalignment": null,
+        "at": "2026-11-01T12:37:50.902Z"
+      },
+      "turnError": {
+        "message": "We’re currently experiencing high demand, which may cause temporary errors.",
+        "codexErrorInfo": "internalServerError",
+        "additionalDetails": null,
+        "misalignment": null
+      }
+    }
+  }
+}

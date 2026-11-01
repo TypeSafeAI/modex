@@ -1,0 +1,32 @@
+{
+  "kind": "installed codex CLI against a scripted loopback Responses server that fails after one tool ran; no model, no inference",
+  "cli": "codex",
+  "mode": "stop",
+  "hops": [
+    {
+      "n": 1,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": false,
+      "hasCompactPrompt": false,
+      "bytes": 33763
+    },
+    {
+      "n": 2,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": true,
+      "hasCompactPrompt": false,
+      "bytes": 34135
+    }
+  ],
+  "toolRuns": 1,
+  "toolStarts": 1,
+  "outcomes": [
+    "succeeded"
+  ],
+  "notices": [],
+  "result": {
+    "status": "interrupted"
+  }
+}

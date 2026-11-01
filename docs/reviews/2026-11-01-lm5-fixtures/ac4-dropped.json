@@ -1,0 +1,52 @@
+{
+  "kind": "installed codex CLI against a scripted loopback Responses server that fails after one tool ran; no model, no inference",
+  "cli": "codex",
+  "mode": "dropped",
+  "hops": [
+    {
+      "n": 1,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": false,
+      "hasCompactPrompt": false,
+      "bytes": 33763
+    },
+    {
+      "n": 2,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": true,
+      "hasCompactPrompt": false,
+      "bytes": 34135
+    }
+  ],
+  "toolRuns": 1,
+  "toolStarts": 1,
+  "outcomes": [
+    "succeeded"
+  ],
+  "notices": [],
+  "result": {
+    "status": "failed",
+    "error": "stream disconnected before completion: Transport error: network error: error decoding response body",
+    "detail": {
+      "codexThreadId": "01a1971d-ccc6-7ba2-aaf2-f23ad73486e9",
+      "turnId": "01a1971d-ccf1-73a3-b094-e6ee6c6161c4",
+      "userAgent": "modex/0.166.0 (Mac OS 27.2.0; arm64) unknown (modex; 0.0.1)",
+      "pid": 22488,
+      "errorNotification": {
+        "message": "stream disconnected before completion: Transport error: network error: error decoding response body",
+        "codexErrorInfo": "other",
+        "additionalDetails": null,
+        "misalignment": null,
+        "at": "2026-11-01T12:37:55.336Z"
+      },
+      "turnError": {
+        "message": "stream disconnected before completion: Transport error: network error: error decoding response body",
+        "codexErrorInfo": "other",
+        "additionalDetails": null,
+        "misalignment": null
+      }
+    }
+  }
+}

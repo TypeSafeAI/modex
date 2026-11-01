@@ -62,6 +62,8 @@ export interface LocalContextEvidence {
 
 /** Keys a layer other than Modex's session flags may not set: the inference destination, the model, its context and the tools reaching it. */
 const GOVERNED = ["model", "model_provider", "model_providers", "openai_base_url", "oss_provider", "model_catalog_json", "model_context_window", "model_auto_compact_token_limit",
+  // Native compaction: what it sends the provider and when it runs (#380 AC1; key names from codex-cli 0.166.0).
+  "compact_prompt", "model_auto_compact_token_limit_scope", "model_post_turn_compact_threshold_percent", "model_async_compact_threshold_percent",
   "model_reasoning_summary", "model_reasoning_effort", "service_tier", "web_search", "features", "mcp_servers", "shell_environment_policy", "plugins", "hooks", "marketplaces",
   "profile", "profiles", "projects", "notify", "otel", "tools", "developer_instructions", "model_instructions_file", "agents", "cloud"];
 const MANAGED = new Set(["mdm", "system", "enterpriseManaged", "legacyManagedConfigTomlFromFile", "legacyManagedConfigTomlFromMdm"]);
@@ -131,6 +133,8 @@ export function admitLocalConfiguration(read: ConfigRead, requirements: Requirem
   want(`model_providers.${expected.provider}.requires_openai_auth`, provider.requires_openai_auth, false);
   want(`model_providers.${expected.provider}.env_key`, provider.env_key ?? null, expected.tokenEnv);
   want(`model_providers.${expected.provider}.request_max_retries`, provider.request_max_retries, 0);
+  // A dropped stream is otherwise re-sent whole: the turn reports the drop instead (#380 AC4).
+  want(`model_providers.${expected.provider}.stream_max_retries`, provider.stream_max_retries, 0);
   for (const name of ["experimental_bearer_token", "auth", "http_headers", "env_http_headers", "query_params"]) want(`model_providers.${expected.provider}.${name}`, provider[name] ?? null, null);
   want("model_context_window", config.model_context_window, expected.contextTokens);
   want("web_search", config.web_search, "disabled");

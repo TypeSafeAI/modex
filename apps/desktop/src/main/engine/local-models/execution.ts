@@ -54,6 +54,18 @@ function refuseProjectConfiguration(cwd: string): void {
   }
 }
 
+/**
+ * Codex words every HTTP 500 as a cloud service under load ("We're currently experiencing high demand"). From a
+ * loopback server that is not what happened: it is the person's own server failing, often out of memory. Codex's
+ * text stays in the detail; the turn's error says what is known (#380 AC4).
+ */
+function truthful(result: TurnResult): TurnResult {
+  if (result.status !== "failed") return result;
+  const detail = result.detail as { turnError?: { codexErrorInfo?: unknown } } | undefined;
+  if (detail?.turnError?.codexErrorInfo !== "internalServerError") return result;
+  return { ...result, error: "The local server returned an internal error (HTTP 500). Check its log: it may have run out of memory or crashed while loading the model. Modex didn't retry the turn or switch models." };
+}
+
 export class LocalExecution {
   /** The child owning each thread's native conversation, with the key it was started for. */
   private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance }>();
@@ -146,7 +158,7 @@ export class LocalExecution {
         this.children.set(thread.id, owned);
       }
       // Effort, fast mode and service tiers are cloud-model settings with no local qualification: none is sent.
-      return await owned.backend.runTurn(text, { ...opts, effort: undefined, fast: false }, sink, signal);
+      return truthful(await owned.backend.runTurn(text, { ...opts, effort: undefined, fast: false }, sink, signal));
     } catch (error) {
       return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (error as Error).message };
     } finally { release?.(); }
