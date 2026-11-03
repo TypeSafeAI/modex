@@ -32,6 +32,8 @@ export interface Harness {
   posts: () => { endpoint: string; body: Record<string, unknown>; id: number }[];
   /** Stops the app as a crash would leave it (no clean shutdown of its gh calls) and starts it again on the same home. */
   relaunch: () => Promise<void>;
+  /** Quits normally, so everything the app saves on the way out is saved, and starts again on the same home. */
+  restart: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -68,12 +70,11 @@ export async function launchWithGh(initial: GhWorld): Promise<Harness> {
       const inner = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
       return native !== null && native[0]! > 0 && native[0] === inner[0] && native[1] === inner[1];
     }, { timeout: 15_000, intervals: [100] }).toBe(true);
-    // A built app hides the unfinished destination behind its local switch (src/renderer/code-review/feature.ts).
-    await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
     // Row ages and captures read the renderer's clock: pin it to the fixtures' (test/fixtures/code-review.ts NOW).
     await page.clock.setFixedTime(new Date("2026-10-18T20:41:00Z"));
     await page.reload();
-    await expect(tid(page, "rail-code-review")).toBeVisible();
+    // Code Review's own button may be off (e2e/code-review-enablement.spec.ts); Settings is always in the rail.
+    await expect(tid(page, "open-settings")).toBeVisible();
     return { app, page };
   };
   let { app, page } = await start();
@@ -89,6 +90,11 @@ export async function launchWithGh(initial: GhWorld): Promise<Harness> {
       // SIGKILL: no quit handlers run, as when the Mac loses power or Modex crashes mid-send.
       const pid = app.process().pid;
       if (pid) process.kill(pid, "SIGKILL");
+      await app.close().catch(() => {});
+      ({ app, page } = await start());
+      harness.app = app; harness.page = page;
+    },
+    restart: async () => {
       await app.close().catch(() => {});
       ({ app, page } = await start());
       harness.app = app; harness.page = page;

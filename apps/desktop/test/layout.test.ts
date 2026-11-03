@@ -14,8 +14,8 @@ const memory = (init: Record<string, string> = {}) => {
 test("layout: defaults, round trip, and bad data falls back per field", () => {
   const s = memory();
   assert.deepEqual(loadLayout(s), DEFAULT_LAYOUT);
-  saveLayout(s, { sidebar: false, changes: false, streamerMode: true, analytics: false });
-  assert.deepEqual(loadLayout(s), { sidebar: false, changes: false, streamerMode: true, analytics: false });
+  saveLayout(s, { sidebar: false, changes: false, streamerMode: true, analytics: false, codeReview: false });
+  assert.deepEqual(loadLayout(s), { sidebar: false, changes: false, streamerMode: true, analytics: false, codeReview: false });
   assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: "{not json" })), DEFAULT_LAYOUT);
   assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: JSON.stringify({ changes: "no", sidebar: false }) })), { sidebar: false, changes: true, streamerMode: false, analytics: true }, "a layout saved before Analytics shows it");
 });
