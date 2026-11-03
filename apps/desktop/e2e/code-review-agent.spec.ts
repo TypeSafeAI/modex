@@ -334,3 +334,65 @@ test("integrated review: populated diff → native fixture finding → confirmed
   expect(runs()).toHaveLength(1);
   expect(h.posts()).toHaveLength(1);
 });
+
+/** The pane's scroller for its content: the main column, or the whole body where the narrow overview stacks. */
+async function overviewScroller(page: Page) {
+  const main = page.locator(".cr-overview-main");
+  const stacked = await main.evaluate((el) => getComputedStyle(el).overflowY === "visible");
+  return stacked ? tid(page, "code-review-overview-body") : main;
+}
+
+/** C61: the control is inside its scroller's visible box and nothing is painted over it. */
+async function expectClear(page: Page, control: ReturnType<Page["locator"]>, name: string): Promise<void> {
+  const scroller = await overviewScroller(page);
+  await control.focus();
+  await expect(control, `${name} keeps the focus`).toBeFocused();
+  await expect.poll(async () => control.evaluate((el, box) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return r.height > 0 && r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5 && !!hit && (el === hit || el.contains(hit));
+  }, await scroller.evaluate((el) => { const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; })), `${name} is on screen and uncovered`).toBe(true);
+}
+
+/**
+ * C61: brought into view, the last thing in the overview's main column ends inside the scroller, uncovered. Where the
+ * narrow overview stacks, the sidebar follows the main column, so the item is scrolled to rather than the scroller's end.
+ */
+async function expectLastItemClear(page: Page, label: string): Promise<void> {
+  const scroller = await overviewScroller(page);
+  const measure = () => scroller.evaluate((el) => {
+    const last = document.querySelector(".cr-overview-main section:last-of-type > :last-child")!;
+    last.scrollIntoView({ block: "end" });
+    const box = el.getBoundingClientRect(), r = last.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.bottom - 2);
+    return { scrollerHeight: Math.round(box.height), overrun: Math.round(r.bottom - box.bottom), covered: !hit || !(last === hit || last.contains(hit)), hit: hit?.className ?? null };
+  });
+  await expect.poll(async () => { const m = await measure(); return m.scrollerHeight >= 120 && m.overrun <= 0 && !m.covered ? "clear" : JSON.stringify(m); }, `${label}: the last item clears the bottom, and the pane keeps a usable height`).toBe("clear");
+}
+
+for (const [width, height] of [[900, 600], [1440, 900]] as const) {
+  test(`C61: the inline Ask section and the last activity item stay reachable at ${width}×${height}, with the review panel shut and open`, async () => {
+    h = await launchWithGh(baseWorld());
+    installClaude("reply");
+    const page = await openLending();
+    const { height: fitted } = await fitWindow(h, width, height);
+    expect(fitted, "the display fits the requested height").toBe(height);
+    const ask = tid(page, "cr-agent-ask");
+    await expect(ask).toBeVisible();
+
+    await expectClear(page, ask.getByRole("textbox"), "Ask's text box");
+    await ask.getByRole("textbox").fill("A question long enough to matter.\n".repeat(8));
+    await expectClear(page, ask.getByRole("button", { name: "Ask", exact: true }), "Ask");
+    await expectLastItemClear(page, "panel shut");
+
+    await tid(page, "code-review-review").first().click();
+    await expect(tid(page, "cr-agent-panel")).toBeVisible();
+    await expectClear(page, ask.getByRole("textbox"), "Ask's text box with the panel open");
+    await expectClear(page, ask.getByRole("button", { name: "Ask", exact: true }), "Ask with the panel open");
+    await expectLastItemClear(page, "panel open");
+    // The panel itself: its controls fit, or scroll, inside the window rather than off its bottom edge.
+    const start = tid(page, "cr-agent-start");
+    await start.scrollIntoViewIfNeeded();
+    await expect(start).toBeInViewport({ ratio: 1 });
+  });
+}

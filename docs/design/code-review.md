@@ -580,8 +580,8 @@ avatars and C58, C60 and C61 of the composer are not built (open decisions, #325
 **Deviations.**
 
 - **D6, repository in the header.** The header shows the repository name and number, as the references
-  do, with `owner/name` in its tooltip. It reads them from the inbox row or the resolved link until #323
-  binds `overview.locator` (C22).
+  do, with `owner/name` in its tooltip. It reads them from the inbox row or the resolved link until the
+  overview loads, then from the accepted `overview.locator` (C22, #477).
 - **D7, state pill.** It is the state menu once the PR has loaded and main has answered for the account;
   otherwise, and for a merged PR, it shows the state with no menu.
 - **D8, a Pinned group.** Pins appear in a Pinned group above the inbox's own, which the references
