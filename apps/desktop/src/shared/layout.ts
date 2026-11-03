@@ -52,8 +52,10 @@ export function loadLayout(storage: Storage): Layout {
       const value = (saved as Record<string, unknown>)[key];
       if (typeof value === "number" && Number.isFinite(value) && value > 0) layout[key] = Math.round(value);
     }
-  } else if (storage.getItem(LEGACY_SIDEBAR_KEY) === "closed") {
-    layout.sidebar = false;
+  } else {
+    try {
+      if (storage.getItem(LEGACY_SIDEBAR_KEY) === "closed") layout.sidebar = false;
+    } catch { /* Storage is blocked: the default stands. */ }
   }
   return layout;
 }
