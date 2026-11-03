@@ -17,6 +17,8 @@ const usage = `Usage: scripts/worktree.sh <command>
   prune [--apply] [--branch <name>] [--json]
                                    archive and prune eligible local work
   remove <name>                    release, archive, and prune one merged worktree
+  retire <branch> --expect-head <full-SHA> [--apply] [--by <who>] [--json]
+                                   snapshot, archive, and remove unmerged work you give up
   schedule install|status|uninstall install a daily macOS user job or inspect it
 See docs/worktree-hygiene.md for preservation rules and recovery.`;
 
@@ -110,6 +112,17 @@ export async function run(args = process.argv.slice(2), cwd = process.cwd()) {
       if (!removed || fs.existsSync(dest) || !absent) throw new Error(`Cleanup of ${name} was not fully confirmed; inspect the report and any recovery manifest above. Claim retained work before resuming it`);
     });
     console.log(`removed worktree and archived local branch ${name}`); return 0;
+  }
+  if (action === 'retire') {
+    const { positional, options } = parse(rest, { '--expect-head': true, '--apply': false, '--by': true, '--json': false }); count(positional, 1);
+    const value = await core.retire(positional[0], { expectedHead: options['--expect-head'], apply: !!options['--apply'], by: options['--by'] ?? process.env.CODEX_THREAD_ID ?? null });
+    const { run: retireRun, ...row } = value;
+    if (options['--json']) console.log(JSON.stringify(value, null, 2));
+    else {
+      console.log(`${row.status} ${row.branch}: ${row.reasons.length ? row.reasons.join(', ') : `dirty=${row.dirty ?? false} ignored=${(row.ignored ?? []).length}`}`);
+      if (retireRun) console.log(`Recovery manifest: ${retireRun.manifest}`);
+    }
+    return ['eligible', 'retired'].includes(row.status) ? 0 : 1;
   }
   if (action === 'schedule') {
     count(rest, 1);
