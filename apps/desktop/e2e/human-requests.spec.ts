@@ -10,13 +10,14 @@ import { launch, seedHome, tid, items } from "./support";
 // It is a scripted fixture, not live-model evidence. Its log lives outside MODEX_HOME so the secret check
 // below can read every file Modex wrote.
 
-function fixture(dir: string): string {
+function fixture(dir: string, questionGate?: string): string {
   const cli = path.join(dir, "codex-questions.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
 const fs = require('node:fs');
 if (process.argv.includes('--version')) { console.log('codex-cli 0.163.0'); process.exit(0); }
 if (process.argv.includes('login') || process.argv.includes('auth')) { console.log('Logged in using ChatGPT'); process.exit(0); }
 const log = ${JSON.stringify(path.join(dir, "codex-replies.jsonl"))};
+const questionGate = ${JSON.stringify(questionGate ?? null)};
 const emit = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 const questions = [
   { id: 'q-env', header: 'Environment', question: 'Which environment?', isOther: false, isSecret: false, options: [{ label: 'staging', description: 'Safe to try' }, { label: 'production', description: 'Live traffic' }] },
@@ -49,7 +50,14 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     open = { thread: p.threadId, turn: id, request: 900 + (++asked), done: false };
     emit({ id: msg.id, result: { turn: { id } } });
     emit({ method: 'turn/started', params: { threadId: p.threadId, turn: { id } } });
-    emit({ id: open.request, method: 'item/tool/requestUserInput', params: { threadId: p.threadId, turnId: id, itemId: 'ask-' + asked, isBlocking: true, autoResolutionMs: null, questions } });
+    const request = { id: open.request, method: 'item/tool/requestUserInput', params: { threadId: p.threadId, turnId: id, itemId: 'ask-' + asked, isBlocking: true, autoResolutionMs: null, questions } };
+    if (questionGate) {
+      const pending = open;
+      const timer = setInterval(() => {
+        if (pending.done || open !== pending) return clearInterval(timer);
+        if (fs.existsSync(questionGate)) { clearInterval(timer); emit(request); }
+      }, 10);
+    } else emit(request);
     return;
   }
   const finish = (status, text) => {
@@ -86,6 +94,69 @@ async function send(page: Page, text: string): Promise<void> {
   await tid(page, "send").click();
 }
 const currentRow = (page: Page) => page.locator('[data-testid="thread-row"][aria-current="true"]');
+
+test("a native question preserves the existing composer draft, staged attachment and arrival focus", async () => {
+  const { home } = seedHome({ default_backend: "codex", default_mode: "agent" });
+  const logs = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-question-draft-"));
+  const gate = path.join(logs, "ask-now");
+  const statePath = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  state.settings.codex_bin = fixture(logs, gate);
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await launch(home); app = opened.app;
+    const page = opened.page;
+    const threadId = await page.evaluate(async () => {
+      const state = await window.modex!.invoke("state:get", undefined);
+      return (await window.modex!.invoke("thread:create", { projectId: state.projects[0]!.id, backend: "codex", mode: "agent", auto: false })).id;
+    });
+    // Direct creation returns to its caller; reload to hydrate the renderer from main.
+    await page.reload();
+    await page.locator(`[data-testid="thread-row"][data-thread-id="${threadId}"]`).click();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    const draft = "  keep this draft\nwith whitespace 😀  ";
+    const composer = tid(page, "composer-input");
+    await composer.fill(draft);
+    await page.evaluate(() => {
+      const data = new DataTransfer();
+      data.items.add(new File(["question draft attachment bytes"], "draft.txt", { type: "text/plain" }));
+      document.querySelector('[data-testid="composer-input"]')!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await expect(tid(page, "composer-attachments")).toContainText("draft.txt");
+    const recovery = () => JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.threads.find((row: { threadId: string }) => row.threadId === threadId);
+    await expect.poll(() => recovery()?.attachments.length).toBe(1);
+    const saved = recovery();
+    expect(saved.text).toBe(draft);
+    await composer.focus();
+    // A turn arriving through main must not consume the window's separate unsent draft.
+    expect(await page.evaluate(threadId => window.modex!.invoke("thread:send", { threadId, text: "deploy it" }), threadId)).toEqual({ ok: true });
+    await expect(currentRow(page)).toHaveAttribute("data-status", "running");
+    fs.writeFileSync(gate, "ready");
+    const card = items(page, "question").first();
+    await expect(tid(card, "question")).toHaveCount(2);
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue(draft);
+    expect(recovery()).toEqual(saved);
+    expect(replies(logs)).toEqual([]);
+    await card.getByRole("radio", { name: "staging" }).check();
+    await card.getByLabel("Token").fill("question-only-secret");
+    await card.getByLabel("Token").press("Enter");
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    await expect(composer).toHaveValue(draft);
+    await expect(tid(page, "composer-attachments")).toContainText("draft.txt");
+    expect(recovery()).toEqual(saved);
+    await page.reload();
+    await expect(composer).toHaveValue(draft);
+    await expect(tid(page, "composer-attachments")).toContainText("draft.txt");
+    expect(recovery()).toEqual(saved);
+    expect(fs.readFileSync(path.join(home, "attachments", saved.attachments[0].rel), "utf8")).toBe("question draft attachment bytes");
+    const transcript = JSON.parse(fs.readFileSync(path.join(home, "app/threads", `${threadId}.json`), "utf8"));
+    expect(transcript.filter((item: { kind: string }) => item.kind === "user").map((item: { text: string }) => item.text)).toEqual(["deploy it"]);
+    expect(replies(logs)).toHaveLength(1);
+    expect(everything(path.join(home, "app"))).not.toContain("question-only-secret");
+  } finally { await app?.close(); fs.rmSync(logs, { recursive: true, force: true }); }
+});
 
 test("Codex questions: the card answers by its schema, the CLI hears once, the secret stays out, Stop withdraws", async () => {
   const { home } = seedHome({ default_backend: "codex", default_mode: "agent" });

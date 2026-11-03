@@ -197,6 +197,32 @@ test("Codex: a native question is a card answered by its schema; the CLI gets th
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });
 
+for (const timing of ["before the question", "while the question is pending"] as const) {
+  test(`Codex: YOLO enabled ${timing} never answers a native question`, async () => {
+    const proc = new FakeProcess();
+    const replies = codexAsking(proc, { questions });
+    const codex = new CodexBackend("codex", fakeSpawn(proc).spawn);
+    const h = await harness(codex);
+    try {
+      h.runner.updateThread(h.thread.id, { approvals: timing === "before the question" ? "yolo" : "ask" });
+      const sent = h.runner.send(h.thread.id, "deploy it");
+      await waitFor(() => h.runner.items(h.thread.id).some(i => i.kind === "question"));
+      if (timing === "while the question is pending") h.runner.updateThread(h.thread.id, { approvals: "yolo" });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const card = h.runner.items(h.thread.id).find(i => i.kind === "question") as ThreadItem & { kind: "question" };
+      assert.equal(h.runner.status(h.thread.id), "waiting");
+      assert.equal(card.answers, undefined);
+      assert.equal(card.withdrawn, undefined);
+      assert.deepEqual(replies, [], "YOLO must not send a native answer");
+      const answers = { "q-env": ["staging"], "q-token": ["explicit-secret"] };
+      assert.deepEqual(h.runner.answerQuestion(h.thread.id, card.id, answers), { ok: true });
+      assert.deepEqual(h.runner.answerQuestion(h.thread.id, card.id, answers), { ok: false, reason: "already-resolved" });
+      await sent;
+      assert.deepEqual(replies, [{ answers: { "q-env": { answers: ["staging"] }, "q-token": { answers: ["explicit-secret"] } } }]);
+    } finally { h.runner.stop(h.thread.id); await h.runner.dispose(); await codex.dispose(); }
+  });
+}
+
 test("Codex: Stop during a question withdraws it; the CLI is told it was withdrawn, not given an answer", async () => {
   const proc = new FakeProcess();
   const replies = codexAsking(proc, { questions });
