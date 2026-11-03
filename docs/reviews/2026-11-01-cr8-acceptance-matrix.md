@@ -122,7 +122,7 @@ found that asserts it; it is not a pass.
 | C73 | Folder tree, selected file | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "…hierarchy, filter and keyboard selection…", "narrow tree selection returns to the diff…"; `code-review-scroll.spec.ts`; journey R4 populated (#464 `3d72c6e`) | — | — | open (VoiceOver); open: reference comparison |
 | C74 | Overview / Changes divider | #322 | built | `code-review-navigation.spec.ts` (keyboard resize persists across reload) | — | — | open (VoiceOver) |
 | C75 | Diff / tree divider | #322 | built; pointer and keyboard resize still not asserted | `code-review-a11y.spec.ts` (reached by Tab as a separator); `code-review-navigation.spec.ts` (tree folds when narrow) | — | — | open (VoiceOver) |
-| C76 | Keyboard path, 900×600 and 1440×900 | #327 | partial: the a11y spec still requires only CR-3's 12 controls | `code-review-a11y.spec.ts`; `code-review-navigation.spec.ts` keyboard test; `code-review-scroll.spec.ts` (focus kept); per-slice keyboard cases in the overview, diff, agent and actions specs | — | — | **open: [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md) parts A–D for Val (result row empty)** |
+| C76 | Keyboard path, 900×600 and 1440×900 | #327 | built; candidate `cr-v050` requires the CR-3 to CR-7 controls and checks every text run in the CR-4 to CR-7 sections | `code-review-a11y.spec.ts`; `code-review-navigation.spec.ts` keyboard test; `code-review-scroll.spec.ts` (focus kept); per-slice keyboard cases in the overview, diff, agent and actions specs | — | — | **open: [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md) parts A–D for Val (result row empty)** |
 | C77 | Overview column scroll | #323 | built (#393 `6c40547`) | `code-review-scroll.spec.ts` (#438 `afec85b`); journey R2 (overview moves, inbox doesn't) | — | — | — |
 | C78 | Diff pane scroll | #324 | built (#404 `e3527f4`) | `code-review-scroll.spec.ts`; `code-review-diff.spec.ts` "returning from Overview preserves… overall scroll position" | — | — | — |
 | C79 | File tree scroll | #324 | built (#404 `e3527f4`) | `code-review-scroll.spec.ts` (#438 `afec85b`) | — | — | — |
@@ -190,7 +190,13 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 
 ## Staged enablement and rollback
 
-Today the only switch is the per-home `localStorage["modex.codeReview"]` (`renderer/code-review/feature.ts`):
+**Candidate `cr-v050` (2026-11-02), awaiting Val's approval:** the switch is replaced by a persisted setting, Settings →
+General → "Show Code Review in the rail", on by default. An old explicit value other than `"on"` stays off until the
+person chooses (`shared/layout.ts`, `code-review-enablement.spec.ts`). This takes Stage 2's product step before Stage 1
+and 2's gates have run, so that one candidate can carry them all. It reaches nobody until Val merges and releases it;
+[the Val session](2026-11-02-v0.5.0-val-session.md) lists the gates to pass or accept first.
+
+Before that candidate, the only switch was the per-home `localStorage["modex.codeReview"]`:
 development builds show the destination, packaged builds hide it unless the value is `"on"`. Nothing else reads
 it, and main's channels answer regardless of whether the destination is visible.
 
@@ -200,7 +206,8 @@ it, and main's channels answer regardless of whether the destination is visible.
 - **Stage 2, after VoiceOver and Val's call on the references, decisions 1, 5, 6, 7, and the C58/C59 omissions:** remove the switch (or
   invert it) in a product PR that Val approves. That PR updates `docs/status.md` and this matrix.
 
-**Rollback:** setting the value to anything but `"on"` (or clearing site data for that home) hides the
+**Rollback:** in the candidate, clearing "Show Code Review in the rail" hides the destination at once and across a
+quit. On earlier builds, setting the value to anything but `"on"` (or clearing site data for that home) hides the
 destination on the next launch. That hides the surface; it does not cancel a write already sent. An in-doubt
 write keeps its record in `<MODEX_HOME>/review-actions/state.json` and an unconfirmed review run in
 `<MODEX_HOME>/review-agent/state.json`; both stay until a read-back or the person settles them, whether or not
@@ -227,8 +234,10 @@ the destination is visible. A product rollback (removing a capability) is a code
 
 - C22 still shows the repository and number from the inbox row or resolved link (`PrPane.tsx` reads
   `pr.locator`); D6 was meant to end when #323 bound `overview.locator`. Either bind it or record D6 as permanent.
-- `code-review-a11y.spec.ts` still requires only CR-3's 12 controls; the overview, diff, review and write
-  controls are not in its required Tab set (C76).
+- Done in candidate `cr-v050`: `code-review-a11y.spec.ts` requires the overview, diff, review and write controls
+  (C76). Its new per-text contrast check found the file header and tree deletion count at 4.02:1 in OpenCoven; fixed.
+- Done in candidate `cr-v050`: `code-review-budgets.spec.ts` gates the agreed opening budgets (AC5), and
+  `code-review-actions.spec.ts` proves drafts stay hidden after sign-out (#326).
 - No asserting spec for C50's text, C51's Copy comment link, C63's toggles, C66's menu items, C69's text, C71's
   horizontal scroll or C75's resize.
 - C61's clearance was planned for a floating composer; CR-6 built Ask inline and clearance was not re-measured.
