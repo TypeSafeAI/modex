@@ -10,7 +10,7 @@ import { launch, seedHome, tid, items } from "./support";
 // It is a scripted fixture, not live-model evidence. Its log lives outside MODEX_HOME so the secret check
 // below can read every file Modex wrote.
 
-function fixture(dir: string, questionGate?: string): string {
+function fixture(dir: string, questionGate?: string, finishGate?: string): string {
   const cli = path.join(dir, "codex-questions.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
 const fs = require('node:fs');
@@ -18,6 +18,7 @@ if (process.argv.includes('--version')) { console.log('codex-cli 0.163.0'); proc
 if (process.argv.includes('login') || process.argv.includes('auth')) { console.log('Logged in using ChatGPT'); process.exit(0); }
 const log = ${JSON.stringify(path.join(dir, "codex-replies.jsonl"))};
 const questionGate = ${JSON.stringify(questionGate ?? null)};
+const finishGate = ${JSON.stringify(finishGate ?? null)};
 const emit = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 const questions = [
   { id: 'q-env', header: 'Environment', question: 'Which environment?', isOther: false, isSecret: false, options: [{ label: 'staging', description: 'Safe to try' }, { label: 'production', description: 'Live traffic' }] },
@@ -69,7 +70,12 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
   if (msg.method === 'turn/interrupt') { emit({ id: msg.id, result: {} }); return finish('interrupted'); }
   if (open && msg.id === open.request && !msg.method) {
     fs.appendFileSync(log, JSON.stringify({ request: msg.id, result: msg.result, error: msg.error }) + '\\n');
-    if (msg.result) finish('completed', 'Deploying to ' + msg.result.answers['q-env'].answers[0] + '.');
+    if (msg.result) {
+      const complete = () => finish('completed', 'Deploying to ' + msg.result.answers['q-env'].answers[0] + '.');
+      if (finishGate) {
+        const timer = setInterval(() => { if (fs.existsSync(finishGate)) { clearInterval(timer); complete(); } }, 10);
+      } else complete();
+    }
     return;
   }
   if (msg.id !== undefined && msg.method) emit({ id: msg.id, error: { code: -32601, message: 'fixture does not implement ' + msg.method } });
@@ -95,13 +101,14 @@ async function send(page: Page, text: string): Promise<void> {
 }
 const currentRow = (page: Page) => page.locator('[data-testid="thread-row"][aria-current="true"]');
 
-test("a native question preserves the existing composer draft, staged attachment and arrival focus", async () => {
+for (const moveFocus of [false, true]) test(`a native question preserves the existing composer draft, staged attachment and ${moveFocus ? "moved" : "answer"} focus`, async () => {
   const { home } = seedHome({ default_backend: "codex", default_mode: "agent" });
   const logs = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-question-draft-"));
   const gate = path.join(logs, "ask-now");
+  const finishGate = path.join(logs, "finish-now");
   const statePath = path.join(home, "app/state.json");
   const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
-  state.settings.codex_bin = fixture(logs, gate);
+  state.settings.codex_bin = fixture(logs, gate, finishGate);
   fs.writeFileSync(statePath, JSON.stringify(state));
   let app: ElectronApplication | undefined;
   try {
@@ -140,9 +147,23 @@ test("a native question preserves the existing composer draft, staged attachment
     expect(recovery()).toEqual(saved);
     expect(replies(logs)).toEqual([]);
     await card.getByRole("radio", { name: "staging" }).check();
-    await card.getByLabel("Token").fill("question-only-secret");
+    // Invalid keyboard submission must leave a usable focus target inside the card.
+    await card.getByLabel("Token").focus();
     await card.getByLabel("Token").press("Enter");
+    await expect(tid(card, "question-error")).toHaveText("Token needs an answer.");
+    await expect(card.getByLabel("Token")).toBeFocused();
+    expect(replies(logs)).toEqual([]);
+    await card.getByLabel("Token").fill("question-only-secret");
+    if (moveFocus) await page.evaluate(() => {
+      // Bubble after React's Enter handler, before main's asynchronous answer comes back.
+      document.addEventListener("keydown", (event) => { event.preventDefault(); (document.querySelector('[data-testid="composer-input"]') as HTMLTextAreaElement).focus(); }, { once: true });
+    });
+    await card.getByLabel("Token").press("Enter");
+    await expect(tid(card, "question-answer")).toHaveText(["staging", "(hidden)"]);
+    await expect(moveFocus ? composer : tid(card, "question-answer").first()).toBeFocused();
+    fs.writeFileSync(finishGate, "ready");
     await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    await expect(moveFocus ? composer : tid(page, "turn-label")).toBeFocused();
     await expect(composer).toHaveValue(draft);
     await expect(tid(page, "composer-attachments")).toContainText("draft.txt");
     expect(recovery()).toEqual(saved);
