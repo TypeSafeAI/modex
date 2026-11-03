@@ -229,6 +229,68 @@ test("Codex questions: the card answers by its schema, the CLI hears once, the s
   }
 });
 
+test("Codex questions: a draft and its attachments survive the card being shown and answered (#276)", async () => {
+  const { home } = seedHome({ default_backend: "codex", default_mode: "agent" });
+  const logs = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-codex-questions-"));
+  const statePath = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  state.settings.codex_bin = fixture(logs);
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await launch(home); app = opened.app;
+    const page = opened.page;
+    await send(page, "deploy it");
+    const first = items(page, "question").first();
+    await first.getByRole("radio", { name: "staging" }).check();
+    await first.getByLabel("Token").fill("s3cr3t");
+    await tid(first, "question-submit").click();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+
+    // Write the next message and attach a file while nothing runs (attaching is refused during a turn).
+    const draft = "  the follow-up I am still writing\n  second line  ";
+    const input = tid(page, "composer-input");
+    await input.fill(draft);
+    await page.evaluate(() => {
+      const data = new DataTransfer();
+      data.items.add(new File(["kept bytes"], "kept.txt", { type: "text/plain" }));
+      document.querySelector('[data-testid="composer-input"]')!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    const chips = tid(page, "composer-attachments");
+    await expect(chips).toContainText("kept.txt");
+
+    // A turn this composer did not send, as from the iPhone, asks a question while the draft sits there.
+    const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
+    await page.evaluate((id) => window.modex!.invoke("thread:send", { threadId: id, text: "deploy again" }), threadId);
+    const card = items(page, "question").last();
+    await expect(tid(card, "question-submit")).toBeVisible();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "waiting");
+    await expect(input).toHaveValue(draft);
+    await expect(chips).toContainText("kept.txt");
+
+    // A refused answer and a good one both leave the composer as written.
+    await card.getByRole("radio", { name: "staging" }).check();
+    await tid(card, "question-submit").click();
+    await expect(tid(card, "question-error")).toHaveText("Token needs an answer.");
+    await expect(input).toHaveValue(draft);
+    await expect(chips).toContainText("kept.txt");
+    await card.getByLabel("Token").fill("s3cr3t");
+    await tid(card, "question-submit").click();
+    await expect(tid(card, "question-answer")).toHaveText(["staging", "(hidden)"]);
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    await expect(input).toHaveValue(draft);
+    await expect(chips).toContainText("kept.txt");
+    expect(replies(logs)).toHaveLength(2);
+
+    // The draft was never sent: the only user messages are the two that started the turns.
+    await expect(items(page, "user")).toHaveCount(2);
+  } finally {
+    await app?.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(logs, { recursive: true, force: true });
+  }
+});
+
 test("with the journal on, a restart shows answered and stopped cards inert, says when an answer was never confirmed, and re-sends nothing", async () => {
   const { home } = seedHome({ default_backend: "codex", default_mode: "agent" });
   const logs = fs.mkdtempSync(path.join(os.tmpdir(), "modex-e2e-codex-questions-"));
