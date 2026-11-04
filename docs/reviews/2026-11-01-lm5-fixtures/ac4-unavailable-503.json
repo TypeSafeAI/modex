@@ -1,0 +1,60 @@
+{
+  "kind": "installed codex CLI against a scripted loopback Responses server that fails after one tool ran; no model, no inference",
+  "cli": "codex",
+  "mode": "unavailable-503",
+  "hops": [
+    {
+      "n": 1,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": false,
+      "hasCompactPrompt": false,
+      "bytes": 33763
+    },
+    {
+      "n": 2,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": true,
+      "hasCompactPrompt": false,
+      "bytes": 34135
+    }
+  ],
+  "toolRuns": 1,
+  "toolStarts": 1,
+  "outcomes": [
+    "succeeded"
+  ],
+  "notices": [],
+  "result": {
+    "status": "failed",
+    "error": "unexpected status 503 Service Unavailable: model is loading, url: http://127.0.0.1:64798/v1/responses",
+    "detail": {
+      "codexThreadId": "01a1971d-c429-7a40-8e5c-92317655e855",
+      "turnId": "01a1971d-c45f-7143-9e01-48a736baa6d8",
+      "userAgent": "modex/0.166.0 (Mac OS 27.2.0; arm64) unknown (modex; 0.0.1)",
+      "pid": 20188,
+      "errorNotification": {
+        "message": "unexpected status 503 Service Unavailable: model is loading, url: http://127.0.0.1:64798/v1/responses",
+        "codexErrorInfo": {
+          "httpConnectionFailed": {
+            "httpStatusCode": 503
+          }
+        },
+        "additionalDetails": null,
+        "misalignment": null,
+        "at": "2026-11-01T12:37:53.077Z"
+      },
+      "turnError": {
+        "message": "unexpected status 503 Service Unavailable: model is loading, url: http://127.0.0.1:64798/v1/responses",
+        "codexErrorInfo": {
+          "httpConnectionFailed": {
+            "httpStatusCode": 503
+          }
+        },
+        "additionalDetails": null,
+        "misalignment": null
+      }
+    }
+  }
+}

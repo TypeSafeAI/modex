@@ -6,6 +6,7 @@ import { useComposerRecovery } from "./useComposerRecovery";
 import { ComposerRestartPreparation } from "../shared/composer-restart-preparation";
 import { ComposerOwnerRemoval } from "../shared/composer-owner-removal";
 import { restartDrafts } from "./restart-drafts";
+import { copyPendingTextToNewThread } from "./pending-message-copy";
 import { StreamerMode, useStreamerRedaction } from "./streamer";
 import { redactSecrets } from "../shared/streamer-secrets";
 import { RepositoryOverview } from "./components/RepositoryOverview";
@@ -23,6 +24,9 @@ import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
 import { Workspace } from "./components/Workspace";
 import { SettingsDialog } from "./components/SettingsDialog";
+import type { LocalMenu } from "./components/ModelMenu";
+import { discoverAll, useLocalModels } from "./local-models";
+import type { LocalModelRef } from "../shared/local-models";
 import { CompanionDialog } from "./components/CompanionDialog";
 import { EmptyState } from "./components/EmptyState";
 import { DraftView, type Draft } from "./components/DraftView";
@@ -189,6 +193,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const [terminalCommands, setTerminalCommands] = useState<Record<string, { text: string; nonce: number }>>({});
   const commandNonce = useRef(0);
   const [showSettings, setShowSettings] = useState(false);
+  /** Settings opened from the model menu lands on Local models. */
+  const [settingsSection, setSettingsSection] = useState<"local" | undefined>(undefined);
+  const localModels = useLocalModels();
   const [showCompanion, setShowCompanion] = useState(false);
   // Panel toggles survive a relaunch (localStorage, see shared/layout.ts).
   const [layout, setLayout] = useLayout(persistPreferences);
@@ -516,6 +523,20 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     setDraftRevision((revision) => revision + 1);
     setDraft({ projectId, worktree, settings: draftDefaults(state) });
   };
+  const pendingProjectId = (record: PendingSendView) => {
+    const source = record.source;
+    return source.kind === "project" ? source.projectId : record.target?.projectId ?? state?.threads.find(row => row.id === source.threadId)?.projectId;
+  };
+  const copySavedMessage = (record: PendingSendView) => act(async () => {
+    const projectId = pendingProjectId(record);
+    if (!projectId || !state || nativeHoldRef.current || nativeLoading || nativeRecoveryError || pendingRuns.current.has(record.id)) return;
+    const { backend, model, mode } = draftDefaults(state);
+    const copy = await copyPendingTextToNewThread(record, { projectId, backend, model, mode }, request => bridge.invoke("thread:create", request));
+    await refresh();
+    setUnsentFor(copy.thread.id, copy.text);
+    selectedRef.current = copy.thread.id; setSelected(copy.thread.id);
+    setDraft(null); setSurface("chat");
+  });
   // Nothing selected and no draft, but there are projects (first launch, last thread deleted): open a draft.
   useEffect(() => {
     if (!state || selected || creating || nativeLoading || nativeHold || nativeRecoveryError) return;
@@ -543,7 +564,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // Like the Codex App, a thread always has a concrete model the CLI knows: pick the CLI's
   // default (or the settings default) when the thread has none or names one the CLI no longer lists.
   useEffect(() => {
-    if (!thread) return;
+    // A local thread is pinned to its exact local model, which the CLI's own list never contains.
+    if (!thread || thread.localTarget !== undefined) return;
     const list = models[thread.backend]?.models;
     if (!list?.length) return;
     const current = list.find((m) => m.id === thread.model);
@@ -755,6 +777,53 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
+  const openLocalSettings = () => { setSettingsSection("local"); setShowSettings(true); };
+  const localTarget = (model: LocalModelRef) => ({ schema: 1 as const, harness: "codex" as const, model });
+  /**
+   * A draft has no thread to pin, so choosing a local model creates the thread now, pinned before its
+   * first message: nothing typed in it ever goes to a cloud model. Only an empty draft can do this, so no
+   * text or file has to move. If main refuses the target, the empty thread is removed again.
+   */
+  const chooseLocalForDraft = (model: LocalModelRef, localContextTokens: number) => draft && act(async () => {
+    const d = draft;
+    const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: "codex", mode: d.settings.mode, auto: false });
+    try {
+      await bridge.invoke("thread:update", { threadId: t.id, patch: { localTarget: localTarget(model), localContextTokens } });
+    } catch (error) {
+      await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree: true }).catch(() => undefined);
+      await refresh();
+      throw error;
+    }
+    await refresh();
+    if (activeDraftKeyRef.current === draftKey) { setDraft(null); setSelected(t.id); }
+  });
+  const threadBusy = thread ? thread.status === "running" || thread.status === "waiting" : false;
+  const threadLocal: LocalMenu | undefined = thread ? {
+    entries: localModels.entries,
+    current: thread.localTarget,
+    currentContext: thread.localContextTokens,
+    blocked: threadBusy ? "Wait for the turn to finish before changing the model." : undefined,
+    onOpen: () => void discoverAll(15_000),
+    onChoose: (model, localContextTokens) => void updateThread({ localTarget: localTarget(model), localContextTokens }),
+    onClear: (requested) => {
+      const cloud = requested ?? models.codex?.models.find(m => m.id === state?.settings.default_model.codex)
+        ?? models.codex?.models.find(m => m.isDefault) ?? models.codex?.models[0];
+      if (!cloud) { setError({ message: "Load the Codex cloud model list before returning to cloud models." }); return; }
+      if (window.confirm(`Use cloud model ${cloud.label} (${cloud.id})? Future messages will go to that model in a fresh conversation. Existing messages will stay in the transcript.`)) {
+        void updateThread({ localTarget: null, model: cloud.id, effort: cloud.defaultEffort });
+      }
+    },
+    onManage: openLocalSettings,
+  } : undefined;
+  const draftEmpty = draft ? !(unsent[draftKey] ?? "").trim() && attachmentDrafts.get(draftKey).attachments.length === 0 : false;
+  const draftLocal: LocalMenu | undefined = draft ? {
+    entries: localModels.entries,
+    blocked: creating ? "Wait for the thread to be created." : draftEmpty ? undefined : "Choose a local model before typing: clear this draft, or send it and start a new thread.",
+    onOpen: () => void discoverAll(15_000),
+    onChoose: (model, localContextTokens) => void chooseLocalForDraft(model, localContextTokens),
+    onClear: () => undefined,
+    onManage: openLocalSettings,
+  } : undefined;
   /** Archived threads leave the working list on every device; the selection stays so the row remains visible under Archived. */
   const archiveThread = (t: Thread, archived: boolean) => act(async () => {
     await bridge.invoke("thread:archive", { threadId: t.id, archived });
@@ -970,6 +1039,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
             <pre style={{ whiteSpace: "pre-wrap" }}>{privateLabel(record.rawText)}</pre>
             {record.files.length > 0 && <p>{record.files.map(file => privateLabel(file.name)).join(", ")}</p>}
             <button className="btn small" data-testid="pending-message-retry" disabled={pendingRuns.current.has(record.id) || nativeHold || Boolean(nativeRecoveryError)} onClick={() => void resumeNativeSend(record)}>Retry saved message</button>
+            <button className="btn small" data-testid="pending-message-copy" disabled={!pendingProjectId(record) || pendingRuns.current.has(record.id) || nativeHold || Boolean(nativeRecoveryError)} onClick={() => void copySavedMessage(record)}>Copy text to new chat</button>
+            <p>Review the new chat's model before sending. Attachments stay with the saved original; attach them again if needed.</p>
           </section>)}
           {surface === "chat" && thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
           {thread && project ? (
@@ -995,6 +1066,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               modelsError={models[thread.backend]?.error}
               onRetryModels={() => retryModels(thread.backend)}
               openModelPickerRequest={modelPickerRequest}
+              local={threadLocal}
               inputRef={inputRef}
               branch={changes?.branch ?? undefined}
             />
@@ -1008,6 +1080,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               models={models[draft.settings.backend]?.models ?? []}
               modelsError={models[draft.settings.backend]?.error}
               onRetryModels={() => retryModels(draft.settings.backend)}
+              local={draftLocal}
               branch={draftBranch?.projectId === draft.projectId ? draftBranch.branch ?? undefined : undefined}
               onChange={value => { if (!nativeHoldRef.current && !nativeRecoveryError) setDraft(value); }}
               onSend={sendDraft}
@@ -1044,7 +1117,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           </div>
         )}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => { setShowSettings(false); setSettingsSection(undefined); }} initialSection={settingsSection} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;

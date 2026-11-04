@@ -229,3 +229,31 @@ test("proven unchanged no-worktree creation failure permits an explicit same-int
   assert.equal((await h.runner.createThreadForPending(h.thread.projectId, reserved, configuration())).id, reserved.threadId);
   assert.deepEqual(h.turns, []);
 });
+
+for (const [initialBackend, legacyResume] of [["codex", false], ["codex", true], ["claude", false]] as const) {
+  test(`durable Codex account remains bound across setup (starting: ${initialBackend}, legacy resume: ${legacyResume})`, native, async t => {
+    const h = await fixture(t);
+    let active = "account-a", sentAccount: string | undefined;
+    let release!: () => void, entered!: () => void;
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    const runner = new ThreadRunner({ home: h.home, store: h.store, emit: () => {}, backends: {
+      codex: { id: "codex", identity: () => active, listModels: async () => [], dispose: async () => {}, runTurn: async (_text, options) => { sentAccount = options.account; return { status: "completed" }; } },
+    }, knowledge: { prepare: async () => { entered(); await hold; return { close: async () => {} } as never; } } });
+    t.after(async () => { release(); await runner.dispose(); });
+    if (initialBackend === "claude") runner.router.route = async () => ({
+      item: { id: "auto-codex", kind: "route", backend: "codex", model: "test-model", effort: "low", fast: false, source: "heuristic", task: "test", confidence: 1, complexity: 1, pinned: false, reasons: [], durationMs: 0 },
+      decision: { backend: "codex", model: "test-model", effort: "low", fast: false, tier: 1, pinned: false, reasons: [] },
+    } as never);
+    const thread = await runner.createThread(h.store.project(h.thread.projectId)!.id, { backend: initialBackend, model: "test-model", auto: initialBackend === "claude" });
+    if (legacyResume) h.store.updateThread(thread.id, { sessionHandle: "legacy-cli-session" });
+    const expected = legacyResume ? "cli" : "account-a";
+    const sending = runner.sendDurably(thread.id, "durable original", [], { id: "account-bound-original", at: "2026-10-11T00:00:00.000Z", committed: item => { assert.equal(item.execution?.account, initialBackend === "claude" ? null : expected); } });
+    // A legacy binding mismatch rejects before setup; observe it without hanging.
+    await Promise.race([ready, sending]);
+    active = "account-b"; release(); await sending;
+    assert.equal(sentAccount, expected);
+    const user = h.store.items(thread.id).find(item => item.kind === "user");
+    assert.equal(user?.kind === "user" && user.execution?.account, initialBackend === "claude" ? null : expected);
+  });
+}

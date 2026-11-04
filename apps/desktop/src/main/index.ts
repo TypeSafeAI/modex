@@ -222,7 +222,7 @@ const emit = (event: ThreadEvent): void => {
 };
 // The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
 const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
-const localModels = new LocalModelsService(home, secrets);
+const localModels = new LocalModelsService(home, secrets, { connectionInUse: id => runner.localConnectionInUse(id) });
 // Local execution (LM-3, engine/local-models/execution.ts) is not wired into the product runner: Codex's redirect
 // handling and managed-policy precedence are unqualified (#379 AC6, LM-5 #380), so without the seam the runner
 // refuses every local selection and persisted target instead of starting a child or routing to a cloud backend.
@@ -383,7 +383,7 @@ const companion = new CompanionServer(home, {
     if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
     await pathReady;
     if (currentDraftRecovery()) throw new Error("Draft recovery is required.");
-    return startTurn(id, runner.send(id, text));
+    return startTurn(id, runner.send(id, text, [], "phone"));
   }),
   answer: (id, itemId, answer, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answer(id, itemId, answer, by); },
   answerQuestion: (id, itemId, answers, by) => { restartAdmission.assertOpen(); if (currentDraftRecovery()) throw new Error("Draft recovery is required."); return runner.answerQuestion(id, itemId, answers, by); },
@@ -833,7 +833,7 @@ async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: bo
   accepting = false;
   return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
 }
-handle("thread:send", ({ threadId, text, attachments: files }) => startTurn(threadId, runner.send(threadId, text, files)));
+handle("thread:send", ({ threadId, text, attachments: files }, event) => startTurn(threadId, runner.send(threadId, text, files, event ? "desktop" : "paired-desktop")));
 registerAttachmentCommands(handle, attachments, { bytesOnly: false, reveal: (abs) => shell.showItemInFolder(abs) });
 handle("attachments:pick", async (req) => {
   // Explicit renderer paths keep the strict whole-request guard. Only the native dialog's
@@ -849,7 +849,7 @@ handle("attachments:pick", async (req) => {
   if (r.filePaths.length > remaining) result.errors.push(`Up to ${LIMITS.perTurn} attachments per message; ${r.filePaths.length - remaining} left out.`);
   return result;
 }, { localOnly: true });
-handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
+handle("thread:retry", ({ threadId }, event) => startTurn(threadId, runner.retry(threadId, event ? "desktop" : "paired-desktop")));
 handle("thread:stop", ({ threadId }) => runner.stop(threadId));
 // Only this Mac's window calls with an IPC event; a paired desktop's command comes through the host without one.
 const answeredFrom = (event?: NativeIPCEvent) => event ? "desktop" : "paired-desktop";

@@ -1,5 +1,28 @@
 # Local models: LM-1 contract and feasibility
 
+## Local Models v1 workflow candidate
+
+The integration candidate adds Settings → Local models, connection add/edit/remove, cancellation and bounded metadata discovery, exact connection revision/model selection, context choices and a visible inference destination. Saved tokens remain in main; the token field accepts replacements but never reads a saved value. Metadata and manual IDs do not establish coding capability. Checking models never downloads, loads or generates with a model. The first coding message may cause the inference server to load weights and consume memory.
+
+Product execution remains disabled: `main/index.ts` does not construct `LocalExecution`, and selecting a local target refuses before a coding turn. The test-only Electron bootstrap injects a scripted transport in a disposable home; it is not a product flag or real-model evidence. [Candidate evidence and remaining gates](reviews/2026-11-04-local-models-v1-workflow.md).
+
+### Setup and changes
+
+1. Start an already installed Ollama server yourself, then open Settings → Local models. Choose Ollama and enter its numeric loopback address, normally `http://127.0.0.1:11434`.
+2. Enter a name and, only if required by that server, a token. Extra model IDs are optional, exact and one per line. Add server and inspect its metadata. Listed tool support and context are advertised values; coding compatibility remains unverified.
+3. Edit changes the connection revision when its destination, runtime or credential changes. Existing threads retain their selected revision and refuse after it becomes stale. Select the current revision explicitly; Modex never silently rebinds it. An active local turn prevents editing or removing its connection.
+4. The model menu shows each connection's candidates and bounded context choices. Production selection remains unavailable until admission; the separate integration fixture exercises selection and subsequent turns.
+
+For admitted fixtures, returning to cloud requires confirmation naming the exact chosen cloud model and begins a fresh native conversation. Pending originals and Retry retain their original execution binding and cannot follow a changed destination. Copy text to new chat preserves the original and requires a new explicit send. Phone and paired-desktop sends or Retry on a local thread are refused in main.
+
+### Native qualification and rollback
+
+With explicit approval and an installed model, build main, then run `MODEX_LM3_LIVE=1 MODEX_LM3_URL=http://127.0.0.1:11434/v1 MODEX_LM3_MODEL=qwen3-coder:30b MODEX_LM3_CONTEXT=65536 MODEX_LM3_REPORT=<absolute-evidence-directory> node --test --test-force-exit --test-name-pattern='AC1: a person' dist/test/local-codex-native.test.js` from `apps/desktop`. The smoke reads a sentinel, permits only two exact fixture commands through its approval callback, checks actual edited bytes and a separately seeded test's recorded exit result, and verifies both a synthetic personal configuration and the real user's configuration fingerprint. Harness approval is separate from human acceptance.
+
+For the network-denied canary, run `node scripts/local-model-offline.mjs qwen3-coder:30b <absolute-evidence-directory>` from `apps/desktop`. It requires existing weights, wraps the entire canary process tree in a loopback-only macOS sandbox, proves an external TCP attempt is denied, and starts a separate owned Ollama server. Both that server and the Codex descendants inherit the network boundary. It records failure if the policy, runtime or native task fails and stops its own server. It does not change the person's running Ollama, download weights or admit product execution.
+
+Removing a connection asks for confirmation, preserves readable history and makes its selected targets unavailable. It does not uninstall weights. Product rollback currently consists of retaining the existing absence of `LocalExecution` in main; no local turn can start through the product. Future admission must retain an independently tested disable path that preserves profiles, history and originals without replay. An address on loopback establishes a configured destination; only a successful network-denied inference run establishes offline behavior for that exact configuration.
+
 Each LM issue's ticked boxes and next action are in [status.md](status.md#open-issue-checklists).
 
 Status: narrow Gate A accepted by Val on 2026-10-24 under #377 / #376 for the producer at main `bb0e1a42ac7bb3e11ccfee05a40d8a02f1dc10c4` and the recorded Codex/Strata combination. No local execution option is enabled by this change. Existing `BackendId`, thread persistence, account policy, native execution, approval handling and companion messages are unchanged.
@@ -113,9 +136,13 @@ downloads nothing. Loopback stays a destination, not verified locality: Codex's 
 redirects, and a server may forward requests. Offline operation, managed-policy precedence, Plan, images,
 other runtimes and resume across restarts are unqualified.
 
+## Cold loads
+
+Opening Settings or refreshing a connection only reads metadata: it never installs a runtime, downloads weights, loads or unloads a model, scans directories or probes other ports. A turn you start yourself is different. Sending it may make the runtime load the selected model first, which can take a while and use a lot of memory. That is the runtime's ordinary behaviour, and Modex doesn't control it.
+
 ## LM-5 slice 1: effective destination and managed policy
 
-Status: on `main` through #423 (`c23e6be`), from #424 (#380); main-only, no UI. Before a local child opens or
+Status: on `main` through #423 (`c23e6be`, which carried #424; #380), no UI, local execution still unadmitted. Before a local child opens or
 resumes a thread, main reads the child's own `config/read` (effective configuration, the layer that set each
 key, and every layer's contents and hash) and `configRequirements/read`, and admits the child only when every
 governed key (destination, model, context, tools, plugins, hooks, instructions) comes from Modex's session flags,
@@ -182,6 +209,27 @@ before any process starts:
 
 A model that isn't marked stays *unverified*, not local: loopback alone doesn't prove where inference runs, and
 an unknown downstream route is still unknown. Evidence: [LM-5 cloud-routed models](reviews/2026-10-30-lm5-cloud-routed-models.md).
+
+## LM-5: failures, compaction and entry points (fixture and wire level)
+
+Status: in review (#380), local execution still unadmitted. Against the installed codex-cli 0.166.0 and a scripted
+loopback Responses server:
+
+Everything below is what that recording server and the turn's result showed. The server sees only its own requests:
+other destinations were not monitored, so none of this establishes that no other request was made.
+
+- **Compaction (AC1).** Native auto-compaction runs inline. The server observed it on `/v1/responses` for the
+  selected model with the connection's token. A failing compaction request has no fixture. The keys that change what it sends or when it runs
+  (`compact_prompt` and the compaction thresholds) are governed: only Modex's session flags may set them.
+- **Failures (AC4).** Overflow, OOM 500, 503, a dropped stream, a killed child and Stop each end failed or
+  interrupted. The server observed no retried request and no other model (`request_max_retries` and
+  `stream_max_retries` must both be 0), and a tool that ran did not run again. A local 500 is reported as the local server's error, not as
+  Codex's cloud "high demand" text.
+- **Capacity (AC3).** Profiles for one host and port share one slot; a stopped wait opens nothing and sends nothing.
+- **Entry points (AC5).** Only this Mac's own window may select, change or clear a local target. A paired desktop,
+  the phone or a caller that names no client cannot.
+
+Evidence: [LM-5 fixtures](reviews/2026-11-01-lm5-fixtures.md).
 
 ## Accepted boundary and follow-up runtime availability
 
