@@ -9,6 +9,7 @@ import { LocalExecution } from "../src/main/engine/local-models/execution.js";
 import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
 import type { Observation } from "../src/shared/conversation-events.js";
 import type { TurnSink } from "../src/main/engine/backends/types.js";
+import { globalCodexConfig } from "./local-global-config-guard.js";
 import { tmpdir } from "./helpers.js";
 
 /**
@@ -98,6 +99,7 @@ function scriptedResponses(seen: Seen[]): Promise<http.Server> {
 test("the installed Codex runs a shell read through LocalExecution against a scripted loopback Responses server", { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
   const seen: Seen[] = [];
   const server = await scriptedResponses(seen);
+  const global = globalCodexConfig();
   const home = tmpdir("lm3-wire-home-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
   const execution = new LocalExecution(home, connections);
@@ -127,8 +129,11 @@ test("the installed Codex runs a shell read through LocalExecution against a scr
     assert.ok(provenance, "the child was admitted on its effective configuration");
     assert.ok(provenance.layers.some(l => l.source === "sessionFlags"), JSON.stringify(provenance));
     assert.equal(provenance.managedRequirements, false);
+    await execution.dispose();
+    assert.deepEqual(global.unchanged(), { sha256: global.sha256, bytes: true, mtimeMs: true, tree: true }, "AC4: the installed Codex left the person's home alone");
   } finally {
     await execution.dispose();
+    global.restore();
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });

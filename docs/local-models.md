@@ -113,6 +113,10 @@ downloads nothing. Loopback stays a destination, not verified locality: Codex's 
 redirects, and a server may forward requests. Offline operation, managed-policy precedence, Plan, images,
 other runtimes and resume across restarts are unqualified.
 
+## Cold loads
+
+Opening Settings or refreshing a connection only reads metadata: it never installs a runtime, downloads weights, loads or unloads a model, scans directories or probes other ports. A turn you start yourself is different. Sending it may make the runtime load the selected model first, which can take a while and use a lot of memory. That is the runtime's ordinary behaviour, and Modex doesn't control it.
+
 ## LM-5 slice 1: effective destination and managed policy
 
 Status: on `main` through #423 (`c23e6be`), from #424 (#380); main-only, no UI. Before a local child opens or
