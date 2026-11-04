@@ -134,13 +134,12 @@ for (const size of [{ width: 1440, height: 900 }, { width: 900, height: 600 }]) 
   });
 }
 
-/** The lowest WCAG contrast of any text inside an element, skipping inactive controls (WCAG 1.4.3 exempts them), with the text that scored it. */
-const lowest = (page: Page, selector: string) => page.locator(selector).first().evaluate((root) => {
+/** The lowest WCAG contrast of any text inside every element the selector matches, skipping inactive controls (WCAG 1.4.3 exempts them), with the text that scored it. */
+const lowest = (page: Page, selector: string) => page.locator(selector).evaluateAll((roots) => {
   const rgba = (s: string) => (s.match(/[\d.]+/g) ?? []).map(Number);
   const lum = ([r, g, b]: number[]) => [r!, g!, b!].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((a, c, i) => a + c * [0.2126, 0.7152, 0.0722][i]!, 0);
   let worst = { ratio: 21, text: "" };
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+  for (const root of roots) for (let walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), node = walker.nextNode(); node; node = walker.nextNode()) {
     const el = node.parentElement!;
     const text = node.textContent?.trim() ?? "";
     if (!text || el.closest('[disabled], [aria-disabled="true"]') || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
@@ -157,7 +156,7 @@ const lowest = (page: Page, selector: string) => page.locator(selector).first().
 /** The CR-4 to CR-7 text a reviewer reads, in every theme: details, activity, tree and diff, the review panel, the composers and the merge panel. */
 const SLICE_TEXT: [string, string][] = [
   ["activity", '[data-testid="cr-activity"]'], ["checks", '[data-testid="cr-checks"]'], ["details", 'aside[aria-label="Pull request details"]'], ["details", 'aside[aria-label="Pull request details"]'],
-  ["tree file", '[data-testid="cr-tree-file"]'], ["file section", '[data-testid="cr-file-section"]'],
+  ["diff", '[data-testid="code-review-diff"]'], ["tree", '.cr-tree'],
   ["review section", '[data-testid="cr-agent"]'], ["composer", '[data-testid="cr-compose"]'],
 ];
 for (const theme of Object.keys(THEMES) as Theme[]) {
