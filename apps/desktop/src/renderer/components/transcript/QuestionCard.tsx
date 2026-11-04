@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AnswerResult, ThreadItem } from "../../../shared/types";
 import { answerNote, type Question } from "../../../shared/human-requests";
 
@@ -33,6 +33,8 @@ const OTHER = "\u0000other";
  * answers against the questions before anything reaches the CLI, and the card says why when it refuses.
  */
 export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer: (itemId: string, answers: Record<string, string[]>) => Promise<AnswerResult | undefined> }) {
+  const card = useRef<HTMLDivElement>(null);
+  const focusOrigin = useRef<HTMLElement | null>(null);
   const drafts = useContext(QuestionDraftContext);
   const [draft, setDraft] = useState<QuestionDraft>(() => drafts?.get(item.id) ?? { choice: {}, text: {} });
   const { choice, text } = draft;
@@ -50,9 +52,21 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
       setDraft({ choice: {}, text: {} });
     }
   }, [open, drafts, item.id]);
+  useLayoutEffect(() => {
+    const origin = focusOrigin.current;
+    if (!origin || (open && sending)) return;
+    focusOrigin.current = null;
+    // Disabling/removing the submitting control drops focus to body. Restore it only
+    // if the person has not moved elsewhere while main validates their answer.
+    if (document.activeElement !== document.body && document.activeElement !== origin) return;
+    if (open) origin.focus({ preventScroll: true });
+    else card.current?.querySelector<HTMLElement>('[data-testid="question-answer"], [data-testid="question-delivery"], [data-testid="question-closed"]')?.focus({ preventScroll: true });
+  }, [open, sending]);
   const typed = (q: Question) => !q.options || choice[q.id] === OTHER;
   const value = (q: Question) => (typed(q) ? text[q.id] ?? "" : choice[q.id] ?? "");
   const submit = async () => {
+    if (sending) return;
+    focusOrigin.current = card.current?.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
     setSending(true);
     setError(null);
     try {
@@ -65,7 +79,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
     }
   };
   return (
-    <div className={`approval question-card ${open ? "" : "answered"}`} data-testid="item" data-item-kind="question" data-answered={item.answers && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-withdrawn={item.withdrawn}>
+    <div ref={card} className={`approval question-card ${open ? "" : "answered"}`} data-testid="item" data-item-kind="question" data-answered={item.answers && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-withdrawn={item.withdrawn}>
       <div className="approval-head">
         <span className="shield">?</span>
         <span>{item.questions.length === 1 ? "The agent has a question" : `The agent has ${item.questions.length} questions`}</span>
@@ -74,7 +88,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
         <div key={q.id} className="question-field" data-testid="question">
           <div className="question-title">{q.header || q.text}</div>
           {q.header && <div className="question-text">{q.text}</div>}
-          {item.answers ? <div className="approval-answer" data-testid="question-answer">{(item.answers[q.id] ?? []).join(", ")}</div> : open && (
+          {item.answers ? <div className="approval-answer" data-testid="question-answer" tabIndex={-1}>{(item.answers[q.id] ?? []).join(", ")}</div> : open && (
             <>
               {q.options && (
                 <div className="question-options" role="radiogroup" aria-label={q.header || q.text}>
@@ -103,7 +117,7 @@ export function QuestionCard({ item, onAnswer }: { item: QuestionEntry; onAnswer
         </div>
       ))}
       {item.answers && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
-      {item.delivery === "uncertain" || item.delivery === "sending" ? <div className="approval-answer" role="status" data-testid="question-delivery">{item.delivery === "uncertain" ? "Delivery uncertain — not resent. Check the agent before answering again." : "Sending answer…"}</div> : item.withdrawn ? <div className="approval-answer" data-testid="question-closed">{CLOSED[item.withdrawn]}</div> : open && (
+      {item.delivery === "uncertain" || item.delivery === "sending" ? <div className="approval-answer" role="status" data-testid="question-delivery" tabIndex={-1}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent. Check the agent before answering again." : "Sending answer…"}</div> : item.withdrawn ? <div className="approval-answer" data-testid="question-closed" tabIndex={-1}>{CLOSED[item.withdrawn]}</div> : open && (
         <div className="row">
           <button className="btn primary small" data-testid="question-submit" disabled={sending} onClick={() => void submit()}>Send answers</button>
           {error && <span className="question-error" role="alert" data-testid="question-error">{error}</span>}
