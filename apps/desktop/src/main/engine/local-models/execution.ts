@@ -8,6 +8,7 @@ import { modelKey, threadTarget, type LocalModelRef, type LocalThreadTarget } fr
 import type { LocalConnectionStore } from "./connections.js";
 import { admitLocalConfiguration, type LocalConfigurationProvenance } from "./run-policy.js";
 import { OLLAMA_CLOUD_NAME, type AdvertisedContext } from "./discovery.js";
+import { redactingSink, TOKEN_MASK } from "./redacting-sink.js";
 
 /**
  * Runs a thread's turns on a local model through the Codex CLI (#379), the same `codex app-server`
@@ -138,6 +139,7 @@ export class LocalExecution {
       if (opts.model !== target.model.id || opts.cwd !== thread.cwd || opts.account) throw new Error("The local target changed. Select it again to start a fresh conversation.");
       if (opts.plan || opts.images || opts.pages || opts.knowledge || opts.attachments?.some(file => file.kind === "image")) throw new Error("Plan, images and Modex's note and knowledge tools are not qualified for local models yet.");
       const connection = this.connections.resolve(target.model.connection)!;
+      sink = redactingSink(sink, connection.token);
       // Every loopback alias of a port is the same server; separate servers sharing a port also wait on each other.
       release = await this.acquire(`loopback:${connection.endpoint.port}`, signal);
       this.validate(thread); // The profile may have changed while this turn waited.
@@ -203,7 +205,7 @@ export class LocalExecution {
     ];
     return new CodexBackend(this.executable, this.spawnImpl, {
       args: settings.flatMap(setting => ["-c", setting]), env,
-      redact: text => token ? text.split(token).join("[local token]") : text,
+      redact: text => token ? text.split(token).join(TOKEN_MASK) : text,
       local: { model, provider: PROVIDER_ID,
         // Before each thread open the child's effective configuration must be exactly this, from these flags alone (#380).
         admit: reads => admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null })) },
