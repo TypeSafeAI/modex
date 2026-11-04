@@ -4,8 +4,8 @@ import { tid } from "./support.js";
 import { baseWorld, launchWithGh, prRow, type Harness } from "./code-review-support.js";
 
 /**
- * The Code Review setting (#319, #327): on by default in this build, off as a visible rollback in Settings → General,
- * and an old explicit off kept. Turning it off hides the surface; it does not touch main's records.
+ * The Code Review setting (#319, #327): hidden by default in a built app until its gates pass, shown from Settings →
+ * General or by the old switch's "on". Turning it off hides the surface; it does not touch main's records.
  */
 let h: Harness;
 test.afterEach(async () => { await h?.close(); });
@@ -16,13 +16,20 @@ async function general() {
   return tid(h.page, "code-review-in-rail");
 }
 
-test("Code Review is on by default: the rail shows it, Settings says so, and the inbox opens", async () => {
-  h = await launchWithGh(baseWorld());
+test("Code Review is hidden by default: the rail leaves it out, makes no gh read, and Settings can show it", async () => {
+  h = await launchWithGh(baseWorld(), { showCodeReview: false });
   const { page } = h;
-  await expect(tid(page, "rail-code-review")).toBeVisible();
+  await expect(tid(page, "open-settings")).toBeVisible();
+  await expect(tid(page, "rail-code-review")).toHaveCount(0);
+  const box = await general();
+  await expect(box).not.toBeChecked();
+  expect(h.calls().filter((call) => call.includes("search"))).toEqual([]);
+  await box.check();
+  await page.keyboard.press("Escape");
   await tid(page, "rail-code-review").click();
   await expect(prRow(page, "example-org/lending#73")).toBeVisible();
-  await expect(await general()).toBeChecked();
+  await page.reload();
+  await expect(tid(page, "rail-code-review")).toBeVisible();
 });
 
 test("turning it off is the rollback: the surface leaves at once, survives a relaunch, keeps a draft, and can come back", async () => {

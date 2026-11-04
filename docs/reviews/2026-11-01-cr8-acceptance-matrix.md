@@ -96,8 +96,8 @@ found that asserts it; it is not a pass.
 | C47 | Independent sidebar scroll | #323 | built (#393 `6c40547`) | `code-review-scroll.spec.ts` (#438 `afec85b`, where the sidebar is its own scroller) | — | — | — |
 | C48 | Activity heading and filter | #323 | built (#393 `6c40547`) | `code-review-overview.spec.ts` "refresh does not mix fresh and pending cached pages…" (filter keeps focus) | — | — | open (VoiceOver) |
 | C49 | Commit groups | #323 | built (#393 `6c40547`) | `code-review-overview.spec.ts` ("7 commits"); `code-review-overview.test.ts` (dedup) | `A-main` (activity 36, read), `A-323` (35, complete) | — | open (VoiceOver) |
-| C50 | "opened this pull request" | #323 | built (#393 `6c40547`; rendered in `PrOverview.tsx`) | candidate `cr-v050` (#481): `code-review-overview.spec.ts` "activity opening and comment link…" asserts actor, wording and time | `A-323` (opening enrichment read) | — | open: reference comparison |
-| C51 | Bot comment card (⋯ menu: Copy comment link, Add to chat) | #323 | built (#393 `6c40547`) | `code-review-overview.spec.ts` (cards); candidate `cr-v050` (#481): the same spec's activity-opening case asserts the ⋯ menu's Copy comment link by keyboard, with the exact URL; its Add to chat is covered under C54 | — | — | open (VoiceOver) |
+| C50 | "opened this pull request" | #323 | built (#393 `6c40547`; rendered in `PrOverview.tsx`) | on `main` (#481 via #490): `code-review-overview.spec.ts` "activity opening and comment link…" asserts actor, wording and time | `A-323` (opening enrichment read) | — | open: reference comparison |
+| C51 | Bot comment card (⋯ menu: Copy comment link, Add to chat) | #323 | built (#393 `6c40547`) | `code-review-overview.spec.ts` (cards); on `main` (#481 via #490): the same spec's activity-opening case asserts the ⋯ menu's Copy comment link by keyboard, with the exact URL; its Add to chat is covered under C54 | — | — | open (VoiceOver) |
 | C52 | Deployment table and preview links | #323 | built (#393 `6c40547`) | `code-review-overview.test.ts` "preview destinations reject credentials…"; `code-review-read-service.test.ts`; `code-review-overview.spec.ts` | `A-323` (one real deployment and status) | — | open (VoiceOver) |
 | C53 | Third-party bot button | #323 | deviation D4 (inert) | `code-review-overview.spec.ts` "hostile Markdown is inert…"; `code-review-regressions.spec.ts` "hostile content" | — | — | — |
 | C54 | Reaction and Add to chat | #325 (reactions D3) | built: Add to chat (#422 `b643617`); reactions deviation D3 | `code-review-agent.spec.ts` "a question is answered by a run of its own, with 'Add to chat' quoting a comment into it" | — | open (needs repo Val names, #325) | open (VoiceOver) |
@@ -107,22 +107,22 @@ found that asserts it; it is not a pass.
 | C58 | Attach (+) | #325 | not built (left out; no numbered decision covers it) | — | — | — | — |
 | C59 | Model and reasoning effort | #325 | built: model select only, effort left out (#422 `b643617`) | `code-review-agent.spec.ts` (runs with `--model`); `code-review-agent.test.ts` (unknown model refused) | — | open (needs repo Val names, #325) | open (VoiceOver) |
 | C60 | Voice input | deferred | deviation D5 | — | — | — | — |
-| C61 | Composer clearance | #323 / #324 | built at fixture (#393 `6c40547`): bottom clearance; final Comment in viewport at 900×600 | `code-review-overview.spec.ts` "hostile Markdown is inert and narrow content remains reachable"; `code-review-scroll.spec.ts`. Candidate `cr-v050-followups`: `code-review-agent.spec.ts` "C61…" measures Ask and the last activity item beside CR-6's inline section and its open panel, at 900×600 and 1440×900; red under an overlay and under a panel that takes the pane's height | — | — | open (VoiceOver) |
+| C61 | Composer clearance | #323 / #324 | built at fixture (#393 `6c40547`): bottom clearance; final Comment in viewport at 900×600 | `code-review-overview.spec.ts` "hostile Markdown is inert and narrow content remains reachable"; `code-review-scroll.spec.ts`. On `main` (#491): `code-review-agent.spec.ts` "C61…" measures Ask and the last activity item beside CR-6's inline section and its open panel, at 900×600 and 1440×900; red under an overlay and under a panel that takes the pane's height | — | — | open (VoiceOver) |
 | C62 | Header repeated over Changes | #322 | built; now repeats the live C21 and C27–C29 | `code-review-navigation.spec.ts`; journey (R4); `code-review-a11y.spec.ts` | — | — | open (VoiceOver) |
-| C63 | Changes ⋯ menu and view toggles | #324 | built in part (#404 `e3527f4`): "Wrap lines" and "Highlight changes" toggles. The ⋯ menu and the tree/image/layout toggles are left out, as the inventory allows | candidate `cr-v050` (#484): `code-review-diff.spec.ts` "wrapping and highlighting change rendered code…" | — | — | open (VoiceOver); open: reference comparison |
+| C63 | Changes ⋯ menu and view toggles | #324 | built in part (#404 `e3527f4`): "Wrap lines" and "Highlight changes" toggles. The ⋯ menu and the tree/image/layout toggles are left out, as the inventory allows | on `main` (#484 via #490): `code-review-diff.spec.ts` "wrapping and highlighting change rendered code…" | — | — | open (VoiceOver); open: reference comparison |
 | C64 | File header | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "grouped diffs, both gutters, hierarchy, filter…"; review-flow (#441) | `A-324` (service: 15/15 files) | — | open (VoiceOver); open: reference comparison |
 | C65 | Viewed toggle | needs decision 5 | needs decision 5 (not built) | — | — | — | — |
-| C66 | File ⋯ menu (never Discard) | #324 | built (#404 `e3527f4`): Copy path and Open in GitHub only | `code-review-regressions.spec.ts` "local Changes stay local"; `code-review-diff.spec.ts` "…use remote data only". Candidate `cr-v050` (#484): the same file's "file menu copies the remote path…" opens the menu and asserts both items and no Discard | — | — | open (VoiceOver) |
+| C66 | File ⋯ menu (never Discard) | #324 | built (#404 `e3527f4`): Copy path and Open in GitHub only | `code-review-regressions.spec.ts` "local Changes stay local"; `code-review-diff.spec.ts` "…use remote data only". On `main` (#484 via #490): the same file's "file menu copies the remote path…" opens the menu and asserts both items and no Discard | — | — | open (VoiceOver) |
 | C67 | Folded lines, expand | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "expanding context asks the exact remote revision…", "review: context expands adjacent to both ends…", "context text budget is shared…"; `code-review-diff.test.ts` "context windows reveal both ends…" | `A-main` (context read), `A-324` (base context matched the merge base) | — | open (VoiceOver) |
 | C68 | Line numbers, add/remove rows | #324 | built (#404 `e3527f4`) | `code-review-diff.test.ts` ×9; `code-review-diff.spec.ts` "line anchors have one keyboard entry per file…", "old-line anchors name the merge base…"; review-flow | `A-324` (15/15 patches parsed; anchor) | — | open (VoiceOver) |
-| C69 | "More unchanged context…" | #324 | built (#404 `e3527f4`; `ContextFold` when `count` is null) | candidate `cr-v050` (#484): `code-review-diff.spec.ts` "more unchanged context discloses uncertainty…" finds the control by this text and asserts the one request it sends | — | — | open (VoiceOver) |
+| C69 | "More unchanged context…" | #324 | built (#404 `e3527f4`; `ContextFold` when `count` is null) | on `main` (#484 via #490): `code-review-diff.spec.ts` "more unchanged context discloses uncertainty…" finds the control by this text and asserts the one request it sends | — | — | open (VoiceOver) |
 | C70 | Collapsed file sections | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` (Collapse a file; "1,000 files keep… mounted patch bodies bounded") | — | — | open (VoiceOver) |
-| C71 | Horizontal scroll per file | #324 | built (#404 `e3527f4`; `.cr-patch { overflow-x: auto }` with wrap off) | candidate `cr-v050` (#484): `code-review-diff.spec.ts` "…horizontal scroll stays per file" | — | — | — |
+| C71 | Horizontal scroll per file | #324 | built (#404 `e3527f4`; `.cr-patch { overflow-x: auto }` with wrap off) | on `main` (#484 via #490): `code-review-diff.spec.ts` "…horizontal scroll stays per file" | — | — | — |
 | C72 | Filter files | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` (Filter remote files) | — | — | open (VoiceOver) |
 | C73 | Folder tree, selected file | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "…hierarchy, filter and keyboard selection…", "narrow tree selection returns to the diff…"; `code-review-scroll.spec.ts`; journey R4 populated (#464 `3d72c6e`) | — | — | open (VoiceOver); open: reference comparison |
 | C74 | Overview / Changes divider | #322 | built | `code-review-navigation.spec.ts` (keyboard resize persists across reload) | — | — | open (VoiceOver) |
-| C75 | Diff / tree divider | #322 | built | candidate `cr-v050` (#484): `code-review-diff.spec.ts` "file tree divider resizes with keyboard and pointer and persists on reload"; `code-review-a11y.spec.ts` (reached by Tab as a separator); `code-review-navigation.spec.ts` (tree folds when narrow) | — | — | open (VoiceOver) |
-| C76 | Keyboard path, 900×600 and 1440×900 | #327 | built; candidate `cr-v050` requires the CR-3 to CR-7 controls and checks every text run in the CR-4 to CR-7 sections | `code-review-a11y.spec.ts`; `code-review-navigation.spec.ts` keyboard test; `code-review-scroll.spec.ts` (focus kept); per-slice keyboard cases in the overview, diff, agent and actions specs | — | — | **open: [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md) parts A–D for Val (result row empty)** |
+| C75 | Diff / tree divider | #322 | built | on `main` (#484 via #490): `code-review-diff.spec.ts` "file tree divider resizes with keyboard and pointer and persists on reload"; `code-review-a11y.spec.ts` (reached by Tab as a separator); `code-review-navigation.spec.ts` (tree folds when narrow) | — | — | open (VoiceOver) |
+| C76 | Keyboard path, 900×600 and 1440×900 | #327 | built; `main` (#490) requires the CR-3 to CR-7 controls and checks every text run in the CR-4 to CR-7 sections | `code-review-a11y.spec.ts`; `code-review-navigation.spec.ts` keyboard test; `code-review-scroll.spec.ts` (focus kept); per-slice keyboard cases in the overview, diff, agent and actions specs | — | — | **open: [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md) parts A–D for Val (result row empty)** |
 | C77 | Overview column scroll | #323 | built (#393 `6c40547`) | `code-review-scroll.spec.ts` (#438 `afec85b`); journey R2 (overview moves, inbox doesn't) | — | — | — |
 | C78 | Diff pane scroll | #324 | built (#404 `e3527f4`) | `code-review-scroll.spec.ts`; `code-review-diff.spec.ts` "returning from Overview preserves… overall scroll position" | — | — | — |
 | C79 | File tree scroll | #324 | built (#404 `e3527f4`) | `code-review-scroll.spec.ts` (#438 `afec85b`) | — | — | — |
@@ -155,7 +155,7 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 | #323 AC2 | Pagination and refresh: no duplicates, lost scroll or cross-PR bleed; partial never zero | `code-review-overview.spec.ts` ×8 (failed pages, refresh, delayed bleed, partial first page, retry cursor); `code-review-overview.test.ts`; [cr4-overview](2026-10-23-cr4-overview.md) | `A-323` (activity complete) | — | met at fixture (#393 `6c40547`). A live account switch was not exercised |
 | #323 AC3 | Stale checks, inferred stack and comment-derived previews kept distinct | `code-review-overview.spec.ts` "stale checks and unavailable collections…"; `code-review-overview.test.ts` (stack, preview destinations, stale retention); `code-review-read-service.test.ts` | `A-323` (deployment; stack unavailable) | — | met at fixture (#393 `6c40547`) |
 | #323 AC4 | Hostile Markdown/HTML, unsafe schemes, misleading previews inert | `code-review-overview.spec.ts` "hostile Markdown is inert…"; `code-review-regressions.spec.ts` "hostile content"; `code-review-overview.test.ts` "preview destinations reject…" | — | — | met at fixture (#393 `6c40547`). No live untrusted PR content was run |
-| #323 AC5 | Long titles, large descriptions, narrow windows readable; composer clearance | `code-review-overview.spec.ts` (900×600, final Comment in viewport); `code-review-scroll.spec.ts` (#438 `afec85b`) | — | — | met at fixture (#393). Candidate `cr-v050-followups` measures clearance next to CR-6's inline review/Ask section (C61). **Open:** VoiceOver (Val) |
+| #323 AC5 | Long titles, large descriptions, narrow windows readable; composer clearance | `code-review-overview.spec.ts` (900×600, final Comment in viewport); `code-review-scroll.spec.ts` (#438 `afec85b`) | — | — | met at fixture (#393). On `main` (#491) measures clearance next to CR-6's inline review/Ask section (C61). **Open:** VoiceOver (Val) |
 | #323 AC6 | Every visible write control is connected to a verified CR-7 capability or is unavailable; no mutation by #323 | At #393 all writes were unavailable ([cr4-overview](2026-10-23-cr4-overview.md)). Since #416 `b3aad0d` they are connected through `code-review:write` (`code-review-actions.spec.ts`) | — | see #326 AC6 | met at fixture |
 | #324 AC1 | R4 overview-plus-diff, tree, folds, selected file through real controls; match approved reference geometry | `code-review-diff.spec.ts` "captures populated R4 diff geometry and narrow keyboard file selection"; journey R4 populated (#464 `3d72c6e`); review-flow (#441 `eca2bd9`). Evidence: [cr5-remote-diffs](2026-10-23-cr5-remote-diffs.md) | — | — | met at fixture for the controls (#404 `e3527f4`). **Open:** approved-reference geometry, since the original R4 is missing (Val) |
 | #324 AC2 | Old/new line references for additions, deletions, renames, no final newline; context keeps them | `code-review-diff.test.ts` ×9; `code-review-diff.spec.ts` "review: deleted ranges and renamed paths retain base anchors…", "old-line anchors name the merge base…"; [cr5-merge-base](2026-10-24-cr5-merge-base.md) | `A-324` (anchor; merge-base match) | — | met at fixture (#404 `e3527f4`), plus an authenticated service probe |
@@ -190,13 +190,9 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 
 ## Staged enablement and rollback
 
-**Candidate `cr-v050` (2026-11-02), awaiting Val's approval:** the switch is replaced by a persisted setting, Settings →
-General → "Show Code Review in the rail", on by default. An old explicit value other than `"on"` stays off until the
-person chooses (`shared/layout.ts`, `code-review-enablement.spec.ts`). This takes Stage 2's product step before Stage 1
-and 2's gates have run, so that one candidate can carry them all. It reaches nobody until Val merges and releases it;
-[the Val session](2026-11-02-v0.5.0-val-session.md) lists the gates to pass or accept first.
+**From v0.4.2 (Val's decision, 2026-11-03):** a persisted setting replaces the switch: Settings → General → "Show Code Review in the rail", off by default in built apps and on in development builds. The old switch's value is honoured until the layout saves a choice (`shared/layout.ts`, `code-review-enablement.spec.ts`). The stages below still hold: turning it on by default is Stage 2, and a product PR Val approves.
 
-Before that candidate, the only switch was the per-home `localStorage["modex.codeReview"]`:
+Before v0.4.2, the only switch was the per-home `localStorage["modex.codeReview"]`:
 development builds show the destination, packaged builds hide it unless the value is `"on"`. Nothing else reads
 it, and main's channels answer regardless of whether the destination is visible.
 
@@ -206,7 +202,7 @@ it, and main's channels answer regardless of whether the destination is visible.
 - **Stage 2, after VoiceOver and Val's call on the references, decisions 1, 5, 6, 7, and the C58/C59 omissions:** remove the switch (or
   invert it) in a product PR that Val approves. That PR updates `docs/status.md` and this matrix.
 
-**Rollback:** in the candidate, clearing "Show Code Review in the rail" hides the destination at once and across a
+**Rollback:** from v0.4.2, clearing "Show Code Review in the rail" hides the destination at once and across a
 quit. On earlier builds, setting the value to anything but `"on"` (or clearing site data for that home) hides the
 destination on the next launch. That hides the surface; it does not cancel a write already sent. An in-doubt
 write keeps its record in `<MODEX_HOME>/review-actions/state.json` and an unconfirmed review run in
@@ -233,11 +229,11 @@ the destination is visible. A product rollback (removing a capability) is a code
 ## Follow-ups found in this refresh (agent work, not gates)
 
 - C22 is closed on `main`: #477 binds the accepted `overview.locator`, which ends D6.
-- Done in candidate `cr-v050`: `code-review-a11y.spec.ts` requires the overview, diff, review and write controls
+- Done in `main` (#490): `code-review-a11y.spec.ts` requires the overview, diff, review and write controls
   (C76). Its new per-text contrast check found the file header and tree deletion count at 4.02:1 in OpenCoven; fixed.
-- Done in candidate `cr-v050`: `code-review-budgets.spec.ts` gates the agreed opening budgets (AC5), and
+- Done in `main` (#490): `code-review-budgets.spec.ts` gates the agreed opening budgets (AC5), and
   `code-review-actions.spec.ts` proves drafts stay hidden after sign-out (#326).
-- Done in candidate `cr-v050` (#481, #484): asserting specs for C50, C51, C63, C66, C69, C71 and C75. Done in `cr-v050-followups`: C61's clearance beside CR-6's inline Ask section.
+- Done in `main` (#490) (#481, #484): asserting specs for C50, C51, C63, C66, C69, C71 and C75. Done in #491: C61's clearance beside CR-6's inline Ask section.
 - CR-4's and CR-5's authenticated evidence is service-level on pre-merge candidates (`A-323`, `A-324`); an
   authenticated Electron read of the overview and diff on `main` needs Val's authorization (GET only).
 

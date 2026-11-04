@@ -43,6 +43,7 @@ async function open(files?: PrFile[], hold: string | null = null) {
       return { requestId: req.requestId, op: req.op, scope: { account: req.key?.account ?? data.account, key: req.key ?? null, revision: req.revision ?? null }, result };
     });
   }, { files: files ?? R4.files.value.files, overview: R4.overview, alternate: R1.overview, connection: R1.connection, inbox: R1.inbox, at: NOW, account: R4.overview.key.account, hold });
+  await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
   await page.reload();
   await tid(page, "rail-code-review").click();
   await page.locator('[data-testid="code-review-row"][data-pr="example-org/field-guide#91"]').click();

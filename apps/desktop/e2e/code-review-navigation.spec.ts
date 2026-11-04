@@ -122,6 +122,7 @@ async function open(data: Served = served()): Promise<void> {
   ({ home, repo } = seedHome());
   ({ app, page } = await launch(home));
   await serve(app, data);
+  await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
   await page.reload();
   await expect(tid(page, "rail-code-review")).toBeVisible();
 }
