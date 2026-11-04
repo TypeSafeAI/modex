@@ -116,6 +116,7 @@ function LocalSection({ local, pending, setPending, close }: { local: LocalMenu;
         return (
           <div key={entry.connection.id} role="group" aria-label={`${entry.connection.label} models`} data-testid="model-local-group">
             <div className="menu-group-title"><span>{entry.connection.label}</span><span className={`menu-group-state ${result?.state ?? ""}`}>{state}</span></div>
+            {entry.error && <div className="menu-note">{entry.error}</div>}
             {result?.state === "unavailable" && <div className="menu-note">{FAILURE_WORDS[result.reason] ?? "The server could not be checked."}</div>}
             {result?.state === "ready" && !usable.length && <div className="menu-note">No usable models on this server.</div>}
             {usable.map((m) => <LocalOption key={m.model.id} m={m} entry={entry} local={local} pending={pending} setPending={setPending} close={close} />)}

@@ -20,6 +20,10 @@ const report = path.resolve(destination);
 fs.mkdirSync(report, { recursive: true, mode: 0o700 });
 const policy = '(version 1)\n(allow default)\n(deny network*)\n(allow network-inbound (local ip "localhost:*"))\n(allow network-outbound (remote ip "localhost:*"))\n';
 if (!inside) {
+  const evidence = fs.lstatSync(report);
+  if (!evidence.isDirectory() || evidence.isSymbolicLink() || fs.readdirSync(report).length !== 0) {
+    throw new Error("Choose a new empty evidence directory. Earlier receipts and linked destinations were preserved; no runtime was contacted.");
+  }
   const listing = await fetch("http://127.0.0.1:11434/api/tags", { redirect: "error", signal: AbortSignal.timeout(5000) }).then(r => r.json());
   const installed = listing.models?.find(m => m.name === model);
   if (!installed?.digest) throw new Error("The exact approved model must already be installed. This canary never downloads one.");

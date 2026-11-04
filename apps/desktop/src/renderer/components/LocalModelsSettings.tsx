@@ -101,6 +101,7 @@ function ConnectionCard({ entry, busy, run }: { entry: LocalEntry; busy: boolean
         <div><h4 id={titleId}>{c.label}</h4><p>{RUNTIME_NAMES[c.runtime]} · <code>{c.origin}{c.basePath}</code>{c.credential.present ? " · token saved" : ""}</p></div>
         <span className={`connection-badge${result?.state === "ready" && !entry.checking ? " connected" : ""}`} data-testid="local-connection-status"><span aria-hidden="true" />{status}</span>
       </header>
+      {entry.error && <p className="connection-feedback warn" role="alert">{entry.error}</p>}
       {result?.state === "unavailable" && <p className="connection-feedback warn" data-testid="local-connection-reason">{FAILURE_WORDS[result.reason] ?? "The server could not be checked."}</p>}
       {result && <p className="connection-footnote">Last checked: <time dateTime={result.checkedAt}>{new Date(result.checkedAt).toLocaleString()}</time></p>}
       {result?.state === "ready" && result.truncated && <p className="connection-feedback">The server listed more models than Modex reads; only the first are shown.</p>}
