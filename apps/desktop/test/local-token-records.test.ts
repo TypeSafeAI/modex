@@ -68,7 +68,7 @@ async function setup(turn: Turn) {
   const unused = { id: "codex", listModels: async () => [], dispose: async () => {}, runTurn: async () => { throw new Error("a local turn reached the cloud backend"); } };
   const runner = new ThreadRunner({ home, store, router, emit: (e: ThreadEvent) => events.push(e), backends: { codex: unused }, localExecution: local } as unknown as RunnerOptions);
   const thread = await runner.createThread(store.addProject(gitRepo()).id, { backend: "codex", model: "gpt-6-astra", auto: true });
-  runner.updateThread(thread.id, { localTarget: { schema: 1, harness: "codex", model: { schema: 1, connection: { id: connection.id, revision: 1 }, id: MODEL } }, localContextTokens: 32768 });
+  runner.updateThread(thread.id, { localTarget: { schema: 1, harness: "codex", model: { schema: 1, connection: { id: connection.id, revision: 1 }, id: MODEL } }, localContextTokens: 32768 }, { by: "desktop" });
   return { home, store, secrets, local, runner, thread, events };
 }
 
