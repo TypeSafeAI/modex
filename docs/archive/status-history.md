@@ -356,3 +356,8 @@ Desktop CI memory diagnostics landed through #458 after #456’s cold transcript
   truncated-suffix false allow; the quoted-test-name case remains open.
   [Recovery verification](../reviews/2026-10-12-approval-recovery.md) passed 1,376 unit tests
   (15 skipped), 271 desktop E2E cases and seven site cases. The gate remains off by default.
+
+## In flight entries retired after #492
+
+- **Code Review setting and its gates** (#490, #491; #319, #327). A persisted setting in Settings → General replaces the `modex.codeReview` switch, off by default as Val chose on 2026-11-03, on in development builds. Adds a11y coverage of the CR-4 to CR-7 controls (C76), performance budgets as gates, CR-7 sign-out and CF-3 question-card regressions, C61 clearance beside CR-6's inline section, and theme colours for the diff's plain buttons. No live or human gate has run. [v0.4.2 review](../reviews/2026-11-03-v0.4.2-release-review.md); [Val's session](../reviews/2026-11-02-v0.5.0-val-session.md).
+- **Unmerged-work retirement safety repair (#486):** signed candidate `783898a` is pushed on `retire-safety-repair`; it requires matching ownership, archives index and working state separately, verifies raw working/ignored recovery, and retains the original checkout indefinitely instead of deleting files. Focused disposable-fixture results and design are in [the repair review](../reviews/2026-11-02-retirement-safety-repair.md). Pinned installation, build, full unit tests (2,325 passed, 26 skipped), typecheck and independent follow-up review passed; protected CI and landing remain pending. No real worktree retirement or repair-specific Electron e2e has been exercised.

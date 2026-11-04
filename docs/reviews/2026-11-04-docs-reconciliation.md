@@ -39,7 +39,7 @@ Left unticked on purpose:
 - #276's two boxes: focus after answering is in open #489.
 - #327's budget box and AC5: gates exist (#490), but nothing on record shows Val agreed the numbers.
 - #327 AC6: the matrix is not final.
-- #322, #323: re-check after #492 lands, since it edits those rows.
+- #322 "Preserve logical focus" and #323 "Match the measured" and AC5: re-checked after #492 landed. #491 measures the composer clearance, but these boxes also need the human keyboard/VoiceOver pass or the original references.
 
 ## Left open
 
