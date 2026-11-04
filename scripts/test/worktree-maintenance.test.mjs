@@ -533,3 +533,214 @@ for (const seam of ['state', 'archives', 'owners']) {
     assert.equal(f.exists(w), true);
   });
 }
+
+test('retire dry run reports and changes nothing', async (t) => {
+  const f = fixture(t); const w = f.create('abandoned'); await f.core.claim(w.name, { owner: 'val' });
+  fs.appendFileSync(path.join(w.location, 'code.txt'), 'unfinished\n');
+  const value = await f.core.retire(w.name, { expectedHead: w.head, by: 'val' });
+  assert.equal(value.status, 'eligible');
+  assert.equal(value.dirty, true);
+  assert.equal(f.exists(w), true);
+  assert.match(fs.readFileSync(path.join(w.location, 'code.txt'), 'utf8'), /unfinished/);
+});
+
+test('retire snapshots dirty, untracked and ignored data, then removes the unmerged worktree', async (t) => {
+  const f = fixture(t); const w = f.create('abandoned'); await f.core.claim(w.name, { owner: 'val' });
+  fs.appendFileSync(path.join(w.location, 'code.txt'), 'unfinished\n');
+  git(w.location, 'add', 'code.txt');
+  fs.writeFileSync(path.join(w.location, 'notes.txt'), 'untracked note\n');
+  fs.writeFileSync(path.join(w.location, '.env'), 'SECRET=1\n');
+  fs.mkdirSync(path.join(w.location, '.probes')); fs.writeFileSync(path.join(w.location, '.probes', 'probe.mjs'), 'probe\n');
+  const value = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'val' });
+  assert.equal(value.status, 'retired', value.reasons.join(', '));
+  assert.equal(fs.existsSync(w.location), false);
+  assert.equal(spawnSync('git', ['-C', f.primary, 'show-ref', '--verify', '--quiet', `refs/heads/${w.name}`]).status, 1);
+  const entry = value.run.entries[0];
+  assert.equal(entry.tip, w.head);
+  assert.equal(entry.proof.kind, 'retired');
+  const restored = path.join(f.dir, 'restored');
+  git(f.dir, 'init', '-q', restored);
+  git(restored, 'fetch', '-q', value.run.bundle, `${entry.archiveRef}:refs/heads/restored`);
+  assert.equal(git(restored, 'rev-parse', 'restored~2'), w.head);
+  assert.match(git(restored, 'show', 'restored:code.txt'), /unfinished/);
+  assert.equal(git(restored, 'show', 'restored:notes.txt'), 'untracked note');
+  const listed = execFileSync('tar', ['-tf', entry.ignoredTar], { encoding: 'utf8' });
+  assert.match(listed, /\.env/); assert.match(listed, /\.probes\//);
+  assert.equal(fs.statSync(entry.ignoredTar).mode & 0o777, 0o600);
+  assert.equal((await f.core.getRecord(w.name)).status, 'retired');
+});
+
+test('retire removes a clean unmerged worktree with only the exact tip archived', async (t) => {
+  const f = fixture(t); const w = f.create('clean-abandoned'); await f.core.claim(w.name, { owner: 'val' });
+  const value = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'val' });
+  assert.equal(value.status, 'retired', value.reasons.join(', '));
+  assert.equal(value.snapshot, w.head);
+  assert.equal(value.run.entries[0].ignoredTar, undefined);
+});
+
+for (const kind of ['open-pr', 'head-mismatch', 'active', 'operation', 'locked', 'main']) {
+  test(`retire preserves work on ${kind}`, async (t) => {
+    const f = fixture(t); const w = f.create('kept'); await f.core.claim(w.name, { owner: 'val' });
+    fs.appendFileSync(path.join(w.location, 'code.txt'), 'unfinished\n');
+    let branch = w.name; let head = w.head;
+    if (kind === 'open-pr') f.pulls = [{ state: 'open', head: { ref: w.name, sha: w.head, repo: { full_name: 'example/modex' } }, base: { ref: 'main' } }];
+    if (kind === 'head-mismatch') head = git(f.primary, 'rev-parse', 'main');
+    if (kind === 'active') f.active = true;
+    if (kind === 'operation') fs.writeFileSync(git(w.location, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD'), `${w.head}\n`);
+    if (kind === 'locked') git(f.primary, 'worktree', 'lock', w.location);
+    if (kind === 'main') { branch = 'main'; head = git(f.primary, 'rev-parse', 'main'); }
+    const value = await f.core.retire(branch, { expectedHead: head, apply: true, by: 'val' });
+    assert.equal(value.status, 'preserved');
+    assert.ok(value.reasons.length > 0);
+    assert.equal(f.exists(w), true);
+    assert.match(fs.readFileSync(path.join(w.location, 'code.txt'), 'utf8'), /unfinished/);
+  });
+}
+
+for (const owner of [null, 'other-owner', 'broken']) {
+  test(`retire refuses missing, foreign or malformed owner: ${owner}`, async (t) => {
+    const f = fixture(t); const w = f.create('owned');
+    if (owner) await f.core.claim(w.name, { owner });
+    if (owner === 'broken') fs.writeFileSync(f.core.recordPath(await f.core.info(), w.name), '{');
+    const value = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'my-session' });
+    assert.equal(value.status, 'preserved');
+    assert.ok(value.reasons.some(reason => /owner/.test(reason)));
+    assert.equal(f.exists(w), true);
+  });
+}
+
+
+test('retire preserves independent index and working tree versions in empty restore and retained checkout', async t => {
+  const f = fixture(t), w = f.create('versions');
+  await f.core.claim(w.name, { owner: 'alice' });
+  fs.writeFileSync(path.join(w.location, 'code.txt'), 'staged version');
+  fs.writeFileSync(path.join(w.location, 'staged-only'), 'index only');
+  git(w.location, 'add', '.');
+  fs.unlinkSync(path.join(w.location, 'staged-only'));
+  fs.writeFileSync(path.join(w.location, 'code.txt'), 'working version');
+  const result = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'alice' });
+  assert.equal(result.status, 'retired', result.reasons.join(', '));
+  const entry = result.run.entries[0];
+  const restored = path.join(f.dir, 'restored'); git(f.dir, 'init', '--bare', restored);
+  git(restored, 'fetch', result.run.bundle, `${entry.archiveRef}:refs/heads/restored`);
+  assert.equal(git(restored, 'show', `${entry.indexSnapshot}:code.txt`), 'staged version');
+  assert.equal(git(restored, 'show', `${entry.indexSnapshot}:staged-only`), 'index only');
+  assert.equal(git(restored, 'show', 'restored:code.txt'), 'working version');
+  assert.equal(git(entry.recoveryPath, 'show', ':code.txt'), 'staged version');
+  assert.equal(fs.readFileSync(path.join(entry.recoveryPath, 'code.txt'), 'utf8'), 'working version');
+  assert.equal(git(entry.recoveryPath, 'rev-parse', 'HEAD'), w.head);
+});
+
+for (const change of ['tracked', 'untracked', 'ignored', 'owner', 'missing-tar', 'corrupt-tar']) {
+  test(`retire preserves originals after late ${change} change`, async t => {
+    const f = fixture(t), w = f.create('late');
+    await f.core.claim(w.name, { owner: 'alice' });
+    fs.writeFileSync(path.join(w.location, '.env'), 'original secret');
+    f.onActivity = async location => {
+      if (f.activityCalls !== 2) return;
+      if (change === 'tracked') fs.writeFileSync(path.join(location, 'code.txt'), 'late tracked');
+      if (change === 'untracked') fs.writeFileSync(path.join(location, 'late.txt'), 'late untracked');
+      if (change === 'ignored') fs.writeFileSync(path.join(location, '.env'), 'late ignored');
+      if (change === 'owner') await f.core.claim(w.name, { owner: 'bob' });
+      if (change.endsWith('tar')) {
+        const archives = path.join((await f.core.info()).stateDir, 'archives');
+        const tar = path.join(archives, fs.readdirSync(archives)[0], 'ignored.tar');
+        if (change === 'missing-tar') fs.unlinkSync(tar); else fs.writeFileSync(tar, 'corrupt');
+      }
+    };
+    const result = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'alice' });
+    assert.equal(result.status, 'preserved', result.reasons.join(', '));
+    assert.equal(f.exists(w), true);
+    assert.equal(fs.readFileSync(path.join(w.location, '.env'), 'utf8'), change === 'ignored' ? 'late ignored' : 'original secret');
+    if (change === 'tracked') assert.equal(fs.readFileSync(path.join(w.location, 'code.txt'), 'utf8'), 'late tracked');
+    if (change === 'untracked') assert.equal(fs.readFileSync(path.join(w.location, 'late.txt'), 'utf8'), 'late untracked');
+  });
+}
+
+test('retire retains bytes written through an open descriptor after final observation', async t => {
+  const f = fixture(t), w = f.create('descriptor');
+  await f.core.claim(w.name, { owner: 'alice' });
+  const fd = fs.openSync(path.join(w.location, 'code.txt'), 'a'); t.after(() => fs.closeSync(fd));
+  const originalGit = f.core.git.bind(f.core);
+  f.core.git = (args, ...rest) => {
+    if (args[0] === 'worktree' && args[1] === 'move') fs.writeSync(fd, 'late descriptor write');
+    return originalGit(args, ...rest);
+  };
+  const result = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'alice' });
+  const recovery = result.run.entries[0].recoveryPath;
+  assert.ok(recovery, 'original checkout must be retained');
+  assert.match(fs.readFileSync(path.join(recovery, 'code.txt'), 'utf8'), /late descriptor write/);
+  fs.writeSync(fd, ' after retirement');
+  assert.match(fs.readFileSync(path.join(recovery, 'code.txt'), 'utf8'), /after retirement/);
+});
+
+for (const interruption of ['move', 'detach', 'branch-delete']) {
+  test(`retire interruption at ${interruption} retains original checkout and durable recovery intent`, async t => {
+    const f = fixture(t), w = f.create('interrupted');
+    await f.core.claim(w.name, { owner: 'alice' });
+    fs.writeFileSync(path.join(w.location, '.env'), 'retained secret');
+    fs.chmodSync(path.join(w.location, '.env'), 0o600);
+    fs.writeFileSync(path.join(w.location, 'code.txt'), 'staged'); git(w.location, 'add', 'code.txt');
+    fs.writeFileSync(path.join(w.location, 'code.txt'), 'unstaged');
+    let durable;
+    const originalGit = f.core.git.bind(f.core);
+    f.core.git = (args, ...rest) => {
+      if (args[0] === 'worktree' && args[1] === 'move') {
+        durable = JSON.parse(fs.readFileSync(path.join(path.dirname(args[3]), 'manifest.json'), 'utf8'));
+        assert.equal(durable.entries[0].phase, 'prepared');
+        assert.ok(durable.entries[0].ignoredTarSha256);
+        assert.ok(durable.entries[0].workingTreeTar.sha256);
+        assert.ok(durable.entries[0].indexSnapshot);
+        const result = originalGit(args, ...rest);
+        if (interruption === 'move') throw new Error('simulated interruption after move');
+        return result;
+      }
+      if (interruption === 'detach' && args[0] === 'update-ref' && args[2] === 'HEAD') throw new Error('simulated interruption before detach');
+      if (interruption === 'branch-delete' && args[0] === 'update-ref' && args[2] === '-d') throw new Error('simulated interruption before branch deletion');
+      return originalGit(args, ...rest);
+    };
+    const result = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'alice' });
+    assert.equal(result.status, 'preserved');
+    const recovery = durable.entries[0].recoveryPath;
+    assert.equal(fs.existsSync(w.location), false);
+    assert.equal(fs.readFileSync(path.join(recovery, '.env'), 'utf8'), 'retained secret');
+    assert.equal(fs.statSync(path.join(recovery, '.env')).mode & 0o777, 0o600);
+    assert.equal(fs.readFileSync(path.join(recovery, 'code.txt'), 'utf8'), 'unstaged');
+    assert.equal(git(recovery, 'show', ':code.txt'), 'staged');
+    assert.equal(git(f.primary, 'rev-parse', w.name), w.head);
+    assert.ok(f.core.worktrees().some(tree => tree.path === recovery));
+  });
+}
+
+for (const invalid of ['missing-head', 'missing-timestamp', 'stale-release']) {
+  test(`retire rejects structurally invalid ownership: ${invalid}`, async t => {
+    const f = fixture(t), w = f.create('invalid-owner');
+    await f.core.claim(w.name, { owner: 'alice' });
+    const info = await f.core.info(), record = await f.core.getRecord(w.name);
+    if (invalid === 'missing-head') delete record.head;
+    if (invalid === 'missing-timestamp') delete record.updatedAt;
+    if (invalid === 'stale-release') { record.status = 'released'; record.head = git(f.primary, 'rev-parse', 'main'); }
+    f.core.writeRecord(info, record);
+    const result = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'alice' });
+    assert.equal(result.status, 'preserved');
+    assert.equal(f.exists(w), true);
+  });
+}
+
+test('retire verifies nested ignored roots with parent directory modes and no sibling data', async t => {
+  const f = fixture(t), w = f.create('nested-ignored');
+  await f.core.claim(w.name, { owner: 'alice' });
+  fs.mkdirSync(path.join(w.location, 'apps/desktop/.probes'), { recursive: true });
+  fs.chmodSync(path.join(w.location, 'apps'), 0o750);
+  fs.chmodSync(path.join(w.location, 'apps/desktop'), 0o700);
+  fs.writeFileSync(path.join(w.location, 'apps/desktop/.probes/data'), 'nested ignored bytes');
+  fs.writeFileSync(path.join(w.location, 'apps/desktop/sibling.txt'), 'untracked sibling');
+  const result = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'alice' });
+  assert.equal(result.status, 'retired', result.reasons.join(', '));
+  const restore = path.join(f.dir, 'ignored-restore'); fs.mkdirSync(restore);
+  execFileSync('tar', ['-xpf', result.run.entries[0].ignoredTar, '-C', restore]);
+  assert.equal(fs.readFileSync(path.join(restore, 'apps/desktop/.probes/data'), 'utf8'), 'nested ignored bytes');
+  assert.equal(fs.statSync(path.join(restore, 'apps')).mode & 0o777, 0o750);
+  assert.equal(fs.statSync(path.join(restore, 'apps/desktop')).mode & 0o777, 0o700);
+  assert.equal(fs.existsSync(path.join(restore, 'apps/desktop/sibling.txt')), false);
+});
