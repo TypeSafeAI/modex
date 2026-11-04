@@ -86,7 +86,7 @@ modex/
 - **Approval rules (preview).** Settings can save project-scoped Allow, Ask, and Never rules
   and try them against a sample without executing it. Language rules stay visibly inactive
   without Jev; exact-match rules need no judge. The production gate remains off pending
-  validation and the v0.0.5 release prerequisite. See [approval rules](docs/approval-rules.md).
+  validation and human acceptance. See [approval rules](docs/approval-rules.md).
 - **Errors you can act on.** Failed turns show the CLI's message, a next step, **Retry**
   (the same message, without a second user bubble), and **Copy details** for a bug report.
   Sign-in failures offer the CLI's login command in the thread's terminal; missing CLIs
@@ -174,7 +174,7 @@ unsigned Windows x64 and Linux x64 installers from v0.1.0, which update manually
 [native platforms](docs/native-platforms.md). Builds from v0.0.5
 are signed with a Developer ID and notarized by Apple, so they open without a Gatekeeper
 warning; v0.0.1–v0.0.4 were ad-hoc signed and need a right-click → Open the first time. You
-still need `claude` or `codex` installed and logged in. To check a download yourself, see
+still need at least one of the `claude`, `codex`, `opencode` or `mimo` CLIs installed and logged in. To check a download yourself, see
 [docs/release-signing.md](docs/release-signing.md).
 
 To run from source, install Node.js 22 or later, pnpm 10 (`corepack enable pnpm`), and the
@@ -184,7 +184,7 @@ supervisor; the packaged app doesn't need a compiler.
 ```sh
 pnpm install
 pnpm build
-pnpm desktop          # requires `claude` and/or `codex` on PATH, already logged in
+pnpm desktop          # requires a supported CLI on PATH, already logged in
 ```
 
 Offline demo (no key needed) — seeds a throwaway project and a scripted agent, then
@@ -197,7 +197,7 @@ pnpm --filter @modex/desktop screenshot --screenshot=/tmp/modex-shots --demo-ans
 Browser development: `pnpm desktop:dev`, then open <http://127.0.0.1:5178>.
 Open a project by entering its absolute local folder path. Threads, approvals, Changes,
 settings, and the embedded terminal use the desktop runner with separate browser dev state;
-coding turns still run through the logged-in Claude/Codex CLIs. The dev server binds only to
+coding turns still run through the logged-in CLIs. The dev server binds only to
 `127.0.0.1` and checks a per-run token and the request origin for bridge access.
 
 Browser dev state lives in `~/.modex-browser-dev` (override with `MODEX_BROWSER_HOME`),
@@ -252,7 +252,7 @@ pnpm exec playwright install chromium # once, for the browser dev regression
 pnpm test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
 ```
 
-The desktop suite drives both CLI backends against scripted fake processes (Claude
+The desktop suite drives the CLI backends against scripted fake processes (Claude
 `control_request`/`control_response`, Codex JSON-RPC requests, notifications, and approval
 server-requests) and the runner end to end with the offline engine: approvals pause and resume
 a turn, denial leaves the tree untouched, `Stop` interrupts, two threads run concurrently, and

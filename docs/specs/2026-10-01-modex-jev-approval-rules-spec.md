@@ -7,7 +7,7 @@ criteria for the remaining work; it does not claim that they have shipped.
 
 Status (2026-10-18): parts 1 (#54) and 2 (#107, #185) are on `main` and shipped, with the gate
 off. Turning the gate on waits on the [acceptance decision](#current-acceptance-decision-2026-10-11)
-below.
+below. Written when Claude Code and Codex were the only CLIs; OpenCode and MiMo Code have since joined them (noted 2026-11-04).
 
 ## Boundaries
 

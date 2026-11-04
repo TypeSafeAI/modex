@@ -8,7 +8,7 @@ Auto is the ⚡ toggle in the composer. When it is on, Modex asks a small, fast 
 typed questions about each request *before* the turn runs, then picks the backend, model,
 reasoning effort, and fast mode for that turn — within limits you set — and shows a
 one-line receipt in the transcript explaining why. The coding turn itself still runs only
-through the `claude` and `codex` CLIs; nothing about Auto changes that.
+through the supported CLIs; nothing about Auto changes that.
 
 ## What the judge is
 

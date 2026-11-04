@@ -45,7 +45,9 @@ before it finished, from the Mac or the phone, is an interrupted run: what it ha
 saved. A run still working after 30 minutes is marked failed at once. Modex then stops its turn,
 and stops it again 10 seconds later if the CLI ignored the first stop.
 
-### Read-only on both CLIs
+### Read-only on every CLI
+
+OpenCode and MiMo Code routines use their own read-only agents ([opencode.md](opencode.md)). The table shows the two native flag sets.
 
 | Routine mode | Claude Code | Codex |
 | --- | --- | --- |

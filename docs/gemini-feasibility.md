@@ -64,7 +64,7 @@ Next action: run the negative permission probe under a controlled CLI policy and
 initialization timeout if it recurs; then verify canonical roots/symlinks, MCP, restart-resume,
 and account-source transitions. Do not retry account/model calls merely to turn this record green.
 The additional-provider authorization covers gated implementation, but no backend has passed
-all gates, so the production provider set remains unchanged.
+all gates, so Gemini stays out of the production provider set. (OpenCode and MiMo Code joined it separately on 2026-10-28, [#408](https://github.com/TypeSafeAI/modex/issues/408).)
 
 ## Historical Windows research (2026-10-03)
 

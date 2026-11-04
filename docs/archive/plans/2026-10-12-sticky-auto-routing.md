@@ -12,7 +12,7 @@ v0.0.11. The boxes below were not ticked during execution and are historical. Be
 
 **Tech Stack:** TypeScript (Electron main process), `node:test` unit tests compiled by `tsc`, Playwright e2e, the `claude` and `codex` CLIs.
 
-**Spec:** [`docs/specs/2026-10-12-sticky-auto-routing-spec.md`](../../specs/2026-10-12-sticky-auto-routing-spec.md)
+**Spec:** [`docs/archive/specs/2026-10-12-sticky-auto-routing-spec.md`](../specs/2026-10-12-sticky-auto-routing-spec.md)
 
 ---
 
@@ -74,7 +74,7 @@ longer clears `lastTurn`, because a resumed Claude session may report a new id w
 same history (and the same cache).
 
 **Files:**
-- Modify: `docs/specs/2026-10-12-sticky-auto-routing-spec.md`
+- Modify: `docs/archive/specs/2026-10-12-sticky-auto-routing-spec.md`
 
 - [ ] **Step 1: Replace the Codex output sentence**
 
@@ -114,7 +114,7 @@ with:
 - [ ] **Step 3: Commit**
 
 ```sh
-git add docs/specs/2026-10-12-sticky-auto-routing-spec.md docs/superpowers/plans/2026-10-12-sticky-auto-routing.md
+git add docs/archive/specs/2026-10-12-sticky-auto-routing-spec.md docs/archive/plans/2026-10-12-sticky-auto-routing.md
 git commit -S -m "Plan sticky Auto routing" -m "Coven-Harness: Claude Code / claude-opus-5-5"
 ```
 
