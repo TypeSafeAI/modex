@@ -26,7 +26,7 @@ if (!inside) {
   }
   const listing = await fetch("http://127.0.0.1:11434/api/tags", { redirect: "error", signal: AbortSignal.timeout(5000) }).then(r => r.json());
   const installed = listing.models?.find(m => m.name === model);
-  if (!installed?.digest) throw new Error("The exact approved model must already be installed. This canary never downloads one.");
+  if (typeof installed?.digest !== "string" || !installed.digest) throw new Error("The exact approved model must already be installed with a recorded digest. This canary never downloads one.");
   fs.writeFileSync(path.join(report, "model.json"), JSON.stringify(installed, null, 2) + "\n");
   const profile = path.join(report, "loopback-only.sb"); fs.writeFileSync(profile, policy);
   const result = spawnSync("/usr/bin/sandbox-exec", ["-f", profile, process.execPath, script, "--inside", model, report], {
@@ -42,6 +42,15 @@ if (!inside) {
     sha: execFileSync("git", ["rev-parse", "HEAD"], { cwd: appDir, encoding: "utf8" }).trim(), contextTokens: 65536 };
   let server;
   try {
+    const approved = JSON.parse(fs.readFileSync(path.join(report, "model.json"), "utf8"));
+    if (approved.name !== model || typeof approved.digest !== "string" || !approved.digest) throw new Error("The approved model name and digest receipt is missing or invalid.");
+    receipt.approvedModelDigest = approved.digest;
+    receipt.observedModelDigests = {};
+    const requireApprovedDigest = (listed, phase) => {
+      const digest = typeof listed?.digest === "string" ? listed.digest : null;
+      receipt.observedModelDigests[phase] = digest;
+      if (digest !== approved.digest) throw new Error(`Owned model digest ${phase} the native task does not match the approved digest.`);
+    };
     receipt.externalProbe = await new Promise(resolve => {
       const socket = net.connect({ host: "192.0.2.1", port: 443 });
       const settle = value => { socket.destroy(); resolve(value); };
@@ -59,14 +68,18 @@ if (!inside) {
     const deadline = Date.now() + 20_000;
     while (true) {
       if (server.exitCode !== null) throw new Error(`Owned Ollama exited: ${server.exitCode}`);
+      let listed;
       try {
         const listing = await fetch(`${receipt.url}/api/tags`, { redirect: "error", signal: AbortSignal.timeout(1000) }).then(r => r.json());
-        if (!listing.models?.some(m => m.name === model)) throw new Error("Owned server cannot list the approved model");
-        break;
+        listed = listing.models?.find(m => m.name === model);
+        if (!listed) throw new Error("Owned server cannot list the approved model");
       } catch (error) {
         if (Date.now() >= deadline) throw error;
         await new Promise(resolve => setTimeout(resolve, 100));
+        continue;
       }
+      requireApprovedDigest(listed, "before");
+      break;
     }
     receipt.ownedServerPid = server.pid;
     const checked = spawnSync(process.execPath, ["--test", "--test-force-exit", "--test-name-pattern=AC1: a person", "dist/test/local-codex-native.test.js"], {
@@ -74,7 +87,10 @@ if (!inside) {
       encoding: "utf8", timeout: 1_220_000, maxBuffer: 8 * 1024 * 1024,
     });
     fs.writeFileSync(path.join(report, "native.log"), `${checked.stdout ?? ""}${checked.stderr ?? ""}`);
-    receipt.exitCode = checked.status; receipt.status = checked.status === 0 ? "passed" : "failed";
+    receipt.exitCode = checked.status;
+    const listing = await fetch(`${receipt.url}/api/tags`, { redirect: "error", signal: AbortSignal.timeout(1000) }).then(r => r.json());
+    requireApprovedDigest(listing.models?.find(m => m.name === model), "after");
+    receipt.status = checked.status === 0 ? "passed" : "failed";
     if (checked.status !== 0) process.exitCode = 1;
   } catch (error) { receipt.status = "failed"; receipt.error = error.message; process.exitCode = 1; }
   finally {
