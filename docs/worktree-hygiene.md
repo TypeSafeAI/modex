@@ -93,6 +93,26 @@ The generated-data allowlist covers root `node_modules/` and `node_modules/`, `d
 Ignored `.env`, `.codex`, `.probes`, logs, release artifacts, and other unknown files
 preserve the checkout. Move evidence you want to keep to durable storage yourself.
 
+## Retire unmerged work
+
+Work that will never merge (a closed PR, an abandoned experiment, a superseded stack) has no merge proof, so `prune` preserves it. Its recorded owner can retire its local branch explicitly instead:
+
+```sh
+scripts/worktree.sh retire lm2-land --expect-head "$(git rev-parse lm2-land)" --by <recorded-owner>          # report only
+scripts/worktree.sh retire lm2-land --expect-head "$(git rev-parse lm2-land)" --by <recorded-owner> --apply
+```
+
+The owner label must match the existing claimed or released record and registered path; missing, malformed or different ownership refuses retirement. `CODEX_THREAD_ID` supplies the actor when `--by` is omitted. Labels coordinate sessions, not authentication: never copy another session's label to bypass ownership. An owner must explicitly hand work over before the recipient claims it.
+
+- The original index becomes its own commit, parented by the branch tip. A separate working snapshot descends from that index commit, preserving staged versions even when the working file differs or is absent. The source index is untouched. The self-contained bundle restores into an empty repository and passes `git fsck --full`.
+- `working-tree.tar` preserves non-generated working files, modes and symlink targets independently of Git's content filters. Unknown ignored files also go into `ignored.tar`. Both archives are private (0600), flushed, extracted into empty directories and compared against byte, mode and link manifests. Secrets remain local inside the private common-Git `modex-maintenance/archives/` directory.
+- Before moving anything, the durable manifest records the original tip, index and working snapshots, ownership, file manifest, archive hashes, recovery path and restore commands. Retirement repeats GitHub, process, ownership, path, HEAD and file/index checks. Changed observations preserve the work.
+- Git moves the entire original checkout into the run's private `original-checkout` directory, preserving its index, working files, ignored/generated files and valid registration. It then detaches HEAD without checking out or resetting any files. Only after fresh remote and ownership observations and archive verification does it delete the branch with the expected SHA.
+- The original recovery checkout is retained indefinitely. Retirement frees the managed path and branch name, **not the disk space**. No reset, clean, forced removal, recursive original-file deletion or automatic recovery cleanup runs. An open file descriptor continues to refer to its retained file after the move, protecting writes that race the final observation.
+- If interrupted, inspect the manifest's `phase`, original `path` and `recoveryPath`; Git's registered checkout is at one of those locations. A failure after moving reports preserved work, possibly at the recovery path, and can leave the local branch intact. Do not delete either location or retry by bypassing the guard. Recovery checkouts are outside the managed-worktree namespace and are not eligible for scheduled pruning.
+
+Retirement continues to refuse the primary/default branch, open PRs, active processes, interrupted Git operations, Git locks, hidden index entries, locked/unmanaged worktrees and a changed expected tip. Unsupported filesystem types or failed recovery proofs preserve the original. The maintenance lock coordinates this tool's operations; it cannot authenticate labels, stop arbitrary raw Git commands or freeze external writers. Portable archives describe the verified snapshot; any later writes remain in the retained original checkout. Remote branches are never deleted.
+
 ## Daily automation
 
 On macOS, install the user LaunchAgent from reviewed code:
