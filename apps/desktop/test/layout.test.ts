@@ -17,11 +17,11 @@ test("layout: defaults, round trip, and bad data falls back per field", () => {
   saveLayout(s, { sidebar: false, changes: false, streamerMode: true, analytics: false, codeReview: false });
   assert.deepEqual(loadLayout(s), { sidebar: false, changes: false, streamerMode: true, analytics: false, codeReview: false });
   assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: "{not json" })), DEFAULT_LAYOUT);
-  assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: JSON.stringify({ changes: "no", sidebar: false }) })), { sidebar: false, changes: true, streamerMode: false, analytics: true, codeReview: true }, "a layout saved before Analytics shows it");
+  assert.deepEqual(loadLayout(memory({ [LAYOUT_KEY]: JSON.stringify({ changes: "no", sidebar: false }) })), { sidebar: false, changes: true, streamerMode: false, analytics: true, codeReview: false }, "a layout saved before Analytics shows it");
 });
 
 test("layout: migrates the old sidebar key, and the new key wins once written", () => {
-  assert.deepEqual(loadLayout(memory({ [LEGACY_SIDEBAR_KEY]: "closed" })), { sidebar: false, changes: true, streamerMode: false, analytics: true, codeReview: true });
+  assert.deepEqual(loadLayout(memory({ [LEGACY_SIDEBAR_KEY]: "closed" })), { sidebar: false, changes: true, streamerMode: false, analytics: true, codeReview: false });
   assert.deepEqual(loadLayout(memory({ [LEGACY_SIDEBAR_KEY]: "open" })), DEFAULT_LAYOUT);
   const s = memory({ [LEGACY_SIDEBAR_KEY]: "closed" });
   saveLayout(s, { ...loadLayout(s), sidebar: true });

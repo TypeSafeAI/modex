@@ -42,6 +42,7 @@ async function open(hostile = false, mode = "normal") {
       return { requestId: req.requestId, op: req.op, scope: { account: req.key?.account ?? "1001", key: req.key ?? null, revision: req.revision ?? null }, result };
     });
   }, { R1, R2, R4, NOW, hostile, mode });
+  await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
   await page.reload();
   await tid(page, "rail-code-review").click();
   await page.locator('[data-testid="code-review-row"][data-pr="example-org/lending#73"]').first().click();

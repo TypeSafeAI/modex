@@ -39,7 +39,7 @@ export interface Harness {
 
 const RECORDER = (log: string) => `#!/bin/sh\nprintf '%s %s\\n' "$(basename "$0")" "$*" >> '${log}'\nexit 1\n`;
 
-export async function launchWithGh(initial: GhWorld): Promise<Harness> {
+export async function launchWithGh(initial: GhWorld, options: { showCodeReview?: boolean } = {}): Promise<Harness> {
   const { home, repo } = seedHome();
   const bin = path.join(home, "bin"), config = path.join(home, "gh-config");
   fs.mkdirSync(bin);
@@ -73,7 +73,10 @@ export async function launchWithGh(initial: GhWorld): Promise<Harness> {
     // Row ages and captures read the renderer's clock: pin it to the fixtures' (test/fixtures/code-review.ts NOW).
     await page.clock.setFixedTime(new Date("2026-10-18T20:41:00Z"));
     await page.reload();
-    // Code Review's own button may be off (e2e/code-review-enablement.spec.ts); Settings is always in the rail.
+    // Built apps hide Code Review by default (e2e/code-review-enablement.spec.ts); these specs test the workspace itself.
+    if (options.showCodeReview !== false) await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
+    await page.reload();
+    // Settings is always in the rail, whether or not Code Review's button is.
     await expect(tid(page, "open-settings")).toBeVisible();
     return { app, page };
   };
