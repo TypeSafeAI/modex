@@ -20,6 +20,8 @@ interface Props {
   onClose: () => void;
   /** Whether Analytics shows in the rail. A layout preference: it applies at once, not on Save. */
   analyticsInRail?: boolean;
+  codeReviewInRail?: boolean;
+  onCodeReviewInRail?: (show: boolean) => void;
   onAnalyticsInRail?: (shown: boolean) => void;
 }
 
@@ -47,7 +49,7 @@ const errorMessage = (err: unknown, fallback: string) =>
 const backendHealthText = (status: BackendHealth | undefined, failed: boolean) =>
   status ? `${status.version ? `v${status.version} · ` : ""}${status.detail}` : failed ? "Account check unavailable · retry" : "checking…";
 
-export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose, analyticsInRail, onAnalyticsInRail }: Props) {
+export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose, analyticsInRail, onAnalyticsInRail, codeReviewInRail, onCodeReviewInRail }: Props) {
   const [section, setSection] = useState<"general" | "clis" | "routing" | "approvals" | "advanced">("routing");
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -346,6 +348,10 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           {onAnalyticsInRail && <label className="check">
             <SecretInput data-testid="analytics-in-rail" type="checkbox" checked={analyticsInRail ?? true} onChange={(e) => onAnalyticsInRail(e.target.checked)} />
             <span>Show Analytics in the rail<small> — token and cache use per turn, recorded on this Mac. Applies right away.</small></span>
+          </label>}
+          {onCodeReviewInRail && <label className="check">
+            <SecretInput data-testid="code-review-in-rail" type="checkbox" checked={codeReviewInRail ?? true} onChange={(e) => onCodeReviewInRail(e.target.checked)} />
+            <span>Show Code Review in the rail<small> — pull requests through your GitHub CLI login. Turning it off hides the workspace right away; your drafts stay on this Mac and nothing already sent is undone.</small></span>
           </label>}
         </section>}
         {section === "clis" && <section id="settings-clis" aria-labelledby="settings-clis-title" className="settings-section">

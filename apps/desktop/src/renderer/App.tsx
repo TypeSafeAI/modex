@@ -37,7 +37,6 @@ import { PANEL_WIDTHS, usePanelSizing } from "./panel-sizing";
 import { useLayout } from "./layout";
 import { applyTheme, restoreTheme } from "./theme";
 import { applyItemEvent, type ItemEvent } from "./transcript";
-import { codeReviewEnabled } from "./code-review/feature.js";
 import type { ReviewNavigation } from "./code-review/CodeReviewView";
 
 /** ⌃` shows or hides the thread's terminal. xterm maps no byte to it, so it reaches this handler even from inside the shell. */
@@ -51,7 +50,7 @@ const PluginSurface = lazy(() => import("./plugins/PluginSurface").then(m => ({ 
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 const CodeReviewView = lazy(() => import("./code-review/CodeReviewView"));
 
-export function App({ persistPreferences = true, spaceEnabled = true, analyticsEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; analyticsEnabled?: boolean; suspended?: boolean } = {}) {
+export function App({ persistPreferences = true, spaceEnabled = true, analyticsEnabled = true, codeReviewEnabled = true, suspended = false }: { persistPreferences?: boolean; spaceEnabled?: boolean; analyticsEnabled?: boolean; codeReviewEnabled?: boolean; suspended?: boolean } = {}) {
   const updater = useUpdateState();
   const updateBlocked = ["preparing", "staged", "uncertain", "recovery"].includes(updater.installation?.phase ?? "");
   const updateBlockedRef = useRef(updateBlocked); updateBlockedRef.current = updateBlocked;
@@ -89,7 +88,6 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, []);
   const [surface, setSurface] = useState<"chat" | "space" | "analytics" | "images" | "plugins" | "routines" | "code-review">("chat");
   // Code Review (#319) stays hidden in built apps until Gate A is done; see code-review/feature.ts.
-  const [reviewEnabled] = useState(() => codeReviewEnabled(localStorage, import.meta.env.DEV));
   const [reviewOpened, setReviewOpened] = useState(false);
   const [reviewNav, setReviewNav] = useState<ReviewNavigation | null>(null);
   const [mediaFeatures, setMediaFeatures] = useState({ images: false, plugins: false });
@@ -207,6 +205,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const showAnalytics = analyticsEnabled && layout.analytics;
   // Hiding Analytics in Settings while it is open returns to Chat rather than leaving an unreachable surface.
   useEffect(() => { if (!showAnalytics && surface === "analytics") setSurface("chat"); }, [showAnalytics, surface]);
+  const reviewEnabled = codeReviewEnabled && layout.codeReview;
+  // The same for Code Review, which is also the rollback: the surface goes, main's drafts and records stay.
+  useEffect(() => { if (!reviewEnabled && surface === "code-review") setSurface("chat"); }, [reviewEnabled, surface]);
   useStreamerRedaction(streamerMode);
   const privateLabel = streamerMode ? redactSecrets : (text: string) => text;
   const setShowChanges = (f: (v: boolean) => boolean) => setLayout((l) => ({ changes: f(l.changes) }));
@@ -1043,7 +1044,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           </div>
         )}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => setShowSettings(false)} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;

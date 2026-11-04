@@ -6,11 +6,7 @@ screenshots (R1–R4). The work is tracked in [#319](https://github.com/TypeSafe
 This page is CR-1's contract ([#320](https://github.com/TypeSafeAI/modex/issues/320)). Every later
 slice works against it.
 
-**Where it stands (2026-11-01).** CR-1 through CR-7 are on `main` and in v0.4.0, but built apps hide
-Code Review unless the local switch `modex.codeReview` is `on`, because Gate A (#319) is not accepted
-([v0.4.0 review](../reviews/2026-10-24-v0.4.0-release-review.md)). What remains is acceptance: the original
-reference comparisons, human keyboard/VoiceOver, and the live CR-6 smoke and CR-7 canary. Each issue's
-ticked boxes and next action are in [status.md](../status.md#open-issue-checklists).
+**Where it stands (2026-11-01).** The core CR-1 through CR-7 slices have landed on `main`, and Code Review is present but hidden in the v0.4 releases, whose built apps require the local switch `modex.codeReview` to be `on`. The v0.5.0 candidate replaces that switch with a default-on setting and a rollback in Settings → General, pending Val's approval. Built apps required the switch because Gate A (#319) is not accepted ([v0.4.0 review](../reviews/2026-10-24-v0.4.0-release-review.md)). The candidate also carries the CR-7 sign-out/draft regression and CR-4 through CR-7 accessibility coverage (C76). Remaining engineering work is composer-clearance verification. C58 attachments and C59 effort remain omitted without an approved deviation, alongside the unresolved composer decisions below. Original-reference comparison, human keyboard/VoiceOver, the live CR-6 smoke and the CR-7 canary retain their separate acceptance gates. Each issue's ticked boxes and next action are in [status.md](../status.md#open-issue-checklists).
 
 CR-1 itself added a pure read contract, synthetic fixtures and this page, with no IPC channel, UI or
 GitHub request. Gate A then followed in order:
@@ -524,9 +520,11 @@ CR-3 (#322) builds the destination, the inbox and the PR workspace host, in
 replaces (`reader.ts`). The overview's content (#323) and the remote diff and file tree (#324) fill
 panes the host lays out. Until then, those panes say so.
 
-**Visibility.** The Code Review rail button shows in development builds. A built app hides it
-unless `localStorage["modex.codeReview"]` is `"on"` (`feature.ts`). There is no setting and no main
-flag. Whether it shows before Gate A completes is Val's decision.
+**Visibility.** The v0.4 releases hide the rail button in a built app unless `localStorage["modex.codeReview"]`
+is `"on"`. The v0.5.0 candidate replaces that with the layout's `codeReview` setting, on by default, with
+Settings → General → "Show Code Review in the rail" as the rollback; an old explicit off is kept. There is no main
+flag. Whether it ships on before Gate A completes is Val's decision, recorded in the
+[candidate review](../reviews/2026-11-02-v0.5.0-candidate.md).
 
 **Arrangements.** A PR opens with two tabs in the title bar, PR and Changes, starting where the inbox
 ends. They show one pane (R1), or both side by side behind the right-panel button (R4). Each PR keeps
@@ -582,8 +580,8 @@ avatars and C58, C60 and C61 of the composer are not built (open decisions, #325
 **Deviations.**
 
 - **D6, repository in the header.** The header shows the repository name and number, as the references
-  do, with `owner/name` in its tooltip. It reads them from the inbox row or the resolved link until #323
-  binds `overview.locator` (C22).
+  do, with `owner/name` in its tooltip. It reads them from the inbox row or the resolved link until the
+  overview loads, then from the accepted `overview.locator` (C22, #477).
 - **D7, state pill.** It is the state menu once the PR has loaded and main has answered for the account;
   otherwise, and for a merged PR, it shows the state with no menu.
 - **D8, a Pinned group.** Pins appear in a Pinned group above the inbox's own, which the references

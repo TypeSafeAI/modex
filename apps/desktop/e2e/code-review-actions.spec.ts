@@ -64,6 +64,56 @@ test("a comment stays a local draft across a reload, previews its exact destinat
   expect(h.providerStarts()).toEqual([]);
 });
 
+test("a draft stays hidden after sign-out and for another account, and comes back only for its own account (#326)", async () => {
+  const TEXT = "Private note before signing out.";
+  const ADA = { account: "1001", host: "github.com", repoId: "7301", number: 73 };
+  const REVISION = { baseRef: "main", baseSha: "b".repeat(40), headSha: "c".repeat(40) };
+  const status = (p: Page, key: typeof ADA) => p.evaluate(([k, r]) => window.modex!.invoke("code-review:write", { op: "status", requestId: `probe-${Date.now()}`, key: k, revision: r }), [key, REVISION] as const);
+  const refresh = async (p: Page) => {
+    await tid(p, "code-review-inbox-menu").click();
+    await tid(p, "code-review-refresh").click();
+  };
+  h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  await writeComment(page, TEXT);
+  await expect.poll(async () => { const reply = await status(page, ADA) as any; return reply.result.state === "ok" ? reply.result.value.drafts.comment?.body ?? null : null; }).toBe(TEXT);
+
+  // Signed out: the surface says so, the PR closes, and main answers nothing about the draft, though it keeps it on disk.
+  h.world((w) => { w.user = null; });
+  h.switchHosts("nobody");
+  await refresh(page);
+  await expect(tid(page, "code-review-connection-error")).toContainText("Not signed in");
+  await expect(comment(page)).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(TEXT);
+  const signedOut = await status(page, ADA) as any;
+  expect(signedOut.result.state).not.toBe("ok");
+  expect(JSON.stringify(signedOut)).not.toContain(TEXT);
+
+  // Another account: neither Ada's key nor the same PR under its own key shows her draft.
+  h.world((w) => { w.user = { id: 2002, login: "grace-fixture" }; });
+  h.switchHosts("grace-fixture");
+  await page.reload();
+  await tid(page, "rail-code-review").click();
+  await expect(tid(page, "code-review-inbox")).toBeVisible();
+  await prRow(page, "example-org/lending#73").click();
+  await expect(comment(page).getByRole("button", { name: "Comment", exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(TEXT);
+  const other = await status(page, ADA) as any;
+  expect(other.result.state).not.toBe("ok");
+  expect(JSON.stringify(other)).not.toContain(TEXT);
+  const own = await status(page, { ...ADA, account: "2002" }) as any;
+  expect(JSON.stringify(own)).not.toContain(TEXT);
+
+  // Ada again: the draft was hidden, never lost.
+  h.world((w) => { w.user = { id: 1001, login: "ada-fixture" }; });
+  h.switchHosts("ada-fixture");
+  await page.reload();
+  await tid(page, "rail-code-review").click();
+  await prRow(page, "example-org/lending#73").click();
+  await expect(comment(page).getByRole("textbox", { name: "Comment text" })).toHaveValue(TEXT);
+  expect(h.posts()).toEqual([]);
+});
+
 test("navigating before the draft debounce preserves the latest text", async () => {
   h = await launchWithGh(baseWorld());
   const page = await openLending();

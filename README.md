@@ -94,7 +94,7 @@ modex/
   when it is unused, or retries in place while another turn is running or opening.
   A second failure shows the card with both attempts recorded. Early send/retry rejections
   (for example, a busy thread) return to the caller without adding transcript items.
-- **Code Review development preview.** The read-only PR workspace includes remote diffs bound to the selected base/head revision, grouped files, filtering, line anchors and bounded context expansion. Missing or truncated patches remain explicit. This preview stays behind the existing Code Review development flag while reference and human acceptance are open; see [the design](docs/design/code-review.md).
+- **Code Review.** A PR inbox, overview and remote diffs bound to the selected base/head revision, through your own `gh` login; a read-only Claude review and questions; comments, reviews and merge behind an explicit preview. It is on by default from the v0.5.0 candidate. Settings → General → "Show Code Review in the rail" turns it off. Live and human acceptance are still open; see [the design](docs/design/code-review.md).
 - **Tabbed workspace.** Review working-tree changes with numbered diffs, a filterable file
   tree, and confirmed per-file discard. Open Files, Terminal, Canvas, or browser tabs beside the chat;
   use Shift + Command + B for a new tab or Shift + Command + F for full view. Escape exits

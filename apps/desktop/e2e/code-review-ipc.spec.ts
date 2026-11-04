@@ -71,7 +71,6 @@ test("real Electron IPC reads synthetic inbox, distinct PRs and revision-bound f
       { path: "src/holds/move.ts", patch: { kind: "text" } }, { path: "assets/shelf.png", patch: { kind: "omitted" } },
     ] } });
     // CR-5: drive the populated Changes pane through the production read path too.
-    await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
     await page.reload();
     await tid(page, "rail-code-review").click();
     await page.locator('[data-testid="code-review-row"][data-pr="example-org/lending#73"]').click();

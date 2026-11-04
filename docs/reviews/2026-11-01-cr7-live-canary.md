@@ -59,9 +59,8 @@ env -u MODEX_E2E -u MODEX_DEMO MODEX_HOME="$CANARY/home" MODEX_NO_LOGIN_PATH=1 \
   PATH="$CANARY/bin:$PATH" npx electron . 2> "$CANARY/electron-stderr.log"
 ```
 
-In the app: `localStorage["modex.codeReview"] = "on"` from the developer tools of this throwaway home only
-(it is a per-home setting, so the person's real home is unchanged), then Code Review → paste the throwaway
-PR's link.
+In the app: Code Review → paste the throwaway PR's link. (Before the v0.5.0 candidate, first set
+`localStorage["modex.codeReview"] = "on"` from the developer tools of this throwaway home only.)
 
 ## Steps
 

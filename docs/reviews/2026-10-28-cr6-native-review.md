@@ -176,7 +176,7 @@ env -u MODEX_E2E -u MODEX_DEMO MODEX_HOME="$SMOKE/home" MODEX_NO_LOGIN_PATH=1 \
   PATH="$SMOKE/bin:$PATH" npx electron . 2> "$SMOKE/electron-stderr.log"
 ```
 
-In the app: DevTools → `localStorage.setItem("modex.codeReview", "on")` → reload (this throwaway home only);
+In the app (before the v0.5.0 candidate, first: DevTools → `localStorage.setItem("modex.codeReview", "on")` → reload, in this throwaway home only):
 Code Review → paste the PR link Val named → **Review with Claude** → read the panel's provider disclosure →
 **Start** once. Wait for the reply. Then open the instructions gear and note the version shown.
 

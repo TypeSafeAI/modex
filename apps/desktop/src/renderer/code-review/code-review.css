@@ -253,3 +253,11 @@ button.cr-state { cursor: pointer; font: inherit; }
 .cr-agent-finding p { margin: 0; }
 .cr-agent-ask { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--border-pane); border-radius: 10px; }
 .cr-agent-ask p { margin: 0; }
+
+/* C76: the deletion counts on the file header and tree use the diff's text colour, which keeps AA on every theme's panel background. */
+.cr-file-heading .stat.del, .cr-tree-file .stat.del { color: var(--diff-del-text); }
+
+/* The diff's plain actions (Refresh files, Retry, Cancel context): without this they take the browser's button colours, which fail contrast on every dark theme. */
+.cr-diff button:not([class]) { color: var(--text-1); background: transparent; border: 1px solid var(--border-pane); border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
+.cr-diff button:not([class]):hover:not(:disabled) { background: var(--bg-row-hover); }
+.cr-diff button:not([class]):disabled { cursor: default; color: var(--text-3); }

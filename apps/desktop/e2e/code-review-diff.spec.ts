@@ -43,7 +43,6 @@ async function open(files?: PrFile[], hold: string | null = null) {
       return { requestId: req.requestId, op: req.op, scope: { account: req.key?.account ?? data.account, key: req.key ?? null, revision: req.revision ?? null }, result };
     });
   }, { files: files ?? R4.files.value.files, overview: R4.overview, alternate: R1.overview, connection: R1.connection, inbox: R1.inbox, at: NOW, account: R4.overview.key.account, hold });
-  await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
   await page.reload();
   await tid(page, "rail-code-review").click();
   await page.locator('[data-testid="code-review-row"][data-pr="example-org/field-guide#91"]').click();
@@ -451,4 +450,97 @@ test("context from a different commit is refused even when revision and path mat
   await tid(page, "cr-file-section").first().getByRole("button", { name: /Expand.*unchanged/ }).first().click();
   await expect(page.getByRole("alert")).toContainText("did not match the requested file");
   await expect(tid(page, "code-review-diff")).not.toContainText("remote context");
+});
+
+test("diff controls: wrapping and highlighting change rendered code and horizontal scroll stays per file", async () => {
+  const files = stressFiles(2).map((file, i) => ({ ...file, path: `wide-${i}.ts`, status: "modified" as const, additions: 1, deletions: 1,
+    patch: { kind: "text" as const, patch: `@@ -1 +1 @@\n-old\n+const value = "${"long-content-".repeat(70)}";` } }));
+  await open(files);
+  await resizeWindow(app, page, 1440, 900);
+  const patches = page.locator(".cr-patch");
+  await expect(patches).toHaveCount(2);
+  const added = patches.first().locator('[data-line="add"]');
+  const code = added.locator("code");
+  const wrapped = await code.boundingBox();
+  expect(wrapped!.height).toBeGreaterThan(40);
+  const color = await added.evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(color).not.toBe("rgba(0, 0, 0, 0)");
+  await page.getByRole("checkbox", { name: "Highlight changes", exact: true }).uncheck();
+  await expect.poll(() => added.evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  await page.getByRole("checkbox", { name: "Highlight changes", exact: true }).check();
+  await expect.poll(() => added.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(color);
+  await page.getByRole("checkbox", { name: "Wrap lines", exact: true }).uncheck();
+  await expect.poll(() => code.evaluate(el => el.getBoundingClientRect().height), { timeout: 5_000 }).toBeLessThan(wrapped!.height);
+  await expect.poll(() => patches.first().evaluate(el => el.scrollWidth - el.clientWidth)).toBeGreaterThan(500);
+  const patchBox = await patches.first().boundingBox();
+  await page.mouse.move(patchBox!.x + 120, patchBox!.y + 20);
+  await page.mouse.wheel(400, 0);
+  await expect.poll(() => patches.first().evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+  expect(await patches.nth(1).evaluate(el => el.scrollLeft)).toBe(0);
+  expect(await tid(page, "code-review-diff").evaluate(el => el.scrollLeft)).toBe(0);
+  await page.getByRole("checkbox", { name: "Wrap lines", exact: true }).check();
+  await expect.poll(() => patches.first().evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test("diff controls: file tree divider resizes with keyboard and pointer and persists on reload", async () => {
+  await open();
+  await resizeWindow(app, page, 1440, 900);
+  const divider = page.getByRole("separator", { name: "Resize the file tree", exact: true });
+  const tree = tid(page, "code-review-tree");
+  const width = async () => (await tree.boundingBox())!.width;
+  await expect(divider).toBeVisible();
+  const initial = await width();
+  await divider.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(width).toBe(initial + 8);
+  await expect(divider).toBeFocused();
+  const box = await divider.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 - 48, box!.y + 80, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(width).toBe(initial + 56);
+  await page.reload();
+  await tid(page, "rail-code-review").click();
+  await page.locator('[data-testid="code-review-row"][data-pr="example-org/field-guide#91"]').click();
+  await tid(page, "code-review-tab-changes").click();
+  await expect.poll(width).toBe(initial + 56);
+  await divider.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(width).toBe(initial);
+});
+
+test("diff controls: file menu copies the remote path and offers a GitHub link without local Discard", async () => {
+  await open();
+  await app.evaluate(({ ipcMain }) => {
+    (globalThis as any).__copiedPaths = [];
+    ipcMain.removeHandler("clipboard:write");
+    ipcMain.handle("clipboard:write", (_event, request) => { (globalThis as any).__copiedPaths.push(request.text); });
+  });
+  const section = tid(page, "cr-file-section").first();
+  const menu = section.locator(".cr-file-menu");
+  await menu.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveAttribute("open", "");
+  await expect(menu.getByRole("link", { name: "Open in GitHub", exact: true })).toHaveAttribute("href", "https://github.com/example-org/field-guide/pull/91/files");
+  await expect(menu.getByRole("button", { name: /Discard/ })).toHaveCount(0);
+  await menu.getByRole("button", { name: "Copy path", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => app.evaluate(() => (globalThis as any).__copiedPaths)).toEqual(["src/holds/move.ts"]);
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
+});
+
+test("diff controls: more unchanged context discloses uncertainty and loads only the selected remote file", async () => {
+  await open();
+  const section = tid(page, "cr-file-section").first();
+  const more = section.getByRole("button", { name: /More unchanged context may be available/ });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(section).toContainText("remote context");
+  const requests = (await log()).filter((r: any) => r.op === "context");
+  expect(requests).toHaveLength(1);
+  expect(requests[0].path).toBe("src/holds/move.ts");
+  expect(requests[0].revision).toEqual(R4.overview.revision);
+  expect(requests[0].key).toEqual(R4.overview.key);
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
 });

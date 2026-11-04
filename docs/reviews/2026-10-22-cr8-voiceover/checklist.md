@@ -33,7 +33,7 @@ review, all made up), and prints an `env … npx electron .` line. Since 2026-11
 and `codex` executables first on PATH: they log to `provider-calls.log` and exit 1, so nothing in this home reaches
 your own Claude login or a provider. Run that line, then:
 
-1. Open DevTools (View → Toggle Developer Tools) and run `localStorage.setItem("modex.codeReview", "on")`. Then reload (Command-R). This turns on the unfinished destination in a built app.
+1. From the v0.5.0 candidate on, Code Review is in the rail by default. On an older SHA, open DevTools (View → Toggle Developer Tools), run `localStorage.setItem("modex.codeReview", "on")` and reload (Command-R).
 2. Make the window about 1440×900.
 3. Part A runs with VoiceOver off. Part B runs with VoiceOver on (Command-F5; VO = Control-Option).
    Parts C and D run with VoiceOver on. Repeat A1–A6, C1–C3 and D1–D4 at about 900×600 and note

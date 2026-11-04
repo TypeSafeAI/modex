@@ -4,8 +4,7 @@ import { prKeyId, scopeOf, SIGN_IN_CHANGED, type CodeReviewReply, type CodeRevie
 import { Reader } from "../src/renderer/code-review/reader.js";
 import { back, canBack, canForward, closeChanges, current, DEFAULT_VIEW, fitSplit, fitTree, forward, panesFor, showTab, SPLIT, toggleSplit, visit, type History } from "../src/renderer/code-review/navigation.js";
 import { isPinned, loadPins, PINS_KEY, togglePin } from "../src/renderer/code-review/pins.js";
-import { CODE_REVIEW_SWITCH, codeReviewEnabled } from "../src/renderer/code-review/feature.js";
-import { loadLayout, saveLayout } from "../src/shared/layout.js";
+import { LAYOUT_KEY, LEGACY_CODE_REVIEW_SWITCH, loadLayout, saveLayout } from "../src/shared/layout.js";
 import { ACCOUNT_A, ACCOUNT_B, FIELD_GUIDE, key, LENDING, locator, R1, R4 } from "./fixtures/code-review.js";
 
 // CR-3 (#322): the renderer half of the read path, and the workspace's navigation and geometry.
@@ -242,13 +241,16 @@ test("pins are local, per account, validated on load and capped", () => {
   assert.equal(loadPins(storage, ACCOUNT_A.id).length, 50);
 });
 
-test("the destination is on in development and hidden in a built app unless its switch is set", () => {
-  const storage = (value: string | null) => ({ getItem: (k: string) => k === CODE_REVIEW_SWITCH ? value : null });
-  assert.equal(codeReviewEnabled(storage(null), true), true);
-  assert.equal(codeReviewEnabled(storage(null), false), false);
-  assert.equal(codeReviewEnabled(storage("on"), false), true);
-  assert.equal(codeReviewEnabled(storage("yes"), false), false);
-  assert.equal(codeReviewEnabled({ getItem: () => { throw new Error("blocked"); } }, false), false);
+test("the destination defaults on, keeps an explicit old off, and the saved choice wins over the old switch", () => {
+  const storage = (value: string | null, saved?: object) => ({ getItem: (k: string) => k === LEGACY_CODE_REVIEW_SWITCH ? value : k === LAYOUT_KEY && saved ? JSON.stringify(saved) : null, setItem: () => {} });
+  assert.equal(loadLayout(storage(null)).codeReview, true);
+  assert.equal(loadLayout(storage("on")).codeReview, true);
+  assert.equal(loadLayout(storage("off")).codeReview, false);
+  assert.equal(loadLayout(storage("yes")).codeReview, false);
+  assert.equal(loadLayout(storage("off", { v: 1, codeReview: true })).codeReview, true);
+  assert.equal(loadLayout(storage(null, { v: 1, codeReview: false })).codeReview, false);
+  assert.equal(loadLayout(storage(null, { v: 1, sidebar: false })).codeReview, true);
+  assert.equal(loadLayout({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }).codeReview, true);
 });
 
 test("the workspace's pane widths persist with the layout, and invalid saved values fall back", () => {
