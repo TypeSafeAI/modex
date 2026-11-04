@@ -213,3 +213,7 @@ Evidence: [LM-5 fixtures](reviews/2026-11-01-lm5-fixtures.md).
 Val accepted narrow Gate A and separately approved the AGENTS metadata boundary in this task on 2026-10-24. The [acceptance and runtime-availability receipt](reviews/2026-10-24-lm1-acceptance.md) records the exact producer SHA, approval scope and authorized installed-model inventory. The accepted producer and Strata evidence may be consumed by LM-2/LM-3; acceptance does not qualify Plan, fresh-process resume, other runtimes, offline operation or UI.
 
 Ollama 0.40.10 has no installed models. LM Studio's only model on this machine is an embedding model; its generative entries belong to a linked device. The additional app-server probe was authorized but has no eligible installed local target; Val explicitly deferred it until a local coding model exists. No inference was attempted, and no model was downloaded or imported. This is an availability gap, not a failed tool-compatibility result or authorization blocker.
+
+## Product admission (branch `lm5-admission`, not on `main`)
+
+This branch is the change Val would be admitting; nothing lands without that decision. `main/index.ts` constructs `LocalExecution` once, and no flag or setting opens it. There is still no local-model UI, so nothing in the app can select a target. To roll back, remove that one option: the runner then refuses every local selection and persisted target, and starts no child and calls no cloud backend.
