@@ -196,7 +196,7 @@ rehearsal that gates the merge.
    The Store specs launch the client from source with development Electron, and neither `scripts/release-mac.sh` nor the desktop build builds it. Without it they stop at once with "The Store client is not built".
 
    Packaged selection covers the shared desktop launcher, window lifecycle, and Code Review launchers, including Code Review recovery. Standalone desktop-host and Store integration launchers still use development Electron; updater and owner-removal fixture specs intentionally run fixture entrypoints. Report those results separately from signed-bundle execution. The [Code Review harness repair](reviews/2026-10-28-code-review-packaged-harness.md) records executable-identity regression evidence.
-2. Signed commit, PR, CI green, `gh-merge-when-green.sh <pr> --squash`.
+2. Signed commit, PR, CI green, then add it to the merge queue (`gh pr merge <pr> --squash --auto`).
 3. `git tag -s v<ver> <squash sha>` and push the tag. The `Release` workflow waits for the
    `release-signing` reviewer, then builds, signs, notarizes, staples, verifies, and runs
    the full e2e suite with packaged selection and the fixture/source exceptions above. It also signs a private updater-enabled

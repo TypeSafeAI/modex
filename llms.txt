@@ -1,6 +1,6 @@
 # Modex
 
-> Unofficial community desktop for Codex and Claude Code CLIs, with worktrees, approvals, parallel threads, and optional Jev routing. Not an official vendor application.
+> Unofficial community desktop for the Codex, Claude Code, OpenCode and MiMo Code CLIs, with worktrees, approvals, parallel threads, and optional Jev routing. Not an official vendor application.
 
 ## Entry points
 

@@ -1,5 +1,7 @@
 # Sticky Auto routing
 
+**Archived 2026-11-04: delivered.** Later changes live in [auto-routing.md](../../auto-routing.md). `routing/policy.ts` is authoritative where this page differs: both cache-clearing values were measured as `false`, and its maps now also list `opencode` and `mimo`.
+
 Approved on 2026-10-12; implemented in #180 (measurement) and #183 (the hold), and shipped in
 v0.0.11. This specification changes when Auto may change a thread's model, reasoning effort and
 fast mode between turns, and adds the usage measurement that decision needs. It does not change
@@ -7,7 +9,7 @@ the judge, its questions, or which backends Auto may use.
 
 ## Problem
 
-Auto ([auto-routing.md](../auto-routing.md)) decides every turn from scratch. `decide()` in
+Auto ([auto-routing.md](../../auto-routing.md)) decides every turn from scratch. `decide()` in
 `apps/desktop/src/main/engine/routing/policy.ts` picks a tier from the request alone and takes
 the best model at that tier. The runner writes it to the thread, and the next CLI call resumes
 the session with the new `--model` (Claude) or `model` on `turn/start` (Codex). Backend

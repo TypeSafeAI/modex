@@ -7,14 +7,14 @@ model, project, thread and account. Open it from the **Analytics** icon in the r
 ## What is recorded
 
 Each turn that called a model adds one row to `MODEX_HOME/app/usage.jsonl` (file mode 0600, one JSON object per
-line). A row holds the time, the tool (`claude-code` or `codex`), the model the thread asked for (`default` when the
+line). A row holds the time, the tool (`claude-code`, `codex`, `opencode` or `mimo-code`), the model the thread asked for (`default` when the
 CLI chose), the thread id, the project name, the Codex account binding when there is one, and the turn's token
 counts. Prompts, files and replies are never recorded.
 
 - **Counts come from the CLIs' own usage reports**, through the same per-turn meter Auto routing uses
   (`backends/usage.ts`). A Claude call is counted once per message id; Codex reports are taken only for the
   thread's own turn. Input, cache reads and cache writes are summed over every call in the turn. Output includes
-  reasoning, as both CLIs report it.
+  reasoning, as each CLI reports it.
 - **Every turn is recorded**, Auto or not, including a stopped turn that already called a model. A turn that never
   reached a model adds nothing.
 - **Costs are unpriced.** Modex has no price table, so `cost` stays null and the dashboard shows calls as

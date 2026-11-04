@@ -162,7 +162,7 @@ recorded in `apps/desktop/test/fixtures/codex-request-user-input-0.163.0.json`.
   `turn/start` with `collaborationMode: { mode: "plan", … }`. With default 0.163.0 settings,
   `default_mode_request_user_input` is off. The probe verifies the parser/answer protocol, not
   the app's broker, card, transport, or human acceptance.
-- **Through the app.** Modex's Plan mode is a prompt prefix on an ordinary turn. A separate
+- **Through the app.** This capture predates native Plan mode, when Modex's Plan mode was a prompt prefix on an ordinary turn. A separate
   [through-app capture in #348](https://github.com/TypeSafeAI/modex/blob/1847e0c8808b96b636693b786e152a9f76471be3/docs/reviews/2026-10-20-cf3-drafts.md#native-evidence-and-remaining-gates) enabled the opt-in
   `default_mode_request_user_input` flag: the card sent Blue and the model replied Blue.
   Without that flag, another run used the distinct `request_user_input_async` form, which this

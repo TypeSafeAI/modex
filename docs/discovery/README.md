@@ -8,7 +8,7 @@
 
 ## Start safely
 
-Modex runs coding turns through installed Codex and Claude Code CLIs. Read the README for login and executable requirements. For development and documentation, use the offline mock engine; do not launch a real coding agent or approve an action merely to obtain a screenshot.
+Modex runs coding turns through installed Codex, Claude Code, OpenCode and MiMo Code CLIs. Read the README for login and executable requirements. For development and documentation, use the offline mock engine; do not launch a real coding agent or approve an action merely to obtain a screenshot.
 
 Use pnpm and the repository's worktree convention. `scripts/worktree.sh new <name>` creates an isolated checkout; the primary checkout stays on main. Follow AGENTS.md for signing, CI, and cleanup rather than sharing another session's branch.
 

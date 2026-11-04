@@ -8,7 +8,7 @@ contracts behind it are [conversation events](conversation-events.md),
 [the acceptance receipt](reviews/2026-10-18-conversation-fidelity-acceptance.md). Each CF issue's ticked
 boxes and next action are in [status.md](status.md#open-issue-checklists).
 
-Coding still runs only through `codex app-server` and `claude -p`. Nothing described here executes,
+Coding still runs only through `codex app-server`, `claude -p` and the `opencode` and `mimo` ACP servers. Nothing described here executes,
 replays or re-sends anything by being shown, reloaded or reconnected.
 
 ## Supported
@@ -25,7 +25,7 @@ replays or re-sends anything by being shown, reloaded or reconnected.
 | Questions | A card for each `item/tool/requestUserInput` (experimental); unsent answers survive thread navigation in window memory; non-secret answers in the task record | None: the CLI sends Modex no structured questions |
 | Approvals | Answered once, from the Mac or the phone; the card says who answered and whether the CLI received it | The same |
 | Save to Notes | Yes | Yes |
-| Stop | Native interrupt | Process stop (CF-2, [#275](https://github.com/TypeSafeAI/modex/issues/275), refines this) |
+| Stop | Native interrupt | Native `interrupt` control request, then SIGTERM after a grace period (CF-2, [#275](https://github.com/TypeSafeAI/modex/issues/275)) |
 
 ## Fallbacks
 

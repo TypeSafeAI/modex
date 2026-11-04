@@ -5,6 +5,8 @@ Phase 0 shipped in v0.2.0: the decision service (#257), the event journal (#206,
 and read-only routines (#267). Phase 0's approval gate decision is still open, and Phase 2
 waits on it. Each phase lands in its own PR with its own tests and a `docs/status.md` update.
 
+Since 2026-10-11 (noted 2026-11-04; the decisions below stay as recorded): routines can also select OpenCode and MiMo Code, whose read-only agents are in [routines.md](../routines.md). `AGENTS.md` holds the current outbound list, which has grown since R3. The power-save question at the end is settled: a blocker is held per run.
+
 ## Why this exists
 
 On 2026-10-02 the maintainer commissioned a research report on giving Modex the mechanisms of
