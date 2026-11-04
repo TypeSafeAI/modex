@@ -42,7 +42,7 @@ The goal requires exact local connection/model identity, main-owned credentials 
 | Normal CI stays offline and GPU-free | Native tests opt in; Electron bootstrap uses FakeProcess and a loopback metadata fixture | No model download/inference in ordinary CI |
 | Product execution stays disabled | Existing production wiring regression and no `LocalExecution` construction in main | Retained |
 | Network-denied evidence covers client and inference server | Offline harness denies external TCP, starts its own loopback Ollama and executes native smoke under the same inherited sandbox | External denial `EPERM`; native smoke fails; offline inference unverified |
-| Signed review-ready commits and fresh build/test/E2E | Validation ledger below; matching producer signing key is available through the SSH agent | Candidate checkpoint pending final validation/signing |
+| Signed review-ready commits and fresh build/test/E2E | Signed implementation checkpoint `047c3ad`; pinned results below | Signed checkpoint exists; acceptance/review readiness remains open |
 | Reproducible setup, rollback and compatibility receipt | `docs/local-models.md`, opt-in launchers and the identity table above | Candidate instructions; supported compatibility not established |
 | Human acceptance | No person-run keyboard, screen-reader or task-quality result | Open; never inferred from fixtures |
 | Merge, activation and publication boundaries | No push, merge, default activation, tag or release performed | Separate authorization retained |
@@ -64,3 +64,24 @@ The development Electron executable aborted with `SIGABRT` even for `--version`.
 ## Outstanding work
 
 Repair the native/OS configuration and Electron launch prerequisites, then run the real read/edit/test smoke and Electron journeys on the final pinned candidate. Complete the fresh required build, typecheck, unit and full desktop/site E2E gates, retaining original failures and skips. Fix any product defect those runs reveal. Qualify the exact configuration's Stop/recovery/failure and network-denied inference behavior, then obtain the outstanding human/admission results before a separately authorized activation. The goal remains active until its full audit passes.
+
+## Pinned implementation checkpoint
+
+Signed commit `047c3ad1009aae658ec221f2f25ef8bc52484df2` has tree `1c85eaa0a028ae5105483d699bd61c2e56f6bdb4`. The following runs name that implementation revision. The later receipt update changes documentation only and does not claim another whole-tree test pass.
+
+| Check | Result at the implementation checkpoint |
+| --- | --- |
+| `pnpm build` | Passed |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | Failed: worktree 147 passed; core 16 passed; desktop 2,147 passed, 29 skipped, two unchanged Notes watcher failures |
+| Final focused integration run before committing the same code | 98 passed, 13 skipped, zero failed |
+| Remaining native/browser script suites, run separately after the root stop | 21 passed, six skipped; these do not make the root command green |
+| Site and Store unit suites, run separately | 10 passed and 16 passed |
+| Targeted Electron journeys | One launch failure (`SIGABRT`), three did not run; no rendered assertion executed |
+| Site E2E, run separately | Seven failed at Chromium startup (`SIGTRAP`); no site source changed |
+| Approved native model smoke | Failed at effective configuration, before inference; real user's config fingerprint unchanged |
+| Network-denied native canary | External TCP refused with `EPERM`; owned Ollama started, native configuration failed, owned server stopped; offline inference remains unverified |
+
+Standard OpenSSH signing and verification fail this session's OS username lookup with “No user exists for uid 501.” The installed 1Password signer successfully signed the checkpoint using the exact public key found on the producer commit. A separate Node Ed25519 verifier follows the OpenSSH SSHSIG format, verifies namespace `git`, SHA-512 payload and the matching producer key, and rejects a one-byte change to the signed data. Its script and receipt are preserved externally. This establishes the local signature, not GitHub checks or protected delivery.
+
+Evidence home: `/Users/buns/.codex/task-evidence/modex-lm-v1-2026-11-04/`. It contains the frozen source snapshots, original and pinned logs, both Electron failure traces, site browser traces, model/version inventory, signature verifier/receipt, native real-config fingerprint receipt, initial and pinned offline receipts, and an evidence SHA-256 manifest. No push, PR mutation, merge, activation, tag or release occurred. The worktree stays claimed for this active goal.
