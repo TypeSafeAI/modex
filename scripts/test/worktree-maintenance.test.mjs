@@ -533,3 +533,66 @@ for (const seam of ['state', 'archives', 'owners']) {
     assert.equal(f.exists(w), true);
   });
 }
+
+test('retire dry run reports and changes nothing', async (t) => {
+  const f = fixture(t); const w = f.create('abandoned');
+  fs.appendFileSync(path.join(w.location, 'code.txt'), 'unfinished\n');
+  const value = await f.core.retire(w.name, { expectedHead: w.head });
+  assert.equal(value.status, 'eligible');
+  assert.equal(value.dirty, true);
+  assert.equal(f.exists(w), true);
+  assert.match(fs.readFileSync(path.join(w.location, 'code.txt'), 'utf8'), /unfinished/);
+});
+
+test('retire snapshots dirty, untracked and ignored data, then removes the unmerged worktree', async (t) => {
+  const f = fixture(t); const w = f.create('abandoned');
+  fs.appendFileSync(path.join(w.location, 'code.txt'), 'unfinished\n');
+  git(w.location, 'add', 'code.txt');
+  fs.writeFileSync(path.join(w.location, 'notes.txt'), 'untracked note\n');
+  fs.writeFileSync(path.join(w.location, '.env'), 'SECRET=1\n');
+  fs.mkdirSync(path.join(w.location, '.probes')); fs.writeFileSync(path.join(w.location, '.probes', 'probe.mjs'), 'probe\n');
+  const value = await f.core.retire(w.name, { expectedHead: w.head, apply: true, by: 'val' });
+  assert.equal(value.status, 'retired', value.reasons.join(', '));
+  assert.equal(fs.existsSync(w.location), false);
+  assert.equal(spawnSync('git', ['-C', f.primary, 'show-ref', '--verify', '--quiet', `refs/heads/${w.name}`]).status, 1);
+  const entry = value.run.entries[0];
+  assert.equal(entry.tip, w.head);
+  assert.equal(entry.proof.kind, 'retired');
+  const restored = path.join(f.dir, 'restored');
+  git(f.dir, 'init', '-q', restored);
+  git(restored, 'fetch', '-q', value.run.bundle, `${entry.archiveRef}:refs/heads/restored`);
+  assert.equal(git(restored, 'rev-parse', 'restored^'), w.head);
+  assert.match(git(restored, 'show', 'restored:code.txt'), /unfinished/);
+  assert.equal(git(restored, 'show', 'restored:notes.txt'), 'untracked note');
+  const listed = execFileSync('tar', ['-tf', entry.ignoredTar], { encoding: 'utf8' });
+  assert.match(listed, /\.env/); assert.match(listed, /\.probes\//);
+  assert.equal(fs.statSync(entry.ignoredTar).mode & 0o777, 0o600);
+  assert.equal((await f.core.getRecord(w.name)).status, 'retired');
+});
+
+test('retire removes a clean unmerged worktree with only the exact tip archived', async (t) => {
+  const f = fixture(t); const w = f.create('clean-abandoned');
+  const value = await f.core.retire(w.name, { expectedHead: w.head, apply: true });
+  assert.equal(value.status, 'retired', value.reasons.join(', '));
+  assert.equal(value.snapshot, w.head);
+  assert.equal(value.run.entries[0].ignoredTar, undefined);
+});
+
+for (const kind of ['open-pr', 'head-mismatch', 'active', 'operation', 'locked', 'main']) {
+  test(`retire preserves work on ${kind}`, async (t) => {
+    const f = fixture(t); const w = f.create('kept');
+    fs.appendFileSync(path.join(w.location, 'code.txt'), 'unfinished\n');
+    let branch = w.name; let head = w.head;
+    if (kind === 'open-pr') f.pulls = [{ state: 'open', head: { ref: w.name, sha: w.head, repo: { full_name: 'example/modex' } }, base: { ref: 'main' } }];
+    if (kind === 'head-mismatch') head = git(f.primary, 'rev-parse', 'main');
+    if (kind === 'active') f.active = true;
+    if (kind === 'operation') fs.writeFileSync(git(w.location, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD'), `${w.head}\n`);
+    if (kind === 'locked') git(f.primary, 'worktree', 'lock', w.location);
+    if (kind === 'main') { branch = 'main'; head = git(f.primary, 'rev-parse', 'main'); }
+    const value = await f.core.retire(branch, { expectedHead: head, apply: true });
+    assert.equal(value.status, 'preserved');
+    assert.ok(value.reasons.length > 0);
+    assert.equal(f.exists(w), true);
+    assert.match(fs.readFileSync(path.join(w.location, 'code.txt'), 'utf8'), /unfinished/);
+  });
+}
