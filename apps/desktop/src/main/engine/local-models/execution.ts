@@ -61,8 +61,9 @@ function refuseProjectConfiguration(cwd: string): void {
  */
 function truthful(result: TurnResult): TurnResult {
   if (result.status !== "failed") return result;
-  const detail = result.detail as { turnError?: { codexErrorInfo?: unknown } } | undefined;
-  if (detail?.turnError?.codexErrorInfo !== "internalServerError") return result;
+  const detail = result.detail as { turnError?: { codexErrorInfo?: unknown }; errorNotification?: { codexErrorInfo?: unknown } } | undefined;
+  // A turn that completes with no error of its own reports the `error` notification's text instead (backends/codex.ts).
+  if ((detail?.turnError?.codexErrorInfo ?? detail?.errorNotification?.codexErrorInfo) !== "internalServerError") return result;
   return { ...result, error: "The local server returned an internal error (HTTP 500). Check its log: it may have run out of memory or crashed while loading the model. Modex didn't retry the turn or switch models." };
 }
 

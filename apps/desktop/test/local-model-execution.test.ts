@@ -383,6 +383,22 @@ test("a local server's internal error is reported as the local server's, not as 
   } finally { await h.execution.dispose(); }
 });
 
+test("a local 500 reported only by the error notification is still the local server's, not high demand", async () => {
+  const h = setup();
+  try {
+    const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    const error = { message: "We’re currently experiencing high demand, which may cause temporary errors.", codexErrorInfo: "internalServerError", additionalDetails: null };
+    child.proc.emitLine({ method: "error", params: { threadId: "native-1", turnId: "turn", error, willRetry: false } });
+    child.proc.emitLine({ method: "turn/completed", params: { threadId: "native-1", turn: { id: "turn", status: "failed", error: null } } });
+    const result = await run;
+    assert.equal(result.status, "failed");
+    assert.doesNotMatch(result.error!, /high demand/i);
+    assert.match(result.error!, /The local server returned an internal error \(HTTP 500\)/);
+  } finally { await h.execution.dispose(); }
+});
+
 test("AC3: two connection profiles addressing the same service share one slot, and a queued turn cancelled there opens nothing and sends nothing", async () => {
   const h = setup({ runtime: "ollama", url: "http://127.0.0.1:18501" });
   try {

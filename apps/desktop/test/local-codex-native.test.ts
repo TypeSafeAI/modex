@@ -192,7 +192,7 @@ test("redirect: the installed Codex follows a 307 from the configured loopback s
 });
 
 type Failure = "overflow-http" | "overflow-stream" | "oom-500" | "unavailable-503" | "dropped" | "child-exit" | "stop";
-interface FailureHop { n: number; path: string; model: unknown; hasToolOutput: boolean; hasCompactPrompt: boolean; bytes: number }
+interface FailureHop { n: number; path: string; model: unknown; hasToolOutput: boolean; bytes: number }
 
 /**
  * A Responses server that asks for one side-effecting shell command, then fails the request that carries its
@@ -212,7 +212,7 @@ function failingResponses(mode: Failure, hops: FailureHop[], held: { request?: h
       try { body = JSON.parse(raw); } catch { /* recorded as empty */ }
       const tools = Array.isArray(body.tools) ? body.tools as { name?: string }[] : [];
       const n = hops.length + 1;
-      hops.push({ n, path: req.url ?? "", model: body.model, hasToolOutput: raw.includes("function_call_output"), hasCompactPrompt: /summar|compact|handoff/i.test(raw) && !raw.includes("LM5-AC4"), bytes: raw.length });
+      hops.push({ n, path: req.url ?? "", model: body.model, hasToolOutput: raw.includes("function_call_output"), bytes: raw.length });
       if (req.url !== "/v1/responses" || req.method !== "POST" || req.headers.authorization !== `Bearer ${TOKEN}`) { res.writeHead(404); res.end(); return; }
       if (n === 1) {
         const exec = tools.find(t => t.name === "exec_command") ? "exec_command" : "shell";
@@ -248,7 +248,7 @@ function failingResponses(mode: Failure, hops: FailureHop[], held: { request?: h
 }
 
 for (const mode of ["overflow-http", "overflow-stream", "oom-500", "unavailable-503", "dropped", "child-exit", "stop"] as const) {
-  test(`AC4 (${mode}): a local turn whose server fails after a tool ran ends failed or interrupted, with no retry, no model switch and no second tool run`, { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
+  test(`AC4 (${mode}): a local turn whose server fails after a tool ran ends failed or interrupted; the recording server observes no retry and no other model, and the tool does not run twice`, { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
     const hops: FailureHop[] = [];
     let arrived!: () => void;
     const holding = new Promise<void>(resolve => { arrived = resolve; });

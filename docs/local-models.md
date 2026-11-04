@@ -188,12 +188,15 @@ an unknown downstream route is still unknown. Evidence: [LM-5 cloud-routed model
 Status: in review (#380), local execution still unadmitted. Against the installed codex-cli 0.166.0 and a scripted
 loopback Responses server:
 
-- **Compaction (AC1).** Native auto-compaction runs inline. It goes to the configured server's `/v1/responses` for
-  the selected model with the connection's token. The keys that change what it sends or when it runs
+Everything below is what that recording server and the turn's result showed. The server sees only its own requests:
+other destinations were not monitored, so none of this establishes that no other request was made.
+
+- **Compaction (AC1).** Native auto-compaction runs inline. The server observed it on `/v1/responses` for the
+  selected model with the connection's token. A failing compaction request has no fixture. The keys that change what it sends or when it runs
   (`compact_prompt` and the compaction thresholds) are governed: only Modex's session flags may set them.
 - **Failures (AC4).** Overflow, OOM 500, 503, a dropped stream, a killed child and Stop each end failed or
-  interrupted. Nothing is retried (`request_max_retries` and `stream_max_retries` must both be 0), the model never
-  changes, and a tool that ran is never run again. A local 500 is reported as the local server's error, not as
+  interrupted. The server observed no retried request and no other model (`request_max_retries` and
+  `stream_max_retries` must both be 0), and a tool that ran did not run again. A local 500 is reported as the local server's error, not as
   Codex's cloud "high demand" text.
 - **Capacity (AC3).** Profiles for one host and port share one slot; a stopped wait opens nothing and sends nothing.
 - **Entry points (AC5).** Only this Mac's own window may select, change or clear a local target. A paired desktop,

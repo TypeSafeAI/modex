@@ -1,6 +1,6 @@
 # LM-5 fixture-level AC1 compaction, AC3, AC4 and AC5 (#380), 2026-11-01
 
-Issue #380 remains open. This delivery is built on `main` at `0a8c513baa95ef6cf7e5f833e4aae468ae62a5e1`. It closes the
+Issue #380 remains open. This delivery was built on `main` at `0a8c513baa95ef6cf7e5f833e4aae468ae62a5e1` and rebased onto `b785054e88836ac9df5ca917425031ab697d4d30` on 2026-11-03; see [the rebase section](#rebase-onto-b785054). It closes the
 fixture-level gaps left after the six earlier LM-5 deliveries (#423/#424, #447, #448, #461, #462, #465). It
 doesn't admit product local execution: `main/index.ts` still constructs no `LocalExecution`, so a built app
 refuses every local selection exactly as before.
@@ -34,8 +34,8 @@ Kinds of evidence are kept apart:
   them: the dev browser transport (`commands.ts:110`), demo and any future caller. It's now an allow-list:
   only `by === "desktop"` (index.ts's `answeredFrom` for a native IPC event) may select, change or clear a
   local target. The pins on a local thread (model, backend, effort, Auto, Plan) still throw for every caller.
-- **Stale status line.** `docs/local-models.md` no longer says LM-5 slice 1 lives on `lm5-policy`. It landed
-  through #423 (`c23e6be`).
+- **Status line.** `docs/local-models.md`'s LM-5 slice 1 line now also says local execution is still unadmitted. Main
+  had already corrected the line's old `lm5-policy` location before this rebase.
 
 ## AC1: where a local child's compaction goes (wire)
 
@@ -54,8 +54,8 @@ The recording loopback server observed inline compaction on 0.166.0 for a custom
 Codex clamps the auto-compact limit to the window. With `model_auto_compact_token_limit` set to 8× the window,
 it still compacted at the same point. So a too-high limit can't defer compaction past the window.
 
-AC1 isn't complete. This proves the destination of native compaction against a fixture. It doesn't run against
-a real local server or with the network denied.
+AC1 isn't complete. This shows where the fixture server saw native compaction arrive; it doesn't establish the
+only destination. It doesn't run against a real local server or with the network denied.
 
 ## AC3: two profiles, one service; a stopped wait sends nothing
 
@@ -151,7 +151,7 @@ All logs are in `~/.claude/task-evidence/lane-d-2026-11-01/`.
     a 302 as a bodyless `GET`. Recorded, not prevented.
 - **Load.** Other lanes ran Playwright at the same time (load average 27–134). Some wire runs failed at Codex's
   5-second `initialize` before any request; they were re-run, not counted.
-- **Full suite:** `pnpm build && pnpm test` exited 0. The desktop suite ran 2,127 tests: 2,098 passed, 29 skipped, 0 failed.
+- **Full suite on the original base:** `pnpm build && pnpm test` exited 0. The desktop suite ran 2,127 tests: 2,098 passed, 29 skipped, 0 failed. The current result is in [the rebase section](#rebase-onto-b785054).
 
 ## Still open
 
@@ -166,4 +166,4 @@ All logs are in `~/.claude/task-evidence/lane-d-2026-11-01/`.
 
 The AC3 server-arrival wait races the first turn result, and the first turn receives the test cancellation signal as well as its 90-second deadline. An early admission, startup or cancellation result therefore fails the fixture with that result and enters cleanup. Before the repair, replacing the first turn signal with an already-aborted signal left the fixture pending until an external 12-second deadline terminated it. After the repair, the same negative control failed promptly with `status: interrupted` (about 15 ms) and the process exited normally with test failure. The unmodified installed-Codex wire fixture passed in about 2 seconds. These checks establish fixture termination and its normal queued-cancel path, not live-model or offline acceptance.
 
-Repair validation: `pnpm build && pnpm test` exited 0, with 2,281 passes and 35 skips across the full unit suite. Independent review found no blocking findings; its minor overbroad AC1 test title was corrected. No UI code changed and no additional E2E suite was run for this fixture/documentation repair. The integration also retains main’s CF-7 checkpoint restoration and corrected October 31 UTC landing dates. Main merge, product admission and native runtime acceptance remain separate gates.
+Repair validation: `pnpm build && pnpm test` exited 0, with 2,281 passes and 35 skips across the full unit suite. Independent review found no blocking findings; its minor overbroad AC1 test title was corrected. No UI code changed and no additional E2E suite was run for this fixture/documentation repair. Main merge, product admission and native runtime acceptance remain separate gates.
