@@ -16,7 +16,7 @@ const MODEL = "qwen3.8-flash-next-iq3_s";
 /** The effective configuration a scripted app-server reports back: the child's own `-c` flags, from the session-flags layer alone, over an empty private home and an empty system file (the shape codex-cli 0.164.0 returned on 2026-10-27). */
 
 /** A local execution over a scripted app-server that answers every open with the model and provider it was asked for. */
-function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4] } = {}) {
+function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; configReadErrorCode?: number; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4] } = {}) {
   const home = tmpdir("lm3-exec-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
   const connection = connections.create({ label: "Local", runtime: input.runtime ?? "responses", url: input.url ?? "http://127.0.0.1:18501/v1", ...(input.token === null ? {} : { token: input.token ?? "LOCAL_TOKEN_SENTINEL" }) });
@@ -29,7 +29,7 @@ function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: 
       for (const line of d.toString().trim().split("\n")) {
         const m = JSON.parse(line);
         if (m.method === "initialize") proc.emitLine({ id: m.id, result: { userAgent: "codex/0.164.0" } });
-        if (m.method === "config/read") { const reported = effectiveConfiguration(args); const result = input.configRead ? input.configRead(reported) : reported; proc.emitLine(result instanceof Error ? { id: m.id, error: { code: -32601, message: result.message } } : { id: m.id, result }); }
+        if (m.method === "config/read") { const reported = effectiveConfiguration(args); const result = input.configRead ? input.configRead(reported) : reported; proc.emitLine(result instanceof Error ? { id: m.id, error: { code: input.configReadErrorCode ?? -32601, message: result.message } } : { id: m.id, result }); }
         if (m.method === "configRequirements/read") proc.emitLine({ id: m.id, result: { supportsIndependentSpeedModes: true, requirements: input.requirements ?? null } });
         if (m.method === "thread/start") proc.emitLine({ id: m.id, result: { thread: { id: `native-${children.length}` }, model: m.params.model, modelProvider: m.params.modelProvider } });
         if (m.method === "turn/start") {
@@ -334,6 +334,34 @@ test("a configuration another layer governs, managed requirements or a Codex wit
       assert.equal(h.execution.provenance(h.thread.id), undefined, `${name}: nothing was admitted`);
     } finally { await h.execution.dispose(); }
   }
+});
+
+test("a managed-preferences synchronization failure gives macOS session recovery without blaming the CLI version", async () => {
+  const h = setup({ configReadErrorCode: -32603, configRead: () => new Error("failed to read configuration layers: Failed to synchronize managed preferences") });
+  try {
+    const result = await h.execution.backend(h.thread).runTurn("private task text", h.opts, collectSink().sink, new AbortController().signal);
+    assert.equal(result.status, "failed");
+    assert.match(result.error!, /signed-in macOS desktop session/);
+    assert.doesNotMatch(result.error!, /needs codex-cli|upgrade Codex/i);
+    assert.equal(result.detail?.rpcCode, -32603);
+    assert.equal(result.detail?.stage, "verify configuration");
+    assert.equal(h.children.length, 1, "the failed configuration is never retried");
+    assert.equal(h.children[0]!.proc.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0, "no thread opens or task content is sent");
+    assert.equal(h.execution.provenance(h.thread.id), undefined, "an unread managed layer cannot be admitted");
+  } finally { await h.execution.dispose(); }
+});
+
+test("another configuration read failure retains its cause without giving unsupported-version advice", async () => {
+  const reason = "Permission denied reading /etc/codex/config.toml";
+  const h = setup({ configReadErrorCode: -32603, configRead: () => new Error(reason) });
+  try {
+    const result = await h.execution.backend(h.thread).runTurn("private task text", h.opts, collectSink().sink, new AbortController().signal);
+    assert.equal(result.status, "failed");
+    assert.ok(result.error!.includes(reason));
+    assert.doesNotMatch(result.error!, /needs codex-cli|signed-in macOS desktop session/);
+    assert.equal(result.detail?.rpcCode, -32603);
+    assert.equal(h.children[0]!.proc.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally { await h.execution.dispose(); }
 });
 
 test("a model reroute on a local turn interrupts it and reports it failed, never continued", async () => {

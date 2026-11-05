@@ -322,7 +322,13 @@ export class CodexBackend implements Backend {
     if (local?.admit) {
       try {
         const reads = await duringSetup(Promise.all([this.request("config/read", { includeLayers: true, cwd: opts.cwd }), this.request("configRequirements/read", {})])
-          .catch((err: unknown) => { throw new CodexError(`Codex did not report its effective configuration (${(err as Error).message}). Local execution needs codex-cli 0.164.0 or later.`, detailOf(err)); }), signal);
+          .catch((err: unknown) => {
+            const detail = detailOf(err), reason = (err as Error).message;
+            const recovery = /failed to synchronize managed preferences/i.test(reason)
+              ? " Start Modex from a signed-in macOS desktop session and retry."
+              : detail.rpcCode === -32601 ? " Local execution needs codex-cli 0.164.0 or later." : "";
+            throw new CodexError(`Codex did not report its effective configuration (${reason}).${recovery}`, detail);
+          }), signal);
         local.admit({ config: reads[0], requirements: reads[1] });
       } catch (err) {
         return failed(err, { stage: "verify configuration" });
