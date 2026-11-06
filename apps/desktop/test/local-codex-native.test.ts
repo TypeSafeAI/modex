@@ -481,7 +481,7 @@ test("AC1: a person's local server reads, requests an approved edit and runs an 
     assert.match(reply, new RegExp(SENTINEL), `the reply does not carry the file's word: ${reply}`);
     assert.ok(session, "the native read reported its session for the explicit continuation");
     const expected = EDITED;
-    const write = "printf 'LM3-APPROVED-EDIT-8c42\\n' > result.txt";
+    const write = "echo LM3-APPROVED-EDIT-8c42 > result.txt";
     fs.writeFileSync(path.join(thread.cwd, "check.cjs"), CHECK);
     const allowed = new Set([write, "node check.cjs"]);
     sink.approval = async request => {
@@ -495,11 +495,11 @@ test("AC1: a person's local server reads, requests an approved edit and runs an 
       { cwd: thread.cwd, mode: "chat", plan: false, model, resume: session }, sink, AbortSignal.timeout(540_000));
     stages.push({ name: "approved edit and test", status: edited.status, error: edited.error, ms: Date.now() - beforeEdit });
     assert.equal(edited.status, "completed", edited.error);
+    assert.ok(approvals.some(a => a.command === write && a.decision === "yes"), "the file write crossed the explicit approval callback");
     assert.equal(fs.readFileSync(path.join(thread.cwd, "result.txt"), "utf8"), expected);
     assert.equal(fs.readFileSync(path.join(thread.cwd, "fixture.txt"), "utf8"), `${SENTINEL}\n`);
     assert.equal(fs.readFileSync(path.join(thread.cwd, "check.cjs"), "utf8"), CHECK, "the independent test was not rewritten by the model");
     assert.deepEqual(fs.readFileSync(path.join(thread.cwd, "checks.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line)), [{ ok: true, exitCode: 0 }], "the test actually executed exactly once on the resulting file");
-    assert.ok(approvals.some(a => a.command === write && a.decision === "yes"), "the file write crossed the explicit approval callback");
   } finally {
     await execution.dispose();
     const syntheticConfiguration = global.unchanged();
