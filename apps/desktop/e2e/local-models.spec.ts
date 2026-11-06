@@ -122,7 +122,7 @@ test("the model menu lists LM Studio's models by server and offers context windo
     await tid(page, "model-picker").click();
     await tid(page, "model-local-option").click();
     await tid(page, "model-local-context").getByRole("menuitemradio", { name: /32,768/ }).click();
-    await expect(page.getByText("Local execution is unavailable.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Local execution is unavailable." })).toBeVisible();
     await expect.poll(async () => (await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.length).toBe(threadsBefore);
     expect((await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.some(t => t.localTarget !== undefined)).toBe(false);
     expect(runtime.hits.every(hit => hit === "GET /api/v0/models")).toBe(true);
