@@ -7,6 +7,7 @@ import net from "node:net";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
+import { LOOPBACK_ONLY_POLICY } from "./local-model-network-policy.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const appDir = path.dirname(path.dirname(script));
@@ -18,7 +19,7 @@ if (process.platform !== "darwin" || !model || !destination || !path.isAbsolute(
 }
 const report = path.resolve(destination);
 fs.mkdirSync(report, { recursive: true, mode: 0o700 });
-const policy = '(version 1)\n(allow default)\n(deny network*)\n(allow network-inbound (local ip "localhost:*"))\n(allow network-outbound (remote ip "localhost:*"))\n';
+const policy = LOOPBACK_ONLY_POLICY;
 if (!inside) {
   const evidence = fs.lstatSync(report);
   if (!evidence.isDirectory() || evidence.isSymbolicLink() || fs.readdirSync(report).length !== 0) {
