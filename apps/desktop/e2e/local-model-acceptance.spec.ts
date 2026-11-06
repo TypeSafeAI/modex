@@ -55,7 +55,7 @@ async function send(page: Page, text: string) {
   await tid(page, "send").click();
 }
 
-test("local golden fixture: approved edit, independent check, diff, Stop, continuation, restart and server failure", async () => {
+test("local golden fixture: approved edit, independent check, diff, Stop, continuation, restart and server failure", async ({}, testInfo) => {
   const r = await runtime();
   const { home, repo } = seedHome();
   fs.writeFileSync(path.join(repo, "greeting.txt"), "hello\n");
@@ -100,9 +100,12 @@ test("local golden fixture: approved edit, independent check, diff, Stop, contin
     expect(fs.readFileSync(path.join(repo, "edits.txt"), "utf8")).toBe("edit\nedit\n");
     await choose(run.page);
     await send(run.page, "SERVER_FAILURE");
-    await expect(run.page.getByText(/Local (fixture server unavailable|server reported)/).first()).toBeVisible();
+    const failure = run.page.getByRole("alert").filter({ hasText: "The local server returned an internal error (HTTP 500)." });
+    await expect(failure).toBeVisible();
+    await expect(failure).toContainText("Modex didn't retry the turn or switch models.");
     expect(fs.readFileSync(path.join(repo, "edits.txt"), "utf8")).toBe("edit\nedit\n");
     expect(r.hits.every(hit => /^(GET \/api\/(tags|ps)|POST \/api\/show)$/.test(hit))).toBe(true);
+    await run.page.screenshot({ path: testInfo.outputPath("local-workflow-failure.png"), fullPage: true });
   } finally { await run.app.close(); }
   } finally { r.stop(); }
 });

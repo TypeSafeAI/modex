@@ -142,7 +142,7 @@ export async function qualify(options, dependencies = {}) {
     catch (error) { throw new Error(`macOS user lookup failed: ${error.message}. Launch this runner from your normal macOS Terminal.`); }
     const binary = (dependencies.electron ?? (() => electronBinary(repo, options.electronDist)))();
     const env = ordinaryEnvironment(options.electronDist);
-    result.host = { platform: process.platform, release: os.release(), architecture: os.arch(), cpu: os.cpus()[0]?.model, memoryBytes: os.totalmem(), node: process.version, requestedContextTokens: 65536, loadedContextTokens: "unverified" };
+    result.host = { platform: process.platform, release: os.release(), architecture: os.arch(), cpu: os.cpus()[0]?.model, memoryBytes: os.totalmem(), node: process.version, umask: process.umask().toString(8).padStart(3, "0"), requestedContextTokens: 65536, loadedContextTokens: "unverified" };
     result.electron = { binary, sha256: dependencies.binaryHash ?? (await import("node:crypto")).createHash("sha256").update(fs.readFileSync(binary)).digest("hex") };
     const stage = async (name, command, args, cwd, timeout, extraEnv = {}) => {
       assertSource();
