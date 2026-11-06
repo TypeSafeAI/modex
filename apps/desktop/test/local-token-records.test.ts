@@ -13,6 +13,7 @@ import { Router } from "../src/main/engine/routing/router.js";
 import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
 import { Store } from "../src/main/engine/store.js";
 import type { ThreadEvent } from "../src/shared/types.js";
+import { OUTPUT_PREVIEW_BYTES } from "../src/shared/evidence.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { gitRepo, tmpdir } from "./helpers.js";
 
@@ -160,6 +161,38 @@ test("a token split across streamed message and tool deltas never reassembles in
     const found = records(h);
     assert.ok(Object.keys(found).some(where => where.startsWith("disk:") && found[where]!.includes("TOOL-SPLIT-MARK")), `the long output reached no file on disk, so the tool log went unchecked: ${Object.keys(found).join(", ")}`);
     for (const [where, text] of Object.entries(found)) assert.equal(text.includes(TOKEN.slice(0, cut)), false, `the token's start reached ${where}`);
+  } finally { await h.runner.dispose(); }
+});
+
+test("the bounded tool preview never exposes a token fragment when a split token crosses its leading cut", async () => {
+  const cut = TOKEN.length >> 1, marker = "BOUNDARY-TOOL-MARK";
+  const filler = "x".repeat(OUTPUT_PREVIEW_BYTES - (TOKEN.length - cut) - marker.length) + marker;
+  const h = await setup((proc, done) => {
+    proc.emitLine({ method: "item/started", params: { threadId: "native-1", turnId: "turn", item: { type: "commandExecution", id: "c1", command: "cat", cwd: "/tmp", status: "inProgress" } } });
+    proc.emitLine({ method: "item/commandExecution/outputDelta", params: { threadId: "native-1", turnId: "turn", itemId: "c1", delta: TOKEN.slice(0, cut) } });
+    proc.emitLine({ method: "item/commandExecution/outputDelta", params: { threadId: "native-1", turnId: "turn", itemId: "c1", delta: TOKEN.slice(cut) + filler } });
+    proc.emitLine({ method: "item/completed", params: { threadId: "native-1", turnId: "turn", item: { type: "commandExecution", id: "c1", command: "cat", cwd: "/tmp", status: "completed", exitCode: 0 } } });
+    done("completed");
+  });
+  try {
+    await h.runner.send(h.thread.id, "read");
+    assertNoToken(h, /BOUNDARY-TOOL-MARK/);
+    const updates = h.events.filter(e => e.type === "item_update" && JSON.stringify(e.patch).includes(marker));
+    assert.ok(updates.length > 0, "streaming updates crossed the renderer boundary");
+  } finally { await h.runner.dispose(); }
+});
+
+test("a child failure never exposes the token fragment left by the bounded stderr cut", async () => {
+  const cut = TOKEN.length >> 1, marker = "BOUNDARY-STDERR-MARK";
+  const filler = "x".repeat(16_384 - (TOKEN.length - cut) - marker.length) + marker;
+  const h = await setup(proc => {
+    proc.stderr.write(TOKEN.slice(0, cut));
+    proc.stderr.write(TOKEN.slice(cut) + filler);
+    setTimeout(() => proc.close(101), 20);
+  });
+  try {
+    await h.runner.send(h.thread.id, "read");
+    assertNoToken(h, /BOUNDARY-STDERR-MARK/);
   } finally { await h.runner.dispose(); }
 });
 

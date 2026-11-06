@@ -29,7 +29,7 @@ The fifth test sends a discovery failure that repeats the token in its status bo
 
 **Export surfaces at this SHA.** Modex has no transcript or thread export. `space:export` writes a Notes page and `images:export` an image; local turns are refused Modex's note tools. `clipboard:write` copies text the renderer already holds, which the renderer-event check covers. A future transcript export needs its own check.
 
-**Known limit.** A tool's displayed output keeps only its last 256 KiB. If that cut falls inside a token, the rest of the token stays visible, because what remains no longer matches. The whole token never appears. A model can reach this only by having the token repeated to it, and the token is not in model input.
+**Known limit at this producer SHA.** A tool's displayed output keeps only its last 256 KiB. If that cut falls inside a token, the rest of the token stays visible, because what remains no longer matches. The whole token never appears. A model can reach this only by having the token repeated to it, and the token is not in model input. The later `lm-v1-workflow` candidate repairs this boundary and the corresponding stderr cut; see its [follow-up review](2026-11-04-local-models-v1-workflow.md#follow-up-review-redaction-before-output-limits).
 
 **Evidence level.** All of this is fixture evidence with a scripted Codex. No real runtime or model ran.
 

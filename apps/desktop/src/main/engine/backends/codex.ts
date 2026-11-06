@@ -90,7 +90,11 @@ export class CodexBackend implements Backend {
       this.threadModels.clear();
       const lines = new LineBuffer();
       let stderr = "";
-      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
+      child.stderr?.on("data", (d: Buffer) => {
+        const output = stderr + d.toString();
+        // Redact across chunks before the bound can discard a token's beginning.
+        stderr = (this.configuration?.redact(output) ?? output).slice(-16_384);
+      });
       child.stdout?.on("data", (d: Buffer) => { if (this.child === child) lines.push(d, (line) => this.dispatch(line)); });
       child.on("error", (err) => {
         const error = new CodexError(`${bin}: ${err.message}. Is the Codex CLI installed and on PATH?`, { bin, spawnError: err.message, errno: (err as NodeJS.ErrnoException).code, pid: child.pid });
@@ -571,7 +575,9 @@ export class CodexBackend implements Backend {
               const delta = String(p.delta ?? "");
               sink.output?.(native(p.itemId), delta);
               t.bytes += byteLength(delta);
-              t.output = boundOutput(t.output + delta).text;
+              const output = t.output + delta;
+              // A token may span deltas. Redact it before the preview cuts off its beginning.
+              t.output = boundOutput(this.configuration?.redact(output) ?? output).text;
               sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output, ...(t.bytes > byteLength(t.output) ? { outputBytes: t.bytes, outputTruncated: true } : {}) } });
             }
             break;
