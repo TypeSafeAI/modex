@@ -7,7 +7,7 @@ import net from "node:net";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
-import { LOOPBACK_ONLY_POLICY } from "./local-model-network-policy.mjs";
+import { LOOPBACK_ONLY_POLICY, prepareOfflineSandbox, verifyOfflineSandbox } from "./local-model-network-policy.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const appDir = path.dirname(path.dirname(script));
@@ -29,9 +29,9 @@ if (!inside) {
   const installed = listing.models?.find(m => m.name === model);
   if (typeof installed?.digest !== "string" || !installed.digest) throw new Error("The exact approved model must already be installed with a recorded digest. This canary never downloads one.");
   fs.writeFileSync(path.join(report, "model.json"), JSON.stringify(installed, null, 2) + "\n");
-  const profile = path.join(report, "loopback-only.sb"); fs.writeFileSync(profile, policy);
-  const result = spawnSync("/usr/bin/sandbox-exec", ["-f", profile, process.execPath, script, "--inside", model, report], {
-    cwd: appDir, env: process.env, encoding: "utf8", timeout: 1_300_000, maxBuffer: 8 * 1024 * 1024,
+  const sandbox = prepareOfflineSandbox(report);
+  const result = spawnSync("/usr/bin/sandbox-exec", ["-f", sandbox.profile, process.execPath, script, "--inside", model, report], {
+    cwd: appDir, env: { ...process.env, ...sandbox.env }, encoding: "utf8", timeout: 1_300_000, maxBuffer: 8 * 1024 * 1024,
   });
   fs.writeFileSync(path.join(report, "launcher.log"), `${result.stdout ?? ""}${result.stderr ?? ""}`);
   if (result.status !== 0) {
@@ -41,8 +41,10 @@ if (!inside) {
 } else {
   const receipt = { status: "running", model, policy, platform: `${os.release()} ${os.arch()}`, hardware: execFileSync("sysctl", ["-n", "machdep.cpu.brand_string"], { encoding: "utf8" }).trim(),
     sha: execFileSync("git", ["rev-parse", "HEAD"], { cwd: appDir, encoding: "utf8" }).trim(), contextTokens: 65536 };
-  let server;
+  let server, serverHome;
   try {
+    Object.assign(receipt, await verifyOfflineSandbox(report));
+    receipt.policy = fs.readFileSync(path.join(report, "loopback-only.sb"), "utf8");
     const approved = JSON.parse(fs.readFileSync(path.join(report, "model.json"), "utf8"));
     if (approved.name !== model || typeof approved.digest !== "string" || !approved.digest) throw new Error("The approved model name and digest receipt is missing or invalid.");
     receipt.approvedModelDigest = approved.digest;
@@ -52,19 +54,12 @@ if (!inside) {
       receipt.observedModelDigests[phase] = digest;
       if (digest !== approved.digest) throw new Error(`Owned model digest ${phase} the native task does not match the approved digest.`);
     };
-    receipt.externalProbe = await new Promise(resolve => {
-      const socket = net.connect({ host: "192.0.2.1", port: 443 });
-      const settle = value => { socket.destroy(); resolve(value); };
-      socket.once("connect", () => settle("connected"));
-      socket.once("error", error => settle(error.code ?? error.message));
-      socket.setTimeout(2000, () => settle("timed-out"));
-    });
-    if (!["EPERM", "EACCES"].includes(receipt.externalProbe)) throw new Error(`External denial was not demonstrated: ${receipt.externalProbe}`);
     const reservation = net.createServer(); reservation.listen(0, "127.0.0.1"); await once(reservation, "listening");
     const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
     receipt.url = `http://127.0.0.1:${port}`;
+    serverHome = fs.mkdtempSync(path.join(report, "tmp", "ollama-home-"));
     const log = fs.openSync(path.join(report, "ollama.log"), "w", 0o600);
-    server = spawn("ollama", ["serve"], { env: { ...process.env, OLLAMA_HOST: `127.0.0.1:${port}`, OLLAMA_MODELS: path.join(os.homedir(), ".ollama", "models"), OLLAMA_CONTEXT_LENGTH: "65536" }, stdio: ["ignore", log, log] });
+    server = spawn("ollama", ["serve"], { env: { ...process.env, HOME: serverHome, OLLAMA_HOST: `127.0.0.1:${port}`, OLLAMA_MODELS: path.join(os.homedir(), ".ollama", "models"), OLLAMA_CONTEXT_LENGTH: "65536" }, stdio: ["ignore", log, log] });
     fs.closeSync(log);
     const deadline = Date.now() + 20_000;
     while (true) {
@@ -84,7 +79,7 @@ if (!inside) {
     }
     receipt.ownedServerPid = server.pid;
     const checked = spawnSync(process.execPath, ["--test", "--test-force-exit", "--test-name-pattern=AC1: a person", "dist/test/local-codex-native.test.js"], {
-      cwd: appDir, env: { ...process.env, MODEX_LM3_LIVE: "1", MODEX_LM3_URL: `${receipt.url}/v1`, MODEX_LM3_MODEL: model, MODEX_LM3_CONTEXT: "65536", MODEX_LM3_REPORT: path.join(report, "native") },
+      cwd: appDir, env: { ...process.env, MODEX_LM3_LIVE: "1", MODEX_LM3_EXTERNAL_SANDBOX: "1", MODEX_LM3_URL: `${receipt.url}/v1`, MODEX_LM3_MODEL: model, MODEX_LM3_CONTEXT: "65536", MODEX_LM3_REPORT: path.join(report, "native") },
       encoding: "utf8", timeout: 1_220_000, maxBuffer: 8 * 1024 * 1024,
     });
     fs.writeFileSync(path.join(report, "native.log"), `${checked.stdout ?? ""}${checked.stderr ?? ""}`);
@@ -100,6 +95,7 @@ if (!inside) {
       const force = setTimeout(() => server.kill("SIGKILL"), 5000);
       await exited; clearTimeout(force);
     }
+    if (serverHome) fs.rmSync(serverHome, { recursive: true, force: true });
     fs.writeFileSync(path.join(report, "offline.json"), JSON.stringify(receipt, null, 2) + "\n");
   }
 }

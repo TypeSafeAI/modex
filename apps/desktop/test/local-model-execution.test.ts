@@ -16,7 +16,7 @@ const MODEL = "qwen3.8-flash-next-iq3_s";
 /** The effective configuration a scripted app-server reports back: the child's own `-c` flags, from the session-flags layer alone, over an empty private home and an empty system file (the shape codex-cli 0.164.0 returned on 2026-10-27). */
 
 /** A local execution over a scripted app-server that answers every open with the model and provider it was asked for. */
-function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; configReadErrorCode?: number; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4] } = {}) {
+function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: string; token?: string | null; configRead?: (reported: ReturnType<typeof effectiveConfiguration>) => unknown; configReadErrorCode?: number; requirements?: unknown; rerouted?: boolean; advertised?: ConstructorParameters<typeof LocalExecution>[4]; hostSandbox?: { type: "externalSandbox"; networkAccess: "restricted"; boundaryId: string } } = {}) {
   const home = tmpdir("lm3-exec-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
   const connection = connections.create({ label: "Local", runtime: input.runtime ?? "responses", url: input.url ?? "http://127.0.0.1:18501/v1", ...(input.token === null ? {} : { token: input.token ?? "LOCAL_TOKEN_SENTINEL" }) });
@@ -41,13 +41,59 @@ function setup(input: { runtime?: "ollama" | "responses"; model?: string; url?: 
     });
     return fakeSpawn(proc).spawn(bin, args, opts);
   }) as ConstructorParameters<typeof LocalExecution>[3];
-  const execution = new LocalExecution(home, connections, "codex", spawnImpl, input.advertised);
+  const execution = new LocalExecution(home, connections, "codex", spawnImpl, input.advertised, input.hostSandbox);
   const thread = { id: "modex-1", localTarget: target, localContextTokens: 32768, cwd: tmpdir("lm3-cwd-") };
   const opts = { cwd: thread.cwd, mode: "agent" as const, plan: false, model: MODEL };
   const finish = (n = 0) => children[n]!.proc.emitLine({ method: "turn/completed", params: { threadId: `native-${n + 1}`, turn: { id: "turn", status: "completed" } } });
   const spawned = async (n = 1) => { while (children.length < n) await new Promise(r => setTimeout(r, 5)); return children[n - 1]!; };
   return { home, connections, connection, target, execution, spawnImpl, children, thread, opts, finish, spawned };
 }
+
+test("a main-owned external boundary preserves approval policy and binds its immutable identity", async () => {
+  const hostSandbox = { type: "externalSandbox" as const, networkAccess: "restricted" as const, boundaryId: "sha256:" + "a".repeat(64) };
+  const h = setup({ hostSandbox });
+  (hostSandbox as unknown as Record<string, unknown>).networkAccess = "enabled";
+  hostSandbox.boundaryId = "sha256:" + "b".repeat(64);
+  try {
+    for (const mode of ["agent", "chat"] as const) {
+      const run = h.execution.backend(h.thread).runTurn(mode, { ...h.opts, mode, ...(mode === "chat" ? { resume: "native-1" } : {}) }, collectSink().sink, new AbortController().signal);
+      const child = await h.spawned();
+      await child.proc.waitFor(line => line.includes('"turn/start"') && line.includes(mode));
+      const turn = child.proc.sent(m => m.method === "turn/start").at(-1)!;
+      assert.deepEqual(turn.params.sandboxPolicy, { type: "externalSandbox", networkAccess: "restricted" });
+      assert.equal(turn.params.approvalPolicy, mode === "chat" ? "untrusted" : "on-request");
+      h.finish(); assert.equal((await run).status, "completed");
+    }
+    assert.deepEqual(h.execution.provenance(h.thread.id)?.hostSandbox,
+      { type: "externalSandbox", networkAccess: "restricted", boundaryId: "sha256:" + "a".repeat(64) });
+  } finally { await h.execution.dispose(); }
+});
+
+test("an environment flag never opts normal local execution into an external boundary", async () => {
+  const old = process.env.MODEX_LM3_EXTERNAL_SANDBOX; process.env.MODEX_LM3_EXTERNAL_SANDBOX = "1";
+  const h = setup();
+  try {
+    const run = h.execution.backend(h.thread).runTurn("normal sandbox", h.opts, collectSink().sink, new AbortController().signal);
+    const child = await h.spawned(); await child.proc.waitFor(line => line.includes('"turn/start"'));
+    assert.equal(child.proc.sent(m => m.method === "turn/start")[0]!.params.sandboxPolicy.type, "workspaceWrite");
+    h.finish(); assert.equal((await run).status, "completed");
+  } finally { await h.execution.dispose(); if(old===undefined)delete process.env.MODEX_LM3_EXTERNAL_SANDBOX;else process.env.MODEX_LM3_EXTERNAL_SANDBOX=old; }
+});
+
+test("an external boundary cannot waive managed configuration admission", async () => {
+  const h = setup({ hostSandbox: { type: "externalSandbox", networkAccess: "restricted", boundaryId: "sha256:" + "a".repeat(64) }, requirements: { allowedSandboxModes: ["workspace-write"] } });
+  try {
+    const result = await h.execution.backend(h.thread).runTurn("must refuse", h.opts, collectSink().sink, new AbortController().signal);
+    assert.equal(result.status, "failed");
+    assert.equal(h.children[0]!.proc.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally { await h.execution.dispose(); }
+});
+
+test("an external boundary with enabled network or no identity is refused at construction", () => {
+  for(const hostSandbox of [{ type: "externalSandbox", networkAccess: "enabled", boundaryId: "sha256:" + "a".repeat(64) }, { type: "externalSandbox", networkAccess: "restricted", boundaryId: "" }]) {
+    assert.throws(() => setup({ hostSandbox: hostSandbox as never }), /restricted.*external boundary/i);
+  }
+});
 
 test("a local child gets a private home, an allowlisted environment, the token in one variable the shell cannot see, and the pinned model", async () => {
   process.env.MODEX_LM3_INHERITED_SENTINEL = "must-not-reach-child";

@@ -6,7 +6,7 @@ import type { Backend, TurnOptions, TurnResult, TurnSink } from "../backends/typ
 import type { CliExecutable } from "../cli-path.js";
 import { modelKey, threadTarget, type LocalModelRef, type LocalThreadTarget } from "../../../shared/local-models.js";
 import type { LocalConnectionStore } from "./connections.js";
-import { admitLocalConfiguration, type LocalConfigurationProvenance } from "./run-policy.js";
+import { admitLocalConfiguration, type LocalConfigurationProvenance, type LocalHostSandbox } from "./run-policy.js";
 import { OLLAMA_CLOUD_NAME, type AdvertisedContext } from "./discovery.js";
 import { redactingSink, TOKEN_MASK } from "./redacting-sink.js";
 
@@ -73,11 +73,19 @@ export class LocalExecution {
   private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance }>();
   private readonly services = new Map<string, { busy: boolean; waiting: Set<() => void> }>();
   private disposed = false;
+  private readonly hostSandbox?: LocalHostSandbox;
 
   /** `advertisedContext` reads main's record of the runtime's own listing (LocalModelDiscovery); without it, nothing was checked. */
   constructor(private readonly home: string, private readonly connections: LocalConnectionStore,
     private readonly executable: CliExecutable = "codex", private readonly spawnImpl = cliSpawn,
-    private readonly advertisedContext: (model: LocalModelRef) => AdvertisedContext | undefined = () => undefined) {}
+    private readonly advertisedContext: (model: LocalModelRef) => AdvertisedContext | undefined = () => undefined,
+    hostSandbox?: LocalHostSandbox) {
+    // Only the trusted host can provide this. Normal product wiring has no external-boundary option.
+    if (hostSandbox && (hostSandbox.type !== "externalSandbox" || hostSandbox.networkAccess !== "restricted" || !/^sha256:[a-f0-9]{64}$/.test(hostSandbox.boundaryId))) {
+      throw new Error("A host sandbox requires a restricted, identified external boundary.");
+    }
+    this.hostSandbox = hostSandbox ? Object.freeze({ ...hostSandbox }) : undefined;
+  }
 
   /** The thread's target, checked against the live profile: exactly its revision, with its token readable. */
   validate(thread: LocalExecutionThread): LocalThreadTarget {
@@ -145,7 +153,7 @@ export class LocalExecution {
       this.validate(thread); // The profile may have changed while this turn waited.
       if (this.disposed) throw new Error("Local execution has stopped. Select the local target again after Modex restarts.");
       refuseProjectConfiguration(opts.cwd);
-      const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd)]);
+      const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd), this.hostSandbox?.boundaryId ?? null]);
       let owned = this.children.get(thread.id);
       if (opts.resume && (!owned || owned.key !== key)) throw new Error("This conversation's native session is gone: the target changed or Modex restarted. Select the local target again to start a fresh conversation.");
       if (owned && owned.key !== key) { await this.forget(thread.id); owned = undefined; }
@@ -154,7 +162,7 @@ export class LocalExecution {
         const child: { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance } = { key, home, backend: undefined as unknown as CodexBackend };
         const advertised = this.advertisedContext(target.model);
         child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, provenance => {
-          child.provenance = { ...provenance, context: { configured: thread.localContextTokens!, source: "person", effective: thread.localContextTokens!,
+          child.provenance = { ...provenance, ...(this.hostSandbox ? { hostSandbox: this.hostSandbox } : {}), context: { configured: thread.localContextTokens!, source: "person", effective: thread.localContextTokens!,
             advertised: advertised ? { ...advertised } : "not-checked", loaded: "unknown" } };
         });
         owned = child;
@@ -206,7 +214,7 @@ export class LocalExecution {
     return new CodexBackend(this.executable, this.spawnImpl, {
       args: settings.flatMap(setting => ["-c", setting]), env,
       redact: text => token ? text.split(token).join(TOKEN_MASK) : text,
-      local: { model, provider: PROVIDER_ID,
+      local: { model, provider: PROVIDER_ID, ...(this.hostSandbox ? { externalSandbox: true } : {}),
         // Before each thread open the child's effective configuration must be exactly this, from these flags alone (#380).
         admit: reads => admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null })) },
     });

@@ -456,7 +456,13 @@ test("AC1: a person's local server reads, requests an approved edit and runs an 
   assert.ok(url && model, "MODEX_LM3_URL and MODEX_LM3_MODEL are required");
   const home = tmpdir("lm3-live-home-");
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
-  const execution = new LocalExecution(home, connections);
+  let hostBoundary;
+  if (process.env.MODEX_LM3_EXTERNAL_SANDBOX === "1") {
+    assert.ok(process.env.MODEX_LM3_REPORT && path.isAbsolute(process.env.MODEX_LM3_REPORT), "External sandbox qualification needs its absolute evidence directory");
+    const module = await import(new URL("../../scripts/local-model-network-policy.mjs", import.meta.url).href);
+    hostBoundary = await module.verifyOfflineSandbox(path.dirname(process.env.MODEX_LM3_REPORT));
+  }
+  const execution = new LocalExecution(home, connections, "codex", undefined, undefined, hostBoundary?.hostSandbox);
   const observations: Observation[] = [];
   const notices: string[] = [];
   const realConfiguration = realCodexConfig();
@@ -506,6 +512,7 @@ test("AC1: a person's local server reads, requests an approved edit and runs an 
     const personalConfiguration = realConfiguration();
     global.restore();
     record("live-workflow", { kind: "native local model qualification; harness approves only two exact fixture commands, not human acceptance", url, model,
+      ...(hostBoundary ? { hostSandbox: hostBoundary.hostSandbox, boundaryChecks: { externalProbe: hostBoundary.externalProbe, writeProbe: hostBoundary.writeProbe } } : {}),
       contextTokens: Number(process.env.MODEX_LM3_CONTEXT ?? 32768), stages, approvals, observations, notices,
       configurationUnchanged: syntheticConfiguration, realConfiguration: personalConfiguration, ms: Date.now() - started });
     assert.deepEqual(syntheticConfiguration, { sha256: global.sha256, bytes: true, mtimeMs: true, tree: true });

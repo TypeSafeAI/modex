@@ -3,10 +3,40 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "./helpers.js";
 
 const native = { skip: process.platform !== "darwin" && "the offline launcher is macOS-only" };
 const noNetwork = "data:text/javascript,globalThis.fetch=()=>{throw new Error('metadata-request-before-evidence-check')}";
+const { offlineSandboxPolicy, verifyOfflineSandbox } = await import(pathToFileURL(path.resolve("scripts/local-model-network-policy.mjs")).href);
+
+function boundaryFixture(dir: string) {
+  const root = fs.realpathSync(dir), cache = path.join(root, "cache"); fs.mkdirSync(cache);
+  const outsideProbe = path.join(path.dirname(root), `.${path.basename(root)}-outside-fixture`);
+  const profile = offlineSandboxPolicy(root, cache), boundaryId = "sha256:" + createHash("sha256").update(profile).digest("hex");
+  fs.writeFileSync(path.join(root, "loopback-only.sb"), profile);
+  fs.writeFileSync(path.join(root, "sandbox.json"), JSON.stringify({ root, cache, outsideProbe, outsideWriteControl: "succeeded", boundaryId }));
+  fs.mkdirSync(path.join(root, "tmp"));
+  return { root, outsideProbe, boundaryId };
+}
+
+test("a sandbox receipt cannot claim confinement when the real outside write remains possible", async () => {
+  const fixture = boundaryFixture(tmpdir("lm-boundary-not-installed-"));
+  await assert.rejects(verifyOfflineSandbox(fixture.root), /did not deny an outside write: allowed/);
+  assert.equal(fs.existsSync(fixture.outsideProbe), false, "the disposable negative control was removed");
+});
+
+test("an altered sandbox policy is refused before a boundary can be asserted", async () => {
+  const fixture = boundaryFixture(tmpdir("lm-boundary-altered-"));
+  fs.appendFileSync(path.join(fixture.root, "loopback-only.sb"), "(allow network*)\n");
+  await assert.rejects(verifyOfflineSandbox(fixture.root), /boundary receipt is missing or changed/);
+});
+
+test("the qualification policy refuses an unbounded filesystem write root", () => {
+  assert.throws(() => offlineSandboxPolicy("/", "/tmp/cache"), /bounded absolute directory/);
+  assert.throws(() => offlineSandboxPolicy("/tmp/evidence", "/"), /bounded absolute directory/);
+});
 
 test("offline qualification preserves an earlier receipt and refuses its directory before any runtime request", native, () => {
   const dir = tmpdir("lm-offline-evidence-");
@@ -38,6 +68,7 @@ function ownedRuntime(before: string | null, after: string | null) {
   const dir = tmpdir("lm-offline-identity-");
   const digest = "a".repeat(64);
   fs.writeFileSync(path.join(dir, "model.json"), JSON.stringify({ name: "fixture-coder", digest }));
+  const boundary = boundaryFixture(dir);
   const preload = `
     import fs from 'node:fs';
     import path from 'node:path';
@@ -46,6 +77,11 @@ function ownedRuntime(before: string | null, after: string | null) {
     import { EventEmitter } from 'node:events';
     import { syncBuiltinESMExports } from 'node:module';
     const dir = ${JSON.stringify(dir)};
+    const write = fs.writeFileSync;
+    fs.writeFileSync = (file, ...args) => {
+      if (String(file) === ${JSON.stringify(boundary.outsideProbe)}) throw Object.assign(new Error('scripted outside write denial'), { code: 'EPERM' });
+      return write(file, ...args);
+    };
     let reads = 0;
     globalThis.fetch = async () => ({ json: async () => ({ models: [
       { name: 'fixture-coder', digest: ++reads === 1 ? ${JSON.stringify(before)} : ${JSON.stringify(after)} }

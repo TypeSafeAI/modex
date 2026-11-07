@@ -70,7 +70,7 @@ export class CodexBackend implements Backend {
   constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = cliSpawn,
     private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string;
       /** `admit` sees the child's effective configuration and requirements before every thread open, and throws to refuse it (#380). */
-      local?: { model: string; provider: string; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
+      local?: { model: string; provider: string; externalSandbox?: true; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
@@ -311,6 +311,9 @@ export class CodexBackend implements Backend {
       return failed(err, { stage: "start app-server" });
     }
     const pol = CodexBackend.policy(opts);
+    // The trusted host already confines this process tree. Preserve native approval policy,
+    // but avoid a second sandbox_apply inside the parent's macOS sandbox.
+    if (this.configuration?.local?.externalSandbox) pol.sandboxPolicy = { type: "externalSandbox", networkAccess: "restricted" };
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
     const config = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],

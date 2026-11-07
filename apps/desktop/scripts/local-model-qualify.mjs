@@ -7,7 +7,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
-import { LOOPBACK_ONLY_POLICY } from "./local-model-network-policy.mjs";
+import { prepareOfflineSandbox } from "./local-model-network-policy.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const repository = path.resolve(path.dirname(script), "../../..");
@@ -47,7 +47,8 @@ function validateReceipt(name, report, source, options) {
   }
   if (name === "native-offline") {
     const offline = read("native-offline/offline.json"), workflow = read("native-offline/native/live-workflow.json");
-    if (offline.status !== "passed" || offline.sha !== source.head || !["EPERM", "EACCES"].includes(offline.externalProbe) || offline.approvedModelDigest !== options.digest || offline.observedModelDigests?.before !== options.digest || offline.observedModelDigests?.after !== options.digest) throw new Error("The native receipt must prove external denial and the approved owned-server model digest before and after the task on this revision.");
+    if (offline.status !== "passed" || offline.sha !== source.head || !["EPERM", "EACCES"].includes(offline.externalProbe) || !["EPERM", "EACCES"].includes(offline.writeProbe) || offline.approvedModelDigest !== options.digest || offline.observedModelDigests?.before !== options.digest || offline.observedModelDigests?.after !== options.digest) throw new Error("The native receipt must prove the enforced host boundary and the approved owned-server model digest before and after the task on this revision.");
+    if (offline.hostSandbox?.type !== "externalSandbox" || offline.hostSandbox.networkAccess !== "restricted" || !/^sha256:[a-f0-9]{64}$/.test(offline.hostSandbox.boundaryId) || workflow.hostSandbox?.type !== offline.hostSandbox.type || workflow.hostSandbox?.networkAccess !== offline.hostSandbox.networkAccess || workflow.hostSandbox?.boundaryId !== offline.hostSandbox.boundaryId || !["EPERM", "EACCES"].includes(workflow.boundaryChecks?.externalProbe) || !["EPERM", "EACCES"].includes(workflow.boundaryChecks?.writeProbe)) throw new Error("The native workflow must use the same verified external sandbox boundary.");
     if (workflow.model !== options.model || workflow.contextTokens !== 65536 || !["read", "approved edit and test"].every(name => workflow.stages?.some(s => s.name === name && s.status === "completed")) || !workflow.approvals?.some(a => a.decision === "yes") || !["bytes", "mtimeMs", "tree"].every(k => workflow.configurationUnchanged?.[k] === true) || workflow.realConfiguration?.unchanged !== true) throw new Error("The native workflow must complete read, approved edit and test while preserving configuration.");
   }
 }
@@ -185,8 +186,8 @@ export async function qualify(options, dependencies = {}) {
     }
     const native = path.join(report, "native-offline"); fs.mkdirSync(native, { mode: 0o700 });
     fs.writeFileSync(path.join(native, "model.json"), JSON.stringify({ name: options.model, digest: options.digest, evidenceKind: "approved expected identity; owned-server observations recorded separately" }, null, 2) + "\n", { mode: 0o600 });
-    const policy = path.join(native, "loopback-only.sb"); fs.writeFileSync(policy, LOOPBACK_ONLY_POLICY, { mode: 0o600 });
-    await stage("native-offline", "/usr/bin/sandbox-exec", ["-f", policy, process.execPath, path.join(app, "scripts/local-model-offline.mjs"), "--inside", options.model, native], app, 1300000);
+    const sandbox = (dependencies.prepareSandbox ?? prepareOfflineSandbox)(native);
+    await stage("native-offline", "/usr/bin/sandbox-exec", ["-f", sandbox.profile, process.execPath, path.join(app, "scripts/local-model-offline.mjs"), "--inside", options.model, native], app, 1300000, sandbox.env);
     assertSource(); result.status = result.stages.every(s => s.passed) ? "passed" : "failed";
   } catch (error) { result.status = "failed"; result.error = error.message; }
   finally { result.finishedAt = new Date().toISOString(); write(); }

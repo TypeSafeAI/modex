@@ -33,12 +33,21 @@ export interface RequirementsRead { requirements: unknown }
 /** What Modex passed as session flags for this child (execution.ts), to be found again in the effective configuration. */
 export interface ExpectedLocalConfiguration { provider: string; origin: string; contextTokens: number; tokenEnv: string | null }
 
+/** Main-owned assertion of an already enforced host boundary, never a thread or renderer setting. */
+export interface LocalHostSandbox {
+  readonly type: "externalSandbox";
+  readonly networkAccess: "restricted";
+  readonly boundaryId: string;
+}
+
 /** The configuration a child was admitted on, kept with the child for diagnostics; no secrets. */
 export interface LocalConfigurationProvenance {
   /** Codex's hash of the session-flags layer: the configuration Modex passed, as Codex read it. */
   sessionFlags: string;
   layers: { source: string; version: string; file?: string }[];
   managedRequirements: false;
+  /** The caller owns enforcing this boundary before spawning Codex; its hash binds process identity. */
+  hostSandbox?: LocalHostSandbox;
   /** Set by the caller that knows where the window came from (execution.ts). */
   context?: LocalContextEvidence;
 }

@@ -13,10 +13,12 @@ function fixture() {
   const repo = gitRepo(), evidence = tmpdir("lm-terminal-report-");
   const options = { repo, evidence, live: true, model: "fixture-coder", digest };
   const calls: string[] = [];
-  const controls = { fail: "", changeSource: false, skippedElectron: false, omitNative: false, checkEnvironment: false };
+  const controls = { fail: "", changeSource: false, skippedElectron: false, omitNative: false, omitBoundary: false, checkEnvironment: false };
+  const hostSandbox = { type: "externalSandbox", networkAccess: "restricted", boundaryId: "sha256:" + "c".repeat(64) };
   const dependencies = {
     platform: "darwin", binaryHash: "fixture-binary", session: () => { calls.push("session"); }, electron: () => "/fixture/electron",
     configuration: async () => { calls.push("configuration"); return { okay: true }; },
+    prepareSandbox: (dir: string) => ({ profile: path.join(dir, "scripted-policy.sb"), env: {} }),
     run: async (_command: string, _args: string[], opts: { stdout: string; stderr: string; env: NodeJS.ProcessEnv }) => {
       const name = path.basename(opts.stdout).replace(".stdout.log", ""); calls.push(name);
       if (controls.checkEnvironment) {
@@ -28,9 +30,9 @@ function fixture() {
       if (name === "electron-local") fs.writeFileSync(path.join(evidence, "electron-local.json"), JSON.stringify({ stats: { expected: controls.skippedElectron ? 0 : 4, skipped: controls.skippedElectron ? 4 : 0, unexpected: 0, flaky: 0 } }));
       if (name === "native-offline" && !controls.omitNative) {
         const native = path.join(evidence, "native-offline");
-        fs.writeFileSync(path.join(native, "offline.json"), JSON.stringify({ status: "passed", sha: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(), externalProbe: "EPERM", approvedModelDigest: digest, observedModelDigests: { before: digest, after: digest } }));
+        fs.writeFileSync(path.join(native, "offline.json"), JSON.stringify({ status: "passed", sha: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(), externalProbe: "EPERM", ...(controls.omitBoundary ? {} : { writeProbe: "EPERM", hostSandbox }), approvedModelDigest: digest, observedModelDigests: { before: digest, after: digest } }));
         fs.mkdirSync(path.join(native, "native"));
-        fs.writeFileSync(path.join(native, "native/live-workflow.json"), JSON.stringify({ model: "fixture-coder", contextTokens: 65536, stages: [{ name: "read", status: "completed" }, { name: "approved edit and test", status: "completed" }], approvals: [{ command: "fixture approved write", decision: "yes" }], configurationUnchanged: { bytes: true, mtimeMs: true, tree: true }, realConfiguration: { unchanged: true } }));
+        fs.writeFileSync(path.join(native, "native/live-workflow.json"), JSON.stringify({ model: "fixture-coder", contextTokens: 65536, ...(controls.omitBoundary ? {} : { hostSandbox, boundaryChecks: { externalProbe: "EPERM", writeProbe: "EPERM" } }), stages: [{ name: "read", status: "completed" }, { name: "approved edit and test", status: "completed" }], approvals: [{ command: "fixture approved write", decision: "yes" }], configurationUnchanged: { bytes: true, mtimeMs: true, tree: true }, realConfiguration: { unchanged: true } }));
       }
       return { exitCode: name === controls.fail ? 7 : 0, signal: null, timedOut: false, stdout: `${name} original stdout\n`, stderr: `${name} original stderr\n` };
     },
@@ -100,6 +102,13 @@ test("zero-exit Electron output with every journey skipped cannot qualify", asyn
 
 test("zero-exit native invocation without the actual workflow receipt cannot qualify", async () => {
   const f = fixture(); f.controls.omitNative = true;
+  const result = await qualify(f.options, f.dependencies);
+  assert.equal(result.status, "failed");
+  assert.equal(result.stages.find((s: { name: string }) => s.name === "native-offline").passed, false);
+});
+
+test("zero-exit native receipts without a confirmed host boundary cannot qualify", async () => {
+  const f = fixture(); f.controls.omitBoundary = true;
   const result = await qualify(f.options, f.dependencies);
   assert.equal(result.status, "failed");
   assert.equal(result.stages.find((s: { name: string }) => s.name === "native-offline").passed, false);
