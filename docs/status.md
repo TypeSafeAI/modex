@@ -244,3 +244,7 @@ Roughly in the order they earn their place; none is scheduled.
 - A PR that changes scope updates this page and, for user-facing behaviour, the README.
 - A release's details and evidence go in its review under [`reviews/`](reviews/). This page
   keeps one Shipped row that links it, and the release leaves "In flight".
+
+## CF-3 integration validation
+
+The question-focus repair from #489 and prepared approval/draft regressions are being validated together in the owned `cf3-integration` worktree. Current-main integration results remain pending; #276 and its human acceptance gates remain open.

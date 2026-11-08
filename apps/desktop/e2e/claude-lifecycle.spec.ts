@@ -9,7 +9,7 @@ import { launch, seedHome, tid, items } from "./support";
 // (error_during_execution, aborted_tools) and the CLI exits with code 1 once its input ends. It is a scripted
 // fixture, not live-model evidence.
 
-function fixture(home: string, stage: string): string {
+function fixture(home: string, stage: string, gates?: { arrival: string; finish: string }): string {
   const cli = path.join(home, "claude-lifecycle.cjs");
   fs.writeFileSync(cli, `#!${process.execPath}
 const fs = require('node:fs');
@@ -20,6 +20,7 @@ if (path.basename(process.cwd()).startsWith('modex-title-')) process.exit(1);
 const log = ${JSON.stringify(path.join(home, "claude-stdin.jsonl"))};
 const record = (entry) => fs.appendFileSync(log, JSON.stringify({ pid: process.pid, ...entry }) + '\\n');
 const emit = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+const gates = ${JSON.stringify(gates ?? null)};
 let mode = '', pending = null;
 process.on('SIGTERM', () => { record({ signal: 'SIGTERM' }); process.exit(143); });
 const rl = require('node:readline').createInterface({ input: process.stdin });
@@ -28,7 +29,7 @@ rl.on('line', (line) => {
   record({ msg });
   if (msg.type === 'user') {
     const text = typeof msg.message.content === 'string' ? msg.message.content : '';
-    mode = text.includes('slow') ? 'slow' : text.includes('withdraw') ? 'withdraw' : 'card';
+    mode = gates ? 'draft' : text.includes('slow') ? 'slow' : text.includes('withdraw') ? 'withdraw' : 'card';
     emit({ type: 'system', subtype: 'init', session_id: 's-' + mode, claude_code_version: '2.1.302', capabilities: ['interrupt_receipt_v1'] });
     if (mode === 'slow') {
       // Ignores the interrupt and the end of its input; only SIGTERM ends it.
@@ -39,18 +40,32 @@ rl.on('line', (line) => {
     pending = 'req-' + mode;
     const input = { command: 'touch ' + mode + '.txt' };
     emit({ type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 'tu-' + mode, name: 'Bash', input }] } });
-    emit({ type: 'control_request', request_id: pending, request: { subtype: 'can_use_tool', tool_name: 'Bash', input, tool_use_id: 'tu-' + mode } });
-    if (mode === 'withdraw') {
+    const ask = () => emit({ type: 'control_request', request_id: pending, request: { subtype: 'can_use_tool', tool_name: 'Bash', input, tool_use_id: 'tu-' + mode } });
+    if (gates) {
+      const timer = setInterval(() => { if (fs.existsSync(gates.arrival)) { clearInterval(timer); ask(); } }, 10);
+    } else ask();
+    if (mode === 'withdraw' || gates) {
       const timer = setInterval(() => {
         if (!fs.existsSync(${JSON.stringify(stage)})) return;
         clearInterval(timer);
         emit({ type: 'control_cancel_request', request_id: pending });
         pending = null;
-        emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu-withdraw', content: 'Permission request withdrawn', is_error: true }] } });
+        emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu-' + mode, content: 'Permission request withdrawn', is_error: true }] } });
         emit({ type: 'assistant', message: { id: 'm2', content: [{ type: 'text', text: 'Skipped the file.' }] } });
-        emit({ type: 'result', subtype: 'success', is_error: false, num_turns: 2, session_id: 's-withdraw' });
+        emit({ type: 'result', subtype: 'success', is_error: false, num_turns: 2, session_id: 's-' + mode });
       }, 50);
     }
+    return;
+  }
+  if (gates && msg.type === 'control_response' && msg.response.request_id === pending) {
+    pending = null;
+    const timer = setInterval(() => {
+      if (!fs.existsSync(gates.finish)) return;
+      clearInterval(timer);
+      emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu-draft', content: 'Fixture decision received.' }] } });
+      emit({ type: 'assistant', message: { id: 'm2', content: [{ type: 'text', text: 'Decision received.' }] } });
+      emit({ type: 'result', subtype: 'success', is_error: false, num_turns: 2, session_id: 's-draft' });
+    }, 10);
     return;
   }
   if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'interrupt' && mode !== 'slow') {
@@ -61,7 +76,7 @@ rl.on('line', (line) => {
     emit({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 2, session_id: 's-' + mode, terminal_reason: 'aborted_tools', errors: ['[ede_diagnostic] result_type=user'] });
   }
 });
-rl.on('close', () => { record({ stdin: 'end' }); if (mode !== 'slow') process.exit(1); });
+rl.on('close', () => { record({ stdin: 'end' }); if (mode !== 'slow') process.exit(gates ? 0 : 1); });
 `, { mode: 0o755 });
   return cli;
 }
@@ -144,6 +159,99 @@ test("Claude Stop and withdrawn prompts: cards close inert, Stop ends the CLI, l
     await page.screenshot({ path: test.info().outputPath("claude-lifecycle.png") });
   } finally {
     if (app) await app.close();
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+for (const decision of ["Approve", "Deny", "Stop", "Withdraw"] as const) test(`native approval ${decision} preserves an independent composer draft and attachment`, async () => {
+  const { home, repo } = seedHome({ default_backend: "claude", default_mode: "agent" });
+  const gates = { arrival: path.join(home, "ask-now"), finish: path.join(home, "finish-now") };
+  const statePath = path.join(home, "app/state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  const withdrawal = path.join(home, "withdraw-now");
+  state.settings.claude_bin = fixture(home, withdrawal, gates);
+  fs.writeFileSync(statePath, JSON.stringify(state));
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await launch(home); app = opened.app;
+    const page = opened.page;
+    const threadId = await page.evaluate(async () => {
+      const state = await window.modex!.invoke("state:get", undefined);
+      return (await window.modex!.invoke("thread:create", { projectId: state.projects[0]!.id, backend: "claude", mode: "agent", auto: false })).id;
+    });
+    await page.reload();
+    await page.locator(`[data-testid="thread-row"][data-thread-id="${threadId}"]`).click();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    const draft = "  independent approval draft\nwith whitespace 😀  ";
+    const bytes = "approval draft attachment bytes\nunchanged";
+    const composer = tid(page, "composer-input");
+    await composer.fill(draft);
+    await page.evaluate(bytes => {
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], "approval-draft.txt", { type: "text/plain" }));
+      document.querySelector('[data-testid="composer-input"]')!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    }, bytes);
+    await expect(tid(page, "composer-attachments")).toContainText("approval-draft.txt");
+    const recovery = () => JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.threads.find((row: { threadId: string }) => row.threadId === threadId);
+    await expect.poll(() => recovery()?.attachments.length).toBe(1);
+    const saved = recovery();
+    expect(saved.text).toBe(draft);
+    const assertDraft = async () => {
+      await expect(composer).toHaveValue(draft);
+      await expect(tid(page, "composer-attachments")).toContainText("approval-draft.txt");
+      expect(recovery()).toEqual(saved);
+      expect(fs.readFileSync(path.join(home, "attachments", saved.attachments[0].rel), "utf8")).toBe(bytes);
+    };
+    await composer.focus();
+    // Start through main so the window's separate unsent draft is not consumed.
+    expect(await page.evaluate(threadId => window.modex!.invoke("thread:send", { threadId, text: "card: request permission" }), threadId)).toEqual({ ok: true });
+    await expect(currentRow(page)).toHaveAttribute("data-status", "running");
+    fs.writeFileSync(gates.arrival, "ready");
+    const card = items(page, "approval").first();
+    await expect(card.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
+    await expect(currentRow(page)).toHaveAttribute("data-status", "waiting");
+    await expect(composer).toBeFocused();
+    await assertDraft();
+    expect(answered(home, "req-draft")).toEqual([]);
+    if (decision === "Approve" || decision === "Deny") {
+      await card.getByRole("button", { name: decision, exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(tid(card, "approval-answer")).toHaveText(decision === "Approve" ? "Approved" : "Denied");
+      await expect(tid(card, "approval-answer")).toBeFocused();
+      await expect.poll(() => answered(home, "req-draft").length).toBe(1);
+      expect(answered(home, "req-draft")[0]).toMatchObject({ msg: { response: { response: { behavior: decision === "Approve" ? "allow" : "deny" } } } });
+      await assertDraft();
+      fs.writeFileSync(gates.finish, "ready");
+      await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+      await expect(tid(page, "turn-label")).toBeFocused();
+    } else {
+      if (decision === "Stop") {
+        await tid(page, "stop").focus();
+        await page.keyboard.press("Enter");
+      } else fs.writeFileSync(withdrawal, "ready");
+      await expect(tid(card, "approval-answer")).toHaveText(decision === "Stop" ? "Not answered — the turn was stopped" : "Withdrawn — the agent no longer needs an answer");
+      await expect(card.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+      await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+      await expect(composer).toBeFocused();
+      expect(answered(home, "req-draft")).toHaveLength(0);
+      expect(interrupts(home)).toHaveLength(decision === "Stop" ? 1 : 0);
+      // A stale answer must remain inert and leave the separate draft untouched.
+      await page.evaluate(async threadId => {
+        const transcript = await window.modex!.invoke("thread:items", { threadId });
+        const approval = transcript.find(item => item.kind === "approval")!;
+        await window.modex!.invoke("thread:answer", { threadId, itemId: approval.id, answer: "yes" });
+      }, threadId);
+      expect(answered(home, "req-draft")).toHaveLength(0);
+    }
+    await assertDraft();
+    await page.reload();
+    await assertDraft();
+    const transcript = JSON.parse(fs.readFileSync(path.join(home, "app/threads", `${threadId}.json`), "utf8"));
+    expect(transcript.filter((item: { kind: string }) => item.kind === "user").map((item: { text: string }) => item.text)).toEqual(["card: request permission"]);
+    expect(answered(home, "req-draft")).toHaveLength(decision === "Approve" || decision === "Deny" ? 1 : 0);
+  } finally {
+    await app?.close();
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(repo, { recursive: true, force: true });
   }
