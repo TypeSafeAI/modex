@@ -2,7 +2,26 @@
 
 Status: review-ready local candidate. Signed implementation `5348074cdbcfc15f1584e450273311da41366551` passed fresh build, typecheck, unit, local Electron journeys, full desktop/site E2E and ordinary plus network-denied native read/edit/test qualification. Product execution remains disabled. Human acceptance, admission, activation and publication retain their separate gates. Historical failures below are preserved rather than counted as passes.
 
-## Final qualification on 2026-11-06
+## Runtime requalification on 2026-11-07
+
+Resuming the goal found installed Codex `0.167.0` and Ollama `0.40.15`, so the earlier `0.166.0` / `0.40.14` native results were retained as historical evidence for that pair. Main, producer heads and open PRs were refreshed and unchanged. All 185 archived artifact hashes matched, the owned candidate remained clean, and ownership was reclaimed before running the current tools. The new runs use `e5a0b0da146c51c867ed1e2df3096b15f6c24847`, whose executable source is identical to the original full-suite implementation `5348074`; the intervening change was documentation only.
+
+| Current-configuration check | Result |
+| --- | --- |
+| Desktop build | Passed |
+| Focused execution, boundary, receipt, configuration and credential suites | 52 passed, zero failed or skipped |
+| Installed Codex against scripted loopback Responses | Four passed: real shell read, observed redirect behavior, local inline compaction and queued cancellation with zero queued requests |
+| Local Electron acceptance journeys | Four passed, zero failures, skips or retries; fresh rendered capture inspected |
+| Ordinary real-model smoke | Passed actual read, exact approved edit and independent check through Codex's ordinary sandbox policy |
+| Network-denied real-model smoke | Passed the same native task with both external TCP and outside writes refused as `EPERM` |
+| Configuration and cleanup | Synthetic bytes/mtime/tree and real personal configuration unchanged; runner and owned servers exited, ports closed and temporary homes removed |
+| Prior full suite | Retained with its original date and runtime versions below; not rerun or relabeled as a full-suite result for the new runtime pair |
+
+The exact approved model remains `qwen3-coder:30b`, digest `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca`. Both new owned-server runs observed that digest before and after the task. The host remains Apple M5 Max, arm64, 128 GiB, Darwin `27.2.0`, with Node `24.22.0`, pnpm `10.34.5` and the same verified Electron `44.4.5` binary. Configured/client-effective context and the runtime's observed `n_ctx` were all 65,536. Both native runs approved only `echo LM3-APPROVED-EDIT-8c42 > result.txt` and `node check.cjs`, with the original file-byte and independent zero-exit assertions unchanged. The new offline boundary identity is `sha256:283ce6828beafe6ed56b958ac96af6c11fd5f50be86948a0c90fcb8708c48a20`.
+
+Fresh command logs, native wire/ordinary/offline receipts, rendered artifacts, cleanup and `compatibility.json` are retained under `/Users/buns/.codex/task-evidence/modex-lm-v1-2026-11-04/resume-runtime-drift-20261108T051939Z/`. No application change was required. Product execution remains disabled, human acceptance remains unrun, and admission/activation/publication remain separately authorized gates. The documented host-sandbox mode remains supported by the [official app-server reference](https://learn.chatgpt.com/docs/app-server); the actual current CLI and kernel behavior was verified by these runs.
+
+## Full qualification on 2026-11-06
 
 The final qualifier ran from `2026-11-07T00:20:55.618Z` to `2026-11-07T00:51:47.442Z` on implementation `5348074cdbcfc15f1584e450273311da41366551`, tree `4ce635ed79bf0bb0c772c9f68e3e71f1e9609b7f`. All stages passed without changing tracked source. The subsequent receipt update changes documentation only; it does not claim another whole-tree run on that documentation commit.
 
@@ -40,8 +59,8 @@ The goal requires exact local connection/model identity, main-owned credentials 
 | Field | Observed value | Meaning |
 | --- | --- | --- |
 | Host | Apple M5 Max, arm64, 128 GiB; macOS 27.2 build 26B123, Darwin 27.2.0 | This host only |
-| Ollama | 0.40.14 | Exact runtime in the successful native smokes |
-| Codex | 0.166.0 | Successful effective-configuration reads and native tool execution in the recovered context |
+| Ollama | 0.40.15 in the current native follow-up; 0.40.14 in the original full qualifier | Each result names its own runtime |
+| Codex | 0.167.0 in the current native follow-up; 0.166.0 in the original full qualifier | Both pairs passed effective-configuration reads and native tools in the recovered context |
 | Model | `qwen3-coder:30b`, 30.5B, GGUF Q4_K_M | Download completed after explicit approval |
 | Digest | `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca` | Exact owned-server observations before and after each successful native task |
 | Listed bytes | 18,556,700,761 | Stored model size; loaded size remains unknown |

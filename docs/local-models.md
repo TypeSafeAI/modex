@@ -17,6 +17,8 @@ For admitted fixtures, returning to cloud requires confirmation naming the exact
 
 ### Native qualification and rollback
 
+Treat a compatibility receipt as specific to its CLI/runtime, exact model digest, context, host and configuration. When any of those changes, keep the new combination unverified until its approved native checks run again, and retain the older receipt with its named versions. Fixture results do not qualify a new native runtime combination.
+
 With explicit approval and an installed model, run `pnpm --filter @modex/desktop build:main` in the owned worktree, then run `MODEX_LM3_LIVE=1 MODEX_LM3_URL=http://127.0.0.1:11434/v1 MODEX_LM3_MODEL=qwen3-coder:30b MODEX_LM3_CONTEXT=65536 MODEX_LM3_REPORT=<absolute-evidence-directory> node --test --test-force-exit --test-name-pattern='AC1: a person' dist/test/local-codex-native.test.js` from `apps/desktop`. The smoke reads a sentinel, permits only two exact fixture commands through its approval callback, checks actual edited bytes and a separately seeded test's recorded exit result, and verifies both a synthetic personal configuration and the real user's configuration fingerprint. Harness approval is separate from human acceptance.
 
 A managed-preferences synchronization failure stops before a native thread opens. Check the macOS desktop session and its managed configuration, restore the local execution connection, then confirm that configuration reads succeed before retrying qualification. Minimum CLI version advice applies to an unsupported configuration RPC; a session or configuration failure retains its own cause.
