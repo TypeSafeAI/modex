@@ -17,15 +17,17 @@ if (process.env.MODEX_E2E !== "1" || !home.startsWith(fs.realpathSync(os.tmpdir(
   throw new Error("Local workflow acceptance requires a disposable mock home.");
 }
 const installed = new WeakSet();
+// Only this unpackaged, disposable-home entry point can select the real test transport.
+const native = process.env.MODEX_LM_NATIVE_E2E === "1" ? await import("./local-model-native.mjs") : null;
 function install(runner) {
   if (installed.has(runner)) return;
-  installed.add(runner);
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
 
-  runner.o.localExecution = new LocalExecution(home, connections, "fixture-codex", localWorkflowSpawn);
+  runner.o.localExecution = native ? native.createNativeExecution(home, connections, runner) : new LocalExecution(home, connections, "fixture-codex", localWorkflowSpawn);
   runner.backends.codex = { id: "codex", listModels: async () => [{ id: "fixture-cloud", label: "Fixture Cloud", isDefault: true }],
     health: async () => ({ executable: "available", authentication: "authenticated", access: "available", detail: "Offline fixture" }),
-    dispose: async () => {}, runTurn: async () => { throw new Error("A local fixture reached the cloud backend"); } };
+    dispose: async () => {}, runTurn: async () => { globalThis.__modexLocalNative?.cloudCalled(); throw new Error("A local fixture reached the cloud backend"); } };
+  installed.add(runner);
 }
 for (const method of ["updateThread", "send", "sendDurably", "retry", "listModels", "backend"]) {
   const original = ThreadRunner.prototype[method];

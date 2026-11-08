@@ -409,6 +409,9 @@ export class CodexBackend implements Backend {
       let stopping = false;
       // Set when Codex reroutes a pinned local model: the turn is interrupted and reported failed, never continued (#380).
       let rerouted: { message: string; from: string; to: string } | null = null;
+      // Some native reconnect paths still retry with provider retry counts set to zero.
+      // Local coding must stop on that notification rather than continue after possible effects.
+      let retryRefused: { message: string; nativeError: Record<string, unknown> } | null = null;
       const child = this.child;
       const detail = (extra: Record<string, unknown>): Record<string, unknown> => ({
         codexThreadId: tid, turnId, userAgent: this.userAgent, pid: child?.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
@@ -493,12 +496,12 @@ export class CodexBackend implements Backend {
           if (item.type === "agentMessage") answered = item.phase === "final_answer" && "answer";
           else if (item.type === "plan") answered = "plan";
         }
-        if (answered && !signal.aborted && !rerouted && msg.method !== "turn/completed") {
+        if (answered && !signal.aborted && !rerouted && !retryRefused && msg.method !== "turn/completed") {
           quiet = setTimeout(() => {
             // Codex can go quiet after its final answer or proposed plan without ending the turn (live in
             // codex-cli 0.163.0, default and plan mode). Nothing else is open, so
             // Modex ends it and says so; the interrupt lets Codex close its side.
-            if (done || signal.aborted || rerouted || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
+            if (done || signal.aborted || rerouted || retryRefused || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
             sink.notice("warn", `Codex ${answered === "plan" ? "proposed its plan" : "gave its final answer"} but did not report the turn finished. Modex ended the turn after ${Math.round(this.quietAfterFinalMs / 60_000) || 1} minute${this.quietAfterFinalMs > 60_000 ? "s" : ""} without activity.`);
             interrupt();
             finish({ status: "completed", detail: detail({ endedBy: "modex", quietAfterFinalMs: this.quietAfterFinalMs }) });
@@ -645,15 +648,23 @@ export class CodexBackend implements Backend {
             const e = p.error as Record<string, unknown> | undefined;
             const message = typeof e?.message === "string" ? e.message : null;
             if (!message) break;
-            if (p.willRetry) retried.push(message);
+            if (p.willRetry === true && this.configuration?.local) {
+              if (!retryRefused) {
+                retryRefused = { message: "The local inference connection failed. Automatic retry is disabled; earlier commands may already have run. Select the local target again before continuing.", nativeError: { ...(e ?? {}), at: new Date().toISOString() } };
+                sink.notice("error", retryRefused.message);
+              }
+              interrupt();
+            } else if (p.willRetry) retried.push(message);
             else lastError = { ...(e ?? {}), at: new Date().toISOString() };
             break;
           }
           case "turn/completed": {
             const turn = p.turn as { status: string; error?: { message?: string } | null };
             if (turn.status === "failed") finish({ status: "failed", error: turn.error?.message ?? (lastError?.message as string | undefined) ?? "turn failed", detail: detail({ turnError: turn.error ?? undefined }) });
-            else if (rerouted) {
-              const failure: TurnResult = { status: "failed", error: rerouted.message, detail: detail({ rerouted: { from: rerouted.from, to: rerouted.to } }) };
+            else if (rerouted || retryRefused) {
+              const failure: TurnResult = rerouted
+                ? { status: "failed", error: rerouted.message, detail: detail({ rerouted: { from: rerouted.from, to: rerouted.to } }) }
+                : { status: "failed", error: retryRefused!.message, detail: detail({ retryRefused: retryRefused!.nativeError }) };
               if (commands.size) {
                 stopping = true;
                 clearTimeout(abortTimer);
