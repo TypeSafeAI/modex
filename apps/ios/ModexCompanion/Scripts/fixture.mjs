@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import net from "node:net";
 import http from "node:http";
+import https from "node:https";
 import { randomUUID } from "node:crypto";
 import { Store } from "../../../desktop/dist/src/main/engine/store.js";
 import { ThreadRunner } from "../../../desktop/dist/src/main/engine/runner.js";
@@ -16,6 +17,20 @@ import { EventJournal } from "../../../desktop/dist/src/main/engine/event-journa
 // with what the process did meanwhile: CPU time means our own work, major faults paging, neither a
 // starved process.
 const log = (message) => process.stderr.write(`[fixture ${new Date().toISOString()}] ${message}\n`);
+// Test-process transport fault: consume exactly one armed command GET without answering.
+// The phone's unchanged request timeout must show recovery inside the picker. All other
+// traffic, including snapshot polling and mutations, keeps the real CompanionServer path.
+let stallNextCommands = false;
+const createHttpsServer = https.createServer;
+https.createServer = (options, listener) => createHttpsServer(options, (request, response) => {
+  if (stallNextCommands && request.method === "GET" && request.url?.startsWith("/v1/commands?")) {
+    stallNextCommands = false;
+    log("holding one command GET until the phone times out");
+    request.on("close", () => log("held command GET closed"));
+    return;
+  }
+  listener(request, response);
+});
 let lastTick = performance.now();
 let lastUsage = process.resourceUsage();
 setInterval(() => {
@@ -134,6 +149,12 @@ const resumePath = `/resume/${randomUUID()}`;
 // The test closes a question on the Mac: POST <macPath>/answer or <macPath>/stop.
 const macPath = `/mac/${randomUUID()}`;
 const control = http.createServer(async (request, response) => {
+  if (request.method === "POST" && request.url === `${macPath}/timeout-commands`) {
+    stallNextCommands = true;
+    log("armed one command GET timeout");
+    response.writeHead(204).end();
+    return;
+  }
   if (request.method === "POST" && (request.url === `${macPath}/answer` || request.url === `${macPath}/stop`)) {
     const how = request.url.endsWith("/answer") ? "answer" : "stop";
     const id = macThreads[how];
@@ -174,7 +195,7 @@ const control = http.createServer(async (request, response) => {
 await new Promise((resolve) => control.listen(0, "127.0.0.1", resolve));
 const resumeURL = `http://127.0.0.1:${control.address().port}${resumePath}`;
 const macURL = `http://127.0.0.1:${control.address().port}${macPath}`;
-fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect, resumeURL, macURL }));
+fs.writeFileSync(process.argv[2], JSON.stringify({ link: server.status().pairingUri, reconnect, resumeURL, macURL, defaultProjectName: store.snapshot().projects[0]?.name }));
 
 async function pauseMac() {
   const resumed = new Promise((resolve) => { resumePausedMac = resolve; });
@@ -204,6 +225,7 @@ async function restartMac() {
 
 async function close() {
   closing = true;
+  https.createServer = createHttpsServer;
   clearTimeout(restartTimer);
   resumePausedMac?.();
   await restartTask;
