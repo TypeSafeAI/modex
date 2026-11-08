@@ -53,6 +53,7 @@ struct CompanionRootView: View {
                 newThreadRequest = nil
                 path.append(id)
             }
+            .id(request.id)
         }
         .onChange(of: model.snapshot.threads.map(\.id)) { _, ids in
             path.removeAll { !ids.contains($0) }

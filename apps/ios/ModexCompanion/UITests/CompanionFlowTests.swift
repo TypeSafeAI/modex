@@ -320,6 +320,8 @@ final class CompanionFlowTests: XCTestCase {
         app.buttons["new-thread"].tapWhenReady()
         let newThreadInput = app.inputField("new-thread-input")
         XCTAssertTrue(newThreadInput.waitForExistence(timeout: UITestBudget.seconds(10)))
+        XCTAssertFalse((selectedProject.label + " " + (selectedProject.value as? String ?? "")).contains("empty-project"),
+                       "A fresh global New thread must not keep the cancelled project selection.")
         newThreadInput.typeTextWhenReady("Start from phone", in: app)
         app.buttons["new-thread-commands"].tapWhenReady()
         let commandSearch = app.textFields["Find a skill or command"]
