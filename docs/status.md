@@ -247,4 +247,4 @@ Roughly in the order they earn their place; none is scheduled.
 
 ## CF-3 integration validation
 
-The question-focus repair from #489 and prepared approval/draft regressions are being validated together in the owned `cf3-integration` worktree. Current-main integration results remain pending; #276 and its human acceptance gates remain open.
+The question-focus repair from #489 and prepared approval/draft regressions are being validated together in the owned `cf3-integration` worktree. Signed source candidate `2ef741d` passed build, 2,327 unit tests (26 skipped), workspace typechecks and full E2E (502 desktop passes, 7 skips; 7 site passes). The attachment-corruption negative control failed at the expected byte assertion, and its test was restored. Protected landing remains pending; #276 and its human acceptance gates remain open. [Receipt and acceptance matrix](reviews/2026-11-04-cf3-integration.md).
