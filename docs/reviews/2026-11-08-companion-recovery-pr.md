@@ -27,13 +27,13 @@ Evidence root: `/Users/buns/Documents/Codex/2026-11-08/comp-cmd-2`. Complete loc
 | `pnpm typecheck` | Passed across workspaces |
 | `pnpm run test:coverage` | 2,327 passed, 26 skipped, zero failures; Cobertura retained |
 | Native iPhone unit suite | 63 passed, zero failures/skips |
-| Complete paired run 1 | 44 passed, zero failures/skips |
-| Complete paired run 2 | 44 passed, zero failures/skips |
-| Complete paired run 3 | 44 passed, zero failures/skips |
+| Complete paired run 1 | 44 executed: 43 passed, one intentional expected-failure self-test, zero unexpected failures/skips |
+| Complete paired run 2 | 44 executed: 43 passed, one intentional expected-failure self-test, zero unexpected failures/skips |
+| Complete paired run 3 | 44 executed: 43 passed, one intentional expected-failure self-test, zero unexpected failures/skips |
 | `env CI=1 MODEX_TEST_OPEN_KNOWLEDGE=1 MODEX_SITE_TEST_PORT=55082 pnpm test:e2e` | 505 desktop passed, four live-provider tests skipped; seven site passed; zero failures |
 | Exact candidate verification | Passed; runner exit zero |
 
-Native checks used dedicated iPhone Duo simulator `9C6CF8B1-AC2B-4C6B-9355-F89CA60DF4C5`, iOS 27.2, Xcode 27.2, `MODEX_UI_TIMEOUT_SCALE=4` and separate derived-data/result bundles. XCTest metrics and both named scenario summaries were extracted from each finalized bundle; counts were not inferred from process exit alone. All three runs were consecutive on identical source. The dedicated simulator was shut down before desktop E2E; a second EXIT cleanup logged that it was already shut down.
+Native checks used dedicated iPhone Duo simulator `9C6CF8B1-AC2B-4C6B-9355-F89CA60DF4C5`, iOS 27.2, Xcode 27.2, `MODEX_UI_TIMEOUT_SCALE=4` and separate derived-data/result bundles. XCTest metrics and both named scenario summaries were extracted from each finalized bundle; counts were not inferred from process exit alone. All three runs were consecutive on identical source. Modern summaries and per-test statuses distinguish 43 ordinary passes from the existing intentional `DemoWorkspaceTests/testBestEffortEvidenceDoesNotStopTheTest` expected-failure self-test in each 44-execution suite. Both recovery and fresh-context tests have status Success. Hosted iPhone artifact inspection confirmed the same classification; the final documentation correction does not change iOS inputs. The dedicated simulator was shut down before desktop E2E; a second EXIT cleanup logged that it was already shut down.
 
 First-run screenshots were inspected for inline timeout recovery, the retained skill draft, global project selection and the secret-answer screen with its keyboard dismissed and Send answer visible. Secret content was not visible. Exact trailing-space preservation and secure-field completeness are asserted by XCTest rather than inferred from pixels. `visual-inspection.json` and hashed attachments retain these observations.
 
