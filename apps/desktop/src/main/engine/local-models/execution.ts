@@ -6,7 +6,7 @@ import type { Backend, TurnOptions, TurnResult, TurnSink } from "../backends/typ
 import type { CliExecutable } from "../cli-path.js";
 import { modelKey, threadTarget, type LocalModelRef, type LocalThreadTarget } from "../../../shared/local-models.js";
 import type { LocalConnectionStore } from "./connections.js";
-import { admitLocalConfiguration, type LocalConfigurationProvenance, type LocalHostSandbox } from "./run-policy.js";
+import { admitLocalConfiguration, type LocalConfigurationProvenance, type LocalHostSandbox, type ExpectedLocalConfiguration } from "./run-policy.js";
 import { OLLAMA_CLOUD_NAME, type AdvertisedContext } from "./discovery.js";
 import { redactingSink, TOKEN_MASK } from "./redacting-sink.js";
 
@@ -70,7 +70,7 @@ function truthful(result: TurnResult): TurnResult {
 
 export class LocalExecution {
   /** The child owning each thread's native conversation, with the key it was started for. */
-  private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance }>();
+  private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; validateProfile: () => void; provenance?: LocalConfigurationProvenance }>();
   private readonly services = new Map<string, { busy: boolean; waiting: Set<() => void> }>();
   private disposed = false;
   private readonly hostSandbox?: LocalHostSandbox;
@@ -153,21 +153,33 @@ export class LocalExecution {
       this.validate(thread); // The profile may have changed while this turn waited.
       if (this.disposed) throw new Error("Local execution has stopped. Select the local target again after Modex restarts.");
       refuseProjectConfiguration(opts.cwd);
-      const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd), this.hostSandbox?.boundaryId ?? null]);
+      const directory = fs.realpathSync(opts.cwd);
+      const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd), directory, this.hostSandbox?.boundaryId ?? null]);
       let owned = this.children.get(thread.id);
       if (opts.resume && (!owned || owned.key !== key)) throw new Error("This conversation's native session is gone: the target changed or Modex restarted. Select the local target again to start a fresh conversation.");
       if (owned && owned.key !== key) { await this.forget(thread.id); owned = undefined; }
       if (!owned) {
         const home = this.childHome();
-        const child: { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance } = { key, home, backend: undefined as unknown as CodexBackend };
+        const privateRoot = fs.realpathSync(home), configRoot = fs.realpathSync(path.join(home, ".codex"));
+        const selectedDirectory = path.resolve(opts.cwd);
+        const privateWorkspace = Object.freeze({ directory, configFile: path.join(configRoot, "config.toml") });
+        const validateProfile = () => {
+          try {
+            if (fs.realpathSync(home) === privateRoot && fs.realpathSync(path.join(home, ".codex")) === configRoot
+              && fs.realpathSync(selectedDirectory) === directory) return;
+          } catch { /* A missing or replaced private directory cannot retain the native session. */ }
+          throw new Error("Local execution refused: the workspace or private native profile changed. Select the local target again to start a fresh conversation.");
+        };
+        const child: { key: string; backend: CodexBackend; home: string; validateProfile: () => void; provenance?: LocalConfigurationProvenance } = { key, home, validateProfile, backend: undefined as unknown as CodexBackend };
         const advertised = this.advertisedContext(target.model);
-        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, provenance => {
+        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, privateWorkspace, validateProfile, provenance => {
           child.provenance = { ...provenance, ...(this.hostSandbox ? { hostSandbox: this.hostSandbox } : {}), context: { configured: thread.localContextTokens!, source: "person", effective: thread.localContextTokens!,
             advertised: advertised ? { ...advertised } : "not-checked", loaded: "unknown" } };
         });
         owned = child;
         this.children.set(thread.id, owned);
       }
+      owned.validateProfile();
       // Effort, fast mode and service tiers are cloud-model settings with no local qualification: none is sent.
       return truthful(await owned.backend.runTurn(text, { ...opts, effort: undefined, fast: false }, sink, signal));
     } catch (error) {
@@ -190,7 +202,7 @@ export class LocalExecution {
     return this.children.get(threadId)?.provenance;
   }
 
-  private start(home: string, origin: string, token: string | null, model: string, contextTokens: number, admitted: (provenance: LocalConfigurationProvenance) => void): CodexBackend {
+  private start(home: string, origin: string, token: string | null, model: string, contextTokens: number, privateWorkspace: NonNullable<ExpectedLocalConfiguration["privateWorkspace"]>, validateProfile: () => void, admitted: (provenance: LocalConfigurationProvenance) => void): CodexBackend {
     const env: NodeJS.ProcessEnv = {};
     for (const name of INHERITED_ENV) if (process.env[name]) env[name] = process.env[name];
     Object.assign(env, {
@@ -215,8 +227,8 @@ export class LocalExecution {
       args: settings.flatMap(setting => ["-c", setting]), env,
       redact: text => token ? text.split(token).join(TOKEN_MASK) : text,
       local: { model, provider: PROVIDER_ID, ...(this.hostSandbox ? { externalSandbox: true } : {}),
-        // Before each thread open the child's effective configuration must be exactly this, from these flags alone (#380).
-        admit: reads => admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null })) },
+        // Before each thread open, validate these flags plus only the bound private workspace trust mark (#380).
+        admit: reads => { validateProfile(); admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null, privateWorkspace })); } },
     });
   }
 

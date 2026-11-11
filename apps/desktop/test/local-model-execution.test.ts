@@ -495,3 +495,95 @@ test("AC3: two connection profiles addressing the same service share one slot, a
     assert.equal((await held).status, "completed");
   } finally { await h.execution.dispose(); }
 });
+
+test("native private workspace trust after the first turn preserves the same local child and conversation", async () => {
+  let retainedTrust = false;
+  const h = setup({ configRead: reported => {
+    if (!retainedTrust) return reported;
+    const r = reported as any;
+    const file = path.join(fs.realpathSync(h.children[0]!.opts.env!.CODEX_HOME!), "config.toml");
+    const directory = fs.realpathSync(h.thread.cwd);
+    const layer = r.layers.find((entry: any) => entry.name.type === "user");
+    layer.name.file = file;
+    layer.version = "sha256:private-workspace-trust";
+    layer.config = { projects: { [directory]: { trust_level: "trusted" } } };
+    r.config.projects = structuredClone(layer.config.projects);
+    r.origins[`projects.${directory}.trust_level`] = { name: { ...layer.name }, version: layer.version };
+    return r;
+  } });
+  try {
+    const first = h.execution.backend(h.thread).runTurn("one", h.opts, collectSink().sink, AbortSignal.timeout(2000));
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    h.finish(); assert.equal((await first).status, "completed");
+    retainedTrust = true;
+    child.proc.stdin.on("data", (data: Buffer) => {
+      for (const line of data.toString().trim().split("\n")) {
+        if (JSON.parse(line).method === "turn/start") setTimeout(() => h.finish(), 0);
+      }
+    });
+    const second = await h.execution.backend(h.thread).runTurn("two", { ...h.opts, resume: "native-1" }, collectSink().sink, AbortSignal.timeout(2000));
+    assert.equal(second.status, "completed", second.error);
+    assert.equal(h.children.length, 1);
+    assert.equal(child.proc.sent(m => m.method === "thread/start").length, 1);
+    assert.equal(child.proc.sent(m => m.method === "thread/resume").length, 0);
+    assert.equal(child.proc.sent(m => m.method === "turn/start").length, 2);
+  } finally { await h.execution.dispose(); }
+});
+
+for (const swapped of ["private home", "private home with retained path", "private config with retained path", "workspace symlink"] as const) {
+  test(`a retained private trust entry cannot authorize a rebound ${swapped}`, async () => {
+    let retainedTrust = false;
+    let retainedPrivateFile = "";
+    const h = setup({ configRead: reported => {
+      if (!retainedTrust) return reported;
+      const r = reported as any;
+      const layer = r.layers.find((entry: any) => entry.name.type === "user");
+      layer.name.file = swapped.includes("retained path") ? retainedPrivateFile
+        : path.join(fs.realpathSync(h.children[0]!.opts.env!.CODEX_HOME!), "config.toml");
+      layer.version = "sha256:private-workspace-trust";
+      layer.config = { projects: { [originalDirectory]: { trust_level: "trusted" } } };
+      r.config.projects = structuredClone(layer.config.projects);
+      r.origins[`projects.${originalDirectory}.trust_level`] = { name: { ...layer.name }, version: layer.version };
+      return r;
+    } });
+    const originalDirectory = fs.realpathSync(h.thread.cwd);
+    if (swapped === "workspace symlink") {
+      const alias = path.join(tmpdir("lm3-trust-alias-"), "selected");
+      fs.symlinkSync(h.thread.cwd, alias, "junction");
+      h.thread.cwd = alias; h.opts.cwd = alias;
+    }
+    try {
+      const first = h.execution.backend(h.thread).runTurn("one", h.opts, collectSink().sink, AbortSignal.timeout(2000));
+      const child = await h.spawned(); await child.proc.waitFor(line => line.includes('"turn/start"'));
+      h.finish(); assert.equal((await first).status, "completed");
+      retainedPrivateFile = path.join(fs.realpathSync(child.opts.env!.CODEX_HOME!), "config.toml");
+      const readsBefore = child.proc.sent(m => m.method === "config/read").length;
+      retainedTrust = true;
+      if (swapped.startsWith("private home")) {
+        const privateRoot = child.opts.env!.HOME!;
+        const replacement = tmpdir("lm3-foreign-private-"); fs.mkdirSync(path.join(replacement, ".codex"));
+        fs.renameSync(privateRoot, `${privateRoot}-original`);
+        fs.symlinkSync(replacement, privateRoot, "junction");
+      } else if (swapped.startsWith("private config")) {
+        const privateConfig = child.opts.env!.CODEX_HOME!;
+        fs.renameSync(privateConfig, `${privateConfig}-original`);
+        fs.symlinkSync(tmpdir("lm3-foreign-config-"), privateConfig, "junction");
+      } else {
+        assert.equal(fs.lstatSync(h.thread.cwd).isSymbolicLink(), true);
+        fs.unlinkSync(h.thread.cwd);
+        fs.symlinkSync(tmpdir("lm3-other-workspace-"), h.thread.cwd, "junction");
+      }
+      child.proc.stdin.on("data", (data: Buffer) => {
+        for (const line of data.toString().trim().split("\n")) {
+          if (JSON.parse(line).method === "turn/start") setTimeout(() => h.finish(), 0);
+        }
+      });
+      const second = await h.execution.backend(h.thread).runTurn("two", { ...h.opts, resume: "native-1" }, collectSink().sink, AbortSignal.timeout(2000));
+      assert.equal(second.status, "failed");
+      assert.equal(child.proc.sent(m => m.method === "config/read").length, readsBefore, "refuse before reading a replacement private profile");
+      assert.equal(child.proc.sent(m => m.method === "turn/start").length, 1, "no second inference after an identity changed");
+      assert.equal(h.children.length, 1);
+    } finally { await h.execution.dispose(); }
+  });
+}

@@ -123,3 +123,51 @@ for (const flag of ["multi_agent", "multi_agent_v2"] as const) {
     });
   }
 }
+
+const PRIVATE_WORKSPACE = { directory: "/repo", configFile: "/tmp/process-x/.codex/config.toml" };
+function privateWorkspaceTrust(): ConfigRead {
+  const r = read();
+  const layer = r.layers![1]!;
+  layer.version = "sha256:private-workspace-trust";
+  layer.config = { projects: { "/repo": { trust_level: "trusted" } } };
+  r.config.projects = structuredClone((layer.config as { projects: unknown }).projects);
+  r.origins["projects./repo.trust_level"] = { name: layer.name, version: layer.version };
+  return r;
+}
+
+test("a main-bound private config may retain only the current workspace's exact native trust entry", () => {
+  const expected = { ...EXPECTED, privateWorkspace: PRIVATE_WORKSPACE };
+  const admitted = admitLocalConfiguration(privateWorkspaceTrust(), { requirements: null }, expected);
+  assert.deepEqual((admitted as unknown as Record<string, unknown>).privateWorkspaceTrust, { scope: "current-workspace", level: "trusted" });
+  assert.throws(() => admitLocalConfiguration(privateWorkspaceTrust(), { requirements: null }, EXPECTED), /projects/);
+});
+
+test("private workspace trust cannot admit another path, layer, setting, version or managed policy", () => {
+  const expected = { ...EXPECTED, privateWorkspace: PRIVATE_WORKSPACE };
+  const cases: [string, (r: ConfigRead) => void][] = [
+    ["foreign workspace", r => { r.layers![1]!.config = { projects: { "/other": { trust_level: "trusted" } } }; }],
+    ["extra workspace", r => { (r.layers![1]!.config as any).projects["/other"] = { trust_level: "trusted" }; }],
+    ["extra user setting", r => { (r.layers![1]!.config as any).model = "cloud"; }],
+    ["extra project setting", r => { (r.layers![1]!.config as any).projects["/repo"].model_provider = "cloud"; }],
+    ["unqualified trust value", r => { (r.layers![1]!.config as any).projects["/repo"].trust_level = "untrusted"; }],
+    ["wrong private config file", r => { r.layers![1]!.name.file = "/person/.codex/config.toml"; }],
+    ["origin file mismatch", r => { r.origins["projects./repo.trust_level"] = { name: { type: "user", file: "/person/.codex/config.toml" }, version: r.layers![1]!.version }; }],
+    ["origin version mismatch", r => { r.origins["projects./repo.trust_level"]!.version = "sha256:stale"; }],
+    ["effective trust mismatch", r => { r.config.projects = { "/repo": { trust_level: "untrusted" } }; }],
+    ["extra effective workspace", r => { (r.config.projects as any)["/other"] = { trust_level: "trusted" }; }],
+    ["duplicate user layer", r => { r.layers!.push(structuredClone(r.layers![1]!)); }],
+    ["non-null profile", r => { r.layers![1]!.name.profile = "other"; }],
+    ["missing origin", r => { delete r.origins["projects./repo.trust_level"]; }],
+    ["missing layer version", r => { (r.layers![1] as any).version = undefined; }],
+    ["malformed project", r => { (r.layers![1]!.config as any).projects["/repo"] = ["trusted"]; }],
+    ["malformed origin", r => { (r.origins["projects./repo.trust_level"] as any).name = null; }],
+    ["disabled private user layer", r => { r.layers![1]!.disabledReason = "not active"; }],
+    ["project layer", r => { r.layers!.push({ name: { type: "project", dotCodexFolder: "/repo/.codex" }, version: "sha256:project", config: {} }); }],
+    ["managed trust origin", r => { r.origins["projects./repo.trust_level"] = { name: { type: "system", file: "/etc/codex/config.toml" }, version: r.layers![1]!.version }; }],
+  ];
+  for (const [name, change] of cases) {
+    const r = privateWorkspaceTrust(); change(r);
+    assert.throws(() => admitLocalConfiguration(r, { requirements: null }, expected), (error: unknown) => error instanceof Error, name);
+  }
+  assert.throws(() => admitLocalConfiguration(privateWorkspaceTrust(), { requirements: { allowedSandboxModes: ["read-only"] } }, expected), /managed requirements/);
+});
