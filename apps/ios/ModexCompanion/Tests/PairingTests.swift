@@ -41,4 +41,34 @@ final class PairingTests: XCTestCase {
             XCTAssertThrowsError(try Pairing.from(link: "modex://pair?data=\(encoded)"))
         }
     }
+#if DEBUG
+    func testTrustDiagnosticsStaySilentWithoutExplicitLaunchFlag() {
+        var messages: [String] = []
+        let observer = CompanionTrustObservation(arguments: ["ModexCompanion", "--other-option"], write: { messages.append($0) })
+        observer.record(.callbackEnter)
+        observer.record(.acceptPin)
+        XCTAssertTrue(messages.isEmpty)
+    }
+
+    func testTrustDiagnosticsContainOnlyOneCorrelationAndFixedPhases() {
+        var messages: [String] = []
+        let observer = CompanionTrustObservation(arguments: ["ModexCompanion", "--modex-trust-diagnostics"], write: { messages.append($0) })
+        let phases: [CompanionTrustObservation.Phase] = [.callbackEnter, .chainStart, .chainReturn, .acceptPin, .completionReturn]
+        phases.forEach { observer.record($0) }
+        XCTAssertEqual(messages.count, phases.count)
+        let identifiers = messages.compactMap { message -> String? in
+            let fields = message.split(separator: " ")
+            guard fields.count == 3, fields[0] == "MODEX_PAIRING_TLS", fields[1].hasPrefix("observer="), fields[2].hasPrefix("phase=") else { return nil }
+            return String(fields[1].dropFirst("observer=".count))
+        }
+        XCTAssertEqual(identifiers.count, phases.count)
+        XCTAssertEqual(Set(identifiers).count, 1)
+        XCTAssertNotNil(identifiers.first.flatMap(UUID.init(uuidString:)))
+        for (message, phase) in zip(messages, phases) { XCTAssertTrue(message.hasSuffix(" phase=\(phase.rawValue)")) }
+        var second: [String] = []
+        CompanionTrustObservation(arguments: ["--modex-trust-diagnostics"], write: { second.append($0) }).record(.rejectPin)
+        XCTAssertNotEqual(second.first?.split(separator: " ")[1], messages.first?.split(separator: " ")[1])
+    }
+#endif
+
 }

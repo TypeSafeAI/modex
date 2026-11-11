@@ -211,3 +211,34 @@ test("a discovery failure that repeats the token in its status, headers or body 
     } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
   }
 });
+
+test("a reflected local token stays absent from an actual saved Task Note and read-only reopened record", async () => {
+  let turns = 0;
+  const h = await setup((proc, done) => {
+    turns++;
+    proc.emitLine({ method: "item/started", params: { threadId: "native-1", turnId: "turn", item: { type: "agentMessage", id: "export-answer", text: "", phase: "final_answer" } } });
+    proc.emitLine({ method: "item/agentMessage/delta", params: { threadId: "native-1", turnId: "turn", itemId: "export-answer", delta: `EXPORT-MARK ${TOKEN}` } });
+    proc.emitLine({ method: "item/completed", params: { threadId: "native-1", turnId: "turn", item: { type: "agentMessage", id: "export-answer", text: `EXPORT-MARK ${TOKEN}`, phase: "final_answer" } } });
+    done("completed");
+  });
+  try {
+    await h.runner.send(h.thread.id, "read");
+    const turnId = h.runner.items(h.thread.id).find(item => item.kind === "user")!.id;
+    const itemsBefore = JSON.stringify(h.runner.items(h.thread.id));
+    const saved = h.runner.saveTaskNote(h.thread.id, turnId);
+    const note = h.store.space.list().find(page => page.id === saved.pageId)!;
+    assert.ok(note.markdown.includes("EXPORT-MARK"), "observed output must actually reach the exported Note");
+    const reopened = h.runner.taskNote(saved.pageId)!;
+    assert.ok(JSON.stringify(reopened.record).includes("EXPORT-MARK"), "the read-only record must retain the exported answer");
+    for (const text of [note.markdown, JSON.stringify(reopened)]) {
+      assert.equal(text.includes(TOKEN), false);
+      assert.equal(text.includes(TOKEN.slice(-8)), false);
+    }
+    assertNoToken(h, /EXPORT-MARK/);
+    const again = h.runner.saveTaskNote(h.thread.id, turnId);
+    assert.equal(again.pageId, saved.pageId);
+    assert.equal(again.created, false);
+    assert.equal(turns, 1, "save, repeat-save and reopen must execute no further inference");
+    assert.equal(JSON.stringify(h.runner.items(h.thread.id)), itemsBefore);
+  } finally { await h.runner.dispose(); }
+});
