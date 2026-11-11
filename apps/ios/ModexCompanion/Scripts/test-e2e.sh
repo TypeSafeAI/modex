@@ -38,5 +38,8 @@ if [[ -z "$xctestrun" ]]; then echo "Xcode did not create an iPhone test plan." 
 # UITestBudget in UITests/XCUIElement+Ready.swift). Every UI-test wait is multiplied by this;
 # xcodebuild hands TEST_RUNNER_* variables to the test runner's environment.
 timeout_scale="${MODEX_UI_TIMEOUT_SCALE:-1}"
+mkdir -p "$derived_data/Logs/Test"
+result_bundle="$derived_data/Logs/Test/Paired-$(date -u +%Y%m%dT%H%M%SZ)-$$.xcresult"
 TEST_RUNNER_MODEX_UI_TIMEOUT_SCALE="$timeout_scale" xcodebuild -xctestrun "$xctestrun" -destination "$destination" \
+  -resultBundlePath "$result_bundle" \
   -parallel-testing-enabled NO -only-testing:ModexCompanionUITests/DemoWorkspaceTests -only-testing:ModexCompanionUITests/CompanionFlowTests test-without-building

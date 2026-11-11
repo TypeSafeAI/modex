@@ -278,6 +278,59 @@ final class CompanionFlowTests: XCTestCase {
         }
     }
 
+    func testFreshNewThreadRequestsUseTheirOwnProjectContext() throws {
+        continueAfterFailure = false
+        guard let file = Bundle(for: Self.self).url(forResource: "LocalPairing", withExtension: "json"),
+              let data = try? Data(contentsOf: file),
+              let fixture = try? JSONDecoder().decode(Fixture.self, from: data) else {
+            throw XCTSkip("Run Scripts/test-e2e.sh with the paired Mac fixture.")
+        }
+        let defaultProject = try XCTUnwrap(fixture.defaultProjectName, "The fixture must name the first snapshot project, which is the global sheet's default.")
+        let prompts = answerSystemAlertsDuringActions()
+        defer { removeUIInterruptionMonitor(prompts) }
+        let app = XCUIApplication()
+        app.launch()
+        defer { app.terminate() }
+        let pair = app.buttons["pair-button"]
+        if !pair.waitForExistence(timeout: UITestBudget.seconds(5)) { forgetMac(app) }
+        pair.tapWhenReady()
+        let link = app.inputField("pairing-link-input")
+        link.typeTextWhenReady(fixture.link, in: app)
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.exists {
+            keyboard.buttons["Done"].tapWhenReady()
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: UITestBudget.seconds(5)))
+        }
+        app.buttons["connect-button"].tapWhenReady()
+        XCTAssertTrue(app.buttons["thread-abcdef12"].appears(within: UITestBudget.seconds(20)))
+
+        let draft = "Keep this unsent draft across sheet requests"
+        for attempt in 0..<3 {
+            let projectAction = app.buttons["New thread in empty-project"]
+            if !projectAction.isReadyToTap { app.swipeUp() }
+            projectAction.tapWhenReady()
+            let selection = app.buttons["new-thread-project"]
+            XCTAssertTrue(selection.waitForExistence(timeout: UITestBudget.seconds(10)))
+            XCTAssertTrue((selection.label + " " + (selection.value as? String ?? "")).contains("empty-project"), "Each project-specific request must select that project.")
+            let input = app.inputField("new-thread-input")
+            if attempt == 0 { input.typeTextWhenReady(draft, in: app) }
+            app.buttons["Cancel"].tapWhenReady()
+            XCTAssertTrue(input.waitForNonExistence(timeout: UITestBudget.seconds(10)))
+
+            let globalAction = app.buttons["new-thread"]
+            if !globalAction.isReadyToTap { app.swipeDown() }
+            globalAction.tapWhenReady()
+            XCTAssertTrue(selection.waitForExistence(timeout: UITestBudget.seconds(10)))
+            XCTAssertTrue((selection.label + " " + (selection.value as? String ?? "")).contains(defaultProject), "A global request must use the first snapshot project, independently of the cancelled project-specific sheet.")
+            XCTAssertEqual(input.value as? String, draft, "A fresh context must preserve the model-owned unsent draft.")
+            attachScreenshot(of: app, named: "Fresh global project context \(attempt + 1)")
+            app.buttons["Cancel"].tapWhenReady()
+            XCTAssertTrue(input.waitForNonExistence(timeout: UITestBudget.seconds(10)))
+        }
+        forgetMac(app)
+        XCTAssertTrue(pair.waitForExistence(timeout: UITestBudget.seconds(10)))
+    }
+
     func testPairApproveAndFollowUpThroughTheMac() throws {
         continueAfterFailure = false
         guard let file = Bundle(for: Self.self).url(forResource: "LocalPairing", withExtension: "json"),
@@ -298,6 +351,12 @@ final class CompanionFlowTests: XCTestCase {
         let link = app.inputField("pairing-link-input")
         XCTAssertTrue(link.waitForExistence(timeout: UITestBudget.seconds(10)))
         link.typeTextWhenReady(fixture.link, in: app)
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.exists {
+            keyboard.buttons["Done"].tapWhenReady()
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: UITestBudget.seconds(5)), "Done must dismiss the pairing-link keyboard before connecting.")
+        }
+        attachScreenshot(of: app, named: "Pairing form before Connect")
         app.buttons["connect-button"].tapWhenReady()
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -321,14 +380,23 @@ final class CompanionFlowTests: XCTestCase {
         let newThreadInput = app.inputField("new-thread-input")
         XCTAssertTrue(newThreadInput.waitForExistence(timeout: UITestBudget.seconds(10)))
         newThreadInput.typeTextWhenReady("Start from phone", in: app)
+        let mac = try XCTUnwrap(fixture.macURL.flatMap(URL.init(string:)))
+        XCTAssertEqual(try postToLoopback(mac.appendingPathComponent("timeout-commands"), timeout: UITestBudget.seconds(10)), 204)
         app.buttons["new-thread-commands"].tapWhenReady()
         let commandSearch = app.textFields["Find a skill or command"]
         XCTAssertTrue(commandSearch.waitForExistence(timeout: UITestBudget.seconds(10)))
         commandSearch.typeTextWhenReady("mobile-check", in: app)
+        let retryCommands = app.buttons["retry-commands"]
+        XCTAssertTrue(retryCommands.waitForExistence(timeout: UITestBudget.seconds(10)), "A timed-out command GET must offer explicit recovery in the picker.")
+        XCTAssertEqual(commandSearch.value as? String, "mobile-check", "A failed read must preserve the command search.")
+        XCTAssertFalse(app.alerts["Connection issue"].exists, "The command error must not dismiss the draft's sheets.")
+        attachScreenshot(of: app, named: "Command timeout recovery")
+        retryCommands.tapWhenReady()
         let mobileSkill = app.staticTexts["$mobile-check"]
         XCTAssertTrue(mobileSkill.waitForExistence(timeout: UITestBudget.seconds(10)), "The Mac's project skill should appear for Codex.")
         mobileSkill.tapWhenReady()
         XCTAssertTrue(commandSearch.waitForNonExistence(timeout: UITestBudget.seconds(10)), "The skill sheet must finish dismissing before submitting.")
+        XCTAssertEqual(newThreadInput.value as? String, "Start from phone $mobile-check ", "Recovery must preserve the exact draft and insert the skill once.")
         attachScreenshot(of: app, named: "New thread on iPhone")
         app.buttons["create-thread"].tapWhenReady()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Follow-up received: Start from phone $mobile-check")).firstMatch.appears(within: UITestBudget.seconds(20)))
@@ -445,6 +513,11 @@ final class CompanionFlowTests: XCTestCase {
         token.typeText(secret)
         // A secure field reads back as one bullet per character; wait for the last keystroke.
         XCTAssertTrue(waitUntil(timeout: UITestBudget.seconds(10)) { (token.value as? String)?.count == secret.count }, "The secure field received every character.")
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.waitForExistence(timeout: UITestBudget.seconds(2)) {
+            keyboard.buttons["Done"].tapWhenReady()
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: UITestBudget.seconds(5)), "Done must dismiss the secret-answer keyboard before sending.")
+        }
         attachScreenshot(of: app, named: "Question answered on iPhone")
         send.tapWhenReady()
 
@@ -534,7 +607,7 @@ final class CompanionFlowTests: XCTestCase {
         }
     }
 
-    private struct Fixture: Decodable { let link: String; let reconnect: Bool?; let resumeURL: String?; let macURL: String? }
+    private struct Fixture: Decodable { let link: String; let reconnect: Bool?; let resumeURL: String?; let macURL: String?; let defaultProjectName: String? }
 }
 
 /// 127.0.0.1 with port 0, for `bind` to pick an ephemeral port.

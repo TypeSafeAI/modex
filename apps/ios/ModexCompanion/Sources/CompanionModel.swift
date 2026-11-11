@@ -47,6 +47,7 @@ import SwiftUI
     private var answerOperation: UUID?
     private var commandOperation: UUID?
     private var commandContext: String?
+    @Published private var commandFailure: (context: String, message: String)?
 
     init(store: any PairingStorage = PairingStore(), discovery: (any CompanionDiscovery)? = nil, defaults: UserDefaults = .standard, makeClient: @escaping (Pairing) -> any CompanionClient = { CompanionAPI(pairing: $0) }) {
         self.store = store
@@ -218,6 +219,7 @@ import SwiftUI
         answerOperation = nil
         commandOperation = nil
         commandContext = nil
+        commandFailure = nil
         retrySavedEndpoint = false
         sending = false
         answeringId = nil
@@ -372,7 +374,9 @@ import SwiftUI
         let operation = UUID()
         let context = "\(projectId)\u{0}\(backend)"
         commandOperation = operation
-        if commandContext != context { commands = [] }
+        commandContext = context
+        commands = []
+        commandFailure = nil
         do {
             let result = try await api.commands(projectId: projectId, backend: backend)
             if connection == connectionRevision, commandOperation == operation, !Task.isCancelled {
@@ -380,12 +384,18 @@ import SwiftUI
                 commandContext = context
             }
         } catch {
-            if connection == connectionRevision, commandOperation == operation, !Task.isCancelled, !revokeIfNeeded(error) { self.error = error.localizedDescription }
+            if connection == connectionRevision, commandOperation == operation, !Task.isCancelled, !revokeIfNeeded(error) {
+                commandFailure = (context, error.localizedDescription)
+            }
         }
     }
 
     func availableCommands(projectId: String, backend: String) -> [CompanionCommand] {
         commandContext == "\(projectId)\u{0}\(backend)" ? commands : []
+    }
+
+    func commandError(projectId: String, backend: String) -> String? {
+        commandFailure?.context == "\(projectId)\u{0}\(backend)" ? commandFailure?.message : nil
     }
 
     func answer(itemId: String, approve: Bool) async {

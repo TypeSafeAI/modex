@@ -422,6 +422,76 @@ import XCTest
         XCTAssertTrue(model.availableCommands(projectId: "p", backend: "codex").isEmpty)
     }
 
+    func testCommandTimeoutKeepsTheDraftAndDoesNotPresentTheRootAlert() async {
+        let (model, client) = fixture()
+        model.newThreadDraft = "Start from phone"
+        let pending = Pending<[CompanionCommand]>(requested: expectation(description: "commands time out"))
+        await client.enqueueCommands(pending)
+        let request = Task { await model.loadCommands(projectId: "p", backend: "codex") }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        await pending.resolve(.failure(URLError(.timedOut)))
+        await request.value
+
+        XCTAssertNil(model.error, "A command-list failure must stay in the picker; the root alert dismisses the new-thread sheet.")
+        XCTAssertNotNil(model.commandError(projectId: "p", backend: "codex"))
+        XCTAssertNil(model.commandError(projectId: "other", backend: "codex"))
+        XCTAssertNil(model.commandError(projectId: "p", backend: "claude"))
+        XCTAssertEqual(model.newThreadDraft, "Start from phone")
+        XCTAssertTrue(model.availableCommands(projectId: "p", backend: "codex").isEmpty)
+        XCTAssertNil(client.createdText, "Loading skills must never submit the draft.")
+        let beforeRetry = await client.calls
+        XCTAssertEqual(beforeRetry, ["commands:p:codex"], "A failed read must not retry itself.")
+
+        let retry = Pending<[CompanionCommand]>(requested: expectation(description: "explicit command retry"))
+        await client.enqueueCommands(retry)
+        let retried = Task { await model.loadCommands(projectId: "p", backend: "codex") }
+        await fulfillment(of: [retry.requested], timeout: 2)
+        XCTAssertNil(model.commandError(projectId: "p", backend: "codex"))
+        let command = CompanionCommand(id: "skill:mobile-check", title: "mobile-check", detail: "Verify", insertion: "$mobile-check ", kind: "skill")
+        await retry.resolve(.success([command]))
+        await retried.value
+        XCTAssertEqual(model.availableCommands(projectId: "p", backend: "codex"), [command])
+        XCTAssertEqual(model.newThreadDraft, "Start from phone")
+        XCTAssertNil(client.createdText, "Retrying a read must not submit the draft either.")
+        let afterRetry = await client.calls
+        XCTAssertEqual(afterRetry, ["commands:p:codex", "commands:p:codex"])
+    }
+
+    func testLateCommandFailureCannotReplaceAnotherProjectsResults() async {
+        let (model, client) = fixture()
+        let old = Pending<[CompanionCommand]>(requested: expectation(description: "old project commands"))
+        let current = Pending<[CompanionCommand]>(requested: expectation(description: "new project commands"))
+        await client.enqueueCommands(old)
+        await client.enqueueCommands(current)
+        let previous = Task { await model.loadCommands(projectId: "p", backend: "codex") }
+        await fulfillment(of: [old.requested], timeout: 2)
+        let next = Task { await model.loadCommands(projectId: "other", backend: "codex") }
+        await fulfillment(of: [current.requested], timeout: 2)
+        let command = CompanionCommand(id: "skill:other", title: "other", detail: "Other project", insertion: "$other ", kind: "skill")
+        await current.resolve(.success([command]))
+        await next.value
+        await old.resolve(.failure(URLError(.timedOut)))
+        await previous.value
+        XCTAssertEqual(model.availableCommands(projectId: "other", backend: "codex"), [command])
+        XCTAssertNil(model.commandError(projectId: "other", backend: "codex"))
+        XCTAssertNil(model.commandError(projectId: "p", backend: "codex"))
+        XCTAssertNil(model.error)
+    }
+
+    func testCommandRevocationStillForgetsTheMac() async {
+        let (model, client) = fixture()
+        let pending = Pending<[CompanionCommand]>(requested: expectation(description: "commands revoked"))
+        await client.enqueueCommands(pending)
+        let request = Task { await model.loadCommands(projectId: "p", backend: "codex") }
+        await fulfillment(of: [pending.requested], timeout: 2)
+        await pending.resolve(.failure(CompanionError.accessRevoked))
+        await request.value
+        XCTAssertNil(model.pairing)
+        XCTAssertFalse(model.connected)
+        XCTAssertNotNil(model.error, "Revocation must retain the existing pairing recovery alert.")
+        XCTAssertNil(model.commandError(projectId: "p", backend: "codex"))
+    }
+
     func testCancelledCommandPickerDoesNotPublishResultsOrErrors() async {
         let command = CompanionCommand(id: "skill:old", title: "old", detail: "Skill", insertion: "$old ", kind: "skill")
         for result: Result<[CompanionCommand], Error> in [.success([command]), .failure(CancellationError())] {
@@ -435,6 +505,7 @@ import XCTest
             await request.value
             XCTAssertNil(model.error)
             XCTAssertTrue(model.commands.isEmpty)
+            XCTAssertNil(model.commandError(projectId: "p", backend: "codex"))
         }
     }
 
@@ -905,6 +976,7 @@ private actor ControlledClient: CompanionClient {
         return createdThread!
     }
     func commands(projectId: String, backend: String) async throws -> [CompanionCommand] {
+        calls.append("commands:\(projectId):\(backend)")
         if !commandLists.isEmpty { return try await commandLists.removeFirst().value() }
         return []
     }
