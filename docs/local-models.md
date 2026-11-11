@@ -243,6 +243,8 @@ other destinations were not monitored, so none of this establishes that no other
 
 Evidence: [LM-5 fixtures](reviews/2026-11-01-lm5-fixtures.md).
 
+Recognized local context-limit failures now explain how to continue in a new local conversation with less context, retain the native diagnostic, and warn that earlier commands may already have run. They remain failed and cause no automatic resend or model switch. Installed Codex 0.167.0 fixtures cover typed, HTTP and streamed overflow forms, including Ollama's observed null-code JSON; these do not establish real-model compaction recovery. The retained real dense-input run still overflowed after native compaction. [Current repair, qualification and limits](reviews/2026-11-11-local-context-overflow.md).
+
 ## Accepted boundary and follow-up runtime availability
 
 Val accepted narrow Gate A and separately approved the AGENTS metadata boundary in this task on 2026-10-24. The [acceptance and runtime-availability receipt](reviews/2026-10-24-lm1-acceptance.md) records the exact producer SHA, approval scope and authorized installed-model inventory. The accepted producer and Strata evidence may be consumed by LM-2/LM-3; acceptance does not qualify Plan, fresh-process resume, other runtimes, offline operation or UI.

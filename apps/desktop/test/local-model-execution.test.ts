@@ -459,6 +459,69 @@ test("a local 500 reported only by the error notification is still the local ser
   } finally { await h.execution.dispose(); }
 });
 
+// The first case preserves the real Ollama 0.40.16 HTTP 400 body captured after
+// native Codex 0.167.0 compaction; the other cases cover the negotiated native form.
+for (const [name, nativeError, notificationOnly] of [
+  ["captured Ollama overflow", { message: '{"error":{"message":"request (73800 tokens) exceeds the available context size (65536 tokens), try increasing it","type":"invalid_request_error","param":null,"code":null}}\n', codexErrorInfo: "other", additionalDetails: null }, false],
+  ["native typed overflow", { message: "Your input exceeds the context window of this model.", codexErrorInfo: "contextWindowExceeded", additionalDetails: null }, false],
+  ["notification-only typed overflow", { message: "Your input exceeds the context window of this model.", codexErrorInfo: "contextWindowExceeded", additionalDetails: null }, true],
+] as const) {
+  test(`a ${name} explains local context recovery and retains the native diagnostic without resending`, async () => {
+    const h = setup();
+    try {
+      const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+      const child = await h.spawned(); await child.proc.waitFor(line => line.includes('"turn/start"'));
+      child.proc.emitLine({ method: "error", params: { threadId: "native-1", turnId: "turn", error: nativeError, willRetry: false } });
+      child.proc.emitLine({ method: "turn/completed", params: { threadId: "native-1", turn: { id: "turn", status: "failed", error: notificationOnly ? null : nativeError } } });
+      const result = await run;
+      assert.equal(result.status, "failed");
+      assert.match(result.error!, /local model.*context limit/i);
+      assert.match(result.error!, /new local conversation.*less context/i);
+      assert.match(result.error!, /earlier commands may already have run/i);
+      assert.match(result.error!, /didn't retry the turn or switch models/i);
+      assert.doesNotMatch(result.error!, /invalid_request_error|\{"error"/);
+      const detail = result.detail as { turnError?: { message?: string }; errorNotification?: { message?: string } };
+      assert.equal((detail.turnError ?? detail.errorNotification)?.message, nativeError.message);
+      assert.equal(h.children.length, 1);
+      assert.equal(child.proc.sent(m => m.method === "turn/start").length, 1);
+      assert.equal(child.proc.sent(m => m.method === "turn/start")[0]!.params.model, MODEL);
+    } finally { await h.execution.dispose(); }
+  });
+}
+
+for (const message of [
+  '{"error":{"message":"unsupported parameter: context size","type":"invalid_request_error","code":null}}',
+  'tool failed while reading a file about context_length_exceeded',
+  '{"error":{"message":"request (73800 tokens) exceeds the available context size (65536 tokens)"}',
+]) {
+  test(`an unrelated or malformed failure is not relabelled as a local context limit: ${message}`, async () => {
+    const h = setup();
+    try {
+      const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+      const child = await h.spawned(); await child.proc.waitFor(line => line.includes('"turn/start"'));
+      child.proc.emitLine({ method: "turn/completed", params: { threadId: "native-1", turn: { id: "turn", status: "failed", error: { message, codexErrorInfo: "other" } } } });
+      const result = await run;
+      assert.equal(result.status, "failed"); assert.equal(result.error, message);
+    } finally { await h.execution.dispose(); }
+  });
+}
+
+for (const [bytes, recognized] of [[8192, true], [8193, false]] as const) {
+  test(`structured context-error parsing is bounded at ${bytes} characters`, async () => {
+    const h = setup();
+    try {
+      const message = '{"error":{"code":"context_length_exceeded"}}'.padEnd(bytes, " ");
+      const run = h.execution.backend(h.thread).runTurn("read", h.opts, collectSink().sink, new AbortController().signal);
+      const child = await h.spawned(); await child.proc.waitFor(line => line.includes('"turn/start"'));
+      child.proc.emitLine({ method: "turn/completed", params: { threadId: "native-1", turn: { id: "turn", status: "failed", error: { message, codexErrorInfo: "other" } } } });
+      const result = await run;
+      assert.equal(result.status, "failed");
+      if (recognized) assert.match(result.error!, /local model.*context limit/i);
+      else assert.equal(result.error, message, "oversized native diagnostics keep their original result without JSON normalization");
+    } finally { await h.execution.dispose(); }
+  });
+}
+
 test("AC3: two connection profiles addressing the same service share one slot, and a queued turn cancelled there opens nothing and sends nothing", async () => {
   const h = setup({ runtime: "ollama", url: "http://127.0.0.1:18501" });
   try {

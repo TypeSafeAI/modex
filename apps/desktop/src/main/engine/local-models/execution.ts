@@ -58,14 +58,31 @@ function refuseProjectConfiguration(cwd: string): void {
 /**
  * Codex words every HTTP 500 as a cloud service under load ("We're currently experiencing high demand"). From a
  * loopback server that is not what happened: it is the person's own server failing, often out of memory. Codex's
- * text stays in the detail; the turn's error says what is known (#380 AC4).
+ * text stays in the detail; the turn's error says what is known (#380 AC4). Recognized context-limit
+ * failures likewise explain recovery without changing the failed outcome or resending a turn.
  */
 function truthful(result: TurnResult): TurnResult {
   if (result.status !== "failed") return result;
   const detail = result.detail as { turnError?: { codexErrorInfo?: unknown }; errorNotification?: { codexErrorInfo?: unknown } } | undefined;
   // A turn that completes with no error of its own reports the `error` notification's text instead (backends/codex.ts).
-  if ((detail?.turnError?.codexErrorInfo ?? detail?.errorNotification?.codexErrorInfo) !== "internalServerError") return result;
-  return { ...result, error: "The local server returned an internal error (HTTP 500). Check its log: it may have run out of memory or crashed while loading the model. Modex didn't retry the turn or switch models." };
+  const info = detail?.turnError?.codexErrorInfo ?? detail?.errorNotification?.codexErrorInfo;
+  if (info === "internalServerError") {
+    return { ...result, error: "The local server returned an internal error (HTTP 500). Check its log: it may have run out of memory or crashed while loading the model. Modex didn't retry the turn or switch models." };
+  }
+  let contextExceeded = info === "contextWindowExceeded";
+  if (!contextExceeded && result.error && result.error.length <= 8192) {
+    try {
+      const response = JSON.parse(result.error) as { error?: { code?: unknown; type?: unknown; message?: unknown } } | null;
+      const error = response?.error;
+      // Ollama's observed HTTP 400 has a null code. Recognize only its structured
+      // context-limit form, not arbitrary native/tool text mentioning context.
+      contextExceeded = error?.code === "context_length_exceeded" || (error?.type === "invalid_request_error"
+        && typeof error.message === "string"
+        && /^request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)(?:,.*)?$/.test(error.message));
+    } catch { /* Unstructured failures keep their original diagnostic. */ }
+  }
+  if (!contextExceeded) return result;
+  return { ...result, error: "This request exceeded the local model's context limit. Start a new local conversation with less context. Earlier commands may already have run; review their results before continuing. Modex didn't retry the turn or switch models." };
 }
 
 export class LocalExecution {

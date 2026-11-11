@@ -209,7 +209,7 @@ test("redirect: the installed Codex follows a 307 from the configured loopback s
   record("redirect", { kind: "installed codex CLI against a loopback server that redirects to a second loopback server; no model, no inference", cli: process.env.MODEX_CODEX_BIN ?? "codex", ...receipts });
 });
 
-type Failure = "overflow-http" | "overflow-stream" | "oom-500" | "unavailable-503" | "dropped" | "child-exit" | "stop";
+type Failure = "overflow-http" | "overflow-ollama-http" | "overflow-stream" | "oom-500" | "unavailable-503" | "dropped" | "child-exit" | "stop";
 interface FailureHop { n: number; path: string; model: unknown; hasToolOutput: boolean; bytes: number }
 
 /**
@@ -244,6 +244,8 @@ function failingResponses(mode: Failure, hops: FailureHop[], held: { request?: h
       }
       // Every later request is a failure of the kind named; a retry would land here again and be counted.
       if (mode === "overflow-http") { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { type: "invalid_request_error", code: "context_length_exceeded", message: "This model's maximum context length is 4096 tokens." } })); return; }
+      // Actual null-code JSON shape captured from Ollama 0.40.16 after native compaction.
+      if (mode === "overflow-ollama-http") { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "request (73800 tokens) exceeds the available context size (65536 tokens), try increasing it", type: "invalid_request_error", param: null, code: null } })); return; }
       if (mode === "oom-500") { res.writeHead(500, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "CUDA error: out of memory" } })); return; }
       if (mode === "unavailable-503") { res.writeHead(503, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "model is loading" } })); return; }
       head(res);
@@ -265,7 +267,7 @@ function failingResponses(mode: Failure, hops: FailureHop[], held: { request?: h
   return new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-for (const mode of ["overflow-http", "overflow-stream", "oom-500", "unavailable-503", "dropped", "child-exit", "stop"] as const) {
+for (const mode of ["overflow-http", "overflow-ollama-http", "overflow-stream", "oom-500", "unavailable-503", "dropped", "child-exit", "stop"] as const) {
   test(`AC4 (${mode}): a local turn whose server fails after a tool ran ends failed or interrupted; the recording server observes no retry and no other model, and the tool does not run twice`, { skip: !process.env.MODEX_LM3_WIRE && "set MODEX_LM3_WIRE=1 to start the installed codex CLI", timeout: 120_000 }, async () => {
     const hops: FailureHop[] = [];
     let arrived!: () => void;
@@ -303,6 +305,13 @@ for (const mode of ["overflow-http", "overflow-stream", "oom-500", "unavailable-
       assert.notEqual(result.status, "completed", `a failed local turn was reported completed: ${JSON.stringify({ result, hops, notices })}`);
       assert.equal(result.status, mode === "stop" ? "interrupted" : "failed", JSON.stringify({ result, notices }));
       // Codex words a 500 as a cloud service's "high demand"; for a local server that is not what happened.
+      if (mode.startsWith("overflow-")) {
+        assert.match(result.error ?? "", /local model.*context limit/i);
+        assert.match(result.error ?? "", /new local conversation.*less context/i);
+        assert.match(result.error ?? "", /earlier commands may already have run/i);
+        assert.match(result.error ?? "", /didn't retry the turn or switch models/i);
+        assert.ok(result.detail, "the native diagnostic remains available");
+      }
       if (mode === "oom-500") assert.match(result.error ?? "", /local server.*HTTP 500/i, `the error names the local server's failure: ${result.error}`);
       assert.doesNotMatch(result.error ?? "", /high demand/i, `the error claims a cloud service's load: ${result.error}`);
       assert.equal(hops.length, 2, `expected exactly the tool request and the failed one, no retry: ${JSON.stringify(hops)}`);
