@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import { appDir, createThread, seedHome, storeClientDir, tid, items } from "./support";
+import { closeWithDiagnostics } from "../test/support/electron-close.js";
 
 async function startHost(home: string): Promise<ElectronApplication> {
   const host = await electron.launch({ args: [appDir, "--desktop-host"], cwd: appDir,
@@ -57,7 +58,7 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
     await expect.poll(() => page.evaluate(async (threadId) => (await (window as any).modex.invoke('terminal:open', { threadId, cols: 80, rows: 24 })).output, threadId)).toContain('store_transport_ok');
     await page.evaluate(async ({ threadId, sessionId }) => (window as any).modex.invoke('terminal:close', { threadId, sessionId }), { threadId, sessionId: terminal.sessionId });
     await tid(page, "composer-input").fill("Keep this unsent follow-up");
-    await host.close();
+    await closeWithDiagnostics(host, test.info().outputDir);
     await expect(page.getByText("Reconnecting automatically", { exact: true })).toBeVisible();
     host = await startHost(home);
     await expect(page.getByText("Reconnecting automatically", { exact: true })).toBeHidden();
@@ -69,7 +70,7 @@ test("Store client uses real host commands, approvals and terminal; reconnect pr
     await expect(page.getByText(/Your Mac removed this desktop's access/)).toBeVisible();
     expect(fs.existsSync(path.join(clientHome, "host-access.enc"))).toBe(false);
   } finally {
-    await client.close(); await host.close();
+    await closeWithDiagnostics(client, test.info().outputDir); await closeWithDiagnostics(host, test.info().outputDir);
     fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); fs.rmSync(clientHome, { recursive: true, force: true });
   }
 });
@@ -102,12 +103,12 @@ test("Store preview discovers this Mac, confirms access once and restores saved 
     expect(fs.existsSync(path.join(clientHome, "host-access.enc"))).toBe(false);
     await host.evaluate(() => (globalThis as typeof globalThis & { approveHost: () => void }).approveHost());
     await expect(tid(page, "draft-view")).toBeVisible();
-    await client.close();
+    await closeWithDiagnostics(client, test.info().outputDir);
     client = await startClient();
     await expect(tid(await client.firstWindow(), "draft-view")).toBeVisible();
     expect(await host.evaluate(() => (globalThis as typeof globalThis & { hostApprovals: number }).hostApprovals)).toBe(1);
   } finally {
-    await client.close(); await host.close();
+    await closeWithDiagnostics(client, test.info().outputDir); await closeWithDiagnostics(host, test.info().outputDir);
     fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(repo, { recursive: true, force: true }); fs.rmSync(clientHome, { recursive: true, force: true });
   }
 });
@@ -144,7 +145,7 @@ test("Store connected account commands stay local and explain unavailable sign-i
     await expect(account).toContainText("Manage your Modex account in the full desktop app.");
     await expect(page.getByText("Unknown desktop command.", { exact: false })).toHaveCount(0);
   } finally {
-    await client.close(); await host.close();
+    await closeWithDiagnostics(client, test.info().outputDir); await closeWithDiagnostics(host, test.info().outputDir);
     for (const dir of [home, repo, clientHome]) fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -181,7 +182,7 @@ for (const overlay of ["settings", "companion", "menu", "browser-tools"] as cons
     await expect(preservedOverlay).toBeVisible();
     const access = fs.readFileSync(path.join(clientHome, "host-access.enc"), "utf8");
     const { port } = JSON.parse(access);
-    await host.close(); host = undefined;
+    await closeWithDiagnostics(host, test.info().outputDir); host = undefined;
     incompatible = https.createServer({ key: fs.readFileSync(path.join(home, "desktop-host/key.pem")), cert: fs.readFileSync(path.join(home, "desktop-host/cert.pem")) }, (_req, res) => { res.writeHead(409); res.end(); });
     await new Promise<void>(resolve => incompatible!.listen(port, "127.0.0.1", resolve));
     const retry = page.getByRole("button", { name: "Retry saved connection", exact: true });
@@ -224,7 +225,7 @@ for (const overlay of ["settings", "companion", "menu", "browser-tools"] as cons
     await expect(tid(page, overlay === "browser-tools" ? "thread-view" : "draft-view")).toBeVisible();
     expect(fs.readFileSync(path.join(clientHome, "host-access.enc"), "utf8")).toBe(access);
   } finally {
-    await client.close(); await host?.close();
+    await closeWithDiagnostics(client, test.info().outputDir); if (host) await closeWithDiagnostics(host, test.info().outputDir);
     if (incompatible) { incompatible.closeAllConnections(); await new Promise<void>(resolve => incompatible!.close(() => resolve())); }
     for (const dir of [home, repo, clientHome]) fs.rmSync(dir, { recursive: true, force: true });
   }

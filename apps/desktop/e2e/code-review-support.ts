@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { appDir, resizeWindow, seedHome, tid } from "./support.js";
 import { WORLD_GH, type GhWorld } from "../test/fixtures/code-review-gh-world.js";
+import { closeWithDiagnostics } from "../test/support/electron-close.js";
 
 export { baseWorld, FIELD_GUIDE, FIELD_GUIDE_73, FIELD_GUIDE_91, LENDING, LENDING_73 } from "../test/fixtures/code-review-gh-world.js";
 
@@ -93,17 +94,17 @@ export async function launchWithGh(initial: GhWorld, options: { showCodeReview?:
       // SIGKILL: no quit handlers run, as when the Mac loses power or Modex crashes mid-send.
       const pid = app.process().pid;
       if (pid) process.kill(pid, "SIGKILL");
-      await app.close().catch(() => {});
+      await closeWithDiagnostics(app, test.info().outputDir).catch(() => {});
       ({ app, page } = await start());
       harness.app = app; harness.page = page;
     },
     restart: async () => {
-      await app.close().catch(() => {});
+      await closeWithDiagnostics(app, test.info().outputDir).catch(() => {});
       ({ app, page } = await start());
       harness.app = app; harness.page = page;
     },
     close: async () => {
-      await app.close().catch(() => {});
+      await closeWithDiagnostics(app, test.info().outputDir).catch(() => {});
       for (const dir of [home, repo]) fs.rmSync(dir, { recursive: true, force: true });
     },
   };
