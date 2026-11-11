@@ -10,6 +10,7 @@ on:
       - docs/branding/modex-icon.png
       - scripts/prepare-desktop-system.mjs
       - scripts/prepare-linux-installed-host.sh
+      - scripts/install-linux-deb.mjs
       - packages/core/**
       - package.json
       - pnpm-lock.yaml

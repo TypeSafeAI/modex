@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { readNativePackages } from "./read-native-packages.mjs";
 import { acceptInstalledClis } from "./accept-installed-clis.mjs";
 import { acceptLinuxKwallet } from "./accept-linux-kwallet.mjs";
+import { installLinuxDeb } from "../../../scripts/install-linux-deb.mjs";
 
 // This script installs/removes a system package. It must never run on a developer host.
 assert.equal(process.platform, "linux", "Hosted Linux acceptance only");
@@ -256,14 +257,14 @@ async function launch(executablePath, kind, credentialAction, expectedVersion) {
 try {
   await startKeyring();
   installAttempted = true;
-  command("sudo", ["apt-get", "install", "-y", baseline.artifacts.get(".deb")]);
+  installLinuxDeb(baseline.artifacts.get(".deb"));
   const files = execFileSync("dpkg-query", ["-L", "modex"], { encoding: "utf8" }).trim().split("\n");
   const binaries = files.filter(file => file.startsWith("/opt/") && file.endsWith("/modex") && fs.statSync(file).isFile());
   assert.equal(binaries.length, 1, "One installed executable required");
   installedBinary = binaries[0];
   await launch(installedBinary, "debian-baseline", "write", baseline.manifest.version);
   assert.equal(openApps.size, 0);
-  command("sudo", ["apt-get", "install", "-y", artifacts.get(".deb")]);
+  installLinuxDeb(artifacts.get(".deb"));
   await launch(installedBinary, "debian-upgraded", "read", manifest.version);
   await launch(installedBinary, "debian-restart", "read", manifest.version);
   await launch(installedBinary, "debian-basic-refusal", "refuse", manifest.version);

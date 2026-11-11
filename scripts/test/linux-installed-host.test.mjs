@@ -11,7 +11,7 @@ const packages = ["xvfb", "libgbm1", "libasound2t64", "dbus", "gnome-keyring", "
 
 // Exercise the real shell helper. Only privilege escalation and external APT are replaced;
 // configuration creation, argument boundaries, exit handling and cleanup remain real.
-function run(t, scenario = "success", overrides = {}, codename = "noble") {
+function run(t, scenario = "success", overrides = {}, codename = "noble", mode) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "modex linux host test-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, "bin"), log = path.join(root, "calls.jsonl");
@@ -31,13 +31,19 @@ if (!source || (process.env.MODEX_APT_TEST_SCENARIO === "security-dns-fails" && 
 }
 if (process.env.MODEX_APT_TEST_SCENARIO === "install-fails" && verb === "install") process.exit(100);
 `, { mode: 0o755 });
-  const result = spawnSync("bash", [script, codename], { encoding: "utf8", timeout: 5000, env: {
+  const deb = path.join(root, "baseline package.deb");
+  fs.writeFileSync(deb, "synthetic package bytes; fake APT only");
+  const wrapper = new URL("../install-linux-deb.mjs", import.meta.url).href;
+  const executable = mode === "node-deb" ? process.execPath : "bash";
+  const args = mode === "node-deb" ? ["--input-type=module", "-e", `import { installLinuxDeb } from ${JSON.stringify(wrapper)}; installLinuxDeb(process.argv[1]);`, deb]
+    : [script, codename, ...(Array.isArray(mode) ? mode.map(x => x === "$DEB" ? deb : x) : mode === "deb" ? ["--install-deb", deb] : [])];
+  const result = spawnSync(executable, args, { encoding: "utf8", timeout: 5000, env: {
     ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, GITHUB_ACTIONS: "true", RUNNER_OS: "Linux", RUNNER_TEMP: root,
     MODEX_APT_TEST_LOG: log, MODEX_APT_TEST_SCENARIO: scenario, ...overrides,
   } });
   assert.ifError(result.error);
   const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(x => JSON.parse(x)) : [];
-  return { ...result, calls, root };
+  return { ...result, calls, root, deb };
 }
 
 test("host preparation uses signed official Noble indexes for every required package when the image mirror is unavailable", t => {
@@ -119,4 +125,32 @@ test("security updates remain signed and available through the official archive 
   assert.doesNotMatch(r.calls[0].sources, /security\.ubuntu\.com/);
   const install = r.calls[1].args;
   assert.deepEqual(install.slice(install.indexOf("install") + 1), ["-y", ...packages]);
+});
+
+// Latest hosted job acquired all official indexes/packages, then default-source APT could not resolve libnotify4.
+for (const mode of ["deb", "node-deb"]) test(`${mode}: Debian dependency installation uses the acquired signed source configuration`, t => {
+  const r = run(t, "success", {}, "noble", mode);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.calls.map(c => c.verb), ["update", "install"]);
+  assert.equal(r.calls[0].source, r.calls[1].source);
+  assert.match(r.calls[1].sources, /Suites: noble noble-updates noble-backports noble-security/);
+  assert.match(r.calls[1].sources, /Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring\.gpg/);
+  assert.deepEqual(r.calls[1].args.slice(r.calls[1].args.indexOf("install") + 1), ["-y", r.deb]);
+  assert.equal(fs.existsSync(r.calls[0].source), false, "temporary sources survive install and are cleaned afterward");
+});
+
+for (const scenario of ["update-fails", "install-fails"]) test(`Debian installation preserves ${scenario} and cleans its sources`, t => {
+  const r = run(t, scenario, {}, "noble", "node-deb");
+  assert.notEqual(r.status, 0);
+  assert.deepEqual(r.calls.map(c => c.verb), scenario === "update-fails" ? ["update"] : ["update", "install"]);
+  assert.ok(r.calls[0].args.includes("APT::Update::Error-Mode=any"));
+  assert.equal(fs.existsSync(r.calls[0].source), false);
+});
+
+test("Debian installer refuses malformed paths and extra options before privileged operations", t => {
+  for (const args of [["--install-deb", "relative.deb"], ["--install-deb", "/modex-missing-fixture.deb"], ["--install-deb", "$DEB", "--allow-unauthenticated"], ["--unknown"]]) {
+    const r = run(t, "success", {}, "noble", args);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(r.calls, []);
+  }
 });
