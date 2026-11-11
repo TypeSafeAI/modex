@@ -666,6 +666,7 @@ private struct CommandSheet: View {
     let onSelect: (String) -> Void
     @State private var query = ""
     @State private var loading = true
+    @State private var retry = 0
 
     private var filtered: [CompanionCommand] {
         let commands = model.availableCommands(projectId: projectId, backend: backend)
@@ -684,6 +685,17 @@ private struct CommandSheet: View {
                 .background(Palette.raised, in: RoundedRectangle(cornerRadius: 14))
                 if loading {
                     ProgressView().tint(Palette.accent).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = model.commandError(projectId: projectId, backend: backend) {
+                    VStack(spacing: 12) {
+                        Text("Couldn’t load skills and commands").font(.headline)
+                        Text(error).font(.subheadline).foregroundStyle(Palette.muted)
+                        Button("Try again") { retry += 1 }
+                            .buttonStyle(.bordered)
+                            .frame(minHeight: 44)
+                            .accessibilityIdentifier("retry-commands")
+                    }
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if filtered.isEmpty {
                     ContentUnavailableView("No commands found", systemImage: "command", description: Text("Install skills on your Mac or type a command directly."))
                         .foregroundStyle(Palette.muted)
@@ -715,7 +727,7 @@ private struct CommandSheet: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.foregroundStyle(Palette.muted) } }
         }
         .presentationDetents([.medium, .large])
-        .task(id: "\(projectId)\u{0}\(backend)") {
+        .task(id: "\(projectId)\u{0}\(backend)\u{0}\(retry)") {
             loading = true
             await model.loadCommands(projectId: projectId, backend: backend)
             if !Task.isCancelled { loading = false }
@@ -803,6 +815,7 @@ private struct QuestionCard: View {
     @EnvironmentObject private var model: CompanionModel
     let item: CompanionItem
     let busy: Bool
+    @FocusState private var focusedSecret: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -889,6 +902,9 @@ private struct QuestionCard: View {
         Group {
             if question.secret {
                 SecureField(prompt, text: text).textContentType(.password)
+                    .focused($focusedSecret, equals: question.id)
+                    .submitLabel(.done)
+                    .onSubmit { focusedSecret = nil }
             } else {
                 TextField(prompt, text: text, axis: .vertical).lineLimit(1...4)
             }
@@ -948,6 +964,7 @@ private struct PairingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var link = ""
     @State private var scanning = false
+    @FocusState private var linkFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -969,6 +986,9 @@ private struct PairingSheet: View {
                     TextField("modex://pair?data=…", text: $link)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .keyboardType(.URL).font(.system(size: 13, design: .monospaced))
+                        .focused($linkFocused)
+                        .submitLabel(.done)
+                        .onSubmit { linkFocused = false }
                         .padding(15).background(Palette.raised, in: RoundedRectangle(cornerRadius: 13))
                         .accessibilityIdentifier("pairing-link-input")
                     Button(model.isPairing ? "Connecting…" : "Connect") { Task { if await model.open(link: link) { dismiss() } } }
