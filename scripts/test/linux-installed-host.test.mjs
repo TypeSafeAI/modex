@@ -24,7 +24,7 @@ const source = sourceArg?.slice("Dir::Etc::sourcelist=".length);
 const parts = args.find(x => x.toLowerCase().startsWith("dir::etc::sourceparts="))?.split("=").slice(1).join("=");
 const verb = args.find(x => x === "update" || x === "install");
 fs.appendFileSync(process.env.MODEX_APT_TEST_LOG, JSON.stringify({ args, verb, source, parts, partsEntries: parts ? fs.readdirSync(parts) : null, sources: source ? fs.readFileSync(source, "utf8") : null }) + "\\n");
-if (!source || (process.env.MODEX_APT_TEST_SCENARIO === "update-fails" && verb === "update")) {
+if (!source || (process.env.MODEX_APT_TEST_SCENARIO === "security-dns-fails" && fs.readFileSync(source, "utf8").includes("https://security.ubuntu.com/ubuntu")) || (process.env.MODEX_APT_TEST_SCENARIO === "update-fails" && verb === "update")) {
   console.error("Temporary failure resolving the package mirror");
   const strict = args.some(x => x.toLowerCase() === "apt::update::error-mode=any");
   process.exit(verb === "update" && !strict ? 0 : 100);
@@ -48,10 +48,9 @@ test("host preparation uses signed official Noble indexes for every required pac
   for (const c of r.calls) {
     assert.ok(c.source.startsWith(r.root + path.sep));
     assert.match(c.sources, /URIs: https:\/\/archive\.ubuntu\.com\/ubuntu/);
-    assert.match(c.sources, /URIs: https:\/\/security\.ubuntu\.com\/ubuntu/);
-    assert.match(c.sources, /Suites: noble noble-updates noble-backports/);
-    assert.match(c.sources, /Suites: noble-security/);
-    assert.equal((c.sources.match(/Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring\.gpg/g) ?? []).length, 2);
+    assert.match(c.sources, /Suites: noble noble-updates noble-backports noble-security/);
+    assert.doesNotMatch(c.sources, /security\.ubuntu\.com/);
+    assert.equal((c.sources.match(/Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring\.gpg/g) ?? []).length, 1);
     assert.ok(c.parts.startsWith(r.root + path.sep));
     assert.deepEqual(c.partsEntries, []);
     const options = new Map(c.args.filter(x => x.includes("=")).map(x => [x.slice(0, x.indexOf("=")).toLowerCase(), x.slice(x.indexOf("=") + 1)]));
@@ -107,4 +106,17 @@ test("host preparation refuses missing or relative temporary directories before 
     assert.notEqual(r.status, 0);
     assert.deepEqual(r.calls, []);
   }
+});
+
+// The actual fc593e0 hosted attempt fetched archive indexes but failed DNS for security.
+test("security updates remain signed and available through the official archive when the security host cannot resolve", t => {
+  const r = run(t, "security-dns-fails");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.calls.map(c => c.verb), ["update", "install"]);
+  assert.match(r.calls[0].sources, /URIs: https:\/\/archive\.ubuntu\.com\/ubuntu/);
+  assert.match(r.calls[0].sources, /Suites: noble noble-updates noble-backports noble-security/);
+  assert.match(r.calls[0].sources, /Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring\.gpg/);
+  assert.doesNotMatch(r.calls[0].sources, /security\.ubuntu\.com/);
+  const install = r.calls[1].args;
+  assert.deepEqual(install.slice(install.indexOf("install") + 1), ["-y", ...packages]);
 });

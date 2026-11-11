@@ -22,13 +22,7 @@ mkdir "$modex_apt_dir/sourceparts"
 cat > "$modex_apt_dir/ubuntu.sources" <<'SOURCES'
 Types: deb
 URIs: https://archive.ubuntu.com/ubuntu
-Suites: noble noble-updates noble-backports
-Components: main restricted universe multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-Types: deb
-URIs: https://security.ubuntu.com/ubuntu
-Suites: noble-security
+Suites: noble noble-updates noble-backports noble-security
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 SOURCES
