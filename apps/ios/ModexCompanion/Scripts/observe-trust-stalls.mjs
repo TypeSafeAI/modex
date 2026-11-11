@@ -17,9 +17,20 @@ export class TrustStallObserver {
     Object.assign(this, { deviceId, now, appImage, identity, sample });
     this.pending = new Map(); this.seen = new Set(); this.controllers = new Set();
     this.closed = false; this.busy = false; this.captures = 0;
-    this.report = { state: 'observing', observers: 0, samples: [], refusals: [] };
+    this.report = { state: 'observing', observers: 0, samples: [], refusals: [], imageBindings: [] };
   }
   refuse(reason) { if (this.report.refusals.length < 16) this.report.refusals.push(reason); }
+  recordImageBinding(event, key, at, outcome, error) {
+    if (this.report.imageBindings.length >= 16) return;
+    const row = { observer: key, pid: event.processID, boot: event.bootUUID,
+      chainStartAt: new Date(at).toISOString(), observedAt: new Date(this.now()).toISOString(), outcome };
+    if (error) {
+      row.code = typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code) ? error.code : 'IMAGE_LOOKUP_UNAVAILABLE';
+      if (typeof error.closed === 'boolean') row.commandClosed = error.closed;
+      if (pidOK(error.pid)) row.commandPid = error.pid;
+    }
+    this.report.imageBindings.push(row);
+  }
   async ingest(event) {
     if (this.closed || !event || !pidOK(event.processID) || !UUID.test(event.bootUUID)
       || typeof event.eventMessage !== 'string' || event.eventMessage.length > 512
@@ -37,9 +48,19 @@ export class TrustStallObserver {
       }
       if (this.seen.has(key)) return;
       if (this.seen.size >= 128 || this.pending.size >= 32) { this.refuse('observer-limit'); this.close(); return; }
-      const image = await this.appImage();
-      if (image !== event.processImagePath || !image.includes(`/CoreSimulator/Devices/${this.deviceId}/data/Containers/Bundle/Application/`)
-        || !image.endsWith('/ModexCompanion.app/ModexCompanion')) { this.refuse('app-image'); return; }
+      let image;
+      try { image = await this.appImage(); }
+      catch (error) {
+        const stage = ['container-query', 'image-realpath'].includes(error?.imageStage) ? error.imageStage : 'lookup';
+        this.recordImageBinding(event, key, at, `${stage}-failed`, error);
+        this.refuse('app-image'); return;
+      }
+      const outcome = typeof image !== 'string' ? 'image-unavailable'
+        : image !== event.processImagePath ? 'image-mismatch'
+        : !image.includes(`/CoreSimulator/Devices/${this.deviceId}/data/Containers/Bundle/Application/`) ? 'device-path-mismatch'
+        : !image.endsWith('/ModexCompanion.app/ModexCompanion') ? 'bundle-path-mismatch' : 'matched';
+      this.recordImageBinding(event, key, at, outcome);
+      if (outcome !== 'matched') { this.refuse('app-image'); return; }
       const snapshot = await this.identity(event.processID, image);
       if (!identityMatches(snapshot, image, at)) { this.refuse('app-identity'); return; }
       if (this.closed) return;
@@ -158,6 +179,17 @@ export async function captureStack(pid, { directory, role, observer, signal, exp
   return { file, bytes: stdout.length, sha256: crypto.createHash('sha256').update(stdout).digest('hex'), sampledStart };
 }
 
+export async function resolveAppImage({ deviceId, signal, command = runBounded }) {
+  let stdout;
+  try {
+    ({ stdout } = await command('/usr/bin/xcrun', ['simctl', 'get_app_container', deviceId, 'works.jev.modex', 'app'], { signal, maxBytes: 8192 }));
+  } catch (error) {
+    throw Object.assign(Error('App container query unavailable'), { imageStage: 'container-query', code: error?.code, closed: error?.closed, pid: error?.pid });
+  }
+  try { return fs.realpathSync(path.join(stdout.toString().trim(), 'ModexCompanion')); }
+  catch (error) { throw Object.assign(Error('App image realpath unavailable'), { imageStage: 'image-realpath', code: error?.code }); }
+}
+
 export async function runObserver({ deviceId, output, signal }) {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_OS !== 'macOS'
     || !UUID.test(deviceId) || !path.isAbsolute(output) || path.resolve(output) === '/') throw Error('Trust stack diagnostics require an explicit macOS CI simulator and output path');
@@ -173,12 +205,7 @@ export async function runObserver({ deviceId, output, signal }) {
   try {
     const devices = JSON.parse((await command('/usr/bin/xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], { signal: combined })).stdout.toString());
     if (!Object.values(devices.devices ?? {}).flat().some(x => x.udid === deviceId && x.state === 'Booted')) throw Error('Explicit simulator is not booted');
-    const appImage = async () => {
-      try {
-        const { stdout } = await command('/usr/bin/xcrun', ['simctl', 'get_app_container', deviceId, 'works.jev.modex', 'app'], { signal: combined, maxBytes: 8192 });
-        return fs.realpathSync(path.join(stdout.toString().trim(), 'ModexCompanion'));
-      } catch { return undefined; }
-    };
+    const appImage = () => resolveAppImage({ deviceId, signal: combined, command });
     observer = new TrustStallObserver({ deviceId, appImage, identity: (pid, image) => currentIdentity(pid, image, combined, command),
       sample: async (pid, opts) => {
         const entry = observer.pending.get(opts.observer), target = opts.role === 'app' ? entry : entry?.daemon;

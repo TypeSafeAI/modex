@@ -1,0 +1,21 @@
+# Explain bounded iPhone observer image refusals
+
+## Observed evidence gap
+
+The retained `aa095b29ff310bd837cdf6aac6af9389c122e9af` iPhone manifest reports zero outer poll errors, nine app-image refusal entries, zero bound observers and no samples. Its app tests passed, and offline diagnostics show five distinct callbacks completing normally. The native image adapter caught both container-query and realpath errors and returned undefined, so those failures were indistinguishable from an image mismatch. Repeated polls could also record the same callback again. The manifest does not establish which lookup stage failed, nine distinct callbacks, live stack qualification or the cause of the older trust stalls.
+
+## Diagnostic change
+
+The existing container query and real filesystem resolution now retain a fixed failure stage. The observer records at most 16 image-binding attempts, each with the validated callback UUID, PID, boot UUID, chain-start time, observation time and a fixed outcome. Query and realpath failures, unavailable images, image mismatch, wrong-device paths, wrong-bundle paths and matching images remain distinct. Error codes accept only a bounded uppercase identifier; command closure and PID metadata are retained when available. No command output, filesystem path, exception text or stack is added to these rows. The rows are a bounded prefix of attempts, not a count of distinct callbacks.
+
+An image match still precedes the existing process-identity check and grants no sampling authority. The explicit simulator, exact image/device/bundle comparison, process lifetime, boot/thread/activity correlation, sample limit and five-second stall threshold remain. The query keeps its 8,192-byte bound and existing command deadline. Unconfirmed direct-child closure still invokes the common permanent stop gate. This change does not alter Swift, certificate APIs, pins, redirects, request deadlines or application behavior.
+
+## Verification and limits
+
+Six new controls fail on the original source. Four exercise missing observer diagnostics or unhandled lookup failures; two require the newly extracted resolver boundary, which is absent on the baseline. The first comparison accessed a missing row directly; the corrected baseline control asserts the missing outcome instead, preserving the original six-failure log separately. The combined new and existing observer suites then pass 25 cases with zero failures, skips or cancellations. Controls cover exact callback/time metadata, error-stage separation and sanitization, identity refusals, the 16-row cap, the real filesystem result and removal failure, and permanent shutdown after an unconfirmed query close. The external command boundary is controlled in those tests; no simulator, app or stack sampler runs.
+
+A separate native read-only control invoked the actual bounded xcrun container query once for the prior CI simulator UUID. It returned COMMAND_FAILED with confirmed direct-child closure and was classified as a container-query failure. No device/app launch, Stop, process-identity lookup, observer or stack sample ran. That control demonstrates native error classification, not why the hosted query refused, successful image binding, the earlier TLS failure cause or descendant cleanup.
+
+Full root build, workspace typechecks and units passed on unchanged diagnostic source: 2,471 passes, 36 explicit skips, zero failures and zero cancellations across 2,507 tests. Commands, exit codes and frozen hashes are retained in `trust-image-binding-full-validation-first.json`, with count/source audit in `trust-image-binding-full-terminal-independent-audit.json`. The desktop/core/site/Store application and E2E inputs are unchanged from signed `68dae3500976a11ae2411d2af15d7866be89104d`, whose separate full local E2E receipt records 511 desktop passes, 11 skips and seven site passes. That is reused unchanged-input evidence, not a fresh whole-candidate E2E claim. Independent source review found no Critical, Important or Minor finding. Fresh hosted observation remains required; no issue closure or native/human acceptance follows from this increment.
+
+First failures, corrected controls, the native query receipt, source hashes and command logs are retained outside disposable worktrees in `/Users/buns/Documents/Codex/2026-11-11/modex-closeout/`.
