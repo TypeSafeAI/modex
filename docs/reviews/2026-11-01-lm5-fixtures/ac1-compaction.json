@@ -1,0 +1,83 @@
+{
+  "kind": "installed codex CLI auto-compacting a local child against a scripted loopback Responses server; no model, no inference",
+  "cli": "codex",
+  "hops": [
+    {
+      "n": 1,
+      "method": "POST",
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "authorization": "bearer",
+      "inputItems": 4,
+      "hasToolOutput": false,
+      "summaryRequest": false,
+      "hasSummary": false,
+      "hasPrompt": true,
+      "lastInputHead": "{\"type\":\"message\",\"id\":\"msg_01a1973d-58eb-7aa0-ab81-1ce004e25268\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"LM5-AC1-COMPACTION-PROMPT-31e2: read fix"
+    },
+    {
+      "n": 2,
+      "method": "POST",
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "authorization": "bearer",
+      "inputItems": 7,
+      "hasToolOutput": true,
+      "summaryRequest": true,
+      "hasSummary": false,
+      "hasPrompt": true,
+      "lastInputHead": "{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another"
+    },
+    {
+      "n": 3,
+      "method": "POST",
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "authorization": "bearer",
+      "inputItems": 5,
+      "hasToolOutput": false,
+      "summaryRequest": false,
+      "hasSummary": true,
+      "hasPrompt": true,
+      "lastInputHead": "{\"type\":\"message\",\"id\":\"msg_01a1973d-5ab4-7621-b64a-9bda33c3bacf\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Another language model started to solve "
+    }
+  ],
+  "observationKinds": [
+    "tool.start",
+    "tool.update",
+    "tool.done",
+    "message.start",
+    "message.done"
+  ],
+  "notices": [],
+  "result": {
+    "status": "completed"
+  },
+  "provenance": {
+    "sessionFlags": "sha256:0ad4d6ca78bdf1582f1165ff16ece16e840e10a8c4cf55672a28b943f21e76c5",
+    "layers": [
+      {
+        "source": "sessionFlags",
+        "version": "sha256:0ad4d6ca78bdf1582f1165ff16ece16e840e10a8c4cf55672a28b943f21e76c5"
+      },
+      {
+        "source": "user",
+        "version": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "file": "/private/var/folders/5b/njd1qhwx4h97r9lvy_wpf5lc0000gn/T/lm5-ac1-compaction-home-6uzgd3/app/local-codex/process-So7Cih/.codex/config.toml"
+      },
+      {
+        "source": "system",
+        "version": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "file": "/etc/codex/config.toml"
+      }
+    ],
+    "managedRequirements": false,
+    "context": {
+      "configured": 32768,
+      "source": "person",
+      "effective": 32768,
+      "advertised": "not-checked",
+      "loaded": "unknown"
+    }
+  }
+}

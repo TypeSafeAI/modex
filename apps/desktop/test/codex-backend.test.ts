@@ -1010,6 +1010,45 @@ test("a local Codex pins its provider and model, refuses a foreign resume before
   } finally { await backend.dispose(); }
 });
 
+for (const finalFirst of [null, false, true]) {
+  test(`a local native reconnect is interrupted and remains failed until terminal acknowledgement (final first: ${finalFirst})`, async () => {
+    const proc = new FakeProcess();
+    const { threadId, turnId, seen } = fakeServer(proc, { acknowledgeInterruptOnly: true });
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text, local: { model: "local", provider: "modex_local" } });
+    backend.quietAfterFinalMs = 10;
+    let settled = false;
+    try {
+      const run = backend.runTurn("fixture", { cwd: "/fixture", mode: "chat", plan: false, model: "local" }, collectSink().sink, new AbortController().signal).finally(() => { settled = true; });
+      await proc.waitFor(line => line.includes('"turn/start"'));
+      const answer = () => proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "agentMessage", id: "answer", text: "done", phase: "final_answer" } } });
+      if (finalFirst) answer();
+      proc.emitLine({ method: "error", params: { threadId, turnId, willRetry: true, error: { message: "stream disconnected; reconnecting", codexErrorInfo: "streamDisconnected" } } });
+      if (finalFirst === false) answer();
+      await new Promise(resolve => setTimeout(resolve, 40));
+      assert.equal(proc.sent(m => m.method === "turn/interrupt").length, 1, "a local native reconnect must be cancelled before it can retry");
+      assert.equal(settled, false, "an interrupt receipt alone cannot settle an unknown native action");
+      proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "interrupted" } } });
+      const result = await run;
+      assert.equal(result.status, "failed");
+      assert.match(result.error ?? "", /local.*retry|retry.*local/i);
+      assert.equal(seen.filter(row => row.method === "turn/start").length, 1);
+    } finally { await backend.dispose(); }
+  });
+}
+
+test("cloud native reconnect retains its existing server retry behavior", async () => {
+  const proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  try {
+    const run = backend.runTurn("fixture", { cwd: "/fixture", mode: "chat", plan: false, model: "cloud" }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    proc.emitLine({ method: "error", params: { threadId, turnId, willRetry: true, error: { message: "reconnecting" } } });
+    assert.equal(proc.sent(m => m.method === "turn/interrupt").length, 0);
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    assert.equal((await run).status, "completed");
+  } finally { await backend.dispose(); }
+});
+
 for (const provider of [null, "openai"]) {
   test(`a local Codex sends no turn when the server confirms provider ${JSON.stringify(provider)} instead of its own`, async () => {
     const proc = new FakeProcess();

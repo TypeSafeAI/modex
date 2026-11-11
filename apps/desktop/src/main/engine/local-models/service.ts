@@ -12,7 +12,7 @@ export class LocalModelsService {
   readonly connections: LocalConnectionStore;
   readonly discovery: LocalModelDiscovery;
 
-  constructor(home: string, secrets: SecretStore, options: DiscoveryOptions = {}) {
+  constructor(home: string, secrets: SecretStore, private readonly options: DiscoveryOptions & { connectionInUse?: (id: string) => boolean } = {}) {
     this.connections = new LocalConnectionStore(home, secrets);
     this.discovery = new LocalModelDiscovery(this.connections, options);
   }
@@ -24,11 +24,13 @@ export class LocalModelsService {
       case "list": return { op: "list", connections: this.connections.list() };
       case "create": return { op: "create", connection: this.connections.create(request.input) };
       case "update": {
+        this.requireIdle(request.id);
         const connection = this.connections.update(request.id, request.revision, request.patch);
         this.discovery.invalidate(request.id);
         return { op: "update", connection };
       }
       case "delete":
+        this.requireIdle(request.id);
         this.connections.delete(request.id, request.revision);
         this.discovery.invalidate(request.id);
         return { op: "delete" };
@@ -37,5 +39,9 @@ export class LocalModelsService {
         this.discovery.cancel(request.id);
         return { op: "cancel" };
     }
+  }
+
+  private requireIdle(id: string): void {
+    if (this.options.connectionInUse?.(id)) throw new Error("Stop the local turn before editing or removing its connection.");
   }
 }

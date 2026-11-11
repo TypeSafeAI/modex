@@ -101,9 +101,9 @@ export function registerCommands(handle: RegisterCommand, {
   handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
   handle("task:note", ({ pageId }) => runner.taskNote(pageId));
   handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
-  handle("thread:send", ({ threadId, text, attachments }) => startTurn(threadId, runner.send(threadId, text, attachments)));
+  handle("thread:send", ({ threadId, text, attachments }) => startTurn(threadId, runner.send(threadId, text, attachments, "browser")));
   registerAttachmentCommands(handle, runner.attachments, { bytesOnly: true, reveal: revealAttachment ?? (() => { throw new Error("Attachment reveal is unavailable."); }) });
-  handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId)));
+  handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId, "browser")));
   handle("thread:stop", ({ threadId }) => runner.stop(threadId));
   handle("thread:answer", ({ threadId, itemId, answer }) => runner.answer(threadId, itemId, answer));
   handle("thread:answer-question", ({ threadId, itemId, answers }) => runner.answerQuestion(threadId, itemId, answers));

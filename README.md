@@ -57,6 +57,7 @@ modex/
   explicit; connection tests identify the saved configuration, and failed saves retain
   your draft. CLI-only routing never falls back to HTTPS, existing sessions stay on their
   backend, and Auto stops if it cannot honor your reasoning-effort ceiling.
+- **Local model connections (experimental).** Settings → Local models manages loopback connections and reads bounded model metadata without loading or downloading models. Local coding execution remains disabled while native qualification and product admission are open. See [setup and current limits](docs/local-models.md#local-models-v1-workflow-candidate).
 - **Launch from anywhere.** Opened from Finder or the Dock, Modex reads your login shell's
   PATH once at startup (interactive `zsh -ilc`, falling back to `-lc`), so `claude`, `codex`,
   and `jev` installed under nvm, Homebrew, or `~/.local/bin` are found exactly as in a terminal.

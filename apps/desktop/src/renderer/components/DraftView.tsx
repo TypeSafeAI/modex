@@ -4,6 +4,7 @@ import type { BackendId, Mode, ModelInfo, Project } from "../../shared/types";
 import type { AttachmentActions } from "../composer-attachments";
 import type { Attachment } from "../../shared/attachments";
 import { Composer } from "./Composer";
+import type { LocalMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
 import { Menu, MenuItem } from "./ui/Menu";
 
@@ -32,6 +33,8 @@ interface Props {
   models: ModelInfo[];
   modelsError?: string;
   onRetryModels?: () => void;
+  /** Local models beside the CLI's own (LM-4). */
+  local?: LocalMenu;
   /** The project checkout's current branch; shown for a Local draft (a worktree's branch does not exist yet). */
   branch?: string;
   onChange: (draft: Draft) => void;
@@ -47,7 +50,7 @@ interface Props {
  * The "What should we build in <project>?" screen: a live composer before any thread exists.
  * The project name is a picker; the context strip's Local/Worktree item is a toggle.
  */
-export function DraftView({ draft, projects, creating, models, modelsError, onRetryModels, branch, onChange, onSend, inputRef, text, onText, attachments, attachmentActions }: Props) {
+export function DraftView({ draft, projects, creating, models, modelsError, onRetryModels, local, branch, onChange, onSend, inputRef, text, onText, attachments, attachmentActions }: Props) {
   const project = projects.find((p) => p.id === draft.projectId);
   const set = (patch: Partial<DraftSettings>) => onChange({ ...draft, settings: { ...draft.settings, ...patch } });
   if (!project) return null;
@@ -75,6 +78,7 @@ export function DraftView({ draft, projects, creating, models, modelsError, onRe
         auto={draft.settings.auto}
         models={models}
         modelsError={modelsError}
+        local={local}
         onRetryModels={onRetryModels}
         onBackend={(backend) => set({ backend, model: "", effort: undefined })}
         onMode={(mode) => set({ mode })}

@@ -368,3 +368,90 @@ test("retiring one project draft revokes its late picker and explicit pending re
   await h.controller.send(session, intent.id);
   assert.equal(h.turns.length, 1); assert.equal(h.controller.readPending(session, intent.id), null);
 });
+
+for (const change of ["cloud", "connection", "context"] as const) {
+  test(`durable local message refuses changed ${change} destination and preserves its original`, native, async t => {
+    const h = await fixture(t), { session } = h.controller.open();
+    const thread = await h.runner.createThread(h.project.id, { backend: "mock" });
+    const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: "local-original", revision: 1 }, id: "qwen3.8-flash-next-iq3_s" } };
+    h.store.updateThread(thread.id, { backend: "codex", model: target.model.id, localTarget: target, localContextTokens: 32768 });
+    const source = { kind: "thread" as const, threadId: thread.id };
+    const intent = h.controller.begin(session, { source, rawText: "  private local original  ", configuration: config, files: [] });
+    await h.controller.create(session, intent.id);
+    const snapshot: ComposerRecovery = { threads: [{ threadId: thread.id, text: "newer draft", attachments: [] }], projects: [], selectedThreadId: thread.id, draft: null };
+    h.controller.transfer(session, { id: `local-${change}`, sequence: 1, snapshot, intentId: intent.id, files: [] });
+    const file = path.join(h.store.dir, "pending-sends", `${intent.id}.json`), original = fs.readFileSync(file);
+    if (change === "cloud") h.store.updateThread(thread.id, { backend: "mock", model: "mock", localTarget: undefined, localContextTokens: undefined });
+    if (change === "connection") h.store.updateThread(thread.id, { localTarget: { ...target, model: { ...target.model, connection: { id: "local-other", revision: 2 } } } });
+    if (change === "context") h.store.updateThread(thread.id, { localContextTokens: 16384 });
+    await assert.rejects(h.controller.send(session, intent.id), /destination/i);
+    assert.deepEqual(h.turns, [], "changed destinations receive zero dispatches");
+    assert.deepEqual(fs.readFileSync(file), original, "pending original remains byte-for-byte");
+    assert.equal(h.store.items(thread.id).length, 0, "no durable user admission occurs at the wrong destination");
+    const restored = new NativeDrafts({ store: h.store, runner: h.runner, attachments: h.attachments });
+    const opened = restored.open();
+    await assert.rejects(restored.create(opened.session, intent.id), /destination/i);
+    assert.equal(restored.readPending(opened.session, intent.id)!.rawText, "  private local original  ");
+  });
+}
+
+for (const backend of ["opencode", "mimo"] as const) {
+  test(`main records ${backend} destination using canonical backend validation`, native, async t => {
+    const h = await fixture(t), { session } = h.controller.open();
+    const thread = await h.runner.createThread(h.project.id, { backend: "mock" });
+    h.store.updateThread(thread.id, { backend, model: "exact-provider/model-id" });
+    const intent = h.controller.begin(session, { source: { kind: "thread", threadId: thread.id }, rawText: "original", configuration: config, files: [] });
+    await h.controller.create(session, intent.id);
+    const saved = JSON.parse(fs.readFileSync(path.join(h.store.dir, "pending-sends", `${intent.id}.json`), "utf8"));
+    assert.equal(saved.execution.backend, backend);
+    assert.equal(saved.execution.model, "exact-provider/model-id");
+  });
+}
+
+test("an unbound legacy pending local original cannot recover into its old cloud settings", native, async t => {
+  const h = await fixture(t), { session } = h.controller.open();
+  const thread = await h.runner.createThread(h.project.id, { backend: "mock" });
+  const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: "legacy-local", revision: 1 }, id: "local-model" } };
+  h.store.updateThread(thread.id, { backend: "codex", model: "local-model", localTarget: target, localContextTokens: 32768 });
+  const intent = h.controller.begin(session, { source: { kind: "thread", threadId: thread.id }, rawText: "private original", configuration: config, files: [] });
+  const file = path.join(h.store.dir, "pending-sends", `${intent.id}.json`);
+  const saved = JSON.parse(fs.readFileSync(file, "utf8")); delete saved.execution;
+  fs.writeFileSync(file, JSON.stringify(saved));
+  const original = fs.readFileSync(file);
+  h.store.updateThread(thread.id, { backend: "mock", model: "mock", localTarget: undefined, localContextTokens: undefined });
+  const restored = new NativeDrafts({ store: h.store, runner: h.runner, attachments: h.attachments });
+  const reopened = restored.open();
+  await assert.rejects(restored.create(reopened.session, intent.id), /destination/i);
+  assert.deepEqual(fs.readFileSync(file), original);
+  assert.deepEqual(h.turns, []);
+});
+
+test("an explicit new-thread text copy can send while a legacy original and its attachment remain reserved", native, async t => {
+  const h = await fixture(t), { session } = h.controller.open();
+  const files = h.controller.stage(session, h.owner, stagedInput("preserved.txt")).staged;
+  const intent = h.controller.begin(session, { source: h.owner, rawText: "private original", configuration: config, files });
+  const file = path.join(h.store.dir, "pending-sends", `${intent.id}.json`);
+  const saved = JSON.parse(fs.readFileSync(file, "utf8")); delete saved.execution;
+  fs.writeFileSync(file, JSON.stringify(saved));
+  const bytes = fs.readFileSync(file), attachmentBytes = fs.readFileSync(h.attachments.resolve(files[0]!.rel)!);
+  const restored = new NativeDrafts({ store: h.store, runner: h.runner, attachments: h.attachments }), opened = restored.open();
+  await assert.rejects(restored.create(opened.session, intent.id), /destination/i);
+  const thread = await h.runner.createThread(h.project.id, { backend: "mock" });
+  const fresh = restored.begin(opened.session, { source: { kind: "thread", threadId: thread.id }, rawText: "private original", configuration: config, files: [] });
+  await restored.create(opened.session, fresh.id);
+  restored.transfer(opened.session, { id: "explicit-copy-transfer", sequence: 1, snapshot: { threads: [{ threadId: thread.id, text: "", attachments: [] }], projects: [], selectedThreadId: thread.id, draft: null }, intentId: fresh.id, files: [] });
+  await restored.send(opened.session, fresh.id);
+  assert.deepEqual(h.turns, ["private original"]);
+  assert.deepEqual(fs.readFileSync(file), bytes);
+  assert.deepEqual(fs.readFileSync(h.attachments.resolve(files[0]!.rel)!), attachmentBytes);
+});
+
+test("pending local admission never resolves a cloud account identity", native, async t => {
+  const h = await fixture(t), { session } = h.controller.open(); let reads = 0;
+  h.runner.backend("codex").identity = () => { reads++; return "cloud-account"; };
+  const thread = await h.runner.createThread(h.project.id, { backend: "mock" });
+  const target = { schema: 1 as const, harness: "codex" as const, model: { schema: 1 as const, connection: { id: "local-only", revision: 1 }, id: "local-model" } };
+  h.store.updateThread(thread.id, { backend: "codex", model: "local-model", localTarget: target, localContextTokens: 32768 });
+  h.controller.begin(session, { source: { kind: "thread", threadId: thread.id }, rawText: "original", configuration: config, files: [] });
+  assert.equal(reads, 0);
+});

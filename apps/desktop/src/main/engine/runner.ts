@@ -1,3 +1,4 @@
+import { executionBinding } from "./execution-binding.js";
 import { resolveCli } from "./cli-path.js";
 import type { LocalExecution } from "./local-models/execution.js";
 import { localOnly } from "./local-models/run-policy.js";
@@ -181,6 +182,11 @@ export class ThreadRunner {
   /** Whether a running turn is bound to this backend account (so it must not be removed or re-signed underneath it). */
   accountInUse(backend: BackendId, account: string): boolean {
     return [...this.live].some(([threadId, l]) => Boolean(l.abort) && l.backend === backend && threadAccount(this.o.store.thread(threadId)) === account);
+  }
+
+  localConnectionInUse(connectionId: string): boolean {
+    return [...this.live].some(([threadId, live]) => Boolean(live.run || live.abort)
+      && this.o.store.thread(threadId)?.localTarget?.model.connection.id === connectionId);
   }
 
   async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
@@ -648,8 +654,15 @@ export class ThreadRunner {
   }
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
-  async send(threadId: string, text: string, attachments: Attachment[] = []): Promise<void> {
+  async send(threadId: string, text: string, attachments: Attachment[] = [], by = "desktop"): Promise<void> {
+    this.assertLocalSender(threadId, by);
     return this.start(threadId, text, undefined, attachments);
+  }
+
+  private assertLocalSender(threadId: string, by: string): void {
+    if (this.o.store.thread(threadId)?.localTarget !== undefined && by !== "desktop") {
+      throw new Error("Send local-model messages from this Mac. Phone and paired-desktop sends are unavailable for local threads.");
+    }
   }
 
   /** Native durable adapter only. Files have already crossed its journaled
@@ -668,10 +681,19 @@ export class ThreadRunner {
    * Runs the thread's last message again, in place: the transcript keeps its one user bubble and the
    * new attempt follows the failure card. Auto routing is not re-asked; the pick already applied.
    */
-  async retry(threadId: string): Promise<void> {
+  async retry(threadId: string, by = "desktop"): Promise<void> {
+    this.assertLocalSender(threadId, by);
     this.assertThreadAvailable(threadId);
     const user = [...this.slot(threadId).items].reverse().find((item) => item.kind === "user");
     if (!user || user.kind !== "user") throw new Error("Nothing to retry: this thread has no message yet.");
+    const current = this.o.store.thread(threadId)!;
+    // Old transcript items carry no destination proof. The current thread may
+    // already have switched away from local, so its current target is not proof.
+    if (!user.execution) throw new Error("Saved message destination is unverified. Copy the original into a new message to authorize this destination.");
+    if (current.localTarget !== undefined || user.execution.localTarget) {
+      const binding = executionBinding(current, null);
+      if (JSON.stringify(user.execution) !== JSON.stringify(binding)) throw new Error("Saved message destination changed. Copy the original into a new message to authorize this destination.");
+    }
     return this.start(threadId, user.text, user.id, user.attachments);
   }
 
@@ -722,6 +744,11 @@ export class ThreadRunner {
     };
 
     const retry = reuse !== undefined;
+    // Fix the account before durable admission and before any asynchronous
+    // auxiliary setup can observe a different active account.
+    const prospectiveCodexAccount = thread.localTarget === undefined && (thread.backend === "codex" || thread.auto)
+      ? this.backends.codex.identity?.() ?? null : null;
+    const admittedExecution = executionBinding(thread, prospectiveCodexAccount);
     // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
     let draft: AttachmentDraft | undefined;
     if ((prepared || retry) && Array.isArray(attachments) && attachments.length) {
@@ -747,7 +774,7 @@ export class ThreadRunner {
     // The Modex turn is the user message it answers: Retry runs the same turn again as a new attempt.
     const turnId = reuse ?? prepared?.id ?? newId();
     if (!retry) {
-      const item: UserItem = { id: turnId, kind: "user", text: prepared?.rawText ?? text,
+      const item: UserItem = { id: turnId, kind: "user", text: prepared?.rawText ?? text, execution: admittedExecution,
         at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}) };
       this.addItem(threadId, item, prepared ? () => {
         const receipt = Object.freeze({ ...item, ...(item.attachments ? { attachments: Object.freeze(item.attachments.map(file => Object.freeze({ ...file }))) } : {}) });
@@ -848,13 +875,14 @@ export class ThreadRunner {
         if (knowledge.warning) sink.notice("warn", knowledge.warning);
         if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
       }
-      // Codex and Claude Code bind a thread to the account its first turn ran on; older handles belong to the CLI's own login.
+      // Preserve Codex's admitted identity across asynchronous setup; Claude keeps its account-pool binding.
       const bound = threadAccount(thread);
       const account = !local && (thread.backend === "codex" || thread.backend === "claude") && backend.identity
-        ? bound ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
+        ? thread.backend === "codex"
+          ? admittedExecution.backend === "codex" ? admittedExecution.account ?? undefined : prospectiveCodexAccount ?? undefined
+          : bound ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
       if (account && !bound) this.o.store.updateThread(threadId, thread.backend === "codex" ? { codexAccount: account } : { claudeAccount: account });
       const accountFor = (ran: Thread) => threadAccount(ran) ?? account;
-      // Read before the turn: the store's thread object takes the session id the moment the CLI reports one.
       const freshConversation = !thread.sessionHandle;
       const turnFiles: TurnAttachment[] = files.map((f) => {
         const file = this.attachments.resolve(f.rel);
@@ -1209,8 +1237,9 @@ export class ThreadRunner {
     // External edits remain fenced until the renderer adopts the canonical state.
     if (this.restartHold?.kind !== "owner-removal" || (!opts.fromRouter && !opts.automaticTitle)) this.assertNotRestarting();
     // Resume handles and account bindings are main-owned, even if an IPC caller sends extra keys.
-    // A local target is chosen on this Mac: a paired desktop's patch never carries one.
-    const localKeys = opts.by === "paired-desktop" ? [] : ["localTarget", "localContextTokens"];
+    // A local target is chosen, changed and cleared on this Mac's own window only (#380 AC5): a paired desktop's,
+    // the phone's or an unnamed caller's patch never carries one.
+    const localKeys = opts.by === "desktop" ? ["localTarget", "localContextTokens"] : [];
     patch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
       ["mode", "model", "title", "backend", "plan", "effort", "auto", "approvals", ...localKeys].includes(key))) as ThreadPatch;
     if (patch.approvals !== undefined && !APPROVAL_POLICIES.includes(patch.approvals)) delete patch.approvals;
@@ -1237,7 +1266,7 @@ export class ThreadRunner {
     const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, codexAccount: undefined, claudeAccount: undefined, lastTurn: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
     // So does any local target change: the old child's handle is dropped, and clearing the target returns to the default cloud model.
     const localReset: Partial<Thread> = switchingLocal ? { sessionHandle: undefined, codexAccount: undefined, claudeAccount: undefined, lastTurn: undefined,
-      ...(patch.localTarget === null ? { localTarget: undefined, localContextTokens: undefined, model: this.o.store.settings.default_model.codex ?? "", effort: undefined } : {}) } : {};
+      ...(patch.localTarget === null ? { localTarget: undefined, localContextTokens: undefined, model: patch.model ?? this.o.store.settings.default_model.codex ?? "", effort: patch.effort } : {}) } : {};
     if (switchingLocal) {
       this.naming.get(threadId)?.abort(); this.naming.delete(threadId);
       const slot = this.slot(threadId); slot.followUp?.abort.abort(); slot.followUp = undefined;

@@ -173,3 +173,34 @@ test("retiring a project draft rejects a late native picker without copying its 
   expect(fs.readdirSync(path.join(home, "attachments", "staging"))).toEqual([]);
   expect(fs.readFileSync(selected, "utf8")).toBe("selected source remains unchanged");
 });
+
+test("a refused legacy original can be copied to a new chat without sending or replacing newer typing", async () => {
+  await app.close();
+  const stateFile = path.join(home, "app", "state.json"), state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  const at = new Date().toISOString(), sourceId = "legacy-original-thread", id = "11111111-1111-4111-8111-111111111111";
+  state.threads = [{ id: sourceId, projectId: "p1", title: "Legacy original", cwd: repo, backend: "mock", model: "mock", mode: "chat", plan: false, auto: false, status: "idle", createdAt: at, updatedAt: at }];
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  fs.writeFileSync(path.join(home, "app", "update-recovery.json"), JSON.stringify({ schema: 2, revision: 1, attempt: null, drafts: { threads: [{ threadId: sourceId, text: "newer typing stays here", attachments: [] }], projects: [], selectedThreadId: sourceId, draft: null } }));
+  const directory = path.join(home, "app", "pending-sends"); fs.mkdirSync(directory, { recursive: true });
+  const rawText = "  private legacy pending original  ";
+  const pendingFile = path.join(directory, `${id}.json`);
+  fs.writeFileSync(pendingFile, JSON.stringify({ schema: 1, id, createdAt: at, source: { kind: "thread", threadId: sourceId }, owner: { kind: "thread", threadId: sourceId }, rawText,
+    configuration: { worktree: false, settings: { backend: "mock", model: "mock", mode: "chat", plan: false, auto: false } }, files: [], creation: null, target: null }));
+  const bytes = fs.readFileSync(pendingFile);
+  ({ app, page } = await launch(home));
+  await expect(tid(page, "composer-input")).toHaveValue("newer typing stays here");
+  await tid(page, "pending-message-retry").click();
+  await expect(page.getByText(/destination changed or is unverified/)).toBeVisible();
+  await tid(page, "pending-message-copy").click();
+  await expect(tid(page, "composer-input")).toHaveValue(rawText);
+  const saved = await page.evaluate(() => window.modex!.invoke("state:get", undefined));
+  const fresh = saved.threads.find(thread => thread.id !== "legacy-original-thread")!;
+  expect(fresh).toBeTruthy();
+  expect(await page.evaluate(id => window.modex!.invoke("thread:items", { threadId: id }), fresh.id)).toHaveLength(0);
+  expect(fs.readFileSync(pendingFile)).toEqual(bytes);
+  await tid(page, "send").click();
+  await expect.poll(async () => (await page.evaluate(id => window.modex!.invoke("thread:items", { threadId: id }), fresh.id)).filter(item => item.kind === "user").length).toBe(1);
+  expect(fs.readFileSync(pendingFile)).toEqual(bytes);
+  await page.locator(`[data-testid="thread-row"][data-thread-id="${sourceId}"] .thread-main`).click();
+  await expect(tid(page, "composer-input")).toHaveValue("newer typing stays here");
+});

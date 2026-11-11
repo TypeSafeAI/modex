@@ -11,6 +11,7 @@ import type { Attachment } from "../../shared/attachments";
 import { bridge } from "../bridge";
 import { AttachmentChips } from "./Attachments";
 import { Composer } from "./Composer";
+import type { LocalMenu } from "./ModelMenu";
 import { DeferMarkdown, Markdown } from "./Markdown";
 import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
@@ -55,6 +56,8 @@ interface Props {
   modelsError?: string;
   onRetryModels?: () => void;
   openModelPickerRequest?: number;
+  /** Local models beside the CLI's own (LM-4). */
+  local?: LocalMenu;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   /** The checkout's current branch (from the Changes snapshot), for the composer's context strip. */
   branch?: string;
@@ -78,7 +81,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, inputRef, branch }: Props) {
+export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, local, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const reader = useMemo(() => readerStateFor(thread.id), [thread.id]);
   const restored = useRef(false);
@@ -264,6 +267,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         modelsError={modelsError}
         onRetryModels={onRetryModels}
         openModelPickerRequest={openModelPickerRequest}
+        local={local}
         suggestion={followUp?.key === suggestionKey ? followUp.value : null}
         onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}

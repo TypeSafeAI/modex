@@ -1,0 +1,42 @@
+{
+  "kind": "installed codex CLI against a scripted loopback Responses server that fails after one tool ran; no model, no inference",
+  "cli": "codex",
+  "mode": "child-exit",
+  "hops": [
+    {
+      "n": 1,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": false,
+      "hasCompactPrompt": false,
+      "bytes": 33763
+    },
+    {
+      "n": 2,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": true,
+      "hasCompactPrompt": false,
+      "bytes": 34135
+    }
+  ],
+  "toolRuns": 1,
+  "toolStarts": 1,
+  "outcomes": [
+    "succeeded"
+  ],
+  "notices": [],
+  "result": {
+    "status": "failed",
+    "error": "codex app-server exited (null) ",
+    "detail": {
+      "codexThreadId": "01a1971d-d736-7883-9968-fa09260c2554",
+      "turnId": "01a1971d-d774-7ef3-abb0-78213db0c967",
+      "userAgent": "modex/0.166.0 (Mac OS 27.2.0; arm64) unknown (modex; 0.0.1)",
+      "pid": 25363,
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "stderr": ""
+    }
+  }
+}

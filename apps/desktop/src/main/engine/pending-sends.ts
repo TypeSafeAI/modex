@@ -1,3 +1,6 @@
+import { threadTarget } from "../../shared/local-models.js";
+import { isBackendId } from "../../shared/types.js";
+import type { PendingExecutionBinding } from "../../shared/native-drafts.js";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -38,7 +41,18 @@ function validateTarget(value: unknown): asserts value is PendingTarget {
   if (!id(value.threadId) || !id(value.projectId)) throw fail(); date(value.createdAt);
 }
 function validateRecord(value: unknown): asserts value is PendingSendRecord {
-  shape(value, ["schema", "id", "createdAt", "source", "owner", "rawText", "configuration", "files", "creation", "target"]);
+  const keys = ["schema", "id", "createdAt", "source", "owner", "rawText", "configuration", "files", "creation", "target"];
+  if (value && typeof value === "object" && Object.hasOwn(value, "execution")) keys.push("execution");
+  shape(value, keys);
+  if (Object.hasOwn(value, "execution")) {
+    const binding = value.execution;
+    shape(binding, ["schema", "backend", "model", "account", "localTarget", "localContextTokens"]);
+    if (binding.schema !== 1 || !isBackendId(binding.backend) || typeof binding.model !== "string" || binding.model.length > 512 || (binding.account !== null && (typeof binding.account !== "string" || binding.account.length > 256))) throw fail();
+    if (binding.localTarget !== null) {
+      const parsed = threadTarget({ backend: binding.backend as PendingExecutionBinding["backend"], localTarget: binding.localTarget });
+      if (parsed.kind !== "local" || parsed.target.model.id !== binding.model || binding.account !== null || !Number.isSafeInteger(binding.localContextTokens) || (binding.localContextTokens as number) < 4096 || (binding.localContextTokens as number) > 262144) throw fail();
+    } else if (binding.localContextTokens !== null) throw fail();
+  }
   if (value.schema !== 1 || !uuid(value.id) || typeof value.rawText !== "string") throw fail();
   date(value.createdAt); owner(value.source); owner(value.owner);
   if (value.rawText.length > PENDING_TEXT_CHARACTERS) throw fail();
@@ -136,12 +150,12 @@ export class PendingSends {
       this.file(id).checkpoint(expected);
     });
   }
-  begin(input: unknown, authorize: (record: NonNullable<PendingSnapshot["value"]>) => boolean): PendingSnapshot {
+  begin(input: unknown, authorize: (record: NonNullable<PendingSnapshot["value"]>) => boolean, execution?: PendingExecutionBinding): PendingSnapshot {
     return this.operation(() => {
       const copied: unknown = parseRecoveryJSON(recoveryJSON(input, PENDING_RECORD_BYTES), PENDING_RECORD_BYTES);
       shape(copied, ["source", "rawText", "configuration", "files"]); owner(copied.source);
       const id = randomUUID(), createdAt = new Date().toISOString();
-      const record = copyRecord({ schema: 1, id, createdAt, ...copied, owner: copied.source,
+      const record = copyRecord({ schema: 1, id, createdAt, ...copied, ...(execution ? { execution } : {}), owner: copied.source,
         creation: copied.source.kind === "project" ? { threadId: randomUUID(), createdAt } : null, target: null });
       const admitted = JSON.parse(recoveryJSON(record, PENDING_RECORD_BYTES)) as PendingSendRecord;
       const freeze = (value: unknown): void => { if (value && typeof value === "object") { for (const child of Object.values(value)) freeze(child); Object.freeze(value); } };

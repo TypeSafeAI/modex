@@ -1,0 +1,13 @@
+{
+  "kind": "installed codex CLI; two connection profiles for one scripted loopback server; the second turn queued, then stopped",
+  "cli": "codex",
+  "requests": [
+    {
+      "path": "/v1/responses",
+      "first": true,
+      "queued": false
+    }
+  ],
+  "first": "completed",
+  "queued": "interrupted"
+}
