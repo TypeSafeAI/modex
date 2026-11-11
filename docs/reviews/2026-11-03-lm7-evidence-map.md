@@ -25,6 +25,10 @@ The later integration receipt records Apple M5 Max arm64, 128 GiB RAM, macOS 27.
 
 Ordinary real-model read/edit/check, Stop and owned child/server loss passed within their recorded scope. A separate network-denied canary proved external TCP and outside-file-write refusal for both the owned server and Codex descendants. A later native compaction run completed nine turns with all 28 Responses requests returning HTTP 200, but independent session audit found 18 tool calls against 16 intended: two completed reads were issued again after compaction. That is counterevidence to action-safe compaction, not a pass. A complete dense-input transport capture later failed at 73,800 tokens against the 65,536-token slot while retaining three earlier dense inputs plus a fourth. The [continuation receipt](2026-11-11-native-private-workspace-trust.md) and [overflow receipt](2026-11-11-local-context-overflow.md) retain first failures and limits. The actionable overflow message does not repair native context retention or compaction.
 
+### Recorded timing for implementation step S6
+
+A read-only [timing audit](2026-11-11-local-model-timing.md) of the already retained 7d6094e native run records a 14.194-second first read, 9.06-second model runner startup within that interval, a 3.761-second same-session approved edit/test continuation, and an 18.126-second total through cleanup. The audit binds five original receipts/logs, exact source/runtime/model/hardware identity and unchanged timing-harness scope. It starts no inference. This is one observed service-cold/warm-continuation workflow with different tasks and uncontrolled host caches, not a speedup ratio, current-head benchmark or universal budget. Repeatability and each additional source/runtime combination remain separate; no checkbox is ticked.
+
 ### Acceptance-criterion reconciliation
 
 | Criterion | Evidence now available | What still prevents complete acceptance |
