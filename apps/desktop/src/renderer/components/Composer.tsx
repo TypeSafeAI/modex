@@ -151,7 +151,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
         {unsupportedImages && <p role="status" className="local-inference-host" data-testid="local-images-unavailable">Images are not qualified for local models. Remove the image or choose a cloud model before sending; the attachment is still here.</p>}
         <div className={`composer-box${plan ? " plan" : ""}`} data-testid="composer-box">
           {canSuggest && (
-            <button type="button" className="followup" data-testid="followup" data-source={suggestion?.source} aria-label="Use suggested follow-up" title={suggestion?.source === "jev" ? "Suggested by Jev · Tab to use" : "Suggested follow-up · Tab to use"} onClick={fillSuggestion}>
+            <button type="button" className="followup" data-testid="followup" data-source={suggestion?.source} aria-label={`Use suggested follow-up: ${suggestion?.text}`} title={suggestion?.source === "jev" ? "Suggested by Jev · Tab to use" : "Suggested follow-up · Tab to use"} onClick={fillSuggestion}>
               <span className="followup-text" data-testid="followup-text">{suggestion?.text}</span>
               <Kbd>⇥</Kbd>
             </button>

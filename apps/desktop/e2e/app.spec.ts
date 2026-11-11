@@ -150,6 +150,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(followUp).toHaveAttribute("data-source", "heuristic");
   const suggested = (await tid(followUp, "followup-text").innerText()).trim();
   expect(suggested).toMatch(/test|verif|review/i);
+  await expect(followUp).toHaveAccessibleName(`Use suggested follow-up: ${suggested}`);
   const input = tid(page, "composer-input");
   await input.focus();
   await input.press("Tab");
@@ -310,12 +311,18 @@ test("a key typed into Settings is kept encrypted outside state.json, reported m
   const status = tid(page, "routing-status");
   await expect(status).toContainText("Jev transport configured");
   await expect(status).toContainText("key ****4321 from Modex keychain");
-  await expect(keyBox.locator("label > span").first()).toContainText("saved in test cipher (not secure)");
+  const storageBackend = process.env.MODEX_PACKAGED_APP
+    ? process.platform === "darwin" ? "macOS Keychain" : process.platform === "win32" ? "Windows DPAPI" : "OS keyring"
+    : "test cipher (not secure)";
+  await expect(keyBox.locator("label > span").first()).toContainText(`saved in ${storageBackend}`);
   await expect(keyBox.locator("input[type=password]")).toHaveValue("");
-  // On disk: never in state.json, never in plaintext, and the secrets file is owner-only.
+  // The unpackaged fixture is reversible; a packaged artifact must use OS encryption.
+  // Neither stores credentials in state.json, and the secrets file remains owner-only.
   expect(fs.readFileSync(path.join(home, "app", "state.json"), "utf8")).not.toContain("4321");
   const secretsFile = path.join(home, "app", "secrets.json");
   expect(fs.readFileSync(secretsFile, "utf8")).not.toContain("sk-e2e-typed-key-4321");
+  const savedKey = JSON.parse(fs.readFileSync(secretsFile, "utf8")).entries.typesafe_api_key.enc;
+  expect(Buffer.from(savedKey, "base64").includes(Buffer.from("sk-e2e-typed-key-4321"))).toBe(!process.env.MODEX_PACKAGED_APP);
   if (process.platform !== "win32") expect(fs.statSync(secretsFile).mode & 0o777).toBe(0o600);
   await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
   await expect(tid(page, "settings")).toHaveCount(0);

@@ -220,14 +220,14 @@ const emit = (event: ThreadEvent): void => {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("thread:event", event);
   if (!journal) desktopHost?.broadcast("thread", event);
 };
-// The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
-const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
+// Only unpackaged E2E fixtures may substitute storage. A packaged app always uses
+// OS encryption (or refuses credentials), even when it inherits test flags.
+const osCipher = !app.isPackaged && process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
+const secrets = new SecretStore(home, osCipher);
 const localModels = new LocalModelsService(home, secrets, { connectionInUse: id => runner.localConnectionInUse(id) });
 // Local execution (LM-3, engine/local-models/execution.ts) is not wired into the product runner: Codex's redirect
 // handling and managed-policy precedence are unqualified (#379 AC6, LM-5 #380), so without the seam the runner
 // refuses every local selection and persisted target instead of starting a child or routing to a cloud backend.
-// Settings reads ChatGPT status in packaged e2e too; keep its test home off the OS keychain.
-const osCipher = process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage);
 const chatgptCipher = { ...osCipher, available: () => osCipher.available() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text") };
 const modexAccount = new WorkOSAuth({ home, cipher: chatgptCipher, config: workosConfig(process.env.MODEX_WORKOS_ENV), openBrowser: (url) => shell.openExternal(url) });
 const chatgpt = new ChatGPTAuth({ home, cipher: chatgptCipher, openBrowser: (url) => shell.openExternal(url) });
