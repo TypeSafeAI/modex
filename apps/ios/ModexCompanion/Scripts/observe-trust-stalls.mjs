@@ -184,7 +184,7 @@ export async function runObserver({ deviceId, output, signal }) {
         const entry = observer.pending.get(opts.observer), target = opts.role === 'app' ? entry : entry?.daemon;
         return captureStack(pid, { ...opts, directory, command, signal: AbortSignal.any([combined, opts.signal]), expectedStartedAt: target?.identity.startedAt });
       } });
-    const predicate = 'eventMessage BEGINSWITH "MODEX_PAIRING_TLS" OR eventMessage == "SecTrustEvaluateIfNecessary" OR process == "trustd"';
+    const predicate = '(process == "ModexCompanion" AND (eventMessage BEGINSWITH "MODEX_PAIRING_TLS" OR eventMessage == "SecTrustEvaluateIfNecessary")) OR (process == "trustd" AND eventMessage CONTAINS "com.apple.trustd.peer[")';
     while (!combined.aborted) {
       if (observer.captures < 2 && !observer.closed) {
         try {
