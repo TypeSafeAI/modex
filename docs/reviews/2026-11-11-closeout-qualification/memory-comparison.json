@@ -1,0 +1,144 @@
+{
+  "at": "2026-11-11T10:54:28.348545+00:00",
+  "baseline": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+  "current": "7d6094e9ffc501b8d99f673cc2e9604b5c7bf5fe",
+  "host": {
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "memoryGiB": 128,
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "27.2.0",
+    "loadAverage": [
+      17.34619140625,
+      19.78271484375,
+      30.11083984375
+    ]
+  },
+  "kind": "same-host named workload observations; no agreed memory threshold, no leak-freedom or universal performance claim",
+  "longTranscript": {
+    "launchesPerSource": 5,
+    "opensPerLaunch": 5,
+    "medianColdMs": {
+      "baseline": 61.70000000298023,
+      "current": 82.60000000149012
+    },
+    "memoryMedianKiB": {
+      "baseline": {
+        "before": {
+          "mainPrivate": 72577,
+          "rendererWorkingSet": 134576
+        },
+        "after": {
+          "mainPrivate": 79889,
+          "rendererWorkingSet": 321680
+        }
+      },
+      "current": {
+        "before": {
+          "mainPrivate": 76257,
+          "rendererWorkingSet": 133712
+        },
+        "after": {
+          "mainPrivate": 82161,
+          "rendererWorkingSet": 350080
+        }
+      }
+    }
+  },
+  "observations": [
+    {
+      "source": "baseline",
+      "workflow": "longTranscript",
+      "mainPrivateKiB": {
+        "before": 71985,
+        "after": 79745
+      },
+      "rendererWorkingSetKiB": {
+        "before": [
+          134112
+        ],
+        "after": [
+          332528
+        ]
+      }
+    },
+    {
+      "source": "baseline",
+      "workflow": "logStream",
+      "mainPrivateKiB": {
+        "before": 71521,
+        "after": 145617
+      },
+      "rendererWorkingSetKiB": {
+        "before": [
+          134816
+        ],
+        "after": [
+          160704
+        ]
+      }
+    },
+    {
+      "source": "current",
+      "workflow": "longTranscript",
+      "mainPrivateKiB": {
+        "before": 76017,
+        "after": 81857
+      },
+      "rendererWorkingSetKiB": {
+        "before": [
+          134848
+        ],
+        "after": [
+          344192
+        ]
+      }
+    },
+    {
+      "source": "current",
+      "workflow": "logStream",
+      "mainPrivateKiB": {
+        "before": 74785,
+        "after": 151377
+      },
+      "rendererWorkingSetKiB": {
+        "before": [
+          134656
+        ],
+        "after": [
+          157328
+        ]
+      }
+    }
+  ],
+  "streamIPC": {
+    "baseline": {
+      "bytes": 80224695,
+      "events": 56,
+      "largestEventBytes": 3145932,
+      "largestOutputBytes": 3145728
+    },
+    "current": {
+      "bytes": 664016,
+      "events": 56,
+      "largestEventBytes": 262260,
+      "largestOutputBytes": 262144
+    }
+  },
+  "sourceBinding": {
+    "probeSha256": "2ef575aca225139843889c19e9ed26f3866ee0c387e0e19e0f4a2f2bd8c98365",
+    "baselineProbeSha256": "9bb899f800a849e234e4042e40f8169906a545e73ec09d85accf9e7870f301ba",
+    "difference": "support import only; baselinefullSHA explicitly passed",
+    "currentReceipt": "Current2casespassed within initiallyoverbroad4casecollection; finalafterAllcurrentmetrics match current cold samples inlog. Whole firstattempt3pass1fail retained. Nestedbaselinefailednew256KiBboundasexpected; originalwrongsourcebaselineworker receipt retained and notused.",
+    "baselineReceipt": "Separatecorrectsource2case run:1coldopenpass,1expectedpre-fidelityunboundedoutputfailure; recordsmemorybeforeassertion. No assertion relaxed."
+  },
+  "limits": [
+    "KiB nativeprivate/workingSet and byteNodecounters are distinct",
+    "Per-process measurements not summed; shared pages can overlap",
+    "PeakWorkingSet is process lifetime, not operation high water",
+    "Snapshot observations are not proof of a strict memory ceiling",
+    "Current main log-stream private memory grew slightly more than baseline, no memory improvement claim",
+    "Currentrendererlongtranscript working set higher thanbaseline; richerUI and cache contribution notisolated; no causality claim"
+  ]
+}

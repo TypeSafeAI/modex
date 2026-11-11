@@ -131,6 +131,26 @@ async function longTasks(page: Page): Promise<{ count: number; totalMs: number; 
   });
 }
 
+/** Per-process observations, never summed: shared pages make a sum misleading. */
+async function processMemory(app: ElectronApplication) {
+  const observed = await app.evaluate(async ({ app, BrowserWindow }) => ({
+    at: new Date().toISOString(),
+    units: { nativeMemory: "KiB", nodeMemory: "bytes" },
+    main: { pid: process.pid, native: await process.getProcessMemoryInfo(), node: process.memoryUsage() },
+    windowRendererPids: BrowserWindow.getAllWindows().map(w => w.webContents.getOSProcessId()),
+    processes: app.getAppMetrics().map(p => ({ pid: p.pid, creationTime: p.creationTime, type: p.type, name: p.name, memory: p.memory })),
+  }));
+  expect(observed.main.native.private, "native main private memory must be observed in KiB").toBeGreaterThan(0);
+  expect(observed.main.node.rss, "Node process counters must be observed in bytes").toBeGreaterThan(0);
+  expect(observed.windowRendererPids.length).toBeGreaterThan(0);
+  for (const pid of observed.windowRendererPids) {
+    const renderer = observed.processes.find(p => p.pid === pid);
+    expect(renderer, "every window renderer must have its own native process receipt").toBeDefined();
+    expect(renderer!.memory.workingSetSize).toBeGreaterThan(0);
+  }
+  return observed;
+}
+
 let app: ElectronApplication | undefined;
 let home = "", repo = "";
 test.afterEach(async () => {
@@ -166,6 +186,8 @@ async function measureTranscript(testInfo: TestInfo, launchNumber: number): Prom
       return send(channel, ...args);
     };
   });
+  const memoryBefore = await processMemory(app);
+  const openMemory: Awaited<ReturnType<typeof processMemory>>[] = [];
   const opens: number[] = [];
   const tasks: { count: number; totalMs: number; maxMs: number }[] = [];
   for (let run = 0; run < 5; run++) {
@@ -195,11 +217,13 @@ async function measureTranscript(testInfo: TestInfo, launchNumber: number): Prom
       }
     }, { id: threadId, marker: `Answer ${TURNS - 1}.` }));
     tasks.push(await longTasks(page));
+    openMemory.push(await processMemory(app));
   }
   // The share of an open that is main reading the file and IPC: thread:items, called from the renderer.
   const loads: number[] = [];
   for (let run = 0; run < 3; run++) loads.push(await page.evaluate(async (id) => { const start = performance.now(); await window.modex!.invoke("thread:items", { threadId: id }); return performance.now() - start; }, threadId));
   const measurement = {
+    processMemory: { before: memoryBefore, after: await processMemory(app), afterEachOpen: openMemory },
     turns: TURNS, items: saved.length, savedBytes: Buffer.byteLength(JSON.stringify(saved)),
     viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight, scale: devicePixelRatio })),
     firstOpenMs: Math.round(opens[0]!), repeatOpenMs: opens.slice(1).map(Math.round), repeatMedianMs: Math.round(median(opens.slice(1))),
@@ -276,6 +300,7 @@ test("a 3 MiB command log streams to the window bounded, and the turn settles", 
   await expect(tid(page, "composer-input")).toBeFocused();
   await tid(page, "composer-input").fill("Print a long log");
   await watchLongTasks(page);
+  const memoryBefore = await processMemory(app);
   const sentAt = Date.now();
   await page.keyboard.press("Meta+Enter");
   await expect(page.getByText("Streamed the log.")).toBeVisible({ timeout: 60_000 });
@@ -286,6 +311,7 @@ test("a 3 MiB command log streams to the window bounded, and the turn settles", 
     return { bytes: m.bytes, events: m.events, largestEvent: m.largestEvent, largestOutput: m.largestOutput, streamMs: Math.round(m.idle - m.first), cpuMs: m.cpuMs };
   });
   results.logStream = {
+    processMemory: { before: memoryBefore, after: await processMemory(app) },
     loggedBytes: CHUNK.length * CHUNKS, deltas: CHUNKS, deltaSpacingMs: 10,
     sentToWindow: { bytes: main.bytes, events: main.events, largestEventBytes: main.largestEvent, largestOutputBytes: main.largestOutput },
     mainStreamMs: main.streamMs, mainCpuMs: main.cpuMs, sendToAnswerShownMs: shownMs,

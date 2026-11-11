@@ -103,13 +103,7 @@ Start a second harmless command long enough to Stop after execution begins. Capt
 
 ## LM-3: local execution through Codex
 
-Status: main-only, no UI, not admitted in the product (#379). A thread gets a local target through
-`thread:update` with `localTarget` and `localContextTokens`; LM-4 (#381) will offer that in the interface.
-Nothing in the app sets one today, and a paired desktop's patch never carries one. `main/index.ts` does not
-construct `LocalExecution`: until LM-5 (#380) qualifies Codex's redirect handling and managed-policy
-precedence (AC6), the runner has no execution seam, so it refuses a selection before writing it and ends a
-persisted target's turn with a notice, without starting a child or routing to a cloud backend. The
-description below is of the module and its fixture-proven behaviour once wired.
+Settings → Local models and the model menu expose the integration workflow described above (#381), but local execution remains unadmitted (#379/#380). The interface requests a target through `thread:update` with `localTarget` and `localContextTokens`; a paired desktop cannot set either field. `main/index.ts` does not construct `LocalExecution`, so production refuses selection before persisting it and ends a persisted target's turn with a notice, without starting a child or routing to a cloud backend or account. The description below covers the execution module; scripted Electron fixtures and separately named native qualification receipts do not activate it in the product.
 
 **Admission.** `ThreadRunner.updateThread` accepts a target only after `LocalExecution.validate` resolves
 exactly its connection revision, with the token readable, and the context window is 4,096–262,144 tokens.
