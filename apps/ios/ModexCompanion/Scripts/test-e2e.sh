@@ -6,9 +6,38 @@ repo_dir="$(cd "$app_dir/../../.." && pwd)"
 fixture_file="$(mktemp /tmp/modex-ios-pairing.XXXXXX)"
 local_pairing="$app_dir/UITests/LocalPairing.json"
 fixture_pid=""
+trust_observer_pid=""
+owned_child_running() {
+  local target_pid="$1" running_pid
+  [[ -n "$target_pid" ]] || return 1
+  while IFS= read -r running_pid; do
+    if [[ "$running_pid" == "$target_pid" ]]; then return 0; fi
+  done < <(jobs -pr)
+  return 1
+}
+stop_owned_child() {
+  local target_pid="$1" attempt
+  if owned_child_running "$target_pid"; then
+    kill -TERM "$target_pid" 2>/dev/null || true
+    for attempt in {1..50}; do
+      if ! owned_child_running "$target_pid"; then break; fi
+      sleep 0.1
+    done
+    if owned_child_running "$target_pid"; then kill -KILL "$target_pid" 2>/dev/null || true; fi
+    for attempt in {1..10}; do
+      if ! owned_child_running "$target_pid"; then break; fi
+      sleep 0.1
+    done
+  fi
+  if [[ -n "$target_pid" ]] && ! owned_child_running "$target_pid"; then wait "$target_pid" 2>/dev/null || true; fi
+  if owned_child_running "$target_pid"; then echo "Owned paired-test helper did not stop; cleanup is unverified." >&2; fi
+}
 cleanup() {
+  local cleanup_status=$?
+  stop_owned_child "$trust_observer_pid"
+  stop_owned_child "$fixture_pid"
   rm -f "$local_pairing" "$fixture_file"
-  if [[ -n "$fixture_pid" ]]; then kill -TERM "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" 2>/dev/null || true; fi
+  return "$cleanup_status"
 }
 trap cleanup EXIT
 
@@ -40,6 +69,11 @@ if [[ -z "$xctestrun" ]]; then echo "Xcode did not create an iPhone test plan." 
 timeout_scale="${MODEX_UI_TIMEOUT_SCALE:-1}"
 mkdir -p "$derived_data/Logs/Test"
 result_bundle="$derived_data/Logs/Test/Paired-$(date -u +%Y%m%dT%H%M%SZ)-$$.xcresult"
+# Observation is limited to an explicitly selected CI simulator and never changes the test result.
+if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == macOS && -n "${MODEX_IOS_UDID:-}" && "$configuration" == Debug ]]; then
+  node "$app_dir/Scripts/observe-trust-stalls.mjs" --device "$MODEX_IOS_UDID" --output "$derived_data/Logs/Test" &
+  trust_observer_pid=$!
+fi
 TEST_RUNNER_MODEX_UI_TIMEOUT_SCALE="$timeout_scale" xcodebuild -xctestrun "$xctestrun" -destination "$destination" \
   -resultBundlePath "$result_bundle" \
   -parallel-testing-enabled NO -only-testing:ModexCompanionUITests/DemoWorkspaceTests -only-testing:ModexCompanionUITests/CompanionFlowTests test-without-building
