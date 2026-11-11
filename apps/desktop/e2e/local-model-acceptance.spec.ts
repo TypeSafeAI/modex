@@ -4,6 +4,7 @@ import path from "node:path";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { appDir, seedHome, tid } from "./support.js";
+import { holdLocalDraftCreation, tryInputWhileLocalSelectionWaits, releaseLocalDraftCreation, restoreLocalDraftCreation } from "./fixtures/local-draft-selection.js";
 
 // Full app composition with a scripted native transport injected by a temporary-home-only
 // bootstrap. This exercises fixture integration, not product admission or a real model.
@@ -143,3 +144,25 @@ test("editing a connection invalidates its selected revision and cloud return co
 });
 
 async function pageReady(page: Page) { await page.keyboard.press("Escape"); await expect(tid(page, "settings")).toHaveCount(0); }
+
+
+test("admitted local selection preserves the raw draft until pinning without accepting pending input", async () => {
+  const r = await runtime(); const { home } = seedHome(); const run = await launchFixture(home);
+  try {
+    await run.page.evaluate(url => window.modex!.invoke("local-models:command", { op: "create", input: { label: "Ollama fixture", runtime: "ollama", url } }), r.url);
+    const raw = " \n  "; await tid(run.page, "composer-input").fill(raw);
+    await holdLocalDraftCreation(run.app);
+    await tid(run.page, "model-picker").click(); await tid(run.page, "model-local-option").click();
+    await tid(run.page, "model-local-context").getByRole("menuitemradio", { name: /32,768/ }).click();
+    await tryInputWhileLocalSelectionWaits(run.app, run.page, raw);
+    await releaseLocalDraftCreation(run.app);
+    await expect(tid(run.page, "local-inference-host")).toContainText(r.url);
+    await expect(tid(run.page, "composer-input")).toHaveValue(raw);
+    const state = await run.page.evaluate(() => window.modex!.invoke("state:get", undefined));
+    expect(state.threads).toHaveLength(1); expect(state.threads[0]!.localTarget).toBeTruthy();
+    expect(await restoreLocalDraftCreation(run.app)).toEqual({ starts: 1, sends: 0, stages: 0 });
+  } finally {
+    console.log(JSON.stringify({ localSelection: await restoreLocalDraftCreation(run.app) }));
+    await run.app.close(); r.stop();
+  }
+});

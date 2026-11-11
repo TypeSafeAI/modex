@@ -1,7 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { launch, seedHome, tid } from "./support.js";
+import { holdLocalDraftCreation, tryInputWhileLocalSelectionWaits, releaseLocalDraftCreation, restoreLocalDraftCreation } from "./fixtures/local-draft-selection.js";
 
 // LM-4 (#381), LM Studio first: Settings → Local models and the model menu's local section, through the
 // production preload, IPC, store and HTTP transport. Only the runtime is synthetic: an LM Studio-shaped
@@ -135,5 +138,64 @@ test("the model menu lists LM Studio's models by server and offers context windo
   } finally {
     await app.close();
     runtime.stop();
+  }
+});
+
+
+test("pending local selection cannot accept input or admit a cloud send, including when admission later refuses", async () => {
+  const runtime = lmStudio(); const url = await runtime.start();
+  const { home } = seedHome(); const { app, page } = await launch(home);
+  try {
+    await page.evaluate(u => window.modex!.invoke("local-models:command", { op: "create", input: { label: "LM Studio", runtime: "lmstudio", url: u } }), url);
+    const before = (await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.length;
+    const raw = " \n  "; await tid(page, "composer-input").fill(raw);
+    await holdLocalDraftCreation(app);
+    await tid(page, "model-picker").click(); await tid(page, "model-local-option").click();
+    await tid(page, "model-local-context").getByRole("menuitemradio", { name: /32,768/ }).click();
+    await tryInputWhileLocalSelectionWaits(app, page, raw);
+    await releaseLocalDraftCreation(app);
+    await expect(page.getByRole("alert").filter({ hasText: "Local execution is unavailable." })).toBeVisible();
+    await expect.poll(async () => (await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.length).toBe(before);
+    await expect(tid(page, "composer-input")).toHaveValue(raw);
+    expect(await restoreLocalDraftCreation(app)).toEqual({ starts: 1, sends: 0, stages: 0 });
+    expect(runtime.hits.every(hit => hit === "GET /api/v0/models")).toBe(true);
+  } finally {
+    console.log(JSON.stringify({ localSelection: await restoreLocalDraftCreation(app) }));
+    await app.close(); runtime.stop();
+  }
+});
+
+
+test("local selection leaves an unrelated turn stoppable and preserves its newer draft", async () => {
+  const runtime = lmStudio(); const url = await runtime.start();
+  const { home, repo } = seedHome(); const stateFile = path.join(home, "app", "state.json");
+  const seeded = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  seeded.threads = [{ id: "existing", projectId: "p1", title: "Already running", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cwd: repo, backend: "mock", mode: "chat", model: "mock", status: "idle", auto: false }];
+  fs.writeFileSync(stateFile, JSON.stringify(seeded));
+  const { app, page } = await launch(home);
+  try {
+    const selectExisting = () => page.locator('[data-testid="thread-row"][data-thread-id="existing"] button.thread-main').click();
+    await selectExisting();
+    await page.evaluate(() => window.modex!.invoke("thread:send", { threadId: "existing", text: "An unrelated scripted turn" }));
+    await expect(tid(page, "stop")).toBeVisible();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+n" : "Control+n");
+    await expect(tid(page, "draft-view")).toBeVisible();
+    await page.evaluate(u => window.modex!.invoke("local-models:command", { op: "create", input: { label: "LM Studio", runtime: "lmstudio", url: u } }), url);
+    await holdLocalDraftCreation(app);
+    await tid(page, "model-picker").click(); await tid(page, "model-local-option").click();
+    await tid(page, "model-local-context").getByRole("menuitemradio", { name: /32,768/ }).click();
+    await expect.poll(() => app.evaluate(() => (globalThis as any).localDraftSelectionGate.starts)).toBe(1);
+    await selectExisting(); await tid(page, "stop").click();
+    await expect(tid(page, "stop")).toHaveCount(0);
+    const raw = "Keep this independent draft"; await tid(page, "composer-input").fill(raw);
+    await expect(tid(page, "composer-input")).toHaveValue(raw);
+    await releaseLocalDraftCreation(app);
+    await expect(page.getByRole("alert").filter({ hasText: "Local execution is unavailable." })).toBeVisible();
+    await expect(tid(page, "thread-view")).toHaveAttribute("data-thread-id", "existing");
+    await expect(tid(page, "composer-input")).toHaveValue(raw);
+    expect(await restoreLocalDraftCreation(app)).toEqual({ starts: 1, sends: 0, stages: 0 });
+  } finally {
+    console.log(JSON.stringify({ localSelection: await restoreLocalDraftCreation(app) }));
+    await app.close(); runtime.stop();
   }
 });

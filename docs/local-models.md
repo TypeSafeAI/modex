@@ -139,14 +139,9 @@ and Codex's sub-agents. Effort, fast mode, service tiers and reasoning summaries
 and the thread's approval and sandbox policy still apply, as do native approvals, questions, Stop and the
 background-terminal cleanup.
 
-**Evidence.** Fixtures prove the admission, isolation and session rules; the installed Codex 0.164.0 ran a
-real shell read through this path against a scripted loopback Responses server, with the sentinel returned
-in the next request, no token in model input and no unqualified tool offered. Both are recorded in the
-[LM-3 review](reviews/2026-10-26-lm3-local-codex.md). A turn against a real local server (AC1) is a human
-gate: `MODEX_LM3_LIVE=1` with `MODEX_LM3_URL` and `MODEX_LM3_MODEL` runs it, and Modex starts, installs and
-downloads nothing. Loopback stays a destination, not verified locality: Codex's HTTP client follows
-redirects, and a server may forward requests. Offline operation, managed-policy precedence, Plan, images,
-other runtimes and resume across restarts are unqualified.
+**Evidence.** Fixtures prove the admission, isolation and session rules. Installed Codex 0.164.0 ran a real shell read against a scripted loopback Responses server, with the sentinel in the next request, no token in model input and no unqualified tool offered; that [LM-3 receipt](reviews/2026-10-26-lm3-local-codex.md) is transport evidence, not model inference. Later candidate receipts establish real Codex 0.167.0/Ollama 0.40.16 read/edit/check, four real-model Electron lifecycle cases, and a separate network-denied canary covering the owned client and inference server. They name exact source revisions, the approved model digest, unchanged personal configuration and observed 65,536 loaded context. See the [integration qualification](reviews/2026-11-11-closeout-qualification.md) and [current evidence map](reviews/2026-11-03-lm7-evidence-map.md); these observations do not admit ordinary product execution or establish other runtime support.
+
+Later native compaction completed but repeated two already completed reads, and dense-input continuation overflowed the verified context limit. The [continuation audit](reviews/2026-11-11-native-private-workspace-trust.md) and [overflow receipt](reviews/2026-11-11-local-context-overflow.md) retain those failures. Action-safe compaction, genuine OOM recovery, managed-policy acceptance, Plan, images, other runtimes and resume across application restarts remain unqualified. Loopback remains a destination, not verified locality: Codex's HTTP client follows redirects and a server may forward requests. Only a separately enforced and observed client-and-server boundary supports a network-denied claim for its recorded run. The opt-in `MODEX_LM3_LIVE=1` probe with `MODEX_LM3_URL` and `MODEX_LM3_MODEL` is distinct from those receipts and starts, installs and downloads nothing itself.
 
 ## Cold loads
 

@@ -63,6 +63,14 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const [nativeLoading, setNativeLoading] = useState(Boolean(bridge.nativeDrafts));
   const [nativeHold, setNativeHold] = useState(false);
   const nativeHoldRef = useRef(false);
+  // Selection reserves only its source/target composers; unrelated turns can still be stopped.
+  const [localSelectionKeys, setLocalSelectionKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const localSelectionKeysRef = useRef<ReadonlySet<string>>(new Set());
+  const holdLocalSelection = (keys: string[], held: boolean) => {
+    const next = new Set(localSelectionKeysRef.current);
+    for (const key of keys) { if (held) next.add(key); else next.delete(key); }
+    localSelectionKeysRef.current = next; setLocalSelectionKeys(next);
+  };
   const ownerRemovalHeld = useRef(false);
   const ownerRemovalEvents = useRef<Extract<ThreadEvent, { type: "thread" }>[]>([]);
   const [nativeRecoveryError, setNativeRecoveryError] = useState<string | null>(null);
@@ -162,7 +170,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const attachmentActions = (key: string): AttachmentActions => {
     const unavailable = () => {
       const t = stateRef.current?.threads.find(t => t.id === key);
-      if (nativeHoldRef.current || updateBlockedRef.current || nativeLoading || nativeRecoveryError) return true;
+      if (localSelectionKeysRef.current.has(key) || nativeHoldRef.current || updateBlockedRef.current || nativeLoading || nativeRecoveryError) return true;
       if (!nativeRef.current && key.startsWith("draft:") && attachmentDrafts.get(key).sending) return true;
       return Boolean(t && (t.retired || t.status === "running" || t.status === "waiting"));
     };
@@ -669,7 +677,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   };
   const beginNativeSend = async (key: string, rawText: string, configuration: PendingSendView["configuration"]): Promise<void> => {
     const capability = nativeRef.current;
-    if (!capability || nativeHoldRef.current || nativeRecoveryError || attachmentDrafts.get(key).copying || attachmentDrafts.get(key).sending) return;
+    if (!capability || localSelectionKeysRef.current.has(key) || nativeHoldRef.current || nativeRecoveryError || attachmentDrafts.get(key).copying || attachmentDrafts.get(key).sending) return;
     holdNative(true);
     try {
       // Save the exact original before any IPC admission ambiguity or UI clear.
@@ -695,7 +703,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // would bypass its capacity and duplicate-send reservations.
   /** First send from a draft: create the thread with the draft's settings, then send. */
   const sendDraft = async (text: string): Promise<void> => {
-    if (!draft) return;
+    if (!draft || localSelectionKeysRef.current.has(draftKey)) return;
     const d = draft;
     if (native) {
       // Model/backend changes may explicitly clear effort. Omit that optional
@@ -733,7 +741,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
   };
   const send = async (text: string): Promise<void> => {
-    if (!thread || thread.retired || thread.status === "running" || thread.status === "waiting") return;
+    if (!thread || localSelectionKeysRef.current.has(thread.id) || thread.retired || thread.status === "running" || thread.status === "waiting") return;
     const threadId = thread.id;
     if (native) return beginNativeSend(threadId, text, { worktree: Boolean(thread.worktree), settings: { backend: thread.backend, mode: thread.mode, plan: thread.plan, auto: Boolean(thread.auto), model: thread.model, ...(thread.effort ? { effort: thread.effort } : {}) } });
     const attachments = attachmentDrafts.beginSend(threadId);
@@ -773,36 +781,49 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));
   const answerQuestion = async (itemId: string, answers: Record<string, string[]>) => thread ? bridge.invoke("thread:answer-question", { threadId: thread.id, itemId, answers }) : undefined;
-  const updateThread = (patch: ThreadPatch) => thread && act(async () => {
+  const updateThread = (patch: ThreadPatch) => thread && !localSelectionKeysRef.current.has(thread.id) && act(async () => {
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
   const openLocalSettings = () => { setSettingsSection("local"); setShowSettings(true); };
   const localTarget = (model: LocalModelRef) => ({ schema: 1 as const, harness: "codex" as const, model });
-  /**
-   * A draft has no thread to pin, so choosing a local model creates the thread now, pinned before its
-   * first message: nothing typed in it ever goes to a cloud model. Only an empty draft can do this, so no
-   * text or file has to move. If main refuses the target, the empty thread is removed again.
-   */
+  /** Pin before accepting a message; no text/file may acquire the draft's old cloud destination. */
   const chooseLocalForDraft = (model: LocalModelRef, localContextTokens: number) => draft && act(async () => {
-    const d = draft;
-    const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: "codex", mode: d.settings.mode, auto: false });
-    try {
-      await bridge.invoke("thread:update", { threadId: t.id, patch: { localTarget: localTarget(model), localContextTokens } });
-    } catch (error) {
-      await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree: true }).catch(() => undefined);
-      await refresh();
-      throw error;
+    const d = draft, key = draftKey;
+    if (activeDraftKeyRef.current !== key || localSelectionKeysRef.current.has(key)) return;
+    const before = attachmentDrafts.get(key);
+    if ((unsentRef.current[key] ?? "").trim() || before.attachments.length || before.copying || before.sending) {
+      throw new Error("Choose a local model before typing: clear this draft, or start a new thread.");
     }
-    await refresh();
-    if (activeDraftKeyRef.current === draftKey) { setDraft(null); setSelected(t.id); }
-  });
+    if (attachmentDrafts.beginSend(key) === null) return;
+    holdLocalSelection([key], true);
+    let reservation = key, target: string | undefined;
+    try {
+      const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: "codex", mode: d.settings.mode, auto: false });
+      target = t.id; holdLocalSelection([target], true);
+      try {
+        await bridge.invoke("thread:update", { threadId: t.id, patch: { localTarget: localTarget(model), localContextTokens } });
+      } catch (error) {
+        await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree: true }).catch(() => undefined);
+        await refresh();
+        throw error;
+      }
+      await refresh();
+      // Keep even whitespace-only input; the reservation/input fence prevents intervening edits.
+      attachmentDrafts.move(key, t.id); reservation = t.id;
+      setUnsentFor(t.id, unsentRef.current[key] ?? ""); setUnsentFor(key, "");
+      if (activeDraftKeyRef.current === key) { setDraft(null); setSelected(t.id); }
+    } finally {
+      attachmentDrafts.finishSend(reservation, false);
+      holdLocalSelection(target ? [key, target] : [key], false);
+    }
+  }, { retry: false });
   const threadBusy = thread ? thread.status === "running" || thread.status === "waiting" : false;
   const threadLocal: LocalMenu | undefined = thread ? {
     entries: localModels.entries,
     current: thread.localTarget,
     currentContext: thread.localContextTokens,
-    blocked: threadBusy ? "Wait for the turn to finish before changing the model." : undefined,
+    blocked: thread && localSelectionKeys.has(thread.id) ? "Wait for local model selection to finish." : threadBusy ? "Wait for the turn to finish before changing the model." : undefined,
     onOpen: () => void discoverAll(15_000),
     onChoose: (model, localContextTokens) => void updateThread({ localTarget: localTarget(model), localContextTokens }),
     onClear: (requested) => {
@@ -818,7 +839,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const draftEmpty = draft ? !(unsent[draftKey] ?? "").trim() && attachmentDrafts.get(draftKey).attachments.length === 0 : false;
   const draftLocal: LocalMenu | undefined = draft ? {
     entries: localModels.entries,
-    blocked: creating ? "Wait for the thread to be created." : draftEmpty ? undefined : "Choose a local model before typing: clear this draft, or send it and start a new thread.",
+    blocked: creating || localSelectionKeys.has(draftKey) ? "Wait for the thread to be created." : draftEmpty ? undefined : "Choose a local model before typing: clear this draft, or send it and start a new thread.",
     onOpen: () => void discoverAll(15_000),
     onChoose: (model, localContextTokens) => void chooseLocalForDraft(model, localContextTokens),
     onClear: () => undefined,
@@ -1045,13 +1066,13 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           {surface === "chat" && thread && project && !showChanges && <RepositoryOverview project={project} changes={changes} onOpenChanges={() => setLayout({ changes: true })} onOpenFolder={() => openPath(thread.cwd)} />}
           {thread && project ? (
             <QuestionDraftContext.Provider value={draftsForQuestions(thread.id)}>
-            <ThreadView
+            <div style={{ display: "contents" }} inert={localSelectionKeys.has(thread.id)}><ThreadView
               key={thread.id}
               thread={thread}
               project={project}
               items={items[thread.id] ?? []}
               text={unsent[thread.id] ?? ""}
-              onText={(text) => { if (!nativeHoldRef.current && !nativeRecoveryError) setUnsentFor(thread.id, text); }}
+              onText={(text) => { if (!nativeHoldRef.current && !nativeRecoveryError && !localSelectionKeysRef.current.has(thread.id)) setUnsentFor(thread.id, text); }}
               attachments={attachmentDrafts.get(thread.id).attachments}
               attachmentActions={attachmentActions(thread.id)}
               onSend={send}
@@ -1069,10 +1090,10 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               local={threadLocal}
               inputRef={inputRef}
               branch={changes?.branch ?? undefined}
-            />
+            /></div>
             </QuestionDraftContext.Provider>
           ) : draft ? (
-            <DraftView
+            <div style={{ display: "contents" }} inert={localSelectionKeys.has(draftKey)}><DraftView
               key={`${draft.projectId}:${draftRevision}`}
               draft={draft}
               projects={state.projects}
@@ -1082,14 +1103,14 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
               onRetryModels={() => retryModels(draft.settings.backend)}
               local={draftLocal}
               branch={draftBranch?.projectId === draft.projectId ? draftBranch.branch ?? undefined : undefined}
-              onChange={value => { if (!nativeHoldRef.current && !nativeRecoveryError) setDraft(value); }}
+              onChange={value => { if (!nativeHoldRef.current && !nativeRecoveryError && !localSelectionKeysRef.current.has(draftKey)) setDraft(value); }}
               onSend={sendDraft}
               inputRef={inputRef}
               text={unsent[draftKey] ?? ""}
-              onText={(text) => { if (!nativeHoldRef.current && !nativeRecoveryError) setUnsentFor(draftKey, text); }}
+              onText={(text) => { if (!nativeHoldRef.current && !nativeRecoveryError && !localSelectionKeysRef.current.has(draftKey)) setUnsentFor(draftKey, text); }}
               attachments={attachmentDrafts.get(draftKey).attachments}
               attachmentActions={attachmentActions(draftKey)}
-            />
+            /></div>
           ) : state.projects.length === 0 ? (
             <EmptyState onAddProject={addProject} />
           ) : null}
@@ -1127,6 +1148,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
       <div className={`app${sidebarOpen ? "" : " sidebar-closed"}${state ? "" : " loading"}`} style={panels.style} data-streamer-mode={streamerMode ? "true" : "false"}>
         {readOnlyRecovery ? <UpdateRecoveryView recovery={readOnlyRecovery} /> : <>
           <div style={{ display: "contents" }} inert={nativeHold || nativeLoading || Boolean(nativeRecoveryError) || updateBlocked}>{workspace}</div>
+          {localSelectionKeys.has(thread?.id ?? draftKey) && <div className="toast" role="status" data-testid="local-selection-pending">Choosing the local model. This draft will accept input when selection finishes.</div>}
           {updateBlocked && <UpdateRestartView {...updater} />}
           {!updateBlocked && (nativeLoading || nativeRecoveryError) && <div className="toast" role="alert" data-testid="draft-recovery-status">{nativeRecoveryError ?? "Restoring saved drafts…"}</div>}
         </>}
