@@ -214,6 +214,10 @@ for (const status of [403, 404, 410]) test(`revoked access ${status}: an accessi
   await tid(page, "code-review-refresh").click();
   await expect(tid(page, "code-review-overview-error")).toBeVisible();
   await expect(tid(page, "code-review-overview-body")).not.toContainText("CR_REVOKED_PRIVATE_BODY");
+  expect(await page.content()).not.toContain("REVOKED_DIAGNOSTIC_SENTINEL");
+  const denial = await invoke({ op: "overview", requestId: `revoke-denial-${status}`, key });
+  expect(denial.result).toMatchObject({ state: "unavailable", reason: status === 403 ? "denied" : "not-found" });
+  expect(JSON.stringify(denial)).not.toMatch(/CR_REVOKED_(PRIVATE_BODY|CONTEXT|PATCH)|REVOKED_DIAGNOSTIC_SENTINEL/);
   h.world((w) => { w.offline = true; });
   for (const request of reads) {
     const denied = await invoke(request);

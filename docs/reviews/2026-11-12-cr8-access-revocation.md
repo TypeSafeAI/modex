@@ -8,9 +8,9 @@ The development app uses a private synthetic profile, repository and gh configur
 
 ## Source and environment
 
-The source base is protected main `30a56557cb09512396a7d0334bd1046cf0fba609`. There is no permanent application-code change. The temporary negative-control mutation was restored byte-for-byte before clean validation. Test source identities are:
+The source base is protected main `30a56557cb09512396a7d0334bd1046cf0fba609`. There is no permanent application-code change. The temporary negative-control mutation was restored byte-for-byte before clean validation. Post-review correction test source identities are:
 
-- `apps/desktop/e2e/code-review-regressions.spec.ts`: SHA-256 `53b9d30be948ad542cfa0092f285752c2dda76c790b6fbc8e3519859af721c06`.
+- `apps/desktop/e2e/code-review-regressions.spec.ts`: SHA-256 `de1cb28cdc8ac45ce69625ab2df94908abd82292644fdc2708324b7d71be7ab6`.
 - `apps/desktop/test/fixtures/code-review-gh-world.ts`: SHA-256 `66bd389996fafea154bc2c2f351d245d99fb6dbf974b0e65da580096f1f7c5f1`.
 
 The host is macOS 27.2.1 arm64, Node 24.22.0 and pinned pnpm 10.34.5. The installed Electron package is 44.4.5; tests use its development-app launch with no packaged-app override. Package identity is distinct from a separate installed-release acceptance claim.
@@ -27,7 +27,7 @@ Before the new fixture branch existed, the offline positive control failed in al
 
 A deliberate temporary production mutation classified ordinary 403 as offline. The 403 integration case failed because the private body remained visible and no denial notice appeared. Its trace and source backup are retained. Restoring the exact original production bytes, rebuilding main and running the whole regression file passed thirteen cases in 31.9 seconds. This proves test sensitivity; no production repair is claimed.
 
-A further clause audit identified unsafe context paths as a second integration gap. The fifth case proves one real valid context read, then asks the real IPC handler for literal absolute, parent-traversal, dot/empty-segment, control, bidi, zero-width and lone-surrogate paths. Each must reject before an additional gh call; provider starts and mutations stay zero. The focused unsafe-path case passed in 2.0 seconds, with eight rejected path inputs and no further gh calls. The final full E2E run also passes this case.
+A further clause audit identified unsafe context paths as a second integration gap. The fifth case proves one real valid context read, then asks the real IPC handler for literal absolute, parent-traversal, dot/empty-segment, control, bidi, zero-width and lone-surrogate paths. Each must reject before an additional gh call; provider starts and mutations stay zero. The focused unsafe-path case passed in 2.0 seconds, with eight rejected path inputs and no further gh calls. The pre-review full E2E also passed this case.
 
 ## Reproduction and qualification
 
@@ -40,13 +40,21 @@ pnpm test
 pnpm test:e2e
 ```
 
-Fresh build, typecheck and full units passed: 2,570 unit passes, 36 explicit skips and zero failures/cancellations. The added path case changed only E2E inputs, and the qualification driver stopped at its source-freeze guard before E2E. Reconstructing the exact pre-addition source patch reproduced its recorded SHA-256, independently proving every non-E2E runtime/build/typecheck/unit/dependency producer unchanged. Those passed stages remain valid. Final full E2E passed on the unchanged five-case source snapshot: 525 desktop cases with eleven explicit skips in 22.1 minutes, eight site cases in 7.8 seconds and four web cases in 2.6 seconds. All fourteen cases in the modified regression file passed; no framework retry markers were observed. The eleven skips are four live-provider cases, four native local-model cases and three Open Knowledge opt-in cases; they are not acceptance passes. Independent review, hosted source checks and protected delivery remain pending.
+Fresh build, typecheck and full units passed: 2,570 unit passes, 36 explicit skips and zero failures/cancellations. The added path case changed only E2E inputs, and the qualification driver stopped at its source-freeze guard before E2E. Reconstructing the exact pre-addition source patch reproduced its recorded SHA-256, independently proving every non-E2E runtime/build/typecheck/unit/dependency producer unchanged. Those passed stages remain valid. The pre-review full E2E at `51a7750` passed on its unchanged five-case source snapshot: 525 desktop cases with eleven explicit skips in 22.1 minutes, eight site cases in 7.8 seconds and four web cases in 2.6 seconds. All fourteen cases in the modified regression file passed; no framework retry markers were observed. The eleven skips are four live-provider cases, four native local-model cases and three Open Knowledge opt-in cases; they are not acceptance passes. One fresh whole-branch review of signed `51a7750` is complete; hosted source checks and protected delivery remain pending. The reviewer identified a diagnostic assertion gap graded Minor; the executor treated it as Important for the no-leak acceptance evidence and is completing one coalesced correction, without a second review. The original pre-review full-suite pass remains historical; it does not qualify changed assertions.
+
+## Review correction
+
+The table cases now check rendered content while the denial is still visible and independently check an actual denial reply before offline mode masks the diagnostic-emitting route. A temporary production mutation adds a synthetic diagnostic to the ordinary 403 public detail. The old assertions pass despite an explicit denial DOM capture containing that marker; the new immediate assertion fails under the same control. Production source is restored byte-for-byte and all fourteen regressions pass. This is an assertion correction, not a discovered production leak or product repair.
+
+The first observation probe could not verify the DOM because the manually launched Electron trace contained test steps without frame snapshots. That attempt and its exact source restoration are retained; a temporary explicit DOM artifact supplied the missing observation and was removed before clean validation. No observation failure is hidden. The original fixture RED source was also recovered exactly from the source bytes embedded in its retained trace.
+
+Only the E2E regression file changed after the verified source; the shared fixture and every non-E2E production/build/typecheck/unit/dependency input remain identical. Their passed results are reused with explicit name/hash guards. The corrected full E2E run passed on unchanged inputs: 525 desktop cases with eleven explicit skips in 22.1 minutes, eight site cases in 7.5 seconds and four web cases in 2.5 seconds, including all fourteen regressions and no framework retry markers. The local correction is qualified; no second review was requested. Source-hosted checks, protected delivery and the complete current-main criterion audit remain separate gates.
 
 ## Acceptance limits
 
 These fixtures establish bounded no-fallback/no-late-payload and IPC-validation behavior under named synthetic failures. They do not prove live provider quality, a real GitHub revocation, real-write canaries, human accessibility, physical-device behavior, a fresh release candidate or the entire adversarial clause. Code Review stays hidden by default and no release or execution-admission policy changes.
 
-The complete local logs are retained privately with these SHA-256 identities:
+The complete pre-review `51a7750` local logs are retained privately with these SHA-256 identities; the E2E row does not qualify the later assertion correction:
 
 | Command | Raw log SHA-256 |
 | --- | --- |
@@ -54,3 +62,5 @@ The complete local logs are retained privately with these SHA-256 identities:
 | `pnpm typecheck` | `5a4f48927c40e455183c8d566825aecafa1e3f2c6ae89f4d0d142a6852bdd80c` |
 | `pnpm test` | `165404057e24c511e8885c48ca785c8fda9792ceb9c3b608de741be4b41b96be` |
 | `pnpm test:e2e` | `d68960f12a9f3c1412ba79fca0f2619aca055fdd5b8f104eb6153b857cf156b6` |
+
+The corrected full E2E log has SHA-256 `e58274a50c51a97ca3bb964037d1a4073ea14e7961859f3b6df8405dbf17b87b`. The two source identities above bind these post-review results; the earlier log table remains explicitly historical.
