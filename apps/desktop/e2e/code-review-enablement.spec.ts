@@ -30,7 +30,8 @@ test("Code Review is visible by default without a switch, stays idle until opene
   await expect(prRow(page, "example-org/lending#73")).toBeVisible();
   await page.reload();
   await expect(tid(page, "rail-code-review")).toBeVisible();
-  expect(h.providerStarts()).toEqual([]);
+  // The app checks its installed CLIs during this test (version checks and Codex's app-server); what must not start is a model turn.
+  expect(h.providerStarts().filter((start) => /^claude .*-p\b/.test(start) || /^codex exec\b/.test(start))).toEqual([]);
   expect(h.posts()).toEqual([]);
 });
 
