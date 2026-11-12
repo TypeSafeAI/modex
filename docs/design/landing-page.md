@@ -3,22 +3,31 @@
 ## Intent
 
 Show how Claude Code and Codex fit into a Mac workspace, follow a concrete task, and
-make installation predictable. Preserve the near-black blue and pink identity.
+make installation predictable. Since 2026-11-12 the page wears the desktop app's default
+graphite appearance, so the site and the first screen of the app read as one product.
 
 ## Design
 
-- Canvas `#080c17`, surface `#101625`, ink `#f3f1f5`, secondary `#b2b6c6`,
-  pink `#f386a1`, borders `#29303f`.
-- Self-hosted Manrope for headings, system sans for reading, monospace for file and step labels.
-- The hero pairs a concrete promise with an enlarged approval capture. Pink connects the
-  primary download, selected workflow step and small section labels.
+- Values come from the app's graphite theme (`apps/desktop/src/renderer/tokens.css`): window
+  `#1b1b1c` around a content sheet `#0f0f11`, surface `#202022`, ink `#e3e4e6`, secondary
+  `#c4c4c8`, muted `#a3a3a8`, lavender accent `#a89bd8`, rules `#29292c`. Pink stays in the logo.
+- The app's system sans stack for headings and reading (semibold, tight tracking), monospace
+  for labels, file names and steps. No font files.
+- The hero is the app's welcome workspace: the logo on its raised tile, a lavender monospace
+  label, the promise, a light primary download with the app's pressed-edge shadow, and the four
+  work modes (Chat, Agent, Plan, Full access) as cards with the app's icons, above its shortcut
+  hints. "Try the demo" opens the browser demo at `app.modex.codes`; the note beside it says the
+  demo is simulated. Cards, setup steps and the download bar reuse the app's card gradient,
+  hairline border and shadow. Lavender marks labels, icons and the selected step's number.
 - A CONTRIBUTING.md task supplies the request, proposed patch and approved diff. Captures
   come from the actual scripted app demo; they do not claim live provider inference.
 
 ```
-Navigation / Get started
-Concrete promise + requirements     [proposed patch]
-Download / Explore workflow          [signing / release / MIT]
+Navigation / Get started                       (window frame)
+[logo tile, promise, requirements]   Choose how you work
+[Download / Try the demo / workflow] [Chat] [Agent]
+[signing / release / MIT]            [Plan] [Full access]
+            ⌘N new chat · ⌘⏎ send · ⇧⌘P plan
 
 One task: Start → Review → Approve   [manual controls + enlarged capture]
 Agent choice / worktrees / Pages and Knowledge, with examples
