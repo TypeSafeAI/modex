@@ -387,7 +387,8 @@ test("pin, copy and Open in GitHub use the canonical link, a pasted link opens i
   await settle(page);
   expect((await log(app)).filter((r) => r.requestId !== "settle").length).toBe(asked);
   await expect(tid(page, "code-review-review").first()).toHaveAttribute("aria-disabled", "true");
-  await expect(tid(page, "code-review-new-tab").first()).toHaveAttribute("aria-disabled", "true");
+  // C07 (decision 6, 2026-11-04): this surface has no new-tab control.
+  await expect(tid(page, "code-review-new-tab")).toHaveCount(0);
   // Pins outlive a reload, per account, and open their PR.
   await page.reload();
   await tid(page, "rail-code-review").click();

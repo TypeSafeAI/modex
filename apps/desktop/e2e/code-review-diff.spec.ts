@@ -73,6 +73,38 @@ test("grouped diffs, both gutters, hierarchy, filter and keyboard selection use 
   expect((await log()).filter((r: any) => r.op === "files")).toHaveLength(1);
 });
 
+test("Viewed marks a file on this Mac for one revision, folds it, survives a reload and asks GitHub nothing (C65)", async () => {
+  await open();
+  const first = tid(page, "cr-file-section").first();
+  const viewed = page.getByRole("checkbox", { name: "Viewed src/holds/move.ts", exact: true });
+  await expect(tid(page, "cr-viewed-count")).toHaveText("0 of 4 viewed");
+  await expect(first.getByTestId("diff").first()).toBeVisible();
+  const asked = (await log()).length;
+  await viewed.focus();
+  await page.keyboard.press("Space");
+  await expect(viewed).toBeChecked();
+  await expect(first.getByTestId("diff")).toHaveCount(0);
+  await expect(tid(page, "cr-viewed-count")).toHaveText("1 of 4 viewed");
+  await expect(page.getByRole("button", { name: "View remote diff for src/holds/move.ts, viewed", exact: true })).toBeVisible();
+  // The file can still be opened, and unmarking it does not reopen or lose anything.
+  await page.getByRole("button", { name: "Expand src/holds/move.ts", exact: true }).click();
+  await expect(first.getByTestId("diff").first()).toBeVisible();
+  expect((await log()).length, "a mark is local: no read, and there is no write channel call").toBe(asked);
+  await page.reload();
+  await tid(page, "rail-code-review").click();
+  await page.locator('[data-testid="code-review-row"][data-pr="example-org/field-guide#91"]').click();
+  await tid(page, "code-review-tab-changes").click();
+  await expect(page.getByRole("checkbox", { name: "Viewed src/holds/move.ts", exact: true })).toBeChecked();
+  await expect(tid(page, "cr-viewed-count")).toHaveText("1 of 4 viewed");
+  // A new head may have changed the file: its marks are not carried over.
+  await app.evaluate(() => { const s = (globalThis as any).__diff; s.revision = { ...s.revision, headSha: "f".repeat(40) }; });
+  await refreshOverview();
+  await expect(tid(page, "cr-file-section").first()).toHaveAttribute("data-head-sha", "f".repeat(40));
+  await expect(tid(page, "cr-viewed-count")).toHaveText("0 of 4 viewed");
+  await expect(page.getByRole("checkbox", { name: "Viewed src/holds/move.ts", exact: true })).not.toBeChecked();
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
+});
+
 test("expanding context asks the exact remote revision and never a local file", async () => {
   await open();
   const section = tid(page, "cr-file-section").first();

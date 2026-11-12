@@ -6,7 +6,6 @@ import type { Layout } from "../../shared/layout";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
-import { Tooltip } from "../components/ui/Tooltip";
 import { refreshingRead, retainRead } from "../../shared/code-review-overview.js";
 import { Reader, type Ask, type Outcome } from "./reader.js";
 import { back, canBack, canForward, closeChanges, current, DEFAULT_VIEW, EMPTY_HISTORY, fitSplit, fitTree, forward, panesFor, showTab, SPLIT, toggleSplit, visit, type History, type Pane, type PrView } from "./navigation.js";
@@ -298,8 +297,6 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
           <button type="button" className="workspace-tab-close" data-testid={`code-review-close-${pane}`} aria-label={pane === "overview" ? `Close ${label}` : "Close Changes"} onClick={pane === "overview" ? closePr : closeChangesTab}><Icon name="close" size={13} /></button>
         </div>;
       })}
-      {/* C07: what a new tab opens here is an open decision; until then it is shown and unavailable. */}
-      {(!split || !group.includes("overview")) && <Tooltip label="New tab isn't available here yet"><button type="button" className="icon-btn md cr-new-tab" aria-label="New tab" aria-disabled="true" data-testid="code-review-new-tab"><Icon name="plus" size={16} /></button></Tooltip>}
     </div>
   );
   const singleGroup: Pane[] = view.changes ? ["overview", "changes"] : ["overview"];

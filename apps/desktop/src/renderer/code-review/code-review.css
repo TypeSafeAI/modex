@@ -17,7 +17,6 @@
 .cr-totals { flex: none; font-variant-numeric: tabular-nums; }
 .cr-add { color: var(--add); }
 .cr-del { color: var(--del); }
-.cr-new-tab[aria-disabled="true"] { opacity: .5; cursor: default; }
 
 /* Inbox: R1 x 55–335, an 8 px scrollbar gutter included; search y 100–136; rows about 73 tall. */
 .cr-inbox { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-sidebar); border-right: 1px solid var(--border-pane); }
@@ -162,6 +161,10 @@
 .cr-file-heading > button { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; text-align: left; font-size: 11px; color: var(--text-2); background: transparent; border: 0; padding: 3px 0; cursor: pointer; }
 .cr-file-heading bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cr-file-heading .stat { flex-shrink: 0; font-size: 10px; }
+.cr-viewed { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); white-space: nowrap; cursor: pointer; }
+.cr-viewed:has(input:checked) { color: var(--text-1); }
+.cr-tree-file[data-viewed="true"] bdi { color: var(--text-3); }
+.cr-tree-viewed { font-size: 10px; color: var(--text-3); flex-shrink: 0; }
 .cr-file-menu { position: relative; }
 .cr-file-menu summary { list-style: none; cursor: pointer; padding: 0 4px; }
 .cr-file-menu > div { position: absolute; z-index: 4; top: 22px; right: 0; display: grid; gap: 6px; width: 150px; padding: 8px; background: var(--bg-2); border: 1px solid var(--border-pane); border-radius: 6px; }
