@@ -8,7 +8,7 @@ The development app uses a private synthetic profile, repository and gh configur
 
 ## Source and environment
 
-The source base is protected main `30a56557cb09512396a7d0334bd1046cf0fba609`. There is no permanent application-code change. The temporary negative-control mutation was restored byte-for-byte before clean validation. Post-review correction test source identities are:
+The original revocation-evidence source base is protected main `30a56557cb09512396a7d0334bd1046cf0fba609`. That original slice had no permanent application-code change; the later hosted-failure follow-up below includes a title-editing repair. The temporary negative-control mutation was restored byte-for-byte before clean validation. Post-review correction test source identities are:
 
 - `apps/desktop/e2e/code-review-regressions.spec.ts`: SHA-256 `de1cb28cdc8ac45ce69625ab2df94908abd82292644fdc2708324b7d71be7ab6`.
 - `apps/desktop/test/fixtures/code-review-gh-world.ts`: SHA-256 `66bd389996fafea154bc2c2f351d245d99fb6dbf974b0e65da580096f1f7c5f1`.
@@ -64,3 +64,17 @@ The complete pre-review `51a7750` local logs are retained privately with these S
 | `pnpm test:e2e` | `d68960f12a9f3c1412ba79fca0f2619aca055fdd5b8f104eb6153b857cf156b6` |
 
 The corrected full E2E log has SHA-256 `e58274a50c51a97ca3bb964037d1a4073ea14e7961859f3b6df8405dbf17b87b`. The two source identities above bind these post-review results; the earlier log table remains explicitly historical.
+
+## First hosted failure and file-scan correction
+
+The first source-hosted macOS job for signed `ec34bd8f0ecef825cedf16295ceb59ac6b72ac27` ([job 131506002482](https://github.com/TypeSafeAI/modex/actions/runs/43310778556/job/131506002482)) failed after 38.5 minutes of desktop E2E: 529 passed, 14 skipped and one existing human-question draft/focus test failed. All fourteen Code Review regression cases passed. The failing recursive privacy scan enumerated `update-recovery.json.<UUID>.tmp` while the private app was still writing, then received ENOENT after atomic rename. The first log and all four artifacts are preserved with matching API SHA-256 digests and verified ZIPs. Site and web were not reached by the failed chained command.
+
+A deterministic control using the exact existing scanner reproduced the enumeration/read ENOENT when the temporary file was renamed between those operations; the unchanged scanner read the final file after writer quiescence. The correction adds only app closure and handle clearing after all UI assertions but before each of the two live-app privacy scans, matching the existing journal-enabled test. The scanner, all secret assertions and all account/focus/draft assertions remain unchanged; no filename is excluded, error ignored, retry added or product behavior changed. New full qualification is pending.
+
+## Hosted-failure follow-up: associated cards and chat rename intent
+
+The first local full validation of the file-scan correction passed build, typecheck and 2,570 units with 36 skips, then failed an existing accessibility assertion after 524 desktop passes and eleven skips. The assertion selected every Chat details dialog while pointer and keyboard targets could differ. The correction follows the focused chat button's actual `aria-controls` relation and preserves role, accessible name, content, focus, Escape and focus-return assertions. A deterministic two-chat regression reproduces the old global selector failure and verifies the associated card.
+
+The complete affected suite then exposed a separate production defect: after a menu Rename, the title bar's persistent command counter caused every later keyed chat title to enter editing on mount. An initial New thread draft could then overwrite the later title on blur. Both renderer and main-process state captured the stale title as manual. A direct menu-Rename-then-create-chat regression fails on the original source because the later title is editable. The repair remembers the command counter on mount and enters editing only for a newly received command. It preserves ordinary menu, double-click and Enter rename behavior.
+
+The first post-edit focused launch mistakenly reused the previously built renderer and failed; that observation and its artifacts remain retained and do not qualify the repair. After rebuilding the renderer, all three focused cases passed in 12.2 seconds: accessibility, menu rename isolation and keyboard-card association. The complete app and human-question suites then passed all 22 cases in 52.1 seconds, including the earlier menu-Rename sequence and all six question cases. Fresh current-main build, typecheck, unit and full E2E qualification remain pending. These first failures do not change any privacy assertion, add retries or establish human/native/release acceptance.
