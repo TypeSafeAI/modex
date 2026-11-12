@@ -9,7 +9,7 @@ export interface QuotaSnapshot {
   /** Explicit backend statement that included usage is unavailable; missing windows alone cannot prove this. */
   includedUnavailable?: boolean;
 }
-export interface QuotaState { state: "unknown" | "healthy" | "low" | "exhausted"; reason: string }
+export interface QuotaState { state: "unknown" | "healthy" | "low" | "exhausted"; reason: string; resetsAt?: number }
 export const QUOTA_MAX_AGE_MS = 5 * 60_000;
 const object = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -25,12 +25,16 @@ export function quotaState(snapshot: QuotaSnapshot | undefined, policy: RoutingP
     && (w.state || (finite(w.remainingPercent) && w.remainingPercent >= 0 && w.remainingPercent <= 100)));
   const worst = [...windows].sort((a, b) => (a.state === "exhausted" ? 0 : a.remainingPercent ?? policy.low_quota_percent) - (b.state === "exhausted" ? 0 : b.remainingPercent ?? policy.low_quota_percent))[0];
   const c = snapshot.credits;
-  const paid = c?.unlimited === true || (c?.hasCredits !== false && c?.balance !== undefined && c.balance > 0);
+  const paid = c?.unlimited === true || (c?.hasCredits === true && c.balance !== 0) || (c?.hasCredits !== false && c?.balance !== undefined && c.balance > 0);
   if (worst) {
     const remaining = worst.state === "exhausted" ? 0 : worst.remainingPercent;
     const reset = worst.resetsAt === undefined ? "" : `; resets ${new Date(worst.resetsAt).toISOString()}`;
     const detail = remaining === undefined ? "The CLI warns that included allowance is low" : `${Math.round(remaining * 10) / 10}% included allowance remains`;
-    if (remaining === 0) return { state: paid ? "low" : "exhausted", reason: `Included allowance is exhausted${reset}.${paid ? " Paid credits remain; conserving credits." : " No usable paid-credit balance is established."}` };
+    const paidDetail = c?.balance === undefined && !c?.unlimited
+      ? " Paid credits are available; amount is unknown; conserving credits."
+      : " Paid credits remain; conserving credits.";
+    if (remaining === 0) return { state: paid ? "low" : "exhausted", resetsAt: worst.resetsAt,
+      reason: `Included allowance is exhausted${reset}.${paid ? paidDetail : " No usable paid-credit balance is established."}` };
     return { state: worst.state === "low" || remaining! <= policy.low_quota_percent ? "low" : "healthy", reason: `${detail}${reset}.` };
   }
   if (c?.unlimited) return { state: "healthy", reason: "The CLI reports unlimited credits." };

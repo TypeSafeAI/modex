@@ -152,7 +152,7 @@ test("main's local-only rule holds where each auxiliary call is made, whichever 
     const fable = { ...local, backend: "claude", model: "fable", localTarget: undefined };
     assert.equal(internals.creditFallback(fable, "This model requires usage credits", []), "opus");
     assert.equal(internals.creditFallback({ ...fable, localTarget: h.target }, "This model requires usage credits", []), undefined);
-    internals.outOfCredits.set("claude:fable", Date.now());
+    internals.outOfCredits.set(JSON.stringify(["claude", "cli", "fable"]), Date.now());
     assert.equal(internals.recentCreditFallback(fable), "opus");
     assert.equal(internals.recentCreditFallback({ ...fable, localTarget: h.target }), undefined);
 

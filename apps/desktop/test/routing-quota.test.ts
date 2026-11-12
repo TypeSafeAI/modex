@@ -66,3 +66,11 @@ test("a missing included-quota reading plus empty purchased credits is unknown, 
   assert.equal(state(s).state, "unknown");
   assert.equal(state(codexQuota({ ordinaryUsageAllowed: false, rateLimits: { credits: { hasCredits: false, balance: "0" } } }, now)).state, "exhausted");
 });
+
+test("affirmative paid-credit availability with an unknown amount permits conservation after included exhaustion", () => {
+  for (const balance of [undefined, null, "unreadable"]) {
+    const snapshot = codexQuota({ rateLimits: { primary: { usedPercent: 100 }, credits: { hasCredits: true, unlimited: false, balance } } }, now);
+    assert.equal(state(snapshot).state, "low");
+    assert.equal(snapshot.credits?.balance, undefined);
+  }
+});

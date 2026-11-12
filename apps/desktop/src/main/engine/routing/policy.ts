@@ -46,6 +46,8 @@ export interface DecisionInput {
   quotas?: Partial<Record<BackendId, QuotaSnapshot>>;
   /** Retry retains the previous attempt's conservation admission even when telemetry is now unknown. */
   conserveCredits?: boolean;
+  /** An automatic account replacement retains the admitted task capability floor. */
+  minimumTier?: Tier;
   /**
    * What the thread's prompt cache was built with, and how long ago. The router always passes it;
    * a caller that omits it gets a fresh choice every turn.
@@ -63,6 +65,9 @@ export interface Decision {
   pinned: boolean;
   /** The request must not run because an effort or premium budget limit cannot be guaranteed. */
   blocked?: true;
+  minimumTier?: Tier;
+  quotaBlocked?: true;
+  quotaResetAt?: number;
   /** Requires an explicit standard-speed override in the CLI, even with saved fast settings. */
   conserving?: true;
   /** True when a warm prompt cache kept the thread's model, effort or fast mode. */
@@ -346,15 +351,15 @@ function decideWithQuota(input: DecisionInput, retainConservation: boolean): Dec
       return false;
     });
   }
-  const conserve = input.policy.conserve_credits && (retainConservation || currentUsage.state === "low" || plannedUsage.state === "low");
-  const stop = (detail: string): Decision => ({ ...blocked(input, reasons, detail), ...(conserve ? { conserving: true as const } : {}) });
+  const conserve = input.policy.conserve_credits && (retainConservation || ["low", "exhausted"].includes(currentUsage.state) || plannedUsage.state === "low");
+  let minimumTier = input.minimumTier;
+  const stop = (detail: string, quotaBlocked = false): Decision => ({ ...blocked(input, reasons, detail), minimumTier, ...(quotaBlocked ? { quotaBlocked: true as const, quotaResetAt: currentUsage.resetsAt } : {}), ...(conserve ? { conserving: true as const } : {}) });
   let effective = { ...input, ladders };
   if (conserve) {
     const j = input.judgments;
     const light = j.complexity < 1.5 && j.needsDeepReasoning < 0.7 && j.blastRadius < 1.5;
     effective = { ...effective, fitOffset: light ? Math.min(0, input.fitOffset) : input.fitOffset,
-      policy: { ...input.policy, allow_fast: false,
-        max_effort: EFFORTS[Math.min(effortIndex(input.policy.max_effort) ?? 0, effortIndex("high")!)]!,
+      policy: { ...conservationPolicy(input.policy),
         posture: light ? "economy" : input.policy.posture } };
     reasons.push("Conserving low allowance or credits: economical suitable model, at most high effort, paid fast mode off; capability tiers estimate cost, not dollar prices.");
   }
@@ -362,7 +367,8 @@ function decideWithQuota(input: DecisionInput, retainConservation: boolean): Dec
   // never invalidate a legitimate cache hold that already ran below the free-choice tier.
   const baseline = decideWithLimits({ ...effective, ladders: input.ladders });
   const free = decideWithLimits({ ...effective, ladders: input.ladders, cache: undefined });
-  const wantedTier = Math.min(baseline.tier, free.tier);
+  const wantedTier = Math.max(input.minimumTier ?? 0, Math.min(baseline.tier, free.tier)) as Tier;
+  minimumTier = wantedTier;
   const healthy = (b: BackendId) => ladders[b]?.filter(c => c.tier >= wantedTier && state(b, c.model).state === "healthy") ?? [];
   const quotaDriven = conserve || state(baseline.backend, baseline.model).state === "exhausted" || currentUsage.state === "exhausted";
   if (quotaDriven && input.policy.allow_backend_switch && !input.current.hasSession) {
@@ -378,17 +384,41 @@ function decideWithQuota(input: DecisionInput, retainConservation: boolean): Dec
     }
   }
   if (currentUsage.state === "exhausted" && input.source === "jev" && input.judgments.taskConfidence < input.policy.min_confidence) {
-    return stop("The pinned model is exhausted and the judge is unsure; the route was stopped.");
+    return stop("The pinned model is exhausted and the judge is unsure; the route was stopped.", true);
   }
   const decision = decideWithLimits(effective);
   const selectedUsage = state(decision.backend, decision.model || current?.model || "");
   // A different candidate can become low only after exhaustion filtering or backend selection.
   // One repeat applies conservation to that candidate; it cannot loop because the flag is sticky.
   if (!conserve && input.policy.conserve_credits && selectedUsage.state === "low") return decideWithQuota(input, true);
-  if (selectedUsage.state === "exhausted") return stop("No permitted model has usable allowance or credits; the route was stopped. Wait for a reset or choose another account.");
+  if (selectedUsage.state === "exhausted") return stop("No permitted model has usable allowance or credits; the route was stopped. Wait for a reset or choose another account.", true);
   if (!decision.blocked && decision.tier < wantedTier) {
-    return stop("The remaining models do not meet this task's capability target; the route was stopped instead of silently downgrading the work.");
+    return stop("The remaining models do not meet this task's capability target; the route was stopped instead of silently downgrading the work.", Object.values(input.ladders).some(cs => cs?.some(c => state(c.backend, c.model).state === "exhausted")));
   }
   if (decision.model !== current?.model || decision.backend !== input.current.backend) reasons.push(`${decision.backend}/${decision.model}: ${selectedUsage.reason}`);
-  return { ...decision, ...(conserve ? { conserving: true as const } : {}), reasons: decision.blocked ? [...reasons, ...decision.reasons] : [decision.reasons[0]!, ...reasons, ...decision.reasons.slice(1)] };
+  return { ...decision, minimumTier: wantedTier, ...(conserve ? { conserving: true as const } : {}), reasons: decision.blocked ? [...reasons, ...decision.reasons] : [decision.reasons[0]!, ...reasons, ...decision.reasons.slice(1)] };
+}
+
+
+function conservationPolicy(policy: RoutingPolicy): RoutingPolicy {
+  const configured = effortIndex(policy.max_effort);
+  return { ...policy, allow_fast: false, ...(configured === undefined ? {} : { max_effort: EFFORTS[Math.min(configured, effortIndex("high")!)]! }) };
+}
+
+/** Revalidate the actual fixed replacement; never turn a provider retry into a weaker or unmetered route. */
+export function admitReplacement(input: DecisionInput, prior: Decision): Decision {
+  const candidate = currentCandidate(input);
+  const usage = quotaState(input.quotas?.[input.current.backend], input.policy, candidate?.model ?? input.current.model);
+  const minimumTier = prior.minimumTier ?? prior.tier;
+  const conserve = input.policy.conserve_credits && (Boolean(prior.conserving) || usage.state === "low" || usage.state === "unknown");
+  const reasons = [`Replacement ${input.current.backend}/${input.current.model}: ${usage.reason}`];
+  const stop = (detail: string): Decision => ({ ...blocked(input, reasons, detail), minimumTier, ...(conserve ? { conserving: true as const } : {}) });
+  if (usage.state === "exhausted") return { ...stop("The replacement is exhausted; Auto stopped before retrying."), quotaBlocked: true, quotaResetAt: usage.resetsAt };
+  if (!candidate) return stop("The replacement model is not in the account's catalogue; Auto stopped before retrying.");
+  if (candidate.tier < minimumTier) return stop("The replacement cannot meet this task's capability target; Auto stopped before retrying.");
+  const effective = conserve ? { ...input, policy: conservationPolicy(input.policy) } : input;
+  const decision = keepCurrent(effective, candidate, reasons);
+  if (conserve) reasons.push("Conserving replacement allowance or credits: supported effort at most high and paid fast mode explicitly off.");
+  return { ...decision, minimumTier, ...(conserve ? { conserving: true as const } : {}),
+    fast: !decision.blocked && !conserve && input.policy.allow_fast && prior.fast && Boolean(candidate.fastTier) };
 }

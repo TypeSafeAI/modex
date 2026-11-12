@@ -17,3 +17,7 @@ Selected: integrate telemetry with Modex Auto, retaining existing account and CL
 ## Verification
 
 Synthetic CLI protocol tests prove account scope and no inference during reads. Policy tests cover threshold boundaries, credits versus allowance, unknown/stale/reset data, hard tasks, cache reuse, paid fast mode and exhaustion. Runner tests prove blocked routes never execute, session bindings survive, and local-only runs never request cloud balances. Settings tests cover persistence and configurable defaults. Run the repository build, unit suite and UI e2e checks; distinguish local evidence from CI, release and installed acceptance.
+
+## Delivery audit refinements
+
+The final pre-merge review adds replacement admission to all automatic model/account attempts, proactive metadata-based rotation within the existing enabled pool setting, an account-specific refused-model cooldown, and affirmative available-credit handling when the numeric amount is unknown. Replacement admission preserves the task minimum rather than the cache holder's price tier, reuses typed judgments, and shares the original premium budget. Quota/capability rejection must not teach a larger-model preference. Conservation keeps the opening-message title to avoid an auxiliary paid coding turn. These repairs complete the approved conservation behavior; coding remains CLI-only and exact dollar optimization remains outside the available metadata.

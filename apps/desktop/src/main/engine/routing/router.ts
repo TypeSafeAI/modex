@@ -2,12 +2,12 @@ import type { QuotaSnapshot } from "./quota.js";
 import path from "node:path";
 import type { BackendId, FollowUp, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Thread, ThreadItem } from "../../../shared/types.js";
 import type { SecretStore } from "../secrets.js";
-import { ladder, tierOf, type Candidate } from "./catalog.js";
+import { ladder, tierOf, type Candidate, type Tier } from "./catalog.js";
 import { Decisions, type DecisionsOptions } from "./decisions.js";
 import { Fit } from "./fit.js";
 import { JevError } from "./jev.js";
 import { judgeHeuristically, judgeWithJev, stateFor, QUESTION_SET_VERSION, type JudgeSource, type Judgments } from "./judge.js";
-import { decide, type Decision } from "./policy.js";
+import { admitReplacement, decide, type Decision } from "./policy.js";
 import { fallbackFollowUp, FOLLOW_UP_QUESTION, FOLLOW_UPS, followUpState } from "./followup.js";
 import type { TurnUsage } from "../backends/types.js";
 
@@ -25,6 +25,7 @@ export interface RouteInput {
   thread: Thread;
   accounts?: Partial<Record<BackendId, string>>;
   conserveCredits?: boolean;
+  minimumTier?: Tier;
   text: string;
   items: ThreadItem[];
   project: { name: string; branch?: string | null; changedFiles?: number };
@@ -109,7 +110,7 @@ export class Router {
     };
   }
 
-  async route(input: RouteInput, signal?: AbortSignal): Promise<RouteReceipt> {
+  async route(input: RouteInput, signal?: AbortSignal, reuse?: RouteReceipt): Promise<RouteReceipt> {
     const started = Date.now();
     const policy = this.o.policy();
     const { thread } = input;
@@ -120,22 +121,25 @@ export class Router {
     let judgments: Judgments;
     let source: JudgeSource = "heuristic";
     let fallback: string | undefined;
-    const jev = await this.decisions.connect("routing", { threadId: thread.id });
-    if (jev.transport) {
-      try {
-        judgments = await judgeWithJev(state, jev.transport, jev.model, signal);
-        source = "jev";
-      } catch (err) {
-        const why = err instanceof JevError ? `${err.message} (${err.code})` : (err as Error).message;
-        fallback = `Jev unavailable — ${why}; used the built-in heuristic.`;
+    if (reuse) { judgments = reuse.judgments; source = reuse.source; }
+    else {
+      const jev = await this.decisions.connect("routing", { threadId: thread.id });
+      if (jev.transport) {
+        try {
+          judgments = await judgeWithJev(state, jev.transport, jev.model, signal);
+          source = "jev";
+        } catch (err) {
+          const why = err instanceof JevError ? `${err.message} (${err.code})` : (err as Error).message;
+          fallback = `Jev unavailable — ${why}; used the built-in heuristic.`;
+          judgments = judgeHeuristically(state);
+        }
+      } else if (jev.disabled) {
+        fallback = `${jev.disabled} Used the built-in heuristic.`;
+        judgments = judgeHeuristically(state);
+      } else {
+        fallback = `${(jev.unavailable ?? "No Jev transport available").replace(/[.!;]+$/, "")}; used the built-in heuristic.`;
         judgments = judgeHeuristically(state);
       }
-    } else if (jev.disabled) {
-      fallback = `${jev.disabled} Used the built-in heuristic.`;
-      judgments = judgeHeuristically(state);
-    } else {
-      fallback = `${(jev.unavailable ?? "No Jev transport available").replace(/[.!;]+$/, "")}; used the built-in heuristic.`;
-      judgments = judgeHeuristically(state);
     }
 
     const backends = new Set<BackendId>([thread.backend, ...(policy.allow_backend_switch ? policy.allow_backends : [])]);
@@ -159,7 +163,7 @@ export class Router {
     const idleMs = Number.isFinite(lastAt) ? Math.max(0, Date.now() - lastAt) : undefined;
     const premiumExhausted = policy.premium_turns_per_day != null && this.fit.premiumToday() >= policy.premium_turns_per_day;
     const decision = decide({
-      judgments, source, policy, ladders, premiumExhausted, quotas, conserveCredits: input.conserveCredits,
+      judgments, source, policy, ladders, premiumExhausted, quotas, conserveCredits: input.conserveCredits, minimumTier: input.minimumTier,
       current: { backend: thread.backend, model: thread.model, effort: thread.effort, hasSession: Boolean(thread.sessionHandle) },
       fitOffset: this.fit.offsetFor(judgments.task),
       cache: { lastTurn: last, idleMs },
@@ -203,6 +207,26 @@ export class Router {
     return { item, judgments, decision, source, questionSetVersion: QUESTION_SET_VERSION };
   }
 
+  /** Metadata-only admission for a provider-selected model/account retry; Jev is not asked again. */
+  async admitReplacement(thread: Thread, previous: RouteReceipt, account?: string): Promise<Decision> {
+    const policy = this.o.policy();
+    let rungs: Candidate[] = [], snapshot: QuotaSnapshot | undefined;
+    await Promise.all([
+      this.ladderFor(thread.backend, account).then(value => { rungs = value; }).catch(() => {}),
+      Promise.resolve().then(() => this.o.quota?.(thread.backend, account)).then(value => { snapshot = value; }).catch(() => {}),
+    ]);
+    // The failed provider attempt and its replacement share the original admitted premium turn.
+    const recorded = this.fit.latest(thread.id);
+    const used = this.fit.premiumToday() - Number(Boolean(recorded?.premium && recorded.at.slice(0, 10) === new Date().toISOString().slice(0, 10)));
+    const decision = admitReplacement({ judgments: previous.judgments, source: previous.source, policy,
+      current: { backend: thread.backend, model: thread.model, effort: thread.effort, hasSession: Boolean(thread.sessionHandle) },
+      ladders: { [thread.backend]: rungs }, quotas: { [thread.backend]: snapshot }, fitOffset: 0,
+      premiumExhausted: policy.premium_turns_per_day != null && used >= policy.premium_turns_per_day,
+    }, previous.decision);
+    if (decision.blocked) this.blockedThreads.add(thread.id);
+    return decision;
+  }
+
   /** A provider-selected fallback changes what ran, never the user's learned preference. */
   noteFallback(thread: Thread, fast: boolean): void {
     const tier = tierOf({ id: thread.model, label: thread.model });
@@ -212,8 +236,8 @@ export class Router {
     } catch { /* Learning persistence must not prevent a safe provider fallback. */ }
   }
 
-  noteOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage): void {
-    try { this.fit.recordOutcome(threadId, outcome, usage); } catch { /* Learning persistence cannot change a coding turn's outcome. */ }
+  noteOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage, learn = true): void {
+    try { this.fit.recordOutcome(threadId, outcome, usage, learn); } catch { /* Learning persistence cannot change a coding turn's outcome. */ }
   }
 
   /**

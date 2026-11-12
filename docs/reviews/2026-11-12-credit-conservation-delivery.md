@@ -1,0 +1,11 @@
+# Credit conservation: delivery audit
+
+The pre-merge efficiency review examined `f0abc3463bde152d3fc257afa9bbe8f71152b0e1` and found four integration defects: affirmative paid-credit availability with an unknown numeric amount was rejected; automatic model replacements skipped admission; automatic account retries reused the previous account's limits; and proactive exhaustion could prevent enabled account rotation from choosing a usable account. Each was reproduced by a failing behavioral regression before repair.
+
+All automatic replacements now validate their actual account's quota and model catalogue, the admitted task capability floor, supported effort and paid-fast override before persistence or execution. A warm expensive cache holder retains the light task's minimum capability instead of forcing expensive replacements. Refused-model cooldowns are account-specific. Enabled rotation can skip known-exhausted fresh-thread accounts using metadata, reusing the typed judgment and the reported reset time; disabled rotation and existing profile sessions retain their boundaries. Replacements share the original premium-turn admission.
+
+Additional efficiency checks ensure that quota/capability rejection does not teach a larger-model preference and that conservation retains the opening-message title instead of starting another paid coding turn just to name the conversation. An explicit `hasCredits: true` remains usable with an unreadable amount; the amount is reported as unknown and conservation applies after included allowance is exhausted.
+
+The repaired candidate passes 216 focused backend, quota, policy, runner, fallback, rotation and learning tests, with zero failures or skips. Full integrated build, typecheck, unit and UI qualification is pending on this delivery candidate. The earlier [local qualification](2026-11-12-credit-conservation.md) remains a historical receipt for its named runtime.
+
+Model tiers, effort, quota headroom and cache reuse are the available efficiency signals. Exact token-price optimization and unsupported provider balance integrations require additional metadata; no exact dollar savings or live billing qualification is claimed. Coding remains in the installed CLIs. Protected PR and merge-queue acceptance are required before this work lands on main.
