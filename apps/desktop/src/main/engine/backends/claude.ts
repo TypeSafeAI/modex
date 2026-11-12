@@ -1,3 +1,4 @@
+import { claudeQuota, type QuotaSnapshot } from "../routing/quota.js";
 import { actionDigest } from "../../../shared/human-requests.js";
 import { AgentTracker } from "./agents.js";
 import type { CliExecutable } from "../cli-path.js";
@@ -67,6 +68,9 @@ export function confinedEnvironment(bin: string, env: NodeJS.ProcessEnv = proces
  */
 export class ClaudeBackend implements Backend {
   readonly id = "claude" as const;
+  private readonly quotas = new Map<string, QuotaSnapshot>();
+
+  async quota(account = "cli"): Promise<QuotaSnapshot | undefined> { return this.quotas.get(account); }
   protected get bin(): string { return typeof this.executable === "function" ? this.executable() : this.executable; }
 
   constructor(
@@ -134,7 +138,7 @@ export class ClaudeBackend implements Backend {
     if (opts.model) args.push("--model", opts.model);
     if (opts.effort) args.push("--effort", opts.effort);
     // Fast mode is a settings key in Claude Code; `--settings` accepts inline JSON for this session only.
-    if (opts.fast) args.push("--settings", JSON.stringify({ fastMode: true }));
+    if (opts.fast || opts.conserveCredits) args.push("--settings", JSON.stringify({ fastMode: opts.conserveCredits ? false : true }));
     if (opts.resume) args.push("--resume", opts.resume);
     for (const d of opts.addDirs ?? []) args.push("--add-dir", d);
     if (opts.knowledge || opts.pages || opts.images) args.push("--mcp-config", JSON.stringify({ mcpServers: {
@@ -376,6 +380,14 @@ export class ClaudeBackend implements Backend {
         try {
           msg = JSON.parse(line) as ClaudeMessage;
         } catch {
+          return;
+        }
+        if (msg.type === "rate_limit_event") {
+          const next = claudeQuota(msg.rate_limit_info);
+          const account = opts.account ?? "cli";
+          const previous = this.quotas.get(account);
+          const replaced = new Set(next.windows.map(w => w.key));
+          this.quotas.set(account, { ...next, windows: [...(previous?.windows ?? []).filter(w => !replaced.has(w.key)), ...next.windows] });
           return;
         }
         // A heartbeat (the CLI sends one while a control request runs long) is no sign of the turn going on.
@@ -705,6 +717,8 @@ interface ClaudeMessage {
   tasks?: { task_id?: string }[];
   session_id?: string;
   message?: { id?: string; model?: string; content?: ContentBlock[]; usage?: ClaudeUsage };
+  /** Metadata-only rate_limit_event from the CLI. */
+  rate_limit_info?: unknown;
   /** A synthetic assistant reply's API error class ("rate_limit", "billing_error", …). */
   error?: unknown;
   /** `result`: the turn's token totals. */

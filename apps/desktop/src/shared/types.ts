@@ -154,7 +154,7 @@ export type ThreadItem =
   /** The plan a CLI reported for this turn (docs/task-context.md); `revision` counts its updates. "completed" steps are reported done, not checked. */
   | { id: string; kind: "plan"; steps: PlanStep[]; explanation?: string; from: PlanSource; revision: number; at: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** An Auto routing decision made before a turn: what was picked and why. */
-  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
+  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; conserving?: true; reasons: string[]; durationMs: number; at: string };
 
 /**
  * Whether a person's accepted answer reached the CLI: `sending` from acceptance until the hand-off, then `sent`.
@@ -321,6 +321,12 @@ export interface RoutingPolicy {
   min_confidence: number;
   /** Daily cap on top-tier / xhigh+ turns Auto may spend; null = unlimited. */
   premium_turns_per_day: number | null;
+  /** Automatically conserve low included allowance or paid credits on Auto turns. */
+  conserve_credits: boolean;
+  /** Included allowance remaining at or below which conservation activates (percent). */
+  low_quota_percent: number;
+  /** Paid-only credit balance threshold, in provider units, not dollars. */
+  low_credit_balance: number;
   /** TypeSafe model id for the judge. */
   jev_model: string;
   /** How to reach Jev: the `jev` CLI when installed (auto), always the CLI, or Modex's own HTTPS call. */
@@ -338,6 +344,9 @@ export const DEFAULT_ROUTING: RoutingPolicy = {
   allow_fast: true,
   min_confidence: 0.6,
   premium_turns_per_day: null,
+  conserve_credits: true,
+  low_quota_percent: 20,
+  low_credit_balance: 10,
   jev_model: "jev-latest",
   jev_transport: "auto",
   jev_bin: "jev",

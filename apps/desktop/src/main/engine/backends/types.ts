@@ -129,6 +129,8 @@ export interface TurnOptions {
   effort?: string;
   /** Fast mode for this turn (Codex "fast" service tier, Claude fastMode setting). */
   fast?: boolean;
+  /** Auto conservation must override a saved fast setting, not inherit it. */
+  conserveCredits?: boolean;
   /** Resumable handle from a previous turn on this thread. */
   resume?: string;
   account?: string;
@@ -209,7 +211,9 @@ export interface Backend {
    */
   forceStop?(account?: string): Promise<void>;
   /** Current model catalogue for this backend. */
-  listModels(): Promise<ModelInfo[]>;
+  listModels(account?: string): Promise<ModelInfo[]>;
+  /** Metadata-only CLI quota read, scoped to the admitted account. Never starts inference. */
+  quota?(account?: string): Promise<import("../routing/quota.js").QuotaSnapshot | undefined>;
   health?(): Promise<BackendHealth>;
   identity?(): string;
   dispose(): Promise<void>;
