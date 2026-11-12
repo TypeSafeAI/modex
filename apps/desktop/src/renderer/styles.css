@@ -331,6 +331,8 @@ kbd, .kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1
 .menu.bottom-start { top: calc(100% + 6px); left: 0; }
 .menu.bottom-end { top: calc(100% + 6px); right: 0; }
 .menu.model-list { min-width: 340px; }
+.model-search { padding: 4px 8px 8px; }
+.model-search input { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); }
 
 /* Row actions stay reachable by keyboard: hidden only until their row is hovered or holds focus. */
 .side-row:hover .icon-btn.reveal, .side-row:focus-within .icon-btn.reveal, .icon-btn.reveal:focus-visible, .icon-btn.reveal[aria-expanded="true"] { opacity: 1; }
