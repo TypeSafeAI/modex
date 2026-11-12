@@ -14,6 +14,8 @@ interface MenuProps {
   role?: MenuRole;
   /** Choice menus can focus the checked item; mixed command menus start at the first command. */
   focusSelected?: boolean;
+  /** A text filter can receive focus before the menu choices. */
+  initialFocusRef?: RefObject<HTMLElement | null>;
   placement?: "top-start" | "bottom-start" | "top-end" | "bottom-end";
   /** Keep wide menus inside the viewport when their trigger sits near an edge. */
   fitViewport?: boolean;
@@ -33,7 +35,7 @@ const MenuContext = createContext<MenuRole>("menu");
  * - a pointer press outside the menu and trigger closes it.
  * Position it by placing it inside a `position: relative` wrapper next to the trigger.
  */
-export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", placement = "top-start", fitViewport = false, className, testId, children }: MenuProps) {
+export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", initialFocusRef, placement = "top-start", fitViewport = false, className, testId, children }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!open || !fitViewport) return;
@@ -56,7 +58,7 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSele
     if (!open) return;
     const items = () => Array.from(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? []).filter((el) => !el.hasAttribute("disabled"));
     const initial = (focusSelected ? items().find((el) => el.getAttribute(role === "listbox" ? "aria-selected" : "aria-checked") === "true") : undefined) ?? items()[0];
-    initial?.focus({ preventScroll: false });
+    (initialFocusRef?.current ?? initial)?.focus({ preventScroll: false });
 
     const onDown = (e: PointerEvent) => {
       if (ref.current?.closest("[inert]")) return;
@@ -80,10 +82,19 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSele
       }
       const list = items();
       if (list.length === 0) return;
+      const editing = document.activeElement?.matches('input, textarea, [contenteditable="true"]');
+      if (editing && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       const at = list.indexOf(document.activeElement as HTMLElement);
+      // Include the filter in the arrow-key cycle so a person can refine an
+      // existing query after inspecting results, without closing the picker.
+      if (initialFocusRef?.current && ((e.key === "ArrowUp" && at === 0) || (e.key === "ArrowDown" && at === list.length - 1))) {
+        e.preventDefault();
+        initialFocusRef.current.focus();
+        return;
+      }
       const next =
         e.key === "ArrowDown" ? list[(at + 1) % list.length]
-        : e.key === "ArrowUp" ? list[(at - 1 + list.length) % list.length]
+        : e.key === "ArrowUp" ? list[at < 0 ? list.length - 1 : (at - 1 + list.length) % list.length]
         : e.key === "Home" ? list[0]
         : e.key === "End" ? list[list.length - 1]
         : undefined;
@@ -98,7 +109,7 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSele
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [open, anchorRef, role, focusSelected]);
+  }, [open, anchorRef, role, focusSelected, initialFocusRef]);
 
   if (!open) return null;
   return (

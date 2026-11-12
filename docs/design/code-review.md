@@ -69,8 +69,7 @@ The contract adds these engineering decisions:
    The remote diff reuses only `Diff` and `FileIcon` from `ChangesPanel.tsx`. It never reaches
    `onRevert`, `changes:revert` or any `git.ts` function.
 
-The [open decisions](#open-decisions) list what still needs Val. Until each is decided, its control is
-shown unavailable.
+The [open decisions](#open-decisions) section records Val's later answers, the last on 2026-11-04.
 
 ## Source map
 
@@ -376,8 +375,9 @@ Every visible control in R1–R4, with its owner and how it is tested. The owner
 - An issue (#322–#327).
 - `shell`: the existing Modex shell, unchanged.
 - `native chrome`: macOS.
-- `deferred`: outside #319's initial scope, shown unavailable or left out.
-- `needs decision`: Val decides whether it is in scope. Until then it is unavailable.
+- `deferred`: outside #319's initial scope, or left out by Val's decision; shown unavailable or left out.
+- `needs decision`: Val decides whether it is in scope. Until then it is unavailable. None is left since 2026-11-04; each
+  decided control now names its owner or `deferred`, with the decision in its last column.
 
 Contract-level guarantees are cited where they already hold. Everything else names the slice that
 must prove it.
@@ -390,7 +390,7 @@ must prove it.
 | C04 | R1, R2, R3, R4 | Title bar | Top-right buttons (expand, right panel) | shell | Existing title-bar controls; #322 confirms which apply on this surface |
 | C05 | R1, R2, R3, R4 | Tab strip | PR tab: icon, truncated title, close | #322 | Navigation spec: open, switch and close, per PR key |
 | C06 | R1, R2, R3, R4 | Tab strip | Changes tab with +/− totals | #322 | Opens the PR's Changes; totals from `overview.totals` |
-| C07 | R1, R2, R3, R4 | Tab strip | New tab (+) | needs decision | Unavailable until a use is decided |
+| C07 | R1, R2, R3, R4 | Tab strip | New tab (+) | #322 | Decision 6 (2026-11-04): the control is removed from this surface. Until that change lands it is shown unavailable |
 | C08 | R1, R2, R3, R4 | Rail | Code Review rail button, selected | #322 | Opens the `code-review` surface; selected state |
 | C09 | R1, R2, R3, R4 | Rail | Other rail icons and their dots | shell | Existing rail; unchanged |
 | C10 | R1, R2, R3, R4 | Rail | Account monogram at the bottom | shell | Existing; unchanged |
@@ -399,7 +399,7 @@ must prove it.
 | C13 | R1, R2, R3, R4 | Inbox | "Authored by me" group | #322 | `inboxGroup`, `isEmpty` (contract test); empty, unavailable and stale states in the navigation spec |
 | C14 | R1, R2, R3, R4 | Inbox | "Needs my review" group | #322 | As C13 |
 | C15 | R1, R2, R3, R4 | Inbox | PR row: two-line title, author, relative time | #322 | Navigation spec over the fixture inbox |
-| C16 | R1, R2, R3, R4 | Inbox | Author avatar and badge on a row | needs decision | Proposal D1: login only, no remote avatar |
+| C16 | R1, R2, R3, R4 | Inbox | Author avatar and badge on a row | deferred | Decision 1 (2026-11-04), deviation D1: login only, no remote avatar |
 | C17 | R1, R2, R3, R4 | Inbox | Stack icon on a row | #322 | `stackHint` is inferred; the row says so in its accessible name |
 | C18 | R1, R2, R3, R4 | Inbox | Selected and hover row states | #322 | Navigation spec and visual check |
 | C19 | R1, R2, R3, R4 | Inbox | Show more | #322 | `inbox-page`; `knownCount` (contract test) |
@@ -441,14 +441,14 @@ must prove it.
 | C55 | R2, R3 | Activity | Comment composer and Comment button | #326 | Capability `comment`, unavailable in Gate A |
 | C56 | R3 | Popover | Review instructions: title, scope line, text field | #325 | Scope line, versioned save, Escape and focus return (`e2e/code-review-agent.spec.ts`) |
 | C57 | R1, R2, R3, R4 | Composer | "Ask about this pull request" field and send | #325 | A question runs as its own confined turn (`e2e/code-review-agent.spec.ts`) |
-| C58 | R1, R2, R3, R4 | Composer | Attach (+) | #325 | Reuses the thread composer's attachments only if #325 includes them |
-| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | A model select in the review panel; effort is not offered (`AgentPanel.tsx`) |
+| C58 | R1, R2, R3, R4 | Composer | Attach (+) | deferred | Approved omission (2026-11-04): not built |
+| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | A model select in the review panel (`AgentPanel.tsx`); effort is an approved omission (2026-11-04) |
 | C60 | R1, R2, R3, R4 | Composer | Voice input | deferred | Outside #319's initial scope |
 | C61 | R1, R2, R3, R4 | Composer | Clearance: the composer never covers the last item or focus | #323 | Composer-clearance check (#323 AC5, #324 for R4) |
 | C62 | R4 | Changes header | State, number and header actions repeated in the Changes pane | #322 | Same controls as C21–C29, second pane |
 | C63 | R4 | Changes toolbar | ⋯ menu and view toggles (tree, file, image, layout) | #324 | Each mapped to a `Diff` option (wrap, highlight exist) or left out |
 | C64 | R4 | Diff | File header: icon, path with a truncated head, +/− | #324 | `FileIcon` (`ChangesPanel.tsx:96`); `PrFile` |
-| C65 | R4 | Diff | Viewed (eye) toggle per file | needs decision | Local-only, or GitHub's viewed state (a write)? |
+| C65 | R4 | Diff | Viewed (eye) toggle per file | #324 | Decision 5 (2026-11-04): stored locally and tied to the revision; no GitHub write. Not built yet |
 | C66 | R4 | Diff | File ⋯ menu | #324 | Copy path, Open in GitHub; never Discard (#324 AC4) |
 | C67 | R4 | Diff | Folded unmodified lines with expand up/down | #324 | `context` request (contract test bounds it); `Diff` `onExpand` |
 | C68 | R4 | Diff | Old and new line numbers, added and removed rows | #324 | Patch-model anchor tests (#324 AC2) over the R4 fixture patches |
@@ -464,14 +464,14 @@ must prove it.
 | C78 | R4 | Diff | Independent vertical scroll of the diff pane | #324 | Scroll-isolation check; file selection keeps the overall position |
 | C79 | R4 | File tree | Independent scroll of the file tree | #324 | Scroll-isolation check |
 | C80 | R4 | Tab strip | Closing the Changes tab, or leaving the split for one pane | #322 | Navigation spec: the PR tab and its scroll position survive |
-| C81 | R2, R3 | Activity | Avatars in the timeline and the comment composer (a bot's logo, a commenter) | needs decision | D1 |
-| C82 | R1, R2, R3, R4 | Composer | Access-mode indicator (the orange shield, `--accent-warn`, as the thread composer's full-access pill uses, `Composer.tsx:296`) | needs decision | Review runs read-only whatever it shows (#325); see open decision 7 |
+| C81 | R2, R3 | Activity | Avatars in the timeline and the comment composer (a bot's logo, a commenter) | deferred | Decision 1 (2026-11-04), deviation D1: login only |
+| C82 | R1, R2, R3, R4 | Composer | Access-mode indicator (the orange shield, `--accent-warn`, as the thread composer's full-access pill uses, `Composer.tsx:296`) | deferred | Decision 7 (2026-11-04): no indicator. Review runs read-only whatever it shows (#325); see decision 7 below |
 
 ## Deviations
 
 - **D1, avatars.** People and bots show by login (and the shell's monogram), not a fetched avatar, in
   the inbox, the timeline and the comment composer. Fetching one would load a remote image, which the
-  Markdown view never does. This needs a decision (C16, C81).
+  Markdown view never does. Val accepted this on 2026-11-04 (decision 1; C16, C81): no new network host.
 - **D2, pins.** Pins are a local list, never synced to GitHub or across devices.
 - **D3, reactions.** No child owns them. They are left out or shown unavailable.
 - **D4, third-party comment HTML.** A bot's buttons and images in a comment are comment content. They
@@ -481,17 +481,30 @@ must prove it.
 
 ## Open decisions
 
-For Val. Each control stays unavailable until decided:
+None of the seven is open. Val answered 1, 5, 6 and 7, and the two composer omissions, on 2026-11-04
+in a planning session by accepting that session's recommendations ("use your recommendations"), so
+these lines are the session's record of Val's answer, not Val's own words. A decided control that is
+not built yet says so.
 
-1. **C16 and C81, avatars:** login only (D1), or fetch avatars?
+1. **C16 and C81, avatars:** **logins only (D1)** (Val, 2026-11-04). No avatar is fetched and no new network host is contacted.
 2. **C21, the state menu** (close, reopen, draft): **in #326's scope** (Val, 2026-10-25). Built: [CR-7 state, edits and reviewers](#cr-7-state-edits-and-reviewers).
 3. **C31 and C35, editing the title and description:** **in #326's scope** (Val, 2026-10-25). Built, as above.
 4. **C38 and C43, requesting reviewers:** **in #326's scope** (Val, 2026-10-25). Built, as above.
-5. **C65, the Viewed toggle:** local only, or GitHub's viewed state?
-6. **C07, the new-tab button** on this surface: what does it open?
+5. **C65, the Viewed toggle:** **build it, stored locally and tied to the revision; no GitHub write** (Val, 2026-11-04). Not built yet.
+6. **C07, the new-tab button** on this surface: **remove the control** (Val, 2026-11-04). Not removed yet.
 7. **C82, the access-mode indicator.** The reference's PR composer shows full access. Review is
    read-only (#325), so should this composer show an access mode at all, and if so, which? The review
    panel states the confinement in words ([CR-6](#cr-6-agent-review-and-questions)); no indicator is drawn.
+   **No indicator; keep the review panel's wording** (Val, 2026-11-04).
+
+Also decided on 2026-11-04:
+
+- **C58 attachment and C59 reasoning effort** are approved omissions. The model select stays.
+- **R1–R4 references:** the comparison with the original references is retired; a benchmark on real
+  pull requests against GitHub's own pages replaces it. This does not tick any issue box whose text
+  still requires the comparison.
+- **Live gates:** real reads, and one CR-6 smoke run once on one small open pull request, may run on
+  TypeSafeAI/modex through Val's own `gh` login. The CR-7 canary still needs a disposable repository Val names; none is named.
 
 ## Fixtures
 
@@ -918,7 +931,7 @@ apart from the pull request's text; it grants nothing.
 - The snapshot holds patches only, never whole files: a finding about unchanged code is unverified.
 - Only Claude Code runs reviews. Codex's read-only sandbox still allows shell and outside reads
   (Phase 1), so it is not offered.
-- C82 stays open; the panel states the confinement in words instead.
+- C82: no indicator is drawn (decision 7, 2026-11-04); the panel states the confinement in words instead.
 - No authenticated live run is recorded in the tree.
 
 Evidence: [CR-6 native review](../reviews/2026-10-28-cr6-native-review.md); the Phase 1
