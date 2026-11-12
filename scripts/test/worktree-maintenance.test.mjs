@@ -122,6 +122,20 @@ for (const squash of [false, true]) {
   });
 }
 
+for (const [dir, eligible] of [['apps/web/dist', true], ['apps/web/test-results', true], ['apps/desktop/dist', true], ['apps/elsewhere/dist', false]]) {
+  test(`ignored ${dir} ${eligible ? 'is build output and does not hold' : 'is unknown data and holds'} a merged worktree`, async (t) => {
+    const f = fixture(t);
+    // A tracked package file, as in the real workspace: Git then reports the ignored folder itself, not `apps/`.
+    const app = path.join(f.primary, path.dirname(dir)); fs.mkdirSync(app, { recursive: true }); fs.writeFileSync(path.join(app, 'package.json'), '{}\n');
+    git(f.primary, 'add', '.'); git(f.primary, 'commit', '-m', 'app'); git(f.primary, 'push', 'origin', 'main');
+    const w = f.create(); f.merge(w); await f.release(w);
+    fs.mkdirSync(path.join(w.location, dir), { recursive: true }); fs.writeFileSync(path.join(w.location, dir, 'out'), 'generated');
+    const row = (await f.core.prune()).branches.find((r) => r.branch === w.name);
+    assert.equal(row.eligible, eligible);
+    assert.equal(row.reasons.includes('unknown-ignored-data'), !eligible);
+  });
+}
+
 for (const kind of ['wrong-head', 'wrong-base', 'patch-mismatch']) {
   test(`rejects squash proof with ${kind}`, async (t) => {
     const f = fixture(t); const w = f.create(); f.merge(w, true); await f.release(w);
