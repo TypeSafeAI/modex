@@ -52,5 +52,5 @@ Coding remains CLI-only. No inference balance probes, direct provider calls, inv
 - [x] Write failing persistence/default and settings UI checks.
 - [x] Implement validated settings and explanatory product copy.
 - [x] Update routing docs and status with exact local evidence.
-- [ ] Run pnpm build, pnpm test and pnpm test:e2e; record environmental failures without claiming acceptance.
-- [ ] Review the full diff and retain a reviewable branch with signed commits when signing is available.
+- [x] Run pnpm build, pnpm test and pnpm test:e2e; record environmental failures without claiming acceptance.
+- [x] Review the full diff and retain a reviewable branch with signed commits when signing is available.
