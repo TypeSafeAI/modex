@@ -1,0 +1,2543 @@
+{
+  "schema": 1,
+  "at": "2026-11-12T14:05:57.222513+00:00",
+  "diagnosticDriverHead": "91c033e45452bedd29dba2e4365da087c9ad673a",
+  "diagnosticDriverTree": "7d6a7a4f1c1f2a92dd1875f981158b08c0ef30f0",
+  "sourceRebuildOnly": true,
+  "order": [
+    "current",
+    "baseline"
+  ],
+  "workloadsReceiptSha256": "cd67d122a4f3d6b40ce4a19a5919221ffbaf3359a2cc7234da1a7739a4ea19b4",
+  "groups": {
+    "current": {
+      "source": {
+        "sha": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+        "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f"
+      },
+      "appVersion": "0.4.2",
+      "manifestSha256": "dceb73369bba858726617531dcb513a0e31bee294e2096a36f6a9b29dff2ccc7",
+      "reportSha256": "7e6445c50f8a2f95787b4fa1c1af719982c6457f753fcc3cc8d5ab95a2927e5b",
+      "passed": 6,
+      "skipped": 0,
+      "retries": 0,
+      "history": [
+        {
+          "replicate": 1,
+          "rawReceiptSha256": "00ed096cfc2edf7c807671ae2d53dac0e46a516f26a5ad53f4cbe4986da5a6d5",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              6.47705078125,
+              6.90185546875,
+              12.77490234375
+            ]
+          },
+          "native": {
+            "appVersion": "0.4.2",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "current",
+            "source": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+            "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f",
+            "sourceFilesVerified": 1291,
+            "builtFilesVerified": 778,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "histories": 3,
+            "shape": "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape",
+            "warmupOpens": 3,
+            "measuredOpens": 63,
+            "opensPerHistory": 21,
+            "savedBytes": [
+              2994024,
+              2994024,
+              2994024
+            ],
+            "savedSha256": [
+              "32554934e5a1b4b8f78350000e7896b6483e570c70f367fd79f67bce2bcdbdd8",
+              "490d1f0e6762f7504400689e9e805fc74c88847ec8caa89b07af464243ae0004",
+              "0481cc21a8feacfe159bb0fb7a8a61a7edbc50ee9e586be804de52ba5e18ba63"
+            ]
+          },
+          "startedAt": "2026-11-12T13:57:55.484Z",
+          "finishedAt": "2026-11-12T13:58:13.728Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T13:57:59.355Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 14966152,
+              "totalSize": 16384000,
+              "embedderHeapUsedSize": 2940520,
+              "backingStorageSize": 916940
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 320,
+              "jsEventListeners": 269
+            },
+            "mainNode": {
+              "rss": 228786176,
+              "heapTotal": 43073536,
+              "heapUsed": 34321924,
+              "external": 13069708,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 86289,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T13:58:13.557Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 15817684,
+              "totalSize": 19267584,
+              "embedderHeapUsedSize": 3181480,
+              "backingStorageSize": 754622
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 320,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 250298368,
+              "heapTotal": 56475648,
+              "heapUsed": 27127404,
+              "external": 10960519,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 106129,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T13:58:08.518Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 65851500,
+              "totalSize": 133038080,
+              "embedderHeapUsedSize": 66340384,
+              "backingStorageSize": 1041060
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 51298,
+              "jsEventListeners": 11901
+            },
+            "mainNode": {
+              "rss": 250085376,
+              "heapTotal": 56475648,
+              "heapUsed": 26795268,
+              "external": 4669048,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 106001,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1001,
+              "at": "2026-11-12T13:58:09.518Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 66005460,
+                "totalSize": 133038080,
+                "embedderHeapUsedSize": 66470224,
+                "backingStorageSize": 1041060
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 51298,
+                "jsEventListeners": 11940
+              },
+              "mainNode": {
+                "rss": 250331136,
+                "heapTotal": 56475648,
+                "heapUsed": 27015792,
+                "external": 10960519,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 106193,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5002,
+              "at": "2026-11-12T13:58:13.518Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 66040528,
+                "totalSize": 133038080,
+                "embedderHeapUsedSize": 66461944,
+                "backingStorageSize": 1041060
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 51298,
+                "jsEventListeners": 11940
+              },
+              "mainNode": {
+                "rss": 250281984,
+                "heapTotal": 56475648,
+                "heapUsed": 27071596,
+                "external": 10960519,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 106113,
+                "shared": 1040
+              }
+            }
+          ],
+          "sampleCount": 63,
+          "naturalSampleRendererHeapRangeBytes": [
+            26905096,
+            102045832
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            25698224,
+            39550672
+          ]
+        },
+        {
+          "replicate": 2,
+          "rawReceiptSha256": "aec469e7e514c04e93ef5e4b4686dd288b0ca9df1a9a96ffbbb3d10a7545a3e6",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              6.720703125,
+              6.9375,
+              12.65087890625
+            ]
+          },
+          "native": {
+            "appVersion": "0.4.2",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "current",
+            "source": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+            "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f",
+            "sourceFilesVerified": 1291,
+            "builtFilesVerified": 778,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "histories": 3,
+            "shape": "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape",
+            "warmupOpens": 3,
+            "measuredOpens": 63,
+            "opensPerHistory": 21,
+            "savedBytes": [
+              2994024,
+              2994024,
+              2994024
+            ],
+            "savedSha256": [
+              "5cbbf8771daddf6860812345a0f26bf881ae3f8c2e8468dc91e17001383ff958",
+              "55ccad5d29cf5f29bdc7f675d5c2d1b83f48ebdb1cfd3956004808104bb886d2",
+              "6e618c881d156b413829d899325a12d4f6b2a7adce9bc5b469e8612148aab553"
+            ]
+          },
+          "startedAt": "2026-11-12T13:58:13.779Z",
+          "finishedAt": "2026-11-12T13:58:29.597Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T13:58:15.199Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 14966832,
+              "totalSize": 16908288,
+              "embedderHeapUsedSize": 2770800,
+              "backingStorageSize": 916939
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 320,
+              "jsEventListeners": 269
+            },
+            "mainNode": {
+              "rss": 228802560,
+              "heapTotal": 43859968,
+              "heapUsed": 34185272,
+              "external": 6778249,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 85969,
+              "shared": 1072
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T13:58:29.450Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 15944148,
+              "totalSize": 19529728,
+              "embedderHeapUsedSize": 3098464,
+              "backingStorageSize": 754621
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 320,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 250937344,
+              "heapTotal": 56213504,
+              "heapUsed": 32841940,
+              "external": 10963219,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 107745,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T13:58:24.400Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 60866764,
+              "totalSize": 139591680,
+              "embedderHeapUsedSize": 64582336,
+              "backingStorageSize": 1041054
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 51562,
+              "jsEventListeners": 11933
+            },
+            "mainNode": {
+              "rss": 250789888,
+              "heapTotal": 56213504,
+              "heapUsed": 32504860,
+              "external": 4671748,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 107521,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1003,
+              "at": "2026-11-12T13:58:25.410Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 61116944,
+                "totalSize": 139591680,
+                "embedderHeapUsedSize": 64597200,
+                "backingStorageSize": 1041054
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 51562,
+                "jsEventListeners": 11972
+              },
+              "mainNode": {
+                "rss": 250937344,
+                "heapTotal": 56213504,
+                "heapUsed": 32730336,
+                "external": 10963219,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 107745,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5003,
+              "at": "2026-11-12T13:58:29.408Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 61152012,
+                "totalSize": 139591680,
+                "embedderHeapUsedSize": 64597200,
+                "backingStorageSize": 1041054
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 51562,
+                "jsEventListeners": 11972
+              },
+              "mainNode": {
+                "rss": 250937344,
+                "heapTotal": 56213504,
+                "heapUsed": 32786132,
+                "external": 10963219,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 107745,
+                "shared": 1040
+              }
+            }
+          ],
+          "sampleCount": 63,
+          "naturalSampleRendererHeapRangeBytes": [
+            26860952,
+            101733864
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            25742392,
+            40117844
+          ]
+        },
+        {
+          "replicate": 3,
+          "rawReceiptSha256": "7ad300270be5aa44e5bd41ebb61ba6079c4dd3d7e3292442ab09e485b2fb729c",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              7.373046875,
+              7.0703125,
+              12.59814453125
+            ]
+          },
+          "native": {
+            "appVersion": "0.4.2",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "current",
+            "source": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+            "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f",
+            "sourceFilesVerified": 1291,
+            "builtFilesVerified": 778,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "histories": 3,
+            "shape": "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape",
+            "warmupOpens": 3,
+            "measuredOpens": 63,
+            "opensPerHistory": 21,
+            "savedBytes": [
+              2994024,
+              2994024,
+              2994024
+            ],
+            "savedSha256": [
+              "d4a98f72d9add6b5ce5d882105d8707174d850f6d447030d13474098eb03866d",
+              "f36a365f88ed6573f68e5bca0785108fcac240b426b9b332a914658a27061aef",
+              "01c9a3cd53371a337f0be80fc4d55afffb57f64e6ba3e280314e152c6f1d152e"
+            ]
+          },
+          "startedAt": "2026-11-12T13:58:29.647Z",
+          "finishedAt": "2026-11-12T13:58:45.770Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T13:58:31.185Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 14956496,
+              "totalSize": 16646144,
+              "embedderHeapUsedSize": 3216648,
+              "backingStorageSize": 916934
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 320,
+              "jsEventListeners": 269
+            },
+            "mainNode": {
+              "rss": 228524032,
+              "heapTotal": 43335680,
+              "heapUsed": 34092684,
+              "external": 6778242,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 85425,
+              "shared": 1072
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T13:58:45.452Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 15985152,
+              "totalSize": 20054016,
+              "embedderHeapUsedSize": 3019888,
+              "backingStorageSize": 754622
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 320,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 250691584,
+              "heapTotal": 56737792,
+              "heapUsed": 32768876,
+              "external": 10963159,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 107265,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T13:58:40.392Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 74236952,
+              "totalSize": 142999552,
+              "embedderHeapUsedSize": 89097424,
+              "backingStorageSize": 1085255
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 68313,
+              "jsEventListeners": 17216
+            },
+            "mainNode": {
+              "rss": 250544128,
+              "heapTotal": 56737792,
+              "heapUsed": 32436556,
+              "external": 4671700,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 107057,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1000,
+              "at": "2026-11-12T13:58:41.395Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 74278268,
+                "totalSize": 142999552,
+                "embedderHeapUsedSize": 89073320,
+                "backingStorageSize": 1085255
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 68313,
+                "jsEventListeners": 17216
+              },
+              "mainNode": {
+                "rss": 250691584,
+                "heapTotal": 56737792,
+                "heapUsed": 32657268,
+                "external": 10963159,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 107265,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5000,
+              "at": "2026-11-12T13:58:45.397Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 74313356,
+                "totalSize": 142999552,
+                "embedderHeapUsedSize": 89073320,
+                "backingStorageSize": 1085255
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 68313,
+                "jsEventListeners": 17216
+              },
+              "mainNode": {
+                "rss": 250691584,
+                "heapTotal": 56737792,
+                "heapUsed": 32713068,
+                "external": 10963159,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 107265,
+                "shared": 1040
+              }
+            }
+          ],
+          "sampleCount": 63,
+          "naturalSampleRendererHeapRangeBytes": [
+            26886332,
+            98352316
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            25676424,
+            40080232
+          ]
+        }
+      ],
+      "stream": [
+        {
+          "replicate": 1,
+          "rawReceiptSha256": "c74f39eeb136ec35a0232547971445ceaf46ef9880d392245405468028ea31a3",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              7.1484375,
+              7.046875,
+              12.4931640625
+            ]
+          },
+          "native": {
+            "appVersion": "0.4.2",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "current",
+            "source": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+            "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f",
+            "sourceFilesVerified": 1291,
+            "builtFilesVerified": 778,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "warmupStreams": 1,
+            "measuredStreams": 21,
+            "bytesPerStream": 3145728,
+            "deltasPerStream": 48,
+            "deltaSpacingMs": 10,
+            "openedPreviewBytes": 262144,
+            "expectedLegacyOutputViolation": false
+          },
+          "startedAt": "2026-11-12T13:58:45.853Z",
+          "finishedAt": "2026-11-12T13:59:18.841Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T13:58:48.022Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 6003108,
+              "totalSize": 7225344,
+              "embedderHeapUsedSize": 1928312,
+              "backingStorageSize": 1010203
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 246,
+              "jsEventListeners": 220
+            },
+            "mainNode": {
+              "rss": 321290240,
+              "heapTotal": 66060288,
+              "heapUsed": 47131592,
+              "external": 11701129,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 147569,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T13:59:18.697Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 8921668,
+              "totalSize": 10092544,
+              "embedderHeapUsedSize": 1996952,
+              "backingStorageSize": 5468146
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 374,
+              "jsEventListeners": 241
+            },
+            "mainNode": {
+              "rss": 378650624,
+              "heapTotal": 99631104,
+              "heapUsed": 66680916,
+              "external": 18845057,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 181089,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T13:59:13.665Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 23254692,
+              "totalSize": 45760512,
+              "embedderHeapUsedSize": 7816488,
+              "backingStorageSize": 5732389
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 629,
+              "jsEventListeners": 3399
+            },
+            "mainNode": {
+              "rss": 378421248,
+              "heapTotal": 99631104,
+              "heapUsed": 66407740,
+              "external": 12553586,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 180865,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1001,
+              "at": "2026-11-12T13:59:14.664Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 23423336,
+                "totalSize": 45760512,
+                "embedderHeapUsedSize": 7811296,
+                "backingStorageSize": 5732389
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 629,
+                "jsEventListeners": 3445
+              },
+              "mainNode": {
+                "rss": 378519552,
+                "heapTotal": 99631104,
+                "heapUsed": 66556272,
+                "external": 18845057,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 180977,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5003,
+              "at": "2026-11-12T13:59:18.674Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 23460192,
+                "totalSize": 45760512,
+                "embedderHeapUsedSize": 7856752,
+                "backingStorageSize": 5732389
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 629,
+                "jsEventListeners": 3445
+              },
+              "mainNode": {
+                "rss": 378634240,
+                "heapTotal": 99631104,
+                "heapUsed": 66625040,
+                "external": 18845057,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 181073,
+                "shared": 1040
+              }
+            }
+          ],
+          "fixtureScriptSha256": "97f40633a287bd515df52f0495d20841100735439ba0621bcdbf1b11a062a101",
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "measuredIpcBytes": 13948015,
+          "sampleCount": 21,
+          "maximumSampledOutputBytes": 262144,
+          "naturalSampleRendererHeapRangeBytes": [
+            11158176,
+            23772992
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            37662652,
+            76973232
+          ],
+          "sendToAnswerAndPreviewObservedMs": [
+            1083,
+            1114,
+            1130,
+            1264,
+            1348,
+            1207,
+            1467,
+            1364,
+            1292,
+            1354,
+            1288,
+            1175,
+            1073,
+            1114,
+            1098,
+            1082,
+            1109,
+            1153,
+            1106,
+            1132,
+            1091
+          ]
+        },
+        {
+          "replicate": 2,
+          "rawReceiptSha256": "bba851b56d4a702c66bb18054c7e6e2c314b8921f26bda4f606208314a7549de",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              6.705078125,
+              6.9462890625,
+              12.23583984375
+            ]
+          },
+          "native": {
+            "appVersion": "0.4.2",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "current",
+            "source": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+            "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f",
+            "sourceFilesVerified": 1291,
+            "builtFilesVerified": 778,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "warmupStreams": 1,
+            "measuredStreams": 21,
+            "bytesPerStream": 3145728,
+            "deltasPerStream": 48,
+            "deltaSpacingMs": 10,
+            "openedPreviewBytes": 262144,
+            "expectedLegacyOutputViolation": false
+          },
+          "startedAt": "2026-11-12T13:59:18.891Z",
+          "finishedAt": "2026-11-12T13:59:51.033Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T13:59:20.937Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 6011000,
+              "totalSize": 6963200,
+              "embedderHeapUsedSize": 1988344,
+              "backingStorageSize": 1010203
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 246,
+              "jsEventListeners": 220
+            },
+            "mainNode": {
+              "rss": 312918016,
+              "heapTotal": 57917440,
+              "heapUsed": 40151060,
+              "external": 25398217,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 141169,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T13:59:50.881Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 8161792,
+              "totalSize": 9306112,
+              "embedderHeapUsedSize": 2008480,
+              "backingStorageSize": 6254414
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 374,
+              "jsEventListeners": 241
+            },
+            "mainNode": {
+              "rss": 377634816,
+              "heapTotal": 98582528,
+              "heapUsed": 66728912,
+              "external": 24677362,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 180929,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T13:59:45.855Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 21489540,
+              "totalSize": 43188224,
+              "embedderHeapUsedSize": 7882880,
+              "backingStorageSize": 6518654
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 629,
+              "jsEventListeners": 3205
+            },
+            "mainNode": {
+              "rss": 377520128,
+              "heapTotal": 98582528,
+              "heapUsed": 66468588,
+              "external": 18385891,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 180817,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1000,
+              "at": "2026-11-12T13:59:46.856Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 21658556,
+                "totalSize": 43188224,
+                "embedderHeapUsedSize": 7847816,
+                "backingStorageSize": 6518654
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 629,
+                "jsEventListeners": 3251
+              },
+              "mainNode": {
+                "rss": 377618432,
+                "heapTotal": 98582528,
+                "heapUsed": 66615884,
+                "external": 24677362,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 180913,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5001,
+              "at": "2026-11-12T13:59:50.856Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 21695412,
+                "totalSize": 43188224,
+                "embedderHeapUsedSize": 7847816,
+                "backingStorageSize": 6518654
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 629,
+                "jsEventListeners": 3251
+              },
+              "mainNode": {
+                "rss": 377634816,
+                "heapTotal": 98582528,
+                "heapUsed": 66672964,
+                "external": 24677362,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 180929,
+                "shared": 1040
+              }
+            }
+          ],
+          "fixtureScriptSha256": "e9c337bd5641d021d85eb0d5ee64fb171fbc784d4ff10570af8c3cb08879034c",
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "measuredIpcBytes": 13948015,
+          "sampleCount": 21,
+          "maximumSampledOutputBytes": 262144,
+          "naturalSampleRendererHeapRangeBytes": [
+            10803860,
+            20973636
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            37103452,
+            66296560
+          ],
+          "sendToAnswerAndPreviewObservedMs": [
+            1101,
+            1073,
+            1106,
+            1091,
+            1149,
+            1108,
+            1116,
+            1097,
+            1131,
+            1083,
+            1092,
+            1114,
+            1097,
+            1138,
+            1073,
+            1118,
+            1105,
+            1322,
+            1383,
+            1492,
+            1158
+          ]
+        },
+        {
+          "replicate": 3,
+          "rawReceiptSha256": "fdc9df8d607d0a621b6a4e74883281553054175d2d3af01308b4e532987752ad",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              6.1396484375,
+              6.76416015625,
+              11.98388671875
+            ]
+          },
+          "native": {
+            "appVersion": "0.4.2",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "current",
+            "source": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+            "tree": "3ba66a41d3e6eb3801de50649f9bfa718d362a5f",
+            "sourceFilesVerified": 1291,
+            "builtFilesVerified": 778,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "warmupStreams": 1,
+            "measuredStreams": 21,
+            "bytesPerStream": 3145728,
+            "deltasPerStream": 48,
+            "deltaSpacingMs": 10,
+            "openedPreviewBytes": 262144,
+            "expectedLegacyOutputViolation": false
+          },
+          "startedAt": "2026-11-12T13:59:51.087Z",
+          "finishedAt": "2026-11-12T14:00:30.522Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T13:59:53.255Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 6099800,
+              "totalSize": 7225344,
+              "embedderHeapUsedSize": 1931648,
+              "backingStorageSize": 1010242
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 246,
+              "jsEventListeners": 253
+            },
+            "mainNode": {
+              "rss": 308985856,
+              "heapTotal": 63602688,
+              "heapUsed": 47796124,
+              "external": 11701129,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 144769,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:00:30.323Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 8427120,
+              "totalSize": 9830400,
+              "embedderHeapUsedSize": 2009520,
+              "backingStorageSize": 5992229
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 374,
+              "jsEventListeners": 241
+            },
+            "mainNode": {
+              "rss": 412925952,
+              "heapTotal": 125124608,
+              "heapUsed": 89118968,
+              "external": 25398901,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 214418,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:00:25.289Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 20593096,
+              "totalSize": 43450368,
+              "embedderHeapUsedSize": 7353424,
+              "backingStorageSize": 6256469
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 629,
+              "jsEventListeners": 2965
+            },
+            "mainNode": {
+              "rss": 412745728,
+              "heapTotal": 125124608,
+              "heapUsed": 88854788,
+              "external": 19107430,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 214306,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1002,
+              "at": "2026-11-12T14:00:26.300Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 20762144,
+                "totalSize": 43450368,
+                "embedderHeapUsedSize": 7344480,
+                "backingStorageSize": 6256469
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 629,
+                "jsEventListeners": 3011
+              },
+              "mainNode": {
+                "rss": 412925952,
+                "heapTotal": 125124608,
+                "heapUsed": 89001744,
+                "external": 25398901,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 214418,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5001,
+              "at": "2026-11-12T14:00:30.300Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 20799000,
+                "totalSize": 43450368,
+                "embedderHeapUsedSize": 7365144,
+                "backingStorageSize": 6256469
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 629,
+                "jsEventListeners": 3011
+              },
+              "mainNode": {
+                "rss": 412925952,
+                "heapTotal": 125124608,
+                "heapUsed": 89057680,
+                "external": 25398901,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 214418,
+                "shared": 1040
+              }
+            }
+          ],
+          "fixtureScriptSha256": "c8a0e93d6061478c454cc62cf8ed2db042b41a44b23fc94d14644e9bda1c49bd",
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "measuredIpcBytes": 13948015,
+          "sampleCount": 21,
+          "maximumSampledOutputBytes": 262144,
+          "naturalSampleRendererHeapRangeBytes": [
+            10042440,
+            21405416
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            38489288,
+            105401212
+          ],
+          "sendToAnswerAndPreviewObservedMs": [
+            1116,
+            1095,
+            1165,
+            1936,
+            1121,
+            1169,
+            1231,
+            1718,
+            1627,
+            1841,
+            1848,
+            1582,
+            1804,
+            1677,
+            1218,
+            1841,
+            1118,
+            1255,
+            1106,
+            1773,
+            1971
+          ]
+        }
+      ]
+    },
+    "baseline": {
+      "source": {
+        "sha": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+        "tree": "1b417309f0afb1fce6738547f7e3982787d184f2"
+      },
+      "appVersion": "0.2.0",
+      "manifestSha256": "e592a0be8c54b4bb64c186844ba8fea77fd1e7f7cefccf377590a17a7dcc2472",
+      "reportSha256": "78c4f73020f86e43c72dccf9f0f2eef6eeecaf90d1c0bb283b66c2edfbe37347",
+      "passed": 6,
+      "skipped": 0,
+      "retries": 0,
+      "history": [
+        {
+          "replicate": 1,
+          "rawReceiptSha256": "9151855b3d53cdcc69f3d8c932f3a64d99f22d9498faed1cba0edd6af8b7506a",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.66650390625,
+              7.81787109375,
+              12.1279296875
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "baseline",
+            "source": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+            "tree": "1b417309f0afb1fce6738547f7e3982787d184f2",
+            "sourceFilesVerified": 724,
+            "builtFilesVerified": 542,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "histories": 3,
+            "shape": "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape",
+            "warmupOpens": 3,
+            "measuredOpens": 63,
+            "opensPerHistory": 21,
+            "savedBytes": [
+              2994024,
+              2994024,
+              2994024
+            ],
+            "savedSha256": [
+              "9a0703757c6cc3a15c3ca97850fea9627ee177dcb411323a9c5c2e2adc24ac1f",
+              "42f6d4e3a4d76a04828207406be2b1af322421d037957d3ce07d7252a59577c1",
+              "649135c3bfeadf665c74f98340223796146885eb3a2b9c3d49a2b7d04054e127"
+            ]
+          },
+          "startedAt": "2026-11-12T14:00:32.425Z",
+          "finishedAt": "2026-11-12T14:00:46.858Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T14:00:33.810Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 17332940,
+              "totalSize": 21102592,
+              "embedderHeapUsedSize": 4305608,
+              "backingStorageSize": 645099
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 269
+            },
+            "mainNode": {
+              "rss": 227213312,
+              "heapTotal": 41156608,
+              "heapUsed": 32788468,
+              "external": 6755327,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 85201,
+              "shared": 1072
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:00:46.692Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 15009740,
+              "totalSize": 16646144,
+              "embedderHeapUsedSize": 2549280,
+              "backingStorageSize": 588713
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 248954880,
+              "heapTotal": 54820864,
+              "heapUsed": 31659436,
+              "external": 10940306,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 105441,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:00:41.652Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 37432400,
+              "totalSize": 102105088,
+              "embedderHeapUsedSize": 21479760,
+              "backingStorageSize": 650136
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 16144,
+              "jsEventListeners": 4581
+            },
+            "mainNode": {
+              "rss": 248758272,
+              "heapTotal": 54820864,
+              "heapUsed": 31322408,
+              "external": 4648835,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 105281,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1002,
+              "at": "2026-11-12T14:00:42.661Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 37581820,
+                "totalSize": 102105088,
+                "embedderHeapUsedSize": 21456096,
+                "backingStorageSize": 650136
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 16144,
+                "jsEventListeners": 4620
+              },
+              "mainNode": {
+                "rss": 248922112,
+                "heapTotal": 54820864,
+                "heapUsed": 31547664,
+                "external": 10940306,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 105441,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5002,
+              "at": "2026-11-12T14:00:46.662Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 37616828,
+                "totalSize": 102105088,
+                "embedderHeapUsedSize": 21456096,
+                "backingStorageSize": 650136
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 16144,
+                "jsEventListeners": 4620
+              },
+              "mainNode": {
+                "rss": 248954880,
+                "heapTotal": 54820864,
+                "heapUsed": 31603628,
+                "external": 10940306,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 105441,
+                "shared": 1040
+              }
+            }
+          ],
+          "sampleCount": 63,
+          "naturalSampleRendererHeapRangeBytes": [
+            27138648,
+            95356312
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            24550044,
+            38924768
+          ]
+        },
+        {
+          "replicate": 2,
+          "rawReceiptSha256": "db6bcd8009815cc293021cda0f824dc3f6f927f1c60ba2b724b664bbb138aa10",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.0625,
+              7.82568359375,
+              12.0546875
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "baseline",
+            "source": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+            "tree": "1b417309f0afb1fce6738547f7e3982787d184f2",
+            "sourceFilesVerified": 724,
+            "builtFilesVerified": 542,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "histories": 3,
+            "shape": "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape",
+            "warmupOpens": 3,
+            "measuredOpens": 63,
+            "opensPerHistory": 21,
+            "savedBytes": [
+              2994024,
+              2994024,
+              2994024
+            ],
+            "savedSha256": [
+              "552486da532344d1206e07bf6706f952007294b905c65ad350a0a1862522d134",
+              "396e7e644bae0a0daf434570aa33b27bc293ff79f9cb34189c3bc685ce3ce384",
+              "6dd29937e1d5e59281077937f2b842ff277e310cd3a04a1d0f2babcb346bf7bc"
+            ]
+          },
+          "startedAt": "2026-11-12T14:00:46.930Z",
+          "finishedAt": "2026-11-12T14:01:00.932Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T14:00:48.205Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 14458388,
+              "totalSize": 16121856,
+              "embedderHeapUsedSize": 2718680,
+              "backingStorageSize": 587611
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 269
+            },
+            "mainNode": {
+              "rss": 227377152,
+              "heapTotal": 42205184,
+              "heapUsed": 32862084,
+              "external": 6755332,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 85201,
+              "shared": 1072
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:01:00.778Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 15008972,
+              "totalSize": 16384000,
+              "embedderHeapUsedSize": 1822296,
+              "backingStorageSize": 588149
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 249495552,
+              "heapTotal": 55607296,
+              "heapUsed": 31581508,
+              "external": 10940246,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 105537,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:00:55.743Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 15149136,
+              "totalSize": 98959360,
+              "embedderHeapUsedSize": 3132208,
+              "backingStorageSize": 588528
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 249266176,
+              "heapTotal": 55607296,
+              "heapUsed": 31244460,
+              "external": 4648775,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 105265,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1002,
+              "at": "2026-11-12T14:00:56.754Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 15306724,
+                "totalSize": 98959360,
+                "embedderHeapUsedSize": 2954592,
+                "backingStorageSize": 588567
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 317,
+                "jsEventListeners": 269
+              },
+              "mainNode": {
+                "rss": 249462784,
+                "heapTotal": 55607296,
+                "heapUsed": 31469736,
+                "external": 10940246,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 105537,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5002,
+              "at": "2026-11-12T14:01:00.753Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 15345728,
+                "totalSize": 98959360,
+                "embedderHeapUsedSize": 2954592,
+                "backingStorageSize": 588567
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 317,
+                "jsEventListeners": 269
+              },
+              "mainNode": {
+                "rss": 249495552,
+                "heapTotal": 55607296,
+                "heapUsed": 31525700,
+                "external": 10940246,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 105537,
+                "shared": 1040
+              }
+            }
+          ],
+          "sampleCount": 63,
+          "naturalSampleRendererHeapRangeBytes": [
+            26650896,
+            51530280
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            24485804,
+            38833468
+          ]
+        },
+        {
+          "replicate": 3,
+          "rawReceiptSha256": "93a7a3e071665874721db9c911481f7a0e5bcd8b38c2acf19555df6925a2917c",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.07275390625,
+              7.9326171875,
+              12.01806640625
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "baseline",
+            "source": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+            "tree": "1b417309f0afb1fce6738547f7e3982787d184f2",
+            "sourceFilesVerified": 724,
+            "builtFilesVerified": 542,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "histories": 3,
+            "shape": "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape",
+            "warmupOpens": 3,
+            "measuredOpens": 63,
+            "opensPerHistory": 21,
+            "savedBytes": [
+              2994024,
+              2994024,
+              2994024
+            ],
+            "savedSha256": [
+              "9f428ba20d44a427092937fb611d163b242417fd4b83c55242cbd22b1fe4e289",
+              "8227b66f9730bae77c9e9e09fd663a8964576364e4c229e3a1736ce59de14421",
+              "8acb3f40e7b441d36b3b46093d62a332103271b0d646f7c7fbd2b0548ea0fbda"
+            ]
+          },
+          "startedAt": "2026-11-12T14:01:01.078Z",
+          "finishedAt": "2026-11-12T14:01:15.233Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T14:01:02.360Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 14456612,
+              "totalSize": 16646144,
+              "embedderHeapUsedSize": 3511776,
+              "backingStorageSize": 587771
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 269
+            },
+            "mainNode": {
+              "rss": 227622912,
+              "heapTotal": 41680896,
+              "heapUsed": 32862608,
+              "external": 6755327,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 85809,
+              "shared": 1072
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:01:15.082Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 15009612,
+              "totalSize": 16908288,
+              "embedderHeapUsedSize": 2585696,
+              "backingStorageSize": 588145
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 317,
+              "jsEventListeners": 230
+            },
+            "mainNode": {
+              "rss": 249249792,
+              "heapTotal": 55083008,
+              "heapUsed": 31584936,
+              "external": 10940246,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 105553,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:01:10.043Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 37550244,
+              "totalSize": 100007936,
+              "embedderHeapUsedSize": 22446000,
+              "backingStorageSize": 649699
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 16144,
+              "jsEventListeners": 4620
+            },
+            "mainNode": {
+              "rss": 249102336,
+              "heapTotal": 55083008,
+              "heapUsed": 31247500,
+              "external": 4648775,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 105329,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1002,
+              "at": "2026-11-12T14:01:11.053Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 37699972,
+                "totalSize": 100007936,
+                "embedderHeapUsedSize": 22613080,
+                "backingStorageSize": 649699
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 16144,
+                "jsEventListeners": 4659
+              },
+              "mainNode": {
+                "rss": 249298944,
+                "heapTotal": 55083008,
+                "heapUsed": 31473164,
+                "external": 10940246,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 105617,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5002,
+              "at": "2026-11-12T14:01:15.053Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 37734960,
+                "totalSize": 100007936,
+                "embedderHeapUsedSize": 22613080,
+                "backingStorageSize": 649699
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 16144,
+                "jsEventListeners": 4659
+              },
+              "mainNode": {
+                "rss": 249249792,
+                "heapTotal": 55083008,
+                "heapUsed": 31529128,
+                "external": 10940246,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 105553,
+                "shared": 1040
+              }
+            }
+          ],
+          "sampleCount": 63,
+          "naturalSampleRendererHeapRangeBytes": [
+            27597608,
+            76823792
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            24481524,
+            38835132
+          ]
+        }
+      ],
+      "stream": [
+        {
+          "replicate": 1,
+          "rawReceiptSha256": "9dbf803f8fd637ad54e6ce2aac0c33a5063d4eec0faf77b8ac78f21640d8fcaa",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              13.18701171875,
+              8.6943359375,
+              12.21630859375
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "baseline",
+            "source": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+            "tree": "1b417309f0afb1fce6738547f7e3982787d184f2",
+            "sourceFilesVerified": 724,
+            "builtFilesVerified": 542,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "warmupStreams": 1,
+            "measuredStreams": 21,
+            "bytesPerStream": 3145728,
+            "deltasPerStream": 48,
+            "deltaSpacingMs": 10,
+            "openedPreviewBytes": null,
+            "expectedLegacyOutputViolation": true
+          },
+          "startedAt": "2026-11-12T14:01:15.293Z",
+          "finishedAt": "2026-11-12T14:02:03.736Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T14:01:18.796Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 5641912,
+              "totalSize": 6701056,
+              "embedderHeapUsedSize": 1893240,
+              "backingStorageSize": 3734022
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 243,
+              "jsEventListeners": 253
+            },
+            "mainNode": {
+              "rss": 311148544,
+              "heapTotal": 89440256,
+              "heapUsed": 72171068,
+              "external": 25256517,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 166098,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:02:03.547Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 73381428,
+              "totalSize": 74563584,
+              "embedderHeapUsedSize": 2173480,
+              "backingStorageSize": 3734781
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 371,
+              "jsEventListeners": 241
+            },
+            "mainNode": {
+              "rss": 284000256,
+              "heapTotal": 89980928,
+              "heapUsed": 87251124,
+              "external": 4676821,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 135666,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:01:58.515Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 243530940,
+              "totalSize": 296189952,
+              "embedderHeapUsedSize": 59256744,
+              "backingStorageSize": 6883145
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 939,
+              "jsEventListeners": 4522
+            },
+            "mainNode": {
+              "rss": 444563456,
+              "heapTotal": 220397568,
+              "heapUsed": 202564308,
+              "external": 15361196,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 292802,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1002,
+              "at": "2026-11-12T14:01:59.515Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 243693400,
+                "totalSize": 296189952,
+                "embedderHeapUsedSize": 59256744,
+                "backingStorageSize": 6883145
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 939,
+                "jsEventListeners": 4568
+              },
+              "mainNode": {
+                "rss": 444661760,
+                "heapTotal": 220397568,
+                "heapUsed": 202711412,
+                "external": 21652667,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 292914,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5002,
+              "at": "2026-11-12T14:02:03.514Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 243730160,
+                "totalSize": 296189952,
+                "embedderHeapUsedSize": 59259064,
+                "backingStorageSize": 6883145
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 939,
+                "jsEventListeners": 4568
+              },
+              "mainNode": {
+                "rss": 283951104,
+                "heapTotal": 89980928,
+                "heapUsed": 87192652,
+                "external": 4676821,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 135618,
+                "shared": 1040
+              }
+            }
+          ],
+          "fixtureScriptSha256": "033eb8d581072c5e7737de5776eacf1adab6a2951d3d157e07cfd5f3f76ad76b",
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "measuredIpcBytes": 1684722248,
+          "sampleCount": 21,
+          "maximumSampledOutputBytes": 3145728,
+          "naturalSampleRendererHeapRangeBytes": [
+            37593344,
+            243164112
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            64829416,
+            205187272
+          ],
+          "sendToAnswerAndPreviewObservedMs": [
+            1818,
+            1636,
+            1677,
+            1757,
+            1810,
+            1794,
+            1855,
+            1805,
+            1779,
+            2136,
+            2108,
+            1902,
+            1813,
+            1867,
+            1656,
+            1950,
+            2079,
+            1883,
+            1844,
+            1763,
+            2101
+          ]
+        },
+        {
+          "replicate": 2,
+          "rawReceiptSha256": "949c10791533a108df96c31e4861bc966b074bcef3aa65fbf69d79e73a44f6d4",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              9.67431640625,
+              8.4677734375,
+              11.93212890625
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "baseline",
+            "source": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+            "tree": "1b417309f0afb1fce6738547f7e3982787d184f2",
+            "sourceFilesVerified": 724,
+            "builtFilesVerified": 542,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "warmupStreams": 1,
+            "measuredStreams": 21,
+            "bytesPerStream": 3145728,
+            "deltasPerStream": 48,
+            "deltaSpacingMs": 10,
+            "openedPreviewBytes": null,
+            "expectedLegacyOutputViolation": true
+          },
+          "startedAt": "2026-11-12T14:02:03.831Z",
+          "finishedAt": "2026-11-12T14:02:59.124Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T14:02:06.930Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 5550864,
+              "totalSize": 6438912,
+              "embedderHeapUsedSize": 1581064,
+              "backingStorageSize": 3733983
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 243,
+              "jsEventListeners": 220
+            },
+            "mainNode": {
+              "rss": 294174720,
+              "heapTotal": 72531968,
+              "heapUsed": 55488856,
+              "external": 4809206,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 148209,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:02:58.942Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 73350900,
+              "totalSize": 74563584,
+              "embedderHeapUsedSize": 1869464,
+              "backingStorageSize": 3734781
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 371,
+              "jsEventListeners": 241
+            },
+            "mainNode": {
+              "rss": 419086336,
+              "heapTotal": 201981952,
+              "heapUsed": 183996952,
+              "external": 21652636,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 267922,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:02:53.890Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 115294760,
+              "totalSize": 148570112,
+              "embedderHeapUsedSize": 28863376,
+              "backingStorageSize": 6881252
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 585,
+              "jsEventListeners": 412
+            },
+            "mainNode": {
+              "rss": 418988032,
+              "heapTotal": 201981952,
+              "heapUsed": 183738164,
+              "external": 15361165,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 267826,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1000,
+              "at": "2026-11-12T14:02:54.892Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 115459368,
+                "totalSize": 148570112,
+                "embedderHeapUsedSize": 28863376,
+                "backingStorageSize": 6881252
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 585,
+                "jsEventListeners": 458
+              },
+              "mainNode": {
+                "rss": 419086336,
+                "heapTotal": 201981952,
+                "heapUsed": 183885224,
+                "external": 21652636,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 267922,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5003,
+              "at": "2026-11-12T14:02:58.899Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 115496160,
+                "totalSize": 148570112,
+                "embedderHeapUsedSize": 28863376,
+                "backingStorageSize": 6881252
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 585,
+                "jsEventListeners": 458
+              },
+              "mainNode": {
+                "rss": 419086336,
+                "heapTotal": 201981952,
+                "heapUsed": 183941144,
+                "external": 21652636,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 267922,
+                "shared": 1040
+              }
+            }
+          ],
+          "fixtureScriptSha256": "d4b5fad7869e469ac6aff32dbab80b49756e854df638a47621f4de5a59dc75e8",
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "measuredIpcBytes": 1684722248,
+          "sampleCount": 21,
+          "maximumSampledOutputBytes": 3145728,
+          "naturalSampleRendererHeapRangeBytes": [
+            38058956,
+            249467592
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            56492920,
+            183568272
+          ],
+          "sendToAnswerAndPreviewObservedMs": [
+            1720,
+            2156,
+            2172,
+            2172,
+            2072,
+            2198,
+            2238,
+            2233,
+            2239,
+            2266,
+            2211,
+            2282,
+            2245,
+            2235,
+            2242,
+            2190,
+            2256,
+            2291,
+            2215,
+            2239,
+            2269
+          ]
+        },
+        {
+          "replicate": 3,
+          "rawReceiptSha256": "24c369d359023e2d56de054fcf88eda64cae75839bfd689acccfec56100fc0e0",
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              8.8037109375,
+              8.3701171875,
+              11.67431640625
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "sourceVerification": {
+            "role": "baseline",
+            "source": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+            "tree": "1b417309f0afb1fce6738547f7e3982787d184f2",
+            "sourceFilesVerified": 724,
+            "builtFilesVerified": 542,
+            "commonCoreFilesVerified": 60,
+            "kind": "Byte-verified source export rebuilt with common current pinned dependencies, not a historical shipped binary",
+            "driverHeadMeaning": "Separate diagnostic checkout identity; measured source is an explicitly verified export, not this HEAD"
+          },
+          "workload": {
+            "warmupStreams": 1,
+            "measuredStreams": 21,
+            "bytesPerStream": 3145728,
+            "deltasPerStream": 48,
+            "deltaSpacingMs": 10,
+            "openedPreviewBytes": null,
+            "expectedLegacyOutputViolation": true
+          },
+          "startedAt": "2026-11-12T14:02:59.284Z",
+          "finishedAt": "2026-11-12T14:03:54.867Z",
+          "appClose": "returned",
+          "warmDetachedBefore": {
+            "at": "2026-11-12T14:03:02.432Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 8701212,
+              "totalSize": 9584640,
+              "embedderHeapUsedSize": 1777288,
+              "backingStorageSize": 588255
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 243,
+              "jsEventListeners": 220
+            },
+            "mainNode": {
+              "rss": 311410688,
+              "heapTotal": 89964544,
+              "heapUsed": 72162128,
+              "external": 25256505,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 166514,
+              "shared": 1040
+            }
+          },
+          "warmDetachedAfter": {
+            "at": "2026-11-12T14:03:54.701Z",
+            "forcedGc": true,
+            "rendererHeap": {
+              "usedSize": 73345416,
+              "totalSize": 74563584,
+              "embedderHeapUsedSize": 1876848,
+              "backingStorageSize": 3734781
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 371,
+              "jsEventListeners": 241
+            },
+            "mainNode": {
+              "rss": 285261824,
+              "heapTotal": 90767360,
+              "heapUsed": 87638440,
+              "external": 4676821,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 137474,
+              "shared": 1040
+            }
+          },
+          "detachedNatural": {
+            "at": "2026-11-12T14:03:49.658Z",
+            "forcedGc": false,
+            "rendererHeap": {
+              "usedSize": 115128776,
+              "totalSize": 140443648,
+              "embedderHeapUsedSize": 28832664,
+              "backingStorageSize": 6881370
+            },
+            "dom": {
+              "documents": 1,
+              "nodes": 585,
+              "jsEventListeners": 366
+            },
+            "mainNode": {
+              "rss": 451100672,
+              "heapTotal": 223789056,
+              "heapUsed": 202680264,
+              "external": 15361196,
+              "arrayBuffers": 0
+            },
+            "mainNativeKiB": {
+              "private": 299698,
+              "shared": 1040
+            }
+          },
+          "detachedTimedNatural": [
+            {
+              "requestedAfterDetachMs": 1000,
+              "actualAfterDetachMs": 1002,
+              "at": "2026-11-12T14:03:50.666Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 115293388,
+                "totalSize": 140443648,
+                "embedderHeapUsedSize": 28832664,
+                "backingStorageSize": 6881370
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 585,
+                "jsEventListeners": 412
+              },
+              "mainNode": {
+                "rss": 451198976,
+                "heapTotal": 223789056,
+                "heapUsed": 202827224,
+                "external": 21652667,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 299794,
+                "shared": 1040
+              }
+            },
+            {
+              "requestedAfterDetachMs": 5000,
+              "actualAfterDetachMs": 5002,
+              "at": "2026-11-12T14:03:54.668Z",
+              "forcedGc": false,
+              "rendererHeap": {
+                "usedSize": 115330180,
+                "totalSize": 140443648,
+                "embedderHeapUsedSize": 28832664,
+                "backingStorageSize": 6881370
+              },
+              "dom": {
+                "documents": 1,
+                "nodes": 585,
+                "jsEventListeners": 412
+              },
+              "mainNode": {
+                "rss": 285261824,
+                "heapTotal": 90767360,
+                "heapUsed": 87580016,
+                "external": 4676821,
+                "arrayBuffers": 0
+              },
+              "mainNativeKiB": {
+                "private": 137474,
+                "shared": 1040
+              }
+            }
+          ],
+          "fixtureScriptSha256": "3ad40b1a6be2a2592466a9fa71b111a83d84a36492224039e41b1e145ea20c0a",
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "measuredIpcBytes": 1684722248,
+          "sampleCount": 21,
+          "maximumSampledOutputBytes": 3145728,
+          "naturalSampleRendererHeapRangeBytes": [
+            25380444,
+            252571560
+          ],
+          "naturalSampleMainHeapRangeBytes": [
+            64876368,
+            204888372
+          ],
+          "sendToAnswerAndPreviewObservedMs": [
+            2238,
+            2204,
+            2154,
+            2227,
+            2196,
+            2330,
+            2261,
+            2270,
+            2385,
+            2219,
+            2205,
+            2233,
+            2175,
+            2193,
+            2169,
+            2178,
+            2280,
+            2165,
+            2209,
+            1723,
+            2274
+          ]
+        }
+      ]
+    }
+  },
+  "limits": "Descriptive source-rebuild experiments; no provider, universal memory, latency improvement, leak-freedom, native platform or human acceptance claim",
+  "localValidation": {
+    "build": 0,
+    "typecheck": 0,
+    "unitPass": 2530,
+    "unitSkip": 36,
+    "unitFailure": 0,
+    "unitCancellation": 0,
+    "focusedGuards": 36,
+    "benchmarkPass": 12,
+    "benchmarkSkip": 0,
+    "benchmarkRetry": 0
+  }
+}

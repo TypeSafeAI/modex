@@ -2,9 +2,10 @@
 
 These opt-in benchmarks reproduce the reviewed history/log workloads for #281 through existing Electron/main/native-adapter fixtures. They are outside the ordinary E2E directory and do not run in routine CI. No real model or model server is used; the synthetic CLI reports command-shaped events without executing the displayed command. Installed apps and user profiles are not replaced.
 
-From an owned worktree, install with the pinned pnpm and run:
+From an owned worktree with the pinned pnpm dependencies installed, fetch both exact source objects before running. The current comparison source is PR #503’s pre-squash head, so a fresh clone of `main` may not contain it. These commands fetch source only; they do not switch or modify the worktree:
 
 ```sh
+git fetch origin 89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1 44fb41eecf718cf6648b7c8ee95cab1e85e0e072
 node scripts/cf8-retention.mjs \
   --output /absolute/private/new-retention-directory \
   --baseline 89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1 \
