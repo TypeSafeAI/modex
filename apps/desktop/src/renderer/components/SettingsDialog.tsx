@@ -562,6 +562,22 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           </label>
         </div>
         <label className="check">
+          <SecretInput data-testid="conserve-credits" type="checkbox" checked={r.conserve_credits} onChange={(e) => setR("conserve_credits", e.target.checked)} />
+          <span>Automatically conserve low allowance or credits on Auto turns</span>
+        </label>
+        <div className="grid2">
+          <label className="field">
+            <span>Conserve at remaining allowance (%)</span>
+            <SecretInput data-testid="low-quota-percent" type="number" min={0} max={100} step={1} disabled={!r.conserve_credits} value={r.low_quota_percent} onChange={(e) => setR("low_quota_percent", Math.max(0, Math.min(100, Number(e.target.value) || 0)))} />
+          </label>
+          <label className="field">
+            <span>Conserve at paid credit balance (provider units)</span>
+            <SecretInput data-testid="low-credit-balance" type="number" min={0} step={1} disabled={!r.conserve_credits} value={r.low_credit_balance} onChange={(e) => setR("low_credit_balance", Math.max(0, Number(e.target.value) || 0))} />
+            <small>Used when included allowance is unknown or exhausted. Credit units are not dollars.</small>
+          </label>
+        </div>
+        <p className="hint">Conservation chooses economical models for light work, limits reasoning effort and turns paid fast mode off. Complex work keeps its capability target; warm conversations keep their context. Unavailable balance readings appear as unknown in each route receipt.</p>
+        <label className="check">
           <SecretInput type="checkbox" checked={r.allow_fast} onChange={(e) => setR("allow_fast", e.target.checked)} />
           <span>Allow fast mode for light, speed-sensitive turns</span>
         </label>

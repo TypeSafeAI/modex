@@ -183,6 +183,18 @@ the receipt without blocking the coding turn or changing its outcome. Premium co
 learning stay in memory for the session and are included in the next successful write.
 They cannot survive an app restart until persistence succeeds.
 
+## Automatic credit conservation
+
+Auto conserves low included allowance or purchased credits automatically (`conserve_credits`, default on). Settings → Auto routing exposes a remaining-allowance threshold (`low_quota_percent`, default 20%) and a paid-balance threshold (`low_credit_balance`, default 10 provider credit units). Provider units are not dollars. The paid threshold applies when included allowance is unknown or exhausted; an empty purchased balance never means an account with remaining included allowance is exhausted.
+
+Balance reads stay inside the coding CLIs: Codex uses the account-bound `account/rateLimits/read` app-server method, and Claude retains `rate_limit_event` metadata from ordinary turns. No balance check starts inference or makes a direct provider request. Claude is unknown until its normal stream provides a readable event; OpenCode, MiMo and gateways without supported telemetry remain unknown. Raw balance-read errors are not copied into receipts because they can contain account details. Missing, malformed, future-dated, more-than-five-minute-old and expired-window readings cannot establish available quota. A passed reset time requires another reading, not an assumed refill. Included allowances, model-specific windows and purchased credits remain distinct.
+
+On a low balance, light tasks use economy routing, discretionary upward learning offsets are suppressed, reasoning stays at or below high, and paid fast mode is explicitly turned off in the CLI even if its saved configuration enabled it. Complex, risky and deep-reasoning requests retain their capability target. Your lower effort ceiling and daily premium limit still apply. Warm conversations preserve their session and model cache while reducing per-turn effort; an exhausted model cannot be held. Current catalogues have no price table: capability tiers and effort estimate efficiency, and the receipt never claims an exact dollar saving.
+
+Exhausted candidates are excluded even when automatic conservation is disabled. A fresh thread may move to a healthy allowed backend when backend switching is enabled; an unknown reading cannot establish that an alternative is healthier. An existing session keeps its backend and bound account. If quota exclusions leave no permitted suitable route, Auto stops before coding and explains the limit. Account ids are captured before asynchronous routing and reused for balances, model discovery and execution; catalogue caches are separate per account. Existing Claude account rotation still follows its own enabled setting and session rules.
+
+Sources for protocol shapes: [Codex app-server](https://learn.chatgpt.com/docs/app-server), the installed CLI's generated TypeScript bindings (including the explicit `default` standard-speed tier), and [Claude's stream-json rate-limit events](https://github.com/anthropics/claude-code/issues/41185). Synthetic protocol, policy, runner and settings tests cover conservation; those do not establish live-account behavior or installed-app acceptance.
+
 ## The follow-up question
 
 After a turn completes, the composer offers one next message. The candidates are fixed

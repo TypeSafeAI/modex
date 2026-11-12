@@ -1,3 +1,4 @@
+import { quotaState, type QuotaSnapshot } from "./quota.js";
 import type { BackendId, EffortLevel, LastTurn, RoutingPolicy } from "../../../shared/types.js";
 import type { Candidate, Tier } from "./catalog.js";
 import { pick } from "./catalog.js";
@@ -42,6 +43,7 @@ export interface DecisionInput {
   /** Learned per-task tier offset (see fit.ts). */
   fitOffset: number;
   premiumExhausted: boolean;
+  quotas?: Partial<Record<BackendId, QuotaSnapshot>>;
   /**
    * What the thread's prompt cache was built with, and how long ago. The router always passes it;
    * a caller that omits it gets a fresh choice every turn.
@@ -59,6 +61,8 @@ export interface Decision {
   pinned: boolean;
   /** The request must not run because an effort or premium budget limit cannot be guaranteed. */
   blocked?: true;
+  /** Requires an explicit standard-speed override in the CLI, even with saved fast settings. */
+  conserving?: true;
   /** True when a warm prompt cache kept the thread's model, effort or fast mode. */
   held?: true;
   /** The cache warmth the hold step saw; absent when no cache information was passed. */
@@ -244,7 +248,7 @@ function hold(input: DecisionInput, free: Decision, current: Candidate | undefin
   return { ...kept, warmth: w };
 }
 
-export function decide(input: DecisionInput): Decision {
+function decideWithLimits(input: DecisionInput): Decision {
   const { judgments: j, policy, current } = input;
   const reasons: string[] = [];
   const currentLadder = input.ladders[current.backend] ?? [];
@@ -316,4 +320,64 @@ export function decide(input: DecisionInput): Decision {
 
   // 7. Hold: a warm prompt cache keeps the thread where it is unless the jump is worth a rebuild.
   return hold(input, { backend, model: candidate.model, effort, fast, tier: candidate.tier, pinned: false, reasons }, candidateNow, reasons);
+}
+
+
+/** Quota is an eligibility constraint; conservation changes discretionary spend, never session ownership. */
+export function decide(input: DecisionInput): Decision {
+  const now = Date.now();
+  const state = (backend: BackendId, model: string) => quotaState(input.quotas?.[backend], input.policy, model, now);
+  const current = currentCandidate(input);
+  const currentUsage = state(input.current.backend, current?.model ?? input.current.model);
+  const reasons = [`${input.current.backend}: ${currentUsage.reason}`];
+  const ladders: DecisionInput["ladders"] = {};
+  for (const [backend, candidates] of Object.entries(input.ladders) as [BackendId, Candidate[]][]) {
+    ladders[backend] = candidates.filter(c => {
+      const usage = state(backend, c.model);
+      if (usage.state !== "exhausted") return true;
+      reasons.push(`Excluded ${c.label}: ${usage.reason}`);
+      return false;
+    });
+  }
+  const conserve = input.policy.conserve_credits && currentUsage.state === "low";
+  let effective = { ...input, ladders };
+  if (conserve) {
+    const j = input.judgments;
+    const light = j.complexity < 1.5 && j.needsDeepReasoning < 0.7 && j.blastRadius < 1.5;
+    effective = { ...effective, fitOffset: light ? Math.min(0, input.fitOffset) : 0,
+      policy: { ...input.policy, allow_fast: false,
+        max_effort: EFFORTS[Math.min(effortIndex(input.policy.max_effort) ?? 0, effortIndex("high")!)]!,
+        posture: light ? "economy" : input.policy.posture === "quality" ? "balanced" : input.policy.posture } };
+    reasons.push("Conserving low allowance or credits: economical suitable model, at most high effort, paid fast mode off; capability tiers estimate cost, not dollar prices.");
+  }
+  const wantedTier = decideWithLimits({ ...effective, ladders: input.ladders, cache: undefined }).tier;
+  // A quota-driven move is allowed only on a fresh thread and only to an explicitly allowed backend
+  // with a fresh, healthy reading and enough capability. Unknown telemetry cannot justify it.
+  if (input.policy.allow_backend_switch && !input.current.hasSession && (conserve || currentUsage.state === "exhausted")) {
+    const wanted = wantedTier;
+    const alternate = input.policy.allow_backends.find(b => b !== input.current.backend && ladders[b]?.some(c => c.tier >= wanted && state(b, c.model).state === "healthy"));
+    if (alternate) {
+      reasons.push(`Selected ${alternate} on a fresh conversation: ${state(alternate, ladders[alternate]!.find(c => c.tier >= wanted && state(alternate, c.model).state === "healthy")!.model).reason}`);
+      // Preserve the original current model for failure diagnostics. Restrict the source ladder so
+      // the existing backend-switch policy makes the move without inventing a session/account.
+      effective = { ...effective, ladders: { ...ladders, [input.current.backend]: [], [alternate]: ladders[alternate]!.filter(c => state(alternate, c.model).state === "healthy") } };
+      effective.policy = { ...effective.policy, allow_backends: [alternate] };
+    }
+  }
+  const currentExhausted = currentUsage.state === "exhausted";
+  if (currentExhausted && (input.current.hasSession || !input.policy.allow_backend_switch) && !(ladders[input.current.backend]?.length)) {
+    return blocked(input, reasons, "No permitted model has usable allowance or credits; the route was stopped. Wait for a reset or choose another account.");
+  }
+  if (currentExhausted && input.source === "jev" && input.judgments.taskConfidence < input.policy.min_confidence) {
+    return blocked(input, reasons, "The pinned model is exhausted and the judge is unsure; the route was stopped.");
+  }
+  const decision = decideWithLimits(effective);
+  const excludedAny = Object.entries(input.ladders).some(([b, candidates]) => candidates!.length !== (ladders[b as BackendId]?.length ?? 0));
+  if (!decision.blocked && excludedAny && decision.tier < wantedTier) {
+    return blocked(input, reasons, "The remaining models do not meet this task's capability target; the route was stopped instead of silently downgrading the work.");
+  }
+  if (state(decision.backend, decision.model || current?.model || "").state === "exhausted") {
+    return blocked(input, reasons, "No permitted model has usable allowance or credits; the route was stopped.");
+  }
+  return { ...decision, ...(conserve ? { conserving: true as const } : {}), reasons: decision.blocked ? [...reasons, ...decision.reasons] : [decision.reasons[0]!, ...reasons, ...decision.reasons.slice(1)] };
 }

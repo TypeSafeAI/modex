@@ -321,6 +321,12 @@ export interface RoutingPolicy {
   min_confidence: number;
   /** Daily cap on top-tier / xhigh+ turns Auto may spend; null = unlimited. */
   premium_turns_per_day: number | null;
+  /** Automatically conserve low included allowance or paid credits on Auto turns. */
+  conserve_credits: boolean;
+  /** Included allowance remaining at or below which conservation activates (percent). */
+  low_quota_percent: number;
+  /** Paid-only credit balance threshold, in provider units, not dollars. */
+  low_credit_balance: number;
   /** TypeSafe model id for the judge. */
   jev_model: string;
   /** How to reach Jev: the `jev` CLI when installed (auto), always the CLI, or Modex's own HTTPS call. */
@@ -338,6 +344,9 @@ export const DEFAULT_ROUTING: RoutingPolicy = {
   allow_fast: true,
   min_confidence: 0.6,
   premium_turns_per_day: null,
+  conserve_credits: true,
+  low_quota_percent: 20,
+  low_credit_balance: 10,
   jev_model: "jev-latest",
   jev_transport: "auto",
   jev_bin: "jev",

@@ -1,3 +1,4 @@
+import { codexQuota, type QuotaSnapshot } from "../routing/quota.js";
 import { requestedPermissions } from "./codex-permissions.js";
 import { AgentTracker } from "./agents.js";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
@@ -176,6 +177,12 @@ export class CodexBackend implements Backend {
 
   private respond(id: unknown, result: unknown): void {
     this.send({ id, result });
+  }
+
+  async quota(): Promise<QuotaSnapshot | undefined> {
+    if (this.configuration?.local) return undefined;
+    await this.ensure();
+    return codexQuota(await this.request("account/rateLimits/read", {}, 3000));
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -703,7 +710,7 @@ export class CodexBackend implements Backend {
         model: opts.model || null,
         effort: opts.effort ?? null,
         // "fast" is the Codex fast-mode service tier; only this turn, the thread's tier is untouched.
-        serviceTierForTurn: opts.fast ? "fast" : null,
+        serviceTierForTurn: opts.conserveCredits ? "default" : opts.fast ? "fast" : null,
         ...(mode ? { collaborationMode: mode } : {}),
       });
       turnStart(input, collaborationMode)

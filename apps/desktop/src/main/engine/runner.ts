@@ -170,7 +170,7 @@ export class ThreadRunner {
       mimo: o.backends?.mimo ?? new AcpBackend("mimo", () => resolveCli("mimo", cliSettings.mimo_bin)),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
-    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
+    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b, account) => this.listModels(b, account), quota: (b, account) => this.background.run(async () => this.backends[b].quota?.(account)), secrets: o.secrets });
     // Jev is never asked about a local thread, whichever caller asks (#380).
     this.router.decisions.guardThreads(id => localOnly(o.store.thread(id)));
   }
@@ -189,11 +189,11 @@ export class ThreadRunner {
       && this.o.store.thread(threadId)?.localTarget?.model.connection.id === connectionId);
   }
 
-  async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
+  async listModels(id: BackendId, account?: string): Promise<{ models: ModelInfo[]; error?: string }> {
     if (this.disposing) return { models: [], error: "Modex is shutting down." };
     if (this.restartHold) return { models: [], error: "Modex is preparing to restart." };
     try {
-      return { models: await this.background.run(() => this.backends[id].listModels()) };
+      return { models: await this.background.run(() => this.backends[id].listModels(account)) };
     } catch (err) {
       return { models: [], error: (err as Error).message };
     }
@@ -748,6 +748,12 @@ export class ThreadRunner {
     // auxiliary setup can observe a different active account.
     const prospectiveCodexAccount = thread.localTarget === undefined && (thread.backend === "codex" || thread.auto)
       ? this.backends.codex.identity?.() ?? null : null;
+    const prospectiveClaudeAccount = thread.localTarget === undefined && (thread.backend === "claude" || thread.auto)
+      ? this.backends.claude.identity?.() ?? "cli" : "cli";
+    const routeAccounts = {
+      codex: thread.codexAccount ?? (thread.backend === "codex" && thread.sessionHandle ? "cli" : prospectiveCodexAccount ?? "cli"),
+      claude: thread.claudeAccount ?? (thread.backend === "claude" && thread.sessionHandle ? "cli" : prospectiveClaudeAccount),
+    };
     const admittedExecution = executionBinding(thread, prospectiveCodexAccount);
     // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
     let draft: AttachmentDraft | undefined;
@@ -793,6 +799,7 @@ export class ThreadRunner {
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
     let fast = false;
+    let conserveCredits = false;
     let routeId: string | undefined;
     let routingBlocked: string | undefined;
     // A local thread runs only on its exact target: never Auto, never a cloud backend, never a cloud account.
@@ -811,7 +818,7 @@ export class ThreadRunner {
       // so the composer, header, and persisted state all show what this turn runs on.
       try {
         const project = this.o.store.project(thread.projectId);
-        const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
+        const receipt = await this.router.route({ thread, accounts: routeAccounts, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
         this.addItem(threadId, receipt.item);
         routeId = receipt.item.id;
         const d = receipt.decision;
@@ -822,6 +829,7 @@ export class ThreadRunner {
         if (!d.blocked && d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
         else if (!d.blocked && (d.model !== thread.model || d.effort !== thread.effort)) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
         fast = d.fast;
+        conserveCredits = d.conserving === true;
         thread = this.o.store.thread(threadId) ?? thread;
       } catch (err) {
         if (thread.backend === "mock") {
@@ -880,7 +888,7 @@ export class ThreadRunner {
       const account = !local && (thread.backend === "codex" || thread.backend === "claude") && backend.identity
         ? thread.backend === "codex"
           ? admittedExecution.backend === "codex" ? admittedExecution.account ?? undefined : prospectiveCodexAccount ?? undefined
-          : bound ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
+          : bound ?? (thread.sessionHandle ? "cli" : prospectiveClaudeAccount) : undefined;
       if (account && !bound) this.o.store.updateThread(threadId, thread.backend === "codex" ? { codexAccount: account } : { claudeAccount: account });
       const accountFor = (ran: Thread) => threadAccount(ran) ?? account;
       const freshConversation = !thread.sessionHandle;
@@ -896,7 +904,7 @@ export class ThreadRunner {
           const result = await backend.runTurn(
             describeAttachments(text, turnFiles),
             {
-              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account: accountFor(ran),
+              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
               // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
               ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
