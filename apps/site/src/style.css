@@ -150,6 +150,7 @@ nav a,
 .inline-link {
   display: inline-flex;
   align-items: center;
+  gap: 0.35em;
   min-height: 44px;
 }
 .site-header nav a {
@@ -314,8 +315,9 @@ h1 {
   min-width: 204px;
   justify-content: flex-start;
 }
+/* The buttons share a row; the in-page link sits on its own beneath them. */
 .hero-actions .text-link {
-  margin-left: 6px;
+  flex-basis: 100%;
 }
 .platform-note {
   font-size: 12px;
