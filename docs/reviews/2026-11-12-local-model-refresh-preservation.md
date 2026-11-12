@@ -55,3 +55,17 @@ A later independent full-clause audit on 2026-11-12 checked actual main `558b54f
 | Thread/profile/model/endpoint identity | The old exact request completes stale after endpoint revision replacement, while the existing thread keeps its old model/revision/raw draft and shows unavailable-server provenance. Generation/revision/request identity checks and explicit-only thread target mutation prevent metadata from silently rebinding it. Production discovery IPC separately exercises old-request/new-endpoint handling. |
 
 This accepts the literal UI/race requirements, not production admission or native inference. The synthetic admitted target setup, cancellation-before-stale-completion limit and preserved range-setup failure above remain unchanged. S1/S3’s user-started native compatibility test and recorded qualification states, the full options/state/keyboard/minimum-window matrix, paired provenance, actual producer integration and human/native/device acceptance remain open under their own full clauses.
+
+## S5 literal safety acceptance
+
+The complete S5 safety requirement is supported on protected main `5a580d4f98f5b1c62c5801db4400d5b533634082`. Unsupported features remain restricted; this clause does not require positively qualifying image, reasoning, Plan or structured-output support.
+
+- Composer blocks local image submission before dispatch and preserves staged bytes. The independent main/runtime guards also reject incompatible images, Plan/pages/knowledge before spawn; #503's canonical queue case verifies exact staged PNG bytes and raw drafts survive refresh and thread switching.
+- Existing PlusMenu disables Plan, Auto and backend changes with reasons; the local model menu omits reasoning controls. The native adapter strips unsupported effort/fast flags and disables unqualified image/web/subagent options. Main validates the effective configuration and refuses forged or mismatched target/option mutations.
+- Local targets are explicitly pinned: local means Auto is false, reroutes interrupt rather than silently rebind, live target changes are refused and no cloud fallback can replace the local target. The intervening #505 quota/runner changes retain these guards; no broad #505 review is claimed.
+
+Evidence: [production Composer](https://github.com/TypeSafeAI/modex/blob/5a580d4f98f5b1c62c5801db4400d5b533634082/apps/desktop/src/renderer/components/Composer.tsx), [native option/refusal tests](https://github.com/TypeSafeAI/modex/blob/5a580d4f98f5b1c62c5801db4400d5b533634082/apps/desktop/test/local-model-execution.test.ts), [runner pinning/forgery tests](https://github.com/TypeSafeAI/modex/blob/5a580d4f98f5b1c62c5801db4400d5b533634082/apps/desktop/test/runner-local-models.test.ts), and [protected preservation queue](https://github.com/TypeSafeAI/modex/actions/runs/43189470394/job/131084824667). Independent remaining-clause audit SHA-256: `416d35f9c32eeb5dfbae4dbe827fa192c64abccf4856d9a45d6b6ae2f454e62e`.
+
+Only S5 advances, from four to five of 13 boxes. Compatibility-test/result UI, ordinary producer integration/admission, full qualification/state/theme/keyboard/minimum-window coverage and paired host/model provenance remain open. Fixture/native-adapter guards do not activate production local inference or qualify any actual model.
+
+The [public S5 receipt](https://github.com/TypeSafeAI/modex/issues/381#issuecomment-6822710861) was read back with only S5 changed, taking the open issue to five of 13 boxes.
