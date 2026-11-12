@@ -18,6 +18,8 @@ Implementation step 6 of #378 is supported by the actual #498 merge: Settings ex
 
 ## Acceptance limits
 
+Protected #499 delivered signed head `63c103c2c73949ffccd975b88131c0399afd592a` as actual main `0f43631dec22db5ca9390e35613a139ae61bff07`, tree `17dfbd74e186da1fb7ecb8759170595ffe4685d5`. [Queue run 43141305538](https://github.com/TypeSafeAI/modex/actions/runs/43141305538) passed 2,474 units with 36 skips, 518 desktop E2E cases with eight skips and seven site cases. Its signed squash has the exact tested source tree. The [source-head CI run](https://github.com/TypeSafeAI/modex/actions/runs/43137143497) separately passed 44 iPhone executions with zero unexpected failures, including the deliberate screenshot-failure selftest. The queue iPhone job skipped. These delivered results supersede the earlier pending-delivery checkpoint above.
+
 All servers and locked-credential stimuli in these regressions are synthetic. Electron uses actual production preload, IPC handlers and model services; the tests do not perform model inference. Execution remains unadmitted. These results do not establish real Keychain acceptance, offline coding compatibility, physical-device or human acceptance, or completion of all #378/#381 requirements. No issue checkbox or closure follows solely from this repair.
 
 Original failures, traces and successful logs are retained under `/Users/buns/Documents/Codex/2026-11-11/modex-closeout/`: `lm2-canonical-first-red.log`, `lm2-rendered-first-red.log`, `lm2-rendered-first-red-artifacts/`, `lm2-canonical-focused-green.log` and `lm2-canonical-focused-e2e.log`. These local receipts support this candidate and are not portable public artifacts.

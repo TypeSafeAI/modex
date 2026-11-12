@@ -3,13 +3,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { EventEmitter, once } from "node:events";
 import type { SpawnOptions } from "node:child_process";
-import type { TurnOptions } from "../src/main/engine/backends/types.js";
+import type { TurnOptions, TurnResult } from "../src/main/engine/backends/types.js";
 import { LocalConnectionStore } from "../src/main/engine/local-models/connections.js";
 import { LocalExecution } from "../src/main/engine/local-models/execution.js";
 import { SecretStore, testCipher } from "../src/main/engine/secrets.js";
+import { Store } from "../src/main/engine/store.js";
+import { ThreadRunner } from "../src/main/engine/runner.js";
+import { Router } from "../src/main/engine/routing/router.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
-import { tmpdir } from "./helpers.js";
+import { gitRepo, tmpdir } from "./helpers.js";
 
 const MODEL = "qwen3.8-flash-next-iq3_s";
 
@@ -650,3 +654,147 @@ for (const swapped of ["private home", "private home with retained path", "priva
     } finally { await h.execution.dispose(); }
   });
 }
+
+test("LM5 queued status: a blocked local run reports waiting before opening a child", { timeout: 10_000 }, async t => {
+  const h = setup();
+  const firstAbort = new AbortController(), queuedAbort = new AbortController();
+  const firstSink = collectSink(), waitingSink = collectSink();
+  let first: Promise<TurnResult> | undefined, queued: Promise<TurnResult> | undefined;
+  try {
+    first = h.execution.backend(h.thread).runTurn("hold capacity", h.opts, firstSink.sink, AbortSignal.any([firstAbort.signal, t.signal]));
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    const second = h.connections.create({ label: "Same server", runtime: "responses", url: "http://127.0.0.1:18501/v1" });
+    const other = { ...h.thread, id: "waiting-status", cwd: tmpdir("lm5-waiting-"),
+      localTarget: { ...h.target, model: { ...h.target.model, connection: { id: second.id, revision: second.revision } } } };
+    queued = h.execution.backend(other).runTurn("queued status", { ...h.opts, cwd: other.cwd }, waitingSink.sink, AbortSignal.any([queuedAbort.signal, t.signal]));
+    assert.equal(h.children.length, 1, "waiting must not create a second native child");
+    assert.equal(firstSink.events.some(event => /notice:info:.*waiting.*local server/i.test(event)), false, "the active turn must not be described as queued");
+    const notices = waitingSink.events.filter(event => event.startsWith("notice:"));
+    assert.equal(notices.length, 1, "a blocked run must expose one main-owned waiting status before it opens a native child");
+    assert.match(notices[0]!, /^notice:info:.*waiting.*local server/i);
+    assert.equal(h.children.flatMap(c => c.proc.sent(m => m.method === "turn/start")).length, 1);
+  } finally {
+    queuedAbort.abort();
+    if (queued) await queued;
+    firstAbort.abort();
+    if (first) await first;
+    await h.execution.dispose();
+  }
+});
+
+test("LM5 queued status: release continues one waiter and cancellation never announces continuation", { timeout: 10_000 }, async t => {
+  const h = setup();
+  const aborts = [new AbortController(), new AbortController(), new AbortController()] as const;
+  const sinks = [collectSink(), collectSink(), collectSink()] as const;
+  const runs: Promise<TurnResult>[] = [];
+  const info = (sink: ReturnType<typeof collectSink>) => sink.events.filter(event => event.startsWith("notice:info:"));
+  try {
+    runs.push(h.execution.backend(h.thread).runTurn("first", h.opts, sinks[0].sink, AbortSignal.any([aborts[0].signal, t.signal])));
+    const firstChild = await h.spawned();
+    await firstChild.proc.waitFor(line => line.includes('"turn/start"'));
+    for (const i of [1, 2] as const) {
+      const other = { ...h.thread, id: `waiting-${i}`, cwd: tmpdir("lm5-waiter-") };
+      runs.push(h.execution.backend(other).runTurn(`waiter ${i}`, { ...h.opts, cwd: other.cwd }, sinks[i].sink, AbortSignal.any([aborts[i].signal, t.signal])));
+      assert.equal(info(sinks[i]).length, 1);
+      assert.match(info(sinks[i])[0]!, /waiting.*local server/i);
+    }
+    assert.equal(info(sinks[0]).length, 0);
+    h.finish();
+    assert.equal((await runs[0]!).status, "completed");
+    const secondChild = await h.spawned(2);
+    await secondChild.proc.waitFor(line => line.includes('"turn/start"'));
+    assert.equal(h.children.length, 2, "only the first awakened waiter acquires capacity");
+    assert.equal(info(sinks[1]).length, 2);
+    assert.match(info(sinks[1])[1]!, /continuing this turn/i);
+    assert.equal(info(sinks[2]).length, 1, "a requeued waiter must not repeat its waiting notice");
+    aborts[2].abort();
+    assert.equal((await runs[2]!).status, "interrupted");
+    assert.equal(info(sinks[2]).length, 1, "cancelled waiting never claims continuation");
+    h.finish(1);
+    assert.equal((await runs[1]!).status, "completed");
+    assert.equal(h.children.flatMap(child => child.proc.sent(m => m.method === "turn/start")).length, 2);
+  } finally {
+    for (const abort of aborts) abort.abort();
+    await Promise.all(runs);
+    await h.execution.dispose();
+  }
+});
+
+test("LM5 queued status: cancellation at capacity handoff never announces continuation", { timeout: 10_000 }, async t => {
+  const h = setup();
+  const firstAbort = new AbortController(), queuedAbort = new AbortController();
+  const waiting = collectSink();
+  let first: Promise<TurnResult> | undefined, queued: Promise<TurnResult> | undefined;
+  try {
+    first = h.execution.backend(h.thread).runTurn("first", h.opts, collectSink().sink, AbortSignal.any([firstAbort.signal, t.signal]));
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    const other = { ...h.thread, id: "handoff-waiter", cwd: tmpdir("lm5-handoff-") };
+    queued = h.execution.backend(other).runTurn("cancel at handoff", { ...h.opts, cwd: other.cwd }, waiting.sink, AbortSignal.any([queuedAbort.signal, t.signal]));
+    // Release wakes acquire first; settling the first run queues this abort before its caller resumes.
+    const cancelled = first.then(() => queuedAbort.abort());
+    h.finish();
+    assert.equal((await first).status, "completed");
+    await cancelled;
+    assert.equal((await queued).status, "interrupted");
+    const notices = waiting.events.filter(event => event.startsWith("notice:info:"));
+    assert.equal(notices.length, 1, "a cancelled handoff keeps its waiting history without claiming continuation");
+    assert.match(notices[0]!, /waiting.*local server/i);
+    assert.equal(h.children.length, 1, "a cancelled handoff must not open another native child");
+  } finally {
+    queuedAbort.abort(); firstAbort.abort();
+    await Promise.all([first, queued].filter(Boolean));
+    await h.execution.dispose();
+  }
+});
+
+test("LM5 queued status: the actual runner persists and emits the blocked turn's notice before native dispatch", { timeout: 10_000 }, async t => {
+  const h = setup();
+  const store = new Store(h.home), bus = new EventEmitter(), cleanup = new AbortController();
+  const projected: { threadId: string; text: string; level: string }[] = [];
+  let cloudCalls = 0, jevCalls = 0;
+  const router = new Router({ home: h.home, policy: () => store.settings.routing, listModels: async () => ({ models: [] }),
+    transport: async () => { jevCalls++; return { answers: {} }; } });
+  const runner = new ThreadRunner({ home: h.home, store, router, localExecution: h.execution,
+    backends: { codex: { id: "codex", listModels: async () => [], dispose: async () => {},
+      runTurn: async () => { cloudCalls++; throw new Error("A local queued turn must not use cloud execution"); } } },
+    emit: event => {
+      if (event.type === "item" && event.item.kind === "notice" && /waiting.*local server/i.test(event.item.text)) {
+        projected.push({ threadId: event.threadId, text: event.item.text, level: event.item.level });
+        bus.emit("waiting");
+      }
+    },
+  });
+  const project = store.addProject(gitRepo());
+  const a = await runner.createThread(project.id, { backend: "codex", model: MODEL, auto: false });
+  const b = await runner.createThread(project.id, { backend: "codex", model: MODEL, auto: false });
+  const sends: Promise<void>[] = [];
+  try {
+    for (const thread of [a, b]) runner.updateThread(thread.id, { localTarget: h.target, localContextTokens: 32768 }, { by: "desktop" });
+    sends.push(runner.send(a.id, "hold the local service"));
+    const child = await h.spawned();
+    await child.proc.waitFor(line => line.includes('"turn/start"'));
+    const waiting = once(bus, "waiting", { signal: AbortSignal.any([cleanup.signal, t.signal]) });
+    sends.push(runner.send(b.id, "wait in the main runner"));
+    await Promise.race([waiting, sends[1]!.then(() => { throw new Error("The queued turn ended before its waiting status"); })]);
+    assert.equal(projected.length, 1);
+    assert.equal(projected[0]!.threadId, b.id);
+    assert.equal(projected[0]!.level, "info");
+    assert.ok(runner.items(b.id).some(item => item.kind === "notice" && item.text === projected[0]!.text));
+    assert.ok(store.items(b.id).some(item => item.kind === "notice" && item.text === projected[0]!.text), "the outbound status is already durable");
+    assert.equal(h.children.length, 1);
+    runner.stop(b.id);
+    await sends[1];
+    assert.equal(runner.items(b.id).some(item => item.kind === "notice" && /continuing this turn/i.test(item.text)), false);
+    assert.equal(h.children.length, 1);
+    h.finish();
+    await sends[0];
+    assert.deepEqual({ cloudCalls, jevCalls }, { cloudCalls: 0, jevCalls: 0 });
+  } finally {
+    cleanup.abort();
+    runner.stop(b.id); runner.stop(a.id);
+    await Promise.all(sends);
+    await runner.dispose();
+  }
+});

@@ -137,11 +137,13 @@ export class LocalExecution {
   }
 
   /** One turn at a time per service; a cancelled wait starts nothing. */
-  private async acquire(service: string, signal: AbortSignal): Promise<() => void> {
+  private async acquire(service: string, signal: AbortSignal, onWaiting: () => void): Promise<() => void> {
     let slot = this.services.get(service);
     if (!slot) { slot = { busy: false, waiting: new Set() }; this.services.set(service, slot); }
+    let announced = false;
     while (slot.busy) {
       signal.throwIfAborted();
+      if (!announced) { announced = true; onWaiting(); }
       await new Promise<void>((resolve, reject) => {
         const ready = () => { cleanup(); resolve(); };
         const aborted = () => { cleanup(); reject(new Error("Stopped while waiting for the local server.")); };
@@ -166,9 +168,15 @@ export class LocalExecution {
       const connection = this.connections.resolve(target.model.connection)!;
       sink = redactingSink(sink, connection.token);
       // Every loopback alias of a port is the same server; separate servers sharing a port also wait on each other.
-      release = await this.acquire(`loopback:${connection.endpoint.port}`, signal);
+      let queuedForCapacity = false;
+      release = await this.acquire(`loopback:${connection.endpoint.port}`, signal, () => {
+        queuedForCapacity = true;
+        sink.notice("info", "Waiting for another Modex run on this local server to finish.");
+      });
+      signal.throwIfAborted();
       this.validate(thread); // The profile may have changed while this turn waited.
       if (this.disposed) throw new Error("Local execution has stopped. Select the local target again after Modex restarts.");
+      if (queuedForCapacity) sink.notice("info", "Continuing this turn.");
       refuseProjectConfiguration(opts.cwd);
       const directory = fs.realpathSync(opts.cwd);
       const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd), directory, this.hostSandbox?.boundaryId ?? null]);
