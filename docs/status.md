@@ -39,8 +39,10 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## Landing page
 
-The download site lives in `apps/site`, deployed to Vercel project `modex`. The new
-landing design keeps the near-black blue/pink identity and follows a concrete task through
+The download site lives in `apps/site`, deployed to Vercel project `modex`. Since
+2026-11-12 it wears the desktop app's graphite appearance: the hero is the app's welcome
+workspace (start card, four work modes, shortcuts), and the workflow captures were retaken from
+the current interface. It follows a concrete task through
 request, proposed patch and approved result with manually selected real app captures.
 The page scrolls through agent choice, parallel worktrees, Pages/Knowledge, setup, optional
 iPhone Companion and inline FAQ. Mobile retains the product explanation and platform
@@ -60,6 +62,15 @@ homepage and generated brand artwork now use that address. The Vercel alias
 [modex-0xbuns.vercel.app](https://modex-0xbuns.vercel.app) remains available. Vercel uses the
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
+
+## Browser demo
+
+`apps/web` puts the desktop renderer in a browser on the Store edition's in-memory demo
+workspace, for <https://app.modex.codes> (Vercel project `modex-app`, root `apps/web`). Threads,
+the approval, the sample change and replies are scripted in the tab; no model, CLI, file or
+network request is involved after the page loads, and there is still no hosted or API mode. A
+banner says so and links to the Mac download; phones get a short explanation and a link to the
+site. The landing page's "Try the demo" opens it. See [apps/web](../apps/web/README.md).
 
 ## On main, unreleased
 

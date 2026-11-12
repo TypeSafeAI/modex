@@ -94,10 +94,10 @@ jobs:
   test:
     name: unit + e2e (macOS)
     runs-on: macos-latest
-    # Shared arm64 runs in PR #509 hit 45 minutes after 6–7 minutes of unit coverage and
-    # 37 minutes of desktop E2E, once at case 532/533 without an assertion failure. Keep
-    # individual test limits intact and leave a bounded window for the full suite and uploads.
-    timeout-minutes: 60
+    # Green runs on shared runners took 29–45 minutes on 2026-11-12, the e2e step alone 25–37 of
+    # them, and 45 cut off three passing runs in a row (two of them in the merge queue). 70 leaves
+    # room for a slow runner without letting a hung run sit for long.
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v5
 
@@ -144,6 +144,9 @@ jobs:
       - name: Landing page release and responsive tests
         run: pnpm --filter @modex/site test:e2e
 
+      - name: Browser demo workspace tests
+        run: pnpm --filter @modex/web test:e2e
+
       - name: Desktop runner memory low point
         if: always()
         run: apps/ios/ModexCompanion/Scripts/sample-memory.sh --summary "$RUNNER_TEMP/modex-desktop-memory.log"
@@ -165,6 +168,7 @@ jobs:
           path: |
             apps/desktop/test-results
             apps/site/test-results
+            apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
 
