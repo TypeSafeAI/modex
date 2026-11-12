@@ -2531,13 +2531,15 @@
   "localValidation": {
     "build": 0,
     "typecheck": 0,
-    "unitPass": 2530,
+    "unitPass": 2566,
     "unitSkip": 36,
     "unitFailure": 0,
     "unitCancellation": 0,
     "focusedGuards": 36,
     "benchmarkPass": 12,
     "benchmarkSkip": 0,
-    "benchmarkRetry": 0
+    "benchmarkRetry": 0,
+    "unitTotal": 2602,
+    "focusedGuardsIncludedInUnits": true
   }
 }
