@@ -45,13 +45,24 @@ export function ModelMenu({ models, model, effort, error, disabled, onModel, onE
   const [open, setOpen] = useState(false);
   /** The local model whose context choices are showing. */
   const [pending, setPending] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const search = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const current = local?.current;
   const selected = current ? undefined : models.find((m) => m.id === model);
-  const close = () => { setOpen(false); setPending(null); trigger.current?.focus(); };
+  const dismiss = () => { setOpen(false); setPending(null); setQuery(""); };
+  const close = () => { dismiss(); trigger.current?.focus(); };
   const currentEntry = current ? local?.entries.find((e) => e.connection.id === current.model.connection.id && e.connection.revision === current.model.connection.revision) : undefined;
   // With no server added, the menu is the cloud list it always was; Settings → Local models adds one.
   const showLocal = Boolean(local && (current || local.entries.length > 0));
+  const term = query.trim().toLocaleLowerCase();
+  const matches = (...values: string[]) => values.some(value => value.toLocaleLowerCase().includes(term));
+  const visibleModels = models.filter(m => matches(m.id, m.label, m.description ?? ""));
+  const visibleEntries = local?.entries.flatMap(entry => {
+    if (matches(entry.connection.label, entry.connection.origin)) return [entry];
+    const models = entryModels(entry).filter(m => matches(m.model.id));
+    return models.length && entry.result ? [{ ...entry, result: { ...entry.result, models } }] : [];
+  }) ?? [];
   useEffect(() => { if (open) local?.onOpen(); }, [open]);
 
   useEffect(() => {
@@ -67,16 +78,17 @@ export function ModelMenu({ models, model, effort, error, disabled, onModel, onE
 
   return (
     <div className="model-menu">
-      <button ref={trigger} data-testid="model-picker" className={`model-trigger${error && !current ? " warn" : ""}${current ? " local" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!current && !error && models.length === 0 && !local?.entries.length)} title={localTitle ?? error ?? selected?.description ?? "Model"} aria-haspopup="menu" aria-expanded={open}>
+      <button ref={trigger} data-testid="model-picker" className={`model-trigger${error && !current ? " warn" : ""}${current ? " local" : ""}`} onClick={() => { if (open) dismiss(); else setOpen(true); }} disabled={disabled || (!current && !error && models.length === 0 && !local?.entries.length)} title={localTitle ?? error ?? selected?.description ?? "Model"} aria-haspopup="menu" aria-expanded={open}>
         {current && <span className="model-trigger-local" data-testid="model-local-badge">{currentEntry ? RUNTIME_NAMES[currentEntry.connection.runtime] : "Local"}</span>}
         <span className="model-trigger-label">{label}</span>
         {effortLabel && <span className="model-trigger-effort">{effortLabel}</span>}
         <Icon name={open ? "chevron-up" : "chevron-down"} size={12} className="chev" />
       </button>
-      <Menu open={open} onClose={() => { setOpen(false); setPending(null); }} anchorRef={trigger} focusSelected label="Model" testId="model-menu" className="model-list" placement="top-end">
+      <Menu open={open} onClose={dismiss} anchorRef={trigger} initialFocusRef={showLocal ? search : undefined} focusSelected label="Model" testId="model-menu" className="model-list" placement="top-end">
+        {showLocal && <div className="model-search"><input ref={search} type="search" aria-label="Search models" placeholder="Search models or connections" value={query} onChange={event => { setQuery(event.target.value); setPending(null); }} /></div>}
         {error && <div className="menu-error">{error}</div>}
-        {showLocal && models.length > 0 && <MenuLabel>{current ? "Cloud models (leaves the local model)" : "Cloud models"}</MenuLabel>}
-        {models.map((m) => (
+        {showLocal && visibleModels.length > 0 && <MenuLabel>{current ? "Cloud models (leaves the local model)" : "Cloud models"}</MenuLabel>}
+        {visibleModels.map((m) => (
           <Fragment key={m.id}>
             <MenuItem data-testid="model-option" disabled={Boolean(current && local?.blocked)} checkable selected={!current && m.id === model} onClick={() => { if (current) { local!.onClear(m); close(); return; } onModel(m.id, m.defaultEffort); if (!m.efforts?.length) close(); }}>
               <span className="menu-body">
@@ -96,7 +108,8 @@ export function ModelMenu({ models, model, effort, error, disabled, onModel, onE
             ) : null}
           </Fragment>
         ))}
-        {showLocal && local && <LocalSection local={local} pending={pending} setPending={setPending} close={close} />}
+        {showLocal && term && !visibleModels.length && !visibleEntries.some(entry => entryModels(entry).some(m => m.selectable)) && <div className="menu-note" role="status">No matching models.</div>}
+        {showLocal && local && <LocalSection local={{ ...local, entries: visibleEntries }} pending={pending} setPending={setPending} close={close} />}
       </Menu>
     </div>
   );
