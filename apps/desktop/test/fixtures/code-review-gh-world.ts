@@ -10,6 +10,8 @@
 //                  (PUT …/pulls/N/merge) is recorded the same way, and the PR then reads as merged by the account;
 //                  so are a PATCH of the PR, a reviewer request and the two draft mutations, which the PR then shows.
 export interface GhWorld {
+  /** Fail API reads as network failures while retaining the same synthetic signed-in identity. */
+  offline?: boolean;
   /** `gh api user`; null answers as gh does when nobody is signed in (exit 4). */
   user: { id: number; login: string } | null;
   /** Search rows per group, before the person's text and paging narrow them. */
@@ -44,6 +46,10 @@ const read = () => JSON.parse(fs.readFileSync(process.env.FAKE_GH_WORLD, "utf8")
 const wait = (hold) => { const released = hold && require("node:path").join(process.env.FAKE_GH_HOLDS, hold); if (released) { const flag = new Int32Array(new SharedArrayBuffer(4)); while (!fs.existsSync(released)) Atomics.wait(flag, 0, 0, 25); } };
 wait((read().holds || {})[route]);
 const world = read();
+if (world.offline && method === "GET" && route !== "user") {
+  process.stderr.write("dial tcp: network is unreachable\n");
+  process.exit(1);
+}
 const postsFile = process.env.FAKE_GH_POSTS;
 const posts = () => postsFile && fs.existsSync(postsFile) ? fs.readFileSync(postsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 const reason = { 200: "OK", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 409: "Conflict", 410: "Gone" };
