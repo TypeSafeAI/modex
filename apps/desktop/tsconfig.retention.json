@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.renderer.json",
+  "compilerOptions": { "types": ["node"], "allowJs": true, "checkJs": false },
+  "include": ["bench/retention/**/*.ts", "bench/retention-env.d.ts"]
+}

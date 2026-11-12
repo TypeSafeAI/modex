@@ -1,9 +1,11 @@
 # Modex landing page
 
 Vite/TypeScript site for **https://modex.codes**, with a small cached Vercel function for
-public GitHub release metadata. The scrollable page follows a real demo task through three manually selected stages,
-then explains agent access, worktrees, Pages/Knowledge, setup and the optional iPhone
-companion. No WebGL, analytics or third-party fonts.
+public GitHub release metadata. The page wears the desktop app's graphite appearance: its hero
+is the app's welcome workspace (start card, the four work modes, shortcuts). It then follows a
+real demo task through three manually selected stages and explains agent access, worktrees,
+Pages/Knowledge, setup and the optional iPhone companion. The hero and footer link to the
+browser demo at <https://app.modex.codes> (`apps/web`). No WebGL, analytics or web fonts.
 
 ## Develop and verify
 
@@ -78,11 +80,13 @@ metadata use this address. The Vercel alias <https://modex-0xbuns.vercel.app> re
 
 ## Asset sources
 
-- `workflow-approval.png` and `workflow-complete.png`: unchanged copies of the real
-  `docs/screenshots/04-graphite-approval.png` and `05-graphite-complete.png` captures, also
-  present in published tag v0.0.10. CSS crops follow the same scripted CONTRIBUTING.md task.
-  These demonstrate the app, not live Claude/Codex inference. The original images remain
-  accessible; the enlargement dialog supports scrolling to inspect small details.
+- `workflow-approval.png` and `workflow-complete.png`: the scripted CONTRIBUTING.md demo in the
+  current graphite interface, captured on 2026-11-12 from source commit `0e4e212` (macOS 27.2.1,
+  1380 × 880 CSS pixels at 2×, isolated `demo-repo` fixture, mock backend, no login or network):
+  `pnpm --filter @modex/desktop exec electron . --demo --screenshot=<directory> --demo-answer=yes --force-device-scale-factor=2`.
+  The files are the unmodified `01-thread-approval.png` and `02-thread-complete.png` it writes.
+  CSS crops follow the task. These demonstrate the app, not live Claude/Codex inference. The
+  original images remain accessible; the enlargement dialog supports scrolling to inspect details.
 - `desktop-*.png`: earlier real Modex demo captures at 2760×1760; generated with
   `electron . --demo --screenshot=<directory> --demo-answer=yes` on 2026-10-05.
 - `iphone-*.png`: real 1206×2622 simulator captures from Modex Companion build 4, using
@@ -90,7 +94,7 @@ metadata use this address. The Vercel alias <https://modex-0xbuns.vercel.app> re
 - `modex-mark.png`: the unmodified official logo supplied by Val.
 - `modex-icon.png` and `social-preview.png`: generated from the official mark with
   `swift scripts/brand-assets.swift`; see `docs/branding/README.md`.
-- Manrope is self-hosted from `@fontsource-variable/manrope`; its OFL license is included at
-  `/licenses/manrope.txt`.
+- Icons are the desktop app's own 16 × 16 stroke paths (`apps/desktop/src/renderer/components/ui/Icon.tsx`),
+  inlined as SVG. Type uses the app's system font stack; no font files are served.
 
 No personal account, real repository content, pairing code, or credential is shown.

@@ -94,9 +94,10 @@ jobs:
   test:
     name: unit + e2e (macOS)
     runs-on: macos-latest
-    # Green runs on shared runners take 20–29 minutes, the e2e step alone 16–22 (2026-10-18), so 30
-    # cut off slow but passing runs. 45 leaves room without letting a hung run sit for long.
-    timeout-minutes: 45
+    # Green runs on shared runners took 29–45 minutes on 2026-11-12, the e2e step alone 25–37 of
+    # them, and 45 cut off three passing runs in a row (two of them in the merge queue). 70 leaves
+    # room for a slow runner without letting a hung run sit for long.
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v5
 
@@ -143,6 +144,9 @@ jobs:
       - name: Landing page release and responsive tests
         run: pnpm --filter @modex/site test:e2e
 
+      - name: Browser demo workspace tests
+        run: pnpm --filter @modex/web test:e2e
+
       - name: Desktop runner memory low point
         if: always()
         run: apps/ios/ModexCompanion/Scripts/sample-memory.sh --summary "$RUNNER_TEMP/modex-desktop-memory.log"
@@ -164,6 +168,7 @@ jobs:
           path: |
             apps/desktop/test-results
             apps/site/test-results
+            apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
 

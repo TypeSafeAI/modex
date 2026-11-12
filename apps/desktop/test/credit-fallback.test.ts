@@ -137,13 +137,14 @@ for (const cached of [false, true]) test(`an empty fallback reply produces a ret
   } finally { await h.runner.dispose(); }
 });
 
-test("Auto attributes fallback outcome to Opus without teaching a user override", async () => {
+test("Auto attributes an admitted light-task fallback outcome to Opus without teaching a user override", async () => {
   const h = await harness([refused, replies]);
   try {
     const router = h.runner.router;
     h.store.updateSettings({ routing: { ...h.store.settings.routing, posture: "quality", allow_fast: false, max_effort: "high" } });
     h.runner.updateThread(h.thread.id, { auto: true });
-    await h.runner.send(h.thread.id, "design a complex architecture");
+    h.store.updateThread(h.thread.id, { sessionHandle: "warm", lastTurn: { model: "fable", fast: false, at: new Date().toISOString(), contextTokens: 100_000 } });
+    await h.runner.send(h.thread.id, "rename a variable");
     assert.deepEqual(h.seen.map(o => o.model), ["fable", "opus"]);
     const fit = new Fit(router.fit.file);
     const record = fit.latest(h.thread.id)!;

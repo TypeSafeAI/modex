@@ -1,0 +1,20 @@
+{
+  "existingReviewedDrivers": [
+    {
+      "driver": "cf8-natural-retention-44fb-first-pass-archive/retention.spec.ts",
+      "sha256": "1888e3cda3b695cdb5fc77487e27ee027c86bd616dfc99b3d967a1bcf1e4cc9a"
+    },
+    {
+      "driver": "cf8-log-retention-44fb-first-pass-archive/stream.spec.ts",
+      "sha256": "023a9ac36028ae873438f140b0eb486dcdca2c3c54634ed461a6a21e84b545d9"
+    },
+    {
+      "driver": "cf8-historical-controls-89c-first-pass-archive/stream.spec.ts",
+      "sha256": "e6a0cd06f6d8677ecb7eaf55d6e1712005642f7ec1bc99d698a77e294280c033"
+    }
+  ],
+  "historyFixtureSha256": "4efa44b94816aacc724ce339ddfc390751d42d73598174e3a716b09cb4bca109",
+  "logFixtureSha256": "82f18ea8a875e70ef7bc1e520788cad317263b0d82448176f8915a137b562a24",
+  "workloadsAndBudgetsChanged": false,
+  "parameterized": "source/output/support paths, source version/driver identity, explicit legacy/current output assertions"
+}
