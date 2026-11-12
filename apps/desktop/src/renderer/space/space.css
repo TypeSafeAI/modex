@@ -443,3 +443,14 @@
 .space-template-sheet i.c::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 4px; border: 1px solid var(--text-4); border-radius: 1px; }
 .space-templates button strong { font-size: 14.5px; font-weight: 400; }
 .space-templates button small { margin-top: 3px; color: var(--text-3); font-size: 12.5px; }
+
+/* The block being written: no side bar, its handle showing beside the text, and a quiet prompt while empty. */
+.space-block.editing { box-shadow: none; padding-left: 0; margin-left: 0; }
+.space-block.editing .space-block-tools { opacity: 1; }
+.space-block.editing .space-block-tools > :not(.space-block-actions) { visibility: hidden; }
+.space-block-actions summary { color: var(--text-3); font-size: 15px; }
+.space-block-actions summary:hover { background: var(--bg-row-hover); color: var(--text-1); }
+.space-block-input::placeholder { color: var(--text-3); }
+
+.space-menu-mark { display: inline-grid; place-items: center; width: 16px; color: var(--text-2); font-size: 11.5px; font-weight: 500; letter-spacing: -.02em; }
+.space-block .space-block-input:is(:focus, :focus-visible) { outline: none; border: 0; box-shadow: none; }

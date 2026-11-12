@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./ui/Icon";
+import { uiScale } from "../ui-scale";
 
 /** A hover card lives outside the scrolling list so inspection never moves another chat. */
 export function useThreadDetails(enabled: boolean) {
@@ -28,7 +29,7 @@ export function useThreadDetails(enabled: boolean) {
     clearTimeout(timer.current);
     const open = () => {
       const bounds = anchor.current?.getBoundingClientRect();
-      if (bounds) { focusOnOpen.current = focus; setPosition({ left: Math.max(8, Math.min(bounds.right + 3, innerWidth - 328)), top: Math.max(8, Math.min(bounds.top, innerHeight - 180)) }); }
+      if (bounds) { focusOnOpen.current = focus; const z = uiScale(); setPosition({ left: Math.max(8, Math.min(bounds.right / z + 3, innerWidth / z - 328)), top: Math.max(8, Math.min(bounds.top / z, innerHeight / z - 180)) }); }
     };
     if (immediate) open(); else timer.current = setTimeout(open, 400);
   };

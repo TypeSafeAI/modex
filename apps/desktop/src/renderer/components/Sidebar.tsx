@@ -8,6 +8,7 @@ import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { Menu, MenuItem, MenuLabel } from "./ui/Menu";
 import { createPortal } from "react-dom";
+import { uiScale } from "../ui-scale";
 import { ThreadDetails, useThreadDetails } from "./ThreadDetails";
 
 interface Props {
@@ -275,7 +276,8 @@ function ProjectRowShell({ className, draft, name, path, projectId, chats, compa
     timer.current = setTimeout(() => {
       const bounds = anchor.current?.getBoundingClientRect();
       if (!bounds) return;
-      setAt({ left: Math.max(8, Math.min(bounds.right + 3, innerWidth - 328)), top: Math.max(8, Math.min(bounds.top, innerHeight - 190)) });
+      const z = uiScale();
+      setAt({ left: Math.max(8, Math.min(bounds.right / z + 3, innerWidth / z - 328)), top: Math.max(8, Math.min(bounds.top / z, innerHeight / z - 190)) });
       void bridge.invoke("project:branch", { projectId }).then(setBranch).catch(() => setBranch(null));
     }, 400);
   };

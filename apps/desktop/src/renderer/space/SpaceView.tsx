@@ -109,6 +109,9 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
   const [maintenance, setMaintenance] = useState(false);
   const [insertRequest, setInsertRequest] = useState<{ source: string; nonce: number }>();
   const insertTrigger = useRef<HTMLButtonElement>(null);
+  const textTrigger = useRef<HTMLButtonElement>(null);
+  const imageTrigger = useRef<HTMLButtonElement>(null);
+  const [toolMenu, setToolMenu] = useState<"text" | "image" | null>(null);
   const shareTrigger = useRef<HTMLButtonElement>(null);
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const commentsTrigger = useRef<HTMLButtonElement>(null);
@@ -285,8 +288,22 @@ export function SpaceView({ onOpenImages, sidebarOpen, active, openPage, openPro
             </Menu>
           </span>
           <div className="space-tools">
+            <span className="space-insert-anchor"><IconButton ref={textTrigger} icon="text" label="Text and lists" size="md" data-testid="space-text-menu" aria-expanded={toolMenu === "text"} aria-haspopup="menu" onClick={() => setToolMenu(toolMenu === "text" ? null : "text")} />
+              <Menu open={toolMenu === "text"} onClose={() => setToolMenu(null)} anchorRef={textTrigger} label="Text and lists" fitViewport placement="bottom-start">
+                {([["Heading 1", "# ", "Aa"], ["Heading 2", "## ", "Aa"], ["Heading 3", "### ", "Aa"]] as const).map(([name, source, mark]) => <MenuItem key={name} onClick={() => { setToolMenu(null); insertBlock(source); }}><span className="space-menu-mark" aria-hidden="true">{mark}</span>{name}</MenuItem>)}
+                <MenuItem onClick={() => { setToolMenu(null); insertBlock("- "); }}><Icon name="list" />Bulleted list</MenuItem>
+                <MenuItem onClick={() => { setToolMenu(null); insertBlock("1. "); }}><span className="space-menu-mark" aria-hidden="true">1.</span>Numbered list</MenuItem>
+                <MenuItem onClick={() => { setToolMenu(null); insertBlock("- [ ] "); }}><Icon name="checklist" />Checklist</MenuItem>
+              </Menu></span>
+            <span className="space-insert-anchor"><IconButton ref={imageTrigger} icon="image" label="Insert image" size="md" data-testid="space-image-menu" aria-expanded={toolMenu === "image"} aria-haspopup="menu" onClick={() => setToolMenu(toolMenu === "image" ? null : "image")} />
+              <Menu open={toolMenu === "image"} onClose={() => setToolMenu(null)} anchorRef={imageTrigger} label="Insert image" fitViewport placement="bottom-start">
+                <MenuLabel>Generate</MenuLabel>
+                <MenuItem disabled={!onOpenImages} onClick={() => { setToolMenu(null); onOpenImages?.(); }}><Icon name="sparkle" />Generate in Images{!onOpenImages && <small>Unavailable</small>}</MenuItem>
+                <MenuLabel>Attach</MenuLabel>
+                <MenuItem onClick={() => { setToolMenu(null); insertBlock("![Image description](https://)"); }}><Icon name="link" />Image from a link</MenuItem>
+                <MenuItem disabled={!onOpenImages} onClick={() => { setToolMenu(null); onOpenImages?.(); }}><Icon name="image" />Choose from Images{!onOpenImages && <small>Unavailable</small>}</MenuItem>
+              </Menu></span>
             <IconButton icon="sparkle" label="Generate page content" size="md" disabled={!onOpenChat} onClick={() => beginGeneration("write")} />
-            <IconButton icon="image" label="Insert image" size="md" onClick={() => insertBlock("![Image description](https://)")} />
             <IconButton icon="shapes" label="Visualize page" size="md" disabled={!onOpenChat} onClick={() => beginGeneration("visualize")} />
             <span className="space-insert-anchor"><IconButton ref={insertTrigger} icon="insert-square" label="Insert" size="md" aria-expanded={insertOpen} aria-haspopup="menu" onClick={() => setInsertOpen(value => !value)} />
               <Menu open={insertOpen} onClose={() => setInsertOpen(false)} anchorRef={insertTrigger} label="Insert into page" fitViewport placement="bottom-start" className="space-insert-menu">

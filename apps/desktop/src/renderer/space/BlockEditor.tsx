@@ -314,7 +314,7 @@ function BlockInput({ value, label, inputRef, ...events }: {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => { if (ref.current) { ref.current.style.height = "0px"; ref.current.style.height = `${ref.current.scrollHeight}px`; } }, [value]);
   const heading = value.match(/^(#{1,3}) /)?.[1]?.length;
-  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for blocks, or just start writing…" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} onPaste={pasteWithoutCitations} spellCheck={!value.startsWith("```")} />;
+  return <SecretTextarea ref={el => { ref.current = el; inputRef(el); }} className={`space-block-input${heading ? ` heading-${heading}` : ""}${value.startsWith("```") ? " code" : ""}`} rows={1} aria-label={label} placeholder="Type / for commands" value={value} onChange={e => events.onChange(e.target.value)} onKeyDown={events.onKeyDown} onBlur={events.onBlur} onPaste={pasteWithoutCitations} spellCheck={!value.startsWith("```")} />;
 }
 
 /** Chat citations paste as unreadable marker characters; insert the text without them. */
@@ -355,6 +355,6 @@ function BlockPreview({ source, pageId, label, onEdit, onChange }: { source: str
   return <div ref={ref} className="space-block-preview" tabIndex={0} aria-label={label}
     onClick={event => { if (!(event.target as HTMLElement).closest("a, input, button") && !window.getSelection()?.toString()) onEdit(); }}
     onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); onEdit(); } }}>
-    {blocks.length ? <BlockRenderer blocks={blocks} customRenderers={renderers} /> : <p className="space-placeholder">Type / for blocks, or just start writing…</p>}
+    {blocks.length ? <BlockRenderer blocks={blocks} customRenderers={renderers} /> : <p className="space-placeholder">Type / for commands</p>}
   </div>;
 }

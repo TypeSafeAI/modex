@@ -227,16 +227,28 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   // On the web a hidden sidebar opens over the page while the pointer is on the rail, its toggle or the
   // sidebar itself, and closes when the pointer leaves. Clicking the toggle keeps it open as usual.
   const [sidebarPeek, setSidebarPeek] = useState(false);
+  const railQuiet = useRef(false);
+  // Heard on every page, peeking or not: the click that changes page is what must keep the sidebar away.
+  useEffect(() => {
+    if (!WEB) return;
+    const picked = (event: MouseEvent) => { if (event.target instanceof Element && event.target.closest(".rail")) { railQuiet.current = true; setSidebarPeek(false); } };
+    document.addEventListener("click", picked, true);
+    return () => document.removeEventListener("click", picked, true);
+  }, []);
   useEffect(() => {
     // On Chat with the sidebar already showing there is nothing to peek; every other page hides it.
     if (!WEB || (sidebarOpen && surface === "chat")) { setSidebarPeek(false); return; }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const over = (event: PointerEvent) => {
       if (event.pointerType !== "mouse") return;
-      const inside = event.target instanceof Element && Boolean(event.target.closest('.rail, [data-testid="sidebar-toggle"], .sidebar, .menu, .thread-details'));
+      const target = event.target instanceof Element ? event.target : null;
+      const inside = Boolean(target?.closest('.rail, [data-testid="sidebar-toggle"], .sidebar, .menu, .thread-details'));
+      // A click on the rail went somewhere: the sidebar stays away until the pointer has left the rail.
+      if (railQuiet.current && target && !target.closest('.rail, [role="tooltip"]')) railQuiet.current = false;
       clearTimeout(timer);
-      if (inside) setSidebarPeek(true); else timer = setTimeout(() => setSidebarPeek(false), 220);
+      if (inside && !railQuiet.current) setSidebarPeek(true); else if (!inside) timer = setTimeout(() => setSidebarPeek(false), 220);
     };
+
     const gone = () => { clearTimeout(timer); timer = setTimeout(() => setSidebarPeek(false), 220); };
     document.addEventListener("pointerover", over);
     document.documentElement.addEventListener("pointerleave", gone);
