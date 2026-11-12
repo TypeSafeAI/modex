@@ -375,7 +375,7 @@ Every visible control in R1–R4, with its owner and how it is tested. The owner
 - An issue (#322–#327).
 - `shell`: the existing Modex shell, unchanged.
 - `native chrome`: macOS.
-- `deferred`: outside #319's initial scope, shown unavailable or left out.
+- `deferred`: outside #319's initial scope, or left out by Val's decision; shown unavailable or left out.
 - `needs decision`: Val decides whether it is in scope. Until then it is unavailable. None is left since 2026-11-04; each
   decided control now names its owner or `deferred`, with the decision in its last column.
 
@@ -442,7 +442,7 @@ must prove it.
 | C56 | R3 | Popover | Review instructions: title, scope line, text field | #325 | Scope line, versioned save, Escape and focus return (`e2e/code-review-agent.spec.ts`) |
 | C57 | R1, R2, R3, R4 | Composer | "Ask about this pull request" field and send | #325 | A question runs as its own confined turn (`e2e/code-review-agent.spec.ts`) |
 | C58 | R1, R2, R3, R4 | Composer | Attach (+) | deferred | Approved omission (2026-11-04): not built |
-| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | Effort is an approved omission (2026-11-04). A model select in the review panel; effort is not offered (`AgentPanel.tsx`) |
+| C59 | R1, R2, R3, R4 | Composer | Model and reasoning effort (the brain icon) | #325 | A model select in the review panel (`AgentPanel.tsx`); effort is an approved omission (2026-11-04) |
 | C60 | R1, R2, R3, R4 | Composer | Voice input | deferred | Outside #319's initial scope |
 | C61 | R1, R2, R3, R4 | Composer | Clearance: the composer never covers the last item or focus | #323 | Composer-clearance check (#323 AC5, #324 for R4) |
 | C62 | R4 | Changes header | State, number and header actions repeated in the Changes pane | #322 | Same controls as C21–C29, second pane |
@@ -465,7 +465,7 @@ must prove it.
 | C79 | R4 | File tree | Independent scroll of the file tree | #324 | Scroll-isolation check |
 | C80 | R4 | Tab strip | Closing the Changes tab, or leaving the split for one pane | #322 | Navigation spec: the PR tab and its scroll position survive |
 | C81 | R2, R3 | Activity | Avatars in the timeline and the comment composer (a bot's logo, a commenter) | deferred | Decision 1 (2026-11-04), deviation D1: login only |
-| C82 | R1, R2, R3, R4 | Composer | Access-mode indicator (the orange shield, `--accent-warn`, as the thread composer's full-access pill uses, `Composer.tsx:296`) | deferred | Decision 7 (2026-11-04): no indicator. Review runs read-only whatever it shows (#325); see open decision 7 |
+| C82 | R1, R2, R3, R4 | Composer | Access-mode indicator (the orange shield, `--accent-warn`, as the thread composer's full-access pill uses, `Composer.tsx:296`) | deferred | Decision 7 (2026-11-04): no indicator. Review runs read-only whatever it shows (#325); see decision 7 below |
 
 ## Deviations
 
@@ -503,8 +503,8 @@ Also decided on 2026-11-04:
 - **R1–R4 references:** the comparison with the original references is retired; a benchmark on real
   pull requests against GitHub's own pages replaces it. This does not tick any issue box whose text
   still requires the comparison.
-- **Live gates:** real reads and one CR-6 smoke may run on TypeSafeAI/modex through Val's own `gh`
-  login. The CR-7 canary still needs a disposable repository Val names; none is named.
+- **Live gates:** real reads, and one CR-6 smoke run once on one small open pull request, may run on
+  TypeSafeAI/modex through Val's own `gh` login. The CR-7 canary still needs a disposable repository Val names; none is named.
 
 ## Fixtures
 
