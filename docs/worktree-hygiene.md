@@ -89,7 +89,9 @@ the merged PR over REST, so it never needs that branch. Stale registrations, loc
 and archives are never swept automatically.
 
 The generated-data allowlist covers root `node_modules/` and `node_modules/`, `dist/`,
-`test-results/`, and `playwright-report/` under the known app and core package directories.
+`test-results/`, and `playwright-report/` under the known app and core package directories
+(`apps/desktop`, `apps/site`, `apps/store-desktop`, `apps/web`, `packages/core`). A new workspace
+package that writes build output needs adding to `regenerable` in `scripts/lib/worktree-maintenance.mjs`.
 Ignored `.env`, `.codex`, `.probes`, logs, release artifacts, and other unknown files
 preserve the checkout. Move evidence you want to keep to durable storage yourself.
 

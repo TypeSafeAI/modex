@@ -70,7 +70,7 @@ async function processActivity(location, executable = 'lsof') {
 }
 
 function regenerable(file) {
-  return /^(?:node_modules\/|(?:apps\/(?:desktop|site|store-desktop)|packages\/core)\/(?:node_modules|dist|test-results|playwright-report)\/)/.test(file);
+  return /^(?:node_modules\/|(?:apps\/(?:desktop|site|store-desktop|web)|packages\/core)\/(?:node_modules|dist|test-results|playwright-report)\/)/.test(file);
 }
 
 /** Conservative local cleanup. GitHub and process observations are the only seams. */
