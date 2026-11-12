@@ -143,6 +143,9 @@ jobs:
       - name: Landing page release and responsive tests
         run: pnpm --filter @modex/site test:e2e
 
+      - name: Browser demo workspace tests
+        run: pnpm --filter @modex/web test:e2e
+
       - name: Desktop runner memory low point
         if: always()
         run: apps/ios/ModexCompanion/Scripts/sample-memory.sh --summary "$RUNNER_TEMP/modex-desktop-memory.log"
@@ -164,6 +167,7 @@ jobs:
           path: |
             apps/desktop/test-results
             apps/site/test-results
+            apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
 

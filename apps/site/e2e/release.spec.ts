@@ -146,6 +146,7 @@ test("the full product story remains readable and scrollable across desktop and 
     for (const selector of [
       ".hero-description",
       ".platform-note",
+      ".hero-modes",
       "#workflow",
       "#advantages",
       "#get-started",
@@ -213,6 +214,40 @@ test("the full product story remains readable and scrollable across desktop and 
   );
 });
 
+test("the hero shows the app's four work modes and links to the browser demo", async ({
+  page,
+}) => {
+  await page.route("**/api/release", (route) =>
+    route.fulfill({ json: feed() }),
+  );
+  await page.goto("/");
+  await expect(page.locator(".mode-card strong")).toHaveText([
+    "Chat",
+    "Agent",
+    "Plan",
+    "Full access",
+  ]);
+  await expect(
+    page.locator(".hero-actions").getByRole("link", { name: "Try the demo" }),
+  ).toHaveAttribute("href", "https://app.modex.codes/");
+  await expect(page.locator(".platform-note")).toContainText(
+    "The browser demo is simulated.",
+  );
+  // The app's graphite surfaces: a window-coloured frame around the content sheet.
+  await expect(page.locator("body")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(page.locator("html")).toHaveCSS(
+    "background-color",
+    "rgb(27, 27, 28)",
+  );
+  await expect(page.locator("main")).toHaveCSS(
+    "background-color",
+    "rgb(15, 15, 17)",
+  );
+});
+
 test("workflow selection is deliberate and supports keyboard input without autoplay", async ({
   page,
 }) => {
@@ -264,7 +299,6 @@ test("screenshots enlarge and close with Escape or the close button, restoring f
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     for (const label of [
-      "Enlarge the Modex approval screenshot",
       "Enlarge the workflow screenshot",
       "Enlarge the iPhone approval screenshot",
     ]) {
@@ -323,7 +357,7 @@ test("downloads, setup, FAQ and original screenshots work without JavaScript", a
   ).toBeVisible();
   await page
     .getByRole("link", {
-      name: "Enlarge the Modex approval screenshot",
+      name: "Enlarge the workflow screenshot",
       exact: true,
     })
     .click();

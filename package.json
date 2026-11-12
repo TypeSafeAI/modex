@@ -19,7 +19,7 @@
   },
   "scripts": {
     "preinstall": "node scripts/require-pnpm.mjs",
-    "build": "pnpm --filter @modex/core build && pnpm --filter @modex/desktop build && pnpm --filter @modex/site build && pnpm --filter @modex/store-desktop build",
+    "build": "pnpm --filter @modex/core build && pnpm --filter @modex/desktop build && pnpm --filter @modex/site build && pnpm --filter @modex/web build && pnpm --filter @modex/store-desktop build",
     "test": "pnpm run test:worktrees && pnpm --filter @modex/core test && pnpm --filter @modex/desktop test && pnpm --filter @modex/site test && pnpm --filter @modex/store-desktop test",
     "test:coverage": "c8 pnpm test",
     "test:worktrees": "node --test scripts/test/*.test.mjs",
@@ -28,9 +28,11 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "desktop": "pnpm --filter @modex/desktop start",
     "desktop:dev": "pnpm --filter @modex/desktop dev",
-    "test:e2e": "pnpm --filter @modex/desktop test:e2e && pnpm --filter @modex/site test:e2e",
+    "test:e2e": "pnpm --filter @modex/desktop test:e2e && pnpm --filter @modex/site test:e2e && pnpm --filter @modex/web test:e2e",
     "site:dev": "pnpm --filter @modex/site dev",
-    "site:build": "pnpm --filter @modex/site build"
+    "site:build": "pnpm --filter @modex/site build",
+    "web:dev": "pnpm --filter @modex/web dev",
+    "web:build": "pnpm --filter @modex/web build"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
