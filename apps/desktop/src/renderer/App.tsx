@@ -255,7 +255,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     return () => { clearTimeout(timer); document.removeEventListener("pointerover", over); document.documentElement.removeEventListener("pointerleave", gone); };
   }, [sidebarOpen, surface]);
   const streamerMode = layout.streamerMode;
-  const showAnalytics = analyticsEnabled && layout.analytics;
+  // The browser version has no Analytics page: its rail entry and the page itself are desktop only.
+  const showAnalytics = !WEB && analyticsEnabled && layout.analytics;
   // Hiding Analytics in Settings while it is open returns to Chat rather than leaving an unreachable surface.
   useEffect(() => { if (!showAnalytics && surface === "analytics") setSurface("chat"); }, [showAnalytics, surface]);
   const reviewEnabled = codeReviewEnabled && layout.codeReview;
@@ -1190,7 +1191,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           </div>
         )}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => { setShowSettings(false); setSettingsSection(undefined); }} initialSection={settingsSection} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => { setShowSettings(false); setSettingsSection(undefined); }} initialSection={settingsSection} {...(analyticsEnabled && !WEB ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;
