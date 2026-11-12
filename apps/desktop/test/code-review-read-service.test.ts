@@ -53,6 +53,7 @@ class FakeGitHub {
     ["7301#74", pull(LENDING, 74, { base: "topic-73", baseSha: sha("c"), head: sha("e") })],
   ]);
   timeline = new Map<string, unknown[]>();
+  lineComments = new Map<string, unknown[]>();
   files = new Map<string, unknown[]>();
   checkRuns = new Map<string, unknown[]>();
   statuses = new Map<string, unknown[]>();
@@ -146,6 +147,10 @@ class FakeGitHub {
     }
     const id = `${repo.id}#${parts[4]}`;
     if (parts[3] === "pulls" && parts.length === 5) return this.pulls.has(id) ? this.json(call, this.pulls.get(id)) : this.missing();
+    if (parts[3] === "pulls" && parts[5] === "comments") {
+      const { slice, link } = this.page(this.lineComments.get(id) ?? [], query, path!);
+      return this.json(call, slice, link);
+    }
     if (parts[3] === "pulls" && parts[5] === "files") {
       const { slice, link } = this.page(this.files.get(id) ?? [], query, path!);
       return this.json(call, slice, link);
@@ -1161,4 +1166,57 @@ test("real use: the merge base and the file page are read together between the t
     assert.equal(mine.at(-1), "repos/example-org/lending/pulls/73", "and so is the last");
   };
   await together({ op: "files", key, revision, cursor: null }, /\/compare\//, /\/pulls\/73\/files\?/, "the file page is asked for while the merge base is still being read");
+});
+
+// --- Real-use benchmark, 2026-11-12: comments on lines of the diff were not shown (F3) -----------
+
+const lineCommentRow = (id: number, extra: Record<string, unknown> = {}) => ({ id, user: { id: 5, login: "bea-fixture", type: "User" }, created_at: "2026-10-19T09:00:00Z",
+  body: "Should this be `>=`?", path: "policy/schema.ts", line: 41, side: "RIGHT", ...extra });
+
+test("real use: comments on lines of the diff arrive with the first activity page, with their file, line and reply", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  github.lineComments.set("7301#73", [lineCommentRow(801), lineCommentRow(802, { in_reply_to_id: 801, body: "Yes.", created_at: "2026-10-19T09:05:00Z" }), lineCommentRow(803, { line: null, side: "LEFT" })]);
+  const reply = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert.equal(reply.result.state, "ready");
+  const rows = value<import("../src/shared/code-review.js").PrActivity[]>(reply).filter(r => r.kind === "line-comment");
+  assert.deepEqual(rows.map(r => r.kind === "line-comment" && [r.id, r.path, r.line, r.side, r.replyTo, r.body, r.actor.login]), [
+    ["801", "policy/schema.ts", 41, "RIGHT", null, "Should this be `>=`?", "bea-fixture"],
+    ["802", "policy/schema.ts", 41, "RIGHT", "801", "Yes.", "bea-fixture"],
+    ["803", "policy/schema.ts", null, "LEFT", null, "Should this be `>=`?", "bea-fixture"],
+  ]);
+  const asked = github.calls.filter(c => c.endpoint.includes("/pulls/73/comments"));
+  assert.deepEqual(asked.map(c => c.endpoint.split("/pulls/")[1]), ["73/comments?per_page=100&page=1"]);
+});
+
+test("real use: a refused or malformed line-comment read leaves the timeline usable and says the page is partial", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  github.overrides.push({ pattern: /\/pulls\/73\/comments\?/, answer: { kind: "http", status: 403, headers: {}, body: Buffer.from("{}") } });
+  const refused = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert(refused.result.state === "partial");
+  assert.equal(refused.result.reason, "denied");
+  assert.equal(refused.result.coverage.complete, false);
+  assert(value<import("../src/shared/code-review.js").PrActivity[]>(refused).some(r => r.kind === "opened"));
+
+  github.overrides.length = 0;
+  github.lineComments.set("7301#73", [lineCommentRow(801), { id: 802, body: "no author, file or date" }]);
+  const malformed = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert(malformed.result.state === "partial");
+  assert.equal(malformed.result.reason, "failed");
+  assert.deepEqual(value<import("../src/shared/code-review.js").PrActivity[]>(malformed).filter(r => r.kind === "line-comment").map(r => r.id), ["801"]);
+});
+
+test("real use: more than one page of line comments is reported as capped, and later activity pages do not ask again", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  github.lineComments.set("7301#73", Array.from({ length: 101 }, (_, i) => lineCommentRow(1000 + i)));
+  const first = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert(first.result.state === "partial");
+  assert.equal(first.result.reason, "capped");
+  assert.equal(value<import("../src/shared/code-review.js").PrActivity[]>(first).filter(r => r.kind === "line-comment").length, 100);
+  github.timeline.set("7301#73", Array.from({ length: 150 }, (_, i) => ({ event: "labeled", id: 5000 + i, created_at: "2026-10-19T10:00:00Z", actor: { id: 5, login: "bea-fixture", type: "User" } })));
+  const before = github.calls.filter(c => c.endpoint.includes("/pulls/73/comments")).length;
+  await read({ op: "activity", key: keyOf(LENDING, 73), cursor: "p2" });
+  assert.equal(github.calls.filter(c => c.endpoint.includes("/pulls/73/comments")).length, before);
 });

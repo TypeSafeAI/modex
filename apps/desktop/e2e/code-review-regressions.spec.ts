@@ -283,3 +283,32 @@ test("local Changes stay local: a remote PR touching the same path never reaches
     file: fs.readFileSync(path.join(repo, "src", "holds", "move.ts"), "utf8") }).toEqual(before);
   expect(h.calls().filter((c) => !READ_ENDPOINT.test(c))).toEqual([]);
 });
+
+test("real use (F3): comments on lines of the diff are shown in Activity with their file and line, under the Comments filter, as inert text", async () => {
+  const world = baseWorld();
+  const who = { id: 3003, login: "bea-fixture", type: "User" };
+  // The base world lists no timeline: an empty one lets the activity read finish.
+  world.routes["repos/example-org/lending/issues/73/timeline"] = [];
+  world.routes["repos/example-org/lending/deployments"] = [];
+  world.routes["repos/example-org/lending/pulls/73/comments"] = [
+    { id: 801, user: who, created_at: "2026-10-18T20:31:00Z", body: "Should this keep the position when the branch is closed?\n\n<script>window.__pwned=true</script>", path: "src/holds/move.ts", line: 41, side: "RIGHT" },
+    { id: 802, user: who, created_at: "2026-10-18T20:32:00Z", body: "It does; see the closure test.", path: "src/holds/move.ts", line: 41, side: "RIGHT", in_reply_to_id: 801 },
+    { id: 803, user: who, created_at: "2026-10-18T20:33:00Z", body: "This helper is gone now.", path: "src/holds/queue.ts", line: null, side: "LEFT" },
+  ];
+  h = await launchWithGh(world);
+  const { page } = h;
+  await tid(page, "rail-code-review").click();
+  await prRow(page, "example-org/lending#73").click();
+  const activity = tid(page, "cr-activity");
+  const item = (id: number) => activity.locator(`[data-activity-id="line-comment:${id}"]`);
+  await expect(item(801)).toContainText("commented on src/holds/move.ts · line 41");
+  await expect(item(801)).toContainText("Should this keep the position when the branch is closed?");
+  await expect(item(802)).toContainText("replied on src/holds/move.ts · line 41");
+  await expect(item(803)).toContainText("commented on src/holds/queue.ts · line no longer in the diff");
+  await page.getByLabel("Activity filter").selectOption("comment");
+  await expect(activity.locator('[data-activity-id^="line-comment:"]')).toHaveCount(3);
+  await expect(activity.locator('[data-activity-id^="commit:"]')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned)).toBeUndefined();
+  expect(h.calls().filter((c) => c.startsWith("repos/example-org/lending/pulls/73/comments"))).toEqual(["repos/example-org/lending/pulls/73/comments?per_page=100&page=1"]);
+  expect(h.calls().filter((c) => !READ_ENDPOINT.test(c) && !c.startsWith("repos/example-org/lending/deployments?"))).toEqual([]);
+});
