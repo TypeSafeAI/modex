@@ -1,6 +1,6 @@
 # Settings → Local models: design brief for LM-4 (#381)
 
-Status: brief only, 2026-11-03. No UI has been built. Written against `main` at `b785054` and the producers there. It doesn't change producer policy. Two controls wait on Val's answers in [the decision record](../reviews/2026-11-03-lm5-val-decision.md).
+Status: partially implemented on protected main through #498, #499, #502 and #503, checked 2026-11-12. Settings connection management, metadata discovery, model-menu filtering and draft/focus preservation are implemented. The explicit selected-model native compatibility test and configuration-bound qualification-result workflow remain unimplemented; the qualification labels below describe the required design, not a currently available tested state. Product execution remains unadmitted. The original 2026-11-03 brief was written against `b785054`; its [decision record](../reviews/2026-11-03-lm5-val-decision.md) remains dated history.
 
 ## What a person can do
 
@@ -63,10 +63,10 @@ While a target is set:
 
 **Cold load (LM-2 step 6).** Beside the model list: "Checking models doesn't load anything. Your first message may make the server load the model, which can take a while and use a lot of memory."
 
-## Waiting on Val
+## Delivered policy controls
 
-- **Clearing to cloud.** Recommended: a confirmation naming the cloud model. Build the plain control first, behind that answer.
-- **Remote clients.** Phone and paired desktop show the inference host and can't change the target. Whether they can send at all is the open decision; design the read-only display either way. Older clients get readable text and no controls.
+- **Clearing to cloud.** The delivered UI asks for confirmation naming the cloud model. This is an explicit destination change; it does not admit local execution.
+- **Remote clients.** Main refuses phone and paired-desktop sends on local threads, and only this Mac’s window may choose, change or clear the target. Complete paired host/model presentation and older-client acceptance remain separate requirements; they are not established by this send refusal.
 
 ## Tests
 
