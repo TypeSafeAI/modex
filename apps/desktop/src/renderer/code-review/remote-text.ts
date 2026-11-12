@@ -12,23 +12,71 @@
 const TAGS = new Set(["a", "abbr", "b", "blockquote", "br", "caption", "center", "cite", "code", "col", "colgroup", "dd", "del", "details", "dfn", "div", "dl", "dt",
   "em", "figcaption", "figure", "font", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "ins", "kbd", "li", "mark", "ol", "p", "picture", "pre", "q", "relative-time",
   "s", "samp", "small", "source", "span", "strike", "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "tt", "u", "ul", "var", "video"]);
-const TAG = /<(\/?)([A-Za-z][A-Za-z0-9-]*)((?:\s+[^<>"']*(?:"[^"]*"|'[^']*')?)*)\s*\/?>/g;
-const COMMENT = /<!--[\s\S]*?-->/g;
 const BLOCK = new Set(["br", "p", "div", "tr", "li", "summary", "details", "blockquote", "table", "h1", "h2", "h3", "h4", "h5", "h6", "hr"]);
 const LIMIT = 200_000;
 
+const NAME = /[A-Za-z0-9-]/;
+
+/** The `alt` of a tag's attributes, read without a pattern that could backtrack. */
 function alt(attributes: string): string {
-  const found = /\salt\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attributes);
-  return (found?.[1] ?? found?.[2] ?? "").trim();
+  const lower = attributes.toLowerCase();
+  for (let at = lower.indexOf("alt"); at >= 0; at = lower.indexOf("alt", at + 1)) {
+    if (at > 0 && !/\s/.test(lower[at - 1]!)) continue;
+    let i = at + 3;
+    while (/\s/.test(lower[i] ?? "")) i++;
+    if (lower[i] !== "=") continue;
+    i++;
+    while (/\s/.test(lower[i] ?? "")) i++;
+    const quote = attributes[i];
+    if (quote !== '"' && quote !== "'") continue;
+    const end = attributes.indexOf(quote, i + 1);
+    if (end >= 0) return attributes.slice(i + 1, end).trim();
+  }
+  return "";
 }
 
+/**
+ * One pass over the text, a character at a time: every `<` is read as a comment, a known tag, or itself.
+ * There is no pattern to backtrack and nothing is scanned twice, so hostile input costs its own length.
+ */
 function prose(text: string): string {
-  return text.replace(COMMENT, "").replace(TAG, (whole, _closing: string, name: string, attributes: string) => {
-    const tag = name.toLowerCase();
-    if (!TAGS.has(tag)) return whole;
-    if (tag === "img") { const label = alt(attributes); return label ? `Image: ${label}` : ""; }
-    return BLOCK.has(tag) ? "\n" : "";
-  });
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const lt = text.indexOf("<", i);
+    if (lt < 0) { out += text.slice(i); break; }
+    out += text.slice(i, lt);
+    if (text.startsWith("<!--", lt)) {
+      const end = text.indexOf("-->", lt + 4);
+      // A comment that does not end here is left for the caller, which drops it across lines.
+      if (end < 0) { out += text.slice(lt); break; }
+      i = end + 3;
+      continue;
+    }
+    let j = lt + 1;
+    if (text[j] === "/") j++;
+    const start = j;
+    if (!/[A-Za-z]/.test(text[j] ?? "")) { out += "<"; i = lt + 1; continue; }
+    while (j < text.length && NAME.test(text[j]!)) j++;
+    const name = text.slice(start, j).toLowerCase();
+    const after = text[j];
+    // Attributes run to the closing `>`; a quoted value may hold one. Another `<` or the end means no tag.
+    let k = j, quote = "", closed = false;
+    if (after === ">" || after === "/" || /\s/.test(after ?? "")) {
+      for (; k < text.length; k++) {
+        const c = text[k]!;
+        if (quote) { if (c === quote) quote = ""; continue; }
+        if (c === '"' || c === "'") quote = c;
+        else if (c === ">") { closed = true; break; }
+        else if (c === "<") break;
+      }
+    }
+    if (!closed || !TAGS.has(name)) { out += "<"; i = lt + 1; continue; }
+    if (name === "img") { const label = alt(text.slice(j, k)); if (label) out += `Image: ${label}`; }
+    else if (BLOCK.has(name)) out += "\n";
+    i = k + 1;
+  }
+  return out;
 }
 
 /** `text` with HTML outside code turned into its plain text. Text past the limit is returned as written. */

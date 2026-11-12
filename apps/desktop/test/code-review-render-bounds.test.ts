@@ -38,6 +38,13 @@ test("real use: bot comments made of raw HTML are shown as their text, and code 
   // Attributes may hold a '>' inside quotes; an unterminated tag is left as written.
   assert.equal(readableRemoteText('<a title="a > b" href="x">t</a>'), "t");
   assert.equal(readableRemoteText("<a href=\"x\" t"), "<a href=\"x\" t");
+  // Hostile shapes cost their own length: a tag that never closes, and many openers in a row.
+  for (const hostile of [`<A${" ".repeat(150_000)}`, "<a ".repeat(60_000), `<img alt=${"alt=".repeat(40_000)}`, `x<!--${"<!--".repeat(40_000)}`]) {
+    const started = performance.now();
+    assert.equal(typeof readableRemoteText(hostile), "string");
+    assert.ok(performance.now() - started < 500, `scanned ${hostile.length} characters in under half a second`);
+  }
+  assert.equal(readableRemoteText("a<!-- x --><!-- y -->b<!-"), "ab<!-", "comments go; a lone opener stays text");
   const huge = "<b>x</b>".repeat(30_000);
   assert.equal(readableRemoteText(huge), huge, "text past the limit is shown as written rather than scanned");
 });
