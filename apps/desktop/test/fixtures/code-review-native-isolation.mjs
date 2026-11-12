@@ -73,9 +73,10 @@ export async function claudeFixture(t, mode = 'candidate', options = {}) {
     : production ? ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', ...production, '--max-turns', '3', '--append-system-prompt', 'Synthetic fixture only.', '--settings', settings, '--model', 'claude-sonnet-4-6', '--max-budget-usd', '0.01']
     : [...candidate, ...common, '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '3', '--max-budget-usd', '0.01', 'Synthetic fixture only.'];
   const started = Date.now();
-  let outcome, stdout = '', stderr = '', timedOut = false, overflow = false;
+  let outcome, launchFailure, launchFailed = false, stdout = '', stderr = '', timedOut = false, overflow = false;
   if (options.launch) {
-    outcome = await options.launch({ root, repo, home, bin, guard, env, port, version });
+    try { outcome = await options.launch({ root, repo, home, bin, guard, env, port, version }); }
+    catch (error) { launchFailed = true; launchFailure = error; }
   } else {
   const child = spawn('/usr/bin/sandbox-exec', ['-p', guard, bin, ...action], { cwd: repo, env, detached: true, stdio: [production ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
   // The production argv reads its prompt from stdin as Modex writes it: one stream-json user message.
@@ -88,5 +89,19 @@ export async function claudeFixture(t, mode = 'candidate', options = {}) {
   clearTimeout(timer); terminate();
   }
   const markers = { write: fs.existsSync(writeMarker), hook: fs.existsSync(hookMarker), mcp: fs.existsSync(mcpMarker) };
-  return { ...outcome, ...(options.launch ? {} : { timedOut, overflow, stdout, stderr }), elapsedMs: Date.now() - started, version, installed: pinnedClaude, guard: guard.split(root).join('<fixture>'), requests, turns, results, selected: fs.readFileSync(selected, 'utf8'), advertised: [...advertised], markers };
+  const captureErrors = [];
+  let selectedEvidence;
+  try { selectedEvidence = fs.readFileSync(selected, 'utf8'); }
+  catch (error) { if (!options.launch) throw error; captureErrors.push(String(error)); }
+  const observation = { ...outcome, ...(options.launch ? { captureErrors, ...(launchFailed ? { launchError: String(launchFailure) } : {}) } : { timedOut, overflow, stdout, stderr }), elapsedMs: Date.now() - started, version, installed: pinnedClaude, guard: guard.split(root).join('<fixture>'), requests, turns, results, selected: selectedEvidence ?? null, advertised: [...advertised], markers };
+  if (options.launch) {
+    // Preserve provider-side evidence independently of the app callback and its teardown.
+    try { fs.writeFileSync(path.join(root, 'observations.json'), JSON.stringify(observation, null, 2) + '\n', { mode: 0o600 }); }
+    catch (error) { captureErrors.push(String(error)); }
+    try { await options.onObservation?.(observation); }
+    catch (error) { captureErrors.push(String(error)); }
+    if (launchFailed) throw launchFailure; // A capture failure must never replace the original callback failure.
+    if (captureErrors.length) throw new Error(`Native observation capture failed: ${captureErrors.join('; ')}`);
+  }
+  return observation;
 }
