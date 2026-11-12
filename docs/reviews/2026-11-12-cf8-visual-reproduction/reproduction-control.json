@@ -1,0 +1,226 @@
+{
+  "at": "2026-11-12T14:47:25.326979+00:00",
+  "diagnosticDriver": "8771c3c2d7ef16de9ca12940eac2937119ae69b7",
+  "source": "18aa43f689227ec7c20dae2751e2292026483dc4",
+  "sourceTree": "9c2b128ec1c5385a5d8b6252b93d7357e7ef6ffd",
+  "scope": "Existing canonical14case33image suites from byte-verified source18 export with common pinned installed dependencies; not a historical shipped binary or liveprovider test",
+  "executionReceiptSha256": "9cddeae02404b49ecdacb881bd761ace32794d20042b1da4a0747df6a2206e6c",
+  "manifestSha256": "357f572784729297e87a353bdf7dc9f1607c69b13557ef931b4dfb6e8d66fa1f",
+  "sourceFilesVerified": 1333,
+  "desktopBuildFilesVerified": 792,
+  "pass": 14,
+  "skip": 0,
+  "retry": 0,
+  "captureCount": 33,
+  "allDimensionsMatchOriginal": true,
+  "beforeAndAfterManifestVerification": true,
+  "driverAndExportBuildInventory": {
+    "exportFiles": 792,
+    "driverFiles": 792,
+    "changedHashes": [],
+    "onlyExport": [],
+    "onlyDriver": [],
+    "allBytesEqual": true
+  },
+  "images": [
+    {
+      "file": "completed-coven-1440x900.png",
+      "sha256": "4ef9b8bbb569e7ec1574cf1819e3943530ffff52ed9613243cfcfba4e07f8ce9",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "completed-coven-900x600.png",
+      "sha256": "06f3becc42d13d5a0a23b091a08adc2c895b21648116c6516d6526ecfa02331c",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "completed-graphite-1440x900.png",
+      "sha256": "2fb7f9f83de5f8bc861cfe8c91c65b019cd73fbc60df85d60f85a0c2ff7314df",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "completed-graphite-900x600.png",
+      "sha256": "31d0bafdfd65196cb0488e54358a3c4c852532dcb32b13964472164543998bd0",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "completed-jev-1440x900.png",
+      "sha256": "d73907349d1c9651d450420439455b10d63e7fbe15aa6e78a8aaa1f02b156d9d",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "completed-jev-900x600.png",
+      "sha256": "356db0fdac2dada69a63f54c1b7cc7ffb5af6f8e9c5ad05e67dd03a610e8edf4",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "failed-coven-1440x900.png",
+      "sha256": "62946cf0405e3874e379d8b8174a0949d62bb27826c8f6c5dac53e481828857f",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "failed-coven-900x600.png",
+      "sha256": "ac9974ea1795884a3e78db8bd027f9cee38b26fcddfed2753ec93745e5f9ba4a",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "failed-graphite-1440x900.png",
+      "sha256": "ee7bbff18f617b7bf7eacb576e74333ff9a18bc6d97d82c83b82048e0a0b54fa",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "failed-graphite-900x600.png",
+      "sha256": "a97ad9bc93bf0d11e7c41bbc5a23de04f6ca80d5d511965b71d2f87b04ae0ddb",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "failed-jev-1440x900.png",
+      "sha256": "f1525e0975383a4bd5e13d3bee4ca68406bf798b960ba34e57a353400f15222c",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "failed-jev-900x600.png",
+      "sha256": "db3badb9281a0b2f7f27ce29c684ca48955724fb9a36c2ade09452946140236a",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "live-coven-1440x900.png",
+      "sha256": "2ec146b3ca6c594388e4c592c1634962598d1f38e13864ba4aed1efa98fe5cd2",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "live-coven-900x600.png",
+      "sha256": "b241438e04020b2709426522f77783e1fd285219dd3097d00f204f6105c681f7",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "live-graphite-1440x900.png",
+      "sha256": "bcfae9c95c4f429ba52f72279d3e2afcfba1176ead6828d5b4ccd6d90d4e593b",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "live-graphite-900x600.png",
+      "sha256": "dd4477228783fb5ea7d78baec4778e70b0f8071e413bac141e07d30f4d6773a0",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "live-jev-1440x900.png",
+      "sha256": "2cf0e80527a99268af6371e77975e3e7f07c1de9cef625ff8665283cde675470",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "live-jev-900x600.png",
+      "sha256": "041b575ba0ac03030239b2a4eb04c098b651cd0d47a0f9b9960370241be347e1",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "restored-coven-1440x900.png",
+      "sha256": "f7988c973f70af57378b071294701e58d310002ba2675693bc7acbcbc9d324c2",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "restored-coven-900x600.png",
+      "sha256": "a4ea2b3e86aa5f64564004442f3321de13cff14a7dd351ef24dc18cfade74e60",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "restored-graphite-1440x900.png",
+      "sha256": "aad585080d29806c749c236f52c7c68b248820fc8981e7d5e17a2412ae6d2cda",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "restored-graphite-900x600.png",
+      "sha256": "29a8c10aec5b074c7419030afccd7beb9685dafdbff20c55a5bdd9538611d35f",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "restored-jev-1440x900.png",
+      "sha256": "1884f132debae100d192b622336bc6db1096d9713923b7b2ef7ae19a4626c8e7",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "restored-jev-900x600.png",
+      "sha256": "c9fe669ee5ff32b28484220ef06d94361861c67d747fd1c10c15afe1e87558c9",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "typed-turn-coven-900x600.png",
+      "sha256": "9375b48b4002b6325a04342d2f4cb0424414d130c3ddfb8987083966c643c615",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "typed-turn-graphite-900x600.png",
+      "sha256": "29628aea4ec30838e08a92d5531fc1f4b89211d02810cfadc6402c81abc312d8",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "typed-turn-jev-900x600.png",
+      "sha256": "dddeda3b72434a18961a57090a9ab3f2925c002bc2eef8a15edde799962203a5",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "waiting-coven-1440x900.png",
+      "sha256": "0567acd16e61fb6c07f378b2ecfc1e9ad8517470754a94728eb262cb2917a7ca",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "waiting-coven-900x600.png",
+      "sha256": "6641e8aaae2dd5b2b2f54c9789d0c97ab2e324e29c6a1c0bd2688a86b5cc42dd",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "waiting-graphite-1440x900.png",
+      "sha256": "578c0e215812212d5488ea8e480f3a656b217b12bf481ca2a3fe18fd7a281079",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "waiting-graphite-900x600.png",
+      "sha256": "b63db3030c721c0125c173b7f45ac71a22ddbd144930094e31dab27289d97204",
+      "width": 900,
+      "height": 600
+    },
+    {
+      "file": "waiting-jev-1440x900.png",
+      "sha256": "2ace6df93bc7a687d15c8d9e4dab12f3918b87ee1241c724ca06058195a1ef01",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "waiting-jev-900x600.png",
+      "sha256": "7f4310614cf17a5647f08fc026b0be2aa9d66dd4b8d05aa8f5f55a0350bb726a",
+      "width": 900,
+      "height": 600
+    }
+  ],
+  "limits": "Pixel bytes need not repeat: source-generated temp repository names, paths, timestamps/durations, font rendering and host context vary. Original inspected33pairs and this new reproduction series remain separate."
+}
