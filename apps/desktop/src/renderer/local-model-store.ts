@@ -62,7 +62,7 @@ export function tokensLabel(n: number): string {
 
 /** Models a person can pick from this entry: the last listing's, plus typed IDs main keeps as manual entries. */
 export function entryModels(entry: LocalEntry): LocalModelDescriptor[] {
-  return entry.result?.state === "ready" ? entry.result.models : [];
+  return entry.result?.models ?? [];
 }
 
 export type LocalModelsTransport = (request: LocalModelsRequest) => Promise<LocalModelsReply>;
@@ -134,7 +134,8 @@ export function createLocalModelStore(invoke: LocalModelsTransport) {
       patchEntry(connection.id, connection.revision, entry => ({ ...entry, result, checking: false }));
     } catch (error) {
       if (pending.get(key(connection)) !== id) return;
-      patchEntry(connection.id, connection.revision, entry => ({ ...entry, checking: false, result: { state: "unavailable", connection, requestId: "", reason: "unavailable", detail: (error as Error).message, models: entry.result?.models ?? [], checkedAt: new Date().toISOString() } }));
+      // A refused window operation supplies no new main-authorized model descriptors.
+      patchEntry(connection.id, connection.revision, entry => ({ ...entry, checking: false, result: { state: "unavailable", connection, requestId: "", reason: "unavailable", detail: (error as Error).message, models: [], checkedAt: new Date().toISOString() } }));
     } finally {
       if (pending.get(key(connection)) === id) pending.delete(key(connection));
     }
