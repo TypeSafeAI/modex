@@ -1,0 +1,379 @@
+{
+  "schema": 1,
+  "candidateSource": "18aa43f689227ec7c20dae2751e2292026483dc4",
+  "candidateTree": "9c2b128ec1c5385a5d8b6252b93d7357e7ef6ffd",
+  "candidateSourceMeaning": "Canonical fixture capture from local source build; not a packaged release or live-provider screenshot",
+  "referenceSource": "0e674e75237f393b8a1ba712061f5b303a61d5b4",
+  "referenceManifest": "docs/screenshots/conversation-fidelity/2026-10-22-candidate/manifest.json",
+  "referenceManifestSha256": "95c7a66a46a8d8404c27f952235e8a575e87cf76073578d30e94f8ccfbf8f7e1",
+  "captureStartedAt": "2026-11-12T14:11:06.016214+00:00",
+  "command": "MODEX_SCREENSHOTS=/absolute/private/new-capture-directory pnpm --filter @modex/desktop exec playwright test e2e/conversation-fidelity.spec.ts e2e/typed-turns.spec.ts --workers=1 --retries=0 --max-failures=1",
+  "preparation": "From an owned helper-created worktree at candidateSource, install pinned pnpm dependencies, run pnpm build, create a new private capture directory, then run command. Canonical fixtures use synthetic CLIs and their own temporary repositories. Preserve first logs/report; do not overwrite a failed run.",
+  "captureScale": "CSS pixels, 1x; animations disabled by existing capture helper",
+  "testResult": {
+    "pass": 14,
+    "skip": 0,
+    "retry": 0,
+    "fail": 0
+  },
+  "visibleDifferences": [
+    {
+      "scope": "waiting/live at900x600, all3themes",
+      "observed": "Current approval body is narrower with an inner horizontal JSON scrollbar; initial captured scroll position places part of the Allow Edit heading above the transcript viewport. Approve/Deny controls remain visible in waiting captures. This is a disclosed remaining difference, not demonstrated inability to scroll/read or a passed human review."
+    },
+    {
+      "scope": "completed/restored at900x600",
+      "observed": "Current final answer wraps across two lines where reference is one; plan/answer/Note stack positions differ. Both retain reported plan status, the unverified-change caveat and Save/Update Note actions."
+    },
+    {
+      "scope": "Coven composer",
+      "observed": "The captured Coven composer outline/focus appearance differs between reference and candidate; static images do not establish focus state, cause, accessibility impact or approval."
+    },
+    {
+      "scope": "allstates/themes/viewports",
+      "observed": "Synthetic temp repository/path suffixes and observed durations vary. Wider captures retain the same plan/action/outcome structure; typed-turn captures retain attempt/reasoning-summary/denied-command/final-answer sequence. Themes intentionally differ in shell arrangement and colour."
+    }
+  ],
+  "notClaimed": [
+    "Pixel parity, human visual approval, accessibility acceptance or exhaustive visual defect detection",
+    "Real provider, physical phone, older Companion or packaged/installed release acceptance",
+    "A new memory/latency budget or a causal comparison of implementation changes"
+  ],
+  "files": [
+    {
+      "file": "completed-coven-1440x900.png",
+      "state": "completed",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "151350f5a5833d8cb51c43e5cc7ad7933828e03d81bf4fa09a035912babf5d05",
+      "referenceSha256": "21e70411b1d801576789b2a4a593a26744c9d05859dfea6d329daa784bc8f127"
+    },
+    {
+      "file": "completed-coven-900x600.png",
+      "state": "completed",
+      "theme": "coven",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "866cb0397bc6daea8bf7d2f585b967615e651b3f4b32f168f769951df805084b",
+      "referenceSha256": "5c84af450e1374acbce0051effc7e2d854390c6e3558b3bb47a5b74c385b3a00"
+    },
+    {
+      "file": "completed-graphite-1440x900.png",
+      "state": "completed",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "215390e584abc897ef7003186f06cbfda810e6348412fa839f5c2898d7786e0e",
+      "referenceSha256": "5ead77933b34820d7d3b3a209953d991a371c483abfdb2645556a572c8dabfbe"
+    },
+    {
+      "file": "completed-graphite-900x600.png",
+      "state": "completed",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "4a18b0c2a57344e7349db3f81ec73b3fdee2b65b917b0ab63edb157871ccfcbe",
+      "referenceSha256": "39c44c8fcd0fd5d3cc19f1041e8576620972a343298f784c681ada2e77f0f58b"
+    },
+    {
+      "file": "completed-jev-1440x900.png",
+      "state": "completed",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "092e9231d54eb2069e1f7b2c916fb81f0a51406b59cd0ad1f4f9b0058b631bc8",
+      "referenceSha256": "976109468059ded740deb96c3017d238e69e25ffc94e26f0a1656825a9e0a87a"
+    },
+    {
+      "file": "completed-jev-900x600.png",
+      "state": "completed",
+      "theme": "jev",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "d04392a2d4265a17fb2e5150ebd33aa1b4cab7aa1a531c2590964e8bd3f4db4f",
+      "referenceSha256": "a4359a8d2c07ad46e7cc215b9cf25174b896f9e7456995737057de945b0bb9c6"
+    },
+    {
+      "file": "failed-coven-1440x900.png",
+      "state": "failed",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "d71ebfa272b59a721ac202b991010aed0a600b258ae49838bf2e67388d4efc3d",
+      "referenceSha256": "1e066a6c60cee6ab71a8d5dec11b93fd60d0e8e02db52d3aa1f487db53232239"
+    },
+    {
+      "file": "failed-coven-900x600.png",
+      "state": "failed",
+      "theme": "coven",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "77188695f8a779d2d157807da727beb9ba220f000e5dda01353b18b060f8a36a",
+      "referenceSha256": "215f46411073f8a66f10a098230857a1ebde62664accdd25b0e6263ddd504312"
+    },
+    {
+      "file": "failed-graphite-1440x900.png",
+      "state": "failed",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "d2749f28fbd452e597d9f2b15aaae96eeddab054357851270ec8bc4309c3bf0a",
+      "referenceSha256": "3841dac6fe6fb20f3da23ef0198c8c0e86fe84ba8c06feeb3dedb32adf5c4798"
+    },
+    {
+      "file": "failed-graphite-900x600.png",
+      "state": "failed",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "5e924c640a27447dfe850c269cdb4064b08b97bfa4cddcce81af18f8e780f9b7",
+      "referenceSha256": "d672598db58bfcdee519612d4cd428ac74e708fea6d5ca893c40013d26dccc4e"
+    },
+    {
+      "file": "failed-jev-1440x900.png",
+      "state": "failed",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "fd492d807033051dfd6818f5efb377e1f70e80909ae30a29741a32a96782c3ac",
+      "referenceSha256": "a084e32bdeb20f6effd02ccd9ea88ad3156ad726133acfd2a7d499b721b0c484"
+    },
+    {
+      "file": "failed-jev-900x600.png",
+      "state": "failed",
+      "theme": "jev",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "7eaa828b54ba3fcc5ec40494cad6222a65d6b638f466d454fcd4cc4a7e18143e",
+      "referenceSha256": "a52ad34fdcd18cc0a2246acf2f14b74a58a13938ecafee702a536c1da7d19450"
+    },
+    {
+      "file": "live-coven-1440x900.png",
+      "state": "live",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "48c38fb8b8a39a41943276806d3b6ccfd2f23c2c1d421e108060049f6564eff9",
+      "referenceSha256": "2c432b49e9cc3782c77a574f8a31a9f66246c127026f044680018f2fec5b4aa6"
+    },
+    {
+      "file": "live-coven-900x600.png",
+      "state": "live",
+      "theme": "coven",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "aa460feb6a803863bd8b66b59a3fc03d40a6cd046a09e7ac022d8813b829164e",
+      "referenceSha256": "f0241d0e1074b02a12d716470f0a4827bb5fa66162336191cdf489650035eca9"
+    },
+    {
+      "file": "live-graphite-1440x900.png",
+      "state": "live",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "53fdcbb6841339e2e918c4f0c5a10cf5c76209f641a85b5c1f5ab2704ffaf822",
+      "referenceSha256": "c5e898c8eae22682b3c0aca2d8110440525a90f828a0ba67b7861e899c657b61"
+    },
+    {
+      "file": "live-graphite-900x600.png",
+      "state": "live",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "0ca9b17548522222d42881d45af6ae72243f22833c833c50e657f4af4d8aeed0",
+      "referenceSha256": "119163f665f0282c9cc1da616640fbb1f22f6151bcb0515e936e86e47747897d"
+    },
+    {
+      "file": "live-jev-1440x900.png",
+      "state": "live",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "52836935340d739b7f95e1ef1f9b35f56f2ff816870f304ceb2471daa1a9c278",
+      "referenceSha256": "9b95341203a0b210064e8314943193627c90ec2ba4dd385f871341d2daeacf86"
+    },
+    {
+      "file": "live-jev-900x600.png",
+      "state": "live",
+      "theme": "jev",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "d7d7aa50e0871c57b3d4951f59cb7bef65bd460cf4340194ec354e6c52d20a72",
+      "referenceSha256": "f039cdb8b64910c23aa0d1f8d286fc5f13176307785cbe46c07ee30e6df152ee"
+    },
+    {
+      "file": "restored-coven-1440x900.png",
+      "state": "restored",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "417ae656114801cc44d7f4436ca0db20085b43f5ed340e86049c09cb79f64d37",
+      "referenceSha256": "0ece5c85ac3cd809af23f3acb2330218502fa88a694e1eec5484308020fdf769"
+    },
+    {
+      "file": "restored-coven-900x600.png",
+      "state": "restored",
+      "theme": "coven",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "fb396ef0d2ae21166dce15a82cbfebb21970211b6a6f1ffcceeb39b28213d99f",
+      "referenceSha256": "017ab8d47160c4349e3a9ccbb69164fbb650fc072f28e694b9eadb63982fd28d"
+    },
+    {
+      "file": "restored-graphite-1440x900.png",
+      "state": "restored",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "c3ae9a59f7a6b6f3320a84f32451925f5bf4907b93a90c027e941289b9e537cc",
+      "referenceSha256": "d3121a9f1a26aef21b4686070071291dcdc0e2c277bbbe8f0c2caed146347327"
+    },
+    {
+      "file": "restored-graphite-900x600.png",
+      "state": "restored",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "e631796df3669c50fb4892cfe752e85f703276722d0f0eb7cd059ed7b1266dc8",
+      "referenceSha256": "3cbb56e622092a9cefa2fbca260331513a17f9c57830715eaca6f04e2f383703"
+    },
+    {
+      "file": "restored-jev-1440x900.png",
+      "state": "restored",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "4d57fa15e24a5277c26c52f1f373f808051b70528a4a623f320cc1a09b006654",
+      "referenceSha256": "d8d4a199830c7bcd448908d625a6efce3f7b8e048b37025585001a78026f11a5"
+    },
+    {
+      "file": "restored-jev-900x600.png",
+      "state": "restored",
+      "theme": "jev",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "6742aaaf82372ed59f3d66a25d25118227899e097b6b33e42da1fde61bb20aca",
+      "referenceSha256": "9ec40eedf1fd989c9ea7c543ab88573b086f932740ac064b6286d55d4302385a"
+    },
+    {
+      "file": "typed-turn-coven-900x600.png",
+      "state": "typed-turn",
+      "theme": "coven",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "c85a10bfd259f4cf9f3f4e4d31fc0cf4d437afce7f2ef0defee56fb3040a87fd",
+      "referenceSha256": "1c1346e082672985b76e81c12d4e0fb1bb8aaf4c0c20300fd8abb6ec81a99cc5"
+    },
+    {
+      "file": "typed-turn-graphite-900x600.png",
+      "state": "typed-turn",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "a3c2373bd757dd0791e4901f5c65104b5e0c968b378d5c137e4aa146552533df",
+      "referenceSha256": "a18c94345fd239e71be79bfdcdcb90f8d061abe4c3acb2191b57ef81cdb2a1b6"
+    },
+    {
+      "file": "typed-turn-jev-900x600.png",
+      "state": "typed-turn",
+      "theme": "jev",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "52fd2e0ea64dbf70430e58a1532c1dc39c7fe9fb018ce8ce6fd2198c9f93bf55",
+      "referenceSha256": "3d0ad7d57bdefbcc0377b02a85d9df10b30a59ae45123ff69ef61b1627af839f"
+    },
+    {
+      "file": "waiting-coven-1440x900.png",
+      "state": "waiting",
+      "theme": "coven",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "427e0fc86b94975d5f34a5fb55fffaa541325bada4bfaab92e31a7f0568c8501",
+      "referenceSha256": "4002ac3ae9676673a05af623a5387278702137574f0a4e00d44eec3c49900621"
+    },
+    {
+      "file": "waiting-coven-900x600.png",
+      "state": "waiting",
+      "theme": "coven",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "d53fe1cc9f35ea6f30521973098b0c6386bf33fc631e6e4df2cf4d8133c795fe",
+      "referenceSha256": "19066d45c12fc61452f18ef044d7241da058a2e9fcb1b62cbb5909f58feadfc1"
+    },
+    {
+      "file": "waiting-graphite-1440x900.png",
+      "state": "waiting",
+      "theme": "graphite",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "889c9d69ada1c033c5c30563bdd5d6d57dbc726894bfdb22204bf59d2fe0dce9",
+      "referenceSha256": "b1343efcee1ad67efb2790384b5e8e3533bb6baf53388142d22f29e50cd89c04"
+    },
+    {
+      "file": "waiting-graphite-900x600.png",
+      "state": "waiting",
+      "theme": "graphite",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "346489ac9b6c6e75f7d6871393f26a45a0974389f3091a1c42fc51f52d8c71b9",
+      "referenceSha256": "b0450cd77b9b02e44f7d75b16ceef84eafdc9bd2d21a17d681e6a6c95551dcfb"
+    },
+    {
+      "file": "waiting-jev-1440x900.png",
+      "state": "waiting",
+      "theme": "jev",
+      "viewport": "1440x900",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2c019921b5c02c104cb293259bc338ecc5be998d6bb2bf0727b9a3ec7abf7371",
+      "referenceSha256": "586e06bbc7603bf776302a6124dc705ddec3802f5a82263b980a3a946318e6a4"
+    },
+    {
+      "file": "waiting-jev-900x600.png",
+      "state": "waiting",
+      "theme": "jev",
+      "viewport": "900x600",
+      "width": 900,
+      "height": 600,
+      "sha256": "b97c5a152ed3012c15840ea77627c579a09c658594399b63573b73a4208aad88",
+      "referenceSha256": "8cb2af7ec1ecaa47fcf6deca530bd17ddf670b12922c928592d8dc448eafcb9f"
+    }
+  ],
+  "reproductionControl": "../reproduction-control.json",
+  "reproductionControlSha256": "6ccc9d925efdfe2a3bde0d7c93d458831d2f2c1e1a0bcda455fe9724f3470231",
+  "reproductionMethod": "Use the existing prepare-only byte-verified source export, then run canonical capture specs in the exported appDir with ambient MODEX/provider overrides removed. Exact recipe in parent README; no branch reset/switch.",
+  "historicalReferenceReproductionControl": "../reference-reproduction-control.json",
+  "historicalReferenceReproductionControlSha256": "71cdaad7fd34191afc30a745e3a69b7e72e803f66e5f841cf5609fc1f61cbdf0"
+}
