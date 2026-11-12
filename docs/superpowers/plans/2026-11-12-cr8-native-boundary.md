@@ -15,7 +15,7 @@
 - Only synthetic PRs, provider responses, usage counters and invalid fixture credentials; no real inference, personal credential reads, model downloads or GitHub mutations.
 - Preserve every production confinement argument. The test launcher may only bind its private fixture environment and make resource limits stricter.
 - Use one explicit UI start. Bound provider turns to four, request bodies to 256 KiB, direct-runner output to the existing limits and integrated native completion to the UI/test timeout; callback mode omits unobserved direct-runner diagnostics; preserve the first failure and verify owned process/server closure.
-- Preserve existing six native controls and their default fixture behavior; skip the new native app case explicitly when its opt-in flag or macOS/native prerequisites are absent.
+- Preserve existing six native controls and their default fixture behavior; skip the new native app case explicitly outside macOS or when its opt-in flag is absent. An explicit opt-in with a missing/incompatible CLI fails qualification, matching the existing native controls.
 - No installed-app/session, feature default, execution admission, real-provider budget or other-owner changes.
 
 ## Review focus
@@ -36,7 +36,7 @@
 - [x] Add the opt-in app test with a synthetic hostile PR, actual UI Start, private native launcher and assertions for context read, exact tool palette, all forbidden results, unchanged selected evidence, absent markers/unexpected HTTP, one start, truthful completed outcome and owned process closure. Initially require the missing fixture hooks so the first run demonstrates the missing integration.
 - [x] Extend the shared fixture minimally: an optional first Read of `PULL_REQUEST.md`, configurable successful Read input, and a launch callback; retain existing direct-mode defaults and result fields.
 - [x] Run the native app case with `MODEX_CR6_NATIVE=1 pnpm --filter @modex/desktop exec playwright test e2e/code-review-native-boundary.spec.ts --workers=1 --retries=0 --max-failures=1`. Preserve its first result rather than retrying automatically.
-- [ ] Re-run the six existing native controls after the shared-fixture change and run affected default Code Review cases; retain explicit skips and exact source/runtime identities. Run required build/full units and applicable full E2E before pushing, reusing unchanged-source evidence only when its complete scope is proved.
+- [x] Re-run the six existing native controls after the shared-fixture change and run affected default Code Review cases; retain explicit skips and exact source/runtime identities. Run required build/full units and applicable full E2E before pushing, reusing unchanged-source evidence only when its complete scope is proved.
 ## Delivery gates after implementation validation
 
 These gates remain mandatory before this slice is delivered; the implementation task’s completion line alone does not satisfy them.
