@@ -111,3 +111,64 @@ test("exhausted premium capacity cannot silently downgrade a hard task below its
   Object.assign(i.judgments, { complexity: 3, needsDeepReasoning: 0.9 });
   assert.equal(decide(i).blocked, true);
 });
+
+test("an exhausted backend cannot switch to an alternative whose quota is unknown", () => {
+  const i = input({ quotas: { codex: q(0) } }); i.policy.allow_backend_switch = true;
+  assert.equal(decide(i).blocked, true);
+});
+
+test("the selected model's low bucket activates conservation even when the previous model has no low reading", () => {
+  const i = input({ quotas: { codex: { at: Date.now(), windows: [{ key: "model", model: "gpt-5.6", remainingPercent: 10 }] } } });
+  Object.assign(i.judgments, { complexity: 1, wantsSpeed: 0.6 });
+  assert.equal(decide(i).conserving, true);
+  assert.equal(decide(i).fast, false);
+});
+
+test("non-light work retains quality posture and learned capability increases during conservation", () => {
+  for (const preference of ["quality", "learned"] as const) {
+    const i = input({ quotas: { codex: q(10) } }); Object.assign(i.judgments, { complexity: 1.6, wantsSpeed: 0.1 });
+    if (preference === "quality") i.policy.posture = "quality";
+    else i.fitOffset = 1;
+    assert.equal(decide(i).model, "gpt-6-astra");
+    assert.equal(decide(i).effort, "high");
+  }
+});
+
+test("an unrelated exhausted bucket cannot block an otherwise valid warm-cache route", () => {
+  const i = input({ current: { backend: "codex", model: "gpt-6-sol", effort: "xhigh", hasSession: true },
+    cache: { lastTurn: { model: "gpt-6-sol", fast: false, contextTokens: 100_000, at: new Date().toISOString() }, idleMs: 1000 } });
+  Object.assign(i.judgments, { complexity: 3, needsDeepReasoning: 0.1, dependsOnPriorTurns: 0.9, wantsSpeed: 0.1 });
+  const baseline = decide(i); assert.equal(baseline.model, "gpt-6-sol");
+  i.quotas = { codex: { at: Date.now(), windows: [{ key: "unrelated", model: "gpt-5.5", remainingPercent: 0 }] } };
+  const d = decide(i);
+  assert.equal(d.blocked, undefined);
+  assert.equal(d.model, baseline.model);
+  assert.equal(d.effort, baseline.effort);
+});
+
+test("an unrelated exhausted source bucket cannot change an already permitted capability switch", () => {
+  const i = input({ ladders: { codex: ladder("codex", models.filter(m => m.id !== "gpt-6-astra")), claude: ladder("claude", [{ id: "fable", label: "Fable", efforts: ["high", "xhigh"] }]) } });
+  i.policy.allow_backend_switch = true;
+  Object.assign(i.judgments, { complexity: 3, wantsSpeed: 0.1 });
+  assert.equal(decide(i).backend, "claude");
+  i.quotas = { codex: { at: Date.now(), windows: [{ key: "unrelated", model: "gpt-5.5", remainingPercent: 0 }] } };
+  assert.equal(decide(i).blocked, undefined);
+  assert.equal(decide(i).backend, "claude");
+});
+
+test("an exhausted alternative cannot force a hard task onto an insufficient source model", () => {
+  const i = input({ ladders: { codex: ladder("codex", models.filter(m => m.id !== "gpt-6-astra")), claude: ladder("claude", [{ id: "fable", label: "Fable", efforts: ["high", "xhigh"] }]) }, quotas: { claude: q(0) } });
+  i.policy.allow_backend_switch = true;
+  Object.assign(i.judgments, { complexity: 3, wantsSpeed: 0.1 });
+  assert.equal(decide(i).blocked, true);
+});
+
+test("an exhausted expensive cache holder can move to a suitable cheap model for a light task", () => {
+  const i = input({ current: { backend: "codex", model: "gpt-6-astra", hasSession: true },
+    cache: { lastTurn: { model: "gpt-6-astra", fast: false, contextTokens: 100_000, at: new Date().toISOString() }, idleMs: 1000 },
+    quotas: { codex: { at: Date.now(), windows: [{ key: "model", model: "gpt-6-astra", remainingPercent: 0 }] } } });
+  Object.assign(i.judgments, { complexity: 0.1, wantsSpeed: 0.1 });
+  const d = decide(i);
+  assert.equal(d.blocked, undefined);
+  assert.equal(d.model, "gpt-5.5");
+});

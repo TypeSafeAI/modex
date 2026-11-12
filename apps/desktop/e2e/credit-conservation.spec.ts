@@ -18,6 +18,7 @@ test("automatic credit conservation defaults on, thresholds save, and disabling 
     await expect(balance).toHaveValue("10");
     await percent.fill("25");
     await balance.fill("5");
+    await page.getByText("Conservation chooses economical models", { exact: false }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: path.join(appDir, "test-results", "credit-conservation-settings.png") });
     await tid(page, "settings").getByRole("button", { name: "Save", exact: true }).click();
     await open();

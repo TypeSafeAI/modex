@@ -44,6 +44,8 @@ export interface DecisionInput {
   fitOffset: number;
   premiumExhausted: boolean;
   quotas?: Partial<Record<BackendId, QuotaSnapshot>>;
+  /** Retry retains the previous attempt's conservation admission even when telemetry is now unknown. */
+  conserveCredits?: boolean;
   /**
    * What the thread's prompt cache was built with, and how long ago. The router always passes it;
    * a caller that omits it gets a fresh choice every turn.
@@ -324,12 +326,17 @@ function decideWithLimits(input: DecisionInput): Decision {
 
 
 /** Quota is an eligibility constraint; conservation changes discretionary spend, never session ownership. */
-export function decide(input: DecisionInput): Decision {
+export function decide(input: DecisionInput): Decision { return decideWithQuota(input, Boolean(input.conserveCredits)); }
+
+function decideWithQuota(input: DecisionInput, retainConservation: boolean): Decision {
   const now = Date.now();
   const state = (backend: BackendId, model: string) => quotaState(input.quotas?.[backend], input.policy, model, now);
   const current = currentCandidate(input);
   const currentUsage = state(input.current.backend, current?.model ?? input.current.model);
+  const planned = decideWithLimits(input);
+  const plannedUsage = state(planned.backend, planned.model);
   const reasons = [`${input.current.backend}: ${currentUsage.reason}`];
+  if (planned.model !== current?.model && plannedUsage.state === "low") reasons.push(`Initial candidate ${planned.model}: ${plannedUsage.reason}`);
   const ladders: DecisionInput["ladders"] = {};
   for (const [backend, candidates] of Object.entries(input.ladders) as [BackendId, Candidate[]][]) {
     ladders[backend] = candidates.filter(c => {
@@ -339,45 +346,49 @@ export function decide(input: DecisionInput): Decision {
       return false;
     });
   }
-  const conserve = input.policy.conserve_credits && currentUsage.state === "low";
+  const conserve = input.policy.conserve_credits && (retainConservation || currentUsage.state === "low" || plannedUsage.state === "low");
+  const stop = (detail: string): Decision => ({ ...blocked(input, reasons, detail), ...(conserve ? { conserving: true as const } : {}) });
   let effective = { ...input, ladders };
   if (conserve) {
     const j = input.judgments;
     const light = j.complexity < 1.5 && j.needsDeepReasoning < 0.7 && j.blastRadius < 1.5;
-    effective = { ...effective, fitOffset: light ? Math.min(0, input.fitOffset) : 0,
+    effective = { ...effective, fitOffset: light ? Math.min(0, input.fitOffset) : input.fitOffset,
       policy: { ...input.policy, allow_fast: false,
         max_effort: EFFORTS[Math.min(effortIndex(input.policy.max_effort) ?? 0, effortIndex("high")!)]!,
-        posture: light ? "economy" : input.policy.posture === "quality" ? "balanced" : input.policy.posture } };
+        posture: light ? "economy" : input.policy.posture } };
     reasons.push("Conserving low allowance or credits: economical suitable model, at most high effort, paid fast mode off; capability tiers estimate cost, not dollar prices.");
   }
-  const wantedTier = decideWithLimits({ ...effective, ladders: input.ladders, cache: undefined }).tier;
-  // A quota-driven move is allowed only on a fresh thread and only to an explicitly allowed backend
-  // with a fresh, healthy reading and enough capability. Unknown telemetry cannot justify it.
-  if (input.policy.allow_backend_switch && !input.current.hasSession && (conserve || currentUsage.state === "exhausted")) {
-    const wanted = wantedTier;
-    const alternate = input.policy.allow_backends.find(b => b !== input.current.backend && ladders[b]?.some(c => c.tier >= wanted && state(b, c.model).state === "healthy"));
-    if (alternate) {
-      reasons.push(`Selected ${alternate} on a fresh conversation: ${state(alternate, ladders[alternate]!.find(c => c.tier >= wanted && state(alternate, c.model).state === "healthy")!.model).reason}`);
-      // Preserve the original current model for failure diagnostics. Restrict the source ladder so
-      // the existing backend-switch policy makes the move without inventing a session/account.
-      effective = { ...effective, ladders: { ...ladders, [input.current.backend]: [], [alternate]: ladders[alternate]!.filter(c => state(alternate, c.model).state === "healthy") } };
-      effective.policy = { ...effective.policy, allow_backends: [alternate] };
+  // Compare with the same cache/effort rules before exclusions. Unrelated quota buckets must
+  // never invalidate a legitimate cache hold that already ran below the free-choice tier.
+  const baseline = decideWithLimits({ ...effective, ladders: input.ladders });
+  const free = decideWithLimits({ ...effective, ladders: input.ladders, cache: undefined });
+  const wantedTier = Math.min(baseline.tier, free.tier);
+  const healthy = (b: BackendId) => ladders[b]?.filter(c => c.tier >= wantedTier && state(b, c.model).state === "healthy") ?? [];
+  const quotaDriven = conserve || state(baseline.backend, baseline.model).state === "exhausted" || currentUsage.state === "exhausted";
+  if (quotaDriven && input.policy.allow_backend_switch && !input.current.hasSession) {
+    const allowed = input.policy.allow_backends.filter(b => b === input.current.backend || healthy(b).length > 0);
+    effective.policy = { ...effective.policy, allow_backends: allowed };
+    // Restrict all quota-driven alternatives, including the ordinary capability/unavailable
+    // fallback path, to candidates with fresh healthy readings.
+    for (const b of allowed) if (b !== input.current.backend) effective.ladders = { ...effective.ladders, [b]: healthy(b) };
+    const alternate = allowed.find(b => b !== input.current.backend);
+    if (alternate && (conserve || currentUsage.state === "exhausted")) {
+      reasons.push(`Selected ${alternate} on a fresh conversation: ${state(alternate, healthy(alternate)[0]!.model).reason}`);
+      effective = { ...effective, ladders: { ...effective.ladders, [input.current.backend]: [] }, policy: { ...effective.policy, allow_backends: [alternate] } };
     }
   }
-  const currentExhausted = currentUsage.state === "exhausted";
-  if (currentExhausted && (input.current.hasSession || !input.policy.allow_backend_switch) && !(ladders[input.current.backend]?.length)) {
-    return blocked(input, reasons, "No permitted model has usable allowance or credits; the route was stopped. Wait for a reset or choose another account.");
-  }
-  if (currentExhausted && input.source === "jev" && input.judgments.taskConfidence < input.policy.min_confidence) {
-    return blocked(input, reasons, "The pinned model is exhausted and the judge is unsure; the route was stopped.");
+  if (currentUsage.state === "exhausted" && input.source === "jev" && input.judgments.taskConfidence < input.policy.min_confidence) {
+    return stop("The pinned model is exhausted and the judge is unsure; the route was stopped.");
   }
   const decision = decideWithLimits(effective);
-  const excludedAny = Object.entries(input.ladders).some(([b, candidates]) => candidates!.length !== (ladders[b as BackendId]?.length ?? 0));
-  if (!decision.blocked && excludedAny && decision.tier < wantedTier) {
-    return blocked(input, reasons, "The remaining models do not meet this task's capability target; the route was stopped instead of silently downgrading the work.");
+  const selectedUsage = state(decision.backend, decision.model || current?.model || "");
+  // A different candidate can become low only after exhaustion filtering or backend selection.
+  // One repeat applies conservation to that candidate; it cannot loop because the flag is sticky.
+  if (!conserve && input.policy.conserve_credits && selectedUsage.state === "low") return decideWithQuota(input, true);
+  if (selectedUsage.state === "exhausted") return stop("No permitted model has usable allowance or credits; the route was stopped. Wait for a reset or choose another account.");
+  if (!decision.blocked && decision.tier < wantedTier) {
+    return stop("The remaining models do not meet this task's capability target; the route was stopped instead of silently downgrading the work.");
   }
-  if (state(decision.backend, decision.model || current?.model || "").state === "exhausted") {
-    return blocked(input, reasons, "No permitted model has usable allowance or credits; the route was stopped.");
-  }
+  if (decision.model !== current?.model || decision.backend !== input.current.backend) reasons.push(`${decision.backend}/${decision.model}: ${selectedUsage.reason}`);
   return { ...decision, ...(conserve ? { conserving: true as const } : {}), reasons: decision.blocked ? [...reasons, ...decision.reasons] : [decision.reasons[0]!, ...reasons, ...decision.reasons.slice(1)] };
 }

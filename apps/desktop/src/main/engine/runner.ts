@@ -679,7 +679,7 @@ export class ThreadRunner {
 
   /**
    * Runs the thread's last message again, in place: the transcript keeps its one user bubble and the
-   * new attempt follows the failure card. Auto routing is not re-asked; the pick already applied.
+   * new attempt follows the failure card. Auto obtains a fresh quota admission before each attempt.
    */
   async retry(threadId: string, by = "desktop"): Promise<void> {
     this.assertLocalSender(threadId, by);
@@ -813,12 +813,14 @@ export class ThreadRunner {
         if (thread.plan || thread.imageJobId || files.some(file => file.kind === "image")) throw new Error("This local target runs text and tools only. Turn off Plan and remove images.");
       } catch (err) { routingBlocked = (err as Error).message; }
     }
-    if (auto && !retry) {
+    if (auto) {
       // Auto: judge the request, then re-read the thread — the pick is applied as a thread update
       // so the composer, header, and persisted state all show what this turn runs on.
       try {
         const project = this.o.store.project(thread.projectId);
-        const receipt = await this.router.route({ thread, accounts: routeAccounts, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
+        const previousRoute = retry ? [...l.items].reverse().find(i => i.kind === "route") : undefined;
+        const retainConservation = previousRoute?.kind === "route" && previousRoute.conserving === true;
+        const receipt = await this.router.route({ thread, accounts: routeAccounts, conserveCredits: retainConservation, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
         this.addItem(threadId, receipt.item);
         routeId = receipt.item.id;
         const d = receipt.decision;

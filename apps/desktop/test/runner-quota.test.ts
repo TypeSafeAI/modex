@@ -19,6 +19,8 @@ for (const backendId of ["codex", "claude"] as const) {
       await runner.send(thread.id, "fix a typo");
       assert.deepEqual(reads, ["account-a"]);
       assert.equal(runs, 0);
+      await runner.retry(thread.id);
+      assert.equal(runs, 0, "Retry must obtain a safe quota admission before executing");
       assert.equal(runner.status(thread.id), "error");
     } finally { await runner.dispose(); }
   });
@@ -44,3 +46,37 @@ for (const backendId of ["codex", "claude"] as const) {
     } finally { await runner.dispose(); }
   });
 }
+
+test("Retry retains conservation after a failed attempt even when fresh telemetry becomes unknown", async () => {
+  const home = tmpdir(), store = new Store(home), project = store.addProject(gitRepo());
+  let reads = 0; const turns: TurnOptions[] = [];
+  const backend: Backend = { id: "codex", identity: () => "account-a", listModels: async () => [{ id: "gpt-6-sol", label: "Sol", efforts: ["low", "medium", "high", "xhigh"] }],
+    quota: async () => ++reads === 1 ? { at: Date.now(), windows: [{ key: "plan", remainingPercent: 10 }] } : undefined,
+    runTurn: async (_text, opts) => { turns.push(opts); return { status: "failed", error: "temporary network issue" }; }, dispose: async () => {} };
+  const runner = new ThreadRunner({ home, store, emit: () => {}, backends: { codex: backend } });
+  try {
+    const thread = await runner.createThread(project.id, { backend: "codex", auto: true });
+    await runner.send(thread.id, "fix a typo");
+    await runner.retry(thread.id);
+    assert.equal(reads, 2);
+    assert.deepEqual(turns.map(t => t.conserveCredits), [true, true]);
+    assert.equal(runner.items(thread.id).filter(i => i.kind === "user").length, 1);
+  } finally { await runner.dispose(); }
+});
+
+test("a quota-blocked Retry preserves conservation for a later attempt with unknown telemetry", async () => {
+  const home = tmpdir(), store = new Store(home), project = store.addProject(gitRepo());
+  let reads = 0; const turns: TurnOptions[] = [];
+  const backend: Backend = { id: "codex", identity: () => "a", listModels: async () => [{ id: "gpt-6-sol", label: "Sol", efforts: ["low", "high"] }],
+    quota: async () => ++reads <= 2 ? { at: Date.now(), windows: [{ key: "plan", remainingPercent: reads === 1 ? 10 : 0 }] } : undefined,
+    runTurn: async (_text, opts) => { turns.push(opts); return { status: "failed", error: "network" }; }, dispose: async () => {} };
+  const runner = new ThreadRunner({ home, store, emit: () => {}, backends: { codex: backend } });
+  try {
+    const thread = await runner.createThread(project.id, { backend: "codex", auto: true });
+    await runner.send(thread.id, "fix typo");
+    await runner.retry(thread.id);
+    await runner.retry(thread.id);
+    assert.equal(reads, 3);
+    assert.deepEqual(turns.map(t => t.conserveCredits), [true, true]);
+  } finally { await runner.dispose(); }
+});

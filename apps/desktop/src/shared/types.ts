@@ -154,7 +154,7 @@ export type ThreadItem =
   /** The plan a CLI reported for this turn (docs/task-context.md); `revision` counts its updates. "completed" steps are reported done, not checked. */
   | { id: string; kind: "plan"; steps: PlanStep[]; explanation?: string; from: PlanSource; revision: number; at: string; outcome?: ExecutionOutcome; origin?: ItemOrigin }
   /** An Auto routing decision made before a turn: what was picked and why. */
-  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; reasons: string[]; durationMs: number; at: string };
+  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; blocked?: true; held?: true; conserving?: true; reasons: string[]; durationMs: number; at: string };
 
 /**
  * Whether a person's accepted answer reached the CLI: `sending` from acceptance until the hand-off, then `sent`.

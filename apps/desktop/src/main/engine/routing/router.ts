@@ -24,6 +24,7 @@ export interface RouterOptions extends Omit<DecisionsOptions, "home" | "policy">
 export interface RouteInput {
   thread: Thread;
   accounts?: Partial<Record<BackendId, string>>;
+  conserveCredits?: boolean;
   text: string;
   items: ThreadItem[];
   project: { name: string; branch?: string | null; changedFiles?: number };
@@ -158,7 +159,7 @@ export class Router {
     const idleMs = Number.isFinite(lastAt) ? Math.max(0, Date.now() - lastAt) : undefined;
     const premiumExhausted = policy.premium_turns_per_day != null && this.fit.premiumToday() >= policy.premium_turns_per_day;
     const decision = decide({
-      judgments, source, policy, ladders, premiumExhausted, quotas,
+      judgments, source, policy, ladders, premiumExhausted, quotas, conserveCredits: input.conserveCredits,
       current: { backend: thread.backend, model: thread.model, effort: thread.effort, hasSession: Boolean(thread.sessionHandle) },
       fitOffset: this.fit.offsetFor(judgments.task),
       cache: { lastTurn: last, idleMs },
@@ -193,6 +194,7 @@ export class Router {
       complexity: Math.round(judgments.complexity * 10) / 10,
       pinned: decision.pinned,
       blocked: decision.blocked,
+      ...(decision.conserving ? { conserving: true as const } : {}),
       ...(decision.held ? { held: true as const } : {}),
       reasons: fallback ? [fallback, ...decision.reasons] : decision.reasons,
       durationMs: Date.now() - started,
