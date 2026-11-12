@@ -61,7 +61,7 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
   };
   const tabbable = (id: string, first: boolean) => selectedId ? id === selectedId : first;
   let firstRow = true;
-  const rowFor = (row: { key: PrSummary["key"]; locator: PrSummary["locator"]; title: string; meta: string; stack: boolean; open: () => void }) => {
+  const rowFor = (row: { key: PrSummary["key"]; locator: PrSummary["locator"]; title: string; meta: string; stack: boolean; draft?: boolean; open: () => void }) => {
     const id = prKeyId(row.key);
     const selected = id === selectedId;
     const focusable = tabbable(id, firstRow);
@@ -71,8 +71,9 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
         aria-current={selected ? "true" : undefined} tabIndex={focusable ? 0 : -1} onClick={row.open}>
         <span className="cr-row-title">{row.title}</span>
         {row.stack && <span className="cr-row-stack" title="Its base is another branch, so it may be part of a stack (inferred)"><Icon name="stack" size={14} /><span className="sr-only">May be part of a stack (inferred from its base branch)</span></span>}
+        {row.draft && <span className="cr-row-draft" title="Draft"><span className="sr-only">Draft</span></span>}
         {/* The repository and number are on the row for everyone: with open pull requests in many repositories, a title alone does not say which one this is. */}
-        <span className="cr-row-meta"><span className="sr-only">{`${row.locator.owner}/`}</span><span data-testid="code-review-row-id">{`${row.locator.repo} #${row.locator.number}`}</span>{row.meta && ` · ${row.meta}`}</span>
+        <span className="cr-row-meta" data-initial={(row.meta ?? "").trim()[0]?.toUpperCase() ?? ""}><span className="sr-only">{`${row.locator.owner}/`}</span><span data-testid="code-review-row-id">{`${row.locator.repo} #${row.locator.number}`}</span>{row.meta && ` · ${row.meta}`}</span>
       </button>
     </li>;
   };
@@ -124,7 +125,7 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
             <h2 className="cr-group-label">{label}</h2>
             {base.state === "unavailable" && <ErrorNotice className="cr-notice" where={`Code Review · ${label}`} message={unavailableText(base)} onRetry={onRetryInbox} />}
             {isEmpty(base) && !page && <p className="cr-hint" data-testid="code-review-group-empty">No pull requests.</p>}
-            {rows.length > 0 && <ul>{rows.map((row) => rowFor({ key: row.key, locator: row.locator, title: row.title, meta: `${row.author.login} · ${age(row.updatedAt, now)}`, stack: row.stackHint === true, open: () => onOpen(row) }))}</ul>}
+            {rows.length > 0 && <ul>{rows.map((row) => rowFor({ key: row.key, locator: row.locator, title: row.title, meta: `${row.author.login} · ${age(row.updatedAt, now)}`, stack: row.stackHint === true, draft: row.state === "draft", open: () => onOpen(row) }))}</ul>}
             {notices.map(({ cursor, read }) => (read.state === "stale" || read.state === "partial") && <p key={cursor ?? "first"} className="cr-stale" role="status">
               {read.state === "stale"
                 ? `Showing pull requests read at ${new Date(read.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. ${shortfallText(read.reason)}`
