@@ -128,6 +128,8 @@ test("keyboard: F6 moves between the areas and [ ] between files, and typing a b
   await expect.poll(current).toBe(paths[3]);
   await page.keyboard.press("[");
   await expect.poll(current).toBe(paths[2]);
+  // The move focuses its file on the next frame; wait for it, or that focus lands in the middle of the typing below.
+  await expect(page.locator(`[data-testid="cr-file-section"][data-path="${paths[2]}"]`)).toBeFocused();
   // In a text field the keys are text.
   const filter = page.getByRole("textbox", { name: "Filter remote files" });
   await filter.focus();
