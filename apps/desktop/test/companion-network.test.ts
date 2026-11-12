@@ -256,9 +256,9 @@ for (const shutdown of ["stop", "dispose"] as const) {
   });
 }
 
-// A VPN or virtual interface (utun, bridge, vmnet) is selected by address range alone. This pins
-// the current policy so that a decision on #109 flips it red first; it does not endorse the policy.
-test("a VPN or virtual interface with a private address currently gets a listener (policy pending on #109)", (t) => {
+// Val confirmed on 2026-11-12 (#109) that private IPv4 VPN and virtual interfaces stay supported.
+// This checks address eligibility; the real-socket tests above separately prove listener admission.
+test("private IPv4 VPN and virtual interfaces are supported while CGNAT is excluded", (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "modex-net-vpn-"));
   const ipv4 = (address: string): os.NetworkInterfaceInfoIPv4 => ({ address, internal: false, family: "IPv4", cidr: null, netmask: "255.255.255.0", mac: "00:00:00:00:00:00" });
   t.mock.method(os, "networkInterfaces", () => ({

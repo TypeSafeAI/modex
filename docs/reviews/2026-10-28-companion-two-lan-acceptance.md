@@ -1,5 +1,7 @@
 # Companion on two LANs: evidence map and physical acceptance (#109)
 
+Update 2026-11-12: Val chose to keep the existing private-IPv4 behavior, including VPN tunnels and virtual bridges. The policy question below records the historical 2026-10-28 state and is resolved; the physical rows remain unrun. For row 8, a non-internal private IPv4 VPN/bridge address is now expected to appear, while a CGNAT/public/link-local/internal/IPv6 address is excluded. The current policy test is named `private IPv4 VPN and virtual interfaces are supported while CGNAT is excluded`. See the [current checkpoint](2026-11-12-companion-network-policy.md).
+
 Base: `main` at `6c9000f` (includes `203a350`). Branch `companion-109-evidence`. This increment adds
 evidence only: two regression tests, one policy-pinning test, this procedure, and the question to
 Val below. It changes no production code, address policy, pairing or authentication.
