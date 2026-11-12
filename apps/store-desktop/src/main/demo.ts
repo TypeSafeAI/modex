@@ -3,7 +3,15 @@ import { DEMO_ATTACHMENTS_UNAVAILABLE } from "./attachments.js";
 import { DEFAULT_APPROVAL_GATE, DEFAULT_ROUTING, type AppState, type BridgeCommands, type RoutingStatus, type TerminalEvent, type TerminalSnapshot, type Thread, type ThreadEvent, type ThreadItem } from "../../../desktop/src/shared/types.js";
 
 type Handlers = { [K in Exclude<keyof BridgeCommands, keyof import("../../../desktop/src/shared/images.js").ImageCommands | keyof import("../../../desktop/src/shared/plugins.js").PluginCommands>]: (request: BridgeCommands[K]["req"]) => BridgeCommands[K]["res"] };
-const unavailable = () => { throw new Error("This is an offline demo. Leave the demo and connect your Mac to use accounts, external pages or system tools."); };
+/** Sentences that tell the person where the real feature lives; the Store edition's are the default. */
+export interface DemoCopy { unavailable: string; notice: string; account: string; claudeLogin: string; attachments: string }
+export const STORE_DEMO_COPY: DemoCopy = {
+  unavailable: "This is an offline demo. Leave the demo and connect your Mac to use accounts, external pages or system tools.",
+  notice: "Offline demo: providers, files, approvals and replies are simulated. No host or account is connected.",
+  account: "Offline demo: no account is connected. Leave the demo to sign in through your host.",
+  claudeLogin: "Offline demo: connect your host to sign in to Claude.",
+  attachments: DEMO_ATTACHMENTS_UNAVAILABLE,
+};
 const stamp = () => new Date().toISOString();
 const original = "# Demo project\n\nWelcome to Modex.\n";
 const edited = "# Demo project\n\nWelcome to Modex. Review approvals and send a follow-up.\n";
@@ -20,7 +28,8 @@ export class StoreDemo {
   private state: AppState;
   private handlers: Handlers;
 
-  constructor(private emit: (event: ThreadEvent) => void, private terminal: (event: TerminalEvent) => void) {
+  constructor(private emit: (event: ThreadEvent) => void, private terminal: (event: TerminalEvent) => void, copy: DemoCopy = STORE_DEMO_COPY) {
+    const unavailable = () => { throw new Error(copy.unavailable); };
     const project = { id: this.nextId(), name: "Modex demo", path: "/Demo/Modex", addedAt: stamp() };
     this.state = {
       version: 1, projects: [project], threads: [],
@@ -30,7 +39,7 @@ export class StoreDemo {
     launch.title = "Review launch changes";
     launch.status = "waiting";
     this.transcripts.set(launch.id, [
-      { id: this.nextId(), kind: "notice", level: "info", text: "Offline demo: providers, files, approvals and replies are simulated. No host or account is connected.", at: stamp() },
+      { id: this.nextId(), kind: "notice", level: "info", text: copy.notice, at: stamp() },
       { id: this.nextId(), kind: "user", text: "Add a short introduction to the demo README.", at: stamp() },
       { id: this.nextId(), kind: "assistant", text: "I can add a sentence explaining approvals and follow-ups. Review the proposed edit below.", at: stamp() },
       { id: this.nextId(), kind: "approval", question: "Apply the sample README change?", detail: "Only the in-memory demo file changes. Nothing runs on your Mac.", canAlways: false, at: stamp() },
@@ -44,7 +53,7 @@ export class StoreDemo {
     this.run(notes, "Draft the release notes");
 
     const routing = (): RoutingStatus => ({ live: false, keySource: "none", keyLast4: null, keyRef: null, detail: "Offline demo: no judge or credentials are used.", transport: { kind: "none" }, secrets: { backend: "demo", available: false, present: false, savedAt: null }, model: "demo", questionSetVersion: 1, fit: { tasks: {}, premiumToday: 0, routes: 0 } });
-    const account = () => ({ available: false, active: null, signingIn: false, accounts: [], detail: "Offline demo: no account is connected. Leave the demo to sign in through your host." });
+    const account = () => ({ available: false, active: null, signingIn: false, accounts: [], detail: copy.account });
     const companion = () => ({ enabled: false, addresses: [] });
     const health = { executable: "unknown" as const, authentication: "unknown" as const, access: "unverified" as const, detail: "Offline demo: no CLI is installed or executed by this workspace." };
     this.handlers = {
@@ -226,7 +235,7 @@ export class StoreDemo {
       ...storeAccountCommands,
       "chatgpt:status": account, "chatgpt:select": unavailable, "chatgpt:signIn": unavailable,
       "chatgpt:signOut": unavailable, "chatgpt:cancel": () => {},
-      "claude:login": () => ({ status: "unsupported", detail: "Offline demo: connect your host to sign in to Claude." }), "claude:cancelLogin": () => {},
+      "claude:login": () => ({ status: "unsupported", detail: copy.claudeLogin }), "claude:cancelLogin": () => {},
       "claudeAccounts:status": () => ({ available: false, active: null, rotate: false, accounts: [], detail: "Offline demo: manage Claude accounts on your Mac host." }),
       "claudeAccounts:addProfile": unavailable, "claudeAccounts:addGateway": unavailable, "claudeAccounts:select": unavailable,
       "claudeAccounts:rotate": unavailable, "claudeAccounts:remove": unavailable, "claudeAccounts:login": unavailable,
@@ -236,8 +245,8 @@ export class StoreDemo {
       "approvals:try": unavailable,
       "shell:openPath": unavailable, "shell:openTerminal": unavailable, "clipboard:write": unavailable,
       // The demo has no files to stage: the composer shows this instead of a chip.
-      "attachments:stage": () => ({ staged: [], errors: [DEMO_ATTACHMENTS_UNAVAILABLE] }),
-      "attachments:pick": () => ({ staged: [], errors: [DEMO_ATTACHMENTS_UNAVAILABLE] }),
+      "attachments:stage": () => ({ staged: [], errors: [copy.attachments] }),
+      "attachments:pick": () => ({ staged: [], errors: [copy.attachments] }),
       "attachments:discard": () => {}, "attachments:open": unavailable,
     };
   }

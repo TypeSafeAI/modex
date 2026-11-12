@@ -136,7 +136,7 @@ export class Fit {
     this.write();
   }
 
-  recordOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage): void {
+  recordOutcome(threadId: string, outcome: "completed" | "failed" | "interrupted", usage?: TurnUsage, learn = true): void {
     const r = this.open(threadId);
     if (!r) return;
     r.outcome = outcome;
@@ -145,10 +145,10 @@ export class Fit {
       if (usage.outputTokens !== undefined) r.outputTokens = usage.outputTokens;
     }
     const t = (this.state.tasks[r.task] ??= empty());
-    if (outcome === "failed") {
+    if (learn && outcome === "failed") {
       t.failures += 1;
       t.offset = Math.min(MAX_OFFSET, t.offset + FAILURE_STEP);
-    } else if (outcome === "completed") t.completions += 1;
+    } else if (learn && outcome === "completed") t.completions += 1;
     this.write();
   }
 

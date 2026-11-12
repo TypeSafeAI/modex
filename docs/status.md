@@ -39,8 +39,10 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## Landing page
 
-The download site lives in `apps/site`, deployed to Vercel project `modex`. The new
-landing design keeps the near-black blue/pink identity and follows a concrete task through
+The download site lives in `apps/site`, deployed to Vercel project `modex`. Since
+2026-11-12 it wears the desktop app's graphite appearance: the hero is the app's welcome
+workspace (start card, four work modes, shortcuts), and the workflow captures were retaken from
+the current interface. It follows a concrete task through
 request, proposed patch and approved result with manually selected real app captures.
 The page scrolls through agent choice, parallel worktrees, Pages/Knowledge, setup, optional
 iPhone Companion and inline FAQ. Mobile retains the product explanation and platform
@@ -61,6 +63,15 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
+## Browser demo
+
+`apps/web` puts the desktop renderer in a browser on the Store edition's in-memory demo
+workspace, for <https://app.modex.codes> (Vercel project `modex-app`, root `apps/web`). Threads,
+the approval, the sample change and replies are scripted in the tab; no model, CLI, file or
+network request is involved after the page loads, and there is still no hosted or API mode. A
+banner says so and links to the Mac download; phones get a short explanation and a link to the
+site. The landing page's "Try the demo" opens it. See [apps/web](../apps/web/README.md).
+
 ## On main, unreleased
 
 - **Model-picker search** (#381, #502). Protected main `bf497f7` has connection/model filtering with exact IDs, retained query/focus through metadata completion, and keyboard return to the filter. Its signed merge exactly matches the reviewed/tested tree; the protected queue passed 2,478 units with 36 skips, 520 desktop E2E cases with eight skips and seven site cases. The separate source iPhone suite passed 43 ordinary cases and one expected-failure selftest; installer/human/admission limits remain. The full #381 preservation and qualification matrix stays open. [Delivery and limits](reviews/2026-11-12-model-search.md).
@@ -70,6 +81,8 @@ The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (
 Also unreleased: a shell pass. The Routines page is now **Scheduled** ([guide](routines.md)): a task list, tasks made from a message with the schedule read by fixed rules, a task's conversation and written page side by side, and a settings dialog. The sidebar shows full names, a project hover card, an organize-and-sort menu and a Create project dialog that takes a name. Replies have copy, a local rating and Save to Notes in one row; a follow-up suggestion is accepted with Tab; subagents a CLI reports have their own panel. Files in the workspace open from a breadcrumb with a folder tree, with Markdown rendered. Space has Recents and template previews. The selected rail icon is solid. The browser version has no Analytics page. In browser development only: a Plugins and Skills catalog shown as a preview with every action unavailable, scheduled tasks with manual runs, and a sidebar that opens while the pointer is on the rail. Settings has an **Interface size** (100, 110 or 125%), kept per window; a browser tab starts at 110%. A Space page has a text-and-lists menu and an image menu in its toolbar.
 
 Also unreleased, since that summary: #467 (`8a28df3`) adds the Claude account pool with OrcaRouter keys; #477 (`49aa449`) keeps Code Review links right after a repository rename; #487 (`b785054`) adds CF-3 draft and YOLO regressions; #488 (`68fe543`) adds owner-authorized worktree retirement; #490 (`a4f2f70`) adds the Code Review setting and its gates, and turned Code Review on by default. #492 (`4297235`) turned that default off, because Val chose v0.4.2 with Code Review hidden on 2026-11-03. #468, #470, #472, #473, #474, #476 and #483 are evidence or documentation only.
+
+Automatic credit conservation adds account-bound CLI quota admission, configurable 20% allowance / 10 provider-credit-unit thresholds, economical suitable routes and explicit standard speed during conservation. Every automatic model/account replacement rechecks quota, supported effort and the task capability floor; enabled Claude rotation can skip exhausted fresh-thread accounts before coding. Conservation also avoids a separate paid title-generation turn. Local qualification passes build/typechecks, 216 focused cases, 2,530 full unit cases (36 explicit skips), 518 desktop UI cases (11 explicit skips) and seven site UI cases; protected hosted CI and merge-queue acceptance are separate delivery gates. Exact price savings, live coding/billing and installed-release acceptance remain unqualified. [Delivery audit](reviews/2026-11-12-credit-conservation-delivery.md), [behavior](auto-routing.md#automatic-credit-conservation).
 
 ## v0.4.1 publication and remaining acceptance
 

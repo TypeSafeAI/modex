@@ -40,6 +40,7 @@ test("returning to cloud binds the explicitly selected model and keeps the local
     assert.equal(cleared.sessionHandle, undefined);
     await assert.rejects(h.runner.retry(h.thread.id), /destination/);
     assert.equal(h.counts.cloud, 0);
+    assert.equal(h.counts.quotaReads, 0);
     await h.runner.send(h.thread.id, "new message for the confirmed model");
     assert.equal(h.counts.cloud, 1);
   } finally { await h.runner.dispose(); }
@@ -52,10 +53,10 @@ async function setup(localResult: (sink: TurnSink) => Promise<{ status: "complet
   const connections = new LocalConnectionStore(home, new SecretStore(home, testCipher));
   const connection = connections.create({ label: "Local", runtime: "responses", url: "http://127.0.0.1:18501" });
   const local = new LocalExecution(home, connections);
-  const counts = { cloud: 0, local: 0, titles: 0, adapters: 0, forgotten: 0, localForceStops: 0, cloudForceStops: 0 };
+  const counts = { cloud: 0, local: 0, titles: 0, adapters: 0, forgotten: 0, localForceStops: 0, cloudForceStops: 0, quotaReads: 0 };
   const turns: TurnOptions[] = [];
   let release: (() => void) | undefined;
-  const cloud: Backend = { id: "codex", identity: () => "chatgpt-1", listModels: async () => [], dispose: async () => {}, forceStop: async () => { counts.cloudForceStops++; },
+  const cloud: Backend = { id: "codex", quota: async () => { counts.quotaReads++; throw new Error("must not query cloud usage"); }, identity: () => "chatgpt-1", listModels: async () => [], dispose: async () => {}, forceStop: async () => { counts.cloudForceStops++; },
     runTurn: async (_text, _opts, sink) => { counts.cloud++; return cloudResult ? cloudResult(sink) : { status: "completed" }; }, generateTitle: async () => { counts.titles++; return "cloud title"; } };
   mock.method(local, "backend", () => ({ ...cloud, identity: undefined, generateTitle: undefined, forceStop: async () => { counts.localForceStops++; },
     runTurn: async (_text: string, opts: TurnOptions, sink: TurnSink) => {
@@ -118,6 +119,7 @@ test("a failed local turn stays failed: no credit fallback, no cloud retry", asy
     await h.runner.send(h.thread.id, "read");
     assert.equal(h.counts.local, 1);
     assert.equal(h.counts.cloud, 0);
+    assert.equal(h.counts.quotaReads, 0);
     const thread = h.store.thread(h.thread.id)!;
     assert.equal(thread.status, "error");
     assert.equal(thread.model, MODEL, "the thread stays on its local model");
@@ -150,7 +152,7 @@ test("main's local-only rule holds where each auxiliary call is made, whichever 
     const fable = { ...local, backend: "claude", model: "fable", localTarget: undefined };
     assert.equal(internals.creditFallback(fable, "This model requires usage credits", []), "opus");
     assert.equal(internals.creditFallback({ ...fable, localTarget: h.target }, "This model requires usage credits", []), undefined);
-    internals.outOfCredits.set("claude:fable", Date.now());
+    internals.outOfCredits.set(JSON.stringify(["claude", "cli", "fable"]), Date.now());
     assert.equal(internals.recentCreditFallback(fable), "opus");
     assert.equal(internals.recentCreditFallback({ ...fable, localTarget: h.target }), undefined);
 
@@ -319,6 +321,7 @@ test("a local natural-language rule waits for a human without asking Jev", { tim
     await turn;
     assert.deepEqual(answers, ["no"]);
     assert.equal(h.counts.cloud, 0);
+    assert.equal(h.counts.quotaReads, 0);
     assert.equal(h.jevRequests.length, 0);
   } finally {
     h.runner.stop(h.thread.id);
@@ -367,6 +370,7 @@ test("Retry never sends a bound local original to cloud after clearing the targe
     const original = h.store.items(h.thread.id);
     await assert.rejects(h.runner.retry(h.thread.id), /destination/i);
     assert.equal(h.counts.cloud, 0);
+    assert.equal(h.counts.quotaReads, 0);
     assert.deepEqual(h.store.items(h.thread.id), original);
   } finally { await h.runner.dispose(); }
 });
@@ -381,6 +385,7 @@ test("restarted legacy Retry preserves the original after target clear; a new me
     const original = h.store.items(h.thread.id);
     await assert.rejects(runner.retry(h.thread.id), /destination/i);
     assert.equal(h.counts.cloud, 0);
+    assert.equal(h.counts.quotaReads, 0);
     assert.deepEqual(h.store.items(h.thread.id), original);
     await runner.send(h.thread.id, "explicitly reauthorized new message");
     assert.equal(h.counts.cloud, 1);

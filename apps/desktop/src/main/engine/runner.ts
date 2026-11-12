@@ -14,7 +14,8 @@ import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
 import { AcpBackend } from "./backends/acp.js";
 import { MockBackend } from "./backends/mock.js";
-import { Router } from "./routing/router.js";
+import { Router, type RouteReceipt } from "./routing/router.js";
+import type { Decision } from "./routing/policy.js";
 import { answerFor, decide as decideApproval, gateApplies, receiptFor } from "./approvals/gate.js";
 import { policyAnswer, policyReceipt } from "./approvals/policy.js";
 import type { SecretStore } from "./secrets.js";
@@ -118,7 +119,7 @@ export interface RunnerOptions {
   /** Whether a process still exists; tests replace the signal-0 probe. */
   isProcessAlive?: (pid: number) => boolean;
   /** Modex's Claude account pool: usage-limit cooldowns and rotation (engine/claude-accounts.ts). */
-  claudeAccounts?: Pick<ClaudeAccounts, "noteLimit" | "clearLimit" | "pick" | "account">;
+  claudeAccounts?: Pick<ClaudeAccounts, "noteLimit" | "clearLimit" | "pick" | "account" | "status">;
 }
 
 /** The thread's account binding for its current backend: Codex and Claude Code keep separate ones. */
@@ -170,7 +171,7 @@ export class ThreadRunner {
       mimo: o.backends?.mimo ?? new AcpBackend("mimo", () => resolveCli("mimo", cliSettings.mimo_bin)),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
-    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
+    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b, account) => this.listModels(b, account), quota: (b, account) => this.background.run(async () => this.backends[b].quota?.(account)), secrets: o.secrets });
     // Jev is never asked about a local thread, whichever caller asks (#380).
     this.router.decisions.guardThreads(id => localOnly(o.store.thread(id)));
   }
@@ -189,11 +190,11 @@ export class ThreadRunner {
       && this.o.store.thread(threadId)?.localTarget?.model.connection.id === connectionId);
   }
 
-  async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
+  async listModels(id: BackendId, account?: string): Promise<{ models: ModelInfo[]; error?: string }> {
     if (this.disposing) return { models: [], error: "Modex is shutting down." };
     if (this.restartHold) return { models: [], error: "Modex is preparing to restart." };
     try {
-      return { models: await this.background.run(() => this.backends[id].listModels()) };
+      return { models: await this.background.run(() => this.backends[id].listModels(account)) };
     } catch (err) {
       return { models: [], error: (err as Error).message };
     }
@@ -679,7 +680,7 @@ export class ThreadRunner {
 
   /**
    * Runs the thread's last message again, in place: the transcript keeps its one user bubble and the
-   * new attempt follows the failure card. Auto routing is not re-asked; the pick already applied.
+   * new attempt follows the failure card. Auto obtains a fresh quota admission before each attempt.
    */
   async retry(threadId: string, by = "desktop"): Promise<void> {
     this.assertLocalSender(threadId, by);
@@ -748,6 +749,12 @@ export class ThreadRunner {
     // auxiliary setup can observe a different active account.
     const prospectiveCodexAccount = thread.localTarget === undefined && (thread.backend === "codex" || thread.auto)
       ? this.backends.codex.identity?.() ?? null : null;
+    const prospectiveClaudeAccount = thread.localTarget === undefined && (thread.backend === "claude" || thread.auto)
+      ? this.backends.claude.identity?.() ?? "cli" : "cli";
+    const routeAccounts = {
+      codex: thread.codexAccount ?? (thread.backend === "codex" && thread.sessionHandle ? "cli" : prospectiveCodexAccount ?? "cli"),
+      claude: thread.claudeAccount ?? (thread.backend === "claude" && thread.sessionHandle ? "cli" : prospectiveClaudeAccount),
+    };
     const admittedExecution = executionBinding(thread, prospectiveCodexAccount);
     // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
     let draft: AttachmentDraft | undefined;
@@ -793,7 +800,9 @@ export class ThreadRunner {
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
     let fast = false;
+    let conserveCredits = false;
     let routeId: string | undefined;
+    let routeAdmission: RouteReceipt | undefined;
     let routingBlocked: string | undefined;
     // A local thread runs only on its exact target: never Auto, never a cloud backend, never a cloud account.
     const local = thread.localTarget !== undefined;
@@ -806,12 +815,38 @@ export class ThreadRunner {
         if (thread.plan || thread.imageJobId || files.some(file => file.kind === "image")) throw new Error("This local target runs text and tools only. Turn off Plan and remove images.");
       } catch (err) { routingBlocked = (err as Error).message; }
     }
-    if (auto && !retry) {
+    if (auto) {
       // Auto: judge the request, then re-read the thread — the pick is applied as a thread update
       // so the composer, header, and persisted state all show what this turn runs on.
       try {
         const project = this.o.store.project(thread.projectId);
-        const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
+        const previousRoute = retry ? [...l.items].reverse().find(i => i.kind === "route") : undefined;
+        const retainConservation = previousRoute?.kind === "route" && previousRoute.conserving === true;
+        let receipt = await this.router.route({ thread, accounts: routeAccounts, conserveCredits: retainConservation, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
+        const pool = this.o.claudeAccounts;
+        if (receipt.decision.quotaBlocked && thread.backend === "claude" && !thread.sessionHandle && pool?.status().rotate) {
+          const seen = new Set<string>();
+          let limited = routeAccounts.claude;
+          while (receipt.decision.quotaBlocked && !seen.has(limited) && seen.size <= 20 && !abort.signal.aborted) {
+            seen.add(limited);
+            pool.noteLimit(limited, receipt.decision.quotaResetAt);
+            const next = pool.pick(limited);
+            if (seen.has(next)) break;
+            const proposed = { ...thread, claudeAccount: next };
+            const candidate = await this.router.route({ thread: proposed, accounts: { ...routeAccounts, claude: next }, conserveCredits: true,
+              minimumTier: receipt.decision.minimumTier, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal, receipt);
+            receipt = candidate;
+            if (!candidate.decision.blocked) {
+              this.o.store.updateThread(threadId, { claudeAccount: next });
+              thread = this.o.store.thread(threadId) ?? proposed;
+              routeAccounts.claude = next;
+              this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: "The selected Claude account is exhausted; enabled account rotation selected another account before coding.", at: new Date().toISOString() });
+              break;
+            }
+            limited = next;
+          }
+        }
+        routeAdmission = receipt;
         this.addItem(threadId, receipt.item);
         routeId = receipt.item.id;
         const d = receipt.decision;
@@ -822,6 +857,7 @@ export class ThreadRunner {
         if (!d.blocked && d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
         else if (!d.blocked && (d.model !== thread.model || d.effort !== thread.effort)) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
         fast = d.fast;
+        conserveCredits = d.conserving === true;
         thread = this.o.store.thread(threadId) ?? thread;
       } catch (err) {
         if (thread.backend === "mock") {
@@ -880,7 +916,7 @@ export class ThreadRunner {
       const account = !local && (thread.backend === "codex" || thread.backend === "claude") && backend.identity
         ? thread.backend === "codex"
           ? admittedExecution.backend === "codex" ? admittedExecution.account ?? undefined : prospectiveCodexAccount ?? undefined
-          : bound ?? (thread.sessionHandle ? "cli" : backend.identity()) : undefined;
+          : bound ?? (thread.sessionHandle ? "cli" : prospectiveClaudeAccount) : undefined;
       if (account && !bound) this.o.store.updateThread(threadId, thread.backend === "codex" ? { codexAccount: account } : { claudeAccount: account });
       const accountFor = (ran: Thread) => threadAccount(ran) ?? account;
       const freshConversation = !thread.sessionHandle;
@@ -896,7 +932,7 @@ export class ThreadRunner {
           const result = await backend.runTurn(
             describeAttachments(text, turnFiles),
             {
-              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, resume: ran.sessionHandle, account: accountFor(ran),
+              cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
               // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
               ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
@@ -911,25 +947,50 @@ export class ThreadRunner {
           throw err;
         }
       };
-      // A model refused for usage credits recently is refused again: start on its fallback instead.
-      const skip = local ? undefined : this.recentCreditFallback(thread);
-      if (skip) thread = this.fallBack(threadId, thread, skip, routeId, false);
+      let replacementBlocked = false;
+      let replacementFailure: TurnResult = { status: "failed", error: "Auto stopped before an unsafe replacement attempt." };
+      const validateReplacement = async (proposed: Thread): Promise<{ decision?: Decision } | undefined> => {
+        if (!auto || !routeAdmission) return {};
+        const decision = await this.router.admitReplacement(proposed, routeAdmission, accountFor(proposed));
+        if (abort.signal.aborted) { replacementBlocked = true; replacementFailure = { status: "interrupted" }; return undefined; }
+        if (decision.blocked) {
+          replacementBlocked = true;
+          replacementFailure = { status: "failed", error: decision.reasons.at(-1) ?? "Auto rejected the replacement." };
+          if (decision.quotaBlocked && proposed.backend === "claude" && accountFor(proposed)) this.o.claudeAccounts?.noteLimit(accountFor(proposed)!, decision.quotaResetAt);
+          this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Auto replacement stopped: ${replacementFailure.error}`, at: new Date().toISOString() });
+          if (routeId) this.patchItem(threadId, routeId, { blocked: true, reasons: [...routeAdmission.item.reasons, ...decision.reasons] });
+          return undefined;
+        }
+        fast = decision.fast;
+        conserveCredits = decision.conserving === true;
+        routeAdmission = { ...routeAdmission, decision };
+        return { decision };
+      };
+      // A recent refusal is scoped to this account, and its replacement is admitted before persistence.
+      const skip = local ? undefined : this.recentCreditFallback(thread, accountFor(thread));
+      if (skip) {
+        const checked = await validateReplacement({ ...thread, model: skip });
+        if (checked) thread = this.fallBack(threadId, thread, skip, routeId, false, checked.decision);
+      }
       let replyStart = l.items.length;
-      let result = await runOn(thread);
+      let result = replacementBlocked ? replacementFailure : await runOn(thread);
       // A failed local turn never moves to a cloud model.
-      const fallback = !local && result.status === "failed" && !abort.signal.aborted ? this.creditFallback(thread, result.error, l.items.slice(turnStart)) : undefined;
+      const fallback = !local && !replacementBlocked && result.status === "failed" && !abort.signal.aborted ? this.creditFallback(thread, result.error, l.items.slice(turnStart)) : undefined;
       if (fallback) {
         const from = thread.model;
-        this.outOfCredits.set(`${thread.backend}:${from}`, Date.now());
-        thread = this.fallBack(threadId, thread, fallback, routeId, true);
-        replyStart = l.items.length;
-        result = await runOn(thread);
-        if (result.status === "failed") result = { ...result, recovery: [`${modelFamilyName(from)} was out of usage credits; retried on ${modelFamilyName(fallback)}.`, ...(result.recovery ?? [])] };
+        this.outOfCredits.set(JSON.stringify([thread.backend, accountFor(thread) ?? "cli", from]), Date.now());
+        const checked = await validateReplacement({ ...thread, model: fallback });
+        if (checked) {
+          thread = this.fallBack(threadId, thread, fallback, routeId, true, checked.decision);
+          replyStart = l.items.length;
+          result = await runOn(thread);
+          if (result.status === "failed") result = { ...result, recovery: [`${modelFamilyName(from)} was out of usage credits; retried on ${modelFamilyName(fallback)}.`, ...(result.recovery ?? [])] };
+        } else result = replacementFailure;
       }
       // A Claude account that reports a usage limit cools down; with rotation on, a turn that had not started work moves on.
       const pool = this.o.claudeAccounts;
       const limited = accountFor(thread);
-      if (!local && pool && thread.backend === "claude" && limited && result.status === "failed" && !abort.signal.aborted && classifyFailure(result.error ?? "") === "rate_limited") {
+      if (!local && !replacementBlocked && pool && thread.backend === "claude" && limited && result.status === "failed" && !abort.signal.aborted && classifyFailure(result.error ?? "") === "rate_limited") {
         const { until } = pool.noteLimit(limited, limitResetAt(result.error ?? ""));
         const next = pool.pick(limited);
         const name = (id: string) => id === "cli" ? "Claude Code's own login" : `"${pool.account(id)?.label ?? "removed account"}"`;
@@ -938,13 +999,22 @@ export class ThreadRunner {
         this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Claude account ${name(limited)} hit its usage limit; Modex holds it out of rotation until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${movable ? ` Retrying on ${name(next)}.` : next !== limited ? ` New Claude conversations start on ${name(next)}.` : ""}`, at: new Date().toISOString() });
         if (movable) {
           // A conversation that had no session before this turn starts fresh: the failed attempt's session may live in the old profile.
-          this.o.store.updateThread(threadId, { claudeAccount: next, ...(freshConversation ? { sessionHandle: undefined } : {}) });
-          thread = this.o.store.thread(threadId) ?? thread;
-          replyStart = l.items.length;
-          result = await runOn(thread);
-          // A second limit still updates selection for the next conversation; never retry a third time.
-          if (result.status === "failed" && !abort.signal.aborted && classifyFailure(result.error ?? "") === "rate_limited") pool.noteLimit(next, limitResetAt(result.error ?? ""));
-          if (result.status === "failed") result = { ...result, recovery: [`Claude account ${name(limited)} hit its usage limit; retried on ${name(next)}.`, ...(result.recovery ?? [])] };
+          const proposed = { ...thread, claudeAccount: next, ...(freshConversation ? { sessionHandle: undefined } : {}) };
+          const checked = await validateReplacement(proposed);
+          if (checked) {
+            this.o.store.updateThread(threadId, { claudeAccount: next, ...(freshConversation ? { sessionHandle: undefined } : {}), ...(checked.decision ? { effort: checked.decision.effort } : {}) });
+            thread = this.o.store.thread(threadId) ?? proposed;
+            if (auto && checked.decision) {
+              this.router.noteFallback(thread, fast);
+              if (routeId) this.patchItem(threadId, routeId, { effort: checked.decision.effort, fast, conserving: checked.decision.conserving,
+                reasons: [...(routeAdmission?.item.reasons ?? []), ...checked.decision.reasons] });
+            }
+            replyStart = l.items.length;
+            result = await runOn(thread);
+            // A second limit still updates selection for the next conversation; never retry a third time.
+            if (result.status === "failed" && !abort.signal.aborted && classifyFailure(result.error ?? "") === "rate_limited") pool.noteLimit(next, limitResetAt(result.error ?? ""));
+            if (result.status === "failed") result = { ...result, recovery: [`Claude account ${name(limited)} hit its usage limit; retried on ${name(next)}.`, ...(result.recovery ?? [])] };
+          } else result = replacementFailure;
         }
       }
       if (pool && thread.backend === "claude" && result.status === "completed" && accountFor(thread)) pool.clearLimit(accountFor(thread)!);
@@ -954,11 +1024,11 @@ export class ThreadRunner {
       if (fast && !ranFast && routeId) this.noteFastOff(threadId, routeId, result.fastMode?.why);
       this.noteLastTurn(threadId, thread, ranFast, result);
       // Naming is a separate model conversation; a local thread keeps its opening-message title.
-      if (!local && result.status === "completed" && shouldName && !abort.signal.aborted) {
+      if (!local && !conserveCredits && result.status === "completed" && shouldName && !abort.signal.aborted) {
         const reply = l.items.slice(turnStart).reverse().find((item) => item.kind === "assistant" && item.text.trim());
         this.nameThread(threadId, text, fallbackTitle, backend, thread.model, reply?.kind === "assistant" ? reply.text : undefined);
       }
-      if (auto) this.router.noteOutcome(threadId, result.status, result.usage);
+      if (auto) this.router.noteOutcome(threadId, result.status, result.usage, !replacementBlocked);
       this.recordUsage(thread, accountFor(thread), result);
       // A failure can precede Stop; its outcome does not establish process exit.
       if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
@@ -1315,9 +1385,9 @@ export class ThreadRunner {
   }
 
   /** The fallback for a model that was refused for usage credits within CREDIT_SKIP_MS, or undefined. */
-  private recentCreditFallback(thread: Thread): string | undefined {
+  private recentCreditFallback(thread: Thread, account = threadAccount(thread) ?? "cli"): string | undefined {
     if (localOnly(thread) || !this.o.store.settings.model_fallback) return undefined;
-    const key = `${thread.backend}:${thread.model}`;
+    const key = JSON.stringify([thread.backend, account, thread.model]);
     const at = this.outOfCredits.get(key);
     if (at === undefined) return undefined;
     if (Date.now() - at >= CREDIT_SKIP_MS) { this.outOfCredits.delete(key); return undefined; }
@@ -1325,17 +1395,17 @@ export class ThreadRunner {
   }
 
   /** Moves the thread to `to` for this turn and onward, and says so in the thread and on Auto's receipt. */
-  private fallBack(threadId: string, thread: Thread, to: string, routeId: string | undefined, refusedNow: boolean): Thread {
+  private fallBack(threadId: string, thread: Thread, to: string, routeId: string | undefined, refusedNow: boolean, admission?: Decision): Thread {
     const from = modelFamilyName(thread.model), next = modelFamilyName(to);
     // fromRouter: Modex made this switch, so Auto must not learn it as the user's preference.
-    this.updateThread(threadId, { model: to }, { fromRouter: true });
+    this.updateThread(threadId, { model: to, ...(admission ? { effort: admission.effort } : {}) }, { fromRouter: true });
     const why = refusedNow ? `${from} is out of usage credits, so this turn moved to ${next}.` : `${from} ran out of usage credits within the last hour, so this turn runs on ${next}.`;
     this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `${why} Add usage credits to use ${from} again, or turn off the fallback in Settings.`, at: new Date().toISOString() });
     const route = routeId ? this.slot(threadId).items.find((i) => i.id === routeId) : undefined;
     if (route?.kind === "route") {
       const actual = this.o.store.thread(threadId) ?? { ...thread, model: to };
-      this.router.noteFallback(actual, route.fast);
-      this.patchItem(threadId, route.id, { model: to, held: undefined, reasons: [...route.reasons, why] });
+      this.router.noteFallback(actual, admission?.fast ?? route.fast);
+      this.patchItem(threadId, route.id, { model: to, held: undefined, ...(admission ? { effort: admission.effort, fast: admission.fast, conserving: admission.conserving } : {}), reasons: [...route.reasons, why, ...(admission?.reasons ?? [])] });
     }
     return this.o.store.thread(threadId) ?? { ...thread, model: to };
   }
