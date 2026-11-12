@@ -308,3 +308,15 @@ button.cr-state { cursor: pointer; font: inherit; }
 .cr-row-meta[data-initial]:not([data-initial=""])::before { content: attr(data-initial); display: inline-grid; place-items: center; vertical-align: -4px; width: 18px; height: 18px; margin-right: 7px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 30%, var(--bg-composer)); color: var(--text-1); font-size: 10px; font-weight: 600; }
 .cr-section-heading h2 { font-size: 19px; font-weight: 500; }
 .cr-activity-item { border-radius: 16px; }
+.cr-avatar { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; margin-right: 2px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 30%, var(--bg-composer)); color: var(--text-1); font-size: 11px; font-weight: 600; }
+.cr-meta-sep { color: var(--text-4); }
+.cr-status { margin: 0 0 22px; padding: 4px 16px; list-style: none; border: 1px solid color-mix(in srgb, var(--text-1) 10%, transparent); border-radius: 16px; color: var(--text-1); font-size: 14px; }
+.cr-status li { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.cr-status li + li { border-top: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent); }
+.cr-status li::before { content: ""; flex: none; width: 16px; height: 16px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--text-4); }
+.cr-status li[data-state="success"]::before { border: 0; background: var(--ok) center / 10px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2l2 2 4-4.4' fill='none' stroke='%23101012' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.cr-status li[data-state="failure"]::before { border: 0; background: var(--danger) center / 10px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.8 2.8l4.4 4.4M7.2 2.8L2.8 7.2' fill='none' stroke='%23101012' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.cr-status li[data-state="pending"]::before { border-style: dashed; border-color: var(--warn); }
+.cr-status button { flex: 1; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cr-row-draft { grid-column: 2; grid-row: 2; align-self: center; width: 14px; height: 14px; border: 1.5px dashed var(--text-4); border-radius: 50%; box-sizing: border-box; }
+.cr-row:has(.cr-row-draft) .cr-row-meta { grid-column: 1; }

@@ -8,7 +8,7 @@ import { readableRemoteText } from "./remote-text.js";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import type { OpenPr } from "./model.js";
 import { prUrl } from "./model.js";
-import { additions, deletions, shortfallText, unavailableText } from "./text.js";
+import { additions, age, deletions, shortfallText, unavailableText } from "./text.js";
 import { ReviewComposer } from "./ReviewComposer";
 import type { Writes } from "./writes.js";
 import { EditPullRequest, RequestReviewers } from "./PrActions";
@@ -77,13 +77,32 @@ export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions =
   const checks = pr.checks;
   const stack = pr.stack;
   const freshOverview = read.state === "ready";
+  // The status card says only what was read: reviews from loaded activity, checks for the current head.
+  const latest = new Map<string, Extract<PrActivity, { kind: "review" }>>();
+  for (const row of activity.rows) if (row.kind === "review" && row.verdict !== "commented") latest.set(row.actor.login, row);
+  const standing = [...latest.values()];
+  const approvals = standing.filter(row => row.verdict === "approved");
+  const verdicts = { approved: approvals.map(row => row.actor.login), blocked: standing.filter(row => row.verdict === "changes-requested").map(row => row.actor.login), earlier: approvals.length > 0 && approvals.every(row => row.commit !== overview.revision.headSha) };
+  const tally = summarizeChecks(checks ?? { state: "unavailable", reason: "failed", fetchedAt: read.fetchedAt }, overview.revision);
+  const count = (n: number, word: string) => `${n} ${word} ${n === 1 ? "check" : "checks"}`;
+  const checkState: { state: string; text: string } = !checks ? { state: "neutral", text: "Loading checks…" }
+    : tally.verdict === "failing" ? { state: "failure", text: `${count(tally.failed, "failing")}${tally.passed ? ` · ${tally.passed} passing` : ""}` }
+    : tally.verdict === "pending" ? { state: "pending", text: `${count(tally.pending, "running")}${tally.passed ? ` · ${tally.passed} passing` : ""}` }
+    : tally.verdict === "passing" ? { state: "success", text: count(tally.passed, "passing") }
+    : tally.verdict === "none" ? { state: "neutral", text: "No checks reported" }
+    : { state: "neutral", text: tally.verdict === "incomplete" ? "Checks incomplete" : "Checks unknown" };
   // C54 "Add to chat": the comment's text, quoted into the question composer. Nothing runs until Ask is pressed.
   const ask = agent && caps.review.available ? (text: string) => agent.quote(pr.key, text) : undefined;
   return <div className="cr-overview-layout">
     <main ref={main} className="cr-overview-main" tabIndex={0} aria-label="Description and activity">
       <Evidence result={read} label="pull request" retry={retry} />
       <h1>{overview.title}</h1>
-      <div className="cr-overview-meta"><strong>{overview.author.login}</strong> opened <time dateTime={overview.createdAt}>{new Date(overview.createdAt).toLocaleString()}</time><br /><code>{overview.headRepo ? `${overview.headRepo}:` : ""}{overview.headRef}</code> → <code>{overview.revision.baseRef}</code>{writes ? <EditPullRequest writes={writes} overview={overview} fallback={caps.edit} onDone={retry} /> : <Action label="Edit pull request" capability={caps.edit} action={actions.edit} />}</div>
+      <div className="cr-overview-meta"><span className="cr-avatar" aria-hidden="true">{overview.author.login[0]?.toUpperCase()}</span><strong>{overview.author.login}</strong> <span className="cr-meta-sep" aria-hidden="true">·</span> <span className="sr-only">opened </span><time dateTime={overview.createdAt} title={new Date(overview.createdAt).toLocaleString()}>{age(overview.createdAt, Date.now())} ago</time> <span className="cr-meta-sep" aria-hidden="true">·</span> <code>{overview.headRepo ? `${overview.headRepo}:` : ""}{overview.headRef}</code> → <code>{overview.revision.baseRef}</code>{writes ? <EditPullRequest writes={writes} overview={overview} fallback={caps.edit} onDone={retry} /> : <Action label="Edit pull request" capability={caps.edit} action={actions.edit} />}</div>
+      <ul className="cr-status" data-testid="cr-status" aria-label="Review and checks">
+        {overview.state === "draft" && <li data-state="neutral">Draft · Not marked ready for review</li>}
+        <li data-state={verdicts.blocked.length ? "failure" : verdicts.approved.length ? "success" : "neutral"}>{verdicts.blocked.length ? `Changes requested by ${verdicts.blocked.join(", ")}` : verdicts.approved.length ? `Approved by ${verdicts.approved.join(", ")}${verdicts.earlier ? " · at an earlier revision" : ""}` : activity.complete ? "No approving review" : "No approving review in loaded activity"}</li>
+        <li data-state={checkState.state}><button type="button" onClick={() => sidebar.current?.querySelector('[data-testid="cr-checks"]')?.scrollIntoView({ block: "start" })}>{checkState.text}</button></li>
+      </ul>
       <button type="button" className="cr-changes-summary" onClick={onChanges} aria-label="Open Changes">{overview.totals.files} changed files · <span className="cr-add">{additions(overview.totals.additions)}</span> <span className="cr-del">{deletions(overview.totals.deletions)}</span> · {overview.comments} comments</button>
       <article data-testid="cr-description" aria-label="Pull request description"><Markdown text={readableRemoteText(overview.body) || "No description provided."} /></article>
       {agent && writes && <AgentReview agent={agent} overview={overview} writes={writes} fallback={caps.review} />}
